@@ -38,7 +38,7 @@ public class ConnectPublisherTests
 
         public Harness()
         {
-            Publisher = new DeviceStatePublisher(Transport, "us", Proj, ConnId, () => CurrentConnId,
+            Publisher = new DeviceStatePublisher(Transport, "us", Proj, Proj.Ownership, ConnId, () => CurrentConnId,
                 (reason, snap, mid, active) =>
                 {
                     LastSnapshot = snap;
@@ -50,9 +50,12 @@ public class ConnectPublisherTests
         }
 
         public void Connect(string id) { CurrentConnId = id; ConnId.OnNext(id); }
-        // proj + publisher both see the event (the controller fans to both in production)
+        // proj + publisher both see the event (the controller fans to both in production) — and, since a real local
+        // play/resume always claims ownership BEFORE the controller emits its event, so does this harness (the ONE
+        // authority behind is_active now; nothing here answers "am I active" off a bare CurrentTrack any more).
         public void Play(string trackUri, EvKind kind = EvKind.Started)
         {
+            Proj.Ownership.Claim(ClaimCause.UserPlay);
             var e = new PlaybackEvent(kind, T(trackUri), 0);
             Proj.OnEvent(e);
             Publisher.OnEvent(e);
@@ -123,10 +126,11 @@ public class ConnectPublisherTests
         Assert.StartsWith("NewConnection|", Encoding.UTF8.GetString(h.Transport.LastPublishBody!));
     }
 
-    // ── bug 2: OwnsSession() must not answer true off a bare "CurrentTrack is not null" — that is also what a passive
-    // VIEWER's mirrored fold of another device's row looks like. Without the ActiveDeviceId check, a Wavee that never
-    // played still announced isActive=true (and a player_state built from the phone's track) the moment a dealer
-    // connection landed.
+    // ── bug 2: is_active must not answer true off a bare "CurrentTrack is not null" — that is also what a passive
+    // VIEWER's mirrored fold of another device's row looks like. Structurally guaranteed now (not merely accidental):
+    // folding a cluster naming a foreign device transitions the ownership authority to Foreign (F3), and
+    // PlaybackOwnership.IsActiveOnWire is false for anything but Us — a Wavee that never played can no longer announce
+    // isActive=true (nor a player_state built from the phone's track) the moment a dealer connection lands.
     [Fact]
     public async Task NewConnection_ViewerEcho_PublishesInactive_NeverClaimsOwnership()
     {
@@ -161,7 +165,7 @@ public class ConnectPublisherTests
         var connection = new SimpleSubject<string?>(null);
         string? currentConnection = null;
         using var publisher = new DeviceStatePublisher(
-            transport, "us", projection, connection, () => currentConnection,
+            transport, "us", projection, projection.Ownership, connection, () => currentConnection,
             (reason, _, mid, _) => Encoding.UTF8.GetBytes(reason + "|" + mid));
 
         currentConnection = "c1";
@@ -352,5 +356,203 @@ public class ConnectPublisherTests
         h.Emit(EvKind.OptionsChanged);   // options unchanged (default) + same track/pos → identical key
         await Task.Delay(20);
         Assert.Equal(2, h.Transport.PublishCount);   // NewConnection + the one Started; the no-op OptionsChanged collapses
+    }
+
+    // ── Step C / contract item 1-2: is_active is derived from ConnectOwnership, not a local transport fact ─────────────
+
+    // Replaces the old PublishInactive()-based "retired" test in DeviceStateRepublishTests.cs: a badge republish must
+    // stay muted for as long as the OWNERSHIP AUTHORITY says we are not the owner — not merely for as long as somebody
+    // remembered to call the low-level PublishInactive() primitive.
+    [Fact]
+    public async Task BadgeRepublish_WhileNotUs_PublishesNothing()
+    {
+        var h = new Harness();
+        h.Connect("c1");
+        h.Play("spotify:track:a");
+        await Task.Delay(20);
+
+        h.Proj.Ownership.Release(ReleaseCause.EndOfContext);   // ownership given up — no longer Us
+        await Task.Delay(20);
+        int before = h.Transport.PublishCount;
+
+        h.Publisher.PublishStateChanged();
+        await Task.Delay(20);
+
+        Assert.Equal(before, h.Transport.PublishCount);   // a badge landing while not the owner must never claim the wire
+    }
+
+    // ── bug 5 (launch slot steal): a session-recovery seed sets CurrentTrack WITHOUT ever claiming ownership (no user
+    // or inbound intent asked for it) — the exact precondition the 15:21:32 "SLOT STEAL" traced back to
+    // (RecomputeHasVideo → PublishStateChanged → literal is_active=true). A fresh NewConnection announce over that seed
+    // must still say inactive.
+    [Fact]
+    public async Task NewConnection_AfterRecoverySeed_IsInactive()
+    {
+        var h = new Harness();
+        h.Proj.OnEvent(new PlaybackEvent(EvKind.Started, T("spotify:track:a"), 0));   // the projection ONLY — no claim
+
+        h.Connect("c1");
+        await Task.Delay(20);
+
+        Assert.Equal(1, h.Transport.PublishCount);
+        Assert.StartsWith("NewConnection|False|", Encoding.UTF8.GetString(h.Transport.LastPublishBody!));
+    }
+
+    // ── contract item 2: started_playing_at is the CLAIM's stamp (fresh per claim), and has_been_playing_for_ms — long
+    // computed, never sent — now reaches the wire.
+    [Fact]
+    public async Task Claim_StampsStartedAt_PerClaim_AndWritesHasBeenPlayingFor()
+    {
+        long now = 10_000;
+        var transport = new StubTransport();
+        var proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(),
+            clock: () => now, serverNowUnixMs: () => now);
+        var connId = new SimpleSubject<string?>(null);
+        string? currentConnId = null;
+        LocalPlaybackSnapshot? lastSnapshot = null;
+        using var publisher = new DeviceStatePublisher(transport, "us", proj, proj.Ownership, connId, () => currentConnId,
+            (reason, snap, mid, active) => { lastSnapshot = snap; return Encoding.UTF8.GetBytes(reason + "|" + active); },
+            onCluster: null, clock: () => now);
+
+        currentConnId = "c1"; connId.OnNext("c1");
+
+        proj.Ownership.Claim(ClaimCause.UserPlay);
+        var e1 = new PlaybackEvent(EvKind.Started, T("spotify:track:a"), 0);
+        proj.OnEvent(e1);
+        publisher.OnEvent(e1);
+        await Task.Delay(20);
+
+        var snap1 = Assert.IsType<LocalPlaybackSnapshot>(lastSnapshot);
+        Assert.Equal(10_000, snap1.StartedPlayingAtMs);
+        Assert.Equal(0, snap1.HasBeenPlayingForMs);
+
+        now += 5_000;
+        var e2 = new PlaybackEvent(EvKind.Seeked, T("spotify:track:a"), 3000);
+        proj.OnEvent(e2);
+        publisher.OnEvent(e2);
+        await Task.Delay(20);
+
+        var snap2 = Assert.IsType<LocalPlaybackSnapshot>(lastSnapshot);
+        Assert.Equal(10_000, snap2.StartedPlayingAtMs);      // same claim → the stamp does not move
+        Assert.Equal(5_000, snap2.HasBeenPlayingForMs);      // …but has_been_playing_for_ms now reaches the wire
+
+        now += 1_000;
+        proj.Ownership.Claim(ClaimCause.UserPlay);           // a fresh user-play (e.g. a skip) restamps per claim
+        var e3 = new PlaybackEvent(EvKind.TrackChanged, T("spotify:track:b"), 0);
+        proj.OnEvent(e3);
+        publisher.OnEvent(e3);
+        await Task.Delay(20);
+
+        var snap3 = Assert.IsType<LocalPlaybackSnapshot>(lastSnapshot);
+        Assert.Equal(16_000, snap3.StartedPlayingAtMs);
+        Assert.Equal(0, snap3.HasBeenPlayingForMs);
+    }
+
+    // ── contract item 4/PlaybackOwnership P1/P3: the put-state RESPONSE is the verdict on a claim, folded with
+    // Origin=PutResponse and the claim's own msgId (bound by OnPutSent inside PublishAsync).
+    [Fact]
+    public async Task PutResponse_BindsTheClaim_AdoptedOrRejected()
+    {
+        // Adopted: the response names us.
+        {
+            var h = new Harness();
+            h.Connect("c1");
+            h.Play("spotify:track:a");
+            await Task.Delay(20);
+            uint msgId = h.Proj.Ownership.Current.ClaimMsgId;
+            Assert.NotEqual(0u, msgId);
+
+            h.Proj.Ownership.OnCluster(new ClusterFrame(ClusterOrigin.PutResponse, msgId, "us", 500));
+
+            Assert.Equal(OwnerKind.Us, h.Proj.Ownership.Current.Kind);
+            Assert.Equal(ClaimPhase.Adopted, h.Proj.Ownership.Current.Claim);
+        }
+        // Rejected: the response names another device — the claim never held the slot.
+        {
+            var h = new Harness();
+            h.Connect("c1");
+            h.Play("spotify:track:a");
+            await Task.Delay(20);
+            uint msgId = h.Proj.Ownership.Current.ClaimMsgId;
+            Assert.NotEqual(0u, msgId);
+
+            h.Proj.Ownership.OnCluster(new ClusterFrame(ClusterOrigin.PutResponse, msgId, "phone", 500));
+
+            Assert.Equal(OwnerKind.Foreign, h.Proj.Ownership.Current.Kind);
+            Assert.Equal("phone", h.Proj.Ownership.Current.DeviceId);
+        }
+    }
+
+    // ── contract item 2 / librespot: while we are NOT the active device the PUT carries an IDLE player_state (no
+    // mirrored foreign row) plus our own device volume, supplied SEPARATELY from the (null) snapshot.
+    [Fact]
+    public async Task NonUs_PublishesAnIdlePlayerState_WithOurVolume()
+    {
+        var transport = new StubTransport();
+        var proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0,
+            initialVolume01: 0.42);
+        var connId = new SimpleSubject<string?>(null);
+        string? currentConnId = null;
+        LocalPlaybackSnapshot? lastSnapshot = null;
+        double lastOwnVolume = -1;
+        bool lastIsActive = true;
+        using var publisher = new DeviceStatePublisher(transport, "us", proj, proj.Ownership, connId, () => currentConnId,
+            (reason, snap, mid, active, ownVolume, attribution) =>
+            {
+                lastSnapshot = snap; lastOwnVolume = ownVolume; lastIsActive = active;
+                return Encoding.UTF8.GetBytes(reason + "|" + active);
+            },
+            onCluster: null, clock: () => 1000);
+
+        // A foreign device is active — we fold it as a passive viewer, never claiming ownership.
+        proj.OnCluster(new ClusterDelta("phone", true,
+            new RemoteTrack("spotify:track:remote", "Title", "Artist", "spotify:artist:a", "Album", "spotify:album:al", null, 200_000),
+            "spotify:playlist:p", true, false, false, 5_000, 0, 100, 200_000, false, RepeatMode.Off,
+            Array.Empty<ConnectDeviceRow>(), Array.Empty<RemoteTrack>()));
+
+        currentConnId = "c1"; connId.OnNext("c1");
+        await Task.Delay(20);
+
+        Assert.False(lastIsActive);
+        Assert.Null(lastSnapshot);
+        Assert.Equal(0.42, lastOwnVolume, 3);
+    }
+
+    // ── contract item 1: a lost/rejected claim PUT settles Unadopted (keep playing; the next announce/reconnect
+    // re-asserts is_active) rather than leaving the claim stuck Protected forever.
+    [Fact]
+    public async Task PutFailed_SettlesTheClaimUnadopted()
+    {
+        var transport = new FailingTransport();
+        var proj = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => 0);
+        var connId = new SimpleSubject<string?>(null);
+        string? currentConnId = "c1";
+        using var publisher = new DeviceStatePublisher(transport, "us", proj, proj.Ownership, connId, () => currentConnId,
+            (reason, snap, mid, active) => Encoding.UTF8.GetBytes(reason + "|" + active),
+            onCluster: null, clock: () => 1000);
+        connId.OnNext("c1");
+        await Task.Delay(20);
+
+        proj.Ownership.Claim(ClaimCause.UserPlay);
+        var e = new PlaybackEvent(EvKind.Started, T("spotify:track:a"), 0);
+        proj.OnEvent(e);
+        publisher.OnEvent(e);
+        await Task.Delay(20);
+
+        Assert.Equal(OwnerKind.Us, proj.Ownership.Current.Kind);
+        Assert.Equal(ClaimPhase.Unadopted, proj.Ownership.Current.Claim);
+    }
+
+    // A transport whose every PUT is rejected — StubTransport has no such hook (Publish always answers 200 Ok).
+    sealed class FailingTransport : ITransport
+    {
+        public Task<Resp> Request(Channel ch, string route, ReadOnlyMemory<byte> body, CancellationToken ct = default,
+            string? method = null, IReadOnlyDictionary<string, string>? headers = null)
+            => Task.FromResult(new Resp(true, Array.Empty<byte>(), 200));
+        public IObservable<WireEvent> Events(string topicPrefix) => new SimpleSubject<WireEvent>();
+        public IObservable<WireRequest> Requests(string identPrefix) => new SimpleSubject<WireRequest>();
+        public Task Reply(string requestId, RequestResult result) => Task.CompletedTask;
+        public Task<Resp> Publish(string deviceId, string connectionId, ReadOnlyMemory<byte> putState, CancellationToken ct = default)
+            => Task.FromResult(new Resp(false, Array.Empty<byte>(), 500));
     }
 }

@@ -156,6 +156,22 @@ public sealed class DealerArchive : IDisposable
         catch { }
     }
 
+    /// <summary>Archive the put-state RESPONSE body — the one frame that proves whether the server adopted our claim
+    /// (findings §0), and which never crosses the dealer socket (DeviceStatePublisher re-injects it locally instead of
+    /// receiving it as a push). Same enqueue/idx-line pipeline as an inbound frame and the same enabled gate, tagged
+    /// <c>typ:"put-response"</c> with the reason/isActive WE claimed on that PUT so a later read can pair our request
+    /// with the server's answer. Called via a callback from DeviceStatePublisher (through LiveConnect) — never directly
+    /// from Backend, which stays free of Diagnostics types.</summary>
+    public void RecordPutResponse(uint msgId, string reason, bool isActive, ReadOnlySpan<byte> body)
+    {
+        try
+        {
+            if (!_enabled) return;
+            Enqueue(body, DealerFrameType.Message, null, null, null, true, msgId, reason, isActive);
+        }
+        catch { /* archive failures must never surface to the caller */ }
+    }
+
     public void RecordKeepalive(DealerFrameType type)
     {
         try
@@ -205,7 +221,8 @@ public sealed class DealerArchive : IDisposable
         _pulse.Dispose();
     }
 
-    void Enqueue(ReadOnlySpan<byte> utf8, DealerFrameType type, string? uri, string? ident, string? key, bool handled)
+    void Enqueue(ReadOnlySpan<byte> utf8, DealerFrameType type, string? uri, string? ident, string? key, bool handled,
+        uint? putMsgId = null, string? putReason = null, bool? putIsActive = null)
     {
         int len = utf8.Length;
         lock (_queueGate)
@@ -221,7 +238,8 @@ public sealed class DealerArchive : IDisposable
             {
                 utf8.CopyTo(rented);
                 _queue.Enqueue(new Pending(
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), type, uri, ident, key, handled, rented, len));
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), type, uri, ident, key, handled, rented, len,
+                    putMsgId, putReason, putIsActive));
                 _queuedBytes += len;
                 if (_queue.Count >= BatchSize) _pulse.Set();
             }
@@ -384,7 +402,13 @@ public sealed class DealerArchive : IDisposable
     {
         _idxLine.Clear();
         _idxLine.Append("{\"t\":").Append(p.UnixMs.ToString(CultureInfo.InvariantCulture));
-        _idxLine.Append(",\"typ\":\"").Append(TypeName(p.Type)).Append('"');
+        _idxLine.Append(",\"typ\":\"").Append(p.PutMsgId is not null ? "put-response" : TypeName(p.Type)).Append('"');
+        if (p.PutMsgId is { } putMsgId)
+        {
+            _idxLine.Append(",\"msgId\":").Append(putMsgId.ToString(CultureInfo.InvariantCulture));
+            if (p.PutReason is { Length: > 0 }) { _idxLine.Append(",\"reason\":"); AppendJsonString(p.PutReason); }
+            _idxLine.Append(",\"isActive\":").Append(p.PutIsActive == true ? "true" : "false");
+        }
         if (p.Uri is { Length: > 0 }) { _idxLine.Append(",\"uri\":"); AppendJsonString(p.Uri); }
         if (p.Ident is { Length: > 0 }) { _idxLine.Append(",\"ident\":"); AppendJsonString(p.Ident); }
         if (p.Key is { Length: > 0 }) { _idxLine.Append(",\"key\":"); AppendJsonString(p.Key); }
@@ -594,5 +618,9 @@ public sealed class DealerArchive : IDisposable
 
     readonly record struct Pending(
         long UnixMs, DealerFrameType Type, string? Uri, string? Ident, string? Key,
-        bool Handled, byte[] Buffer, int Length);
+        bool Handled, byte[] Buffer, int Length,
+        // put-response extras (RecordPutResponse): the announce-response Cluster never crosses the dealer socket, so it
+        // is enqueued through this same pipeline instead, tagged with the reason/isActive WE claimed. Null for every
+        // ordinary inbound frame.
+        uint? PutMsgId = null, string? PutReason = null, bool? PutIsActive = null);
 }

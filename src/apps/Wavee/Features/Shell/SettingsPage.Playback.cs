@@ -156,6 +156,10 @@ sealed partial class SettingsPage
                 [
                     HyperlinkButton.Create(Loc.Get(Strings.Playback.Runtime.ViewDiagnostics),
                         () => nav?.Invoke(PlaybackRuntimeDiagnosticsPage.Route, null)),
+                    // Connect ownership diagnostics (Step C) — a sibling report, not gated on the runtime error above
+                    // (who owns playback is orthogonal to whether local playback is provisioned), so it rides the same
+                    // row rather than waiting for its own banner state.
+                    HyperlinkButton.Create("Connect diagnostics", () => nav?.Invoke(ConnectDiagnosticsPage.Route, null)),
                     Button.Accent(Loc.Get(Strings.Settings.Common.RetrySetup), OpenSetup),
                 ],
             });

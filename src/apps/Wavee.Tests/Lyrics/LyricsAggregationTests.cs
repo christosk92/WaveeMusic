@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Wavee.Backend;
 using Wavee.Backend.Lyrics;
 using Wavee.Backend.Lyrics.Sources;
 using Wavee.Core;
@@ -120,6 +121,22 @@ public class LyricsAggregationTests
     }
 
     [Fact]
+    public async Task FetchOne_DecoyShape_IsMissedBeforeEverBecomingACandidate()
+    {
+        // The FetchOne-level gate (not the reranker's stage-one floor): a document that runs to 824000ms on a 200000ms
+        // track, every line exactly 4000ms apart, must never even become a LyricsCandidate — the real bug had
+        // MatchBasis.Isrc make it "verified by construction" and win outright regardless of score.
+        var decoyLines = Enumerable.Range(0, 206).Select(i => ((long)(12000 + i * 4000), $"nonsense line {i}")).ToArray();
+        var decoy = LineDoc("musixmatch", decoyLines);
+        var src = new FakeSource("musixmatch", new LyricsCandidate("musixmatch", 0.7, MatchBasis.Isrc, decoy));
+        var agg = new AggregatingLyricsProvider(new ILyricCandidateSource[] { src }, Resolver(Req()));
+
+        var doc = await agg.GetLyricsAsync("t1");
+
+        Assert.Null(doc);   // the only source's only candidate was a decoy → 0 candidates → no winner
+    }
+
+    [Fact]
     public async Task Aggregator_CachesWinner_SecondCallDoesNotRefetch()
     {
         var src = new FakeSource("lrclib", new LyricsCandidate("lrclib", 0.45, MatchBasis.MetadataSearch, LineDoc("lrclib", Song)));
@@ -173,6 +190,89 @@ public class LyricsAggregationTests
         Assert.NotNull(cand);
         Assert.Equal("lrclib", cand!.ProviderId);
         Assert.Equal(2, cand.Document.Lines.Count);
+    }
+
+    // ── background pass replaces an unverified first winner (the ISRC decoy escape hatch) ──────────────────────────────
+    // A first pass with no reference yet (the reference source is still in flight when the grace window elapses) picks
+    // an ISRC-trusted candidate purely on trust — the "no-reference" reranker path, exactly like the real Musixmatch
+    // decoy bug. The background pass then gathers the reference and must replace that incumbent once it turns out to
+    // have ZERO text agreement with it, even though nothing out-tiers it (both documents are Line sync, so plain
+    // IsRicher never fires).
+
+    [Fact]
+    public async Task BackgroundPass_ReplacesAnUnverifiedFirstWinner_WithAVerifiedLineDoc()
+    {
+        var decoy = LineDoc("musixmatch", (12000, "wob gopini den"), (16000, "tefe woxica fero"), (20000, "mubli tark yolen"));
+        var opt = new LyricsOptions(FirstHitGraceMs: 20, PerSourceTimeoutMs: 3000, TotalTimeoutMs: 3000);
+        var sources = new ILyricCandidateSource[]
+        {
+            new FakeSource("musixmatch", new LyricsCandidate("musixmatch", 0.7, MatchBasis.Isrc, decoy), delayMs: 0),
+            new FakeSource("spotify", new LyricsCandidate("spotify", 0.55, MatchBasis.Identity, LineDoc("spotify", Song)), delayMs: 120),
+            new FakeSource("lrclib", new LyricsCandidate("lrclib", 0.45, MatchBasis.MetadataSearch, LineDoc("lrclib", Song)), delayMs: 120),
+        };
+        var agg = new AggregatingLyricsProvider(sources, Resolver(Req()), opt);
+
+        var upgrades = new List<LyricsDocument>();
+        agg.LyricsUpgraded.Subscribe(Observers.From<LyricsDocument>(d => { lock (upgrades) upgrades.Add(d); }));
+
+        var first = await agg.GetLyricsAsync("t1");
+        Assert.Equal("musixmatch", first!.Provider);   // the decoy wins the first pass — no reference to check it against yet
+
+        LyricsDocument? upgraded = null;
+        for (int i = 0; i < 300 && upgraded is null; i++)
+        {
+            await Task.Delay(10);
+            lock (upgrades) if (upgrades.Count > 0) upgraded = upgrades[0];
+        }
+        Assert.NotNull(upgraded);
+        Assert.NotEqual("musixmatch", upgraded!.Provider);   // replaced, even though it never got RICHER (both Line sync)
+        Assert.Equal(LyricsSyncKind.Line, upgraded.Sync);
+
+        var again = await agg.GetLyricsAsync("t1");
+        Assert.Same(upgraded, again);   // the promotion landed in the memory cache too
+    }
+
+    // ── Musixmatch status_code (captcha/quota hides behind HTTP 200) ────────────────────────────────────────────────────
+
+    sealed class MusixmatchFakeHttp : ILyricHttp
+    {
+        readonly List<(string Key, string? Body)> _map;
+        readonly Dictionary<string, int> _calls = new(StringComparer.Ordinal);
+        public MusixmatchFakeHttp(params (string, string?)[] map) => _map = map.ToList();
+
+        public Task<string?> GetStringAsync(string url, IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
+        {
+            foreach (var (k, v) in _map)
+                if (url.Contains(k, StringComparison.Ordinal))
+                {
+                    lock (_calls) { _calls.TryGetValue(k, out int n); _calls[k] = n + 1; }
+                    return Task.FromResult(v);
+                }
+            return Task.FromResult<string?>(null);
+        }
+
+        public int CallsFor(string key) { lock (_calls) { return _calls.TryGetValue(key, out int n) ? n : 0; } }
+    }
+
+    [Fact]
+    public async Task MusixmatchSource_StatusCode401_MissesAndDropsTheTokenForTheNextCall()
+    {
+        // message.header.status_code — Musixmatch answers HTTP 200 even for a captcha (401) block; the body underneath
+        // is the decoy. A valid token.get response, but every macro.subtitles.get answers the captcha shape.
+        const string tokenOk = "{\"message\":{\"header\":{\"status_code\":200},\"body\":{\"user_token\":\"TOK123\"}}}";
+        const string captcha = "{\"message\":{\"header\":{\"status_code\":401},\"body\":{}}}";
+        var http = new MusixmatchFakeHttp(("token.get", tokenOk), ("macro.subtitles.get", captcha));
+        var src = new MusixmatchSource(http);
+        var req = new LyricsRequest("t1", "spotify:track:t1", "Sorry Seems To Be The Hardest Word",
+            new[] { "Elton John" }, "Album", 210066, Isrc: "GBUM71505078");
+
+        var first = await src.FetchAsync(req, default);
+        Assert.Null(first);
+        Assert.Equal(1, http.CallsFor("token.get"));
+
+        var second = await src.FetchAsync(req, default);
+        Assert.Null(second);
+        Assert.Equal(2, http.CallsFor("token.get"));   // the dropped token forced exactly one re-fetch on the next call
     }
 
     [Fact]

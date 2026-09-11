@@ -49,10 +49,12 @@ public class PlaybackErrorPathTests
 
 public class ProjectionPrebufferingTests
 {
+    // Host signals fold only while WE own playback (a local play claims first — PlaybackOwnership).
     [Fact]
     public void Prebuffering_ReadsAsBuffering_ThenClearsOnPlaying()
     {
         var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        proj.Ownership.Claim(ClaimCause.UserPlay);
 
         proj.OnHostSignal(new AudioHostSignal(AudioHostSignalKind.Prebuffering, 0));
         Assert.True(proj.IsBuffering);
@@ -69,6 +71,7 @@ public class ProjectionPrebufferingTests
     {
         long now = 0;
         var proj = new NowPlayingProjection("dev", NotOwnedEntityHydrator.Instance, new InMemoryStore(), () => now);
+        proj.Ownership.Claim(ClaimCause.UserPlay);
 
         proj.OnHostSignal(new AudioHostSignal(AudioHostSignalKind.Playing, 1_000, true, false, false));
         now = 500;

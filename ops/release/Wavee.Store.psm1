@@ -80,15 +80,199 @@ function Test-WaveeStoreQuad {
 # The .msixupload container
 # ---------------------------------------------------------------------------------------------------------------
 
+function Assert-WaveeStorePackageIdentity {
+    param($Identity, [string]$IdentityName, [string]$Publisher, [string]$Quad)
+    if ("$($Identity.Name)" -cne $IdentityName -or "$($Identity.Publisher)" -cne $Publisher -or
+        "$($Identity.Version)" -ne $Quad) { throw 'Store package identity/version mismatch.' }
+}
+
+function Get-WaveeZipXml {
+    param($Zip, [string]$Name)
+    $entries = @($Zip.Entries | Where-Object { $_.FullName -ceq $Name })
+    if ($entries.Count -ne 1) { throw "Archive must contain exactly one $Name." }
+    $reader = New-Object IO.StreamReader($entries[0].Open())
+    try { [xml]$reader.ReadToEnd() } finally { $reader.Dispose() }
+}
+
+function Get-WaveeStreamHash {
+    param($Stream)
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { ([BitConverter]::ToString($hash.ComputeHash($Stream))).Replace('-', '').ToLowerInvariant() }
+    finally { $hash.Dispose() }
+}
+
+function Assert-WaveeStoreBundle {
+    param(
+        [Parameter(Mandatory = $true)][string]$Bundle,
+        [Parameter(Mandatory = $true)][string]$IdentityName,
+        [Parameter(Mandatory = $true)][string]$Publisher,
+        [Parameter(Mandatory = $true)][string]$Quad)
+    Test-WaveeStoreQuad $Quad | Out-Null
+    if ([IO.Path]::GetExtension($Bundle) -ine '.msixbundle') { throw 'Store upload requires one .msixbundle.' }
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $Bundle).Path)
+    try {
+        $manifest = Get-WaveeZipXml $zip 'AppxMetadata/AppxBundleManifest.xml'
+        Assert-WaveeStorePackageIdentity $manifest.Bundle.Identity $IdentityName $Publisher $Quad
+        $packages = @($manifest.Bundle.Packages.Package)
+        if ($packages.Count -ne 2) { throw 'Store bundle must contain exactly arm64 and x64 application packages.' }
+        $seen = @{}
+        $inventory = @()
+        foreach ($package in $packages) {
+            $arch = "$($package.Architecture)".ToLowerInvariant()
+            if ($arch -notin @('arm64', 'x64') -or $seen.ContainsKey($arch)) { throw "Missing or duplicate Store architecture: $arch" }
+            if ("$($package.Type)" -ne 'application' -or "$($package.Version)" -ne $Quad -or
+                "$($package.FileName)" -match '[/\\]' -or [IO.Path]::GetExtension("$($package.FileName)") -ine '.msix') {
+                throw 'Bundle must contain full root-level application MSIX packages at the release version.'
+            }
+            $entries = @($zip.Entries | Where-Object { $_.FullName -ceq "$($package.FileName)" })
+            if ($entries.Count -ne 1) { throw 'Bundle child package missing or duplicated.' }
+            $memory = New-Object IO.MemoryStream
+            $stream = $entries[0].Open()
+            try { $stream.CopyTo($memory) } finally { $stream.Dispose() }
+            try {
+                $memory.Position = 0
+                $sha = Get-WaveeStreamHash $memory
+                $memory.Position = 0
+                $child = New-Object IO.Compression.ZipArchive($memory, [IO.Compression.ZipArchiveMode]::Read, $true)
+                try {
+                    $inner = Get-WaveeZipXml $child 'AppxManifest.xml'
+                    Assert-WaveeStorePackageIdentity $inner.Package.Identity $IdentityName $Publisher $Quad
+                    if ("$($inner.Package.Identity.ProcessorArchitecture)" -ine $arch) { throw 'Bundle and child architecture mismatch.' }
+                    if (@($child.Entries | Where-Object { $_.FullName -ceq 'Wavee.exe' -and $_.Length -gt 0 }).Count -ne 1) {
+                        throw 'Bundle contains a missing or empty Wavee executable.'
+                    }
+                } finally { $child.Dispose() }
+            } finally { $memory.Dispose() }
+            $seen[$arch] = $true
+            $inventory += [pscustomobject]@{ Architecture = $arch; FileName = "$($package.FileName)"; Sha256 = $sha; Version = $Quad }
+        }
+        $contained = @($zip.Entries | Where-Object { $_.FullName -match '\.(msix|appx|msixbundle|appxbundle)$' })
+        if ($contained.Count -ne 2) { throw 'Unexpected unlisted packages inside Store bundle.' }
+        $inventory | Sort-Object Architecture
+    } finally { $zip.Dispose() }
+}
+
+function New-WaveeMsixBundle {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Msix,
+        [Parameter(Mandatory = $true)][string]$OutFile,
+        [Parameter(Mandatory = $true)][string]$MakeAppx,
+        [Parameter(Mandatory = $true)][string]$IdentityName,
+        [Parameter(Mandatory = $true)][string]$Publisher,
+        [Parameter(Mandatory = $true)][string]$Quad)
+    Test-WaveeStoreQuad $Quad | Out-Null
+    if ($Msix.Count -ne 2) { throw 'Store releases require both arm64 and x64.' }
+    $seen = @{}
+    foreach ($path in $Msix) {
+        $id = Get-MsixIdentity $path
+        Assert-WaveeStorePackageIdentity $id $IdentityName $Publisher $Quad
+        $arch = "$($id.ProcessorArchitecture)".ToLowerInvariant()
+        if ($arch -notin @('arm64', 'x64') -or $seen.ContainsKey($arch)) { throw 'Store releases require distinct arm64 and x64 packages.' }
+        $seen[$arch] = $path
+    }
+    $output = [IO.Path]::GetFullPath($OutFile)
+    if ([IO.Path]::GetExtension($output) -ine '.msixbundle') { throw 'Bundle output must end in .msixbundle.' }
+    $parent = Split-Path -Parent $output
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    $stage = Join-Path $parent ('bundle-input-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $stage | Out-Null
+    try {
+        foreach ($arch in @('arm64', 'x64')) { Copy-Item -LiteralPath $seen[$arch] -Destination (Join-Path $stage "Wavee_${Quad}_${arch}.msix") }
+        $arguments = @('bundle', '/d', $stage, '/bv', $Quad, '/p', $output, '/o')
+        $commandLine = ($arguments | ForEach-Object { ConvertTo-Win32QuotedArgument $_ }) -join ' '
+        $result = Invoke-CapturedNative -FileName $MakeAppx -Arguments $commandLine -TimeoutSeconds 300
+        if ($result.ExitCode -ne 0) { throw "MakeAppx bundle failed: $($result.Output)" }
+        $inventory = @(Assert-WaveeStoreBundle $output $IdentityName $Publisher $Quad)
+        foreach ($item in $inventory) {
+            if ($item.Sha256 -ine (Get-FileHash -LiteralPath $seen[$item.Architecture] -Algorithm SHA256).Hash) { throw 'Bundling changed a release package.' }
+        }
+    } finally {
+        $resolvedStage = [IO.Path]::GetFullPath($stage)
+        if ((Split-Path -Parent $resolvedStage) -ne $parent -or (Split-Path -Leaf $resolvedStage) -notlike 'bundle-input-*') { throw 'Unsafe bundle staging cleanup path.' }
+        Remove-Item -LiteralPath $resolvedStage -Recurse -Force
+    }
+    $OutFile
+}
+
+function Get-WaveeStorePackageEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string]$Msix,
+        [Parameter(Mandatory = $true)][string]$SymbolsDir,
+        [Parameter(Mandatory = $true)][string]$Commit,
+        [Parameter(Mandatory = $true)][string]$Quad,
+        [Parameter(Mandatory = $true)][ValidateSet('arm64', 'x64')][string]$Architecture,
+        [Parameter(Mandatory = $true)][string]$IdentityName,
+        [Parameter(Mandatory = $true)][string]$Publisher)
+    Test-WaveeStoreQuad $Quad | Out-Null
+    $id = Get-MsixIdentity $Msix
+    Assert-WaveeStorePackageIdentity $id $IdentityName $Publisher $Quad
+    if ("$($id.ProcessorArchitecture)" -ine $Architecture) { throw 'Adopted package architecture mismatch.' }
+    $stamp = @{}
+    foreach ($line in [IO.File]::ReadAllLines((Join-Path $SymbolsDir 'SYMBOLS.txt'))) {
+        if ($line -match '^([A-Za-z]+)=(.*)$') {
+            if ($stamp.ContainsKey($Matches[1])) { throw 'Duplicate symbol stamp field.' }
+            $stamp[$Matches[1]] = $Matches[2]
+        }
+    }
+    if ($Commit -notmatch '^[a-fA-F0-9]{40}$' -or "$($stamp.commit)" -notmatch '^[a-fA-F0-9]{7,40}$' -or
+        -not $Commit.StartsWith("$($stamp.commit)", [StringComparison]::OrdinalIgnoreCase)) { throw 'Symbols do not match the pinned release commit.' }
+    if ($stamp.quad -ne $Quad -or $stamp.channel -ne 'store' -or $stamp.arch -ine $Architecture -or
+        $stamp.rid -ine "win-$Architecture" -or $stamp.configuration -ne 'Release' -or $stamp.aot -ne 'True') { throw 'Symbols are not a matching Release AOT Store build.' }
+    if ($stamp.exe -notmatch '^Wavee\.exe size=(\d+) sha256=([a-fA-F0-9]{64})$') { throw 'Missing executable hash in symbol stamp.' }
+    $expectedSize = [long]$Matches[1]
+    $expectedHash = $Matches[2]
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $Msix).Path)
+    try {
+        $executables = @($zip.Entries | Where-Object { $_.FullName -ceq 'Wavee.exe' })
+        if ($executables.Count -ne 1 -or $executables[0].Length -ne $expectedSize) { throw 'Packaged executable does not match symbol stamp size.' }
+        $stream = $executables[0].Open()
+        try { $exeHash = Get-WaveeStreamHash $stream } finally { $stream.Dispose() }
+        if ($exeHash -ine $expectedHash) { throw 'Packaged executable hash does not match symbols.' }
+        # Read only the bounded DOS/COFF headers from a fresh non-seekable ZIP entry stream.
+        # A correct manifest and matching symbol stamp do not establish the native executable's ABI.
+        $stream = $executables[0].Open()
+        $reader = New-Object IO.BinaryReader($stream)
+        try {
+            $dos = $reader.ReadBytes(64)
+            if ($dos.Length -ne 64 -or $dos[0] -ne 0x4d -or $dos[1] -ne 0x5a) { throw 'Packaged executable has no valid DOS header.' }
+            $peOffset = [BitConverter]::ToUInt32($dos, 60)
+            if ($peOffset -lt 64 -or $peOffset -gt 1048576 -or ([long]$peOffset + 24) -gt $executables[0].Length) {
+                throw 'Packaged executable has an invalid or excessive PE header offset.'
+            }
+            $remaining = [int]$peOffset - 64
+            while ($remaining -gt 0) {
+                $chunk = $reader.ReadBytes([Math]::Min($remaining, 4096))
+                if ($chunk.Length -eq 0) { throw 'Packaged executable PE header is truncated.' }
+                $remaining -= $chunk.Length
+            }
+            if ($reader.ReadUInt32() -ne 0x00004550) { throw 'Packaged executable has no valid PE signature.' }
+            $machine = $reader.ReadUInt16()
+            $expectedMachine = 0x8664
+            if ($Architecture -ieq 'arm64') { $expectedMachine = 0xaa64 }
+            if ($machine -ne $expectedMachine) { throw "Packaged executable PE machine does not match $Architecture." }
+        } finally { $reader.Dispose() }
+    } finally { $zip.Dispose() }
+    $map = Join-Path $SymbolsDir 'Wavee.map.xml'
+    $hasPlayPlay = $false
+    foreach ($line in [IO.File]::ReadLines($map)) {
+        if ($line.Contains('InProcessPlayPlayKeyDeriver')) { $hasPlayPlay = $true; break }
+    }
+    if (-not $hasPlayPlay) { throw 'Archived native map does not prove PlayPlay is included.' }
+    [pscustomobject]@{ Path = (Resolve-Path -LiteralPath $Msix).Path; Architecture = $Architecture
+        Sha256 = (Get-FileHash -LiteralPath $Msix -Algorithm SHA256).Hash.ToLowerInvariant()
+        ExeSha256 = $exeHash; Commit = $Commit; Quad = $Quad; PlayPlayIncluded = $true }
+}
+
 function New-WaveeMsixUpload {
     <#
     .SYNOPSIS
-      Zip the per-arch store-channel .msix packages FLAT (root-level entries, original file names) into one
-      .msixupload - the container Partner Center accepts as a multi-package upload.
+      Put exactly one verified dual-architecture .msixbundle into the .msixupload container.
     .DESCRIPTION
-      Every input is re-verified through its packed AppxManifest identity first: right Name and Publisher, Version
-      equal to the (validated) Store quad, and pairwise-distinct architectures. A wrong package inside the
-      container would otherwise only surface days later in certification.
+      Both nested application manifests are checked, not merely the bundle's Neutral identity. Two standalone
+      MSIX files in one upload are not a substitute for a real architecture-aware bundle.
 
       ZipFile, not Compress-Archive: the 5.1 cmdlet re-encodes entry names and has a 2 GB ceiling (the same
       reasoning as the symbols zip in pack-wavee-msix.ps1). A pre-existing OutFile is deleted first so a resumed
@@ -97,29 +281,15 @@ function New-WaveeMsixUpload {
       The OutFile path.
     #>
     param(
-        [Parameter(Mandatory = $true)][string[]]$Msix,
+        [Parameter(Mandatory = $true)][string]$Bundle,
         [Parameter(Mandatory = $true)][string]$OutFile,
         [Parameter(Mandatory = $true)][string]$IdentityName,
         [Parameter(Mandatory = $true)][string]$Publisher,
         [Parameter(Mandatory = $true)][string]$Quad)
 
     Test-WaveeStoreQuad $Quad | Out-Null
-    if ($Msix.Count -lt 1) { throw 'New-WaveeMsixUpload needs at least one .msix' }
-
-    $seen = @{}
-    foreach ($p in $Msix) {
-        if (-not (Test-Path $p)) { throw "msix not found: $p" }
-        $id = Get-MsixIdentity $p
-        $errs = @()
-        if ("$($id.Name)" -ne $IdentityName) { $errs += "Name = '$($id.Name)' (want $IdentityName)" }
-        if ("$($id.Publisher)" -ne $Publisher) { $errs += "Publisher = '$($id.Publisher)' (want $Publisher)" }
-        if ("$($id.Version)" -ne $Quad) { $errs += "Version = '$($id.Version)' (want $Quad)" }
-        if ($errs.Count -gt 0) { throw ("package identity mismatch in $p :`n  " + ($errs -join "`n  ")) }
-        $arch = "$($id.ProcessorArchitecture)".ToLowerInvariant()
-        if (-not $arch) { throw "no ProcessorArchitecture in the identity of $p" }
-        if ($seen.ContainsKey($arch)) { throw "duplicate architecture '$arch' across $($seen[$arch]) and $p" }
-        $seen[$arch] = $p
-    }
+    Assert-WaveeStoreBundle $Bundle $IdentityName $Publisher $Quad | Out-Null
+    if ([IO.Path]::GetExtension($OutFile) -ine '.msixupload') { throw 'Upload output must end in .msixupload.' }
 
     $dir = Split-Path -Parent $OutFile
     if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
@@ -129,7 +299,7 @@ function New-WaveeMsixUpload {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::Open($OutFile, [IO.Compression.ZipArchiveMode]::Create)
     try {
-        foreach ($p in $Msix) {
+        foreach ($p in @($Bundle)) {
             $name = [IO.Path]::GetFileName($p)
             [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, (Resolve-Path $p).Path, $name, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
         }
@@ -522,7 +692,12 @@ function Invoke-MsStore {
     $commandLine = ($Arguments | ForEach-Object { ConvertTo-Win32QuotedArgument $_ }) -join ' '
     $r = Invoke-CapturedNative -FileName 'msstore' -Arguments $commandLine -TimeoutSeconds $TimeoutSeconds
     if ($r.ExitCode -ne 0 -and -not $AllowFailure) {
-        throw "msstore $($Arguments -join ' ') failed (exit $($r.ExitCode)):`n$($r.Output)"
+        # Arguments can contain the full submission body; verbose output can contain SAS upload credentials.
+        # Never put either in an exception that is printed to the console or stored in the release ledger.
+        $command = @($Arguments | Select-Object -First 2 | ForEach-Object {
+            if ($_ -match '^[a-zA-Z][a-zA-Z-]*$') { $_ } else { '[redacted]' }
+        }) -join ' '
+        throw "msstore $command failed (exit $($r.ExitCode)); sensitive arguments and output omitted."
     }
     $r.Output
 }
@@ -531,6 +706,9 @@ Export-ModuleMember -Function @(
     'ConvertTo-WaveeStoreQuad',
     'Test-WaveeStoreQuad',
     'New-WaveeMsixUpload',
+    'New-WaveeMsixBundle',
+    'Assert-WaveeStoreBundle',
+    'Get-WaveeStorePackageEvidence',
     'ConvertFrom-MsStoreJson',
     'Get-StoreReleaseNotesText',
     'Set-StoreSubmissionReleaseNotes',

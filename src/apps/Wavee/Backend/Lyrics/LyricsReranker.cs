@@ -13,7 +13,10 @@ public sealed record LyricsDecision(
     double TextAgreement, double Coverage, double TimingScore, long AppliedOffsetMs, string Reason,
     // The sync tier AFTER any gate demotion — the one score component that is not simply a function of the document,
     // and the one a "why did the word-synced candidate lose?" question always turns out to hinge on.
-    double SyncScore = 0d);
+    double SyncScore = 0d,
+    // Stage-one's VERIFIED verdict, exposed so a caller outside the reranker (the background upgrade pass) can tell
+    // "corroborated as the right song" apart from "merely scored highest" without re-deriving the rule.
+    bool Verified = false);
 
 public sealed record RankedLyrics(LyricsDocument? Winner, LyricsDecision? Best, IReadOnlyList<LyricsDecision> All);
 
@@ -77,9 +80,17 @@ public static class LyricsReranker
                 int overlap = Math.Min(candTokens.Count, refTokens.Count);
                 text = lcs / (double)Math.Max(1, overlap);
                 coverage = overlap / (double)Math.Max(1, Math.Max(candTokens.Count, refTokens.Count));
-                (timing, applied) = TimingScoreVsRef(c.Document, reference!, pairs);
+                (timing, applied) = TimingScoreVsRef(c.Document, reference!, pairs, text);
                 reason = $"ref-align lcs={lcs}/{overlap} off={applied}ms";
                 if (timingFallback) reason += " [timing-fallback]";
+                // Explain the neutral-0.6 / rejected-0.0 timing verdicts above — otherwise "timing 0.60" on an unsynced
+                // reference or a genuinely wrong candidate reads identically to a real timing match.
+                if (reference!.Sync == LyricsSyncKind.Unsynced)
+                    reason += " [ref-unsynced:timing-neutral-for-all]";
+                else if (pairs.Count < 3)
+                    reason += text >= SyncGateTextFloor
+                        ? " [timing:too-few-pairs→neutral]"
+                        : " [timing:too-few-pairs+no-text→rejected]";
             }
             else
             {
@@ -122,14 +133,21 @@ public static class LyricsReranker
             }
 
             double score = WText * text + WSync * sync + WTiming * timing + WCoverage * coverage + WPrior * Math.Clamp(c.Prior, 0, 1);
-            decisions.Add(new LyricsDecision(c.ProviderId, c.Sync, score, text, coverage, timing, applied, reason, sync));
-            if (score > bestScore) { bestScore = score; bestIdx = i; }
 
             // VERIFIED = corroborated well enough to override a better-scoring candidate on tier alone. Identity/ISRC is
-            // verified by construction (it IS the exact recording); a fuzzy metadata match has to clear the strict
-            // TierXxx bar — NOT the sync gate's floors, which exist for a much weaker consequence.
-            verified[i] = trusted
-                || (refTokens is { Count: > 0 } && text >= TierTextFloor && timing >= TierTiming && coverage >= TierCoverage);
+            // verified by construction (it IS the exact recording) — BUT ONLY WHEN THERE IS A REFERENCE TO CHECK IT
+            // AGAINST: a decoy is trusted by MatchBasis.Isrc and has ZERO text agreement with Spotify's real lyric, and
+            // "verified by construction, no text floor" is exactly how it used to win stage two outright regardless of
+            // its 0.32 score. With a reference in hand, trust alone is no longer enough — text must be > 0 (any real
+            // overlap at all, not the strict tier bar) before construction-trust is honoured; without a reference there
+            // is nothing to check text against, so trust alone still verifies. A fuzzy metadata match still has to clear
+            // the strict TierXxx bar — NOT the sync gate's floors, which exist for a much weaker consequence.
+            verified[i] = refTokens is { Count: > 0 }
+                ? text > 0 && (trusted || (text >= TierTextFloor && timing >= TierTiming && coverage >= TierCoverage))
+                : trusted;
+
+            decisions.Add(new LyricsDecision(c.ProviderId, c.Sync, score, text, coverage, timing, applied, reason, sync, verified[i]));
+            if (score > bestScore) { bestScore = score; bestIdx = i; }
             // The tier it actually DELIVERS — a rejected word-sync delivers line, because that is what the winner
             // repair strips it to.
             tiers[i] = wordTimingRejected ? 2 : c.Sync switch
@@ -286,9 +304,17 @@ public static class LyricsReranker
     static long DeltaBucket(long delta)
         => (long)Math.Round(delta / (double)TimingFallbackBucketMs, MidpointRounding.AwayFromZero) * TimingFallbackBucketMs;
 
-    static (double Score, long AppliedOffsetMs) TimingScoreVsRef(LyricsDocument cand, LyricsDocument reff, List<(int C, int R)> pairs)
+    /// <summary>The neutral 0.6 used to fire whenever <paramref name="pairs"/> was too small to align on — including
+    /// against an Unsynced reference, which by definition NEVER has 3 real timing pairs (every StartMs is 0). That made
+    /// every candidate's timing term identical and useless for telling a real lyric from a decoy, so an Unsynced
+    /// reference now returns the same neutral for every candidate unconditionally (there is nothing to align against,
+    /// full stop) while an otherwise-synced reference with too few pairs only stays neutral when the candidate also has
+    /// SOME text agreement (<paramref name="text"/> ≥ <see cref="SyncGateTextFloor"/>) — a candidate that aligns on
+    /// neither text NOR timing (an ISRC decoy against a real reference) gets 0, not a free pass.</summary>
+    static (double Score, long AppliedOffsetMs) TimingScoreVsRef(LyricsDocument cand, LyricsDocument reff, List<(int C, int R)> pairs, double text)
     {
-        if (pairs.Count < 3) return (0.6, 0);   // too few matches → neutral, don't auto-correct
+        if (reff.Sync == LyricsSyncKind.Unsynced) return (0.6, 0);
+        if (pairs.Count < 3) return (text >= SyncGateTextFloor ? 0.6 : 0.0, 0);   // too few matches → neutral, don't auto-correct
         var deltas = new long[pairs.Count];
         for (int k = 0; k < pairs.Count; k++)
             deltas[k] = cand.Lines[pairs[k].C].StartMs - reff.Lines[pairs[k].R].StartMs;

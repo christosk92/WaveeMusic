@@ -4,6 +4,7 @@ using System.Globalization;
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using Wavee.Core;
 
@@ -114,7 +115,7 @@ static class HomeFoldTile
             Children = copyChildren.ToArray(),
         });
 
-        return new BoxEl
+        Element root = new BoxEl
         {
             // Width is the fitted shelf cell: without it, Offset covers expand the tile's intrinsic box and paint
             // through the Charts header (Featured's stack sitting on top of "Charts" / "Featured").
@@ -125,5 +126,18 @@ static class HomeFoldTile
             Key = "home-fold-tile:" + (section.Uri ?? "") + ":" + cardW.ToString(CultureInfo.InvariantCulture),
             Children = children.ToArray(),
         };
+
+        // The loading shape is the card's own silhouette, one bone. Derived, the tile would lose its fill and border and
+        // its covers would collapse onto the corner: the deriver zeroes Offset/Rotation on a container, and the covers'
+        // Offset/Rotation is their authored rest pose (FoldRest), not a transient transform. PagedShelf's skeleton hands
+        // this factory the fitted cell width, so the bone is exactly the card the data will fill.
+        Element bone = new BoxEl
+        {
+            Width = cardW > 0f ? cardW : HomeModuleLayout.FoldCardMin,
+            Height = HomeModuleLayout.FoldCardHeight, MinWidth = 0f,
+            Corners = Radii.CardAll, Fill = SkeletonStyle.Default.BarColor,
+            IsEnabled = false, HitTestVisible = false,
+        };
+        return root.Skel(bone);
     }
 }

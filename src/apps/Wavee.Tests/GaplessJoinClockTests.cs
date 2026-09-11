@@ -79,4 +79,17 @@ public class GaplessJoinClockTests
         Assert.False(GaplessJoinClock.PrimedSlotMatches(primedMixRate: 48_000, sessionRate: 44_100));
         Assert.True(GaplessJoinClock.PrimedSlotMatches(primedMixRate: 44_100, sessionRate: 44_100));
     }
+
+    [Fact]
+    public void CanCommit_WithStaleZeroPlayhead_IsNotUsed()
+    {
+        // #112: while _clockStale is set (a load/reopen was asked for and the new session does not own the clock yet) the
+        // host reports PositionMs = 0, so "_activeDurMs − PositionMs" reads as the WHOLE track remaining and a join committed
+        // now would be scheduled off a clock that is not this track's. The commit guard must refuse a stale playhead exactly
+        // as it refuses a session a soft reload may replace.
+        Assert.False(GaplessJoinClock.CanCommit(clockStale: true, softReloading: false));
+        Assert.False(GaplessJoinClock.CanCommit(clockStale: false, softReloading: true));
+        Assert.False(GaplessJoinClock.CanCommit(clockStale: true, softReloading: true));
+        Assert.True(GaplessJoinClock.CanCommit(clockStale: false, softReloading: false));
+    }
 }

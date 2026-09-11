@@ -54,7 +54,7 @@ public static class SpotifyVideoTraitProbe
 
     static async Task<int> ProbeAsync(IReadOnlyList<string> extraUris, WaveeLogger log, CancellationToken ct, string language)
     {
-        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language).ConfigureAwait(false);
+        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language, clearStoredOnReject: false).ConfigureAwait(false);
         if (live is null) return 1;
 
         var source = new ExtendedMetadataSource(live.Pipeline, () => live.BaseUrl, () => live.Session);

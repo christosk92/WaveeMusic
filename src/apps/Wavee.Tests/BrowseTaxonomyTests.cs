@@ -137,12 +137,14 @@ public class BrowseChartTaxonomyTests
         var grouped = BrowseTaxonomy.Grouped(BrowseDirectorySeeds.Categories);
         var counts = grouped.ToDictionary(g => g.Group, g => g.Items.Count);
 
-        // Every band the design calls for is present and non-empty — Top (incl. the Live Events client feature),
-        // For you, Genres, Mood & activity, and More (the deliberately-unmapped tail).
+        // Every band the design calls for is present — Top (incl. the Live Events client feature), For you, Genres,
+        // Mood & activity, and More (the deliberately-unmapped tail). The mapped bands carry EVERY member the taxonomy
+        // maps, so the loading directory wraps to the same rows as the loaded one; More's size is the server's, so it
+        // keeps a few placeholders.
         Assert.Equal(4, counts[BrowseGroup.Top]);
-        Assert.Equal(3, counts[BrowseGroup.ForYou]);
-        Assert.Equal(3, counts[BrowseGroup.Genres]);
-        Assert.Equal(3, counts[BrowseGroup.MoodActivity]);
+        Assert.Equal(10, counts[BrowseGroup.ForYou]);
+        Assert.Equal(25, counts[BrowseGroup.Genres]);
+        Assert.Equal(14, counts[BrowseGroup.MoodActivity]);
         Assert.Equal(3, counts[BrowseGroup.More]);
         Assert.False(counts.ContainsKey(BrowseGroup.Charts));   // Charts is chrome, never a seed category
 

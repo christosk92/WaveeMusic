@@ -129,4 +129,83 @@ public class NowPlayingEnrichmentTests
         // did not actually move must never be republished.
         Assert.Equal(4, changes);
     }
+
+    // ── identity: the wire title is the title; the catalogue fills what the wire left out (#139) ───────────────────────
+
+    // The phone's frames for 2t4RCW carried title='The First Time' and an artist_uri but NO artist_name. Enrichment fills
+    // the artists from the catalogue and keeps the wire title — it never swaps a present title for the catalogue's.
+    [Fact]
+    public async Task WireTitleKept_ArtistsFromCatalog()
+    {
+        const string uri = "spotify:track:2t4RCW";
+        var store = new InMemoryStore();
+        store.UpsertTrack(new Track("2t4RCW", uri, "The First Time (Catalogue Edit)",
+            new[] { new ArtistRef("7AaGb", "spotify:artist:7AaGb", "Damiano David") },
+            new AlbumRef("fte", "spotify:album:fte", "FUNNY little FEARS"), 217_000, false,
+            new Image("https://i.scdn.co/image/fte")));
+        using var p = new NowPlayingProjection("us", new CountingHydrator(), store);
+
+        p.OnCluster(Cluster(new RemoteTrack(uri, "The First Time", "", "spotify:artist:7AaGb", "", "", null, 217_000)));
+        await SettleAsync(() => p.CurrentTrack is { Artists.Count: > 0 } t && t.Artists[0].Name.Length > 0);
+
+        var now = p.CurrentTrack!;
+        Assert.Equal("The First Time", now.Title);                 // the wire's, verbatim
+        Assert.Equal("Damiano David", now.Artists[0].Name);        // the catalogue's
+        Assert.Equal("spotify:artist:7AaGb", now.Artists[0].Uri);
+        Assert.Equal(IdentitySuspicion.None, NowPlayingIdentity.Suspicion(now));   // not "Damiano David / Damiano David"
+    }
+
+    // A title that equals its artist's name is a legitimate shape (a self-titled song). The tripwire FLAGS it — once, in the
+    // log — and nothing renames it: the heuristic that blanked such titles (and swapped in the catalogue's) is gone.
+    [Fact]
+    public async Task SelfTitledTrack_Unchanged()
+    {
+        const string uri = "spotify:track:self";
+        var store = new InMemoryStore();
+        store.UpsertTrack(new Track("self", uri, "Weezer (Catalogue Edit)",
+            new[] { new ArtistRef("wz", "spotify:artist:wz", "Weezer") },
+            new AlbumRef("blue", "spotify:album:blue", "Weezer"), 200_000, false,
+            new Image("https://i.scdn.co/image/blue")));
+        using var p = new NowPlayingProjection("us", new CountingHydrator(), store);
+
+        p.OnCluster(Cluster(new RemoteTrack(uri, "Weezer", "Weezer", "spotify:artist:wz", "", "", null, 200_000)));
+        await SettleAsync(() => p.CurrentTrack?.Image is not null);
+
+        var now = p.CurrentTrack!;
+        Assert.NotNull(now.Image);                                 // enrichment DID land…
+        Assert.Equal("Weezer", now.Title);                         // …and the title is exactly the wire's
+        Assert.Equal("Weezer", now.Artists[0].Name);
+        Assert.Equal(IdentitySuspicion.TitleEqualsArtist, NowPlayingIdentity.Suspicion(now));
+    }
+
+    [Fact]
+    public void Suspicion_Table()
+    {
+        static Track Row(string uri, string title, params string[] artists)
+        {
+            var refs = new ArtistRef[artists.Length];
+            for (int i = 0; i < artists.Length; i++)
+                refs[i] = new ArtistRef("a" + i, "spotify:artist:a" + i, artists[i]);
+            return new Track(uri[(uri.LastIndexOf(':') + 1)..], uri, title, refs, new AlbumRef("", "", ""), 1000, false, null);
+        }
+
+        var cases = new (Track?, IdentitySuspicion)[]
+        {
+            (null, IdentitySuspicion.None),
+            (Row("spotify:track:ok", "Lost on You", "LP"), IdentitySuspicion.None),
+            (Row("spotify:episode:e1", "Episode One"), IdentitySuspicion.None),             // no artists: a podcast's shape
+            (Row("spotify:track:e", "", "A"), IdentitySuspicion.TitleEmpty),
+            (Row("spotify:track:w", "   ", "A"), IdentitySuspicion.TitleEmpty),
+            (Row("spotify:track:u", "spotify:track:u", "A"), IdentitySuspicion.TitleIsUri),
+            (Row("spotify:track:lp", "LP", "LP"), IdentitySuspicion.TitleEqualsArtist),
+            (Row("spotify:track:lp2", " lp ", "LP"), IdentitySuspicion.TitleEqualsArtist),   // case / edge whitespace
+            (Row("spotify:track:ft", "Collab", "Main", "Collab"), IdentitySuspicion.TitleEqualsArtist),   // any artist
+            (Row("spotify:track:2t4RCW", "The First Time", ""), IdentitySuspicion.ArtistsUnnamed),   // artist_uri, no name
+            (Row("spotify:track:p", "", ""), IdentitySuspicion.TitleEmpty),                  // most severe wins
+            (Row("spotify:track:q", "LP", "", "LP"), IdentitySuspicion.TitleEqualsArtist),   // …over an unnamed artist
+        };
+
+        foreach (var (row, expected) in cases)
+            Assert.Equal(expected, NowPlayingIdentity.Suspicion(row));
+    }
 }

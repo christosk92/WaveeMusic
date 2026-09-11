@@ -647,10 +647,10 @@ sealed class BrowsePage : Component
         var acts = _acts;
 
         return PagedShelf.Create(
-            cards.Count,
-            cardAt: (i, w) =>
+            cards,
+            cardAt: (item, i, w) =>
             {
-                var c = cards[i];
+                var c = item;
                 var card = HomeBrowseCards.Card(c);
                 var drag = card.Kind is HomeCardKind.Track or HomeCardKind.Episode ? null
                     : Drag.Source(WaveeDragKinds.Resource,
@@ -671,7 +671,7 @@ sealed class BrowsePage : Component
             header: s.Title is { Length: > 0 } t ? HomeModules.DrillHeader(t, openHeader) : null,
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => "browse-shelf-card:" + cards[i].Uri)
+            keyOf: (item, i) => "browse-shelf-card:" + item.Uri)
             with { Key = "browse-shelf:" + s.Uri };
     }
 

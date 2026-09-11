@@ -194,7 +194,10 @@ public sealed class LibraryV3DocumentTests
     [Fact]
     public void TheLikedShortcut_IsAbsentWhenItIsItselfPinned()
     {
-        // It is then rendered as pin #n — never twice.
+        // It is then rendered as pin #n — never twice. This document-level rule is now a special case of the general
+        // "once pinned, never also in the normal list" predicate SidebarRowPlanner.HiddenByPin/IsRouteHiddenByPin
+        // enforces for every design (see SidebarRowPlannerTests' "pin" tests) — kept here too since it is this
+        // document's own promise that no v3.liked row is even SYNTHESIZED for a pinned Liked Songs.
         Assert.Null(Find(LibraryV3Document.Build(State(hasPins: true, likedPinned: true)), LibraryV3Document.LikedId));
     }
 

@@ -95,7 +95,7 @@ namespace Wavee.Tests.Actions
         public RepeatMode Repeat => RepeatMode.Off;
         public IReadOnlyList<QueueEntry> Queue => Array.Empty<QueueEntry>();
         public IObservable<IPlaybackState> Changes => NeverObservable<IPlaybackState>.Instance;
-        public IObservable<long> PositionTicks => NeverObservable<long>.Instance;
+        public IObservable<PositionSample> PositionTicks => NeverObservable<PositionSample>.Instance;
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
     }
 }

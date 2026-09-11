@@ -34,4 +34,9 @@ public sealed class LibrarySyncPlaylistOpener : IPlaylistOpener
     /// member the catalogue's 205 cannot serve.</summary>
     public Task HeaderAsync(string playlistUri, CancellationToken ct)
         => _playlists.FetchPlaylistHeaderAsync(playlistUri, ct);
+
+    /// <summary>A synchronous peek at the loop's own freshness state — never a transport call. LibrarySync stays the
+    /// one place dirty/stale/rolling is computed (<c>NeedsRevalidation</c> mirrors exactly what
+    /// <c>OpenPlaylistCoreAsync</c>'s own baseline branch checks).</summary>
+    public bool NeedsRevalidation(string playlistUri) => _sync.NeedsRevalidation(playlistUri);
 }

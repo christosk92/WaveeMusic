@@ -665,7 +665,7 @@ public class LocalMediaProviderTests
 
         public MaskHarness()
         {
-            Publisher = new DeviceStatePublisher(Transport, "us", Proj, ConnId, () => CurrentConnId,
+            Publisher = new DeviceStatePublisher(Transport, "us", Proj, Proj.Ownership, ConnId, () => CurrentConnId,
                 (reason, snap, mid, active) =>
                 {
                     LastSnapshot = snap;
@@ -677,8 +677,11 @@ public class LocalMediaProviderTests
         public void Connect(string id) { CurrentConnId = id; ConnId.OnNext(id); }
         public void SetQueue(params QueueEntry[] q) => Proj.SetLocalQueue(q);
 
+        // Claims ownership before the event reaches the publisher (contract item 1) — without it is_active would be
+        // false and BuildSnapshot would never run, so LastSnapshot (what these mask tests read) would stay null.
         public void Play(Track track)
         {
+            Proj.Ownership.Claim(ClaimCause.UserPlay);
             var e = new PlaybackEvent(EvKind.Started, track, 0);
             Proj.OnEvent(e);
             Publisher.OnEvent(e);

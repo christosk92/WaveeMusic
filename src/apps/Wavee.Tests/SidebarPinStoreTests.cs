@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -199,6 +200,97 @@ public class SidebarPinStoreTests
         s.Touch("b", "x");          // never commits alone
 
         Assert.Equal(4, commits);
+    }
+
+    // ── pin sync: OnLocalPinChanged + ApplyRemote (docs/plans/wavee/pin-spotify-sync-implementation.md §1.4/§1.6) ────
+
+    [Fact]
+    public void OnLocalPinChanged_FiresForPinInsertUnpin_WithTheRightFlag_ButNotForMoveTouchOrLoadFrom()
+    {
+        var s = new SidebarPinStore();
+        var events = new List<(string Id, bool Pinned)>();
+        s.OnLocalPinChanged = (p, pinned) => events.Add((p.Id, pinned));
+
+        Assert.True(s.Pin(Pin("a")));
+        Assert.False(s.Pin(Pin("a")));                  // rejected — no event
+        Assert.True(s.Insert(Pin("b"), 0));
+        int at = s.Unpin("a");
+        Assert.True(s.Insert(Pin("a"), at));             // the undo re-insert also raises the event (true)
+
+        s.Move(0, 1);                                    // no event — order is local by design
+        s.Touch("a", "renamed");                         // no event — a display-cache refresh is not user intent
+        s.LoadFrom([Pin("c")]);                           // no event — startup load is not user intent
+
+        Assert.Equal(
+            new[] { ("a", true), ("b", true), ("a", false), ("a", true) },
+            events.Select(e => (e.Id, e.Pinned)).ToArray());
+    }
+
+    [Fact]
+    public void ApplyRemote_NeverRaisesOnLocalPinChanged()
+    {
+        var s = new SidebarPinStore();
+        bool fired = false;
+        s.OnLocalPinChanged = (_, _) => fired = true;
+
+        s.ApplyRemote([Pin("pl:spotify:playlist:1")], _ => true, removeMissing: false);
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void ApplyRemote_AppendsMissing_InGivenOrder_AndKeepsExistingOrder()
+    {
+        var s = StoreOf("a");
+        bool changed = s.ApplyRemote(
+            [Pin("pl:spotify:playlist:1"), Pin("pl:spotify:playlist:2")],
+            _ => true, removeMissing: false);
+        Assert.True(changed);
+        Assert.Equal(new[] { "a", "pl:spotify:playlist:1", "pl:spotify:playlist:2" }, IdsOf(s));
+    }
+
+    [Fact]
+    public void ApplyRemote_RemoveMissingFalse_RemovesNothing()
+    {
+        var s = StoreOf("pl:spotify:playlist:1", "pl:spotify:playlist:2");
+        bool changed = s.ApplyRemote([Pin("pl:spotify:playlist:1")], _ => true, removeMissing: false);
+        Assert.False(changed);
+        Assert.Equal(new[] { "pl:spotify:playlist:1", "pl:spotify:playlist:2" }, IdsOf(s));
+    }
+
+    [Fact]
+    public void ApplyRemote_RemoveMissingTrue_RemovesOnlySyncableIdsMissingFromServer()
+    {
+        var s = new SidebarPinStore();
+        Assert.True(s.Pin(Pin("pl:spotify:playlist:1")));
+        Assert.True(s.Pin(Pin("pl:spotify:playlist:2")));      // missing from server, syncable → removed
+        Assert.True(s.Pin(Pin("folder:x", SidebarEntryKind.Folder, "", "F")));   // missing, NOT syncable → survives
+        Assert.True(s.Pin(Pin("home", SidebarEntryKind.AppRoute, "", "Home")));  // missing, NOT syncable → survives
+
+        bool changed = s.ApplyRemote(
+            [Pin("pl:spotify:playlist:1")],
+            isSyncable: id => id.StartsWith("pl:", System.StringComparison.Ordinal),
+            removeMissing: true);
+
+        Assert.True(changed);
+        Assert.Equal(new[] { "pl:spotify:playlist:1", "folder:x", "home" }, IdsOf(s));
+    }
+
+    [Fact]
+    public void ApplyRemote_BumpsVersionOnceAndCommitsOnce_PerCall_AndReturnsFalseWhenNothingChanged()
+    {
+        var s = StoreOf("pl:spotify:playlist:1");
+        int commits = 0;
+        s.OnChanged = () => commits++;
+        int versionBefore = s.Version.Peek();
+
+        Assert.True(s.ApplyRemote([Pin("pl:spotify:playlist:1"), Pin("pl:spotify:playlist:2")], _ => true, false));
+        Assert.Equal(1, commits);
+        Assert.Equal(versionBefore + 1, s.Version.Peek());
+
+        // A second, no-op call (nothing new, nothing removed) neither commits nor bumps.
+        Assert.False(s.ApplyRemote([Pin("pl:spotify:playlist:1"), Pin("pl:spotify:playlist:2")], _ => true, false));
+        Assert.Equal(1, commits);
+        Assert.Equal(versionBefore + 1, s.Version.Peek());
     }
 
     // ── SidebarPinId: what is pinnable at all (locked decision 4) ────────────────────────────────────────────────────

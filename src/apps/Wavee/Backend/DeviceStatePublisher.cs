@@ -37,9 +37,10 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
     readonly ITransport _transport;
     readonly string _deviceId;
     readonly IPlaybackState _state;
+    readonly ConnectOwnership _ownership;
     readonly Func<string?> _connectionId;
-    readonly Func<PutStateReasonKind, LocalPlaybackSnapshot?, uint, bool, ConnectCommandAttribution, byte[]> _build;
-    readonly Action<byte[]>? _onCluster;
+    readonly Func<PutStateReasonKind, LocalPlaybackSnapshot?, uint, bool, double, ConnectCommandAttribution, byte[]> _build;
+    readonly Action<byte[], uint>? _onCluster;
     readonly WaveeLogger _log;
     readonly Func<long> _now;
     readonly IDisposable _connSub;
@@ -53,9 +54,7 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
     string _queueRevision = "";
     ulong _queueRevisionCounter = (ulong)Random.Shared.NextInt64(1, long.MaxValue);
     string? _sessionContextUri;
-    long _startedPlayingAtMs;
     bool _transportPaused;
-    bool _ownershipRetired;
     ConnectCommandAttribution _lastCommand;
     long _lastCommandAtMs;
     string _lastPublishKey = "";
@@ -67,31 +66,33 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
     // Our OWN volume, cached the moment a genuine VolumeChanged fires — never read live off _state.Volume for the wire,
     // because PlaybackProjection.OnCluster overwrites _state.Volume with the ACTIVE device's volume while we are not
     // it (the slider-follows-active-device rule), and DeviceInfo.Volume must never publish somebody else's level as ours.
+    // It is what carries our volume onto the wire even while we are NOT the active device (contract item 2 / librespot).
     double _localVolume01;
     readonly TrailingCoalescer _volumeTx;
 
     public DeviceStatePublisher(
-        ITransport transport, string deviceId, IPlaybackState state,
+        ITransport transport, string deviceId, IPlaybackState state, ConnectOwnership ownership,
         IObservable<string?> connectionId, Func<string?> currentConnectionId,
         Func<PutStateReasonKind, LocalPlaybackSnapshot?, uint, bool, byte[]> build,
-        Action<byte[]>? onCluster = null, WaveeLogger log = default, Func<long>? clock = null,
+        Action<byte[], uint>? onCluster = null, WaveeLogger log = default, Func<long>? clock = null,
         int volumePublishWindowMs = 400, Func<int, CancellationToken, Task>? delay = null)
-        : this(transport, deviceId, state, connectionId, currentConnectionId,
-            (reason, snap, mid, active, _) => build(reason, snap, mid, active),
+        : this(transport, deviceId, state, ownership, connectionId, currentConnectionId,
+            (reason, snap, mid, active, _, __) => build(reason, snap, mid, active),
             onCluster, log, clock, volumePublishWindowMs, delay)
     {
     }
 
     public DeviceStatePublisher(
-        ITransport transport, string deviceId, IPlaybackState state,
+        ITransport transport, string deviceId, IPlaybackState state, ConnectOwnership ownership,
         IObservable<string?> connectionId, Func<string?> currentConnectionId,
-        Func<PutStateReasonKind, LocalPlaybackSnapshot?, uint, bool, ConnectCommandAttribution, byte[]> build,
-        Action<byte[]>? onCluster = null, WaveeLogger log = default, Func<long>? clock = null,
+        Func<PutStateReasonKind, LocalPlaybackSnapshot?, uint, bool, double, ConnectCommandAttribution, byte[]> build,
+        Action<byte[], uint>? onCluster = null, WaveeLogger log = default, Func<long>? clock = null,
         int volumePublishWindowMs = 400, Func<int, CancellationToken, Task>? delay = null)
     {
         _transport = transport;
         _deviceId = deviceId;
         _state = state;
+        _ownership = ownership;
         _connectionId = currentConnectionId;
         _build = build;
         _onCluster = onCluster;
@@ -100,6 +101,11 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
         _localVolume01 = state.Volume;   // seed from whatever the projection knows before the first VolumeChanged fires
         _volumeTx = new TrailingCoalescer(volumePublishWindowMs, _now, delay);
         _connSub = connectionId.Subscribe(Observers.From<string?>(OnConnectionId));
+        // A publisher is attached: a claim now waits for the server's verdict (Protected) instead of settling Unadopted
+        // at once (PlaybackOwnership.OnClaim's `acknowledged` parameter) — this IS the publisher that will send the
+        // claim's carrier PUT and fold its response back in.
+        _ownership.AttachAcknowledger();
+        _ownership.Changed += OnOwnershipChanged;
     }
 
     /// <summary>Optional Connect uri mask — the SINGLE upstream point covering current/prev/next rows. A playable whose
@@ -121,27 +127,21 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
     /// was silently swallowed by the dedup gate below. Wired at go-live to the same thunk the builder reads.</summary>
     public Func<PlayableKind?>? CurrentMediaKind { get; set; }
 
+    /// <summary>Fired after a PUT the server accepted (<c>resp.Ok</c>) whose response carried a body — alongside
+    /// <c>onCluster</c>, but with the reason/isActive WE claimed on that PUT, which only this (Backend) class knows.
+    /// Wired at go-live to <c>DealerArchive.RecordPutResponse</c> so the announce-response frame (the one Cluster that
+    /// proves whether the server adopted us) reaches the archive — as a CALLBACK, not a direct reference, so this file
+    /// never touches a Diagnostics type.</summary>
+    public Action<uint, PutStateReasonKind, bool, byte[]>? OnPutResponseArchive { get; set; }
+
     void OnConnectionId(string? id)
     {
         if (string.IsNullOrEmpty(id)) return;
-        _ = PublishAsync(PutStateReasonKind.NewConnection, OwnsSession());
+        _ = PublishAsync(PutStateReasonKind.NewConnection, "announce");
     }
 
     public void OnEvent(in PlaybackEvent e)
     {
-        lock (_gate)
-        {
-            if (_ownershipRetired)
-            {
-                bool startsNewOwnership = (e.Kind is EvKind.Started or EvKind.TrackChanged or EvKind.Resumed)
-                    && _state.CurrentTrack is not null;
-                if (startsNewOwnership) _ownershipRetired = false;
-                // A per-device volume must still reach the cluster from a retired (inactive) Wavee — only the
-                // isActive flag on that publish says we don't own the session, never a dropped volume message.
-                else if (e.Kind is not (EvKind.BecameInactive or EvKind.VolumeChanged)) return;
-            }
-        }
-
         // Latch "what track are we on" from the ordered forward stream only (never from a terminal Paused/Ended,
         // which is exactly the kind that arrives late — see the guard below). Read straight off the event, not
         // _state.CurrentTrack, so this stays correct even if _state has not folded the same event yet.
@@ -159,7 +159,7 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
             && _currentTrackUri is { Length: > 0 } && !string.Equals(endingTrack.Uri, _currentTrackUri, StringComparison.Ordinal))
         {
             _log.Info($"put-state: dropped stale {e.Kind} for {endingTrack.Uri} (current is {_currentTrackUri}) — forcing a fresh republish");
-            _ = PublishAsync(PutStateReasonKind.PlayerStateChanged, OwnsSession(), force: true);
+            _ = PublishAsync(PutStateReasonKind.PlayerStateChanged, "event", force: true);
             return;
         }
 
@@ -182,7 +182,6 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
                     _pageInstanceId = e.Ids?.PageInstanceId ?? NewDashedUuid();
                 }
                 _playbackId = e.Ids?.PlaybackIdHex ?? NewId();
-                if (_startedPlayingAtMs == 0) _startedPlayingAtMs = _now();
                 BumpQueueRevision();
             }
         }
@@ -190,19 +189,10 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
         {
             lock (_gate) BumpQueueRevision();
         }
-        else if (e.Kind is EvKind.Ended or EvKind.BecameInactive)
-        {
-            lock (_gate)
-            {
-                _startedPlayingAtMs = 0;
-                if (e.Kind == EvKind.BecameInactive) _ownershipRetired = true;
-            }
-        }
 
         if (e.Kind == EvKind.VolumeChanged)
             lock (_gate) _localVolume01 = _state.Volume;
 
-        bool isActive = _state.CurrentTrack is not null && e.Kind is not (EvKind.Ended or EvKind.BecameInactive);
         var reason = e.Kind switch
         {
             EvKind.VolumeChanged => PutStateReasonKind.VolumeChanged,
@@ -210,82 +200,75 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
             _ => PutStateReasonKind.PlayerStateChanged,
         };
         if (reason == PutStateReasonKind.VolumeChanged)
-            // OwnsSession(), not isActive above: a retired Wavee still owns none of the transport facts isActive
-            // folds in, but its OWN volume must still reach the cluster — with isActive correctly false on the wire.
-            _volumeTx.Post(() => _ = PublishAsync(PutStateReasonKind.VolumeChanged, OwnsSession()));
+            _volumeTx.Post(() => _ = PublishAsync(PutStateReasonKind.VolumeChanged, "volume"));
         else
-            _ = PublishAsync(reason, isActive);
+            _ = PublishAsync(reason, "event");
     }
 
     /// <summary>Publish the current player state because something OUTSIDE the playback-event stream changed what the wire
     /// says — today: a music-video association landing under an already-playing track (the badge-only upgrade), which adds
     /// the track's <c>associated_video_id</c> + the <c>switch-to-video</c> offer without any host/kind change. No playback
     /// event fires for that, and the steady-state change gate below would swallow it (its key covers transport state only),
-    /// so this publishes UNGATED — callers must therefore only invoke it on a real edge.</summary>
+    /// so this publishes UNGATED — callers must therefore only invoke it on a real edge.
+    /// <para>Publishes NOTHING unless we are the owner on the wire (<see cref="PlaybackOwnership.IsActiveOnWire"/>) —
+    /// a badge landing while another device holds the cluster must never re-announce us as active and steal it back.</para></summary>
     public void PublishStateChanged()
     {
         if (_state.CurrentTrack is null) return;
-        // Retired ownership (we handed playback to another device) mutes the event path too — republishing here would
-        // re-announce us as active on the cluster, stealing it back over a badge.
-        lock (_gate) { if (_ownershipRetired) return; }
-        _ = PublishAsync(PutStateReasonKind.PlayerStateChanged, true, force: true);
+        if (!PlaybackOwnership.IsActiveOnWire(_ownership.Current)) return;
+        _ = PublishAsync(PutStateReasonKind.PlayerStateChanged, "badge", force: true);
     }
 
-    public void PublishInactive()
-    {
-        lock (_gate) _ownershipRetired = true;
-        _ = PublishAsync(PutStateReasonKind.BecameInactive, false);
-    }
+    /// <summary>Send a BecameInactive PUT directly (is_active is always forced false for this reason — see
+    /// <see cref="PublishAsync"/>). Ownership itself is NOT touched here: the authority is <see cref="ConnectOwnership"/>,
+    /// and this publisher reacts to its own <c>OwnerFx.PublishInactive</c> effect (<see cref="OnOwnershipChanged"/>) —
+    /// callers that want to actually GIVE UP ownership call <c>ConnectOwnership.Release</c>, not this.</summary>
+    public void PublishInactive() => _ = PublishAsync(PutStateReasonKind.BecameInactive, "event");
 
     /// <summary>Re-announce this device to the cluster with <see cref="PutStateReasonKind.NewConnection"/> — the same
     /// announce a fresh dealer connection id triggers. The caller is a resume from OS SLEEP: the socket may look alive
     /// while the server has long since dropped our device, so without this the device silently vanishes from other
     /// clients' picker until something else forces a publish. Deliberately NOT
     /// <see cref="PublishStateChanged"/> — that is a PlayerStateChanged reason and does not re-register the device.
-    /// Muted while ownership is retired (we are not the active device; announcing would steal the cluster back).</summary>
-    public void AnnounceNewConnection()
-    {
-        lock (_gate) { if (_ownershipRetired) return; }
-        _ = PublishAsync(PutStateReasonKind.NewConnection, OwnsSession());
-    }
+    /// Safe to call regardless of ownership: is_active is derived from <see cref="ConnectOwnership"/>, so announcing
+    /// while we are not the owner truthfully reports is_active=false rather than needing to be muted.</summary>
+    public void AnnounceNewConnection() => _ = PublishAsync(PutStateReasonKind.NewConnection, "announce");
 
     public void NoteCommand(in ConnectCommandAttribution attribution)
     {
         lock (_gate) { _lastCommand = attribution; _lastCommandAtMs = _now(); }
     }
 
-    /// <summary>Ownership, not audibility: true iff we hold a session (a current track is loaded), the cluster does
-    /// not already name a DIFFERENT device active, and we have not retired it — the wire's <c>is_active</c> must
-    /// never depend on whether audio happens to be flowing right now. A paused-but-active Wavee answering false here
-    /// is exactly what self-demoted us on every dealer reconnect / OS resume, emptying the cluster's active-device id
-    /// and triggering a bogus "another device became active" teardown downstream. The ordinary event path already
-    /// applies this same rule inline (OnEvent's isActive, above); this is the one predicate the announce paths (which
-    /// run before any event exists) share with it.
-    /// <para>The ActiveDeviceId check (bug 2) matters because <see cref="_state"/>.CurrentTrack is not "a track WE are
-    /// playing" — it is whatever the projection currently shows, including a passive VIEWER's mirrored fold of some
-    /// OTHER device's cluster row (a Wavee that has never played still folds the phone's now-playing track). Without
-    /// this, a fresh dealer connection captured while merely viewing someone else's session announced NewConnection
-    /// with <c>is_active=true</c> and a player_state built from THEIR track — a lie no amount of it being "just an
-    /// announce" excuses.</para></summary>
-    bool OwnsSession()
+    /// <summary>The ownership fold telling us we no longer hold the session (release / claim-rejected / protection
+    /// expiry) — <see cref="OwnerFx.PublishInactive"/> is the ONE trigger this publisher reacts to on its own; a claim
+    /// transition is NOT re-published from here because its carrier PUT (the Started/Resumed publish that follows the
+    /// claim) already announces is_active=true — publishing again here would race it.</summary>
+    void OnOwnershipChanged(OwnerTransition t)
     {
-        lock (_gate)
-        {
-            if (_ownershipRetired || _state.CurrentTrack is null) return false;
-            var aid = _state.ActiveDeviceId;
-            return string.IsNullOrEmpty(aid) || aid == _deviceId;
-        }
+        if ((t.Fx & OwnerFx.PublishInactive) != 0)
+            _ = PublishAsync(PutStateReasonKind.BecameInactive, "event");
     }
 
-    async Task PublishAsync(PutStateReasonKind reason, bool isActive, bool force = false)
+    async Task PublishAsync(PutStateReasonKind reason, string origin, bool force = false)
     {
         var connId = _connectionId();
         if (string.IsNullOrEmpty(connId)) return;
 
-        var snap = BuildSnapshot();
+        var owner = _ownership.Current;
+        // The ONE writer of is_active (contract item 1 / bug 2): derived from the ownership authority, never from a
+        // local transport fact — replaces the old bespoke OwnsSession() heuristic. BecameInactive is forced false even
+        // if a race left ownership still saying Us: this PUT's entire purpose is telling the server we are no longer
+        // active, so it must never contradict itself.
+        bool isActive = reason != PutStateReasonKind.BecameInactive && PlaybackOwnership.IsActiveOnWire(owner);
+        double ownVolume; lock (_gate) ownVolume = _localVolume01;
+        // Contract item 2 / librespot behaviour: while we are NOT the active device the PUT carries an IDLE player_state
+        // (no mirrored foreign track) plus our own volume, supplied separately below — never today's mirror of the
+        // projection's (foreign) current row.
+        var snap = isActive ? BuildSnapshot(owner) : null;
+
         string key = reason + "|" + isActive + "|" + (snap?.Track.Uri ?? "") + "|" + (snap?.Track.Uid ?? "")
             + "|" + (snap?.IsPlaying ?? false) + "|" + (snap?.IsPaused ?? false) + "|" + (snap?.Shuffle ?? false) + "|" + (snap?.Repeat ?? RepeatMode.Off)
-            + "|" + ((snap?.PositionMs ?? 0) / 1000) + "|" + (int)Math.Round((snap?.Volume01 ?? 0) * 100) + "|" + NextSig(snap)
+            + "|" + ((snap?.PositionMs ?? 0) / 1000) + "|" + (int)Math.Round((snap?.Volume01 ?? ownVolume) * 100) + "|" + NextSig(snap)
             + "|" + (CurrentMediaKind?.Invoke()?.ToString() ?? "-");
         uint mid;
         ConnectCommandAttribution attribution;
@@ -303,10 +286,15 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
             attribution = _now() - _lastCommandAtMs < 10_000 ? _lastCommand : default;
         }
 
+        ConnectDiagnostics.RecordPut(mid, reason.ToString(), isActive, snap?.StartedPlayingAtMs ?? 0, snap?.HasBeenPlayingForMs ?? 0);
+
         await _publishGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            var bytes = _build(reason, snap, mid, isActive, attribution);
+            var bytes = _build(reason, snap, mid, isActive, ownVolume, attribution);
+            // Binds the claim to its carrier PUT (contract item 1) — a no-op unless this IS the first is_active PUT
+            // sent since a Protected claim, so calling it unconditionally on every publish is safe.
+            _ownership.OnPutSent(mid, isActive);
             var resp = await _transport.Publish(_deviceId, connId!, bytes).ConfigureAwait(false);
             if (resp.Ok)
             {
@@ -317,14 +305,21 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
                 // real state change — and without it a "why did the server correct us?" question has no input side.
                 _log.Info($"put-state {reason} active={isActive} track={snap?.Track.Uri ?? "-"} pos={snap?.PositionMs ?? 0} " +
                     $"playing={snap?.IsPlaying ?? false} paused={snap?.IsPaused ?? false} ctx={snap?.ContextUri ?? "-"} " +
-                    $"msgId={mid} commandId={WaveeLogRedaction.HashLike(attribution.CommandId)} cluster={resp.Body.Length}B");
-                if (resp.Body.Length > 0) _onCluster?.Invoke(resp.Body);
+                    $"msgId={mid} commandId={WaveeLogRedaction.HashLike(attribution.CommandId)} cluster={resp.Body.Length}B " +
+                    $"owner={owner.Describe()} claim={owner.ClaimId} startedAt={snap?.StartedPlayingAtMs ?? 0} " +
+                    $"hasBeenMs={snap?.HasBeenPlayingForMs ?? 0} origin={origin}");
+                if (resp.Body.Length > 0)
+                {
+                    _onCluster?.Invoke(resp.Body, mid);
+                    OnPutResponseArchive?.Invoke(mid, reason, isActive, resp.Body);
+                }
             }
             else
             {
                 // A rejected PUT never gets to be "the last thing we told the server" — reset the gate so the very
                 // next identical event (a retry, or the reannounce below) is not swallowed by the key match above.
                 lock (_gate) _lastPublishKey = "";
+                _ownership.OnPutFailed(mid);
                 bool inactiveSoftAck = resp.Status == 422 && reason == PutStateReasonKind.BecameInactive;
                 if (inactiveSoftAck)
                     _log.Debug($"put-state 422 after BecameInactive (soft acknowledgement) msgId={mid}");
@@ -355,6 +350,7 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
         catch (Exception ex)
         {
             lock (_gate) _lastPublishKey = "";   // same reasoning as the non-OK branch: a throw is not a committed PUT
+            _ownership.OnPutFailed(mid);
             // Structured + full exception (type + stack) so a future null/serialization fault in the builder is
             // diagnosable at a glance — the bare ex.Message alone made the Restrictions NRE cryptic.
             _log.Info("put-state error: " + ex.Message);
@@ -377,10 +373,10 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
             if (now - _lastReannounceMs < 30_000) return;
             _lastReannounceMs = now;
         }
-        _ = PublishAsync(PutStateReasonKind.NewConnection, OwnsSession());
+        _ = PublishAsync(PutStateReasonKind.NewConnection, "reannounce");
     }
 
-    LocalPlaybackSnapshot? BuildSnapshot()
+    LocalPlaybackSnapshot? BuildSnapshot(in OwnerState owner)
     {
         var t = _state.CurrentTrack;
         if (t is null) return null;
@@ -428,12 +424,15 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
         long started, hasBeen; string sid, pid, iid, page, rev; bool transportPaused; double localVolume;
         lock (_gate)
         {
-            started = _startedPlayingAtMs; sid = _sessionId; pid = _playbackId;
+            sid = _sessionId; pid = _playbackId;
             iid = _interactionId; page = _pageInstanceId; rev = _queueRevision;
             transportPaused = _transportPaused;
-            hasBeen = started > 0 && _state.IsPlaying ? Math.Max(0, _now() - started) : 0;
             localVolume = _localVolume01;
         }
+        // started_playing_at is the CLAIM's stamp (contract item 2), not a field this publisher owns and resets itself
+        // — a FRESH stamp per claim is exactly what the server's newest-starter rule compares across devices.
+        started = owner.Kind == OwnerKind.Us ? owner.ClaimStartedAtMs : 0;
+        hasBeen = started > 0 && _state.IsPlaying ? Math.Max(0, _now() - started) : 0;
 
         // Connect wire: paused is a sub-state of playing (transport engaged, audio stopped). Ended/stopped ⇒ both false.
         bool wirePaused = transportPaused;
@@ -508,6 +507,7 @@ public sealed class DeviceStatePublisher : IPlaybackProjection, IConnectCommandA
 
     public void Dispose()
     {
+        _ownership.Changed -= OnOwnershipChanged;
         _volumeTx.Dispose();
         _connSub.Dispose();
     }

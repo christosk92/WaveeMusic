@@ -320,13 +320,19 @@ sealed class SidebarPaneSlot : Component
                      SidebarItemSpec? item, int index)
     {
         bool named = entry.Name.Length > 0;
+        bool track = entry.IsTrack;
+        string? route = entry.RouteKey;
+        // A route pin (Liked Songs et al.) has no library entity behind it, so nothing ever resolves entry.Name —
+        // ShellNav is the one source of a route's title (Task B). Render-side fallback for a pin document persisted
+        // with an empty Name before SidebarPinSync started stamping it; distinct from the "unresolved entity" case
+        // below, which stays dimmed because there IS a real name coming, just not yet.
+        bool routePin = !named && entry.Kind == SidebarEntryKind.AppRoute && route is { Length: > 0 };
         // "A row whose entry Name.Length == 0 renders dimmed from the uri" — the entity exists but has not resolved a
         // display name yet, which is honest as a dimmed row and never as a blank one.
         string label = item?.LabelOverride is { Length: > 0 } alias ? alias
             : named ? entry.Name
+            : routePin ? ShellNav.Dest(route!).Title
             : SidebarPaneText.ShortUri(entry.Uri);
-        bool track = entry.IsTrack;
-        string? route = entry.RouteKey;
         // Through the pane, which resolves it with SidebarRowResolve — the SAME rule its selection sweep uses, so the
         // row that draws the pill and the row whose epoch got bumped can never disagree.
         bool selected = _o.RowSelectsRoute(index, sel);
@@ -350,7 +356,7 @@ sealed class SidebarPaneSlot : Component
         // target typing inside an object initializer (the note SidebarSectionHeader already carries).
         Action? click = null;
         if (track) click = () => _o.Play(snapshot.Uri, asTrack: true);
-        else if (route is { Length: > 0 } r) click = () => _o.Navigate(r, snapshot.Name);
+        else if (route is { Length: > 0 } r) click = () => _o.Navigate(r, snapshot.Name, in snapshot);
 
         Func<ContextMenuModel?>? menu = null;
         Action? rename = null;
@@ -410,7 +416,7 @@ sealed class SidebarPaneSlot : Component
             Label = label,
             Subtitle = section.Opts.Subtitles ? SidebarPaneText.SubtitleOf(in snapshot) : null,
             Selected = selected,
-            Enabled = named || track,
+            Enabled = named || track || routePin,
             Depth = baseDepth,
             TreeNode = treeNode,
             TreeDepth = treeDepth,
@@ -459,6 +465,11 @@ sealed class SidebarPaneSlot : Component
         string folderId = entry.FolderId;
         bool expanded = _o.Prefs?.IsFolderExpanded(folderId) ?? true;
         float height = SidebarPaneMetrics.RowHeight(section);
+
+        // §C1.4-style retention: a synced folder pin the rootlist no longer carries (its one source of truth) renders
+        // visible-but-disabled with a reason instead of vanishing — no navigation, no disclosure, no drag, and a
+        // context menu reduced to the one honest verb (Unpin).
+        if (entry.Missing) return MissingFolderRow(section, in entry, row, height);
         // W7: the SAME test EntryRow uses — a folder outside a PlaylistTree section (a pinned or recently-played
         // folder shortcut) is not a tree row at all, so it must not out-indent its non-tree siblings. TreeDepth is the
         // row's RELATIVE depth (its own tree depth), never the rootlist depth, so a PINNED folder sits flush with its
@@ -534,6 +545,41 @@ sealed class SidebarPaneSlot : Component
         // A folder row carries no selection pill (it has no route), but it still needs both drop cues: the bottom band
         // of an expanded header IS the "first child" slot, and the whole D2 outdent gesture happens on folder rows.
         return DropCueOverlay(SidebarEntityRow.Create(spec));
+    }
+
+    /// <summary>The dimmed retention row for a folder pin <see cref="SidebarLibraryEntry.Missing"/> marks — the folder
+    /// row's counterpart to <see cref="MissingRow"/>. No click, no disclosure chevron, no drag/drop; the context menu
+    /// (when a menu surface is available at all) offers exactly Unpin, through the same <c>PinActions</c> path every
+    /// other unpin does.</summary>
+    Element MissingFolderRow(SidebarSectionSpec section, in SidebarLibraryEntry entry, in SidebarRow row, float height)
+    {
+        string label = entry.Name.Length > 0 ? entry.Name : Loc.Get(Strings.Sidebar.V3.Kind.Folder);
+        string reason = Loc.Get(Strings.Sidebar.Pin.FolderMissing);
+        string entryId = entry.Id;
+        string entryName = entry.Name;
+
+        Func<ContextMenuModel?>? menu = null;
+        if (_o.Acts is { } acts && _o.MenuOverlay is not null
+            && PinActions.RowForId(acts, entryId, SidebarEntryKind.Folder, "", entryName) is { } unpin)
+            menu = () => new ContextMenuModel([unpin]);
+
+        var spec = new SidebarRowSpec
+        {
+            Key = row.Key,
+            Label = label,
+            Subtitle = section.Opts.Subtitles ? reason : null,
+            Enabled = false,
+            Depth = row.Depth,
+            Density = section.Opts.Density,
+            Height = height,
+            ArtSize = SidebarPaneMetrics.ArtSize(section),
+            Leading = section.Opts.Artwork ? SidebarCover.Folder(SidebarPaneMetrics.ArtSize(section), expanded: false) : null,
+            Glyph = section.Opts.Artwork ? null : Icons.Folder,
+            Overflow = menu is not null && _o.MenuOverlay is not null,
+            MenuOverlay = _o.MenuOverlay,
+            Menu = menu,
+        };
+        return ToolTip.Wrap(SidebarEntityRow.Create(spec), reason, grow: 1f);
     }
 
     /// <summary>Which connector columns continue below a realized tree row. The plan is preorder, so the first later
@@ -809,7 +855,7 @@ sealed class SidebarPaneSlot : Component
 
         Action? activate = null;
         if (track) activate = () => _o.Play(uri, asTrack: true);
-        else if (route is { Length: > 0 } r) activate = () => _o.Navigate(r, title);
+        else if (route is { Length: > 0 } r) activate = () => _o.Navigate(r, title, in snapshot);
 
         var lines = new List<Element>(2)
         {
@@ -958,7 +1004,7 @@ sealed class SidebarPaneSlot : Component
 
         Action? click = null;
         if (entry.IsTrack) click = () => _o.Play(snapshot.Uri, asTrack: true);
-        else if (route is { Length: > 0 } r) click = () => _o.Navigate(r, snapshot.Name);
+        else if (route is { Length: > 0 } r) click = () => _o.Navigate(r, snapshot.Name, in snapshot);
 
         var cell = new BoxEl
         {

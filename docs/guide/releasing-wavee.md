@@ -285,20 +285,51 @@ The Microsoft Store leg is a **separate runbook**, run from the still-checked-ou
 powershell -File ops\release\wavee-store-submit.ps1        # -DryRun to rehearse; also -Resume / -Abort / -Status
 ```
 
-It packs both `store`-channel MSIX from the tag commit (store quad `(M+1).m.(p*100+build).0`), zips them into one
-`Wavee_<storeQuad>_store.msixupload`, uploads it via msstore-cli, sets the en-US "What's new" from the release's
-`store-listing.txt` (phase 2 of the feed release already rendered it into `<staging>\notes\`), commits the
-submission, and polls until it is past PreProcessing. Certification itself takes 1–3 business days — check later
-with `-Status`. Staging is `artifacts\store\<semver>\` with its own `store-state.json` ledger; the one-time setup
-(Entra app, `msstore reconfigure`) and the hard no-Partner-Center-edits rule are in
-`docs/guide/microsoft-store-onboarding.md` §6.
+It builds one SDK `.msixbundle` containing **both** Store-channel MSIX packages, then wraps that single bundle
+in `Wavee_<storeQuad>_arm64_x64_store.msixupload`. Store quad remains `(M+1).m.(p*100+build).0`.
+The script validates the nested manifests, unchanged package hashes and executable/symbol provenance before
+uploading. Partial architecture releases and `-Force` are refused. Source builds additionally require a clean
+engine checkout and record its commit; repair releases should adopt the original archived bytes.
+
+For a packaging-only repair, run updated tooling separately from the clean released application checkout:
+
+```powershell
+powershell -File ops\release\wavee-store-submit.ps1 `
+    -SourceRoot C:\wavee\waveemusic-store-0.2.8-x64 `
+    -PackageDir C:\wavee\waveemusic\artifacts\store\0.2.8 `
+    -NotesDir C:\wavee\waveemusic\artifacts\release\0.2.8\notes `
+    -OutputDir artifacts\store-bundle-repair -DryRun
+# Inspect the evidence, then repeat without -DryRun. Future releases use their own tag/version directories.
+```
+
+`-PackageDir` requires both Store MSIX files and `symbols/<quad>/win-<arch>/{SYMBOLS.txt,Wavee.map.xml}`.
+It never probes private source or rebuilds the application. The source checkout must match the tag on origin,
+including on resume. No fake source markers, dirty-source overrides, version bumps or GitHub feed changes.
+
+Before commit the script reconciles the **whole** package inventory: only the new upload remains active;
+known superseded package IDs are marked `PendingDelete`. It preserves listing metadata and patches en-US notes.
+Automatic publishing remains `Immediate`. Ingestion starts after commit; certification is not publication.
+The recognized bundle may be one `Neutral` row, so verify that row against the locally inspected child packages,
+not an expectation of two top-level Store rows. Only verified `Published` completes the poll phase.
+
+Staging is `artifacts/store/<semver>` by default (relative to the tooling checkout). The schema-2 ledger records
+source commit, package/executable evidence, artifact hashes and submission ID. `-Resume` requires the original
+source/output arguments and validates staged bytes again. Adoption paths are recorded and restored so an
+interrupted archived-package run cannot silently become a source rebuild. Old schema-1 ledgers cannot resume publication.
+Interrupted commits are reconciled by exact ID without republishing. Ambiguous interrupted uploads stop for
+inspection instead of deleting a possibly unrelated draft. Abort only deletes an owned uncommitted draft and
+retains local evidence. API snapshots omit upload URLs and listing credentials.
+
+Use `-Status` for inspection, or `-Resume` to continue bounded monitoring after timeout. Do not edit an API-created
+submission in Partner Center. The account setup and API ownership rule are in the onboarding guide §6.
+Mutating runs hold a product-scoped machine mutex; do not create external/manual drafts while automation runs.
 
 | Symptom | What it means | Recovery |
 |---|---|---|
 | Preflight: a pending submission exists | a draft is already open on the product; `msstore publish` would silently delete it, so the script refuses instead | finish or delete the pending submission first — and if it was hand-made in Partner Center, finish it **there** (an API-created one is deleted with `msstore submission delete`) |
 | `msstore` authentication fails | the Entra client secret expired (Entra policy) | new secret in Entra → `msstore reconfigure` again (onboarding guide §6) |
 | Certification failed | the Store rejected the submission | `-Status` prints the errors; fix the cause, `msstore submission delete`, re-run the script |
-| The poll timed out | benign — PreProcessing was just slow | nothing to recover; check later with `-Status` |
+| The poll timed out | publication is not yet verified | inspect with `-Status`; use the same source/output arguments with `-Resume` to monitor again |
 
 ---
 

@@ -49,9 +49,11 @@ static class SidebarRowGeometry
     public const float ContentLaneEnd = PaneEdge + RowInsetRight;
 
     /// <summary>Row height by density. Compact suppresses subtitles outright (no room for a second line), so the three
-    /// canonical heights are 32 (compact) / 40 (cozy) / 44 (cozy with subtitle — Classic's entity row AND, since W7,
-    /// its glyph/shortcut row too); Comfortable adds 4 DIP on top of the cozy pair (44 without a subtitle, 48 with
-    /// one) — no longer used for a glyph band, whose 40-DIP art column would misalign its label against a Cozy row's.</summary>
+    /// canonical heights are 32 (compact) / 40 (cozy) / 44 (cozy with subtitle — Classic's entity row). A glyph/shortcut
+    /// row (<c>SidebarDisplayOptions.Shortcuts</c>/<c>Links</c>) never paints a subtitle, so it lands on the 40 arm
+    /// (Task C) — not the 44 a stale <c>Subtitles:true</c> used to claim for a line it never drew. Comfortable adds
+    /// 4 DIP on top of the cozy pair (44 without a subtitle, 48 with one) — no longer used for a glyph band, whose
+    /// 40-DIP art column would misalign its label against a Cozy row's.</summary>
     public static float HeightFor(SidebarDensity density, bool hasSubtitle) => density switch
     {
         SidebarDensity.Compact => 32f,

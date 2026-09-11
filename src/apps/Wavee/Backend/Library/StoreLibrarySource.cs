@@ -86,22 +86,60 @@ public sealed class StoreLibrarySource : ICatalogSource, IPodcastSource, ISource
     public IEntityHydrator Hydrator => _hydration;
     public IObservable<CollectionKind> CollectionsChanged => _collections;
 
+    /// <summary>The live freshness authority for the playlist plane (LibrarySync, via <see cref="IPlaylistOpener"/>),
+    /// installed by go-live (the <c>RealLibrarySource.PlaylistOpener</c> seam, beside the very opener PlaylistHydration
+    /// holds) and detached on logout — a late-bound seam, never a constructor requirement. Null means no live loop
+    /// (signed out, offline, tests): <see cref="GetPlaylistAsync"/> then paints the baseline and never waits.</summary>
+    IPlaylistOpener? _playlistOpener;
+    public void AttachPlaylistOpener(IPlaylistOpener? opener) => _playlistOpener = opener;
+
     // ── single-item reads ──
     public async Task<Playlist?> GetPlaylistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
     {
         if (level == HydrationLevel.None) return ComposePlaylist(uri, prefetchUsers: false);
 
         // The playlist plane is LibrarySync's, so the open plan is the one place that knows a baseline changes the
-        // shape of the ask: no membership ⇒ nothing to paint ⇒ block on Open; a baseline ⇒ paint the cache now and let
-        // the loop's own 5-minute/dirty gates decide whether it revalidates (OpenPolicy — design §2.1).
-        var plan = OpenPolicy.For(EntityKind.Playlist, hasBaseline: _store.HasMembership(uri));
+        // shape of the ask: no membership ⇒ nothing to paint ⇒ block on Open; a baseline ⇒ paint the cache now UNLESS
+        // that baseline needs revalidation (dirty / past LibrarySync's window / rolling-identity — S2 #6), in which
+        // case the open blocks on it instead (bounded — see PlaylistRevalidateDeadline below) so the page shows its
+        // skeleton once and then ONE complete, current model instead of a stale cache followed by a re-paint.
+        bool hasBaseline = _store.HasMembership(uri);
+        bool needsRevalidation = hasBaseline && (_playlistOpener?.NeedsRevalidation(uri) ?? false);
+        var plan = OpenPolicy.For(EntityKind.Playlist, hasBaseline, needsRevalidation);
         if (plan.Blocking != HydrationLevel.None)
-            await _hydration.EnsureAsync(uri, Max(plan.Blocking, level),
-                new HydrationOptions(Surface: TraitSurface.PlaylistOpen), ct).ConfigureAwait(false);
+        {
+            var ensure = _hydration.EnsureAsync(uri, Max(plan.Blocking, level),
+                new HydrationOptions(Surface: TraitSurface.PlaylistOpen), ct);
+            if (plan.BlockingDeadline is { } deadline)
+            {
+                // Bounded: stop waiting past the deadline and paint whatever is resident NOW — `ensure` keeps running
+                // and the ladder still bumps the store when it lands, so the page repaints in place through the
+                // ordinary IStore.Changes path (today's background-revalidate fallback, unchanged). If `ensure`
+                // itself finishes first (the common case — a /diff is usually a fast 304), re-await it so a genuine
+                // fault still propagates exactly like an unbounded await would.
+                if (await Task.WhenAny(ensure, Task.Delay(deadline, ct)).ConfigureAwait(false) == ensure)
+                    await ensure.ConfigureAwait(false);
+                else
+                {
+                    ct.ThrowIfCancellationRequested();   // the CALLER cancelled, not merely the deadline — surface it
+                    ObserveLate(ensure);                 // never let a late fault on the detached task go unobserved
+                }
+            }
+            else await ensure.ConfigureAwait(false);
+        }
         if (plan.Background != HydrationLevel.None)
             _ = _hydration.EnsureAsync(uri, Max(plan.Background, level),
                 new HydrationOptions(HydrationMode.Background, plan.Revalidate, TraitSurface.PlaylistOpen), ct);
         return ComposePlaylist(uri, prefetchUsers: true);
+    }
+
+    /// <summary>Attach a no-op continuation so a fault on a task we stopped awaiting (the bounded playlist-revalidate
+    /// wait tripped its deadline) is still OBSERVED rather than silently ignored. The ladder itself never throws for
+    /// transport reasons (design §1.3 — a failure is a HydrationStatus); this only guards a genuine bug.</summary>
+    static void ObserveLate(Task task)
+    {
+        if (task.IsCompleted) { _ = task.Exception; return; }
+        task.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
     }
 
     Playlist? ComposePlaylist(string uri, bool prefetchUsers)

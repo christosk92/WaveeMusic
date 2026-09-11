@@ -29,6 +29,22 @@ public class ConnectStateBuilderTests
         Assert.Equal(604162001u, req.LastCommandMessageId);
     }
 
+    // ── contract item 2 / librespot: while NOT the active device the PUT carries an IDLE player_state (snap is null)
+    // plus OUR OWN device volume, supplied separately — BuildPutState used to read volume off the snapshot only, so a
+    // null snapshot left DeviceInfo.Volume at whatever it was last set to.
+    [Fact]
+    public void BuildPutState_NullSnapshot_UsesTheSeparatelySuppliedOwnVolume()
+    {
+        var builder = new ConnectStateBuilder("device", "Wavee");
+
+        var req = PutStateRequest.Parser.ParseFrom(builder.BuildPutState(
+            PutStateReasonKind.BecameInactive, snap: null, messageId: 1, isActive: false, ownVolume01: 0.25));
+
+        Assert.Equal((uint)Math.Round(0.25 * ConnectStateBuilder.MaxVolume), req.Device.DeviceInfo.Volume);
+        Assert.Null(req.Device.PlayerState.Track);       // truly IDLE — no mirrored foreign row
+        Assert.Equal("", req.Device.PlayerState.ContextUri);
+    }
+
     [Fact]
     public void BuildPutState_PreservesVideoMetadataAndSynthesizesAudioContextMetadata()
     {

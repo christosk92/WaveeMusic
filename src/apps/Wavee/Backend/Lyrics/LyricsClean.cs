@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Wavee.Core;
 
 namespace Wavee.Backend.Lyrics;
@@ -97,8 +98,12 @@ public static class LyricsClean
             for (int i = 0; i < n; i++) if (credit[i]) { drop[i] = true; credits++; }
 
         // ── 3. the provider's title header (Kugou / QQ / NetEase convention) ─────────────────────────────────────────
+        // Both edges: a search-matched document can carry the same "Title - Artist" row at the top (the common case)
+        // or, less often, repeated at the bottom after the last sung line.
         int first = FirstKept(drop);
-        if (first >= 0 && IsTitleHeader(doc, first, drop, title, artists)) drop[first] = true;
+        if (first >= 0 && IsTitleHeader(doc, first, drop, title, artists, leading: true)) drop[first] = true;
+        int last = LastKept(drop);
+        if (last >= 0 && IsTitleHeader(doc, last, drop, title, artists, leading: false)) drop[last] = true;
 
         int kept = 0;
         foreach (bool d in drop) if (!d) kept++;
@@ -115,8 +120,8 @@ public static class LyricsClean
         {
             if (!drop[i]) { lines.Add(doc.Lines[i]); continue; }
             if (lines.Count == 0) continue;                          // nothing above it to carry the end to
-            int last = lines.Count - 1;
-            if (lines[last].EndMs is null) lines[last] = lines[last] with { EndMs = doc.Lines[i].StartMs };
+            int lastIdx = lines.Count - 1;
+            if (lines[lastIdx].EndMs is null) lines[lastIdx] = lines[lastIdx] with { EndMs = doc.Lines[i].StartMs };
         }
         return doc with { Lines = lines };
     }
@@ -127,11 +132,27 @@ public static class LyricsClean
         return -1;
     }
 
-    static bool IsTitleHeader(LyricsDocument doc, int index, bool[] drop, string? title, string? artists)
+    static int LastKept(bool[] drop)
+    {
+        for (int i = drop.Length - 1; i >= 0; i--) if (!drop[i]) return i;
+        return -1;
+    }
+
+    /// <summary>True when the KEPT row at <paramref name="index"/> (the document's first or last surviving line, per
+    /// <paramref name="leading"/>) is a "Title (annotation) - Artist" header rather than a lyric: a CJK provider's own
+    /// bracketed remark — a franchise/TV-tie-in note in <c>《…》</c>, a parenthetical, <c>【…】</c> — sits alongside the
+    /// title on the very row this trims (this exact shape shipped a Chinese TV-insert credit,
+    /// <c>The Night We Met (《十三个原因 第一季》电视剧插曲) - Lord Huron</c>, as track "Ohoo…"'s opening line). The
+    /// annotation's own words are never part of the track's title/artist metadata, so counting them toward the row's
+    /// token total used to drag the overlap ratio below <see cref="HeaderOverlap"/> and let the header through —
+    /// <see cref="StripBracketedAnnotations"/> removes that bracketed content before the ratio is judged, exactly as a
+    /// reader would ignore a parenthetical aside when checking whether a line "is" the title.</summary>
+    static bool IsTitleHeader(LyricsDocument doc, int index, bool[] drop, string? title, string? artists, bool leading)
     {
         if (string.IsNullOrWhiteSpace(title)) return false;
 
-        string[] lineTokens = Tokens(doc.Lines[index].Text);
+        string rawText = doc.Lines[index].Text;
+        string[] lineTokens = Tokens(StripBracketedAnnotations(rawText));
         if (lineTokens.Length == 0) return false;
         var meta = new HashSet<string>(Tokens(title + " " + (artists ?? "")), StringComparer.Ordinal);
         if (meta.Count == 0) return false;
@@ -140,20 +161,66 @@ public static class LyricsClean
         foreach (string t in lineTokens) if (meta.Contains(t)) hits++;
         if (hits / (double)lineTokens.Length < HeaderOverlap) return false;
 
-        // Corroboration, so a chorus line that IS the song's title survives: a header either carries the
-        // "Title - Artist" separator, or sits well before the singing starts.
-        if (doc.Lines[index].Text.Contains(" - ", StringComparison.Ordinal)) return true;
+        // Corroboration, so a chorus/outro line that IS the song's title survives. A header always carries the
+        // "Title - Artist" separator when it repeats at the BOTTOM (providers duplicate the literal header string, never
+        // a bare title) — that is the only signal trusted there. At the TOP a header can also be a bare pre-roll with no
+        // separator, corroborated instead by sitting well before the singing starts; that heuristic does NOT carry over
+        // to the trailing edge, where an isolated last line after an instrumental outro is a completely ordinary way for
+        // a song to end on its own hook.
+        if (rawText.Contains(" - ", StringComparison.Ordinal)) return true;
+        if (!leading) return false;
         for (int j = index + 1; j < doc.Lines.Count; j++)
         {
             if (drop[j]) continue;
             return doc.Lines[j].StartMs - doc.Lines[index].StartMs >= HeaderGapMs;
         }
-        return false;   // it is the only line — keep it rather than empty the document
+        return false;   // it is the only kept line — keep it rather than empty the document
     }
 
     static string[] Tokens(string text)
     {
         string n = LyricsText.Normalize(text);
         return n.Length == 0 ? Array.Empty<string>() : n.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    // A CJK provider's header row commonly reads "Title (annotation) - Artist" where the annotation is a
+    // franchise/soundtrack credit that shares NO words with the track's own title/artist — brackets of every family the
+    // sources actually ship: half-width/full-width parens, 《book title marks》 (TV/film/album tie-ins), 【lenticular
+    // brackets】, square brackets, and a bare "(feat. X)" aside. Removed WHOLE (open through its matching close) so the
+    // annotation's words never dilute the header-overlap ratio in <see cref="IsTitleHeader"/>; unbalanced brackets are
+    // left untouched rather than risk eating real lyric text past an unmatched opener.
+    static readonly (char Open, char Close)[] BracketPairs =
+    {
+        ('(', ')'), ('（', '）'), ('《', '》'), ('【', '】'), ('[', ']'),
+    };
+
+    static bool IsBracketOpen(char c, out char close)
+    {
+        foreach (var (open, cl) in BracketPairs) if (c == open) { close = cl; return true; }
+        close = '\0';
+        return false;
+    }
+
+    internal static string StripBracketedAnnotations(string text)
+    {
+        bool anyBracket = false;
+        foreach (char c in text) if (IsBracketOpen(c, out _)) { anyBracket = true; break; }
+        if (!anyBracket) return text;
+
+        var sb = new StringBuilder(text.Length);
+        var closers = new Stack<char>();
+        foreach (char c in text)
+        {
+            if (IsBracketOpen(c, out char close)) { closers.Push(close); continue; }
+            if (closers.Count > 0)
+            {
+                if (c == closers.Peek()) closers.Pop();
+                continue;   // still inside (or just closed) a bracketed run — its text never reaches the output
+            }
+            sb.Append(c);
+        }
+        // Unbalanced: a bracket never closed, so we cannot tell where the annotation was meant to end. Keep the
+        // ORIGINAL text rather than silently swallow whatever followed the opener as if it were annotation.
+        return closers.Count == 0 ? sb.ToString() : text;
     }
 }

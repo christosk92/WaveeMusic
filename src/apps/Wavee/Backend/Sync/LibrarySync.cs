@@ -154,7 +154,7 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
     {
         if (cmd.Kind == SyncKind.CollectionPush)
         {
-            if (ShouldDirectApply(cmd.Payload)) _queue.Writer.TryWrite(cmd);   // immediate — no settle, applied on the loop
+            if (ShouldDirectApply(cmd.Uri, cmd.Payload)) _queue.Writer.TryWrite(cmd);   // immediate — no settle, applied on the loop
             else ScheduleCollectionSettle(cmd);                               // fetch path — settle + wire→logical fan-out
             return;
         }
@@ -758,7 +758,7 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
     {
         // Only the SETTLE follow-up owns the _pendingSets mark (a direct-apply command bypassed the settle and never added
         // it — clearing it here would prematurely free a concurrent settle window). Enqueue routed non-direct payloads here.
-        bool fromSettle = !ShouldDirectApply(payload);
+        bool fromSettle = !ShouldDirectApply(wireSet, payload);
         try
         {
             if (wireSet.Length == 0) return;
@@ -767,8 +767,9 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
             {
                 var cuid = upd.ClientUpdateId;
                 if (cuid.Length > 0 && (_echoRing?.Contains(cuid) ?? false)) { Interlocked.Increment(ref EchoDropped); return; }
-                if (upd.Items.Count > 0) { await DirectApplyPushAsync(wireSet, upd).ConfigureAwait(false); return; }
-                // parsed but zero items → unknown change shape → fall through to the delta fetch.
+                // ylpin never direct-applies (§0.1) even when a payload happens to parse with items — always settle + delta.
+                if (CollectionSets.PushDirectApplies(wireSet) && upd.Items.Count > 0) { await DirectApplyPushAsync(wireSet, upd).ConfigureAwait(false); return; }
+                // parsed but zero items (or a wire set that never direct-applies) → fall through to the delta fetch.
             }
 
             if (CollectionSets.LogicalSetsForWireSet(wireSet).Count == 0) { LogUnknownWireSetOnce(wireSet); return; }
@@ -829,15 +830,18 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
         "shows" or "episodes" => CollectionKind.Shows,
         "playlists" => CollectionKind.Playlists,
         "liked" => CollectionKind.Liked,
+        "pins" => CollectionKind.Pins,
         _ => null,
     };
 
     // A payload direct-applies (bypassing the settle) iff it parses to a PubSubUpdate that carries items OR is an echo of one
     // of our accepted writes (a cuid in the ring). Parsing is pure + off-loop-safe; the handler re-parses to do the work.
-    bool ShouldDirectApply(byte[]? payload)
+    // ylpin pushes are opaque in practice (§0.1) and never direct-apply on the items branch — echo-of-our-own-write still
+    // does (it costs nothing and drops for free), only the "fold these items in" branch is gated on the wire set's policy.
+    bool ShouldDirectApply(string wireSet, byte[]? payload)
     {
         if (!TryParsePush(payload, out var upd)) return false;
-        if (upd.Items.Count > 0) return true;
+        if (upd.Items.Count > 0) return CollectionSets.PushDirectApplies(wireSet);
         return upd.ClientUpdateId.Length > 0 && (_echoRing?.Contains(upd.ClientUpdateId) ?? false);
     }
 
@@ -901,6 +905,23 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
             catch { }
             TrySeedPermissionForOpen(uri);   // the heal is a header LANDING too (P1.3, cold deep link)
         }
+        if (IsStaleOrDirtyOrRolling(uri, header)) await PlaylistRevalidateAsync(uri).ConfigureAwait(false);
+    }
+
+    /// <summary>THE freshness test (dirty / past the on-open SWR window / rolling-identity), factored out of
+    /// <see cref="OpenPlaylistCoreAsync"/>'s own baseline branch so a caller that already holds a resident baseline
+    /// can ask it BEFORE ever reaching this loop — the SWR blocking-vs-background decision (OpenPolicy — design §2.1;
+    /// stale-daylist-open fix, S2 #6). Exposed on <see cref="IPlaylistOpener"/> (<c>NeedsRevalidation</c>) for exactly
+    /// that; this stays the ONE place the three clauses are evaluated, so the two callers (this and the exposed
+    /// method) can never drift apart. Gates unchanged from the pre-existing inline check.</summary>
+    public bool NeedsRevalidation(string uri)
+    {
+        if (!_store.HasMembership(uri)) return true;   // no baseline: the caller already blocks unconditionally
+        return IsStaleOrDirtyOrRolling(uri, _store.GetPlaylist(uri));
+    }
+
+    bool IsStaleOrDirtyOrRolling(string uri, Playlist? header)
+    {
         bool dirty = IsDirty(uri);
         bool stale = !TryGetLastRevalidated(uri, out var last) || (DateTime.UtcNow - last) > OpenRevalidateWindow;
         // A ROLLING-IDENTITY playlist (a daylist and its future siblings) can roll to a wholly new edition well inside
@@ -909,7 +930,7 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
         // just must not veto one for a container whose identity moves on its own clock (cause 3 of the stale-daylist
         // defect — see PlaylistSnapshotFacts.IsRollingIdentity).
         bool rolling = PlaylistSnapshotFacts.IsRollingIdentity(header?.Format, header?.DaylistExpiresAtMs ?? 0);
-        if (dirty || stale || rolling) await PlaylistRevalidateAsync(uri).ConfigureAwait(false);
+        return dirty || stale || rolling;
     }
 
     // Revision-gated /diff (§2.6, fixes RC5): an unchanged playlist costs one up-to-date round-trip (usually a 304); a

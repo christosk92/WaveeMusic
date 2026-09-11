@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Wavee.Backend.Lyrics;
 using Wavee.Core;
@@ -427,5 +429,175 @@ public class LyricsCoreTests
     {
         var ranked = LyricsReranker.Rank(System.Array.Empty<LyricsCandidate>(), null);
         Assert.Null(ranked.Winner);
+    }
+
+    // ── ISRC decoy (Musixmatch anti-scraping) ────────────────────────────────────────────────────────────────────────
+    // The real source report: "Sorry Seems To Be The Hardest Word" (6F9jdzX7CfixvCsCkW7zw9, 210066ms). Musixmatch's
+    // ISRC fast-path returned 206 lines of nonsense ("Wob gopini den", …), every line exactly 4000ms, running to 13:56
+    // on a 3:30 track. It was CHOSEN at score 0.320 over a real spotify Unsynced reference (0.777) and a real lrclib
+    // Line doc (0.628) — because MatchBasis.Isrc made it "verified by construction, no text floor" in stage two, which
+    // ignores score entirely once a candidate clears the bar. The fix is stage-one's text>0 floor (LyricsReranker.Rank);
+    // this test is that scenario, reduced to its essentials.
+
+    static (long ms, string text)[] RealVerse(int n, long stepMs = 7000)
+    {
+        string[] bank =
+        {
+            "hello", "darkness", "my", "old", "friend", "ive", "come", "to", "talk", "with", "you", "again",
+            "because", "a", "vision", "softly", "creeping", "left", "its", "seeds", "while", "i", "was", "sleeping",
+            "and", "the", "sound", "of", "silence", "in", "restless", "dreams", "walked", "alone", "narrow", "streets",
+        };
+        var lines = new List<(long, string)>(n);
+        for (int i = 0; i < n; i++)
+        {
+            var w = new[] { bank[i % bank.Length], bank[(i + 5) % bank.Length], bank[(i + 11) % bank.Length], bank[(i + 17) % bank.Length] };
+            lines.Add((i * stepMs, string.Join(' ', w)));
+        }
+        return lines.ToArray();
+    }
+
+    static LyricsDocument UnsyncedDoc(string provider, (long ms, string text)[] lines)
+        => new("t1", false, lines.Select(l => new LyricLine(0, l.text, System.Array.Empty<LyricSyllable>())).ToList(),
+            LyricsSyncKind.Unsynced, provider);
+
+    /// <summary>The Musixmatch decoy shape: nonsense three-word lines, every one exactly <paramref name="stepMs"/> apart,
+    /// drawn from a word bank that shares NOTHING with <see cref="RealVerse"/> — so any text agreement the reranker
+    /// finds is a bug in the test, not a coincidence.</summary>
+    static LyricsDocument DecoyDoc(string provider, int lineCount = 206, long stepMs = 4000, long startMs = 12000)
+    {
+        string[] bank =
+        {
+            "Wob", "Tefe", "Nix", "Quor", "Zeb", "Fen", "Blip", "Yun", "Kesh", "Dral", "Onu", "Vex",
+            "Iko", "Plor", "Sith", "Wexa", "Gorn", "Faz", "gopini", "den", "woxica", "fero", "mubli", "tark",
+        };
+        var lines = new List<LyricLine>(lineCount);
+        for (int i = 0; i < lineCount; i++)
+        {
+            var w = new[] { bank[(i * 3) % bank.Length], bank[(i * 3 + 1) % bank.Length], bank[(i * 3 + 2) % bank.Length] };
+            lines.Add(new LyricLine(startMs + i * stepMs, string.Join(' ', w), System.Array.Empty<LyricSyllable>()));
+        }
+        return new LyricsDocument("t1", true, lines, LyricsSyncKind.Line, provider);
+    }
+
+    [Fact]
+    public void Reranker_IsrcDecoy_WithZeroTextAlignment_LosesToTheReference()
+    {
+        var refLines = RealVerse(30);
+        var reference = UnsyncedDoc("spotify", refLines);
+        var spotifyCand = Cand("spotify", 0.55, MatchBasis.Identity, reference);
+        var lrclibCand = Cand("lrclib", 0.45, MatchBasis.MetadataSearch, LineDoc("lrclib", refLines.Take(29).ToArray()));
+        var decoyCand = Cand("musixmatch", 0.7, MatchBasis.Isrc, DecoyDoc("musixmatch"));
+
+        var ranked = LyricsReranker.Rank(new[] { decoyCand, spotifyCand, lrclibCand }, reference);
+
+        Assert.NotNull(ranked.Winner);
+        Assert.NotEqual("musixmatch", ranked.Best!.ProviderId);
+        Assert.Contains(ranked.Best!.ProviderId, new[] { "spotify", "lrclib" });
+
+        // The decoy shares NO words with the reference — trusted-by-construction (MatchBasis.Isrc) must not be enough
+        // to call it verified when it has zero text agreement to show for it.
+        var decoyDec = ranked.All.Single(d => d.ProviderId == "musixmatch");
+        Assert.Equal(0.0, decoyDec.TextAgreement);
+        Assert.False(decoyDec.Verified);
+    }
+
+    // ── decoy timing tells (LyricsTiming) ────────────────────────────────────────────────────────────────────────────
+
+    static LyricsDocument UniformDoc(int n, long stepMs, string provider = "musixmatch")
+    {
+        var lines = new List<LyricLine>(n);
+        for (int i = 0; i < n; i++)
+            lines.Add(new LyricLine(i * stepMs, $"nonsense line {i}", System.Array.Empty<LyricSyllable>()));
+        return new LyricsDocument("t1", true, lines, LyricsSyncKind.Line, provider);
+    }
+
+    static LyricsDocument VariedDoc(int n)
+    {
+        var lines = new List<LyricLine>(n);
+        long t = 0;
+        var rnd = new System.Random(7);
+        for (int i = 0; i < n; i++)
+        {
+            t += 2000 + rnd.Next(0, 4000);
+            lines.Add(new LyricLine(t, $"real line {i}", System.Array.Empty<LyricSyllable>()));
+        }
+        return new LyricsDocument("t1", true, lines, LyricsSyncKind.Line, "lrclib");
+    }
+
+    [Fact]
+    public void ExceedsTrackDuration_FlagsTheDecoyShape()
+    {
+        var doc = UniformDoc(206, 4000);              // last line starts at 820000ms
+        Assert.True(LyricsTiming.ExceedsTrackDuration(doc, 210066));   // 3:30 track
+    }
+
+    [Fact]
+    public void ExceedsTrackDuration_UnknownDuration_NeverFlags()
+    {
+        var doc = UniformDoc(206, 4000);
+        Assert.False(LyricsTiming.ExceedsTrackDuration(doc, 0));
+        Assert.False(LyricsTiming.ExceedsTrackDuration(doc, -1));
+    }
+
+    [Fact]
+    public void ExceedsTrackDuration_ARealFourLineDocument_IsNotFlagged()
+    {
+        Assert.False(LyricsTiming.ExceedsTrackDuration(LineDoc("spotify", RealSong), 210066));
+    }
+
+    [Fact]
+    public void HasUniformLineDurations_FlagsTheDecoyShape()
+    {
+        Assert.True(LyricsTiming.HasUniformLineDurations(UniformDoc(206, 4000)));
+    }
+
+    [Fact]
+    public void HasUniformLineDurations_ARealFourLineDocument_IsNotFlagged()
+    {
+        // Too few lines to judge (needs ≥20) — a short document must not be able to trip a decoy verdict.
+        Assert.False(LyricsTiming.HasUniformLineDurations(LineDoc("spotify", RealSong)));
+    }
+
+    [Fact]
+    public void HasUniformLineDurations_ATwentyFiveLineDocumentWithVariedTiming_IsNotFlagged()
+    {
+        Assert.False(LyricsTiming.HasUniformLineDurations(VariedDoc(25)));
+    }
+
+    [Fact]
+    public void Describe_MentionsBothDecoyTells_WhenGivenTheTrackDuration()
+    {
+        var doc = UniformDoc(206, 4000);
+        string described = LyricsTiming.Describe(doc, 210066);
+
+        Assert.Contains("runs to", described);
+        Assert.Contains("uniform decoy timing", described);
+    }
+
+    [Fact]
+    public void Describe_WithNoDurationInScope_SkipsTheTrackLengthTell()
+    {
+        var doc = UniformDoc(206, 4000);
+        string described = LyricsTiming.Describe(doc);   // durationMs defaults to 0
+
+        Assert.DoesNotContain("runs to", described);
+        Assert.Contains("uniform decoy timing", described);   // this tell needs no duration
+    }
+
+    // ── the real fixture ─────────────────────────────────────────────────────────────────────────────────────────────
+    // The actual decoy shape captured for "Sorry Seems To Be The Hardest Word" (6F9jdzX7CfixvCsCkW7zw9, 210066ms):
+    // 206 lines of synthesised nonsense, one every 4 seconds starting at 00:12 — parsed through the REAL LRC parser
+    // (not a hand-built LyricsDocument), so this is end-to-end proof the two checks fire on the actual payload shape,
+    // not just on a document built to satisfy them.
+
+    [Fact]
+    public void MusixmatchDecoyFixture_TripsBothDecoyChecks()
+    {
+        string lrc = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Lyrics", "Fixtures", "musixmatch-decoy-sorry-seems.lrc"));
+        var doc = LyricsText.ParseLrc(lrc, "6F9jdzX7CfixvCsCkW7zw9", "musixmatch");
+
+        Assert.Equal(206, doc.Lines.Count);
+        Assert.True(LyricsTiming.HasUniformLineDurations(doc));
+        Assert.True(LyricsTiming.ExceedsTrackDuration(doc, 210066));   // "Sorry Seems To Be The Hardest Word", 3:30
     }
 }

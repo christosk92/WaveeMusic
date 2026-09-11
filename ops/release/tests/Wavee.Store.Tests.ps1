@@ -187,70 +187,7 @@ Describe 'Test-WaveeStoreQuad' {
 
 # ===================================================================================================================
 
-Describe 'New-WaveeMsixUpload' {
-
-    $dir = New-TmpDir 'msixupload'
-    $x64 = New-FakeMsix -Path (Join-Path $dir 'Wavee_1.2.102.0_x64.msix') -Arch 'x64'
-    $arm64 = New-FakeMsix -Path (Join-Path $dir 'Wavee_1.2.102.0_arm64.msix') -Arch 'arm64'
-    $out = Join-Path $dir 'Wavee_1.2.102.0_store.msixupload'
-
-    It 'zips two verified packages into one container' {
-        New-WaveeMsixUpload -Msix @($x64, $arm64) -OutFile $out -IdentityName $script:StoreIdentityName `
-            -Publisher $script:StorePublisher -Quad '1.2.102.0' | Should Be $out
-        Test-Path $out | Should Be $true
-    }
-
-    It 'stores exactly the two entries, flat at the root, under their original file names' {
-        $names = Get-ZipEntryNames $out
-        $names.Count | Should Be 2
-        $names[0] | Should Be 'Wavee_1.2.102.0_arm64.msix'
-        $names[1] | Should Be 'Wavee_1.2.102.0_x64.msix'
-        @($names | Where-Object { $_ -match '[/\\]' }).Count | Should Be 0
-    }
-
-    It 'replaces a pre-existing container instead of appending into it' {
-        New-WaveeMsixUpload -Msix @($x64) -OutFile $out -IdentityName $script:StoreIdentityName `
-            -Publisher $script:StorePublisher -Quad '1.2.102.0' | Out-Null
-        (Get-ZipEntryNames $out).Count | Should Be 1
-    }
-
-    It 'rejects a version that does not match the quad' {
-        $wrongVer = New-FakeMsix -Path (Join-Path $dir 'wrong-version.msix') -Arch 'arm64' -Version '1.2.103.0'
-        { New-WaveeMsixUpload -Msix @($x64, $wrongVer) -OutFile (Join-Path $dir 'never1.msixupload') `
-                -IdentityName $script:StoreIdentityName -Publisher $script:StorePublisher -Quad '1.2.102.0' } | Should Throw
-    }
-
-    It 'rejects a duplicate architecture' {
-        $alsoX64 = New-FakeMsix -Path (Join-Path $dir 'also-x64.msix') -Arch 'x64'
-        { New-WaveeMsixUpload -Msix @($x64, $alsoX64) -OutFile (Join-Path $dir 'never2.msixupload') `
-                -IdentityName $script:StoreIdentityName -Publisher $script:StorePublisher -Quad '1.2.102.0' } | Should Throw
-    }
-
-    It 'rejects the wrong Publisher (a Trusted-Signing-subject package is not a Store package)' {
-        $wrongPub = New-FakeMsix -Path (Join-Path $dir 'wrong-pub.msix') -Arch 'arm64' `
-            -Publisher 'CN=cproducts, O=cproducts, L=Utrecht, S=Utrecht, C=NL'
-        { New-WaveeMsixUpload -Msix @($x64, $wrongPub) -OutFile (Join-Path $dir 'never3.msixupload') `
-                -IdentityName $script:StoreIdentityName -Publisher $script:StorePublisher -Quad '1.2.102.0' } | Should Throw
-    }
-
-    It 'rejects the wrong identity name' {
-        $wrongName = New-FakeMsix -Path (Join-Path $dir 'wrong-name.msix') -Arch 'arm64' -Name 'someone.Else'
-        { New-WaveeMsixUpload -Msix @($wrongName) -OutFile (Join-Path $dir 'never4.msixupload') `
-                -IdentityName $script:StoreIdentityName -Publisher $script:StorePublisher -Quad '1.2.102.0' } | Should Throw
-    }
-
-    It 'rejects a non-store quad before touching any package' {
-        { New-WaveeMsixUpload -Msix @($x64) -OutFile (Join-Path $dir 'never5.msixupload') `
-                -IdentityName $script:StoreIdentityName -Publisher $script:StorePublisher -Quad '0.2.0.17' } | Should Throw
-    }
-
-    It 'rejects a missing input file' {
-        { New-WaveeMsixUpload -Msix @((Join-Path $dir 'ghost.msix')) -OutFile (Join-Path $dir 'never6.msixupload') `
-                -IdentityName $script:StoreIdentityName -Publisher $script:StorePublisher -Quad '1.2.102.0' } | Should Throw
-    }
-}
-
-# ===================================================================================================================
+# Bundle/upload behavioral tests live in Wavee.Store.Bundle.Tests.ps1.
 
 Describe 'ConvertTo-Win32QuotedArgument' {
 

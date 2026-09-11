@@ -81,7 +81,7 @@ sealed class SearchPage : Component
                         // 700 albums), and that height changes again every time a page lands. Easing 0 -> thousands of
                         // DIP makes the region clip its own content into a strip that grows line by line. The reveal
                         // (below) is what should carry the entrance; the layout height must land at once.
-                        Skel.Region(results, SearchShimmer, r => ResultsFor(r, chip, q, svc, go),
+                        Skel.Region(results, () => SearchShimmer(facet), r => ResultsFor(r, chip, q, svc, go),
                             reveal: facet == SearchFacet.Tracks ? SkelReveal.None : SkelReveal.StaggerRows,
                             onFailed: () => ErrorState.Build(results.Error),
                             smoothResize: false),
@@ -126,27 +126,141 @@ sealed class SearchPage : Component
         });
     }
 
-    // Lightweight loading skeleton (finding #7): a fixed list of result-row placeholders so the pending edge doesn't build
-    // the full results tree just to derive a skeleton. Sized childless boxes → shimmer bars; SmoothResize eases the swap.
-    static Element SearchShimmer()
+    // Lightweight loading skeleton (finding #7), per-facet SHAPE (S3 #16): the "All" tab's real body is a 228px hero
+    // card + a shelf of playlist cards (AllView), a grid facet (Albums/Playlists/Genres) is a card grid (FacetGrid/
+    // SearchGenreTiles), and every other facet is a flat hit list (HitsList/SongsGrid/FlatList) — three genuinely
+    // different geometries. The old ONE fixed stack of 48px bars matched none of them: "All" (the default landing
+    // facet on every fresh query) swapped a plain list for a hero card and a card shelf the instant data arrived —
+    // the whole page reflowed. Sized childless boxes only (Skel.Region's shimmer must not need real results to
+    // build); SmoothResize eases the swap where sizes still drift a little (row count, wrap count).
+    static Element SearchShimmer(SearchFacet facet) => facet switch
+    {
+        SearchFacet.All => ShimmerAll(),
+        SearchFacet.Albums or SearchFacet.Playlists or SearchFacet.Genres => ShimmerCardGrid(),
+        _ => ShimmerRows(),
+    };
+
+    // Flat hit list (Songs/Artists/Audiobooks/Podcasts/Episodes/Profiles/Authors): SearchAllList/HitsList's row is a
+    // 48px art thumb + two text lines, ~64px tall — not a bare bar.
+    static Element ShimmerRows()
     {
         var rows = new Element[10];
         for (int i = 0; i < rows.Length; i++)
             rows[i] = new BoxEl
             {
-                Height = 48f, AlignSelf = FlexAlign.Stretch,
-                Corners = CornerRadius4.All(Radii.Control),
-                Fill = Tok.FillSubtleSecondary,
+                Direction = 0, Height = 64f, Gap = Spacing.M, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch,
+                Children =
+                [
+                    new BoxEl { Width = 48f, Height = 48f, Shrink = 0f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary },
+                    new BoxEl
+                    {
+                        Direction = 1, Grow = 1f, Basis = 0f, Gap = Spacing.XXS, Justify = FlexJustify.Center,
+                        Children =
+                        [
+                            new BoxEl { Width = 220f, Height = 14f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary },
+                            new BoxEl { Width = 120f, Height = 12f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleTertiary },
+                        ],
+                    },
+                ],
             };
         return new BoxEl { Direction = 1, Gap = Spacing.S, AlignSelf = FlexAlign.Stretch, Children = rows };
     }
 
+    // Grid facets (Albums/Playlists/FacetGrid, Genres/SearchGenreTiles): square-ish cards wrapping the pane, matching
+    // ShelfCard's cover-then-two-lines shape rather than a list of bars.
+    static Element ShimmerCardGrid()
+    {
+        var cards = new Element[12];
+        for (int i = 0; i < cards.Length; i++)
+            cards[i] = new BoxEl
+            {
+                Direction = 1, Gap = Spacing.S, Width = 168f,
+                Children =
+                [
+                    new BoxEl { Width = 168f, Height = 168f, Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillSubtleSecondary },
+                    new BoxEl { Width = 140f, Height = 14f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary },
+                    new BoxEl { Width = 92f, Height = 12f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleTertiary },
+                ],
+            };
+        return new BoxEl { Direction = 0, Wrap = true, Gap = Spacing.M, AlignSelf = FlexAlign.Stretch, Children = cards };
+    }
+
+    // "All": SearchHero's own fixed 228px card (art block right, copy lines left, a pill-shaped CTA), then the
+    // playlist shelf as a row of the same cards ShimmerCardGrid uses — the two sections AllView always opens with.
+    static Element ShimmerAll()
+    {
+        var heroCard = new BoxEl
+        {
+            Height = 228f, MinWidth = 0f, Grow = 1f, AlignSelf = FlexAlign.Stretch, Direction = 0,
+            ClipToBounds = true, Corners = Radii.CardAll,
+            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 1, Grow = 1f, MinWidth = 0f, Gap = Spacing.S, Justify = FlexJustify.End,
+                    Padding = new Edges4(Spacing.L, Spacing.L, Spacing.XL, Spacing.L),
+                    Children =
+                    [
+                        new BoxEl { Width = 90f, Height = 12f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary },
+                        new BoxEl { Width = 260f, Height = 28f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary },
+                        new BoxEl { Width = 170f, Height = 16f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleTertiary },
+                        new BoxEl { Width = 100f, Height = 32f, Corners = Radii.FullAll, Fill = Tok.FillSubtleSecondary },
+                    ],
+                },
+                new BoxEl
+                {
+                    Width = 300f, Height = 260f, Shrink = 0f, AlignSelf = FlexAlign.Center,
+                    Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillSubtleTertiary,
+                },
+            ],
+        };
+        return new BoxEl { Direction = 1, Gap = Spacing.L, AlignSelf = FlexAlign.Stretch, Children = [heroCard, ShimmerCardGrid()] };
+    }
+
+    // S3 #16: the facet ROW's own skeleton — see ChipBar's gate. The known facet superset (FacetsFrom's fallback:
+    // Tracks/Albums/Playlists/Audiobooks/Podcasts/Artists/Episodes/Profiles/Genres/Authors + All) almost always
+    // lands and wraps to two rows at typical pane widths, so this reserves THAT shape from the first frame instead
+    // of the lone "All" tab that used to jump to eleven the instant the response arrived. Widths approximate real
+    // label+count pill widths (the actual counts aren't known yet) — same padding/underline-placeholder structure
+    // as FacetTab so the row's per-tab height matches exactly.
+    static Element ChipBarSkeleton()
+    {
+        float[] w = [40f, 68f, 76f, 74f, 88f, 68f, 96f, 116f, 76f, 76f, 76f];
+        var tabs = new Element[w.Length];
+        for (int i = 0; i < w.Length; i++)
+            tabs[i] = new BoxEl
+            {
+                Direction = 1, Shrink = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, AlignItems = FlexAlign.Center,
+                        Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.XS),
+                        Children = [ new BoxEl { Width = w[i], Height = 16f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary } ],
+                    },
+                    new BoxEl { Height = FacetUnderlineH, Shrink = 0f, Fill = ColorF.Transparent },
+                ],
+            };
+        return new BoxEl { Direction = 0, Wrap = true, AlignItems = FlexAlign.End, MinWidth = 0f, Grow = 1f, Children = tabs };
+    }
+
     Element ChipBar(Loadable<SearchResults> results)
     {
-        _ = results.State.Value;
+        byte state = results.State.Value;   // subscribe
         var r = results.Value.Value;
         if (r.ChipOrder is { Count: > 0 } || r.TopHits is { Count: > 0 })
             _chipSource = r;
+        // S3 #16: a fresh query has no chip data for exactly one frame-ish before the first response lands, and
+        // FacetsFrom(source) on an empty SearchResults returns just [All] — so the real row painted one tab, then
+        // reflowed to the full (near-always ~11, two-row) set the instant data arrived. Reserve THAT shape from the
+        // first frame instead: while the load is genuinely pending and we have never seen chip data, render the
+        // known static facet superset (FacetsFrom's own fallback list) as neutral placeholder pills. A query that
+        // truly has no chips (loaded, nothing to facet on) falls through to the real one-tab row exactly as before —
+        // this only changes what shows DURING the pending window.
+        if (SearchChipSkeletonPolicy.ShouldShowSkeleton(hasChipSource: _chipSource is not null, isPending: state == (byte)LoadState.Pending))
+            return ChipBarSkeleton();
         var source = _chipSource ?? r;
         _facets = FacetsFrom(source);
         int selected = _chip.Value;
@@ -890,7 +1004,7 @@ sealed class SearchHitsGrid : Component
                         if (_hits[i].Kind == SearchHitKind.Audiobook) { hasAudiobook = true; break; }
                     float rowH = hasAudiobook ? AudiobookRowH : RowH;
                     return PagedShelf.Create(
-                        n,
+                        _hits,
                         cardAt: Card,
                         cardHeight: _ => rowH,
                         header: _showHeader ? SearchChrome.TickHeader(Loc.Get(Strings.Search.BestMatches)) : null,
@@ -903,7 +1017,7 @@ sealed class SearchHitsGrid : Component
                         snap: ShelfSnap.Page,
                         cardWidthAgnostic: true,
                         edgeFade: 16f,
-                        keyOf: i => (uint)i < (uint)_hits.Count ? _hits[i].Uri : i.ToString())
+                        keyOf: (item, i) => item.Uri)
                         with { Key = "hits-shelf:" + n + ":" + maxCols + ":" + rows + ":" + (int)_pager + ":" +
                             first + ":" + _hideTrackArtwork };
                 }, fallback: 0f),
@@ -920,10 +1034,10 @@ sealed class SearchHitsGrid : Component
         return w < need - DetailLayoutBreakpoints.TierHysteresisDip ? (_cols = nominal) : _cols;
     }
 
-    Element Card(int i, float _)
+    Element Card(SearchTopHit hit, int i, float _)
     {
-        if (_model is null || (uint)i >= (uint)_hits.Count) return new BoxEl();
-        return SearchAllList.HitRow(_hits[i], _lib, _model, large: false, _acts, _overlay,
+        if (_model is null) return new BoxEl();
+        return SearchAllList.HitRow(hit, _lib, _model, large: false, _acts, _overlay,
             hideTrackArtwork: _hideTrackArtwork);
     }
 }
@@ -961,7 +1075,7 @@ sealed class SearchMediaGrid : Component
             Children =
             [
                 PagedShelf.Create(
-                    n,
+                    _items,
                     cardAt: Card,
                     cardHeight: MediaCard.ShelfHeight,
                     header: p.Header,
@@ -972,14 +1086,13 @@ sealed class SearchMediaGrid : Component
                     snap: ShelfSnap.Page,
                     cardWidthAgnostic: true,
                     edgeFade: HomeModuleLayout.ShelfEdgeFade,
-                    keyOf: i => (uint)i < (uint)_items.Count ? _items[i].Uri : i.ToString())
+                    keyOf: (item, i) => item.Uri)
                     with { Key = "media-shelf:" + n + ":" + first },
             ],
         };
     }
 
-    Element Card(int i, float _)
-        => (uint)i >= (uint)_items.Count ? new BoxEl() : CardFor(_items[i], _acts, _overlay, _go, _play);
+    Element Card(Item it, int i, float _) => CardFor(it, _acts, _overlay, _go, _play);
 
     /// <summary>The ONE search card factory — shared with <see cref="SearchFacetGrid"/> so a facet tab's grid card and
     /// this shelf's card cannot drift in artwork, menu or drag payload.</summary>

@@ -32,9 +32,11 @@ static class PageNavMotion
     /// <c>BeginKeepAliveExit</c> only overlaps the outgoing page (ZStack on the boundary, hit-test invisible, parked
     /// once its tracks settle) when <c>Exit.Active</c> is true — with a stripped Exit the outgoing page is detached in
     /// the same frame and the card flashes EMPTY before the incoming page arrives.
-    /// Fade-through (not a symmetric slide): exit fades in place (~120ms accelerate) so two full-bleed pages never
-    /// mix at readable opacity; enter follows after 90ms with a short directional slide. SearchPage facet swaps keep
-    /// the shared <see cref="MotionRecipes.PageSlideForward"/> / Back recipes.</summary>
+    /// Fade-through (not a symmetric slide): exit fades in place over 120ms on a FAST-OUT ease so it is ~94% gone when
+    /// enter starts at 90ms — two full-bleed pages never mix at readable opacity (an accelerate curve holds the old page
+    /// near 1 until the end, which is exactly the superimposed-text frame). Enter slides <see cref="Expressive.DistBase"/>
+    /// (the token file's page-slide distance): a long slide covers half its travel in the first presented frame after a
+    /// heavy mount. SearchPage facet swaps keep the shared <see cref="MotionRecipes.PageSlideForward"/> / Back recipes.</summary>
     public static LayoutTransition RecipeFor(NavTransitionKind motion) => motion switch
     {
         NavTransitionKind.Back => PageFadeThroughBack,
@@ -42,26 +44,26 @@ static class PageNavMotion
         _ => PageFadeThroughForward,
     };
 
-    // Outgoing is mostly gone by ~70ms; incoming starts at 90ms — the readable double-exposure window shrinks from
-    // 250ms full-mix to a short low-alpha crossover, and the card is never empty (Exit.Active stays true).
+    // Outgoing is ~94% faded by 90ms, when incoming starts — it overlaps a nearly invisible exit, never a still-opaque
+    // one — and the card is never empty (Exit.Active stays true).
     internal const float FadeThroughExitMs = 120f;
     const float FadeThroughEnterDelayMs = 90f;
 
     public static LayoutTransition PageFadeThroughForward => new(
         TransitionChannels.Position | TransitionChannels.Opacity,
         TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        Enter: new EnterExit(Dx: Expressive.DistLarge, Opacity: 0f, Active: true),
+        Enter: new EnterExit(Dx: Expressive.DistBase, Opacity: 0f, Active: true),
         Exit: new EnterExit(Dx: 0f, Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(FadeThroughExitMs, Easing.FluentAccelerate),
+        ExitDynamics: TransitionDynamics.Tween(FadeThroughExitMs, Easing.EaseOut),
         DelayMs: FadeThroughEnterDelayMs,
         ExitDelayMs: 0f);
 
     public static LayoutTransition PageFadeThroughBack => new(
         TransitionChannels.Position | TransitionChannels.Opacity,
         TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        Enter: new EnterExit(Dx: -Expressive.DistLarge, Opacity: 0f, Active: true),
+        Enter: new EnterExit(Dx: -Expressive.DistBase, Opacity: 0f, Active: true),
         Exit: new EnterExit(Dx: 0f, Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(FadeThroughExitMs, Easing.FluentAccelerate),
+        ExitDynamics: TransitionDynamics.Tween(FadeThroughExitMs, Easing.EaseOut),
         DelayMs: FadeThroughEnterDelayMs,
         ExitDelayMs: 0f);
 
@@ -98,11 +100,13 @@ static class PageNavMotion
         _ => PageSlideSafeForward,
     };
 
+    // The page-slide distance, for the same reason as the fade-through pair: a long slide's first presented frame is
+    // already half its travel.
     public static LayoutTransition PageSlideSafeForward => new(
         TransitionChannels.Position,
         TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        Enter: new EnterExit(Dx: Expressive.DistLarge, Active: true),
-        Exit: new EnterExit(Dx: -Expressive.DistLarge, Active: true),
+        Enter: new EnterExit(Dx: Expressive.DistBase, Active: true),
+        Exit: new EnterExit(Dx: -Expressive.DistBase, Active: true),
         ExitDynamics: TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
         DelayMs: 0f,
         ExitDelayMs: 0f);
@@ -110,8 +114,8 @@ static class PageNavMotion
     public static LayoutTransition PageSlideSafeBack => new(
         TransitionChannels.Position,
         TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        Enter: new EnterExit(Dx: -Expressive.DistLarge, Active: true),
-        Exit: new EnterExit(Dx: Expressive.DistLarge, Active: true),
+        Enter: new EnterExit(Dx: -Expressive.DistBase, Active: true),
+        Exit: new EnterExit(Dx: Expressive.DistBase, Active: true),
         ExitDynamics: TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
         DelayMs: 0f,
         ExitDelayMs: 0f);

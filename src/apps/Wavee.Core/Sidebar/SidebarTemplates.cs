@@ -62,10 +62,10 @@ public static class SidebarTemplates
                 Recents = SidebarRecentsSource.Played,
             }),
         Divider(),
-        // The Shortcuts preset (Cozy + Subtitles:true) is the 44-DIP glyph row — the SAME number Classic's locked
-        // document uses, so the Curated default template is pixel-identical to Classic's shortcuts (R3 residual
-        // close-out). No density override (W7): Comfortable's 40-DIP art column used to land this row's label 8 DIP
-        // right of every Cozy content row in the pane; Cozy's own 32-DIP column reaches the same 44-DIP height.
+        // The Shortcuts preset (Cozy + Subtitles:false, Task C) is the 40-DIP glyph row — the SAME number Classic's
+        // locked document uses, so the Curated default template is pixel-identical to Classic's shortcuts (R3
+        // residual close-out). No density override: Comfortable's 40-DIP art column used to land this row's label
+        // 8 DIP right of every Cozy content row in the pane; Cozy's own 32-DIP column reaches the same height.
         Section(SidebarSectionKind.CollectionShortcuts, "sidebar.yourLibrary",
             SidebarDisplayOptions.Shortcuts,
         [
@@ -85,8 +85,8 @@ public static class SidebarTemplates
         // Classic's rail has no pin tiles.
         Section(SidebarSectionKind.Pinned, "sidebar.pinned",
             SidebarDisplayOptions.Entities with { ShowInRail = false }),
-        // No density override (W7): the Shortcuts preset itself is Cozy + Subtitles:true ⇒ 44, with the same 32-DIP
-        // art column every content row shares — see BuildCurated above for why Comfortable is no longer used here.
+        // No density override: the Shortcuts preset itself is Cozy + Subtitles:false ⇒ 40 (Task C), with the same
+        // 32-DIP art column every content row shares — see BuildCurated above for why Comfortable is not used here.
         Section(SidebarSectionKind.CollectionShortcuts, "sidebar.yourLibrary",
             SidebarDisplayOptions.Shortcuts,
         [

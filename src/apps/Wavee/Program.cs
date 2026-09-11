@@ -14,6 +14,17 @@ namespace Wavee;
 static class Program
 {
     static WaveeLogger CliLog(string category) => new(WaveeLog.Instance, category);
+
+    // Every headless-probe exit goes through here, not a bare Environment.Exit: the file log queue is async (WaveeLog
+    // writes on a background thread) and the dealer archive batches to disk, so a bare Environment.Exit right after the
+    // last log line can tear the process down before either flushes — the probe's own tail (the line that matters most,
+    // e.g. the failure reason) never reaches wavee-yyyyMMdd.log.
+    static void ExitCli(int code)
+    {
+        WaveeLog.Instance.Flush();
+        DealerArchive.Instance.Flush();
+        Environment.Exit(code);
+    }
     [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     static extern bool AttachConsole(int dwProcessId);
@@ -108,6 +119,11 @@ static class Program
         // the old single ever-growing wavee.log is migrated into the dated set on first launch.
         WaveeLog.Instance.Configure(crashLogPath: logPath, echo: DebugEcho(),
             minLevel: minLevel, fileMinLevel: fileLevel, dailyRolling: true);
+        // A headless CLI probe (--spotify-metadata, --spotify-login, ...) needs its output on the attached console in
+        // BOTH Debug and Release — DebugEcho() above is #if DEBUG only, so a Release probe otherwise wrote solely to the
+        // daily file log (and printed nothing a user watching the terminal could see). Must stay below
+        // AttachParentConsole() (above), which is what makes Console.Out point at the parent terminal in the first place.
+        if (CliRun.IsHeadless(args)) WaveeLog.Instance.SetEcho(Console.Out.WriteLine);
         // The dealer firehose archive is opt-in (Settings › Diagnostics): it writes every dealer frame to disk, which is
         // invaluable when reproducing a sync bug and pure cost otherwise. The directory is always configured so turning
         // the setting on mid-session has somewhere to write.
@@ -208,7 +224,7 @@ static class Program
         if (Array.IndexOf(args, "--backend-selftest") >= 0)
         {
             int code = Wavee.Backend.BackendSelfTest.Run(CliLog("probe"));
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         // QR diagnostic: encode [text] with the REAL Qr encoder → ASCII + a crisp PNG (isolates the encoder from the GUI
@@ -218,7 +234,7 @@ static class Program
         {
             string qtext = qrIdx + 1 < args.Length && !args[qrIdx + 1].StartsWith("--") ? args[qrIdx + 1] : "https://spotify.com/pair";
             string qpath = qrIdx + 2 < args.Length && !args[qrIdx + 2].StartsWith("--") ? args[qrIdx + 2] : "qr.png";
-            Environment.Exit(QrDump.Run(qtext, qpath, CliLog("probe")));
+            ExitCli(QrDump.Run(qtext, qpath, CliLog("probe")));
         }
 
         // Headless LIVE Spotify login (real network): OAuth device-code → AP handshake + login → APWelcome.
@@ -226,7 +242,7 @@ static class Program
         {
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(8));
             int code = Wavee.SpotifyLive.SpotifyLiveLogin.RunAsync(CliLog("auth"), cts.Token).GetAwaiter().GetResult();
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         // LIVE metadata round-trip: login -> login5 -> client-token -> spclient extended-metadata for one URI -> print.
@@ -239,7 +255,7 @@ static class Program
                 : "spotify:track:4uLU6hMCjMI75M1A2tKUQC";
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(8));
             int code = Wavee.SpotifyLive.SpotifyMetadataProbe.RunAsync(uri, CliLog("probe"), cts.Token, appLocale.SpotifyLanguage).GetAwaiter().GetResult();
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         // LIVE RAW music-video manifest dump: login -> resolve the track's manifest_id (TrackV4 OriginalVideo, else the
@@ -256,7 +272,7 @@ static class Program
                 : "spotify:track:0VjIjW4GlUZAMYd2vXMi3b";
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(8));
             int code = Wavee.SpotifyLive.SpotifyVideoManifestProbe.RunAsync(uri, CliLog("probe"), cts.Token, appLocale.SpotifyLanguage).GetAwaiter().GetResult();
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         // LIVE has-video signal probe: fetch extended-metadata kinds 99 (VIDEO_ASSOCIATIONS), 85 (ORIGINAL_VIDEO),
@@ -270,7 +286,7 @@ static class Program
             for (int i = traitsIdx + 1; i < args.Length && !args[i].StartsWith("--"); i++) extra.Add(args[i]);
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(8));
             int code = Wavee.SpotifyLive.SpotifyVideoTraitProbe.RunAsync(extra, CliLog("probe"), cts.Token, appLocale.SpotifyLanguage).GetAwaiter().GetResult();
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         // LIVE playlist membership round-trip: login -> GET /playlist/v2 -> thin header + ordered membership -> hydrate -> print.
@@ -279,10 +295,10 @@ static class Program
         if (plIdx >= 0)
         {
             string uri = plIdx + 1 < args.Length && !args[plIdx + 1].StartsWith("--") ? args[plIdx + 1] : "";
-            if (uri.Length == 0) { Console.Error.WriteLine("usage: --spotify-playlist spotify:playlist:<id>"); Environment.Exit(2); }
+            if (uri.Length == 0) { Console.Error.WriteLine("usage: --spotify-playlist spotify:playlist:<id>"); ExitCli(2); }
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(8));
             int code = Wavee.SpotifyLive.SpotifyLibraryProbe.RunPlaylistAsync(uri, CliLog("probe"), cts.Token, appLocale.SpotifyLanguage).GetAwaiter().GetResult();
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         // LIVE rootlist round-trip: login -> GET /playlist/v2/user/{me}/rootlist -> the folder/playlist tree -> print.
@@ -290,7 +306,7 @@ static class Program
         {
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(8));
             int code = Wavee.SpotifyLive.SpotifyLibraryProbe.RunRootlistAsync(CliLog("probe"), cts.Token, appLocale.SpotifyLanguage).GetAwaiter().GetResult();
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         // LIVE collection round-trip: login -> POST /collection/v2/{paging|delta} for the set's WIRE set (CollectionSets.WireSet:
@@ -302,7 +318,7 @@ static class Program
             string setId = colIdx + 1 < args.Length && !args[colIdx + 1].StartsWith("--") ? args[colIdx + 1] : "liked";
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(8));
             int code = Wavee.SpotifyLive.SpotifyLibraryProbe.RunCollectionAsync(setId, CliLog("probe"), cts.Token, appLocale.SpotifyLanguage).GetAwaiter().GetResult();
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         // LIVE full library sync into the REAL persistent store (rootlist + all collections + hydrate + the dealer firehose).
@@ -311,29 +327,29 @@ static class Program
         {
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(10));
             int code = Wavee.SpotifyLive.SpotifyLibrarySync.RunAsync(CliLog("sync"), cts.Token, appLocale.SpotifyLanguage).GetAwaiter().GetResult();
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
 #if WAVEE_PLAYPLAY_LOCAL
         if (Array.IndexOf(args, "--playplay-runtime-status") >= 0)
         {
             int code = Wavee.SpotifyLive.PlayPlayRuntimeProbe.RunStatus(args, CliLog("audio"));
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         int regIdx = Array.IndexOf(args, "--playplay-runtime-register");
         if (regIdx >= 0)
         {
             string dir = regIdx + 1 < args.Length && !args[regIdx + 1].StartsWith("--") ? args[regIdx + 1] : "";
-            if (dir.Length == 0) { Console.Error.WriteLine("usage: --playplay-runtime-register <dir>"); Environment.Exit(2); }
+            if (dir.Length == 0) { Console.Error.WriteLine("usage: --playplay-runtime-register <dir>"); ExitCli(2); }
             int code = Wavee.SpotifyLive.PlayPlayRuntimeProbe.RunRegister(dir, CliLog("audio"));
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         if (Array.IndexOf(args, "--playplay-runtime-check") >= 0)
         {
             int code = Wavee.SpotifyLive.PlayPlayRuntimeProbe.RunCheck(args, CliLog("audio"));
-            Environment.Exit(code);
+            ExitCli(code);
         }
 #endif
 
@@ -343,7 +359,7 @@ static class Program
         {
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(3));
             int code = Wavee.SpotifyLive.LiveSessionHost.RunAsync(CliLog("connect"), cts.Token, appLocale.SpotifyLanguage).GetAwaiter().GetResult();
-            Environment.Exit(code);
+            ExitCli(code);
         }
 
         if (StartupPreflight.TryGetBlockingIssue(out var startupIssueTitle, out var startupIssueBody))
@@ -504,14 +520,16 @@ static class Program
             // EVERY chrome band — titlebar, sidebar, player dock — because WaveeShell's root is transparent and each
             // band is a deliberate paint-site omission over live Mica, not just under the login screen and the host
             // fallback.
-            // NO AmbientFps here any more (it used to hard-code 60): the pacing of PERPETUAL ambient motion — the
-            // seek playhead, now-playing equalizer, skeleton shimmer, buffering spinner, karaoke lyrics wipe — is
-            // AmbientPowerPolicy's call, attached above. Explicit ~30 fps always (HalfRefresh is avoided — on a 120 Hz
-            // panel it is 60 fps, still too hot for Wavee's full-window Present). Ambient Present is a full-window
-            // translucent pass on this engine, so Uncapped is never used (it disabled the adaptive-FPS governor and
-            // let a 13 px equalizer pin ~56% GPU). Latency-sensitive input (scroll/hover/drag) and FrameClock consumers
-            // (lyrics) stay at the display rate; FG_ANIM_FPS still overrides everything (=30 to pin a fixed cadence,
-            // =0 for uncapped).
+            // NO AppOptions.DefaultLoopHz set here: pacing is now per SOURCE, not per host. Every slab animation row
+            // carries a Cadence (AnimEngine.Keyframes/UseKeyframes); a plain `loop: true` row with none resolves to
+            // host.Animation.DefaultLoopHz, which AmbientPowerPolicy (attached above) drives from AC power alone
+            // (~30 fps plugged, ~24 fps on battery) — the seek playhead, now-playing equalizer, skeleton shimmer,
+            // buffering spinner and karaoke lyrics wipe all just use `loop: true` and inherit that rate, no per-call-site
+            // fps math. A row that wants the display rate passes `Cadence.Display` explicitly (springs, live drags);
+            // one that wants a fixed sub-refresh rate passes `Cadence.At(hz)`. The host also floors the gap between
+            // animation-only frames to `InactiveFrameIntervalMs` while the window is not foreground/active — that
+            // replaces the old focus-tracking half of AmbientPowerPolicy, which no longer exists.
+            NavigationFrameWatch.Attach();
             FluentAppHarness.Run(() => new WaveeApp(settings, appLocale),
                 new AppOptions
                 {
@@ -521,6 +539,10 @@ static class Program
                     Title = "Wavee Music", Width = winW, Height = winH,
                     MinWidth = 300, CustomFrame = true,
                     MicaAlt = false,
+                    // Every frame over the panel's refresh interval is logged with WHICH components rendered and who
+                    // allocated (NavigationFrameWatch frame.slow / nav.frames worstCensus). Always on: a slow frame
+                    // that cannot be attributed is a slow frame that does not get fixed.
+                    RenderCensus = true,
                     // App-wide UI zoom, seeded BEFORE the first frame (the ThemeMode discipline: no startup jump from
                     // 100% to the user's scale). Snap, not Clamp: a persisted value that drifted off the ladder (a
                     // hand-edited registry value, an older ladder) re-enters the discrete step set here, so Ctrl+±
@@ -534,6 +556,8 @@ static class Program
                 new HarnessOptions { Frames = frames, Screenshot = screenshot });
             // The window came down in an orderly way (FluentAppHarness.Run returned instead of throwing) — close out
             // the marker RunMarker.Begin opened above so the NEXT launch's Begin reads "clean", not a stale "running".
+            NavigationFrameWatch.EndSession();
+            MemorySampler.SampleProcessEnd();
             RunMarker.End(settings);
             // Process-exit flush for session.json (nav + the playback restore section): the shell's unmount cleanup never
             // runs on shutdown (AppHost.Dispose doesn't unmount the tree), so a pending debounced save would be lost.

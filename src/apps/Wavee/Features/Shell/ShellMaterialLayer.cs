@@ -78,13 +78,23 @@ sealed class ShellMaterialLayer : Component
 
     static Element[] Only(Element? e) => e is null ? [] : [e];
 
-    // One flat full-bleed layer. Always mounted (even at Transparent) so the node is LIVE across a material change and
-    // the BrushTransition has a previous colour to fade FROM.
+    /// <summary>The material slot's "no colour" reading — <see cref="WaveeColors.ShellGround"/> (the shell's own
+    /// achromatic base) at a whisper alpha, never fully transparent. Audit finding S1 #1: cross-fading INTO or OUT OF
+    /// <see cref="ColorF.Transparent"/> (implicitly premultiplied BLACK, RGB all zero) drags the interpolated colour
+    /// toward black for the whole length of the ramp — which is exactly what read as the shell tint going "neutral
+    /// AND DARKER" for several frames at almost every navigation. A REAL ground colour at both ends of the
+    /// interpolation means a neutral↔colour swap is an ordinary cross-fade, the same as a colour↔colour one.
+    /// <c>CoverShellTintBinder</c> (Design/CoverPaletteLeaves.cs) uses this same value for its own "definitely no
+    /// colour" writes, so the two never disagree about what "neutral" looks like.</summary>
+    internal static ColorF NeutralGround => WaveeColors.ShellGround with { A = 0.03f };
+
+    // One flat full-bleed layer. Always mounted (even at the neutral ground) so the node is LIVE across a material
+    // change and the BrushTransition has a previous colour to fade FROM.
     static Element Tint(ColorF? tint) => new BoxEl
     {
         Key = "shell.material.tint",
         Grow = 1f, HitTestVisible = false,
-        Fill = tint ?? ColorF.Transparent,
+        Fill = tint ?? NeutralGround,
         BrushTransitionMs = WaveeMotion.Standard,
     };
 

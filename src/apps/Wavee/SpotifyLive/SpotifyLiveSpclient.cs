@@ -16,13 +16,14 @@ public static class SpotifyLiveSpclient
 
     public static async Task<LiveSpclient?> ConnectAsync(WaveeLogger log, CancellationToken ct, bool retainApChannel = false,
         bool allowDeviceCode = true, IObserver<AuthState>? authObserver = null, Action? onCredentialAcquired = null,
-        bool allowBrowser = false, string language = "en")
+        bool allowBrowser = false, string language = "en", bool clearStoredOnReject = true)
     {
         language = SpotifyHeaders.NormalizeLanguage(language);
         // retainApChannel: keep the login AP socket alive as the ONE persistent channel (login + audio-key share it). The
         // probes/premium-gate leave it false (the socket is disposed after login). allowDeviceCode/allowBrowser/authObserver/
         // onCredentialAcquired thread the in-app login UI: silent-vs-interactive, the method (browser/device), the challenge, Finalizing.
-        var login = await SpotifyLiveLogin.LoginAsync(log, ct, retainApChannel, allowDeviceCode, authObserver, onCredentialAcquired, allowBrowser).ConfigureAwait(false);
+        // clearStoredOnReject: probe callers pass false so a rejected stored credential is never wiped by a probe run.
+        var login = await SpotifyLiveLogin.LoginAsync(log, ct, retainApChannel, allowDeviceCode, authObserver, onCredentialAcquired, allowBrowser, clearStoredOnReject).ConfigureAwait(false);
         if (login is null) return null;
         var welcome = login.Welcome;
         var deviceId = login.DeviceId;

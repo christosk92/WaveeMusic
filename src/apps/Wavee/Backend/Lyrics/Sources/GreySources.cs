@@ -312,13 +312,38 @@ public sealed class QqMusicSource : ILyricCandidateSource
 }
 
 /// <summary>Musixmatch richsync (word/char-level). token.get (cached) → macro.subtitles.get (richsync). Token can hit a
-/// captcha (401) — best-effort, returns null on any failure.</summary>
+/// captcha (401) — best-effort, returns null on any failure. <see cref="ILyricHttp"/> is injected (not the shared
+/// <see cref="GreyHttp"/> static helper every other grey source uses directly) so the status_code/token-drop behaviour
+/// is unit-testable with a fake, the same seam LRCLIB/AMLL already use; the parameterless constructor keeps production
+/// wiring (<c>new MusixmatchSource()</c>) unchanged.</summary>
 public sealed class MusixmatchSource : ILyricCandidateSource
 {
     const string AppId = "web-desktop-app-v1.0";
-    static readonly (string, string)[] Headers = { ("Cookie", "x-mxm-token-guid=") };
-    static string? _token;
-    static readonly SemaphoreSlim _tokGate = new(1, 1);
+    static readonly IReadOnlyDictionary<string, string> Headers = new Dictionary<string, string> { ["Cookie"] = "x-mxm-token-guid=" };
+
+    readonly ILyricHttp _http;
+    // Instance-scoped (not static): one MusixmatchSource lives for the app session in production, so this is exactly as
+    // long-lived as the old static cache was — but it also means two independent instances (e.g. two unit tests) never
+    // share a dead/poisoned token, which the static version could not avoid.
+    string? _token;
+    // A captured token is only ever valid as long as Musixmatch's session behind it — nothing invalidates it in-process
+    // otherwise, so a token minted right before a captcha/quota block would sit cached FOREVER (every later call reads
+    // TryUrl's status_code≠200 branch, drops the token, and re-fetches once — but the token.get response ITSELF can also
+    // answer 200 with a stale/soft-expired token that macro.subtitles.get then rejects one call at a time). The TTL is a
+    // second line of defense: even a token nothing ever explicitly rejected gets refreshed at least twice a day.
+    DateTime _tokenAtUtc = DateTime.MinValue;
+    static readonly TimeSpan TokenTtl = TimeSpan.FromHours(12);
+    readonly SemaphoreSlim _tokGate = new(1, 1);
+
+    public MusixmatchSource(ILyricHttp? http = null) => _http = http ?? new GreyHttpAdapter();
+
+    /// <summary>Adapts the shared <see cref="GreyHttp"/> GET helper (fixed User-Agent, (string,string)[] headers) to
+    /// <see cref="ILyricHttp"/> so production keeps its existing transport/UA/pool untouched.</summary>
+    sealed class GreyHttpAdapter : ILyricHttp
+    {
+        public Task<string?> GetStringAsync(string url, IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
+            => GreyHttp.Get(url, headers is null ? null : headers.Select(kv => (kv.Key, kv.Value)).ToArray(), ct);
+    }
 
     public string Id => "musixmatch";
     public bool Enabled => true;
@@ -371,12 +396,23 @@ public sealed class MusixmatchSource : ILyricCandidateSource
 
     async Task<LyricsCandidate?> TryUrl(string url, MatchBasis basis, LyricsRequest req, CancellationToken ct)
     {
-        string? json = await GreyHttp.Get(url, Headers, ct).ConfigureAwait(false);
+        string? json = await _http.GetStringAsync(url, Headers, ct).ConfigureAwait(false);
         LyricsProbe.CaptureRaw(Id, LyricsProbe.Redact(url), "json", json);
         if (json is null) return null;
         try
         {
             using var d = JsonDocument.Parse(json);
+            // Musixmatch answers HTTP 200 even for a captcha (401) or a quota block (402) — the block hides inside
+            // message.header.status_code, and the body underneath is a decoy: a `subtitle_body` full of plausible-looking
+            // nonsense text at uniform fake timings (the anti-scraping tell this whole gate exists for). Checked before
+            // either body is read, on EVERY macro/subtitles response, not just once at token acquisition — a token can go
+            // bad mid-session.
+            if (TryGetStatusCode(d.RootElement, out int code) && code != 200)
+            {
+                LyricsProbe.Note(Id, $"musixmatch status_code={code} (captcha/quota) — token dropped");
+                _token = null;   // next call re-fetches exactly once, rather than replaying the same dead token forever
+                return null;
+            }
             // message.body.macro_calls["track.richsync.get"].message.body.richsync.richsync_body
             if (TryGetRichsyncBody(d.RootElement, out var body))
             {
@@ -440,22 +476,39 @@ public sealed class MusixmatchSource : ILyricCandidateSource
         return b.TryGetProperty("macro_calls", out macroCalls);
     }
 
-    static async Task<string?> GetTokenAsync(CancellationToken ct)
+    /// <summary>message.header.status_code — 200 on a real answer; 401 (captcha) and 402 (quota) arrive as HTTP 200 with
+    /// this the only signal something is wrong. Shared by every macro/subtitles response (token.get included, which uses
+    /// the same envelope).</summary>
+    static bool TryGetStatusCode(JsonElement root, out int code)
     {
-        if (_token is not null) return _token;
+        code = 0;
+        if (!root.TryGetProperty("message", out var m) || !m.TryGetProperty("header", out var h)) return false;
+        if (!h.TryGetProperty("status_code", out var sc) || sc.ValueKind != JsonValueKind.Number) return false;
+        code = sc.GetInt32();
+        return true;
+    }
+
+    async Task<string?> GetTokenAsync(CancellationToken ct)
+    {
+        if (_token is not null && DateTime.UtcNow - _tokenAtUtc < TokenTtl) return _token;
         await _tokGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (_token is not null) return _token;
+            if (_token is not null && DateTime.UtcNow - _tokenAtUtc < TokenTtl) return _token;
             string rnd = Guid.NewGuid().ToString("N")[..8];
             string url = $"https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id={AppId}&t={rnd}";
-            string? json = await GreyHttp.Get(url, Headers, ct).ConfigureAwait(false);
+            string? json = await _http.GetStringAsync(url, Headers, ct).ConfigureAwait(false);
             if (json is null) return null;
             using var d = JsonDocument.Parse(json);
+            if (TryGetStatusCode(d.RootElement, out int code) && code != 200) { _token = null; return null; }
             if (d.RootElement.TryGetProperty("message", out var m) && m.TryGetProperty("body", out var b))
             {
                 string? t = GreyHttp.Str(b, "user_token");
-                if (!string.IsNullOrWhiteSpace(t) && t != "UpgradeOnlyUpgradeOnlyUpgradeOnlyUpgradeOnly") _token = t;
+                if (!string.IsNullOrWhiteSpace(t) && t != "UpgradeOnlyUpgradeOnlyUpgradeOnlyUpgradeOnly")
+                {
+                    _token = t;
+                    _tokenAtUtc = DateTime.UtcNow;
+                }
             }
             return _token;
         }

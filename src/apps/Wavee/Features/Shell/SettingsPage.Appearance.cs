@@ -32,6 +32,12 @@ sealed partial class SettingsPage
 {
     readonly Signal<int> _density = new(1);
 
+    // The lyrics blur-strength slider (0..100). Seeded once from WaveeSettings.LyricsBlurStrength resolved against
+    // GpuProfile.IsWeak (SettingsPage.cs's mount UseEffect — the _crossSlider precedent, so it survives this page's
+    // own re-renders instead of snapping back to the ctor default on every Bump()) and mirrored on every explicit
+    // move in SetLyricsBlur below.
+    readonly FloatSignal _lyricsBlurSlider = new(LyricsBlurPolicy.StrongGpuDefault);
+
     /// <summary>The live app-zoom factor. Written in <c>SettingsPage.Render</c> from <c>Viewport.Zoom</c> — a Context,
     /// so the page re-renders when the chords, the Ctrl+wheel hook or the palette change it. It is read there rather
     /// than here because <see cref="AppearanceTab"/> only runs for one tab, and a hook called conditionally breaks
@@ -95,6 +101,25 @@ sealed partial class SettingsPage
         Loc.Get(Strings.Settings.Choice.Romanization),
     ];
 
+    // The Now Playing presentation SelectorBar: Cover (NpvPlayerPrefs.Cover == 0) | the current style's short label
+    // (NpvPlayerPrefs.Player == 1). Index IS the stored value — same convention as ThemeMode/RowDensity above. Rebuilt
+    // per render (not hoisted like ZoomLabels) because the second item's label follows whichever style is selected.
+    static string[] NpvPresentationLabels(NpvPlayerCatalog.Preset style) =>
+    [
+        Loc.Get(Strings.Player.PresentationCover),
+        Loc.Get(style.ShortLabelKey),
+    ];
+
+    // The player-style ComboBox: all twelve presets in catalog order, index == preset id (NpvPlayerCatalog.IsPresetId
+    // convention — append-only, never renumbered).
+    static string[] NpvStyleLabels()
+    {
+        var presets = NpvPlayerCatalog.Presets;
+        var labels = new string[presets.Length];
+        for (int i = 0; i < presets.Length; i++) labels[i] = Loc.Get(presets[i].LabelKey);
+        return labels;
+    }
+
     /// <summary>An appearance on/off row. Takes <paramref name="settings"/> explicitly rather than closing over it, so
     /// the group builders below can reuse it without a per-render delegate.</summary>
     Element AppearanceToggle(IAppSettings? settings, SettingKey<bool> key)
@@ -105,6 +130,28 @@ sealed partial class SettingsPage
             AppearancePrefs.Bump();
             Bump();
         }, style: SettingsCard.CompactToggleStyle());
+
+    /// <summary>The blur-strength slider row's control: the 0..100 slider (thumb tooltip echoes the resolved
+    /// percent, the CrossfadeGroup precedent) plus a small "Auto" reset link — the SettingsPage.Playback
+    /// ResetCurve precedent for a link living beside a slider-shaped control — that appears ONLY while the setting
+    /// is pinned to an explicit value. It disappears once reset: an "Auto" link with nothing to reset back to would
+    /// be a dead affordance.</summary>
+    Element LyricsBlurControl(bool isAuto, bool enabled, Action<float> onChange, Action onReset)
+    {
+        var slider = Slider.Create(_lyricsBlurSlider, onChange,
+            new Slider.SliderOptions
+            {
+                Min = 0f, Max = 100f, Step = 1f, TickFrequency = 25f, IsThumbToolTipEnabled = true,
+                ThumbToolTipValueConverter = v => ((int)MathF.Round(v)).ToString() + "%",
+            },
+            length: 180f, isEnabled: enabled);
+        if (isAuto) return slider;
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+            Children = [slider, HyperlinkButton.Create(Loc.Get(Strings.Settings.Appearance.LyricsBlurAuto), onReset, isEnabled: enabled)],
+        };
+    }
 
     Element AppearanceTab(Services? svc, Action<float>? requestTheme)
     {
@@ -123,6 +170,20 @@ sealed partial class SettingsPage
             settings.Get(WaveeSettings.DetailLikedRailWidth), settings.Get(WaveeSettings.DetailLikedRailCollapsed),
             settings.Get(WaveeSettings.DetailShowRailWidth), settings.Get(WaveeSettings.DetailShowRailCollapsed));
         int lyricsSecondary = Math.Clamp(settings?.Get(WaveeSettings.LyricsSecondaryLine) ?? 0, 0, LyricsSecondaryLabels().Length - 1);
+        // Blur strength: the STORED value drives whether this row is on auto (the "Auto" reset only shows while it
+        // is), the RESOLVED value is what the slider thumb and its tooltip actually show. GpuProfile.IsWeak is the
+        // live engine flag LyricsView itself reads — see LyricsBlurPolicy's type doc for why -1 is resolved here and
+        // nowhere downstream of this row.
+        int lyricsBlurStored = settings?.Get(WaveeSettings.LyricsBlurStrength) ?? LyricsBlurPolicy.Auto;
+        bool weakGpu = GpuProfile.IsWeak;
+        int lyricsBlurResolved = LyricsBlurPolicy.Resolve(lyricsBlurStored, weakGpu);
+        bool lyricsBlurIsAuto = lyricsBlurStored < 0;
+        // Now Playing player styles (docs/plans/wavee/npv-player-styles-implementation.md): reading the epoch here —
+        // like LyricsPrefs.Epoch above the lyrics writer — subscribes this render to EVERY surface that can change the
+        // presentation or style (header row, flyout, art context menu, palette), not only this page's own writes.
+        _ = NpvPlayerPrefs.Epoch.Value;
+        int npvPresentation = NpvPlayerPrefs.Presentation(settings);
+        var npvStyle = NpvPlayerCatalog.ById(NpvPlayerPrefs.Style(settings));
         // The zoom picker's mode: Auto/Dense show as the ONE head item ("Auto"); only Manual shows a ladder rung
         // selected. Clamp tolerates a value this build doesn't define (the int-enum convention).
         var zoomMode = (ZoomAutoMode)Math.Clamp(settings?.Get(WaveeSettings.ZoomMode) ?? (int)ZoomAutoMode.Auto, 0, 2);
@@ -237,6 +298,38 @@ sealed partial class SettingsPage
             Bump();
         }
 
+        // The blur-strength slider. Writes the EXPLICIT 0..100 value (never -1: dragging the slider always overrides
+        // auto, on any tier, until Reset below) and re-resolves through LyricsBlurPolicy so the thumb settles on the
+        // exact int the setting now holds — Slider reports floats, and the stored key is an int. Bumps LyricsPrefs
+        // (not AppearancePrefs): the DoF/halo σ is read by LyricsView under the same epoch as the secondary-line and
+        // backdrop toggles, so a live change reaches an already-open rail/immersive surface on the same frame.
+        void SetLyricsBlur(float v)
+        {
+            if (settings is null) return;
+            int strength = LyricsBlurPolicy.Resolve(Math.Clamp((int)MathF.Round(v), 0, 100), weakGpu);
+            settings.Set(WaveeSettings.LyricsBlurStrength, strength);
+            _lyricsBlurSlider.Value = strength;
+            LyricsPrefs.Bump();
+            Bump();
+        }
+
+        // "Auto" resets to -1 (device-decided) rather than writing back whatever Resolve currently picks — the point
+        // is that this row STOPS overriding the tier pick, the same as never having moved the slider.
+        void ResetLyricsBlur()
+        {
+            if (settings is null) return;
+            settings.Set(WaveeSettings.LyricsBlurStrength, LyricsBlurPolicy.Auto);
+            _lyricsBlurSlider.Value = LyricsBlurPolicy.Resolve(LyricsBlurPolicy.Auto, weakGpu);
+            LyricsPrefs.Bump();
+            Bump();
+        }
+
+        // Both writers go straight through NpvPlayerPrefs — no page-local Bump(): NpvPlayerPrefs.Epoch (read above)
+        // already covers this row's own re-render, the same way LyricsPrefs.Epoch covers SetLyricsSecondary's siblings
+        // elsewhere in the app.
+        void SetNpvPresentation(int i) => NpvPlayerPrefs.SetPresentation(settings, i, NpvDiagnostics.SourceSettings);
+        void SetNpvStyle(int i) => NpvPlayerPrefs.SetStyle(settings, i, NpvDiagnostics.SourceSettings);
+
         return SettingsTabStack(
             SettingsSectionHeader(Loc.Get(Strings.Settings.Appearance.Title),
                 SettingsGlyphs.Section(SettingsTab.Appearance, "Theme"),
@@ -291,7 +384,24 @@ sealed partial class SettingsPage
             // A plain AppearanceToggle: its Bump() raises AppearancePrefs.Epoch, which ImmersiveLyricsSurface reads, so
             // flipping it starts/stops the drift on an OPEN surface — no restart.
             SettingsRow(Loc.Get(Strings.Settings.Appearance.LyricsBackdrop), Loc.Get(Strings.Settings.Appearance.LyricsBackdropSub),
-                AppearanceToggle(settings, WaveeSettings.LyricsAnimatedBackdrop), SettingsGlyphs.Row(SettingsTab.Appearance, "lyricsBackdrop")));
+                AppearanceToggle(settings, WaveeSettings.LyricsAnimatedBackdrop), SettingsGlyphs.Row(SettingsTab.Appearance, "lyricsBackdrop")),
+            SettingsRow(Loc.Get(Strings.Settings.Appearance.LyricsBlur), Loc.Get(Strings.Settings.Appearance.LyricsBlurSub),
+                LyricsBlurControl(lyricsBlurIsAuto, settings is not null, SetLyricsBlur, ResetLyricsBlur),
+                SettingsGlyphs.Row(SettingsTab.Appearance, "lyricsBlur")),
+
+            // Now Playing player styles: its own group, same shape as Lyrics above — the pinned hero's Cover|Player
+            // switch and which of the twelve decks Player shows. Both rows write through NpvPlayerPrefs so the header
+            // row, flyout, art context menu and palette all agree with what this page shows.
+            SettingsSectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title),
+                SettingsGlyphs.Section(SettingsTab.Appearance, "Now playing"),
+                Loc.Get(Strings.Settings.NowPlaying.Subtitle)),
+            SettingsRow(Loc.Get(Strings.Settings.Appearance.NpvPresentation), Loc.Get(Strings.Settings.Appearance.NpvPresentationSub),
+                SelectorBar.Create(NpvPresentationLabels(npvStyle), new Signal<int>(npvPresentation), onChange: SetNpvPresentation),
+                SettingsGlyphs.Row(SettingsTab.Appearance, "npvPresentation")),
+            SettingsRow(Loc.Get(Strings.Settings.Appearance.NpvStyle), Loc.Get(Strings.Settings.Appearance.NpvStyleSub),
+                ComboBox.Create(NpvStyleLabels(), new Signal<int>(npvStyle.Id), width: 180f, isEnabled: settings is not null,
+                    onChange: SetNpvStyle),
+                SettingsGlyphs.Row(SettingsTab.Appearance, "npvStyle")));
     }
 
     // ── Lists → Row density ───────────────────────────────────────────────────────────────────────────────────────────

@@ -358,7 +358,7 @@ static class SidebarEntityRow
         float art = float.IsNaN(spec.ArtSize) ? SidebarRowMetrics.ArtFor(spec.Density) : spec.ArtSize;
         bool bareGlyph = spec.Leading is null && spec.Glyph is { Length: > 0 };
         // W7: ONE gap for every row shape (no more bareGlyph ⇒ 12 special case) — SidebarRowGeometry.LeadingGap is the
-        // same 10 StandardLeading and TreeLeading already used, so a glyph row's label lands exactly where an art row's
+        // same 6 StandardLeading and TreeLeading already used, so a glyph row's label lands exactly where an art row's
         // does at the same density (both now build an ArtFor(density)-wide leading column; see the leading column below).
         float gap = float.IsNaN(spec.Gap) ? SidebarRowGeometry.LeadingGap : spec.Gap;
         // A copy: an `in` parameter cannot be captured by the bound paint thunk. This is the WHOLE-ROW cue only (the

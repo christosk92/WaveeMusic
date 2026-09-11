@@ -557,7 +557,7 @@ static class DetailRail
 
     internal static Element PlaylistOwnerBlock(DetailModel m, float cover, Loadable<DetailModel> full)
         => ShowCollaborators(m)
-            ? Embed.Comp(() => new CollaboratorFacePile(m, cover, full))
+            ? Embed.Comp(() => new CollaboratorFacePile(m, cover, full)) with { Key = $"pl-collab:{(int)cover}" }
             : PlaylistInlineEdit.OwnerRow(full, cover);
 
     internal static bool ShowCollaborators(DetailModel m)

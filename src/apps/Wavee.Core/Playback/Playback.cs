@@ -137,6 +137,20 @@ public interface IPlaybackPlayer
     bool ShouldPauseOnSuspend => true;
 }
 
+/// <summary>A playback position paired with the instant it was true, in <see cref="System.Diagnostics.Stopwatch"/>
+/// ticks (<see cref="System.Diagnostics.Stopwatch.GetTimestamp"/>) — never a wall clock and never "now" at the point
+/// of consumption.
+/// <para><b>Why.</b> A position sample crosses several hops (host → projection → bridge → UI) before a consumer
+/// reads it, and every hop can sit behind a scheduler with ~15.6 ms timer-tick granularity. Comparing an already
+/// 200 ms-old sample's <see cref="PositionMs"/> against "now" read on that coarse clock is what produced the karaoke
+/// lyrics view's stepping wipe: the extrapolation base moved in ~15.6 ms jumps instead of smoothly. Carrying the
+/// sample's OWN timestamp lets a consumer (the lyrics clock) extrapolate forward from the instant the sample was
+/// actually true, on one monotonic clock end to end, instead of mixing an old sample with a fresh "now".</para></summary>
+/// <param name="PositionMs">The position, in ms, as of <paramref name="SampleQpc"/>.</param>
+/// <param name="SampleQpc"><see cref="System.Diagnostics.Stopwatch.GetTimestamp"/> at the instant
+/// <paramref name="PositionMs"/> was true. 0 = never sampled.</param>
+public readonly record struct PositionSample(long PositionMs, long SampleQpc);
+
 /// <summary>Observable playback state. Position is authoritative-frame + 1 Hz interpolation
 /// (mirrors the real IPC snapshot cadence — the UI interpolates per-frame between ticks).</summary>
 public interface IPlaybackState : System.ComponentModel.INotifyPropertyChanged
@@ -199,8 +213,9 @@ public interface IPlaybackState : System.ComponentModel.INotifyPropertyChanged
     /// <summary>Coarse "something changed" signal (track / play-state / queue / palette).</summary>
     IObservable<IPlaybackState> Changes { get; }
 
-    /// <summary>Emits the current position in ms ~once per second while playing; re-anchors on track change.</summary>
-    IObservable<long> PositionTicks { get; }
+    /// <summary>Emits the current position ~once per second while playing (re-anchors on track change), paired with
+    /// the instant it was true — see <see cref="PositionSample"/> for why that timestamp travels with the value.</summary>
+    IObservable<PositionSample> PositionTicks { get; }
 }
 
 public enum DeviceKind { ThisDevice, Phone, Computer, Speaker, Tv }

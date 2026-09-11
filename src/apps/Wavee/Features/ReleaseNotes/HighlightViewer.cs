@@ -177,7 +177,7 @@ sealed class HighlightViewerView : Component
         bool hasPager = count >= 2;   // one highlight → no dots (design §E.1); the chevrons stay — see Circle
         var children = new List<Element>(3) { Band(item, h, id, imgH, index, count, store, video) };
         if (hasPager) children.Add(PagerRow(count, index));
-        children.Add(TextSlide(h, id, store, hasPager));
+        children.Add(TextStack(h, id, store, hasPager));
 
         return new BoxEl
         {
@@ -196,15 +196,23 @@ sealed class HighlightViewerView : Component
         };
     }
 
-    /// <summary>The 16:9 image band: a KEYED, animated poster/tint layer plus two STABLE chrome rows painted over it
+    /// <summary>The 16:9 image band: a KEYED, animated poster layer plus two STABLE chrome rows painted over it
     /// (never remounted, never carrying the slide's key) — so the pager's focused pip and the chevrons' identity
-    /// survive a step, and only the poster itself slides.</summary>
+    /// survive a step, and only the poster itself slides. The band's own box is fixed (<c>Height = imgH</c>), so the
+    /// keyed layer's exit orphan can never resize it.
+    ///
+    /// <para>The no-poster TINT lives on this stable band, never on the keyed layer. On the keyed layer the outgoing
+    /// tint (fading out) and the incoming one (fading in) stacked the translucent fill on itself, and the band flashed
+    /// ~8 levels brighter for ~100 ms on every step; here a no-poster → no-poster step changes nothing, and a store ↔
+    /// regular step is one brush cross-fade.</para></summary>
     Element Band(HighlightItem item, ReleaseHighlight h, string id, float imgH, int index, int count, bool store, bool video)
     {
         string? poster = item.Poster is { Length: > 0 } p ? p : null;
         return new BoxEl
         {
             Height = imgH, ZStack = true, ClipToBounds = true,
+            Fill = store ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
+            BrushTransitionMs = WaveeMotion.Standard,
             Children =
             [
                 new BoxEl
@@ -212,10 +220,9 @@ sealed class HighlightViewerView : Component
                     Key = "hv:" + id + ":img",
                     Animate = HighlightViewerMotion.For(_dir),
                     // Forced fill on BOTH axes (not left to the aspect-ratio-derives-width trick the card's own band
-                    // relies on): a no-poster slide has no image to derive a size from, and the tint needs the same
-                    // full-band fill the poster gets.
+                    // relies on): the poster stretches across the layer, which must cover the whole band. Transparent —
+                    // an empty layer on a no-poster slide, so its enter/exit is invisible (see the tint note above).
                     ZStack = true, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                    Fill = poster is null ? (store ? Tok.AccentSubtle : Tok.FillSubtleSecondary) : ColorF.Transparent,
                     Children = poster is null ? [] : [Poster(poster)],
                 },
                 TopRow(h, store),
@@ -326,9 +333,12 @@ sealed class HighlightViewerView : Component
     // The prototype's pager is not WinUI's: a row of 6-DIP dots where the SELECTED one stretches into a 14-DIP capsule
     // and brightens to TextPrimary (prototype .vpager, 6x6 r3 rgba(255,255,255,.32) -> width 14 + #f4f4f4). PipsPager
     // draws fixed-size glyph pips and can only morph their FONT SIZE, so the stretch is not a prop it exposes — the row
-    // is hand-rolled instead. The width change rides a Size/Width LayoutTransition (the FilterToken idiom) so the
-    // capsule grows rather than jumping, which is the whole read: the strip shows WHERE you are, not just how many.
-    const float PipDot = 6f, PipSelected = 14f, PipGap = 8f;
+    // is hand-rolled instead. The width change rides a Width LayoutTransition in Reflow mode so the capsule grows
+    // rather than jumping, which is the whole read: the strip shows WHERE you are, not just how many.
+    const float PipDot = 6f, PipSelected = 14f, PipGap = 8f, PipMs = 120f;
+    // 24 tall, 8 under the band: the dots' centre sits 8 + 9 = 17 DIP below the band and 9 + 8 (the text block's
+    // pager-aware top padding, TextPadding) = 17 above the title's line box — optically centred in the gap.
+    const float PagerRowHeight = 24f, PagerRowTop = 8f;
 
     Element PagerRow(int count, int index)
     {
@@ -340,14 +350,18 @@ sealed class HighlightViewerView : Component
             pips[i] = new BoxEl
             {
                 Key = "pip:" + target,
+                // Width only. Reflow runs the interpolated widths through REAL layout, so the neighbours already slide
+                // with them — a Position channel on top FLIP-offset a pip by its whole old→new move while the reflow
+                // was moving it too, and the new capsule was drawn over the next dot for two frames on every step.
                 Animate = new LayoutTransition(
-                    TransitionChannels.Position | TransitionChannels.Size,
-                    TransitionDynamics.Tween(120f, Easing.SmoothOut),
+                    TransitionChannels.Size,
+                    TransitionDynamics.Tween(PipMs, Easing.SmoothOut),
                     Size: SizeMode.Reflow, Axes: SizeAxes.Width),
                 Width = on ? PipSelected : PipDot, Height = PipDot, Shrink = 0f,
                 Corners = CornerRadius4.All(Radii.Full),
                 Fill = on ? Tok.TextPrimary : ColorF.FromRgba(255, 255, 255, 82),
                 HoverFill = on ? Tok.TextPrimary : ColorF.FromRgba(255, 255, 255, 140),
+                BrushTransitionMs = PipMs,   // the capsule brightens AS it grows, instead of snapping white ahead of it
                 Cursor = CursorId.Hand,
                 Focusable = true,
                 Role = AutomationRole.Button,
@@ -355,45 +369,116 @@ sealed class HighlightViewerView : Component
             };
         }
 
-        // AlignSelf STRETCH is what centres the pips. Justify.Center only centres children within the row's OWN
-        // width, and the row was hugging its content inside the plate's column — so the strip sat at the plate's
-        // leading edge instead of under the middle of the image.
-        return ToolTip.Wrap(new BoxEl
+        // A full-width strip that CENTRES a hugging cluster, with the tooltip around the cluster only. The strip used
+        // to be ToolTip.Wrap's TARGET: that wrapper is a flex ROW which shrink-wraps its target on the main axis, so the
+        // strip hugged its dots at the wrapper's leading edge — flush against the plate's left border, 0 DIP in, while
+        // the title below sits 24 in — and the strip's AlignSelf.Stretch, being a ROW child's cross axis, stretched it
+        // vertically, never across. Here the wrapper is the centred item; the cluster's width is constant through a
+        // step (one 14 capsule + 6 dots, the widths trade on one curve), so the dots never drift sideways.
+        return new BoxEl
         {
             AlignSelf = FlexAlign.Stretch,
-            Height = 24f, Margin = new Edges4(0f, 12f, 0f, 0f),
-            Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Gap = PipGap,
-            Children = pips,
-        }, Strings.WhatsNew.Viewer.Position(index + 1, count));
+            Height = PagerRowHeight, Margin = new Edges4(0f, PagerRowTop, 0f, 0f),
+            Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+            Children =
+            [
+                ToolTip.Wrap(new BoxEl
+                {
+                    Height = PagerRowHeight,
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = PipGap,
+                    Children = pips,
+                }, Strings.WhatsNew.Viewer.Position(index + 1, count)),
+            ],
+        };
     }
 
-    /// <summary>The keyed text half of the slide: title, the full body (never the card's clipped-and-faded slot),
-    /// and — mutually exclusive, design §B.5 — the store CTA or the "Try it" deep link.</summary>
-    Element TextSlide(ReleaseHighlight h, string id, bool store, bool hasPager)
+    /// <summary>The text half, with its box FINAL up front: a ZStack of one invisible SIZER per highlight plus the
+    /// live keyed slide on top. A ZStack measures as its TALLEST layer, so the plate is band + pager + the tallest
+    /// highlight's text from the first frame, and stepping only swaps what paints inside that box.
+    ///
+    /// <para>This is the fix for the viewer bouncing on every step. The keyed slide used to be a direct child of the
+    /// plate's flex column, and FlexLayout.AddOrphanMain folds an EXIT orphan's height into its parent column's measure
+    /// for the whole exit — so for ~160 ms the plate was band + pager + old text + new text (clamped to MaxHeight), and
+    /// because the root centres the plate it jumped up by half of that; when the orphan was reclaimed it snapped to the
+    /// new text's height, a different height per highlight, so it jumped back down somewhere else. A ZStack measures
+    /// only its live children (MeasureZStack has no orphan fold), and the sizers pin its height, so neither happens.</para></summary>
+    Element TextStack(ReleaseHighlight h, string id, bool store, bool hasPager)
+    {
+        var layers = new Element[_items.Count + 1];
+        for (int i = 0; i < _items.Count; i++)
+        {
+            var other = _items[i];
+            layers[i] = TextSizer(other.Highlight, SlideId(other, i), HighlightVisibility.IsStore(other.Highlight), hasPager);
+        }
+        layers[_items.Count] = TextSlide(h, id, store, hasPager);   // painted last → on top of the (invisible) sizers
+        return new BoxEl
+        {
+            ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f,
+            Children = layers,
+        };
+    }
+
+    /// <summary>One highlight's text laid out exactly like its live slide — same padding, same column, same title /
+    /// paragraph / action row — but painted at zero alpha and inert: <c>HitTestVisible = false</c> stops hit-testing for
+    /// the whole subtree, and its button is DISABLED so the focus trap's tab order skips it (a disabled node is never
+    /// collected). Stable key per highlight: a step never remounts a sizer.</summary>
+    Element TextSizer(ReleaseHighlight h, string id, bool store, bool hasPager) => new BoxEl
+    {
+        Key = "hv:" + id + ":size",
+        Direction = 1, Padding = TextPadding(hasPager),
+        Opacity = 0f, HitTestVisible = false,
+        Children = [TextColumn(h, store, live: false)],
+    };
+
+    // Top padding drops to 8 when the pager already sits above it — its own 8 DIP margin plus 24 height is most of the
+    // breathing room the full 16 would otherwise add a second time. Shared by the live slide and every sizer, so the
+    // reservation measures exactly what paints.
+    static Edges4 TextPadding(bool hasPager) => new(24f, hasPager ? 8f : 16f, 24f, 24f);
+
+    /// <summary>Title, the full body (never the card's clipped-and-faded slot), and — mutually exclusive, design §B.5 —
+    /// the store CTA or the "Try it" deep link. <paramref name="live"/> = false builds the sizer's twin: identical
+    /// geometry (a disabled Button.Accent is the same box as an enabled one), no live link, selection or action.</summary>
+    Element TextColumn(ReleaseHighlight h, bool store, bool live)
     {
         var actions = new List<Element>(1);
         if (store)
-            actions.Add(Button.Accent(Loc.Get(Strings.WhatsNew.StoreCta), HighlightCard.OpenStoreListing));
+        {
+            Action openStore = HighlightCard.OpenStoreListing;
+            actions.Add(Button.Accent(Loc.Get(Strings.WhatsNew.StoreCta), live ? openStore : Inert, isEnabled: live));
+        }
         else if (h.DeepLink is { Length: > 0 } dl && DeepLink.TryParse(dl, out var verb) && verb.Kind == DeepLinkKind.Open)
         {
             string route = verb.Route;
             string? arg = verb.Arg.Length == 0 ? null : verb.Arg;
-            actions.Add(Button.Accent(Loc.Get(Strings.WhatsNew.TryIt), () => TryIt(route, arg)));
+            Action tryIt = live ? () => TryIt(route, arg) : Inert;
+            actions.Add(Button.Accent(Loc.Get(Strings.WhatsNew.TryIt), tryIt, isEnabled: live));
         }
 
+        Action<string> openUrl = live ? OpenLink : IgnoreLink;
         var content = new List<Element>(3)
         {
             new TextEl(h.Title) { Size = 20f, Weight = 600, LineHeight = 28f, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
             // The SAME markdown-lite spans the card uses (bold/code/links survive); selectable here — the card's own
             // paragraph opts OUT of selection because the card itself is one big click target, and the viewer's body
             // is not.
-            RichTextBlock.Paragraph(ReleaseNotesText.ToSpans(MarkdownLite.Tokenize(h.Body), url => ShellOpen.OpenUrl(url)),
-                    isTextSelectionEnabled: true)
+            RichTextBlock.Paragraph(ReleaseNotesText.ToSpans(MarkdownLite.Tokenize(h.Body), openUrl),
+                    isTextSelectionEnabled: live)
                 with { Size = 14f, LineHeight = 20f, Color = Tok.TextSecondary, Margin = new Edges4(0f, 8f, 0f, 0f) },
         };
         if (actions.Count > 0)
             content.Add(new BoxEl { Direction = 0, Gap = 8f, Margin = new Edges4(0f, 16f, 0f, 0f), Children = actions.ToArray() });
 
+        return new BoxEl { Direction = 1, MaxWidth = 720f, AlignSelf = FlexAlign.Start, Children = content.ToArray() };
+    }
+
+    static readonly Action Inert = static () => { };
+    static readonly Action<string> OpenLink = static url => ShellOpen.OpenUrl(url);
+    static readonly Action<string> IgnoreLink = static _ => { };
+
+    /// <summary>The keyed, animated live slide: <see cref="TextColumn"/> in a content-sized ScrollView. Keyed per
+    /// highlight so a step is an enter/exit cross-fade IN PLACE — both inside <see cref="TextStack"/>'s fixed box.</summary>
+    Element TextSlide(ReleaseHighlight h, string id, bool store, bool hasPager)
+    {
         return new BoxEl
         {
             Key = "hv:" + id + ":txt",
@@ -404,8 +489,6 @@ sealed class HighlightViewerView : Component
                 // Grow/Shrink/MinHeight repeated on the ScrollView itself (the ReleaseNotesPage.Frame precedent):
                 // a flex child's content-driven minimum has to be zeroed at EACH nesting level for shrinking to
                 // reach the ScrollView, not just at the keyed wrapper around it.
-                // Top padding drops to 8 when the pager already sits above it — its own 12 DIP margin plus 24 height
-                // is most of the breathing room the full 16 would otherwise add a second time.
                 //
                 // L2 (issue #89): ScrollEl.ContentSized defaults false and Ui.ScrollView did not set it, so
                 // FlexLayout.MeasureViewport's D1 fallback (which needs ItemCount > 0 && FlexGrow == 0) never
@@ -418,14 +501,14 @@ sealed class HighlightViewerView : Component
                 // sums band + pager + text, clamped at MaxHeight, with the pre-existing Grow=1/Shrink=1/MinHeight=0
                 // trio taking over once content exceeds the cap — the same "ContentSized + Shrink" trick
                 // TabStrip.cs:643 documents), rather than adding a second arithmetic path in HighlightViewerLayout
-                // that would have to re-derive a text measurement the engine's shaper already owns. Traded away:
-                // the prototype's 250ms height-GROW animation (there is no explicit Height left to animate) — a
-                // live-only difference, not a correctness one.
-                ScrollView(new BoxEl { Direction = 1, MaxWidth = 720f, AlignSelf = FlexAlign.Start, Children = content.ToArray() })
+                // that would have to re-derive a text measurement the engine's shaper already owns. The height no
+                // longer changes per slide at all (TextStack's sizers pin it to the tallest), so there is no height
+                // animation to trade away either.
+                ScrollView(TextColumn(h, store, live: true))
                     with
                     {
                         Grow = 1f, Shrink = 1f, MinHeight = 0f, ContentSized = true,
-                        Padding = new Edges4(24f, hasPager ? 8f : 16f, 24f, 24f),
+                        Padding = TextPadding(hasPager),
                     },
             ],
         };

@@ -1,4 +1,5 @@
-﻿using FluentGpu;
+﻿using System.Diagnostics;
+using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
@@ -129,6 +130,12 @@ public sealed class PlaybackBridge
     IPlaybackPlayer? _restoreWiredTo;
     PlaybackController? _restoreController;
     bool _lastPushIsPlaying;   // pause-edge detector: play→pause is a snapshot write gate
+    // The last SERVER-CONFIRMED play/pause state (set only from a real PushState, never from an optimistic UI write).
+    // TogglePlayPause (PlayerBar and TrackRow alike) flips IsPlaying before the command round-trips; when the forwarded
+    // command fails (NotifyRemoteCommandFailed), IsPlaying is snapped back to this if it still disagrees — the failed
+    // command never happened, so the optimistic flip must not stand unconfirmed forever (bug: PLAY glyph over audible
+    // remote playback, or vice versa, after a rejected forward).
+    bool _lastConfirmedIsPlaying;
     bool _lastPushIsLive;      // rising-edge detector for live-ness — the tune-in anchor (see TunedInAtMs)
     // The live-edge hysteresis machine's carried state (see IsBehindLive). Folded forward one window report at a time.
     Wavee.Backend.Playback.LiveEdgeState _liveEdge;
@@ -203,11 +210,33 @@ public sealed class PlaybackBridge
     /// these must therefore treat null/0 as "say nothing" rather than as a value to fall back from — the absence IS
     /// the honest answer, and it is why this is safe to show at all.</para></summary>
     public Signal<string?> StreamFormat { get; } = new(null);
+    /// <summary>Live RMS/peak/spectrum off the local PCM tap, when there is one — the <see cref="IAudioLevelSource"/>
+    /// precedent, re-pointed at every host swap (fake→pre-login local, go-live, logout). Null means an honest "no local
+    /// tap": the fake/silent backend, or a live session that is merely a Connect VIEWER of another device's playback.
+    /// <para><b>Threading:</b> written on the audio pump thread. A consumer must <c>Peek()</c> it from its own render
+    /// tick, never subscribe/react to it directly — every audio block would otherwise fan out a UI notification.</para></summary>
+    public IReadSignal<FluentGpu.Media.VisualizerFrame>? Levels { get; internal set; }
+
+    /// <summary>A committed seek that the deck issued and is still waiting to see reflected in <see cref="PositionMs"/>
+    /// (UI-side only: <c>DeckGesture.Commit</c> sets it, <c>DeckClock</c> clears it once the reported position has
+    /// converged or the latch window has passed). Non-null means "the playhead is on its way to here".</summary>
+    public Signal<long?> SeekTargetMs { get; } = new(null);
+
+    /// <summary>The pointer-owned position while a deck grip (tonearm headshell, iPod click wheel) is being dragged.
+    /// Non-null MEANS a drag is live right now; <c>DeckGesture</c> owns every write.</summary>
+    public Signal<long?> ScrubTargetMs { get; } = new(null);
     public Signal<bool> IsShuffle { get; } = new(false);
     public Signal<RepeatMode> Repeat { get; } = new(RepeatMode.Off);
     public FloatSignal PositionFrac { get; } = new(0f);
     public FloatSignal Volume { get; } = new(0.7f);
     public Signal<long> PositionMs { get; } = new(0L);
+    /// <summary>The timestamped twin of <see cref="PositionMs"/> — the same position paired with the
+    /// <see cref="System.Diagnostics.Stopwatch.GetTimestamp"/> instant it was true (see <see cref="PositionSample"/>).
+    /// The lyrics karaoke clock's input: it extrapolates from THIS sample's own time rather than comparing an
+    /// already-stale <see cref="PositionMs"/> against "now" on a coarse UI-thread clock. Written together with every
+    /// <see cref="PositionMs"/> write in this file, from the same source that write used (the host's own sample time
+    /// for a tick, <see cref="Stopwatch.GetTimestamp"/> for an optimistic/projected write).</summary>
+    public Signal<PositionSample> LastPositionSample { get; } = new(default);
     public Signal<long> DurationMs { get; } = new(0L);
     /// <summary>The published queue. Uses an ELEMENT-IDENTITY comparer, not the default reference comparer: the projection
     /// re-windows (<c>WindowQueue</c>) into a FRESH list of the SAME <see cref="QueueEntry"/> instances on every structural
@@ -967,7 +996,7 @@ public sealed class PlaybackBridge
         _active = true;
         _post = post;
         _subs.Add(_state.Changes.Subscribe(s => post(() => PushState(s))));
-        _subs.Add(_state.PositionTicks.Subscribe(ms => post(() => PushPosition(ms))));
+        _subs.Add(_state.PositionTicks.Subscribe(sample => post(() => PushPosition(sample))));
         _subs.Add(_devices.DevicesChanged.Subscribe(d => post(() => Devices.Value = d)));
         _subs.Add(_session.StatusChanged.Subscribe(st => post(() =>
         {
@@ -1021,12 +1050,26 @@ public sealed class PlaybackBridge
             }));
     }
 
-    /// <summary>An outbound Connect command (transfer / play) to the active remote device failed — surface it as a critical
-    /// toast instead of failing silently. Marshalled to the UI thread; no-op before <see cref="Activate"/>.</summary>
+    /// <summary>An outbound Connect command (transfer / play / pause / resume / …) to the active remote device failed —
+    /// surface it as a critical toast instead of failing silently. Marshalled to the UI thread; no-op before
+    /// <see cref="Activate"/>.
+    ///
+    /// <para>Also REVERTS the optimistic play/pause write if one is still unconfirmed: <c>PlayerBar.TogglePlayPause</c>
+    /// and <c>TrackRow.TogglePlayPause</c> both flip <see cref="IsPlaying"/> before the command round-trips (so the glyph
+    /// is instant), then call <c>Player.PauseAsync</c>/<c>ResumeAsync</c>. When THAT forward fails, the flip never
+    /// happened on the device it was sent to, so a still-diverging <see cref="IsPlaying"/> is snapped back to the last
+    /// server-confirmed value (<see cref="_lastConfirmedIsPlaying"/>, set only by a real <c>PushState</c>) rather than
+    /// left showing a state nothing confirms. This one failure signal covers every forwarded verb, not only play/pause —
+    /// on any other verb's failure the two values already agree (no optimistic play/pause is outstanding), so the
+    /// comparison is a no-op there.</para></summary>
     public void NotifyRemoteCommandFailed()
     {
         if (_post is not { } post) return;
-        post(() => Toast.Show(Loc.Get(Strings.Player.RemoteCommandFailed), new ToastOptions { Severity = InfoBarSeverity.Error }));
+        post(() =>
+        {
+            if (IsPlaying.Peek() != _lastConfirmedIsPlaying) IsPlaying.Value = _lastConfirmedIsPlaying;
+            Toast.Show(Loc.Get(Strings.Player.RemoteCommandFailed), new ToastOptions { Severity = InfoBarSeverity.Error });
+        });
     }
 
     /// <summary>A LOCAL playback attempt failed (key/CDN/decode/provisioning) — surface a typed, user-facing message as a
@@ -1403,6 +1446,7 @@ public sealed class PlaybackBridge
         // which is false when both context and track are empty). Equality-gated by the setter, so an idle→idle push is free.
         HasActiveContext.Value = !string.IsNullOrEmpty(s.ContextUri) || s.CurrentTrack is not null;
         IsPlaying.Value = s.IsPlaying;
+        _lastConfirmedIsPlaying = s.IsPlaying;   // the server-confirmed truth an optimistic toggle reverts to on failure
         IsBuffering.Value = s.IsBuffering;
         RecoveryKind.Value = s.RecoveryKind;
         IsShuffle.Value = s.IsShuffle;
@@ -1455,7 +1499,10 @@ public sealed class PlaybackBridge
         ActiveDeviceId.Value = s.ActiveDeviceId;
         StreamBitrateKbps.Value = s.StreamBitrateKbps;
         StreamFormat.Value = s.StreamFormat;
-        PushPosition(s.PositionMs);
+        // s.PositionMs is already whatever the projection extrapolated it to AS OF right now (Pos()'s own wall-clock
+        // anchor math) — there is no earlier "sample instant" than this read, so Stopwatch.GetTimestamp() here is the
+        // honest stamp, exactly like CommitSeek's optimistic write below.
+        PushPosition(new PositionSample(s.PositionMs, Stopwatch.GetTimestamp()));
         _smtc?.OnStateChanged();   // metadata / play-status / prev-next availability → OS media surface
         _taskbar?.OnStateChanged();
         _jumpList?.OnStateChanged();
@@ -1666,6 +1713,7 @@ public sealed class PlaybackBridge
     {
         NoteSeek(ms);
         PositionMs.Value = ms;
+        LastPositionSample.Value = new PositionSample(ms, Stopwatch.GetTimestamp());   // optimistic → "now" is the sample instant
         _ = Player.SeekAsync(ms, SeekMode.Accurate);
     }
 
@@ -1694,16 +1742,21 @@ public sealed class PlaybackBridge
         _ = Player.SeekAsync(w.LiveEdgeMs, SeekMode.Accurate);
     }
 
-    void PushPosition(long ms)
+    void PushPosition(PositionSample sample)
     {
+        long ms = sample.PositionMs;
         if (_seekLatchTargetMs >= 0)
         {
             bool landed = Math.Abs(ms - _seekLatchTargetMs) <= SeekLatchToleranceMs;
             bool expired = Environment.TickCount64 >= _seekLatchDeadlineTick;
+            // A dropped stale pre-seek sample must not touch LastPositionSample either — the lyrics clock would
+            // otherwise extrapolate forward from a position the seek has already left, exactly the fiction this
+            // latch exists to suppress for PositionMs/PositionFrac.
             if (!landed && !expired) return;   // stale pre-seek tick → keep the optimistic target on screen
             _seekLatchTargetMs = -1;           // seek took (or gave up waiting) → resume normal position flow
         }
         PositionMs.Value = ms;
+        LastPositionSample.Value = sample;
         long dur = DurationMs.Value;
         PositionFrac.Value = dur > 0 ? Math.Clamp(ms / (float)dur, 0f, 1f) : 0f;
         _smtc?.OnPositionChanged(ms);   // ~1 Hz timeline scrub → OS media surface (throttled inside)

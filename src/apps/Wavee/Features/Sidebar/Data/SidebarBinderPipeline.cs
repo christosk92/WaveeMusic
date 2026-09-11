@@ -184,12 +184,19 @@ public static class SidebarBinderPipeline
     /// </summary>
     public static SidebarLibraryEntry ResolveUnlistedPin(SidebarPin pin, int sourceOrder, SidebarLibraryEntry? hydrated)
     {
+        // A folder pin the binder's rootlist-built _index does not know is genuinely GONE from the one source of
+        // truth a folder has (there is no separate hydration path for it, unlike a playlist/album/artist/show) — it
+        // renders Missing rather than pretending a re-fetch might still fill it in.
+        bool folder = pin.Kind == SidebarEntryKind.Folder;
         var baseEntry = new SidebarLibraryEntry(
             pin.Id, pin.Kind, pin.Uri, pin.Name, "", null, null,
             ChildCount: 0, AddedAtMs: pin.AddedAtMs, SortStamp: pin.AddedAtMs, LastVisitedTicksUtc: 0,
             SourceOrder: sourceOrder, Depth: 0, Circular: pin.Kind == SidebarEntryKind.Artist,
             Flavor: SidebarPlaylistFlavor.None)
-        { IsPinned = true, FolderId = "", FolderName = "", FirstArtistName = "" };
+        {
+            IsPinned = true, FolderId = folder ? SidebarPinId.FolderIdOf(pin.Id) : "", FolderName = "",
+            FirstArtistName = "", Missing = folder,
+        };
 
         if (hydrated is not { } h) return baseEntry;
         return baseEntry with

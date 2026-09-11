@@ -47,14 +47,24 @@ public interface IArtistChartFetch
 }
 
 /// <summary>The playlist plane is owned by the LibrarySync writer loop (dealer, diff, mutations); the playlist ladder
-/// only ASKS it. <see cref="OpenAsync"/> = blocking first open (no baseline); <see cref="Revalidate"/> = enqueue the
-/// loop's own SWR (its 5-minute window / dirty set decide whether anything is fetched); <see cref="HeaderAsync"/> =
-/// the header-only GET a rootlist member uses for Identity.</summary>
+/// only ASKS it. <see cref="OpenAsync"/> = blocking first open (no baseline) OR a blocking revalidation of an
+/// existing one (<see cref="NeedsRevalidation"/> true — LibrarySync's own dirty/stale/rolling gates then decide the
+/// real fetch shape, usually a revision-gated /diff); <see cref="Revalidate"/> = enqueue the loop's own SWR
+/// fire-and-forget (used when the baseline is already fresh); <see cref="HeaderAsync"/> = the header-only GET a
+/// rootlist member uses for Identity.</summary>
 public interface IPlaylistOpener
 {
     Task OpenAsync(string playlistUri, CancellationToken ct);
     void Revalidate(string playlistUri);
     Task HeaderAsync(string playlistUri, CancellationToken ct);
+
+    /// <summary>The freshness half of the SWR decision (OpenPolicy — design §2.1; stale-daylist-open fix, S2 #6):
+    /// true when a resident baseline is dirty, past LibrarySync's on-open revalidation window, or belongs to a
+    /// rolling-identity container (a daylist) — i.e. the open should BLOCK on <see cref="OpenAsync"/> rather than
+    /// merely fire <see cref="Revalidate"/>. Also true when there is no baseline at all (nothing to paint either
+    /// way). LibrarySync stays the ONE freshness clock; this is a synchronous peek at its own state, never a second
+    /// one — a caller with no baseline never needs to ask it.</summary>
+    bool NeedsRevalidation(string playlistUri);
 }
 
 /// <summary>User profiles (kind 15 batch + REST fallback) → mapped <see cref="Owner"/>s (null = not resolvable).</summary>

@@ -392,6 +392,45 @@ public sealed class LiveSessionHost : IAsyncDisposable
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException) { socialLog.Info("login profile: " + ex.Message); }
             }, cts.Token);
+
+            // The profile also changes DURING a session, and Spotify pushes it: hm://identity/user-profile-changed
+            // carries the new display name and the avatar sizes whenever the account is edited anywhere (the web
+            // player, the phone, the account page). Nothing subscribed to it before, so a rename or a new picture
+            // never reached a running client — the chip kept whatever the login-time fetch above resolved, for the
+            // rest of the session.
+            //
+            // Coalesced, because the service pushes PER KEYSTROKE. One captured rename produced five messages in 56
+            // seconds: "Christos", "Christos", "Chrr", "Chrr"+images, "Chris"+images. TrailingCoalescer runs the first
+            // immediately (a settled change is instant) and collapses whatever lands inside the window into one
+            // trailing apply, so the chip never spells out someone's half-typed name.
+            var profileCoalescer = new TrailingCoalescer(Wavee.Backend.Hydration.UserProfilePush.CoalesceWindowMs);
+            var profileSub = transport.Events(Wavee.Backend.Hydration.UserProfilePush.Topic)
+                .Subscribe(Observers.From<WireEvent>(e =>
+                {
+                    // The dealer frame is already base64-decoded and concatenated by DealerFrameParser, so this is the
+                    // raw protobuf — the SAME shape the REST fetch returns, hence the same decoder rather than a
+                    // second parser that could drift from it.
+                    if (Wavee.Backend.Hydration.UserProfilePayloadDecoder.Decode(e.Payload) is not { IsRenderable: true } push) return;
+                    // The topic is not scoped to the signed-in user, so the id in the PAYLOAD is what authorises this.
+                    if (!Wavee.Backend.Hydration.UserProfilePush.IsForAccount(push, profileAccount)) return;
+                    profileCoalescer.Post(() => postUi(() =>
+                    {
+                        // Same guard the fetch uses: a push that lands after a logout/re-login must not stomp a
+                        // different session's chip.
+                        if (!string.Equals(svc.Session.CurrentUser?.Id, profileAccount, StringComparison.Ordinal)) return;
+                        var (name, avatar) = Wavee.Backend.Hydration.UserProfilePush.Fold(
+                            push, profileAccount, liveSession.CurrentUser?.AvatarUrl);
+                        liveSession.UpdateProfile(name, avatar);
+                        svc.Playback.User.Value = liveSession.CurrentUser;
+                        // Keep the owner ROW in step too. Every other surface that renders this user — collaborator
+                        // piles, playlist owners, the added-by column — reads the store, not the chip, and would
+                        // otherwise show the old name until the next login re-fetched it.
+                        svc.RealStore?.UpsertOwner(new Owner(UserProfileIds.BareId(me), name,
+                            avatar is { Length: > 0 } ? new Image(avatar) : null));
+                    }));
+                }));
+            // Owned by the same CTS as the fetch: logout cancels it, and cancelling drops the dealer subscription.
+            cts.Token.Register(() => { profileSub.Dispose(); profileCoalescer.Dispose(); });
         }
         var host = new LiveSessionHost(transport, connect, cts, wiring);
         attempt.Built(host);   // from here a rollback disposes the HOST (which tears the transports down in order)
@@ -865,6 +904,13 @@ public sealed class LiveSessionHost : IAsyncDisposable
             var envelopes = new PathfinderEnvelopeFetch(pathfinderResource);
             var chart = new SpclientArtistChartFetch(live.Pipeline, () => live.BaseUrl, artistLog);
             var opener = new LibrarySyncPlaylistOpener(sync, fetcher);
+            // The library source asks the same opener whether a resident baseline is stale, so a stale mix/daylist open
+            // waits (bounded) for the fresh copy instead of painting yesterday's; logout detaches it, never a dead loop.
+            var librarySource = svc.RealLibrarySource
+                ?? throw new InvalidOperationException("Services.CreateReal must build RealLibrarySource before go-live.");
+            wiring.Set(Wavee.Backend.Wiring.LiveSeams.PlaylistOpener,
+                () => librarySource.AttachPlaylistOpener(opener),
+                () => librarySource.AttachPlaylistOpener(null));
             Wavee.Backend.Hydration.IKindHydration[] ladders =
             [
                 new Wavee.Backend.Hydration.PlayableHydration(EntityKind.Track, store, envelopes, metadataLog.With("hydration.track")),

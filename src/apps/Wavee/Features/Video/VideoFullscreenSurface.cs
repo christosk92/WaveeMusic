@@ -189,10 +189,14 @@ sealed class VideoFullscreenSurface : Component
                     // HOVER-CONTAINER registration (the TrackRow / DockedVideoSurface idiom): one pointer registration,
                     // the engine's hover cascade fades the chrome band below in and out. No signal, no re-render.
                     OnPointerExit = static () => { },
+                    // The shield comes FIRST. InputDispatcher.Hit keeps the LAST matching child, so a full-bleed shield
+                    // after the video area won every hit over the player: the video never saw a hover move (its
+                    // controls could not auto-show), its transport could not be clicked, a double-click never exited,
+                    // and its idle cursor logic never learned where the pointer was.
                     Children =
                     [
-                        VideoArea(b, h => _videoArea = h),
                         Shield(hooks),
+                        VideoArea(b, h => _videoArea = h),
                         ExitChrome(b),
                     ],
                 },
@@ -203,7 +207,8 @@ sealed class VideoFullscreenSurface : Component
     /// <summary>The surface's HIT SHIELD — childless, full-bleed, input-only. Same contract as
     /// <see cref="ImmersiveLyricsSurface.Shield"/>: the video area and the exit chrome are the only real hit targets in
     /// this ZStack, so anywhere else (the letterbox bars, empty space around the video) must still take the click
-    /// itself rather than let it fall through to whatever page the surface covers.</summary>
+    /// itself rather than let it fall through to whatever page the surface covers. It must be the FIRST child: the hit
+    /// walk keeps the last matching child, so every real target has to come after it.</summary>
     Element Shield(InputHooks hooks) => new BoxEl
     {
         Key = "fs:shield",

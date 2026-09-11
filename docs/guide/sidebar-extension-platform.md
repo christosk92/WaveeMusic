@@ -57,6 +57,21 @@ narrow overlay drawer.
 in the same document). App routes, playlists, albums, artists, shows and playlist folders are pinnable; tracks are
 not.
 
+**Membership of the Spotify-kind pins (playlist/album/artist/show + Liked Songs + playlist folders) mirrors Spotify's own `ylpin`
+collection set** — see `docs/plans/wavee/pin-spotify-sync-implementation.md`. `App/SidebarPinSync.cs` bridges the
+store's `"pins"` logical set (hydrated by the same collection-set plumbing as liked/albums/artists/shows, settled +
+delta-fetched — never direct-applied — on a dealer push) and `SidebarPinStore`: a remote add/remove folds through
+`SidebarPinStore.ApplyRemote` (never raises a local-change event, so it can never echo back as a write), and a user's
+own `Pin`/`Insert`/`Unpin` raises `OnLocalPinChanged`, which the bridge turns into a `/collection/v2/write` through
+`EngineMutationSource.SetPinnedAsync`. Order, app routes and `wavee:` playlists stay local-only and never sync. A
+folder syncs by its rootlist group id (`spotify:folder:<hex>` ↔ `folder:<hex>`); a folder pinned on another device
+before its rootlist entry is known renders disabled with a reason (rule 9) and resolves when the rootlist arrives.
+Liked Songs is `spotify:collection` on the wire. Server pins the app cannot show (Your Episodes, Local Files,
+audiobooks, tracks) are never represented and never written back, so they survive on the server. A pinned item is
+removed from every ordinary list, tree and shortcut row of a document that has a Pinned section — pane and rail, all
+three designs (`SidebarRowPlanner.HiddenByPin`); a pinned folder takes its subtree with it, recency feeds are untouched. A pre-existing local pin is migrated (pushed to the server), never swept, the first time the server set is seen
+converged — see `PinSyncRules` (`Features/Sidebar/Data/PinSyncRules.cs`) for exactly which pins are syncable.
+
 ### The Shortcuts band is shared across all three designs — but Library V3 renders it as chrome, not a section
 
 The document also carries **one global shortcut band** — `SidebarCustomLayout.TopBar`, whose wire member still spells

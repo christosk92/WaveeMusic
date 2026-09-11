@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.2.9",
+  "packageVersion": "",
+  "name": "Breaker",
+  "tagline": "A faster engine underneath, players on Now Playing, and a Connect that always knows which device is playing.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "player-styles",
+      "title": "Players on Now Playing",
+      "body": "The Now Playing cover turns into a player: a record with a tonearm that cues, lifts on pause and rides the run-out, a cassette, a reel-to-reel, an iPod Classic, Winamp, a hi-fi VU meter, a Zune and more — twelve in all, each with its own options. Switch between Cover and Player on the rail, or pick a style from the artwork's menu, Settings › Appearance or the command palette.",
+      "kind": "new",
+      "issues": [
+        142
+      ]
+    },
+    {
+      "id": "connect-ownership",
+      "title": "Spotify Connect that knows who is playing",
+      "body": "Wavee now keeps one answer to \"which device owns playback\" and lets Spotify's own reply settle it. A phone playing no longer makes Wavee restart its last track, picking This computer takes playback over properly instead of playing here while the bar still says iPhone, the play button goes where the music is, and the player bar no longer repeats a line like \"LP / LP\". Settings › Playback has a Connect diagnostics page for when something still looks off.",
+      "kind": "fixed",
+      "issues": [
+        107,
+        138,
+        139
+      ]
+    },
+    {
+      "id": "smoother",
+      "title": "Smoother, from the lyrics to the page swap",
+      "body": "The karaoke wipe sweeps instead of stepping, a lyrics blur slider can take the blur down to nothing, and the render loop finally goes idle, so the GPU rests with Lyrics open. Navigating no longer flashes the window's colour or shows two pages at once, late data stops moving what you are reading, and a pop-out video window can be dragged again with controls that fade like a real player's.",
+      "kind": "improved",
+      "issues": [
+        136,
+        141,
+        143,
+        145,
+        146,
+        147,
+        148,
+        149
+      ]
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

@@ -8,6 +8,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Core;
+using Wavee.Features.Detail;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -24,9 +25,12 @@ namespace Wavee;
 // The chart is ONE PagedShelf collection — a 5-row virtual strip with page-mandatory snapping — NOT a page-swapped
 // slice: a page flip slides the realized window, so a row that stays on screen keeps its identity and its state. That
 // is what the keys encode: a realized cell is keyed by its TRACK URI and never by its ordinal (an ordinal in the key is
-// what used to remount all five rows on every flip); only the density TIER rides along, because those props freeze at
-// mount and a tier flip must be a deliberate remount. PagedShelf owns the page state, the snap interval, the glide and
-// the pips — this file must not re-add a page signal, a pages clamp, or a scroll animation of its own.
+// what used to remount all five rows on every flip) and never by its density TIER either (S2 audit #8 — the tier used
+// to ride in the key, so a purely cosmetic cellW change destroyed and rebuilt every row with a different play-count
+// STRING). The tier travels as a re-pushed component PROP instead (ArtistPopularLayout.Decide, read fresh by ChartRow
+// on every render — component-props-contract), so it updates the mounted row in place. PagedShelf owns the page
+// state, the snap interval, the glide and the pips — this file must not re-add a page signal, a pages clamp, or a
+// scroll animation of its own.
 //
 // Row chrome is the prototype's `.row` verbatim and deliberately has NO zebra: transparent fill over a
 // 1px TRANSPARENT border (a present-but-invisible stroke so hover never nudges layout), painting only on
@@ -61,6 +65,12 @@ sealed class ArtistPopular : Component
     int _total;
     bool _showArtwork = true;
     bool _classic;
+    // The current geometry tier (artwork size / duration visibility / subtitle stacking), decided with resize
+    // hysteresis from the shelf's reported cellW (see Card, below) and re-pushed into every mounted ChartRow as a
+    // PROP — never baked into a Key (S2 audit #8: that used to remount every row, with a different play-count
+    // STRING, on any cosmetic width change). Null until the chart's first Card() call decides it.
+    ArtistPopularLayout.Tier? _tier;
+    bool _tierClassic;   // the classic/modern mode _tier was decided under; a mode toggle starts hysteresis fresh
     // ROW SELECTION — the same contract every other track list in the app has (DetailTracks' external SelectionModel):
     // a single click SELECTS (Ctrl toggles, Shift extends from the anchor) and a DOUBLE click plays. It lives on the
     // component rather than on the list because PagedShelf hard-wires its ItemsView to ItemsSelectionMode.None, and a
@@ -93,7 +103,8 @@ sealed class ArtistPopular : Component
     // The shelf's auto-fit knob — and here it is a BREAKPOINT, not a card width: with maxColumns 2 and an uncapped
     // maxCardW the fitted card is always (w − Gap)/cols, so this only decides WHERE the second column appears
     // (floor((w+gap)/(min+gap)) ≥ 2 ⟺ w ≥ 2·min + gap). 264px columns are the narrowest that still seat
-    // title + feat + plays in the mid cell (the 200/220/300/340 pressure tiers in Card below are what make that true).
+    // title + feat + plays in the mid cell (the 200/220/340 pressure tiers in ArtistPopularLayout are what make
+    // that true — the play-count text itself is a fixed-width compact format, not a fourth width tier).
     const float MinCardW = (ColBreakW - CellGap) / 2f;   // 264
 
     public override Element Render()
@@ -144,7 +155,7 @@ sealed class ArtistPopular : Component
             Children =
             [
                 PagedShelf.Create(
-                    total,
+                    _live,
                     cardAt: Card,
                     cardHeight: _ => rowH,
                     header: Surfaces.AccentHeader(_title, accent),
@@ -168,6 +179,7 @@ sealed class ArtistPopular : Component
                     edgeFade: 16f,
                     keyOf: RowKey,
                     maxColumns: maxCols,
+                    maxItems: MaxTracks,
                     snap: ShelfSnap.Page)
                     // PagedShelf freezes its ctor props at mount (component-props contract), so every input that can
                     // still change belongs in this key: the count (the extended list revalidates 10 → ≤50 in place), the
@@ -210,26 +222,28 @@ sealed class ArtistPopular : Component
     }
 
     // ── one chart row, at the fitted column width ───────────────────────────────────────────────────────────
-    // The pressure tiers derive from THAT width — never from a captured measurement: this closure is frozen at the
-    // shelf's mount, so a render-time local would be the mount-time width forever.
-    Element Card(int i, float cellW)
+    // The pressure tiers derive from THAT width — never from a captured measurement: the shelf calls this method
+    // fresh every time its own fitted cellW changes, so a render-time local off ArtistPopular's own Render() would
+    // be stuck at whatever width happened to be current the last time the OUTER component rendered, not the
+    // shelf's. `_tier` is the one deliberate exception — it remembers the PREVIOUS decision so
+    // ArtistPopularLayout.Decide can apply hysteresis, never a stand-in for the live cellW itself.
+    Element Card(Track t, int i, float cellW)
     {
-        var list = _live;
-        if ((uint)i >= (uint)list.Count) return new BoxEl();
-        var t = list[i];
-        // Pressure tiers (prototype): shrink art < 220, drop duration < 200; full play counts from 300.
-        // Below 340 the subtitle stacks (feat / plays on their own lines) so the feat name isn't crushed.
-        float art = _classic ? 40f : cellW < 220f ? 40f : 44f;
-        bool showDuration = cellW >= 200f;
-        bool fullPlays = cellW >= 300f;
-        bool stackSub = !_classic && cellW < 340f;
-        string tier = TierTag(art, showDuration, fullPlays, stackSub);
-        // Density props freeze at mount (component-props contract), so the tier is IN the key — a tier flip is a
-        // deliberate remount. The ordinal deliberately is not (see RowKey); the row still RECEIVES it, for the rank
-        // number and its own _live read.
-        Element content = Embed.Comp(() => new ChartRow(this, i, _go, _lib, art, showDuration, fullPlays, stackSub))
-            with { Key = "row:" + t.Uri + tier + (_showArtwork ? "|art" : "|noart")
-                + (_classic ? "|classic" : "|modern") };
+        // Pressure tiers (prototype, ArtistPopularLayout — S2 #8): shrink art < 220, drop duration < 200, stack the
+        // subtitle < 340 — each with resize hysteresis, so a shelf remeasurement landing a few px either side of a
+        // breakpoint can't chatter. The play-count FORMAT is deliberately NOT one of these anymore: it used to be its
+        // own cellW≥300 threshold, independent of `stackSub`, so a cellW in [300, 340) was both full-digit AND
+        // unstacked and the un-shrinkable number shoved the feat credit off the line. Row (below) now always renders
+        // the compact form and puts the exact count in a tooltip — one format that can never squeeze the name.
+        if (_tier is not null && _tierClassic != _classic) _tier = null;   // a classic/modern toggle starts fresh
+        _tierClassic = _classic;
+        var tier = ArtistPopularLayout.Decide(cellW, _classic, _tier);
+        _tier = tier;
+        // Row IDENTITY is the track URI alone — the tier rides as a re-pushed PROP (ChartRow.Props), not the Key, so
+        // a tier change updates the mounted row's text in place instead of destroying and rebuilding it (that
+        // remount, with a different play-count string, is exactly what the audit caught).
+        Element content = Embed.Comp(new ChartRow.Props(this, i, _go, _lib, tier), () => new ChartRow())
+            with { Key = "row:" + t.Uri + (_showArtwork ? "|art" : "|noart") + (_classic ? "|classic" : "|modern") };
         // A pass-through wrapper carrying the drag source (and, when services exist, the context menu): the row owns
         // its own style-selected height (which is exactly the shelf's cell), so this must not add a height contract of its own
         // (that is what let the old cap leak into a stretched slot).
@@ -293,22 +307,10 @@ sealed class ArtistPopular : Component
         if ((mods & KeyModifiers.Shift) == 0) _selection.AnchorIndex = index;
     }
 
-    // The density-tier tag that rides in the row KEY. A LITERAL per band, never a concat: Card runs on every realize, a
-    // column crossing realizes five rows in one frame (the mandatory band is exempt from the realize budget), and a
-    // four-part string concat there is pure scroll-path garbage. The four flags come from ORDERED cellW thresholds
-    // (200/220/300/340), so only five combinations are reachable and this stays a total function of them.
-    static string TierTag(float art, bool showDuration, bool fullPlays, bool stackSub)
-        => art < 44f ? (showDuration ? "|40d-s" : "|40--s")
-                     : (!stackSub ? "|44dp-" : fullPlays ? "|44dps" : "|44d-s");
-
     // The realized cell's identity is the TRACK, not its ordinal: that is what lets a page flip slide the window
     // instead of remounting every row in it. An empty uri (a local/synthetic track) falls back to the ordinal, the only
     // thing that keeps such a row's key unique.
-    string RowKey(int i)
-    {
-        var list = _live;
-        return (uint)i < (uint)list.Count && list[i].Uri.Length > 0 ? "chart:" + list[i].Uri : "chart#" + i;
-    }
+    string RowKey(Track t, int i) => t.Uri.Length > 0 ? "chart:" + t.Uri : "chart#" + i;
 
     public static Element SkeletonShape(IReadOnlyList<Track> tracks, string title, bool showArtwork = true,
                                         bool classic = false)
@@ -330,7 +332,7 @@ sealed class ArtistPopular : Component
                 int index = c * rowsPerCol + r;
                 rows[r] = Row(tracks[index], index,
                     new TrackRow.State(false, false, false, false, false),
-                    art: classic ? 40f : 44f, showDuration: true, fullPlays: false, stackSub: false, featLine: null,
+                    art: classic ? 40f : 44f, showDuration: true, stackSub: false, featLine: null,
                     onPlay: static () => { }, onLike: null, showArtwork: showArtwork, classic: classic);
             }
             // Same column contract as the live chart — shimmer and content must not drift geometrically. One gap on
@@ -361,7 +363,7 @@ sealed class ArtistPopular : Component
 
     // ── the prototype row (shared by live rows and the skeleton) ────────────────────────────────────────────
     static Element Row(Track t, int index, in TrackRow.State st, float art, bool showDuration,
-                       bool fullPlays, bool stackSub, Element? featLine, Action onPlay, Action? onLike,
+                       bool stackSub, Element? featLine, Action onPlay, Action? onLike,
                        IReadSignal<bool>? hoverPaused = null, Action<KeyModifiers>? onTap = null,
                        bool showArtwork = true, bool classic = false)
     {
@@ -392,11 +394,16 @@ sealed class ArtistPopular : Component
         if (hasPlays)
         {
             if (n > 0) sub[n++] = Dot(classicNow ? Tok.AccentTextPrimary : null);
-            sub[n++] = new TextEl((fullPlays ? t.PlayCount.ToString("N0") : TrackRow.PlaysLabel(t.PlayCount)) + " plays")
+            // ONE format, always (ArtistPopularLayout — S2 #8): the full digit count used to appear here whenever
+            // cellW ≥ 300 regardless of whether the row was also narrow enough to stack (< 340) — the un-shrinkable
+            // full number and the feat credit shared one line in that gap and the number won. Compact never grows
+            // past ~6 characters, so it can share this line with a feat credit at ANY width; the exact count moves to
+            // a tooltip instead of fighting for space.
+            sub[n++] = ToolTip.Wrap(new TextEl(TrackRow.PlaysLabel(t.PlayCount) + " plays")
             {
                 Size = 12f, Color = classicNow ? Tok.AccentTextPrimary : Tok.TextTertiary,
                 MaxLines = 1, Shrink = 0f,   // plays never disappear
-            };
+            }, t.PlayCount.ToString("N0") + " plays");
         }
 
         var trail = new Element[showDuration ? 2 : 1];
@@ -562,19 +569,14 @@ sealed class ArtistPopular : Component
     // ── chart row component: signal-scoped state reads so playback changes re-skin ONE row ──────────────────
     sealed class ChartRow : Component
     {
-        readonly ArtistPopular _o;
-        readonly int _index;
-        readonly Action<string, string?> _go;
-        readonly LibraryBridge? _lib;
-        readonly float _art;
-        readonly bool _showDuration, _fullPlays, _stackSub;
-
-        public ChartRow(ArtistPopular o, int index, Action<string, string?> go, LibraryBridge? lib,
-                        float art, bool showDuration, bool fullPlays, bool stackSub)
-        {
-            _o = o; _index = index; _go = go; _lib = lib;
-            _art = art; _showDuration = showDuration; _fullPlays = fullPlays; _stackSub = stackSub;
-        }
+        // PROPS, not ctor-frozen fields (component-props-contract): the geometry Tier is the one input here that
+        // legitimately changes across this row's lifetime (a shelf remeasurement), and a re-pushed PROP is what
+        // Card (above) uses to deliver it — the same "explicitly re-pushed component props" escape hatch
+        // CLAUDE.md calls out for data that must update after mount. Baking the tier into the CTOR (the pre-audit
+        // shape) meant only a Key change — a remount — could ever update it; UseProps<Props>() re-reads it fresh
+        // every render instead, exactly like ChartPager's Props above.
+        internal sealed record Props(ArtistPopular Owner, int Index, Action<string, string?> Go,
+                                      LibraryBridge? Lib, ArtistPopularLayout.Tier Tier);
 
         // This row's own track + visual state, equality-gated. TrackRow.StateOf reads the bridge Identity/IsPlaying/
         // IsBuffering signals and the library saved-set; read bare at render scope those subscribe the WHOLE row to
@@ -586,35 +588,37 @@ sealed class ArtistPopular : Component
 
         public override Element Render()
         {
-            // CONSTRAINT: _o._live is a plain FIELD, not a signal — reading it inside this UseComputed subscribes to
-            // nothing, so a row can only pick up a longer list when it re-renders for some other reason. That is sound
-            // ONLY because the count-keyed wrapper remount (see Render's `Key = "chart:" + total + ":" + counted + …`)
-            // rebuilds this whole shelf whenever _live's charted length OR its number of play-counted rows changes.
-            // Anything that weakens that key must turn _live into a
-            // Signal here first, or these rows will keep charting the seed list.
+            var p = UseProps<Props>();
+            // CONSTRAINT: Owner._live is a plain FIELD, not a signal — reading it inside this UseComputed subscribes
+            // to nothing, so a row can only pick up a longer list when it re-renders for some other reason. That is
+            // sound ONLY because the count-keyed wrapper remount (see Render's `Key = "chart:" + total + ":" +
+            // counted + …`) rebuilds this whole shelf whenever _live's charted length OR its number of play-counted
+            // rows changes. Anything that weakens that key must turn _live into a Signal here first, or these rows
+            // will keep charting the seed list.
             var presentation = UseComputed(() =>
             {
-                int n = Math.Min(_o._live.Count, MaxTracks);
-                if ((uint)_index >= (uint)n) return default(Presentation);
-                var track = _o._live[_index];
-                return new Presentation(track, TrackRow.StateOf(_o._bridge, _lib, track));
+                int n = Math.Min(p.Owner._live.Count, MaxTracks);
+                if ((uint)p.Index >= (uint)n) return default(Presentation);
+                var track = p.Owner._live[p.Index];
+                return new Presentation(track, TrackRow.StateOf(p.Owner._bridge, p.Lib, track));
             });
             var hovered = UseSignal(false);
             if (presentation.Value.Track is not { } t) return new BoxEl();
             var st = presentation.Value.State;
-            return Row(t, _index, st, _art, _showDuration, _fullPlays, _stackSub,
-                featLine: FeatLine(t, _o._ctx, _go),
+            var tier = p.Tier;
+            return Row(t, p.Index, st, tier.Art, tier.ShowDuration, tier.StackSub,
+                featLine: FeatLine(t, p.Owner._ctx, p.Go),
                 // Start BY URI, not by index. The artist context is a server list (popular-release-segments-main-roles)
                 // whose order is its own — with an extended chart, this row's ordinal is not that list's ordinal, and
                 // ContextResolve deliberately refuses a blind index across divergent orderings (F2). The index rides
                 // along only as the fallback for a uri the server list doesn't carry.
-                onPlay: () => TrackRow.Invoke(_o._bridge, t, () => _ = _o._svc.Player.PlayContextTrackAsync(
-                    _o._ctx, new PlaybackContextTrack(t.Uri), _index)),
-                onLike: t.Uri.Length > 0 ? () => _lib?.ToggleSaved(t.Uri, t.Title) : null,
+                onPlay: () => TrackRow.Invoke(p.Owner._bridge, t, () => _ = p.Owner._svc.Player.PlayContextTrackAsync(
+                    p.Owner._ctx, new PlaybackContextTrack(t.Uri), p.Index)),
+                onLike: t.Uri.Length > 0 ? () => p.Lib?.ToggleSaved(t.Uri, t.Title) : null,
                 hoverPaused: hovered,
-                onTap: mods => _o.SelectRow(_index, mods),
-                showArtwork: _o._showArtwork,
-                classic: _o._classic);
+                onTap: mods => p.Owner.SelectRow(p.Index, mods),
+                showArtwork: p.Owner._showArtwork,
+                classic: p.Owner._classic);
         }
     }
 

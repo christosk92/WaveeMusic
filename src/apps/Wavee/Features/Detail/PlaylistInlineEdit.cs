@@ -14,6 +14,7 @@ using FluentGpu.Scroll;
 using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Dialogs;
 using Wavee.Core;
+using Wavee.Features.Detail;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -538,7 +539,13 @@ static class PlaylistInlineEdit
                 [
                     (_displayFace ? WaveeType.DetailHero(title) : WaveeType.PageHero(title)) with
                     {
-                        Size = _titleSize, MinSize = 18f, Weight = _weight, Grow = 1f,
+                        Size = _titleSize, MinSize = 18f, Weight = _weight,
+                        // The exact width this run is arranged at inside the hover pill (content box _width, minus the
+                        // 20-DIP pencil and the Spacing.S gap). Declared so the measure pre-pass and the arrange
+                        // re-measure share ONE cache key and auto-fit runs once per invalidation (#92). Not `_width`:
+                        // the run would wrap at _width while arranged at _width − 28 and overlap the pencil.
+                        Width = DetailVerticalLayout.EditableTitleMeasure(_width),
+                        MaxWidth = DetailVerticalLayout.EditableTitleMeasure(_width),
                         LineHeight = _lineHeight,
                         Wrap = TextWrap.WrapWholeWords, MaxLines = _maxLines, Trim = TextTrim.CharacterEllipsis,
                         Color = string.IsNullOrWhiteSpace(m.Title) ? Tok.TextTertiary : Tok.TextPrimary,

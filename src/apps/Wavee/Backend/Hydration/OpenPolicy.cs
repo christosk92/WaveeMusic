@@ -13,15 +13,34 @@ namespace Wavee.Backend.Hydration;
 /// <see cref="HydrationLevel.None"/> in either slot means "don't ask".</summary>
 /// <param name="Revalidate">Ask the transport even when the ledger says fresh — the "we already have a baseline, but
 /// something may have changed while we were away" open.</param>
-public readonly record struct OpenPlan(HydrationLevel Blocking, HydrationLevel Background, bool Revalidate = false);
+/// <param name="BlockingDeadline">Null = the blocking wait is open-ended (there is nothing else to paint — a cold
+/// open, an album's Rich await, …). Set = the caller already has SOMETHING to paint (a resident-but-stale baseline)
+/// and should stop waiting past this bound and paint that instead, letting the still-running ask land and repaint in
+/// place — see <see cref="OpenPolicy.PlaylistRevalidateDeadline"/>.</param>
+public readonly record struct OpenPlan(HydrationLevel Blocking, HydrationLevel Background, bool Revalidate = false,
+    TimeSpan? BlockingDeadline = null);
 
 /// <summary>THE kind → (blocking, background) table for a page open.</summary>
 public static class OpenPolicy
 {
+    /// <summary>The bound on a STALE playlist baseline's blocking revalidation (S2 #6 — the stale-daylist-open fix):
+    /// the open blocks on LibrarySync's revision-gated /diff (usually a fast 304) so the page paints ONE current
+    /// model instead of yesterday's cache followed by a re-paint, but the diff is still a real round trip. Picked to
+    /// comfortably cover a normal diff while staying well under "the page feels stuck" — past it, the diff keeps
+    /// running and the ordinary background-landing repaint (today's fallback for a slow/offline network) takes over,
+    /// exactly as if the open had been backgrounded from the start.</summary>
+    public static readonly TimeSpan PlaylistRevalidateDeadline = TimeSpan.FromMilliseconds(1500);
+
     /// <param name="hasBaseline">Only meaningful for a playlist: whether a membership baseline is already resident.
-    /// With one, the open is a revalidation in the background (LibrarySync's own 5-minute/dirty gates decide whether
-    /// it actually fetches); without one there is nothing to paint, so Open is blocking.</param>
-    public static OpenPlan For(EntityKind kind, bool hasBaseline = false) => kind switch
+    /// Without one there is nothing to paint, so Open is unconditionally (and open-endedly) blocking.</param>
+    /// <param name="needsRevalidation">Only consulted when <paramref name="hasBaseline"/> is true — LibrarySync's own
+    /// freshness test (dirty / past its 5-minute on-open window / rolling-identity, exposed as
+    /// <c>IPlaylistOpener.NeedsRevalidation</c>). A FRESH baseline (false) paints immediately and revalidates in the
+    /// background, unchanged from before this parameter existed. One that needs revalidation (true) makes the open
+    /// BLOCK on it instead, bounded by <see cref="PlaylistRevalidateDeadline"/>. Defaults to false — the caller has to
+    /// opt IN to blocking by actually asking LibrarySync; a caller that never asks (no live freshness authority wired
+    /// up — offline, a fake registry) gets the old, always-safe "never wait" shape for free.</param>
+    public static OpenPlan For(EntityKind kind, bool hasBaseline = false, bool needsRevalidation = false) => kind switch
     {
         // Album: await Rich, so the ©/℗ line and the Plays star are there at FIRST paint (and in the same POST as the
         // V4) rather than popping in. Full is the getAlbum envelope — asked only by the below-the-fold surface.
@@ -31,9 +50,11 @@ public static class OpenPolicy
         // transport, so only the standalone artist page asks for it — explicitly, not on every open.
         EntityKind.Artist => new OpenPlan(HydrationLevel.Open, HydrationLevel.None),
 
-        EntityKind.Playlist => hasBaseline
-            ? new OpenPlan(HydrationLevel.None, HydrationLevel.Open, Revalidate: true)
-            : new OpenPlan(HydrationLevel.Open, HydrationLevel.None),
+        EntityKind.Playlist => !hasBaseline
+            ? new OpenPlan(HydrationLevel.Open, HydrationLevel.None)
+            : needsRevalidation
+                ? new OpenPlan(HydrationLevel.Open, HydrationLevel.None, Revalidate: true, PlaylistRevalidateDeadline)
+                : new OpenPlan(HydrationLevel.None, HydrationLevel.Open, Revalidate: true),
 
         // Show: the header + the first page of episodes is the primary content; the remaining pages page on the pump.
         EntityKind.Show => new OpenPlan(HydrationLevel.Open, HydrationLevel.Full),

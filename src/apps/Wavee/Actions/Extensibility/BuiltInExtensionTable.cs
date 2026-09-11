@@ -253,7 +253,11 @@ public static class BuiltInExtensionTable
             Run = static (s, _, t) =>
             {
                 if (s.Sidebar is not { } prefs || PinIdOf(in t) is not { } id) return;
-                PinActions.Pin(prefs, id, SidebarPinId.KindOf(id), SidebarPinId.UriOf(id), "");
+                var kind = SidebarPinId.KindOf(id);
+                // A route pin (Liked Songs et al.) has no library entity to name it later — ShellNav.Dest is the one
+                // source of a route's title (Task B). Every other kind stays "" and waits for the projection's Touch.
+                string name = kind == SidebarEntryKind.AppRoute ? ShellNav.Dest(id).Title : "";
+                PinActions.Pin(prefs, id, kind, SidebarPinId.UriOf(id), name);
             },
         });
 

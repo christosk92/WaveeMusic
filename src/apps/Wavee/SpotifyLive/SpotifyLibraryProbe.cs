@@ -12,12 +12,13 @@ namespace Wavee.SpotifyLive;
 
 // LIVE library/playlist round-trips — the L1 acceptance probes. Each builds the real spclient pipeline, runs a fetcher
 // (the same code the app uses), and prints the result. Needs creds + network, so the USER runs them:
-//   --spotify-playlist spotify:playlist:<id>   --spotify-rootlist   --spotify-collection [liked|albums|artists|shows|episodes]
+//   --spotify-playlist spotify:playlist:<id>   --spotify-rootlist
+//   --spotify-collection [liked|albums|artists|shows|episodes|pins]
 public static class SpotifyLibraryProbe
 {
     public static async Task<int> RunPlaylistAsync(string uri, WaveeLogger log, CancellationToken ct, string language = "en")
     {
-        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language).ConfigureAwait(false);
+        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language, clearStoredOnReject: false).ConfigureAwait(false);
         if (live is null) return 1;
 
         var store = new InMemoryStore();
@@ -45,7 +46,7 @@ public static class SpotifyLibraryProbe
 
     public static async Task<int> RunRootlistAsync(WaveeLogger log, CancellationToken ct, string language = "en")
     {
-        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language).ConfigureAwait(false);
+        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language, clearStoredOnReject: false).ConfigureAwait(false);
         if (live is null) return 1;
 
         var store = new InMemoryStore();
@@ -69,7 +70,7 @@ public static class SpotifyLibraryProbe
 
     public static async Task<int> RunCollectionAsync(string setId, WaveeLogger log, CancellationToken ct, string language = "en")
     {
-        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language).ConfigureAwait(false);
+        var live = await SpotifyLiveSpclient.ConnectAsync(log, ct, language: language, clearStoredOnReject: false).ConfigureAwait(false);
         if (live is null) return 1;
 
         var store = new InMemoryStore();
@@ -85,12 +86,21 @@ public static class SpotifyLibraryProbe
         try { await fetcher.FetchWireSetAsync(wireSet, ct).ConfigureAwait(false); }
         catch (Exception ex) { log.Info("collection fetch failed: " + ex.Message); return 1; }
 
-        var items = store.SavedUris(setId);
+        // Ordered by added_at ASC (oldest first) — SavedUris is the unordered fast path the app uses; the probe wants
+        // the added_at fact printed, which only SavedItems carries.
+        var items = store.SavedItems(setId).OrderBy(it => it.AddedAtMs).ToList();
+        // "pins" is small by nature (a handful of pinned items, not a whole library) — printing every one of them is
+        // worth more than the 50-item cap that keeps liked/albums/artists/shows/episodes output readable.
+        int cap = setId == "pins" ? items.Count : 50;
         log.Info("  " + items.Count + " items in '" + setId + "' (sync token " + (revs.GetValueOrDefault(CollectionSets.RevisionKey(wireSet)) ?? "none") + "):");
         for (int i = 0; i < items.Count; i++)
         {
-            if (i >= 50) { log.Info("    ... (" + (items.Count - 50) + " more)"); break; }
-            log.Info("    " + (i + 1) + ". " + PrintItem(items[i], store));
+            if (i >= cap) { log.Info("    ... (" + (items.Count - cap) + " more)"); break; }
+            var it = items[i];
+            string addedAt = it.AddedAtMs == 0
+                ? "added_at=unknown"
+                : "added_at=" + System.DateTimeOffset.FromUnixTimeMilliseconds(it.AddedAtMs).ToString("yyyy-MM-ddTHH:mm:ssZ");
+            log.Info("    " + (i + 1) + ". " + it.Uri + "  " + addedAt + "  " + PrintItem(it.Uri, store));
         }
         return 0;
     }

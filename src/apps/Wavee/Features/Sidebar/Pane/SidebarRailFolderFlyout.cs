@@ -248,7 +248,7 @@ sealed class SidebarRailFolderFlyout : Component
     {
         if (entry.Kind == SidebarEntryKind.Folder) { Drill(entry.FolderId, entry.Name); return; }
         if (entry.RouteKey is not { Length: > 0 } route) return;
-        Owner.Navigate(route, entry.Name);
+        Owner.Navigate(route, entry.Name, in entry);
         Close();
     }
 

@@ -234,7 +234,10 @@ sealed partial class SettingsPage
                     Width = 3f, AlignSelf = FlexAlign.Stretch, Fill = accent,
                     Corners = new CornerRadius4(2f, 0f, 0f, 2f),
                 },
-                new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [row] },
+                // A COLUMN, not the default row: in a column the card's AlignSelf=Stretch root fills the width and the
+            // engine re-measures it at that width, so a description that wraps to three lines grows the card (and the
+            // accent bar with it) instead of painting under the next one. (#132)
+            new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [row] },
             ],
         };
     }

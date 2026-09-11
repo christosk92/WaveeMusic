@@ -319,20 +319,15 @@ sealed class RecentsPage : Component
             ? null
             : new HomeWash(new WashLayer(pick.Value.Color, pick.Value.Key), null, null);
 
-        // Owner-gated exactly like HomePage/DetailShell: a page clears the material only while it is still the owner,
-        // so a "park this page + activate the destination" nav lands on the destination's material whichever effect
-        // fires first.
-        void SetWash(HomeWash? w)
+        // The same hand-over as HomePage/DetailShell (ShellMaterial.Publish): claim on the first publish and on
+        // reactivation, refresh while still the owner, never clear.
+        var washClaimed = UseRef(false);
+        void PublishWash(bool isClaim) => ShellMaterial.Publish(shellMaterial, _washOwner, isClaim, washesDisabled, tint: null, wash);
+        UseEffect(() =>
         {
-            if (shellMaterial is not null) shellMaterial.Value = new ShellMaterialState(_washOwner, null, w);
-        }
-        void ClearWash()
-        {
-            if (shellMaterial is not null && ReferenceEquals(shellMaterial.Peek().Owner, _washOwner))
-                shellMaterial.Value = default;
-        }
-        UseEffect(() => SetWash(wash),
-            DepKey.From(HashCode.Combine(washesDisabled, pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
+            PublishWash(isClaim: !washClaimed.Value);
+            washClaimed.Value = true;
+        }, DepKey.From(HashCode.Combine(washesDisabled, pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
         UseActivation(
             onActivated: () =>
             {
@@ -341,22 +336,18 @@ sealed class RecentsPage : Component
                 // scene. Deactivation below only normalizes the measured table; writing the signal after parking would
                 // defer row reconciliation behind the page replay budget.
                 CollapseExpanded(_shape);
-                SetWash(wash);
+                PublishWash(isClaim: true);
                 // Revision sync on REACTIVATION (and, separately, after a now-playing identity change — see the
                 // DiffAfterPlayMs timeout in Render). A null diff answer means "unchanged": do nothing at all.
                 if (_hasSnapshot) recents.Refresh();
             },
             onDeactivated: () =>
             {
-                ClearWash();
                 // KeepAlive has begun parking by the time this callback runs. Erase the cached geometry now, but leave
                 // the disclosure signal for onActivated to clear after the subtree is live again (see above).
                 ResetExpandedExtent(_shape, _expandedOriginalRow);
                 _expandedOriginalRow = -1;
             });
-        // …and on UNMOUNT too: onDeactivated fires only on PARK, so a nav that evicts this page without parking it
-        // would otherwise leave a wash owned by a gone page. Owner-gated, so it can never clobber the next page's.
-        UseEffect(() => (Action?)ClearWash, DepKey.Empty);
 
         // ── chrome ────────────────────────────────────────────────────────────────────────────────────────────────────
         Element hero = Hero();

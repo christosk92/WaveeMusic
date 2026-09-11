@@ -126,6 +126,11 @@ public readonly record struct SidebarLibraryEntry(
     /// guessed by a surface (the pin store is the only authority).</summary>
     public bool IsPinned { get; init; }
 
+    /// <summary>True when the entity's only source of truth — the rootlist, for a folder — does not contain it. A
+    /// missing row renders visible-but-disabled with a reason (sidebar iron rule 9: never auto-removed), the same
+    /// discipline <c>SidebarPaneSlot.MissingRow</c> already applies to a materialised Shortcuts/CustomGroup item.</summary>
+    public bool Missing { get; init; }
+
     /// <summary>uri → last-played unix ms from <c>PlayLogStore.Recency</c> (local plays + the server listening
     /// history), stamped by <see cref="SidebarProjection.Build"/> for Playlist/Album/Artist/Show rows. 0 = never
     /// played. This is what <see cref="SidebarSort.Recents"/> sorts on — NOT <see cref="LastVisitedTicksUtc"/>, which

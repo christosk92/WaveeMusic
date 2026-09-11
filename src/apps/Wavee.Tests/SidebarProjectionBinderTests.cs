@@ -348,6 +348,33 @@ public sealed class SidebarProjectionBinderTests
         Assert.Equal("Acme Media", row.Creator); // …but the field the overlay DID carry wins
     }
 
+    // A folder pin whose group id the rootlist no longer carries (unlike a playlist/album/artist/show, a folder has no
+    // separate hydration path that could still fill it in) — the row renders Missing so SidebarPaneSlot can retain it
+    // visible-but-disabled instead of treating an unresolved offline cache as "still loading".
+    [Fact]
+    public void ResolveUnlistedPin_FolderPin_IsMissing_AndCarriesItsGroupId()
+    {
+        var pin = new SidebarPin(SidebarPinId.ForFolder("36405e1711f88d9c"), SidebarEntryKind.Folder, "", "F",
+            AddedAtMs: 1000);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null);
+
+        Assert.True(row.IsPinned);
+        Assert.True(row.Missing);
+        Assert.Equal("36405e1711f88d9c", row.FolderId);
+    }
+
+    [Fact]
+    public void ResolveUnlistedPin_PlaylistPin_IsNotMissing()
+    {
+        var pin = new SidebarPin(SidebarPinId.PlaylistPrefix + "spotify:playlist:korea",
+            SidebarEntryKind.Playlist, "spotify:playlist:korea", "Top Songs - South Korea", AddedAtMs: 1000);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null);
+
+        Assert.False(row.Missing);
+    }
+
     // ── the first-seen commit trigger (commit point #9) ────────────────────────────────────────────────────────────────
 
     [Fact]

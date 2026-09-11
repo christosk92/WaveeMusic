@@ -348,13 +348,13 @@ public sealed class AggregatingLyricsProvider : IUpgradingLyricsProvider, ILyric
     /// holds is tracked per track (seeded by the read-through, updated by every write we issue) and a write whose
     /// document is not strictly better is dropped. Without it a later line-only winner could overwrite the syllable
     /// document an earlier session had already persisted.</summary>
-    void SaveToDiskIfBetter(string trackId, LyricsDocument doc)
+    void SaveToDiskIfBetter(string trackId, LyricsDocument doc, bool allowSameGrade = false)
     {
         if (_disk is not { } disk) return;
         long grade = Grade(doc);
         lock (_gate)
         {
-            if (_diskGrade.TryGetValue(trackId, out long known) && known >= grade) return;
+            if (_diskGrade.TryGetValue(trackId, out long known) && (allowSameGrade ? known > grade : known >= grade)) return;
             _diskGrade[trackId] = grade;
         }
         disk.Save(trackId, doc);
@@ -382,6 +382,7 @@ public sealed class AggregatingLyricsProvider : IUpgradingLyricsProvider, ILyric
         // spawns us, so the single write in the finally below is the only one — and it has to happen even when the
         // continuation is cancelled or finds nothing better, or a skipped winner Save would simply be lost.
         LyricsDocument bestDoc = initialWinner;
+        bool replacedUnverified = false;   // bestDoc is a same-grade replacement of an uncorroborated incumbent
         try
         {
             long elapsed = (long)System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
@@ -421,30 +422,51 @@ public sealed class AggregatingLyricsProvider : IUpgradingLyricsProvider, ILyric
             LogDecision(trackId, ranked, candidates);
 
             // Final = what the UI is left holding, which is the INCUMBENT unless this pass actually beat it.
+            // Two ways a challenger legitimately replaces it: (1) it is a richer document outright (the ordinary
+            // promotion path), or (2) tier alone never separated them but the incumbent itself was never corroborated —
+            // unverified, or zero text agreement with the reference — while THIS pass's winner is verified and scores
+            // higher. (2) is the decoy's other escape hatch: even with the stage-one text>0 floor (LyricsReranker), an
+            // incumbent that was cached or promoted before that floor existed (an old disk entry, an earlier session)
+            // must not survive forever just because nothing in this pass out-tiers it.
             var winner = ranked.Winner;
-            if (winner is null || !IsRicher(winner, initialWinner))
+            bool richer = winner is not null && IsRicher(winner, initialWinner);
+            bool replacesUnverifiedIncumbent = false;
+            if (!richer && winner is not null && ranked.Best is { Verified: true } bestDec)
+            {
+                var incumbentDec = ranked.All.FirstOrDefault(d => d.ProviderId == initialWinner.Provider);
+                bool incumbentWeak = incumbentDec is null || !incumbentDec.Verified || incumbentDec.TextAgreement <= 0;
+                replacesUnverifiedIncumbent = incumbentWeak && bestDec.Score > (incumbentDec?.Score ?? double.NegativeInfinity);
+            }
+            if (!richer && !replacesUnverifiedIncumbent)
             {
                 PublishInspection(trackId, collected, probe, initialWinner,
                     "background pass complete — nothing beat the first winner");
                 return;
             }
-            PublishInspection(trackId, collected, probe, winner,
-                "background pass complete — it promoted a richer document");
-            bestDoc = winner;
+            PublishInspection(trackId, collected, probe, winner!,
+                richer
+                    ? "background pass complete — it promoted a richer document"
+                    : "background pass complete — it replaced the unverified first winner");
+            bestDoc = winner!;
+            replacedUnverified = !richer;
 
             bool promoted = false;
             lock (_gate)
             {
-                if (!_cache.TryGetValue(trackId, out var current) || IsRicher(winner, current))
+                // A same-grade replacement of an unverified incumbent is not "richer", so the richness gate alone would
+                // drop it here: the UI kept the decoy and LyricsUpgraded never fired. It may replace exactly the
+                // incumbent it was judged against — never a document a concurrent pass has already promoted past it.
+                if (!_cache.TryGetValue(trackId, out var current) || IsRicher(winner!, current)
+                    || (replacesUnverifiedIncumbent && ReferenceEquals(current, initialWinner)))
                 {
-                    _cache[trackId] = winner;
+                    _cache[trackId] = winner!;
                     TouchLru(trackId);
                     EvictLru();
                     promoted = true;
                 }
             }
 
-            if (promoted) _upgrades.OnNext(winner);
+            if (promoted) _upgrades.OnNext(winner!);
         }
         catch (OperationCanceledException) { }
         catch (Exception e)
@@ -454,7 +476,9 @@ public sealed class AggregatingLyricsProvider : IUpgradingLyricsProvider, ILyric
         finally
         {
             // Write-through, once, with the best document — so disk holds the BEST doc and never a downgrade of it.
-            SaveToDiskIfBetter(trackId, bestDoc);
+            // A same-grade replacement of an unverified incumbent must still overwrite it (an earlier session may have
+            // persisted the decoy at that very grade); a strictly better document on disk still wins.
+            SaveToDiskIfBetter(trackId, bestDoc, allowSameGrade: replacedUnverified);
             srcCts.Cancel();
             srcCts.Dispose();
         }
@@ -682,6 +706,19 @@ public sealed class AggregatingLyricsProvider : IUpgradingLyricsProvider, ILyric
                     : $"dropped {removed} non-lyric line(s) (blank/♪/boilerplate/title header)");
                 c = c with { Document = cleaned };
             }
+            // DECOY gate — the ISRC-fast-path anti-scraping tell (Musixmatch: 206 nonsense lines, every one exactly
+            // 4000ms, running to 13:56 on a 3:30 track). Neither check is about whether the timing is SINGABLE (that is
+            // LyricsTiming.HasImplausibleWordTiming, gated in the reranker); a decoy is line-synced and internally
+            // "consistent" by construction, which is exactly why it used to sail through untouched. Checked here, not in
+            // the reranker: a decoy must never even become a candidate — MatchBasis.Isrc makes it VERIFIED, and stage two
+            // picks the highest verified tier ignoring score, so a decoy that got this far would win outright.
+            if (LyricsTiming.ExceedsTrackDuration(cleaned, req.DurationMs))
+                return new Probed(null, LyricsOutcome.Miss, Ms(),
+                    With($"decoy: runs to {LyricsInspectionExport.Ts(cleaned.Lines[^1].EndMs ?? cleaned.Lines[^1].StartMs)} on a "
+                        + $"{LyricsInspectionExport.Ts(req.DurationMs)} track"));
+            if (LyricsTiming.HasUniformLineDurations(cleaned))
+                return new Probed(null, LyricsOutcome.Miss, Ms(),
+                    With($"decoy: {cleaned.Lines.Count} lines all exactly identical timing steps — uniform decoy timing"));
             return new Probed(c, LyricsOutcome.Hit, Ms(), With($"{c.Sync}, {c.LineCount} lines, basis={c.Basis}"));
         }
         catch (OperationCanceledException)

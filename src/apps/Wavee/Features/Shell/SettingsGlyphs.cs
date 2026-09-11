@@ -41,6 +41,7 @@ static class SettingsGlyphs
         "Edit" => Icons.Edit,
         "Microphone" => Icons.Microphone,
         "RefineSparkle" => Icons.RefineSparkle,
+        "Filter" => Icons.Filter,
         "MusicNote" => Icons.MusicNote,
         "Headphones" => Icons.Headphones,
         "RadioTower" => Icons.RadioTower,

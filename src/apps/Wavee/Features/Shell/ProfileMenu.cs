@@ -67,7 +67,12 @@ sealed class ProfileMenu : Component
         bool premium = user?.IsPremium ?? false;
         string avatar = user?.AvatarUrl ?? "";
         string? email = user?.Email;
-        var pic = PersonPicture.Create(avatar, AvatarSize, displayName: name);
+        // The URL is the PHOTO, not the initials. PersonPicture.Create takes `initials` first and
+        // `imageSourcePath` by name, and initials OUTRANK everything except isGroup -- so passing the avatar URL
+        // positionally rendered the whole "https://i.scdn.co/image/..." string inside the circle instead of the
+        // picture (#111). An empty initials string falls through to displayName, which is the intended fallback
+        // when the account has no photo.
+        var pic = PersonPicture.Create("", AvatarSize, displayName: name, imageSourcePath: avatar);
 
         void Close() => handle.Value?.Close();
 
@@ -255,7 +260,7 @@ sealed class ProfileMenu : Component
         Padding = new Edges4(14, 10, 14, 10),
         Children =
         [
-            PersonPicture.Create(avatar, 40f, displayName: name),
+            PersonPicture.Create("", 40f, displayName: name, imageSourcePath: avatar),
             new BoxEl
             {
                 Direction = 1,

@@ -218,7 +218,8 @@ sealed class CoverKeyedVeil : Component
 
 /// <summary>Shell material tint publisher. Watches one cover; writes <see cref="ShellMaterialState"/> without the page
 /// Render subscribing to that Watch. Flat arm only (<c>Wash: null</c>) — detail/artist pages never publish the radial
-/// three-layer wash, which belongs to Home.</summary>
+/// three-layer wash, which belongs to Home. Writes through <see cref="ShellMaterial.Publish"/>: claims on its first
+/// publish and on reactivation, refreshes only while it is the owner, and never clears.</summary>
 sealed class CoverShellTintBinder : Component
 {
     internal sealed record Props(string? Url, string? FallbackUrl, bool Ready, bool Disabled, bool Apply, object Owner,
@@ -232,26 +233,32 @@ sealed class CoverShellTintBinder : Component
             _ = SpotifyLive.CoverColorPlane.Current.Watch(fb).Value;
         var coverArt = p.Ready ? Surfaces.SchemeFor(p.Url) : null;
         var artPalette = coverArt ?? (p.Ready ? Surfaces.SchemeFor(p.FallbackUrl) : null);
+        // DEFINITE "no colour": the page has DECIDED to opt out (colour washes off in Settings, or this layout does
+        // not apply a tint at all) — as opposed to simply not having a grading YET, which is transient and HOLDS the
+        // current colour rather than dipping to neutral and back.
+        bool definite = p.Disabled || !p.Apply;
         // A low-alpha art tone published over the shell's deterministic opaque ground (not a backdrop scrim): it warms
-        // the ground, never replaces it. Null ⇒ the bare ground.
-        ColorF? shellTint = p.Disabled || !p.Apply || artPalette is not { } artScheme ? null
-            : Tok.Theme == ThemeKind.Light
+        // the ground, never replaces it.
+        ColorF? known = !definite && artPalette is { } artScheme
+            ? Tok.Theme == ThemeKind.Light
                 ? WaveePalette.Lift(WaveePalette.ToColor(artScheme.TextBase)) with { A = 0.05f }
-                : WaveePalette.TintedDark(artScheme) with { A = 0.14f };
+                : WaveePalette.TintedDark(artScheme) with { A = 0.14f }
+            : null;
 
-        void SetTint(ColorF? color)
-        {
-            if (p.Slot is not null) p.Slot.Value = new ShellMaterialState(p.Owner, color, null);
-        }
-        void ClearTint()
-        {
-            if (p.Slot is not null && ReferenceEquals(p.Slot.Peek().Owner, p.Owner)) p.Slot.Value = default;
-        }
+        // "Have I EVER published": the first publish is the mount's claim (neither activation callback fires at
+        // mount); a reactivation claims through onActivated explicitly.
+        var claimedOnce = UseRef(false);
 
-        UseEffect(() => SetTint(shellTint),
-            DepKey.From(HashCode.Combine(p.Url, shellTint.HasValue, shellTint.GetValueOrDefault(), Tok.Theme, p.Ready, p.Disabled, p.Apply)));
-        UseActivation(onActivated: () => SetTint(shellTint), onDeactivated: ClearTint);
-        UseEffect(() => (Action?)ClearTint, DepKey.Empty);
+        void Publish(bool isClaim) => ShellMaterial.Publish(p.Slot, p.Owner, isClaim, definite, known, wash: null);
+
+        UseEffect(() =>
+        {
+            Publish(isClaim: !claimedOnce.Value);
+            claimedOnce.Value = true;
+        }, DepKey.From(HashCode.Combine(p.Url, known.HasValue, known.GetValueOrDefault(), Tok.Theme, p.Ready, p.Disabled, p.Apply)));
+        // Reactivation (KeepAlive Back/forward) is ALWAYS a claim, regardless of claimedOnce — the whole point is to
+        // retake the slot from whatever deactivated in between, even if that never cleared it either.
+        UseActivation(onActivated: () => Publish(isClaim: true));
 
         return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
     }

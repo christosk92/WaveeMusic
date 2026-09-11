@@ -174,6 +174,44 @@ public sealed class SidebarRailPlannerTests
         Assert.Equal(2, TileCount(tighter));
     }
 
+    // ── pinned folders (#102 follow-up) ─────────────────────────────────────────────────────────────────────────────
+    //
+    // A pinned FOLDER must tile the same way a PlaylistTree folder does (`PlaylistTree_ContributesArtTilesForLeaves-
+    // AndFolderTilesForFolders` below): a FolderHeader row, never an EntityRow. `RailFrom` used to hand every pinned
+    // entry an EntityRow unconditionally, which (a) resolved its art through `SidebarCover.Art(entry.Cover,
+    // entry.MosaicTiles, …)` — a folder's Cover is null but its MosaicTiles carries a child's cover, so the tile drew
+    // that CHILD PLAYLIST's artwork instead of a folder glyph — and (b) read `entry.RouteKey`, which is `null` for a
+    // folder, so the rail's click handler stayed null too. One wrong SidebarRowKind, two visible defects.
+
+    [Fact]
+    public void PinnedFolder_ContributesAFolderHeaderTile_NotAnEntityRow()
+    {
+        var input = new SidebarProjectionInput
+        {
+            Pins = new[] { Playlist("keep", "Kept Mix"), Folder("nf", "New Folder", order: 1) },
+        };
+
+        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("p", SidebarSectionKind.Pinned)), input);
+
+        Assert.Equal(new[] { SidebarRowKind.EntityRow, SidebarRowKind.FolderHeader }, KindsOf(plan));
+        Assert.Equal(new[] { "pl:spotify:playlist:keep", "folder:nf" }, KeysOf(plan));
+        // The folder tile still aliases the SAME entry the expanded pane's FolderHeader row reads (name/FolderId/
+        // ChildCount) — the rail's `Tile()` folder arm needs exactly that, not a second projection.
+        var folderRow = plan.Rows[1];
+        Assert.Equal(SidebarEntryKind.Folder, plan.Entries[folderRow.EntryIndex].Kind);
+    }
+
+    [Fact]
+    public void PinnedFolder_CountsAgainstTheSameEightTileCap_AsAnyOtherPin()
+    {
+        var pins = new List<SidebarLibraryEntry>(Playlists(7, "pin")) { Folder("nf", "New Folder", order: 7) };
+        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("p", SidebarSectionKind.Pinned)),
+            new SidebarProjectionInput { Pins = pins });
+
+        Assert.Equal(SidebarRowPlanner.RailPinnedCap, TileCount(plan));
+        Assert.Equal(SidebarRowKind.FolderHeader, plan.Rows[^1].Kind);   // the 8th pin, a folder, still gets its tile
+    }
+
     // ── per-kind contributions ───────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

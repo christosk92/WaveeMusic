@@ -13,7 +13,7 @@ namespace Wavee.Core;
 public sealed class UnsupportedPlaybackPlayer : IPlaybackPlayer, IPlaybackState
 {
     readonly SimpleSubject<IPlaybackState> _changes = new();
-    readonly SimpleSubject<long> _ticks = new();
+    readonly SimpleSubject<PositionSample> _ticks = new();
 
     /// <summary>Raised (synchronously, on the caller's thread) whenever a play intent is attempted. The app layer wires
     /// this to the "playback on this device isn't supported yet — choose a remote device" toast; null = silent.</summary>
@@ -58,7 +58,7 @@ public sealed class UnsupportedPlaybackPlayer : IPlaybackPlayer, IPlaybackState
     public bool CanSeek => false;
     public string? ActiveDeviceId => null;
     public IObservable<IPlaybackState> Changes => _changes;
-    public IObservable<long> PositionTicks => _ticks;
+    public IObservable<PositionSample> PositionTicks => _ticks;
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }   // consumers use Changes
 
     static readonly Task Done = Task.CompletedTask;

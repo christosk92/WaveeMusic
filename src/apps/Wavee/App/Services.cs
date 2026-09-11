@@ -260,6 +260,11 @@ public sealed class Services
     /// app root via <c>SidebarPreferences.Slot</c>. Constructed in the shared private ctor, so both CreateFake and
     /// CreateReal get one — local preferences are real on every backend (the settings store already is).</summary>
     public SidebarPreferences Sidebar { get; }
+    /// <summary>The Spotify ylpin↔sidebar-pin bridge (REAL backend only; null for the fake, which has no server pin set
+    /// to mirror). Read/write both directions through the existing collection-set + mutation-outbox plumbing
+    /// (docs/plans/wavee/pin-spotify-sync-implementation.md). <c>Activate</c> is called from the same mount effect that
+    /// activates <see cref="Sidebar"/>.</summary>
+    public SidebarPinSync? PinSync { get; private set; }
     /// <summary>Home layout preferences (visibility + order). Local document beside sidebar-layout.json; real on
     /// every backend. Provided at the app root via <c>HomePreferences.Slot</c>.</summary>
     public HomePreferences Home { get; }
@@ -520,6 +525,7 @@ public sealed class Services
         var providers = MediaProviders;
         stub.CanPlayLocally = uri => providers?.OwnerOf(uri) is not null;
         Playback.LocalPlaybackSupported.Value = true;
+        Playback.Levels = (_preLogin.AudioHost as Wavee.Backend.IAudioLevelSource)?.Levels;
         return stub;
     }
 
@@ -780,6 +786,7 @@ public sealed class Services
         svc._preLoginFactory = preLoginFactory;
         svc._preLogin = preLogin;
         svc.Playback.LocalPlaybackSupported.Value = true;
+        svc.Playback.Levels = (preLogin.AudioHost as Wavee.Backend.IAudioLevelSource)?.Levels;
         svc.MutTransport = mutTransport;
         svc.RealCold = cold;
         svc.RealMutations = mutEngine;
@@ -794,6 +801,15 @@ public sealed class Services
         svc.RealSessionHost = sessionHost;
         svc.EchoRing = echoRing;
         svc.RealMutationSource = mutations;
+        // The Spotify ylpin↔sidebar-pin bridge (§1.5): read hydration rides the SAME store the collection fetcher
+        // writes "pins" into, write-back rides the SAME mutation engine every other set save does. "Converged" is the
+        // cold store's own ylpin sync-token — the collection fetcher already tokens every wire set it walks, so this
+        // needs no bespoke flag.
+        svc.PinSync = new SidebarPinSync(store, svc.Sidebar.Pins, mutations, settings,
+            () => sessionHost.Current.Account,
+            () => cold.GetCollectionRevision("ylpin") is not null,
+            uri => mutEngine.HasPending("pins", uri),
+            id => ShellNav.Dest(id).Title);
         svc.RealPlaylistMutations = playlistMutations;
         svc.RealExtender = extender;
         svc.RealSpclientBaseUrl = spclientBaseUrl;
@@ -842,6 +858,10 @@ public sealed class Services
         wiring.Swap<ILyricsProvider>(Wavee.Backend.Wiring.LiveSeams.Lyrics,
             l => (Lyrics as Wavee.Backend.SwitchableLyrics)?.SetInner(l), lyrics,
             static () => new NoLyricsProvider());          // no lyrics until the next live login
+        // Re-point the level tap at the live stack (AttachLive already ran — see its ordering contract): null when
+        // this device is a pure Connect VIEWER of another device's playback (LiveConnect.Audio is the local-decode
+        // stack only, absent for a viewer), same as the pre-login local host being replaced above.
+        Playback.Levels = (LiveHost?.Connect.Audio?.Host as Wavee.Backend.IAudioLevelSource)?.Levels;
         Log.Info("app", "playback backend swapped to LIVE (Connect device + now-playing + remote control + account active)"
             + " + real lyrics feed (aggregator + reranker)");
     }

@@ -686,8 +686,17 @@ sealed class DetailPage : Component
             AlbumKind.Compilation => Loc.Get(Strings.Detail.Badge.Compilation),
             _ => Loc.Get(Strings.Detail.Badge.Album),
         };
-        string meta = Strings.Detail.MetaLineYear(
-            Strings.Detail.SongCount(a.TrackCount), DetailFormat.TotalTime(DetailFormat.TotalMs(tracks)), a.Year);
+        // The ONE thinness verdict (HydrationLevels.TrackUnnamed under the hood) also gates the meta line's duration
+        // segment: AlbumV4 mints an unnamed disc row with a ZERO duration (see PlaylistPageNoticeRules.MinifiedAlbum's
+        // doc), so DetailFormat.TotalMs sums real durations for the few named rows plus zero for every thin one —
+        // "39 songs · 1 min · 2027" for a 2 hr 41 min record, then a jump to the true total the instant the TrackV4
+        // repair lands. A duration this wrong is worse than none: while any row is still thin, the phrase drops the
+        // duration segment entirely (metaLineYearPending) rather than assert a number we know is a lie.
+        bool albumThin = PlaylistPageNoticeRules.ForAlbum(tracks) == DetailNotice.MinifiedAlbum;
+        string meta = albumThin
+            ? Strings.Detail.MetaLineYearPending(Strings.Detail.SongCount(a.TrackCount), a.Year)
+            : Strings.Detail.MetaLineYear(
+                Strings.Detail.SongCount(a.TrackCount), DetailFormat.TotalTime(DetailFormat.TotalMs(tracks)), a.Year);
         LogVideoSweep("album", a.Uri, tracks);
         // `now` is read ONCE, here at the mapper boundary — never in a Render — so every release-tense fact this
         // model carries (UpcomingAt's countdown gate, AlbumReleaseFactsRules' Released/Releases caption) agrees on the
@@ -708,17 +717,27 @@ sealed class DetailPage : Component
             // The album path's cold-open notice, the exact counterpart of MapPlaylist's Cold(...) stamp below: an album
             // whose disc rows are still gid-only (a failed TrackV4 repair sealed it thin) must say so on the FIRST
             // paint, not only after a store change routes the live pump through WithNotice.
-            Notice = PlaylistPageNoticeRules.ForAlbum(tracks),
+            Notice = albumThin ? DetailNotice.MinifiedAlbum : DetailNotice.None,
             ReleaseInstant = releaseInstant,
             UpcomingAt = PreReleaseDerivation.UpcomingAt(a, now),
             // Only while genuinely ahead of us: a kind-138 link is cached for up to 30 days and must not turn the heart
             // into a "Pre-save" for a record that shipped last week.
             PreReleaseUri = link is { IsUpcoming: true } l ? l.PreReleaseUri : null,
-            // "About this release" as DATA (AlbumReleaseFactsRules): computed ONCE here from the raw album fields, so
-            // AlbumTrailing's grid composition (Songs/Length row + a full-width Released row) never depends on WHICH
-            // hydration rung (Open/Rich/Full) last landed — only the strings inside an already-placed tile refine.
-            ReleaseFacts = AlbumReleaseFactsRules.For(tracks, a.ReleaseDate, a.ReleaseDatePrecision,
-                a.Year > 0 ? a.Year : null, releaseInstant, a.Label, a.CourtesyLine, a.Copyright, now),
+            // "About this release" as DATA (AlbumReleaseFactsRules): computed ONCE here from the raw album fields —
+            // but only once HydrationLevels.Of(a) says the Full envelope is actually IN. Label is a getAlbum-only
+            // field (OpenPolicy never blocks an open on Full; AlbumTrailing's own below-the-fold ask is what fetches
+            // it), so on the ordinary Rich-level first paint `a.Label` reads empty and DetailTrailing's notes column
+            // shows Released/copyright with no Label line — then Full lands a moment later and PREPENDS one, pushing
+            // the copyright/courtesy lines down a fixed row height (DetailTrailing.ReleasePanel's own "arrives in
+            // waves" comment covers the STAT TILES only; the notes column beneath them has no such guard). Gating the
+            // whole record on Full means the panel does not exist at all (HasReleasePanel reads IsEmpty) until every
+            // fact in it — Label included — is final, so it appears ONCE, complete, under its own entrance fade
+            // instead of reflowing under the reader mid-read. The trade is a later reveal for Songs/Length/Released/
+            // copyright too (available since Rich) — acceptable here because nothing above the fold waits on it.
+            ReleaseFacts = HydrationLevels.Of(a) >= HydrationLevel.Full
+                ? AlbumReleaseFactsRules.For(tracks, a.ReleaseDate, a.ReleaseDatePrecision,
+                    a.Year > 0 ? a.Year : null, releaseInstant, a.Label, a.CourtesyLine, a.Copyright, now)
+                : AlbumReleaseFacts.Empty,
         };
     }
 

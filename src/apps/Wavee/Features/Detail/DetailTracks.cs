@@ -166,6 +166,13 @@ sealed class TrackList : Component
     readonly Dictionary<int, (float dx, float dy)> _flip = new();        // new display index → FLIP start residual (dy DIP)
     readonly Dictionary<int, (float from, float delayMs)> _fade = new(); // added display index → opacity ease-in + stagger
     Track[]? _lastDisplayed;                                   // displayed (view-ordered) snapshot — the keyed-diff baseline
+    // The membership this context has shown has been through one COMPLETE, settled landing. False across a context
+    // swap and for the very first real track-set this context displays — a stale-baseline open (OpenPolicy: a
+    // resident playlist paints its LOCAL cache immediately and revalidates in the background — StoreLibrarySource.
+    // GetPlaylistAsync) can and does show a SMALLER, out-of-date membership on that first landing (23 songs, a stale
+    // description) and correct it a moment later (the real 50) once the revalidation lands — see Choreograph's call
+    // site below for why that correction must not choreograph.
+    bool _membershipSettled;
     LibraryBridge? _lib;                                       // Mutations bridge → per-row heart saved-state + toggle (null when no Mutations source)
     ActionServices? _acts;                                     // the signals-first action system (row context menus + batch bar) — cached in Render like _lib
     IOverlayService? _menuOverlay;                             // the overlay service the rows' attached context menus open through (cached in Render)
@@ -302,7 +309,35 @@ sealed class TrackList : Component
     // Art carries alongside Set/Tracks (rather than being re-derived downstream) because it is keyed on DENSITY, which
     // ColumnSet does not encode — every consumer of the shape (header/rows/shimmer/drawer indent) must read the SAME
     // number the width tracks were built from, or the Thumb column and the actual Surfaces.Artwork call disagree.
-    readonly record struct RowShape(ColumnSet Set, TrackSize[] Tracks, float Art);
+    // Equality is HAND-WRITTEN because a record struct compares its members with the default comparer, and for the
+    // TrackSize[] member that is REFERENCE equality. TracksFor hands back a fresh array whenever its (Set, art) cache
+    // misses, so an otherwise-identical shape could compare unequal purely because the array instance changed — and
+    // the shape signal is what gates re-rendering every mounted row. Compare the tracks by VALUE instead; the array is
+    // a handful of structs and this runs once per shape recompute, not per row.
+    readonly record struct RowShape(ColumnSet Set, TrackSize[] Tracks, float Art)
+    {
+        public bool Equals(RowShape other)
+        {
+            if (!Set.Equals(other.Set) || Art != other.Art) return false;
+            var a = Tracks; var b = other.Tracks;
+            if (ReferenceEquals(a, b)) return true;
+            if (a is null || b is null || a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++) if (!a[i].Equals(b[i])) return false;
+            return true;
+        }
+
+        // Cheap and consistent with Equals: length plus the two ends. A shape that differs only in the middle of the
+        // width tracks collides, and Equals then separates them — which is the correct trade for a type that is
+        // compared far more often than it is hashed.
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            hash.Add(Set); hash.Add(Art);
+            hash.Add(Tracks?.Length ?? 0);
+            if (Tracks is { Length: > 0 } t) { hash.Add(t[0]); hash.Add(t[^1]); }
+            return hash.ToHashCode();
+        }
+    }
 
     readonly record struct RowPresentation(
         Track Track, int DisplayIndex, TrackRow.State State,
@@ -736,6 +771,7 @@ sealed class TrackList : Component
             _selection.ClearSelection();
             // §4.6 — navigation is not an edit: never choreograph across a context swap.
             _lastDisplayed = null;
+            _membershipSettled = false;   // this context's first membership has not landed yet — see the field's doc
             _flip.Clear(); _fade.Clear();
             _resetEpoch++;                               // current render remounts the virtual list — never publish a signal from Render
             // Progressive reveal: a fresh content identity ⇒ start the ramp (real rows fill in over frames instead of
@@ -825,7 +861,14 @@ sealed class TrackList : Component
             for (int i = 0; i < vNow.Length; i++) displayedNow[i] = _tracks[vNow[i]];
             if (trackSetChanged && _lastDisplayed is { Length: > 0 } prevDisplayed && model.ContextUri == _lastCtxUri)
             {
-                Choreograph(prevDisplayed, displayedNow, rowH);
+                // The FIRST membership this context shows settling into its REAL shape is not a live edit — it is the
+                // stale-baseline cache correcting itself (see _membershipSettled's doc). Choreographing it animates
+                // the load itself: a mix opening at 23 songs then "gaining" 27 more with FLIP residuals and staggered
+                // fade-ins, a different description sliding by underneath, reads as something HAPPENED rather than as
+                // the page finishing loading. Only genuine live edits — everything from the SECOND landing onward,
+                // once the context has shown one complete membership — still choreograph.
+                if (_membershipSettled) Choreograph(prevDisplayed, displayedNow, rowH);
+                _membershipSettled = true;
                 _dealtThisFrame = true;   // a membership narration outranks the breakpoint re-deal; never seed both
             }
             _lastDisplayed = displayedNow;
@@ -1518,7 +1561,10 @@ sealed class TrackList : Component
         int firstVis = Math.Max(0, (int)(offset / rowH));
 
         // (1) Anchor: the first visible SURVIVING row keeps its screen Y — adjust the offset by its index shift so an
-        // add/remove ABOVE the viewport never yanks the content (the single most jarring live-list failure mode).
+        // add/remove ABOVE the viewport never yanks the content (the single most jarring live-list failure mode). At the
+        // start edge the engine declines (PreserveAnchor): the reader is looking at the header, so rows arriving above
+        // the first one push the list down under it instead of scrolling the header away — and the FLIP seeds below must
+        // then be computed against no shift.
         var oldKeys = MembershipDiff.Keys(old);
         var newKeys = MembershipDiff.Keys(next);
         var newIdxByKey = new Dictionary<string, int>(newKeys.Length, StringComparer.Ordinal);
@@ -1526,7 +1572,7 @@ sealed class TrackList : Component
         int shift = 0;
         for (int i = Math.Clamp(firstVis, 0, Math.Max(0, oldKeys.Length - 1)); i < oldKeys.Length; i++)
             if (newIdxByKey.TryGetValue(oldKeys[i], out int ni)) { shift = ni - i; break; }
-        if (shift != 0) _listCtl.ScrollBy(shift * rowH);
+        if (shift != 0 && !_listCtl.PreserveAnchor(shift * rowH)) shift = 0;
 
         // (2) FLIP residuals for EVERY survivor — an unmoved row is still screen-displaced when the anchor shifted
         // ((o−n+shift)·rowH; the anchor row itself resolves to 0) — and fade/slide-in for adds (staggered, capped at 8;
@@ -3149,6 +3195,7 @@ sealed class TrackList : Component
             // field on Track — the SAME probe the trailing film lane uses, so a row and its drawer agree.
             HasVideo: VideoPresence.HasVideo(track),
             AddedByName: by?.Name is { Length: > 0 } name ? name : track.AddedBy,
+            AddedByProfile: by,
             Culture: CultureInfo.CurrentCulture,
             Zone: TimeZoneInfo.Local,
             MajorWord: Loc.Get(Strings.Detail.TrackFacts.Major),
@@ -3470,7 +3517,11 @@ sealed class TrackList : Component
                 : Prop.Of(() => DisplayIndex() % 2 != 0 ? WaveeColors.RowHoverZebra : WaveeColors.RowHover),
             PressedFill = classic || plainRows ? WaveeColors.RowPressed
                 : Prop.Of(() => DisplayIndex() % 2 != 0 ? WaveeColors.RowPressedZebra : WaveeColors.RowPressed),
-            PressScale = WaveeMotion.ScaleSubtle.Press,
+            // NO PressScale: this row spans near the full content width (~1060px on a wide pane). Even the "subtle"
+            // 0.98 tier moves each edge ~6px in opposite directions — on a row this wide that reads as the WHOLE row
+            // shrinking and springing back, and the title/artist text visibly blurs mid-scale (S3 #14). PressedFill
+            // above is the row's only press acknowledgement, matching TrackRow.cs's eager row's identical fix — a
+            // click state, not a shrink.
             // Stationary lift: the row stays in its slot at 0.4 (Atlassian's "it's in the chip" dim) while the chip
             // follows the pointer — the full-width lifted row snapshot was the S1 ghost failure.
             Draggable = Drag.Source(WaveeDragKinds.Resource, () => TrackDragPayload(index.Peek(), trackStart)),

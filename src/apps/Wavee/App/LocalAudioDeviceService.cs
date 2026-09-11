@@ -114,9 +114,12 @@ public sealed class LocalAudioDeviceService : IDisposable
         _persist(deviceId, name);
         SelectedOutputId.Value = deviceId;
         _output.SetOutputDevice(deviceId);          // route FIRST
+        // The active id is owner-derived (a foreign owner's id, ours, or "" for nobody), so this transfers home only when
+        // another device OWNS playback — and the controller then PULLS it (transfer from that device to us), never a
+        // local resume of whatever session happened to be lying around here.
         var active = _activeConnectDeviceId();
         if (!string.IsNullOrEmpty(active) && !string.Equals(active, _ourDeviceId, StringComparison.OrdinalIgnoreCase))
-            await _transferHome(_ourDeviceId, CancellationToken.None).ConfigureAwait(false);   // then transfer home (ghost-resume locally)
+            await _transferHome(_ourDeviceId, CancellationToken.None).ConfigureAwait(false);   // then transfer home
     }
 
     /// <summary>The friendly name of the endpoint we are currently rendering to — the explicitly selected one, else the

@@ -164,10 +164,9 @@ static class HomeModules
                                   Func<HomeCard, string> kindLabel, Func<HomeCard, HomeCardChrome> chrome,
                                   Action? openAll = null)
     {
-        var shelf = PagedShelf.Create(g.Cards.Count,
-            (i, cardW) =>
+        var shelf = PagedShelf.Create(g.Cards,
+            (c, i, cardW) =>
             {
-                var c = g.Cards[i];
                 var ch = chrome(c);
                 return MediaCard.Shelf(c.Image, c.Title, kindLabel(c), c.Uri, nav(c), play(c), cardW,
                     circular: c.Kind == HomeCardKind.Artist, menu: ch.Menu, drag: ch.Drag);
@@ -176,7 +175,7 @@ static class HomeModules
             header: g.Title is { Length: > 0 } title ? ModuleHeader(title, null, null, openAll) : new BoxEl(),
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => HomeModuleLayout.SourceCardKey(g, g.Cards[i]));
+            keyOf: (card, i) => HomeModuleLayout.SourceCardKey(g, card));
         // No subtitle: the prototype's is "Shape shows the type — artists are round", which explains the design to a
         // reviewer rather than telling the user anything. The shape does the explaining on its own.
         return shelf;
@@ -322,10 +321,9 @@ static class HomeModules
     /// being flattened into QuickGrid tiles.</summary>
     public static Element Podcasts(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
                                    Func<HomeCard, HomeCardChrome> chrome, Action<HomeGroup>? openSection = null)
-        => PagedShelf.Create(g.Cards.Count,
-            (i, cardW) =>
+        => PagedShelf.Create(g.Cards,
+            (c, i, cardW) =>
             {
-                var c = g.Cards[i];
                 var ch = chrome(c);
                 return MediaCard.Shelf(c.Image, c.Title, c.Subtitle ?? "", c.Uri, nav(c), play(c), cardW,
                     menu: ch.Menu, drag: ch.Drag);
@@ -334,7 +332,7 @@ static class HomeModules
             header: ModuleHeader(g, g.Subtitle, null, openSection),
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => HomeModuleLayout.SourceCardKey(g, g.Cards[i]));
+            keyOf: (card, i) => HomeModuleLayout.SourceCardKey(g, card));
 
     /// <summary>The facet page's "any server section" shelf: ONE paged shelf for a section whose cards name no single
     /// module — mixed playlists and albums, an artist row, a section type this build has never seen. A facet renders
@@ -345,10 +343,9 @@ static class HomeModules
     /// names the entity type, and a square artist beside a square album says nothing.</para></summary>
     public static Element Shelf(HomeGroup g, Func<HomeCard, Action> nav, Func<HomeCard, Action> play,
                                 Func<HomeCard, HomeCardChrome> chrome, Action<HomeGroup>? openSection = null)
-        => PagedShelf.Create(g.Cards.Count,
-            (i, cardW) =>
+        => PagedShelf.Create(g.Cards,
+            (c, i, cardW) =>
             {
-                var c = g.Cards[i];
                 var ch = chrome(c);
                 return MediaCard.Shelf(c.Image, c.Title, c.Subtitle ?? "", c.Uri, nav(c), play(c), cardW,
                     circular: c.Kind == HomeCardKind.Artist, menu: ch.Menu, drag: ch.Drag);
@@ -357,7 +354,7 @@ static class HomeModules
             header: ModuleHeader(g, g.Subtitle, null, openSection),
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => HomeModuleLayout.SourceCardKey(g, g.Cards[i]));
+            keyOf: (card, i) => HomeModuleLayout.SourceCardKey(g, card));
 
     /// <summary>THE Fold deck. Home's section directory, Home's Charts row and Browse's Charts band are the SAME one row —
     /// one factory, one card height, one key shape. rows:1, no tile chevron; pager chevrons stay on PagedShelf.
@@ -366,14 +363,14 @@ static class HomeModules
     public static Element FoldDeck(IReadOnlyList<HomeSection> sections, string title, Action<HomeSection> openTile,
                                    Action? openHeader = null, string? tileEyebrow = null,
                                    Func<HomeSection, string?>? eyebrowOf = null)
-        => PagedShelf.Create(sections.Count,
-            (i, cardW) => HomeFoldTile.Create(sections[i], cardW,
-                eyebrowOf?.Invoke(sections[i]) ?? tileEyebrow, openTile),
+        => PagedShelf.Create(sections,
+            (section, i, cardW) => HomeFoldTile.Create(section, cardW,
+                eyebrowOf?.Invoke(section) ?? tileEyebrow, openTile),
             cardHeight: static _ => HomeModuleLayout.FoldCardHeight,
             header: ModuleHeader(title, null, null, openHeader),
             minCardW: HomeModuleLayout.FoldCardMin, maxCardW: HomeModuleLayout.FoldCardMax,
             gap: Spacing.M, rows: 1, maxColumns: 2, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => "home-fold-tile:" + (sections[i].Uri ?? i.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+            keyOf: (section, i) => "home-fold-tile:" + (section.Uri ?? i.ToString(System.Globalization.CultureInfo.InvariantCulture)))
            with { Key = HomeModuleLayout.SectionSetKey(sections) + ":fold" };
 
     /// <summary>The chevron header FoldDeck and BrowsePage shelves share. Open-null is a label, not a second grammar.
@@ -402,10 +399,9 @@ static class HomeModules
                                Func<HomeCard, HomeCardChrome> chrome, Action<string> onNavUri,
                                Action<HomeGroup>? openSection = null)
     {
-        return PagedShelf.Create(group.Cards.Count,
-            (i, cardW) =>
+        return PagedShelf.Create(group.Cards,
+            (card, i, cardW) =>
             {
-                var card = group.Cards[i];
                 var ch = chrome(card);
                 string subtitle = card.Subtitle ?? card.Eyebrow ?? "";
                 return MediaCard.Shelf(card.Image, card.Title, subtitle, card.Uri, nav(card), play(card), cardW,
@@ -415,7 +411,7 @@ static class HomeModules
             header: ModuleHeader(group, Strings.Home.RecommendationsWithReason(group.Cards.Count), null, openSection),
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
             gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
-            keyOf: i => HomeModuleLayout.SourceCardKey(group, group.Cards[i]))
+            keyOf: (card, i) => HomeModuleLayout.SourceCardKey(group, card))
             with { Key = HomeModuleLayout.SourceGroupKey(group) + ":feed" };
     }
 

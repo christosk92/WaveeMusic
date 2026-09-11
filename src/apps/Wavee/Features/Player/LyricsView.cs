@@ -86,6 +86,7 @@ sealed class LyricsView : Component
     internal NodeHandle ProbeLineNode(int i) => _lineNodes is { } ln && (uint)i < (uint)ln.Length ? ln[i] : default;
     internal NodeHandle ProbeGlowNode(int i) => _glowNodes is { } gn && (uint)i < (uint)gn.Length ? gn[i] : default;
     internal NodeHandle ProbeDofNode(int i) => _dofNodes is { } dn && (uint)i < (uint)dn.Length ? dn[i] : default;
+    internal bool ProbeLineIsWordByWord(int i) => _doc is { } d && (uint)i < (uint)d.Lines.Count && d.Lines[i].IsWordByWord && d.Lines[i].Syllables.Count > 0;
     // Cascade internals the reworked advance probe asserts on: the compensating dy per line, its remaining stagger, and
     // whether ANY line is still in flight (the self-quiesce flag — the settle-wall-time stop condition).
     internal float ProbeCascadeComp(int i) => (uint)i < (uint)_casComp.Length ? _casComp[i] : 0f;
@@ -104,14 +105,14 @@ sealed class LyricsView : Component
     // lead window; comfortably above one 16 ms frame.
     internal const long LeadMs = 140;
 
-    // Dejittered media clock (see OnFrame): a free-running wall-clock base + an additive slew correction, instead of a
-    // hard re-anchor on every laggy IPC snapshot. RebaseClock seeds all of these together.
-    long _baseWall;                     // monotonic wall anchor (Environment.TickCount64)
-    long _basePos;                      // playback position at _baseWall
-    float _offset;                      // additive slew correction folded from IPC-snapshot disagreement
-    bool _wasPlaying;                   // last frame's play state — rebase the clock on the paused→playing transition
-    long _lastAuthMs = long.MinValue;   // last authoritative IPC PositionMs the ticker reacted to
-    long _lastDisplay;                  // last displayed nowMs — monotonic-while-playing guard (no backward wipe/line retreat)
+    // Dejittered media clock: LyricsMediaClock maps PlaybackBridge.LastPositionSample (a position + the QPC instant
+    // it was true) continuously onto FrameTime.NowQpc — an ordinary IPC disagreement re-anchors at the SAMPLE's own
+    // timestamp (no step) and slews the remaining error closed over ~1 s; only a real seek/transfer/track-change
+    // snaps. RebaseClock (doc load, click-seek) force-seeds it. See LyricsMediaClock.cs for why this replaced a
+    // TickCount64 wall-clock extrapolation (the karaoke-wipe stepping bug — see FrameTime).
+    readonly LyricsMediaClock _clock = new();
+    long _lastSampleQpc;   // last PlaybackBridge.LastPositionSample.SampleQpc already fed to _clock (0 = none yet)
+    long _lastClockLogMs;  // FrameTime.NowMs stamp of the last "lyrics.clock" diagnostics line (0 = not yet baselined)
     long _lastWipeWallMs;
     int _lastWipeLine = -1;
 
@@ -250,6 +251,22 @@ sealed class LyricsView : Component
     //     per-row value gate could save — unlike _lineEmphasis, whose whole point is that a boundary moves only a dozen
     //     of a few hundred rows.
     readonly Signal<int> _secondary = new(LyricsPrefs.None);
+    // The 0..1 multiplier every DoF σ (LyricsFx ladder) and halo σ this view paints scales by — the resolved
+    // WaveeSettings.LyricsBlurStrength / GpuProfile.IsWeak pair (LyricsBlurPolicy), re-read once per Render like
+    // _secondary above. Two different consumption shapes, because the two kinds of consumer disagree about whether
+    // a plain field is enough:
+    //   • DofForLine, DriveDofRamp's target and the word-synced bloom's baseSigma (OnFrame) are per-FRAME / per-LINE
+    //     writes that already run every tick regardless of any component's render state — a live delegate closing
+    //     over the plain field is the same live-read shape LyricsPrefs.Epoch buys _secondary, with no extra signal.
+    //   • The line-synced ACTIVE row's halo (LyricLineView: `Blur = isActive ? ... * _haloScale.Value : 0f`) is a
+    //     DECLARATIVE element property: it only takes effect when that row's Render() actually runs, and nothing
+    //     re-renders a mounted row on a bare slider move. `_dofScaleSignal` exists so that ONE consumer can
+    //     subscribe — LyricLineView reads `.Value` (never `.Peek()`) ONLY inside the isActive branch, so a
+    //     non-active row never subscribes and a slider move re-renders exactly the active row.
+    float _dofScale = 1f;
+    // Value-gated republish of _dofScale for the one render-time consumer above (Signal<T> coalesces an equal
+    // write, so this is a no-op on every render except the ones that follow an actual strength change).
+    readonly FloatSignal _dofScaleSignal = new(1f);
     // Whether the CURRENT document carries either layer on ANY line — scanned once per doc in PrepareDocument (never per
     // frame) and published to LyricsPrefs.Available for the rail/immersive headers.
     internal bool HasTranslation { get; private set; }
@@ -327,6 +344,33 @@ sealed class LyricsView : Component
         _ = LyricsPrefs.Epoch.Value;
         int secondary = LyricsPrefs.Clamp(svc?.Settings.Get(WaveeSettings.LyricsSecondaryLine) ?? LyricsPrefs.None);
         _secondary.Value = secondary;
+        // Blur strength: same one-read-per-view shape as secondary above, riding the same epoch (the Settings row's
+        // writer bumps LyricsPrefs, not a dedicated one) so a slider move reaches an already-open surface live.
+        // GpuProfile.IsWeak is the engine's own live flag — no caching here, it is one static bool read.
+        int lyricsBlurStrength = LyricsBlurPolicy.Resolve(
+            svc?.Settings.Get(WaveeSettings.LyricsBlurStrength) ?? LyricsBlurPolicy.Auto, GpuProfile.IsWeak);
+        float newDofScale = LyricsBlurPolicy.Scale(lyricsBlurStrength);
+        if (newDofScale != _dofScale)
+        {
+            _dofScale = newDofScale;
+            _dofRampPending = true;
+            // A slider move is a user edit, not a line hand-off: every line lands on its new σ in ONE ramp pass. NaN is
+            // the ramp's "never driven ⇒ adopt the target" state, so a DECREASE (which the ramp would otherwise ease over
+            // ~200 ms) does not stop part-way down when the one immediate pass below runs on a paused, tickerless surface.
+            Array.Fill(_dofCurrent, float.NaN);
+        }
+        _dofScaleSignal.Value = newDofScale;   // the one render-time consumer (LyricLineView's active-row halo) subscribes here
+        // Re-arm the DoF ramp IMMEDIATELY on a slider move. Without this, DriveDofRamp's own re-entry guard
+        // (`if (!_dofRampPending ...) return;`, below) means a strength change only reaches the σ nodes at the next
+        // line hand-off — never, on a paused surface — which is exactly the "blur only applies at the next lyric
+        // line" report. Deps-gated on the resolved INT strength (an exact compare; the float scale is derived from
+        // it 1:1) so this fires once per real change, not once per render; it does not ride the ticker, so it runs
+        // even while paused — the same "resolve now if a scene is at hand" shape as ApplyDofSuppression, which has
+        // the identical problem for a follow-mode change.
+        UseEffect(() =>
+        {
+            if (Context.Scene is { } scene) DriveDofRamp(scene, FrameTime.NowMs);
+        }, DepKey.From(lyricsBlurStrength));
         // A mode flip changes EVERY row's height, which invalidates two things the measured layout owns: the extent
         // table and the follow target derived from it. Route the recovery through the SAME mechanics a document
         // hot-swap uses — re-arrange (the engine's measured pass 1 re-measures every realized row and feeds SetMeasured,
@@ -962,22 +1006,24 @@ sealed class LyricsView : Component
         HideInterludeDots();
 
         var previous = _doc;
-        // THE upgrade question, asked ONCE. SameLineShape guarantees same TrackId, same line count and identical
-        // per-line text — which is exactly the condition under which the virtual list does NOT remount its rows (same
+        // THE upgrade question, asked ONCE. LyricsRowShape.SameRows guarantees same TrackId, same line count and
+        // identical per-line ROW STATE (text, word timing, secondary layers) — the condition under which the virtual list
+        // does NOT remount its rows (same
         // keys, same count), so every mounted LyricLineView survives the swap still holding the props it FROZE at
         // mount: its own `_lineEmphasis[i]` signal and `_glowAlpha[i]` signal (LyricLineView ctor). Reallocating those
         // arrays here therefore left every mounted row subscribed to an ORPHANED signal — the emphasis sweep and the
-        // glow froze for the rest of the track after any same-shape upgrade (a disk-cached line-synced doc upgraded to
-        // word-synced, a provider re-fetch). So a same-shape upgrade REUSES the per-line state in place, and only a
-        // genuine document change rebuilds it. The rest of PrepareDocument runs identically on both paths.
+        // glow froze for the rest of the track after any same-shape upgrade (a provider re-fetch with identical
+        // content). So a same-shape upgrade REUSES the per-line state in place, and only a genuine document change
+        // rebuilds it. The rest of PrepareDocument runs identically on both paths.
         //
-        // NOTE — ACCEPTED RESIDUAL (campaign decision; this is not an undiagnosed mystery). A row also freezes its
-        // `LyricLine` at mount, and nothing reachable from here can replace it. So a same-shape upgrade that changes
-        // only the WORD TIMINGS (line-synced → word-synced with identical text, a richer syllable split) does not reach
-        // an already-mounted row's karaoke wipe data until those rows are rebuilt at the next track: post-fix such rows
-        // are LIVE on emphasis + glow, but still wipe on the pre-upgrade timing. Closing that too would mean a
-        // props-channel restructure of LyricLineView, which is deliberately out of scope.
-        bool sameShape = previous is not null && SameLineShape(previous, doc);
+        // "SAME SHAPE" IS EVERYTHING A ROW FREEZES — the text AND the word timing AND the secondary layers
+        // (LyricsRowShape). It used to be the text alone, and that was the syllable-lyrics "works sometimes and
+        // sometimes not" report: the aggregator returns Spotify's LINE-synced transcription first and publishes the
+        // WORD-synced upgrade a second later with byte-identical text, so the rows were kept holding a frozen
+        // `LyricLine` with no syllables — no karaoke wipe, no held-note glow, for the whole track — while the next
+        // play (disk cache now word-synced) worked. A timing change now rebuilds the rows through the epoch bump
+        // below, the path that was always correct for a genuine document change.
+        bool sameShape = previous is not null && LyricsRowShape.SameRows(previous, doc);
         // A genuine document change must REMOUNT the rows, and only the key can force that (see RowKey). The
         // reallocation below is safe exactly when the rows are rebuilt to pick the new objects up.
         if (!sameShape) { _layout = null; _docEpoch++; }
@@ -1108,14 +1154,6 @@ sealed class LyricsView : Component
             : (HasTranslation ? LyricsPrefs.HasTranslation : 0) | (HasRomanization ? LyricsPrefs.HasRomanization : 0);
     }
 
-    static bool SameLineShape(LyricsDocument a, LyricsDocument b)
-    {
-        if (!StringComparer.Ordinal.Equals(a.TrackId, b.TrackId) || a.Lines.Count != b.Lines.Count) return false;
-        for (int i = 0; i < a.Lines.Count; i++)
-            if (!StringComparer.Ordinal.Equals(a.Lines[i].Text, b.Lines[i].Text)) return false;
-        return true;
-    }
-
     // Packed per-line emphasis: bucket (distance from active, clamped 0..6) in bits 0-2, INTERLUDE RESERVE in bit 3 (it
     // once carried the deleted recede and was free; the past bit deliberately stays at bit 4 so the ladder's
     // `& 16` test and every packed value above bucket 6 are unchanged), PAST flag in bit 4. Clamp 6 is exact for the
@@ -1201,8 +1239,8 @@ sealed class LyricsView : Component
         _nowMs.Value = 0f;
         _scrollSnapped = false;
         ResetWipeThrottle();
-        _lastAuthMs = long.MinValue;   // reset so a freshly loaded doc re-anchors on the next snapshot
-        _lastDisplay = 0L;
+        _clock.Reset(0L, FrameTime.NowQpc, false);   // reset so a freshly loaded doc re-anchors on its first sample
+        _lastSampleQpc = 0L;
     }
 
     void ReceiveUpgrade(LyricsDocument upgrade)
@@ -1255,17 +1293,16 @@ sealed class LyricsView : Component
         return n;
     }
 
-    // Seed every dejittered-clock field from an authoritative position so all re-anchor sites (doc load, click-seek) agree.
-    // Sets _lastDisplay so the monotonic guard adopts the new (possibly backward) position immediately, and _lastAuthMs so
-    // the next OnFrame doesn't re-treat the same value as a snapshot disagreement. Does NOT touch _wasPlaying — the
-    // paused→playing transition still rebases on resume so a pause gap never leaks into the wall delta.
+    // Seed the media clock from an authoritative position so every re-anchor site (doc load, click-seek) agrees.
+    // LyricsMediaClock.Reset forces an unconditional snap (bypassing the normal deadband/slew decision), and
+    // _lastSampleQpc absorbs the CURRENT bridge sample so the very next OnFrame doesn't immediately re-process it as
+    // a fresh disagreement against the anchor this just set — a genuinely NEW sample after this point still differs
+    // and re-syncs normally. This is the exact role the old _lastAuthMs guard played.
     void RebaseClock(long pos)
     {
-        _baseWall = Environment.TickCount64;
-        _basePos = pos;
-        _offset = 0f;
-        _lastAuthMs = pos;
-        _lastDisplay = pos;
+        var b = _b;
+        _clock.Reset(pos, FrameTime.NowQpc, b?.IsPlaying.Peek() ?? false);
+        _lastSampleQpc = b?.LastPositionSample.Peek().SampleQpc ?? 0L;
     }
 
     // The TIMED-row type metrics, as properties rather than LyricsContent locals: RunLengthOf has to rebuild the exact
@@ -1319,7 +1356,8 @@ sealed class LyricsView : Component
                     // long before it (component props freeze at mount — see the _secondary field block).
                     _secondary,
                     fontSz, lineHt, rowPad, sidePad, _large, _ink,
-                    ReportLineNode, ReportGlowNode, ReportDofNode, SoftnessOfLine, DofDeclaredFor, () => SeekToLine(idx))) with { Key = RowKey(idx) };
+                    ReportLineNode, ReportGlowNode, ReportDofNode, SoftnessOfLine, DofDeclaredFor,
+                    _dofScaleSignal, () => SeekToLine(idx))) with { Key = RowKey(idx) };
             },
             keyOf: RowKey,
             // Realize the WHOLE document (a lyrics doc is at most a few hundred cheap rows): with a 4-5 row overscan,
@@ -1337,7 +1375,7 @@ sealed class LyricsView : Component
             SuppressScrollBar = true,
             OnScrollGeometryChanged = (
                 static g => g.UserScrollActive ? 1L : 0L,
-                g => OnLyricsScrollActivity(g.UserScrollActive, Environment.TickCount64)),
+                g => OnLyricsScrollActivity(g.UserScrollActive, FrameTime.NowMs)),
             OnRealized = h => _viewportNode = h,
         };
     }
@@ -1537,7 +1575,11 @@ sealed class LyricsView : Component
 
     static bool SuppressesDof(LyricsFollowMode mode) => mode != LyricsFollowMode.Following;
 
-    float DofForLine(int index) => DofSigmaFor(index, _activeLine.Peek(), _large);
+    // Scaled by _dofScale (LyricsBlurPolicy): the ladder itself stays the untouched reference shape, and the strength
+    // slider is one multiply at the two places a σ actually reaches a node (here and DriveDofRamp's target below) —
+    // at scale 0 every line's target is exactly 0, which the engine already treats as "no blur layer" (LyricsFx's
+    // type doc), so strength 0 needs no separate branch to turn the DoF ladder off.
+    float DofForLine(int index) => DofSigmaFor(index, _activeLine.Peek(), _large) * _dofScale;
 
     // The σ ladder rung for one line against a given active line. Split out so the per-frame ramp can hoist the signal
     // Peek out of its whole-document loop without forking the ladder into a second definition.
@@ -1561,16 +1603,18 @@ sealed class LyricsView : Component
         _dofRampPending = true;
         // Resolve it now if a scene is at hand (the mode can flip from a scroll callback, outside the ticker); otherwise
         // the next OnFrame picks it up — LyricsTicker keeps ticking for the whole detached/resyncing window.
-        if (scene is not null) DriveDofRamp(scene, Environment.TickCount64);
+        if (scene is not null) DriveDofRamp(scene, FrameTime.NowMs);
     }
 
     // Exponential time constant for a σ DECREASE: ~95% of the way in 200 ms (1 - e^(-200/65) = 0.954), matching the
     // reference's incoming line, which de-blurs progressively DURING the move and is crisp as it lands.
     const float DofRampTauMs = 65f;
-    // σ write gate. The recorder buckets σ at 0.5 in the blur pin key, so a finer gate mints no extra pins but still
-    // dirties paint every single frame of the ramp; 0.1 keeps the ramp visually smooth (~15 writes across 200 ms, ≤3 pin
-    // buckets crossed) and bounded. The LANDING write is exempt so the node ends EXACTLY on the target, never a hair off.
-    const float DofWriteEps = 0.1f;
+    // σ write gate. The recorder buckets σ at 0.5 in the blur pin key, so a finer gate used to mint no extra pins but
+    // still dirty paint every single frame of the ramp — a wasted write on every frame of every handoff. Raised from
+    // the old 0.1 to match the pin bucket exactly: a write now only ever happens when it can also cross a pin, so a
+    // ramp settling within one bucket costs nothing beyond the landing write. The LANDING write is exempt so the node
+    // ends EXACTLY on the target, never a hair off.
+    const float DofWriteEps = 0.5f;
 
     void DriveDofRamp(SceneStore scene, long wallMs)
     {
@@ -1579,13 +1623,34 @@ sealed class LyricsView : Component
         _dofRampWallMs = wallMs;
         if (!_dofRampPending || cur.Length == 0) return;
 
+        // Strength 0 ⇒ the feature is OFF: short-circuit the eased convergence and snap every σ straight to 0 in one
+        // pass instead of riding the normal 200 ms ease down to a value that was never supposed to paint — this is
+        // the target hitting its floor because the user turned the effect off, not the ordinary incoming-line
+        // decrease the ease exists to smooth. Also the cheaper path: it lands _dofRampPending false on this one
+        // call, so a disabled effect never re-enters the ramp machinery on a later frame.
+        if (_dofScale <= 0f)
+        {
+            for (int i = 0; i < cur.Length; i++)
+            {
+                cur[i] = 0f;
+                var h0 = (uint)i < (uint)_dofNodes.Length ? _dofNodes[i] : NodeHandle.Null;
+                if (h0.IsNull || !scene.IsLive(h0)) continue;
+                ref NodePaint p0 = ref scene.Paint(h0);
+                if (p0.BlurSigma <= 0.001f) continue;
+                p0.BlurSigma = 0f;
+                scene.Mark(h0, NodeFlags.PaintDirty);
+            }
+            _dofRampPending = false;
+            return;
+        }
+
         bool suppress = SuppressesDof(_followMode.Peek());
         int active = _activeLine.Peek();
         float k = 1f - MathF.Exp(-dt / DofRampTauMs);
         bool moving = false;
         for (int i = 0; i < cur.Length; i++)
         {
-            float target = suppress ? 0f : DofSigmaFor(i, active, _large);
+            float target = suppress ? 0f : DofSigmaFor(i, active, _large) * _dofScale;
             float c = cur[i];
             bool landed = true;
             if (float.IsNaN(c) || target >= c)
@@ -1779,9 +1844,19 @@ sealed class LyricsView : Component
     // declared-static → declared-identity transition, which a node that never declares one cannot make. So nothing else
     // ever stomps this write, and an emphasis re-render mid-cascade leaves the in-flight translate alone.
     //
-    // A PURE TRANSLATION of a blurred node is a blur-pin cache HIT: BlurPinKey is position-independent by construction
-    // (BlurPinKey.cs:7-16 — σ + integer layer size + every op's position REBASED to the layer origin), so the DoF layer
-    // is not re-Gaussian'd for any frame of the cascade.
+    // This is a TRANSFORM change and nothing else, so it is marked TransformDirty ONLY. It used to mark PaintDirty as
+    // well, which flags the row's recorded span as CONTENT-dirty: that refuses both of the recorder's span-reuse paths
+    // and re-records every in-flight row's glyph runs from scratch on every frame of the 0.48 s settle — up to
+    // 2·CascadeWriteBand rows per frame — where a transform-only mark lets the recorder copy the prior span and patch
+    // the translation (the path the scroll kernel's own content moves take). Nothing here reads PaintDirty: a paint
+    // write is what changes bytes, and no byte of this node changes.
+    //
+    // What a pure translation does NOT buy, measured (lyrics-advance probe, 2026-09-10, same track, before/after): the
+    // blurred rows still MISS their blur pin on ~4.5 of ~9 layers per frame for the whole flight, and only hit again at
+    // rest. That is the compositor's own rule — a region-clamped strip (a lyric row clipped by the viewport) never hits
+    // while `InMotion` is set (D3D12Device's pin-hit gate: "a clamped strip in motion re-blurs") — plus the σ ramp
+    // re-keying the incoming rows for its first ~200 ms. Quantizing this translate to whole device pixels was tried
+    // and changed nothing; the remaining per-frame Gaussians during a handoff are an engine question, not this file's.
     void WriteCascade(SceneStore scene, int index, float comp, bool landed)
     {
         var h = (uint)index < (uint)_dofNodes.Length ? _dofNodes[index] : NodeHandle.Null;
@@ -1791,7 +1866,7 @@ sealed class LyricsView : Component
         ref NodePaint p = ref scene.Paint(h);
         if (MathF.Abs(p.LocalTransform.Dy - comp) < (landed ? 0.0005f : CascadeWriteEps)) return;
         p.LocalTransform = comp == 0f ? Affine2D.Identity : Affine2D.Translation(0f, comp);
-        scene.Mark(h, NodeFlags.TransformDirty | NodeFlags.PaintDirty);
+        scene.Mark(h, NodeFlags.TransformDirty);
     }
 
     // Cancel the cascade and put every line back on its true scroll position (identity transform for every line whose
@@ -1921,7 +1996,7 @@ sealed class LyricsView : Component
         ResetFollowState(Context.Scene);   // a deliberate lyric click returns to live before the new active index resolves
         long ms = doc.Lines[index].StartMs;
         b.CommitSeek(ms);   // arms the latch, optimistically publishes PositionMs, issues the accurate seek — a line tap is a commit, never a scrub preview
-        RebaseClock(ms);    // seed all clock fields; _lastAuthMs=ms keeps OnFrame from re-treating our own jump as a seek
+        RebaseClock(ms);    // seed the media clock so OnFrame doesn't re-treat our own committed jump as a snap-worthy disagreement
         _scrollSnapped = false;   // the next follow is the HARD first-landing jump, with the cascade left at rest
         ZeroCascade(Context.Scene);
         ResetWipeThrottle();
@@ -1949,61 +2024,79 @@ sealed class LyricsView : Component
             return;
         }
 
-        // Dejittered media clock. The authoritative IPC PositionMs is itself a coarse ~1 Hz extrapolation; the old code
-        // HARD re-anchored on every snapshot, so a delayed/corrected one snapped nowMs — and since BOTH the active-line
-        // resolve and the karaoke wipe read nowMs, the line jumped (even backward) and the fill lurched. Instead: DEADBAND
-        // tiny disagreements (IPC jitter), gently SLEW small ones into an additive offset (no visible jump), SNAP only a
-        // true seek, plus a MONOTONIC-while-playing guard so the wipe/line never tick backward except on a real seek. Peek
-        // only (no .Value subscribe ⇒ no re-render ⇒ no all-lines-pulse); pure scalar math, zero per-frame alloc. With the
-        // deadband, steady-state extrapolation stays byte-identical to before, so the swap timing + skip-submit are intact.
+        // Dejittered media clock (LyricsMediaClock — see its type doc for the TickCount64 bug this replaced). The
+        // authoritative signal is PlaybackBridge.LastPositionSample: a (position, the QPC instant it was true) pair,
+        // fed to the clock only when it actually changes, then queried at this frame's OWN present time
+        // (FrameTime.NowQpc — never wallMs/TickCount64). Peek only throughout (no .Value subscribe ⇒ no re-render ⇒
+        // no all-lines-pulse); zero per-frame alloc.
         long auth = b.PositionMs.Peek();
-        long wallMs = Environment.TickCount64;
+        long wallMs = FrameTime.NowMs;
         bool playing = b.IsPlaying.Peek();
         long nowMs;
         if (probeNowMs != long.MinValue)
         {
-            // Probe sync-advance (WAVEE_LYRICS_ADVANCE_PROBE): the probe owns the media clock, so a line advance and the
-            // RunFrame that records the resulting scroll SETTLE are the same frame (the async 16 ms Timer is silenced by
-            // ProbeSyncMode). Deterministic + free of the ticker decoupling — the basis of the trustworthy re-probe.
+            // Probe sync-advance (WAVEE_LYRICS_ADVANCE_PROBE): the probe owns the media clock directly (bypassing the
+            // sample feed entirely), so a line advance and the RunFrame that records the resulting scroll SETTLE are
+            // the same frame (the async frame stepper is silenced by ProbeSyncMode). Force the clock to the same
+            // value so a probe run followed by real playback never inherits a stale anchor.
             nowMs = probeNowMs; auth = probeNowMs; playing = true;
-            _baseWall = wallMs; _basePos = probeNowMs; _offset = 0f; _lastAuthMs = probeNowMs; _lastDisplay = probeNowMs;
-        }
-        else if (!playing)
-        {
-            // Paused: the snapshot is the truth. Pin the base to it so a later RESUME doesn't leak the pause gap into the
-            // wall delta, and a paused scrub follows immediately.
-            nowMs = auth;
-            _baseWall = wallMs; _basePos = auth; _offset = 0f; _lastAuthMs = auth; _lastDisplay = auth;
+            _clock.Reset(probeNowMs, FrameTime.NowQpc, true);
+            _lastSampleQpc = b.LastPositionSample.Peek().SampleQpc;
         }
         else
         {
-            if (!_wasPlaying)
+            var sample = b.LastPositionSample.Peek();
+            if (sample.SampleQpc != _lastSampleQpc)
             {
-                // Just resumed: rebase clean so the (untimed) pause duration doesn't appear as a forward jump.
-                _baseWall = wallMs; _basePos = auth; _offset = 0f; _lastAuthMs = auth; _lastDisplay = auth;
-            }
-            else if (auth != _lastAuthMs)
-            {
-                _lastAuthMs = auth;
-                long predicted = _basePos + (wallMs - _baseWall);
-                long err = auth - (long)(predicted + _offset);
-                long ae = err < 0 ? -err : err;
-                if (ae <= 12) { /* deadband: ignore IPC jitter < ~12 ms */ }
-                else if (ae <= 250) { _offset += err * 0.5f; }   // slew: absorb ~half per snapshot (closes in 1-2)
-                else                                              // snap: a real seek / device transfer
+                _lastSampleQpc = sample.SampleQpc;
+                if (_clock.OnSample(sample.PositionMs, sample.SampleQpc, playing))
                 {
-                    _baseWall = wallMs; _basePos = auth; _offset = 0f;
-                    _lastDisplay = auth;        // bypass the monotonic guard for a legitimate (possibly backward) seek
-                    _scrollSnapped = false;     // next ScrollActiveIntoView does the INSTANT-jump latch, not an ease across the song
-                    ZeroCascade(Context.Scene); // …and a song-length jump is NOT a handoff: no cascade rides across it
-                    ResetWipeThrottle();        // re-evaluate the wipe at the new position
+                    // A snap: the first sample, a paused→playing resume, or a real seek / device transfer / track
+                    // change (>250 ms). Same recovery the old hard re-anchor drove — the next follow is an instant
+                    // latch (not an ease across the jump) and any in-flight cascade was measured against geometry
+                    // the jump invalidates.
+                    _scrollSnapped = false;
+                    ZeroCascade(Context.Scene);
+                    ResetWipeThrottle();
                 }
             }
-            long nowRaw = (long)(_basePos + (wallMs - _baseWall) + _offset);
-            nowMs = Math.Max(nowRaw, _lastDisplay);   // monotonic while playing
-            _lastDisplay = nowMs;
+            else if (playing != _clock.Playing)
+            {
+                // The play state flipped with no fresh sample this frame: feed the EDGE, anchored at the authoritative
+                // position NOW — never at the stale sample's own (pre-pause) instant, which would leap forward by the
+                // whole pause on resume. Without it a resume sat pinned until the next ~200 ms host tick.
+                if (_clock.OnSample(auth, System.Diagnostics.Stopwatch.GetTimestamp(), playing))
+                {
+                    _scrollSnapped = false;
+                    ZeroCascade(Context.Scene);
+                    ResetWipeThrottle();
+                }
+            }
+            // Paused: the snapshot IS the truth (today's semantics unchanged — a paused scrub must follow
+            // immediately, and there is no frame-time motion to extrapolate). Playing: the clock's continuous
+            // mapping evaluated at THIS frame's present time.
+            nowMs = playing ? _clock.At(FrameTime.NowQpc) : auth;
         }
-        _wasPlaying = playing;
+
+        // Always-on diagnostics (never an env-var switch): once every 30 s of wall time while a timed document is
+        // actually playing, fold the clock's frame/step/slew/snap counters into one log line. Baselines on first use
+        // instead of comparing against 0 so the very first line covers a real 30 s window, not an instant one.
+        if (playing)
+        {
+            if (_lastClockLogMs == 0L) _lastClockLogMs = wallMs;
+            else if (wallMs - _lastClockLogMs >= 30_000)
+            {
+                _lastClockLogMs = wallMs;
+                var diag = _clock.ReadAndResetDiagnostics();
+                WaveeLog.Instance.Info("lyrics", "lyrics.clock",
+                    "media clock: " + diag.Frames + " frames, " + diag.Snaps + " snap(s)",
+                    WaveeLogField.Of("frames", diag.Frames),
+                    WaveeLogField.Of("zeroAdvanceFrames", diag.ZeroAdvanceFrames),
+                    WaveeLogField.Of("maxStepMs", diag.MaxStepMs),
+                    WaveeLogField.Of("slewMs", diag.SlewMs),
+                    WaveeLogField.Of("snaps", diag.Snaps));
+            }
+        }
 
         // Eye-leads-voice: emphasis + scroll resolve against a LEAD-shifted clock (~140 ms early) so the line is rising
         // into focus as the first syllable lands, while the karaoke wipe/glow stay on the TRUE audio clock (voiceLine +
@@ -2161,21 +2254,21 @@ sealed class LyricsView : Component
                 // Held-note bloom σ, TRIMMED for strict parity (was 6 large / 4 rail — campaign 2026-08-03): the
                 // reference capture shows no glow anywhere, but it also contains no ≥HeldGlowMinMs held syllable, so it
                 // can only argue the bloom smaller, never away. Apple genuinely blooms held notes, so the MECHANISM
-                // stays and only its amplitude comes down — here and at HeldGlowPeakScale.
-                float baseSigma = _large ? 4.5f : 3f;
+                // stays and only its amplitude comes down — here and at HeldGlowPeakScale. Scaled by _dofScale
+                // (LyricsBlurPolicy) same as the DoF ladder, so the strength slider dims this halo too.
+                float baseSigma = (_large ? 4.5f : 3f) * _dofScale;
                 float glowA = GlowAlphaOf(voiceLine);
-                // KNOWN COST, not a correctness bug (and deliberately not "fixed" here): while this row carries a
-                // depth-of-field σ, a halo σ makes a blur layer NESTED inside a blur layer, and a nested PushLayer is
-                // exactly what BlurPinKey.TryCompute refuses — so dofContent is pin-INELIGIBLE for the voice row through
-                // the whole ~140 ms lead window and the ~240 ms out-fade after it, i.e. at every line handoff. It
-                // re-Gaussians instead of pin-hitting. The LINE-SYNCED branch of LyricLineView.Render dodges this by
-                // putting σ on the focal row only; the two ways out here both cost a VISUAL: zero the halo σ (the bloom
-                // becomes a crisp duplicate under the main text at full GlowOpacity) or zero the row's DoF σ (~380 ms of
-                // two in-focus rows per handoff, weakening the ladder). Neither is obviously right, so the cost stands.
-                // What this used to ALSO cost — the panel flashing crisp+full-alpha at a handoff during any page scroll —
-                // is gone: a blur-hold miss now blurs the frame instead of publishing the subtree inline
-                // (D3D12Device's hold arms).
-                float sigma = baseSigma * glowA;
+                // NEVER NEST: a halo σ on a row that ALSO carries a depth-of-field σ pushes a blur layer INSIDE a blur
+                // layer, and a nested PushLayer is exactly what BlurPinKey.TryCompute refuses — so dofContent used to
+                // go pin-INELIGIBLE for the voice row through the whole ~140 ms lead window and the ~240 ms out-fade
+                // after it, i.e. at every line handoff, re-Gaussianing instead of pin-hitting. Fixed by RULE, not by
+                // trimming amplitude: while the voice row's OWN DoF σ is > 0 this halo simply does not paint — the row
+                // is either the active line (DoF settles to 0, so the halo returns exactly there) or a near-but-not-
+                // active row mid-handoff (DoF > 0, so the halo stays off until it either becomes active or falls out
+                // of the near band). The LINE-SYNCED branch of LyricLineView.Render already follows this same rule
+                // structurally (σ only ever on dist == 0); this is the word-by-word branch catching up to it.
+                float rowDof = DofDeclaredFor(voiceLine);
+                float sigma = rowDof > 0.01f ? 0f : baseSigma * glowA;
                 ref var gp = ref scene.Paint(glowNode);
                 if (MathF.Abs(gp.BlurSigma - sigma) > 0.01f) { gp.BlurSigma = sigma; glowDirty = true; }
                 if (glowDirty) scene.Mark(glowNode, NodeFlags.PaintDirty);
@@ -2310,7 +2403,7 @@ sealed class LyricsView : Component
             if (_followMode.Peek() != LyricsFollowMode.Following) return FollowArmResult.Unavailable;
             if (sc.UserScrollActive)
             {
-                OnLyricsScrollActivity(true, Environment.TickCount64);
+                OnLyricsScrollActivity(true, FrameTime.NowMs);
                 return FollowArmResult.Unavailable;
             }
         }
@@ -2526,25 +2619,26 @@ sealed class LyricLineView : Component
     readonly Action<int, NodeHandle> _reportDof;
     readonly Func<int, float> _softnessOf;   // DIP feather → this line's reading-order fraction (LyricsView.SoftnessOfLine)
     readonly Func<int, float> _dofSigmaOf;   // the σ ramp model's LIVE value for this line (LyricsView.DofDeclaredFor)
+    // The LIVE 0..1 blur-strength multiplier (LyricsView._dofScale, LyricsBlurPolicy), as a SIGNAL rather than a
+    // Func: this row's `Blur` below is a declarative element property that only takes effect when Render() runs,
+    // and nothing re-renders a mounted row on a bare slider move — reading `.Value` (never `.Peek()`) is what makes
+    // this row subscribe, so a strength change reaches it without waiting for the next line hand-off. Read ONLY
+    // inside the isActive branch (see Render) so a non-active row never subscribes.
+    readonly FloatSignal _haloScale;
     readonly Action _onSeek;
-
-    // The packed emphasis this row last rendered with, -1 before its first render. The ONLY thing it exists for is the
-    // DIRECTION of the opacity spring (see Render): a row re-renders exactly when its packed emphasis changes, so the
-    // previous value is a free, exact proxy for "which way is this row's opacity about to travel?".
-    int _prevEmphasis = -1;
 
     public LyricLineView(int index, LyricLine line, Signal<int> emphasis, FloatSignal nowMs, Signal<LyricsFollowMode> followMode,
         FloatSignal? glowFade, Signal<int> secondary,
         float fontSz, float lineHt, float rowPad, float sidePad, bool large, LyricsInk ink,
         Action<int, NodeHandle> reportNode,
         Action<int, NodeHandle> reportGlow, Action<int, NodeHandle> reportDof, Func<int, float> softnessOf,
-        Func<int, float> dofSigmaOf, Action onSeek)
+        Func<int, float> dofSigmaOf, FloatSignal haloScale, Action onSeek)
     {
         _index = index; _line = line; _emphasis = emphasis; _nowMs = nowMs;
         _followMode = followMode; _glowFade = glowFade; _secondary = secondary;
         _fontSz = fontSz; _lineHt = lineHt; _rowPad = rowPad; _sidePad = sidePad; _large = large; _ink = ink;
         _reportNode = reportNode; _reportGlow = reportGlow; _reportDof = reportDof; _softnessOf = softnessOf;
-        _dofSigmaOf = dofSigmaOf; _onSeek = onSeek;
+        _dofSigmaOf = dofSigmaOf; _haloScale = haloScale; _onSeek = onSeek;
     }
 
     // The halo wrapper's opacity: BOUND to the per-line fade signal so a row re-render re-asserts the live fade value
@@ -2600,21 +2694,19 @@ sealed class LyricLineView : Component
         // agrees with this ladder at rest (see LyricsView.DofDeclaredFor / DriveDofRamp).
         float blur = _followMode.Peek() == LyricsFollowMode.Following ? _dofSigmaOf(_index) : 0f;
 
-        // AMLL scale in BOTH directions; opacity is critical/no-bounce and DIRECTIONAL.
+        // Both springs are critical/no-bounce and SYMMETRIC (same params/response whichever way the value is moving) —
+        // see the two blocks below for what each used to do differently and why that read as a hand-off glitch.
         // Cold mounts still begin at the element rest targets below, so the soft inactive spring cannot flash a new row.
         var key = DepKey.From(dist, (isActive ? 2 : 0) | (past ? 4 : 0) | (reduce ? 8 : 0));
-        var scaleSpring = new SpringParams(100f, 25f, 2f);             // AMLL m=2,d=25,k=100
-        // Front-loaded outgoing dim: measured, the exiting line falls 252 → 180 luma inside the first ~100 ms of its
-        // flight, while the incoming line brightens across the WHOLE handoff. So the opacity spring is ~3× faster when
-        // the row is DIMMING. The component cannot see the slab's live value, so direction is read off the emphasis
-        // TRANSITION — this row re-renders exactly when its packed emphasis changes, so "was the previous packed value's
-        // opacity higher than this one's?" is that same question, asked where the answer is free. (Both the target and
-        // the response are pure functions of `e`, and `key` carries all of `e`, so the retarget and the params change
-        // together in the one UseSpring re-arm.)
-        int prevPacked = _prevEmphasis;
-        _prevEmphasis = e;
-        bool dimming = prevPacked >= 0 && opacity < OpacityOf(prevPacked) - 0.0005f;
-        var opacitySpring = SpringParams.FromResponse(dimming ? 0.30f : 0.889f, 1.0f);
+        // Critically damped (ζ=1, was 0.884 at d=25 — AMLL's own m=2,d=25,k=100 sits just under critical) at the SAME
+        // stiffness/mass, so the natural frequency — and hence the overall pace of the handoff — is unchanged; only the
+        // small overshoot/settle-wobble the original ratio left in the line's spread (scale) is gone (finding S3 #13:
+        // "reduce the spring bounce of the line spread"). Critical damping for stiffness=100, mass=2 is 2*sqrt(100*2).
+        var scaleSpring = new SpringParams(100f, 2f * MathF.Sqrt(100f * 2f), 2f);
+        // Symmetric brightness hand-off (finding S3 #13): the outgoing line used to dim 3× faster than the incoming
+        // one brightens (response 0.30s vs 0.889s), which read as a one-frame drop against a multi-frame brighten.
+        // ONE response, both directions — critical damping (no bounce) unchanged.
+        var opacitySpring = SpringParams.FromResponse(0.18f, 1.0f);
         UseSpring(AnimChannel.Opacity, opacity, opacitySpring, key);
         UseSpring(AnimChannel.ScaleX, scale, scaleSpring, key);
         UseSpring(AnimChannel.ScaleY, scale, scaleSpring, key);
@@ -2693,13 +2785,19 @@ sealed class LyricLineView : Component
                 // and a peripheral line pays neither a second glyph run nor a blur layer.
                 // TRIMMED for strict parity with the word-by-word bloom above (was 13 large / 9 rail): a line-synced doc
                 // has no held-note signal, so this whole-line wash is the softest claim of the two — it comes down by the
-                // same ~25% spirit as HeldGlowPeakScale + the retuned baseSigma.
+                // same ~25% spirit as HeldGlowPeakScale + the retuned baseSigma. Scaled by _haloScale.Value
+                // (LyricsView's live _dofScale, republished as a signal — see LyricsView's _dofScaleSignal field
+                // block) same as the word-by-word bloom's baseSigma, so the strength slider dims this halo too — a
+                // SIGNAL, not a frozen field (component props freeze at mount) and not a Func (a Func read at Render
+                // time cannot itself cause a re-render when the value it closes over changes; a Signal can, and
+                // reading `.Value` only in the isActive branch above is what makes that re-render land on exactly
+                // the active row).
                 // σ ON THE ACTIVE ROW ONLY (dist == 0), NOT on every near row: at dist ≥ 1 the parent dofContent already
                 // carries a depth-of-field σ (LyricsFx.DofSigma), so a σ here would be a blur layer NESTED inside a blur
                 // layer — and a nested PushLayer is exactly what BlurPinKey.TryCompute bails on, making dofContent
                 // uncacheable for every near row. At dist == 0 the DoF σ is 0, so the halo is never nested and both
                 // layers stay pin-eligible. The glyph mount below stays on `near` — the anti-pop contract is unchanged.
-                Blur = isActive ? (_large ? 10f : 7f) : 0f,
+                Blur = isActive ? (_large ? 10f : 7f) * _haloScale.Value : 0f,
                 // Scroll motion translates this stationary glyph subtree every frame. Reuse its retained blur when it
                 // exists; otherwise render crisp for the moving frame and rebuild the full halo after settling.
                 BlurCachePolicy = BlurCachePolicy.HoldIfCached,

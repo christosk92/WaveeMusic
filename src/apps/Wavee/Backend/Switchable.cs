@@ -17,7 +17,7 @@ namespace Wavee.Backend;
 public sealed class SwitchableState : IPlaybackState, IDisposable
 {
     readonly SimpleSubject<IPlaybackState> _changes = new();
-    readonly SimpleSubject<long> _ticks = new();
+    readonly SimpleSubject<PositionSample> _ticks = new();
     readonly object _gate = new();
     IPlaybackState _inner;
     IDisposable? _changeSub, _tickSub;
@@ -37,7 +37,7 @@ public sealed class SwitchableState : IPlaybackState, IDisposable
     void Wire(IPlaybackState s)
     {
         _changeSub = s.Changes.Subscribe(Observers.From<IPlaybackState>(_ => _changes.OnNext(this)));
-        _tickSub = s.PositionTicks.Subscribe(Observers.From<long>(ms => _ticks.OnNext(ms)));
+        _tickSub = s.PositionTicks.Subscribe(Observers.From<PositionSample>(sample => _ticks.OnNext(sample)));
     }
 
     IPlaybackState Cur { get { lock (_gate) return _inner; } }
@@ -69,7 +69,7 @@ public sealed class SwitchableState : IPlaybackState, IDisposable
     public string? StreamFormat => Cur.StreamFormat;
     public string? ActiveDeviceId => Cur.ActiveDeviceId;
     public IObservable<IPlaybackState> Changes => _changes;
-    public IObservable<long> PositionTicks => _ticks;
+    public IObservable<PositionSample> PositionTicks => _ticks;
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }   // consumers use Changes
 
     public void Dispose() { _changeSub?.Dispose(); _tickSub?.Dispose(); }

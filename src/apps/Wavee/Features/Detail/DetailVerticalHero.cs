@@ -472,7 +472,7 @@ static class DetailVerticalHero
         // and the hero system replaced the rail at narrow widths, so dropping it here silently dropped the collaborator
         // overlays at every width (user report 2026-07-23). Same predicate as the rail.
         if (DetailRail.ShowCollaborators(m))
-            return Embed.Comp(() => new CollaboratorFacePile(m, maxWidth, full));
+            return Embed.Comp(() => new CollaboratorFacePile(m, maxWidth, full)) with { Key = $"pl-collab:{(int)maxWidth}" };
         if (m.OwnerName is { Length: > 0 } owner)
             return new TextEl(owner)
             {

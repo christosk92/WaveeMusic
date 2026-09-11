@@ -275,17 +275,18 @@ public sealed record SidebarDisplayOptions(
     /// badge ON — a fixed collection destination (liked / albums / artists / podcasts) is exactly the row for which a
     /// count exists, and <c>AllowsDisplayField(CollectionShortcuts, CountBadges)</c> lets the user turn it off.
     ///
-    /// <para><b>W7 — why Cozy + Subtitles:true, not Comfortable + no subtitle.</b> Both reach the same 44-DIP row
-    /// (<c>HeightFor(Cozy, true) == HeightFor(Comfortable, false) == 44</c>), but they disagree on the ART COLUMN:
-    /// Comfortable's is 40 DIP, Cozy's is 32 — the same 32 every OTHER content row in the pane uses. A glyph band built
-    /// on Comfortable therefore landed its label 8 DIP to the right of a Cozy playlist row's, which is the alignment
-    /// defect this preset exists to close. <c>Subtitles:true</c> costs nothing visually — neither
-    /// <see cref="SidebarSectionKind.CollectionShortcuts"/> nor <see cref="SidebarSectionKind.StaticLinks"/> exposes the
-    /// field (<c>AllowsDisplayField</c> says false for both) and a route item never supplies a subtitle string in the
-    /// first place — but it is what makes the ONE shared height ladder land on 44 the same way a genuinely-subtitled art
-    /// row does, instead of by a different (Comfortable) route that also drags the art column with it.</para></summary>
+    /// <para><b>Task C — Subtitles:false, not true.</b> Neither <see cref="SidebarSectionKind.CollectionShortcuts"/> nor
+    /// <see cref="SidebarSectionKind.StaticLinks"/> exposes the Subtitles field (<c>AllowsDisplayField</c> says false
+    /// for both) and a route item never supplies a subtitle string in the first place, so the stamped flag never showed
+    /// a subtitle — it only fed the height ladder. This preset used to spell <c>Subtitles:true</c> to reach 44 DIP
+    /// (<c>HeightFor(Cozy, true) == 44</c>) and keep the ART COLUMN at Cozy's 32 (the same 32 every other content row
+    /// uses) rather than Comfortable's 40. That reasoning was itself the bug: a shortcut/link row never actually PAINTS
+    /// a subtitle line, so claiming one it never draws pitches the row a size taller than its content — the ONE leading
+    /// visual in the pane whose declared height disagreed with what it renders. Cozy without a subtitle is the honest
+    /// 40-DIP row (<c>HeightFor(Cozy, false) == 40</c>); the art column stays 32 either way, since neither section
+    /// shows <c>Artwork</c>.</para></summary>
     public static readonly SidebarDisplayOptions Shortcuts =
-        new(Density: SidebarDensity.Cozy, Artwork: false, Subtitles: true, CountBadges: true);
+        new(Density: SidebarDensity.Cozy, Artwork: false, Subtitles: false, CountBadges: true);
 
     /// <summary>The same icon-only rows for <see cref="SidebarSectionKind.StaticLinks"/> — with counts OFF.
     ///

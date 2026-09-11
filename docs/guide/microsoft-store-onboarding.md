@@ -63,8 +63,8 @@ powershell -File ops\build\pack-wavee-msix.ps1 -Arch x64   -Semver 0.2.1 -Channe
 powershell -File ops\build\pack-wavee-msix.ps1 -Arch arm64 -Semver 0.2.1 -Channel store -Codename Breaker -Commit <sha7>
 ```
 
-Upload both `.msix` files in one submission (same version, different `ProcessorArchitecture` — allowed), or wrap
-them in one `.msixbundle` with `makeappx bundle`. Unsigned is fine — the Store signs. Run the Windows App
+Wavee's automated release contract is one `.msixbundle` made with `makeappx bundle`, containing both `.msix`
+files at the same version. Do not ZIP two standalone MSIX files into an upload. Unsigned is fine — the Store signs. Run the Windows App
 Certification Kit on each package before uploading; it catches manifest/asset problems that otherwise cost a
 certification round.
 
@@ -135,8 +135,8 @@ and questions: reportapp@microsoft.com.
 ## 6. Automated submissions (msstore-cli)
 
 Update submissions are scripted: `ops\release\wavee-store-submit.ps1` (walkthrough in
-`docs/guide/releasing-wavee.md` §5c) packs both `store`-channel packages from the release tag, wraps them in one
-`.msixupload`, and drives the submission through the Store submission API via Microsoft's **msstore-cli** — a
+`docs/guide/releasing-wavee.md` §5c) packs both `store`-channel packages from the release tag into one SDK-built
+`.msixbundle`, wraps that single bundle in a `.msixupload`, and drives the submission through the Store submission API via Microsoft's **msstore-cli** — a
 preview tool (its app-update commands work for free products only; Wavee is free today).
 
 Two preconditions and one hard rule:

@@ -12,7 +12,14 @@ A builtin is one `WaveeCommands.Entry`:
 Nav("nav.home", Loc.Get(Strings.Nav.Home), Icons.Home, "home"),
 Play("playback.next", Loc.Get(Strings.Player.Next), Icons.Next, PlaybackVerb.Next),
 Set("settings.theme", Loc.Get(Strings.Settings.Appearance.Theme), Icons.Brush, SettingsVerb.ToggleTheme),
+Set("settings.npvPresentation", Loc.Get(Strings.Player.PresentationToggle), Icons.Picture, SettingsVerb.NpvTogglePresentation),
+Set("settings.npvNextStyle", Loc.Get(Strings.Player.PlayerStyleNext), Icons.Album, SettingsVerb.NpvNextStyle),
 ```
+
+`settings.npvPresentation` ("Now Playing: Cover / Player") and `settings.npvNextStyle` ("Player style: next") are the Now
+Playing player-styles palette entries (`docs/plans/wavee/npv-player-styles-implementation.md`) — they call the same
+`NpvPlayerPrefs.TogglePresentation`/`NextStyle` writers as the header row, the gear flyout and the artwork's context
+menu, tagged with `NpvDiagnostics.SourcePalette`.
 
 Then handle the new `PlaybackVerb` / `SettingsVerb` / route key in `WaveeCommands.Invoke`. Do **not** add per-keystroke closures or LINQ — `Filter` is an array scan over pre-lowercased `LabelLower` into a caller-owned `MaxResults` buffer.
 

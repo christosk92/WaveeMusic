@@ -69,11 +69,15 @@ public sealed class CatalogOnlyHydration : IKindHydration
                               HydrationContext ctx, CancellationToken ct) => Task.CompletedTask;
 }
 
-/// <summary>Counts the three playlist-plane operations without touching the plane.</summary>
+/// <summary>Counts the four playlist-plane operations without touching the plane. <see cref="NeedsRevalidationFn"/>
+/// defaults to "fresh" (false) — a bare `new FakePlaylistOpener()` reproduces the pre-S2-#6 shape (a baseline always
+/// revalidates in the background, never blocks), so every existing caller of this fake keeps its old behaviour
+/// unless it opts in.</summary>
 public sealed class FakePlaylistOpener : IPlaylistOpener
 {
     public Action<string>? OnOpen;
-    public int OpenCalls, RevalidateCalls, HeaderCalls;
+    public Func<string, bool>? NeedsRevalidationFn;
+    public int OpenCalls, RevalidateCalls, HeaderCalls, NeedsRevalidationCalls;
 
     public Task OpenAsync(string playlistUri, CancellationToken ct)
     { Interlocked.Increment(ref OpenCalls); OnOpen?.Invoke(playlistUri); return Task.CompletedTask; }
@@ -82,6 +86,9 @@ public sealed class FakePlaylistOpener : IPlaylistOpener
 
     public Task HeaderAsync(string playlistUri, CancellationToken ct)
     { Interlocked.Increment(ref HeaderCalls); return Task.CompletedTask; }
+
+    public bool NeedsRevalidation(string playlistUri)
+    { Interlocked.Increment(ref NeedsRevalidationCalls); return NeedsRevalidationFn?.Invoke(playlistUri) ?? false; }
 }
 
 public static class HydrationTestSupport

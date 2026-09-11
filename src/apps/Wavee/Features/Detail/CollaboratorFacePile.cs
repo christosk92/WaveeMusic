@@ -13,8 +13,7 @@ namespace Wavee;
 // Playlist collaborator control: owner-first avatar stack plus an interactive flyout of resolved contributors.
 sealed class CollaboratorFacePile : Component
 {
-    readonly IReadOnlyList<Owner> _members;
-    readonly bool _isCollaborative;
+    readonly DetailModel _seed;
     readonly float _maxWidth;
     readonly Loadable<DetailModel>? _full;
 
@@ -23,19 +22,24 @@ sealed class CollaboratorFacePile : Component
 
     public CollaboratorFacePile(DetailModel m, float maxWidth, Loadable<DetailModel>? full = null)
     {
-        _members = m.Collaborators ?? Array.Empty<Owner>();
-        _isCollaborative = m.Capabilities.IsCollaborative;
+        _seed = m;
         _maxWidth = maxWidth;
         _full = full;
     }
 
     public override Element Render()
     {
-        if (_members.Count == 0) return new BoxEl();
-        int overflow = Math.Max(0, _members.Count - MaxVisible);
-        string label = _members.Count >= 2
-            ? _members.Count + " collaborators"
-            : _isCollaborative ? "Open to collaboration" : _members[0].Name;
+        // Read INSIDE Render — that read is the subscription that re-runs this component when a resolved
+        // User entity lands and DetailPage re-maps the model (StoreLibrarySource.BuildCollaborators / UserHydration).
+        // A ctor-captured list (the old bug) freezes the raw-id placeholders forever since the pile never remounts.
+        var m = _full?.Value.Value ?? _seed;
+        var members = m.Collaborators ?? Array.Empty<Owner>();
+        bool isCollaborative = m.Capabilities.IsCollaborative;
+        if (members.Count == 0) return new BoxEl();
+        int overflow = Math.Max(0, members.Count - MaxVisible);
+        string label = members.Count >= 2
+            ? members.Count + " collaborators"
+            : isCollaborative ? "Open to collaboration" : members[0].Name;
 
         var anchor = UseRef<NodeHandle>(default);
         var handle = UseRef<OverlayHandle?>(null);
@@ -47,7 +51,7 @@ sealed class CollaboratorFacePile : Component
             if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
             handle.Value = overlay.Open(
                 () => anchor.Value,
-                () => Flyout(() => handle.Value?.Close()),
+                () => Flyout(members, () => handle.Value?.Close()),
                 FlyoutPlacement.BottomEdgeAlignedLeft,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
                 { ConstrainToRootBounds = false });
@@ -73,7 +77,7 @@ sealed class CollaboratorFacePile : Component
             OnClick = Toggle, OnKeyDown = Key, OnRealized = h => anchor.Value = h,
             Children =
             [
-                FaceStack(overflow),
+                FaceStack(members, overflow),
                 Icon(Icons.ChevronDownSmall, 8f, Tok.TextTertiary),
             ],
         };
@@ -94,11 +98,11 @@ sealed class CollaboratorFacePile : Component
         };
     }
 
-    Element FaceStack(int overflow)
+    static Element FaceStack(IReadOnlyList<Owner> members, int overflow)
     {
-        int visible = Math.Min(MaxVisible, _members.Count);
+        int visible = Math.Min(MaxVisible, members.Count);
         var kids = new List<Element>(visible + (overflow > 0 ? 1 : 0));
-        for (int i = 0; i < visible; i++) kids.Add(AvatarFrame(_members[i], i == 0));
+        for (int i = 0; i < visible; i++) kids.Add(AvatarFrame(members[i], i == 0));
         if (overflow > 0) kids.Add(OverflowFrame(overflow, visible == 0));
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Children = kids.ToArray() };
     }
@@ -127,12 +131,12 @@ sealed class CollaboratorFacePile : Component
         ],
     };
 
-    Element Flyout(Action close)
+    static Element Flyout(IReadOnlyList<Owner> members, Action close)
     {
-        var rows = new Element[_members.Count];
-        for (int i = 0; i < _members.Count; i++)
+        var rows = new Element[members.Count];
+        for (int i = 0; i < members.Count; i++)
         {
-            var owner = _members[i];
+            var owner = members[i];
             rows[i] = new BoxEl
             {
                 Direction = 0, Height = 44f, AlignItems = FlexAlign.Center, Gap = Spacing.M,

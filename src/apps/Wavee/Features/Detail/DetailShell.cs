@@ -309,10 +309,13 @@ sealed class DetailShell : Component
             : m.Accent != 0 ? WaveePalette.ChromeFromPayload(m.Accent)
             : Tok.AccentDefault;
 
-        // Page-scoped shell material tint: a cover-keyed binder leaf (UseEffect publication + UseActivation set/clear +
-        // a mount-once unmount clear — the "wash sticks" fix), not a page-scope Watch, so a graded batch repaints one
-        // zero-size node instead of rebuilding the rail/track-list tree. It publishes the FLAT arm only (Wash: null) —
-        // the three-layer radial wash belongs to Home.
+        // Page-scoped shell material tint: a cover-keyed binder leaf, not a page-scope Watch, so a graded batch
+        // repaints one zero-size node instead of rebuilding the rail/track-list tree. It publishes the FLAT arm only
+        // (Wash: null) — the three-layer radial wash belongs to Home. Ownership is a HAND-OVER, never a clear
+        // (ShellMaterial.Publish): this leaf CLAIMS the slot on first publish and on a KeepAlive reactivation, then
+        // every later publish while this page is still the owner is a REFRESH; a claim whose colour is not graded yet
+        // HOLDS whatever the previous page was showing, so the chrome never dips to neutral between two coloured
+        // pages. This page never clears the slot on park/unmount — the next page's claim is what moves the colour on.
         // Ready: true — match pre-leaf SchemeFor timing: apply as soon as a cover URL is known (preview / cached
         // grading). Gating on modelReady left Home→detail with a cached palette on the bare ground until Ready.
         Element tintBinder = CoverPaletteLeaves.ShellTint(
@@ -591,8 +594,10 @@ sealed class DetailShell : Component
                 Key = "detail:vertical",
                 Direction = 1, Grow = 1f, ClipToBounds = true,
                 // The notice strip sits between the header and the list — it is about the PAGE, so it must be read
-                // before the content it is qualifying, and it must not scroll away with the rows.
-                Children = [DetailNoticeBar.For(_model), verticalBody],
+                // before the content it is qualifying, and it must not scroll away with the rows. showMinifiedAlbum:
+                // false — this IS the full album page, which self-heals a thin tracklist itself (AlbumTrailing asks
+                // for Full); the strip's MinifiedAlbum verdict is for the embedded library pane, which never does.
+                Children = [DetailNoticeBar.For(_model, showMinifiedAlbum: false), verticalBody],
             };
             return new BoxEl
             {
@@ -659,7 +664,9 @@ sealed class DetailShell : Component
             // moved onto the row itself.
             Children =
             [
-                DetailNoticeBar.For(_model),
+                // showMinifiedAlbum: false — see the vertical arm's identical call above for why the full page never
+                // shows the album-thin verdict (it self-heals; the embedded library pane does not).
+                DetailNoticeBar.For(_model, showMinifiedAlbum: false),
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, Justify = FlexJustify.Center,

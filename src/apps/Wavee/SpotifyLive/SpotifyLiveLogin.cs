@@ -25,7 +25,7 @@ public static class SpotifyLiveLogin
 
     public static async Task<int> RunAsync(WaveeLogger log, CancellationToken ct)
     {
-        var login = await LoginAsync(log, ct).ConfigureAwait(false);
+        var login = await LoginAsync(log, ct, clearStoredOnReject: false).ConfigureAwait(false);
         if (login is null) return 1;
         var w = login.Welcome;
 
@@ -47,7 +47,7 @@ public static class SpotifyLiveLogin
     /// premium gate) and by the metadata probe (which continues to login5 + spclient).</summary>
     public static async Task<LoginResult?> LoginAsync(WaveeLogger log, CancellationToken ct, bool retainChannel = false,
         bool allowDeviceCode = true, IObserver<AuthState>? authObserver = null, Action? onCredentialAcquired = null,
-        bool allowBrowser = false)
+        bool allowBrowser = false, bool clearStoredOnReject = true)
     {
         // Step 1 - PORTABLE credential store (DPAPI / Keychain / libsecret / NoOp behind one seam) + the launch-stable device id.
         var (credStore, deviceId) = OpenCredentialStore();
@@ -107,8 +107,11 @@ public static class SpotifyLiveLogin
                 }
                 catch (SpotifyAuthRejectedException ex)
                 {
-                    // A genuine credential rejection is FINAL (don't try other APs). Clear stored creds → a re-run re-auths.
-                    if (usedStored) { credStore.Clear(); log.Info("Stored credentials were rejected - cleared them. Re-run to authorize fresh."); }
+                    // A genuine credential rejection is FINAL (don't try other APs). Clear stored creds → a re-run re-auths —
+                    // UNLESS this is a probe run (clearStoredOnReject: false), which must never wipe the user's real
+                    // signed-in credential just because a probe process happened to see a transient rejection.
+                    if (usedStored && clearStoredOnReject) { credStore.Clear(); log.Info("Stored credentials were rejected - cleared them. Re-run to authorize fresh."); }
+                    else if (usedStored) log.Info("Stored credentials were rejected (kept on disk: probe run). Re-run the app to re-authorize.");
                     else log.Info("Login rejected by Spotify: " + ex.Message);
                     return null;
                 }

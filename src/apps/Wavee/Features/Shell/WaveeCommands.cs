@@ -19,7 +19,7 @@ static class WaveeCommands
 
     public enum Kind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library }
     public enum PlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
-    public enum SettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset }
+    public enum SettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle }
     /// <summary>Library-structure verbs. "New folder" lives here because the only other way to reach it is a right-click
     /// on a sidebar row — and on a pane with no folders yet there is no such row to right-click.</summary>
     public enum LibraryVerb : byte { NewPlaylist, NewFolder }
@@ -50,7 +50,7 @@ static class WaveeCommands
     }
 
     /// <summary>Builtin table size (nav + playback + settings). Registry rows are appended by <see cref="BuildIndex"/>.</summary>
-    public const int BuiltinCount = 17;
+    public const int BuiltinCount = 19;
 
     /// <summary>Allocate a fresh index for one palette-open. Labels are localized at this edge (not per keystroke).</summary>
     public static Entry[] BuildIndex(WaveeExtensionRegistry? registry)
@@ -164,6 +164,11 @@ static class WaveeCommands
                     case SettingsVerb.ZoomIn: WaveeShell.ZoomStep(+1); break;
                     case SettingsVerb.ZoomOut: WaveeShell.ZoomStep(-1); break;
                     case SettingsVerb.ZoomReset: WaveeShell.ZoomStep(0); break;
+                    // Now Playing player styles (docs/plans/wavee/npv-player-styles-implementation.md): the same
+                    // NpvPlayerPrefs writers the header row / flyout / art context menu / Settings use, tagged with
+                    // the palette source so diagnostics can tell where a change came from.
+                    case SettingsVerb.NpvTogglePresentation: NpvPlayerPrefs.TogglePresentation(host.Settings, NpvDiagnostics.SourcePalette); break;
+                    case SettingsVerb.NpvNextStyle: NpvPlayerPrefs.NextStyle(host.Settings, NpvDiagnostics.SourcePalette); break;
                 }
                 break;
             case Kind.Registry:
@@ -205,6 +210,8 @@ static class WaveeCommands
         Set("settings.zoomIn", Loc.Get(Strings.Settings.Appearance.ZoomIn), Icons.Add, SettingsVerb.ZoomIn),
         Set("settings.zoomOut", Loc.Get(Strings.Settings.Appearance.ZoomOut), Icons.Remove, SettingsVerb.ZoomOut),
         Set("settings.zoomReset", Loc.Get(Strings.Settings.Appearance.ZoomReset), Icons.Undo, SettingsVerb.ZoomReset),
+        Set("settings.npvPresentation", Loc.Get(Strings.Player.PresentationToggle), Icons.Picture, SettingsVerb.NpvTogglePresentation),
+        Set("settings.npvNextStyle", Loc.Get(Strings.Player.PlayerStyleNext), Icons.Album, SettingsVerb.NpvNextStyle),
         Lib("library.newPlaylist", Loc.Get(Strings.Detail.NewPlaylist), Icons.Add, LibraryVerb.NewPlaylist),
         Lib("library.newFolder", Loc.Get(Strings.Sidebar.CreateFolder), Icons.Folder, LibraryVerb.NewFolder),
     ];

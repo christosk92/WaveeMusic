@@ -75,8 +75,20 @@ static class SidebarCover
     ///
     /// <para>The <c>Route(… "Heart")</c> row in <c>SidebarBuiltInDocuments</c> is unaffected: an authored
     /// <c>IconOverride</c> is resolved by <c>SidebarPaneSlot.LeadingArt</c> BEFORE this factory is asked, so the
-    /// built-in Liked NAV row keeps its heart mark and only library-list appearances take the cover.</para></summary>
-    public static Element Liked(float size) => LikedSongsArtwork.Dynamic(size, Radius(size, false));
+    /// built-in Liked NAV row keeps its heart mark and only library-list appearances take the cover.</para>
+    ///
+    /// <para>Wrapped in the same hard-sized/clipped box every other arm of this factory returns (Task C) —
+    /// <c>LikedSongsArtwork.Dynamic</c> is an <c>Embed.Comp</c> anchor with no intrinsic Width/Height/Shrink, so
+    /// unwrapped it let a pinned Liked row measure taller than the rest of its section (sidebar iron rule 4: one
+    /// height per section). The component still owns its own content/paint; this box only fixes its slot size.</para></summary>
+    public static Element Liked(float size)
+        => new BoxEl
+        {
+            Width = size, Height = size, Shrink = 0f,
+            Corners = CornerRadius4.All(Radius(size, false)),
+            ClipToBounds = true,
+            Children = [LikedSongsArtwork.Dynamic(size, Radius(size, false))],
+        };
 
     /// <summary>Cover art: the image when there is one, a 2×2 mosaic when the playlist is cover-less but carries ≥4
     /// tiles, else the seeded placeholder tile. <paramref name="seedKey"/> is the entity's stable id/uri (never an index)

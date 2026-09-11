@@ -47,19 +47,39 @@ sealed class FlipCountdown : Component
     // Interned numerals: a cell's key AND its text — a keyed remount per tick must not also mint strings per second.
     static readonly string[] Numerals = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
-    readonly Signal<long> _nowMs = new(0);
+    // A (unix-ms, frame-ms) anchor pair, sampled ONCE at first render and never re-sampled. Every later "now" is this
+    // one wall-clock sample plus the FRAME CLOCK's own delta since (FrameTime.NowMs - _frameAnchorMs) — never a second
+    // DateTimeOffset.UtcNow poll. That second poll was the stuck-timer bug (S3 #19): the strip sat on "02:59:01" for
+    // 1.6s of a recording with nothing wrong with UseInterval's own schedule — polling the wall clock a second time
+    // every tick means two consecutive reads can disagree with the real elapsed time by however coarse the OS clock
+    // happens to be right then (a sleep/resume, an NTP step, a timer-quantum hiccup), each disagreement baked
+    // permanently into the next reading. FrameTime.NowMs is QPC-derived and monotonic BETWEEN two of its own reads
+    // (see FrameTime's own doc), so drift can only ever come from the one wall-clock sample — exactly
+    // LyricsMediaClock's anchor pattern, applied to a 1 Hz display instead of a media position.
+    readonly Signal<long> _unixAnchorMs = new(0);
+    readonly Signal<long> _frameAnchorMs = new(0);
+    // A once-a-second PING: it exists only to ask for a re-render, so the interval no longer OWNS the displayed value
+    // the way writing straight into a "now" signal did. Any OTHER re-render (an accent change, a parent update) also
+    // recomputes "now" fresh from the anchor below, instead of repainting whatever the last tick happened to leave in
+    // a cached signal — so a render this ping did not itself cause can never show a stale time either.
+    readonly Signal<int> _tick = new(0);
 
     public override Element Render()
     {
         // Seeded on first render rather than at construction: a component built during a parked-page rebuild could
-        // otherwise carry a stale "now" until its first tick landed (PreReleaseCountdown's pattern).
-        if (_nowMs.Peek() == 0) _nowMs.Value = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        // otherwise carry a stale anchor until its first tick landed (PreReleaseCountdown's pattern).
+        if (_frameAnchorMs.Peek() == 0)
+        {
+            _frameAnchorMs.Value = FrameTime.NowMs;
+            _unixAnchorMs.Value = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        }
 
-        long now = _nowMs.Value;                        // subscribe → re-render on each tick
+        _ = _tick.Value;   // subscribe → re-render once a second even when nothing else does
+        long now = _unixAnchorMs.Peek() + (FrameTime.NowMs - _frameAnchorMs.Peek());
         long left = Math.Max(0L, ExpiresAtMs - now);
         bool expired = ExpiresAtMs <= 0 || left == 0;
 
-        UseInterval(() => _nowMs.Value = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), TickMs, enabled: !expired);
+        UseInterval(() => _tick.Value++, TickMs, enabled: !expired);
 
         if (ExpiresAtMs <= 0) return new BoxEl();       // the hooks above always ran — stable order
 

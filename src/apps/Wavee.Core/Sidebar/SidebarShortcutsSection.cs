@@ -69,8 +69,11 @@ public static class SidebarShortcutsSection
     }
 
     /// <summary>The document a PANE renders: <paramref name="document"/> with the band prepended as its first section.
-    /// Returns the input UNCHANGED when the band is empty, so an emptied band costs nothing and the pane's first
-    /// section header (which hosts the quick layout menu) falls back to the document's own first section.
+    /// Returns the input UNCHANGED when the band is empty, so an emptied band costs nothing. Either way the pane's
+    /// quick layout menu host falls back to the document's own first section: the planner emits NO
+    /// <c>SectionHeader</c> row for the band at all (Task G — it is never collapsible chrome, so it never needs the
+    /// header row a collapse toggle would live on), so <c>SidebarPane</c>'s "first SectionHeader row" pick lands on
+    /// the document's own leading section whether the band renders or not.
     ///
     /// <para>This is a RENDER-PATH projection. The result must never be dispatched, saved or compared against the
     /// persisted document — see the file header.</para></summary>

@@ -75,6 +75,8 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
 - [deep-linking.md](deep-linking.md) — the `wavee://` verb map and the one activation entry every surface routes through.
 - [receipts.md](receipts.md) — the About "Wavee right now" perf receipts and the GPU-vs-app memory split.
 - [focus-pitfalls.md](focus-pitfalls.md) — programmatic focus: focus the editable node, not its chrome.
+- [probes.md](probes.md) — the headless CLI probe flags (`--spotify-metadata`, `--spotify-login`, ...), how to
+  build/run one against the live account, and the credential-store caveat. Read before running or adding a probe.
 - **`wavee-sidebar` skill** (`.claude/skills/wavee-sidebar/`) — the left sidebar: the three designs as documents
   over ONE `SidebarPane` renderer, the layout document/reducer/persistence, the projection→binder→planner
   pipeline, the customizer, and the extension registries. Read it before touching `Features/Sidebar/**`,

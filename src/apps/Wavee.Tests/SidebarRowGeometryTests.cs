@@ -8,8 +8,9 @@ namespace Wavee.Tests;
 // could be pinned here. Two things are under test:
 //
 //   1. HEIGHT PARITY between the two documents that render the SAME "Your Library" section — Classic's locked built-in
-//      document and the Wavee Curated seed template. Both must reach 44 through the ONE ladder. This is the regression
-//      the user's screenshots showed (Classic's rows visibly roomier than Curated's), and the reason it is worth a test
+//      document and the Wavee Curated seed template. Both must reach 40 (Task C: Cozy without a subtitle a glyph row
+//      never paints) through the ONE ladder. This is the regression the user's screenshots showed (Classic's rows
+//      visibly roomier than Curated's), and the reason it is worth a test
 //      is that the two section lists are authored in different assemblies by different code paths, so nothing else stops
 //      them drifting. NOTE what this canNOT catch: a document already PERSISTED to sidebar-layout.json carries its own
 //      density and is never retro-fitted by a template edit — templates seed documents, they do not update them.
@@ -97,7 +98,7 @@ public sealed class SidebarRowGeometryTests
     [InlineData(SidebarDensity.Compact, false, 32f)]
     [InlineData(SidebarDensity.Compact, true, 32f)]     // Compact suppresses subtitles outright — no second line, no growth
     [InlineData(SidebarDensity.Cozy, false, 40f)]
-    [InlineData(SidebarDensity.Cozy, true, 44f)]        // = Classic's entity row, AND (since W7) its glyph/shortcut row
+    [InlineData(SidebarDensity.Cozy, true, 44f)]        // = Classic's entity row (a glyph/shortcut row is Cozy+NO subtitle — 40, Task C)
     [InlineData(SidebarDensity.Comfortable, false, 44f)]// also 44 — but a 40-DIP art column, no longer used for Shortcuts/Links
     [InlineData(SidebarDensity.Comfortable, true, 48f)]
     public void HeightFor_IsTheThreeCanonicalHeightsPlusComfortable(SidebarDensity d, bool sub, float expected)
@@ -137,7 +138,7 @@ public sealed class SidebarRowGeometryTests
 
         Assert.Equal(SidebarRowGeometry.HeightFor(classic.Opts), SidebarRowGeometry.HeightFor(curated.Opts));
         // …and the number itself, so a future "let's make Curated cozier" edit fails HERE instead of in a screenshot.
-        Assert.Equal(44f, SidebarRowGeometry.HeightFor(curated.Opts));
+        Assert.Equal(40f, SidebarRowGeometry.HeightFor(curated.Opts));
     }
 
     [Fact]

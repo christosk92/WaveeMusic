@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Backend.Audio;
@@ -88,6 +89,11 @@ public readonly record struct AudioHostSignal
     public PlaybackRecoveryKind RecoveryKind { get; init; }
     public AudioKeyFailureReason FailureReason { get; init; }
     public string? Detail { get; init; }
+    /// <summary>The <see cref="Stopwatch.GetTimestamp"/> reading at the instant <see cref="PositionMs"/> was sampled —
+    /// stamped here, at construction, so it is the host's own sample time rather than whenever a downstream fold
+    /// happens to run. Carried into <see cref="Wavee.Core.PositionSample"/> at the projection so the lyrics clock can
+    /// extrapolate from the sample's OWN instant instead of a stale "now".</summary>
+    public long SampleQpc { get; init; }
 
     public AudioHostSignal(AudioHostSignalKind kind, long positionMs)
     {
@@ -99,6 +105,7 @@ public readonly record struct AudioHostSignal
         RecoveryKind = kind == AudioHostSignalKind.Recovering ? PlaybackRecoveryKind.Network : PlaybackRecoveryKind.None;
         FailureReason = AudioKeyFailureReason.None;
         Detail = null;
+        SampleQpc = Stopwatch.GetTimestamp();
     }
 
     public AudioHostSignal(AudioHostSignalKind kind, long positionMs, bool isPlaying, bool isBuffering,
@@ -113,6 +120,7 @@ public readonly record struct AudioHostSignal
         RecoveryKind = recoveryKind;
         FailureReason = failureReason;
         Detail = detail;
+        SampleQpc = Stopwatch.GetTimestamp();
     }
 
     public static AudioHostSignal Fault(long positionMs, AudioKeyFailureReason reason, string? detail = null) =>
@@ -172,6 +180,18 @@ public interface IAudioDspControl
 {
     void SetEqualizer(bool enabled, ReadOnlySpan<float> gainsDb, float preampDb = 0f);
     void SetCrossfade(bool enabled, int durationMs);
+}
+
+/// <summary>Optional host capability (the <see cref="IAudioDspControl"/> precedent — discovered by interface): a host
+/// with a local PCM tap publishes its live RMS/peak/spectrum here. <see cref="Levels"/> is null for a host that never
+/// has one — no cast failure, just an honest "nothing to show": the fake/silent backend, and a real session that is
+/// merely a Connect VIEWER of another device's playback (nothing decodes locally to measure).
+/// <para><b>Threading:</b> the signal is written on the audio pump thread, off the UI thread — a consumer must
+/// <c>Peek()</c> it from its own render tick (e.g. a per-frame ticker), never <c>Subscribe</c>/react to it directly,
+/// or every audio block would fan out a UI notification.</para></summary>
+public interface IAudioLevelSource
+{
+    FluentGpu.Signals.IReadSignal<FluentGpu.Media.VisualizerFrame>? Levels { get; }
 }
 
 /// <summary>Optional host capability (the <see cref="IAudioDspControl"/> precedent — discovered by interface, never a

@@ -22,12 +22,25 @@ namespace Wavee;
 sealed class DetailNoticeBar : Component
 {
     readonly Loadable<DetailModel> _full;
+    // Frozen at mount — which surface is asking, not a fact about the data (that stays on DetailModel.Notice). The
+    // MinifiedAlbum verdict is real for BOTH mount sites (the full model's own Notice, per PlaylistPageNoticeRules.
+    // ForAlbum), but only the embedded library pane can USE it: it never self-heals (LibraryDetailPane mounts no
+    // trailing band, so nothing ever asks for Full), so the notice is the only way it tells the reader where the real
+    // rows live. The full album page (DetailShell) DOES self-heal — its trailing band asks for Full the moment it
+    // mounts — so showing the strip there is not "the truth a moment early", it is a bar that appears for ~0.4s while
+    // the meta line's duration is still summing zero-duration thin rows (see DetailPage.MapAlbum) and then vanishes
+    // the instant the repair lands, taking ~94px of hero with it. Suppressing it here (view policy) rather than never
+    // computing the fact (DetailPage.MapAlbum keeps stamping it) keeps the library pane's own mount site — which
+    // passes no second argument and keeps today's behaviour — untouched.
+    readonly bool _showMinifiedAlbum;
 
-    public DetailNoticeBar(Loadable<DetailModel> full) => _full = full;
+    public DetailNoticeBar(Loadable<DetailModel> full, bool showMinifiedAlbum) { _full = full; _showMinifiedAlbum = showMinifiedAlbum; }
 
-    /// <summary>Mount the strip for a page. Zero-height (and mounts no bar) while there is nothing to say.</summary>
-    internal static Element For(Loadable<DetailModel> full)
-        => Embed.Comp(() => new DetailNoticeBar(full)) with { Key = "detail-notice" };
+    /// <summary>Mount the strip for a page. Zero-height (and mounts no bar) while there is nothing to say.
+    /// <paramref name="showMinifiedAlbum"/>: true (default) for the embedded library pane, which never self-heals a
+    /// thin album and needs the strip to say where the real rows are; false for the full detail page, which does.</summary>
+    internal static Element For(Loadable<DetailModel> full, bool showMinifiedAlbum = true)
+        => Embed.Comp(() => new DetailNoticeBar(full, showMinifiedAlbum)) with { Key = "detail-notice" };
 
     public override Element Render()
     {
@@ -40,14 +53,16 @@ sealed class DetailNoticeBar : Component
         // "View full album" button, the full page's hero), never an action on the notice: the bar is a statement about
         // the data, and the full page heals itself the moment its trailing band asks for Full.
         if (notice == DetailNotice.MinifiedAlbum)
-            return new BoxEl
-            {
-                Direction = 1, Padding = new Edges4(16f, 8f, 16f, 4f), Shrink = 0f,
-                Children =
-                [
-                    InfoBar.Create(InfoBarSeverity.Informational, Loc.Get(Strings.Detail.Notice.MinifiedAlbum), "", isClosable: false),
-                ],
-            };
+            return _showMinifiedAlbum
+                ? new BoxEl
+                {
+                    Direction = 1, Padding = new Edges4(16f, 8f, 16f, 4f), Shrink = 0f,
+                    Children =
+                    [
+                        InfoBar.Create(InfoBarSeverity.Informational, Loc.Get(Strings.Detail.Notice.MinifiedAlbum), "", isClosable: false),
+                    ],
+                }
+                : new BoxEl { Height = 0f, HitTestVisible = false };
 
         string message = notice switch
         {

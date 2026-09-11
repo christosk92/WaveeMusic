@@ -226,6 +226,7 @@ public static class MediaCard
                                    int matchStart = 0, int matchLen = 0, int titleLines = 1)
     {
         var hovered = new Signal<bool>(false);
+        var moveGate = new HoverMotionGate();   // S3 #14: don't hover from a stationary post-navigation re-resolve
         float r = circular ? Radii.Full : Radii.Card;
         var coverStack = new BoxEl
         {
@@ -281,7 +282,7 @@ public static class MediaCard
         return (CardShell(content, onClick) with
         {
             Draggable = drag,
-            OnPointerMoveWithin = _ => { if (!hovered.Peek()) hovered.Value = true; },
+            OnPointerMoveWithin = pos => { if (moveGate.Observe(pos) && !hovered.Peek()) hovered.Value = true; },
             OnPointerExit = () => { if (hovered.Peek()) hovered.Value = false; },
         }).WithMenu(menu);
     }
@@ -523,6 +524,7 @@ public static class MediaCard
         readonly Signal<bool> _hovered = new(false);
         readonly Signal<bool> _revealed = new(false);
         readonly Signal<Point2> _spotlightCenter = new(new Point2(0.5f, 0.35f));
+        HoverMotionGate _moveGate;   // S3 #14: don't hover (or start the peek countdown) from a stationary post-nav re-resolve
         int _hoverEpoch;                                   // bumped on every hover edge — abandons stale countdown tails
         NodeHandle _arcNode = NodeHandle.Null;
         float _liveCardW;
@@ -561,6 +563,7 @@ public static class MediaCard
 
         void PointerMove(Point2 local)
         {
+            if (!_moveGate.Observe(local)) return;   // a stationary re-resolve, not a real pointer edge — see the gate's doc
             HoverStart();
             if (Motion.ReducedMotion) return;
             float w = MathF.Max(1f, _liveCardW);
@@ -880,6 +883,7 @@ public static class MediaCard
                                     DragSource? drag = null)
     {
         var hovered = new Signal<bool>(false);
+        var moveGate = new HoverMotionGate();   // S3 #14: don't hover from a stationary post-navigation re-resolve
         float inner = MathF.Max(64f, cardW - 2f * Pad);
         float ar = inner * 9f / 16f;
         var card = new BoxEl
@@ -891,7 +895,7 @@ public static class MediaCard
             BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
             Shadow = Elevation.Card,
             HoverScale = WaveeMotion.ScaleSubtle.Hover, PressScale = WaveeMotion.ScaleSubtle.Press, OnClick = onClick, Draggable = drag,
-            OnPointerMoveWithin = _ => { if (!hovered.Peek()) hovered.Value = true; },
+            OnPointerMoveWithin = pos => { if (moveGate.Observe(pos) && !hovered.Peek()) hovered.Value = true; },
             OnPointerExit = () => { if (hovered.Peek()) hovered.Value = false; },
             Children =
             [
@@ -917,13 +921,14 @@ public static class MediaCard
     public static Element QuickPick(Image? cover, string title, string uri, Action onClick, Action onPlay, ColorF? accent = null, Element? diagnostics = null, MenuAttach? menu = null, DragSource? drag = null)
     {
         var hovered = new Signal<bool>(false);
+        var moveGate = new HoverMotionGate();   // S3 #14: don't hover from a stationary post-navigation re-resolve
         var card = new BoxEl
         {
             Direction = 0, Height = QuickH, AlignItems = FlexAlign.Center, Gap = Spacing.M,
             Corners = CornerRadius4.All(Radii.Card), Fill = AccentCardFill(accent), HoverFill = AccentCardHoverFill(accent),
             BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, ClipToBounds = true, OnClick = onClick,
             Shadow = Elevation.Card, Draggable = drag,
-            OnPointerMoveWithin = _ => { if (!hovered.Peek()) hovered.Value = true; },
+            OnPointerMoveWithin = pos => { if (moveGate.Observe(pos) && !hovered.Peek()) hovered.Value = true; },
             OnPointerExit = () => { if (hovered.Peek()) hovered.Value = false; },
             Children =
             [
@@ -956,6 +961,7 @@ public static class MediaCard
                               bool plated = true, bool showArtwork = true)
     {
         var hovered = new Signal<bool>(false);
+        var moveGate = new HoverMotionGate();   // S3 #14: don't hover from a stationary post-navigation re-resolve
         float art = large ? 84f : WaveeSize.Thumb48;
         // The ART's radius: a small row thumb takes the control rung (4) like every other 48px thumb in the app; the
         // hero's 84px cover takes the card rung. The old 6 was on neither.
@@ -1020,7 +1026,7 @@ public static class MediaCard
                 BorderWidth = plated ? 1f : 0f,
                 BorderColor = plated ? Tok.StrokeCardDefault : ColorF.Transparent,
                 Role = AutomationRole.Button, OnClick = onClick, Draggable = drag,
-                OnPointerMoveWithin = _ => { if (!hovered.Peek()) hovered.Value = true; },
+                OnPointerMoveWithin = pos => { if (moveGate.Observe(pos) && !hovered.Peek()) hovered.Value = true; },
                 OnPointerExit = () => { if (hovered.Peek()) hovered.Value = false; },
                 Children =
                 [
@@ -1050,7 +1056,7 @@ public static class MediaCard
             // The row is the interactive ancestor (OnClick + a no-op pointer-exit), so the cover's hover-revealed play FAB
             // resolves off ROW hover — identical to the card behavior.
             Role = AutomationRole.Button, OnClick = onClick, Draggable = drag,
-            OnPointerMoveWithin = _ => { if (!hovered.Peek()) hovered.Value = true; },
+            OnPointerMoveWithin = pos => { if (moveGate.Observe(pos) && !hovered.Peek()) hovered.Value = true; },
             OnPointerExit = () => { if (hovered.Peek()) hovered.Value = false; },
             Children = kids.ToArray(),
         }.WithMenu(menu);
@@ -1106,6 +1112,7 @@ sealed class ShelfCard : Component
         Action<string>? OnNavUri, MenuAttach? Menu, DragSource? Drag);
 
     readonly Signal<bool> _hovered = new(false);
+    HoverMotionGate _moveGate;   // S3 #14: don't hover from a stationary post-navigation re-resolve
 
     public override Element Render()
     {
@@ -1191,7 +1198,7 @@ sealed class ShelfCard : Component
         {
             Grow = 1f,
             Draggable = p.Drag,
-            OnPointerMoveWithin = _ => { if (!hovered.Peek()) hovered.Value = true; },
+            OnPointerMoveWithin = pos => { if (_moveGate.Observe(pos) && !hovered.Peek()) hovered.Value = true; },
             OnPointerExit = () => { if (hovered.Peek()) hovered.Value = false; },
         }).WithMenu(p.Menu);
         // The padding box is the shelf's GUTTER, not the card — the drag source above deliberately sits inside it.

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Wavee.Core;
 
 namespace Wavee.Backend.Collections;
 
@@ -12,7 +13,7 @@ public static class CollectionSets
     /// <summary>Every wire set the inbound sync walks — the unit of a page walk, a sync token and a reconcile pass. One
     /// entry per server set, so "collection" is walked ONCE for liked + albums (they were two walks before, each sweeping
     /// the other's half of the same mixed snapshot).</summary>
-    public static readonly string[] WireSets = { "collection", "artist", "show", "listenlater" };
+    public static readonly string[] WireSets = { "collection", "artist", "show", "listenlater", "ylpin" };
 
     /// <summary>The <c>collection_rev</c> key a wire set's sync token is stored under. Tokens are keyed by WIRE set, not
     /// logical set: one walk of "collection" yields one token that covers both liked and albums, and a delta from it
@@ -38,6 +39,9 @@ public static class CollectionSets
         // Inbound sync for this set is deliberately NOT wired (see LogicalSetsForWireSet) until a live capture confirms
         // the set string.
         "prerelease" => "collection",
+        // Your-Library pins: playlists/albums/artists/shows + the Liked Songs collection, mixed. Confirmed from the
+        // retired app's SpotifyLibraryService (§0.1) — an ordinary collection2v2 set, not a special protocol.
+        "pins" => "ylpin",
         _ => setId,
     };
 
@@ -59,6 +63,7 @@ public static class CollectionSets
         "artist" => Artists,
         "show" => Shows,
         "listenlater" => Episodes,
+        "ylpin" => Pins,
         _ => Array.Empty<string>(),
     };
 
@@ -66,6 +71,24 @@ public static class CollectionSets
     static readonly string[] Artists = { "artists" };
     static readonly string[] Shows = { "shows" };
     static readonly string[] Episodes = { "episodes" };
+    static readonly string[] Pins = { "pins" };
+
+    /// <summary>Whether an item off the wire may be folded into a logical set at all. Every prefix-filtered set says yes
+    /// to whatever its prefix admits; the prefix-less "pins" set — the one place a mixed, partly-opaque set can leak a
+    /// non-uri into the store — admits only pinnable Spotify entity uris, a rootlist folder, and the Liked Songs
+    /// collection (bare <c>spotify:collection</c> on this set, per <c>PinSyncRules.LikedWireUri</c>).</summary>
+    public static bool AcceptsUri(string setId, string uri)
+    {
+        if (setId != "pins") return true;
+        if (!uri.StartsWith("spotify:", StringComparison.Ordinal)) return false;
+        if (EntityUri.IsLikedCollection(uri)) return true;
+        if (EntityUri.FolderIdOf(uri).Length > 0) return true;
+        return EntityUri.KindOf(uri) is EntityKind.Playlist or EntityKind.Album or EntityKind.Artist or EntityKind.Show;
+    }
+
+    /// <summary>Does a dealer PubSubUpdate for this wire set direct-apply (zero round-trip) or always re-fetch? ylpin
+    /// pushes are opaque in practice (the retired client never decoded one), so they always take the delta path (§0.1).</summary>
+    public static bool PushDirectApplies(string wireSet) => wireSet != "ylpin";
 
     // The specific logical set for ONE item off a wire-set push: the first logical set of the wire set whose URI prefix the
     // item matches (a prefix-less set matches anything). null = the item isn't attributable to a known logical set.

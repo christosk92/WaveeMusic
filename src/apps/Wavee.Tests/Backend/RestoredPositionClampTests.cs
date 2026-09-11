@@ -119,10 +119,11 @@ public class RestoredPositionClampTests
         const long durationMs = 174_000;
         var track = Local("spotify:track:liegt", durationMs);
         using var p = new NowPlayingProjection("us", NotOwnedEntityHydrator.Instance, new InMemoryStore());
+        p.Ownership.Claim(ClaimCause.UserResume);   // host signals fold only while WE own playback
         p.ApplyLocalSnapshot(Snap(track), new PlaybackEvent(EvKind.Resumed, track, 0));
 
         long? observed = null;
-        using var sub = p.PositionTicks.Subscribe(Observers.From<long>(v => observed = v));
+        using var sub = p.PositionTicks.Subscribe(Observers.From<PositionSample>(v => observed = v.PositionMs));
 
         p.OnHostSignal(new AudioHostSignal(AudioHostSignalKind.PositionTick, durationMs + 5_000));
 

@@ -48,6 +48,20 @@ public sealed class SidebarRowExtentsTests
     }
 
     [Fact]
+    public void ShortcutSection_IsCozyWithoutSubtitle_40()
+    {
+        // Task C: SidebarDisplayOptions.Shortcuts/Links declare Subtitles:false — neither CollectionShortcuts nor
+        // StaticLinks ever paints a subtitle line, so the honest row is Cozy-without-subtitle (40), not the 44 the
+        // preset used to claim by spelling Subtitles:true for a line it never drew.
+        var shortcuts = Sec("s", SidebarSectionKind.CollectionShortcuts, SidebarDisplayOptions.Shortcuts);
+        var links = Sec("s", SidebarSectionKind.StaticLinks, SidebarDisplayOptions.Links);
+        var rows = new List<SidebarRow> { Row(SidebarRowKind.IconRow) };
+
+        Assert.Equal(40f, H(rows, 0, shortcuts));
+        Assert.Equal(40f, H(rows, 0, links));
+    }
+
+    [Fact]
     public void ChromeRows_MatchTheRenderersOwnConstants()
     {
         var section = Sec("s", SidebarSectionKind.PlaylistTree);

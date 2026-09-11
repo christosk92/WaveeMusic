@@ -24,6 +24,25 @@ public sealed class WaveeLog : IWaveeLog
     public static readonly string SessionId = Guid.NewGuid().ToString("N")[..8];
     static readonly int ProcessId = Environment.ProcessId;
 
+    // The one baseline every startup-timeline line reports (sinceStartMs=). Anchored to the REAL process start where
+    // the OS will tell us, so a line written before the first paint reports how long the user has been waiting rather
+    // than how long ago the logger happened to be touched.
+    static readonly long StartTicks = Environment.TickCount64 - ProcessUptimeMs();
+
+    /// <summary>Milliseconds since this process started.</summary>
+    public static long SinceStartMs => Environment.TickCount64 - StartTicks;
+
+    static long ProcessUptimeMs()
+    {
+        try
+        {
+            using var self = System.Diagnostics.Process.GetCurrentProcess();
+            long ms = (long)(DateTime.Now - self.StartTime).TotalMilliseconds;
+            return ms is >= 0 and < 24L * 60 * 60 * 1000 ? ms : 0;   // a nonsense clock is no anchor at all
+        }
+        catch { return 0; }
+    }
+
     public static WaveeLog Instance { get; } = new();
 
     readonly object _ringGate = new();
@@ -196,7 +215,20 @@ public sealed class WaveeLog : IWaveeLog
     /// that must survive the Info file gate. Allocation-free ordinal prefix/substring checks on the incoming line.</summary>
     static bool GpuForensic(string s) =>
         s.StartsWith("[d3d12.adapter]", StringComparison.Ordinal)
+        // The compositor-clock latch silently drops production from vblank pacing to a wall-clock timer for the rest of
+        // the session (docs/plans/wavee/scroll-feel-investigation-2026-09-10.md §3.4); it must reach the Info file.
+        || s.StartsWith("[compositor-clock]", StringComparison.Ordinal)
         || s.StartsWith("[device-lost]", StringComparison.Ordinal)
+        // The always-on wake census: one line per 30 s naming the frame rate and WHICH wake term held the loop awake.
+        // It has to clear the Info gate or it answers nothing after the fact - "pinned at panel rate, cause unknown"
+        // is precisely the report this instrument exists to make answerable.
+        || s.StartsWith("[wake]", StringComparison.Ordinal)
+        // The present-queue depth and the window's actual monitor/refresh are both invisible from the outside: a queue
+        // two frames deep still reports a healthy frame rate (how depth 2 hid ~1 frame of input lag), and a window on
+        // a 50 Hz secondary reports the same fps as one on the 120 Hz panel unless the mode line says otherwise.
+        // Both are once-per-edge, so the Info file gets the pacing contract without chatter.
+        || s.StartsWith("[d3d12.present]", StringComparison.Ordinal)
+        || s.StartsWith("[d3d12.display]", StringComparison.Ordinal)
         || s.StartsWith("[d3d12.stall]", StringComparison.Ordinal)
         || s.StartsWith("[d3d12] ", StringComparison.Ordinal)
         || s.Contains("dwmGlitches", StringComparison.Ordinal);
