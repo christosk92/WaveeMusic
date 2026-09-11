@@ -125,6 +125,9 @@ measured.
   ticks. A playlist or mix opened after it changed waits briefly for the fresh copy instead of painting yesterday's
   and swapping it, and its rows only animate for real edits. Sidebar clicks hand the page a preview like Home cards
   do. Search and Browse skeletons have the shape of the page they stand in for. (#149)
+- What's new: the highlight cards are the same translucent cards as the rest of the page instead of a darker opaque
+  grey, the viewer's page dots are centred under the picture, and stepping between highlights no longer makes the
+  viewer grow and snap back — it keeps the tallest highlight's size and cross-fades the text in place.
 - **Less motion that was not asked for.** Wide track rows no longer shrink when pressed, cards under a resting
   pointer no longer grow right after navigating back, the sidebar equaliser honours reduced motion, and a lyric line's
   hand-off dims and brightens at the same pace. (#150)

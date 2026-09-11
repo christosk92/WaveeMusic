@@ -18,17 +18,14 @@ namespace Wavee;
 /// <summary>One hero highlight: poster, kind pill, title, a fixed-height body slot with an edge fade, and a
 /// "Read more ›" cue that opens the highlight viewer (<c>HighlightViewer.cs</c>).
 ///
-/// <para>THE ONE OPAQUE CARD. Every other card in Wavee runs <c>Interaction.Card</c>'s translucent
-/// <c>Tok.FillCardDefault</c> veil (white @ 5%, cross-fading to <c>FillCardSecondary</c> on hover) over whatever
-/// sits behind it. This card cannot: the body slot's edge fade (<see cref="HighlightCardView.Fade"/>) is a gradient
-/// that must end in a colour that is ACTUALLY THERE, so the dissolving text reads as "there is more" rather than as
-/// a rendering fault. No gradient end-stop can equal a translucent veil composited over two different backdrops —
-/// the dialog's <c>FillSolidBase</c> plate and the page's Mica-over-wallpaper — and a stop tuned to the rest state
-/// would show a visible seam the moment hover cross-fades the veil underneath it. So the frame paints
-/// <c>Tok.FillSolidTertiary</c> (an existing token, unused by any other card before this one) and the fade's far
-/// stop is that same opaque colour at full alpha — a true pixel match, not an approximation. Flat interaction recipe
-/// follows from the same constraint: <c>Interaction.Card</c> would reintroduce the translucent ramp this card
-/// specifically opts out of, so the press/hover cues below are authored directly instead (§A.3 of the design doc).
+/// <para>THE STANDARD CARD. The frame is <c>Interaction.Card</c>'s translucent <c>Tok.FillCardDefault</c> veil
+/// (cross-fading to <c>FillCardSecondary</c> on hover) under <c>Tok.StrokeCardDefault</c> — the same surface as the
+/// Fixed/Added section cards right under the strip and every Settings card, so the Mica tint reads through it. It
+/// used to be the one OPAQUE card (<c>Tok.FillSolidTertiary</c>, a flat #2C2C2C that read darker and greyer than
+/// every Mica card beside it), only because the body slot's "there is more" cue was a gradient painted in the card's
+/// own colour and needed a far stop that was actually there. The cue is now a true ALPHA fade of the slot's content
+/// (<c>BoxEl.EdgeFade</c>, one offscreen layer — see <see cref="HighlightCardView"/>'s <c>BodySlot</c>), which
+/// dissolves into whatever is behind it: the translucent card over Mica on the page, over the plate in the dialog.
 /// </para>
 ///
 /// <para>MOTION: the card renders a POSTER, never a live video. Wavee's only video surface is
@@ -194,37 +191,31 @@ sealed class HighlightCardView : Component
 
     readonly Signal<bool> _overflows = new(false);
 
-    // Theme-live: a get-only property re-reads the token each render. Both stops share the card's RGB, so the ramp is
-    // a pure alpha ramp with no hue drift mid-fade.
-    static GradientSpec Fade => GradientDown(
-        new GradientStop(0f, Tok.FillSolidTertiary with { A = 0f }),
-        new GradientStop(1f, Tok.FillSolidTertiary));
-
     public override Element Render()
     {
         var h = _item.Highlight;
         bool store = HighlightVisibility.IsStore(h);
-        bool overflows = _overflows.Value;   // subscribe: the fade eases in/out when OnBoundsChanged flips the answer
+        bool overflows = _overflows.Value;   // subscribe: the slot's edge fade engages when OnBoundsChanged flips the answer
 
+        // The standard Mica card surface (see the file comment): translucent FillCardDefault + a flat StrokeCardDefault.
         var frame = new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
             MaxWidth = _compact ? M.CompactCardMaxW : M.CardMaxW,
             Corners = CornerRadius4.All(Radii.Card), ClipToBounds = true,
+            Fill = Tok.FillCardDefault,
             BorderWidth = 1f,
             BorderColor = store ? Tok.AccentDefault : Tok.StrokeCardDefault,
-            HoverBorderColor = store ? Tok.AccentDefault : Tok.StrokeSurfaceDefault,
+            HoverBorderColor = store ? Tok.AccentDefault : Tok.StrokeCardDefault,
             BrushTransitionMs = WaveeMotion.Faster,
-            Fill = Tok.FillSolidTertiary,          // opaque — see the file comment on HighlightCard
         };
 
-        // Regular card: frame and hit region are ONE node — hover stroke and click share the box.
+        // Regular card: frame and hit region are ONE node, so it takes Interaction.Card whole — the FillCardDefault →
+        // FillCardSecondary hover ramp, the flat card stroke and the 0.985 spring press every other card uses.
         if (!store)
-            return frame with
+            return frame.Interactive(Interaction.Card) with
             {
                 Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = _open,
-                WhilePressed = new MotionTarget { Scale = 0.985f },
-                Transition = MotionTok.StandardSpring,
                 Children = [ HighlightCard.Media(h, _item.Poster, store: false), RegularBody(h, overflows) ],
             };
 
@@ -272,6 +263,10 @@ sealed class HighlightCardView : Component
     /// whose bounds decide the fade; the slot clips whatever falls below line 4. Clamping with MaxLines instead would
     /// make the natural height always ≤ 68 and the overflow unmeasurable — the fade could never be conditional.
     ///
+    /// <para>The fade is the slot's own <c>EdgeFade</c> (bottom band, <c>FadeHeight</c>): a true alpha feather of the
+    /// clipped text, so it needs no knowledge of the colour behind the card — which is what lets the frame be the
+    /// standard translucent card rather than an opaque plate a painted gradient could end in.</para>
+    ///
     /// <para>The card's own link handler is a no-op (<c>static _ => { }</c>): the card is one button (or, on the store
     /// card, sits inside one), so a live link run inside it would be a second nested click target. Links are live in
     /// the viewer, where the body is not itself a button.</para></summary>
@@ -279,6 +274,7 @@ sealed class HighlightCardView : Component
     {
         Height = M.BodySlotHeight, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
         ZStack = true, ClipToBounds = true, HitTestVisible = false,
+        EdgeFade = overflows ? new EdgeFadeSpec(EdgeMask.Bottom, M.FadeHeight) : null,
         Children =
         [
             // A FLEX COLUMN, not a bare ZStack layer, and that is the whole trick. ArrangeZStack gives an auto-sized
@@ -313,13 +309,6 @@ sealed class HighlightCardView : Component
                         ],
                     },
                 ],
-            },
-            new BoxEl   // the edge fade, bottom-anchored, full width
-            {
-                Height = M.FadeHeight, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch,
-                HitTestVisible = false, Gradient = Fade,
-                Opacity = overflows ? 1f : 0f,
-                Transition = MotionTok.ControlFaster,   // 83 ms KeepFade: a resize eases the fade, never pops it
             },
         ],
     };
