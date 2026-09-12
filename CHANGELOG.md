@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to **Wavee** are documented here.
 
@@ -7,6 +7,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
+
+## [Unreleased]
+
+Idle GPU and memory on the Snapdragon. Wavee sat at 50-68 % GPU and 520 MB-1 GB of working set with nothing on
+screen moving, and the investigation behind this section is in `docs/plans/wavee/gpu-memory-investigation-2026-09-11.md`.
+Almost all of it is engine work; the app side is the memory governor, the response buffers and the instruments.
+
+### Fixed
+
+- **The render loop never went idle.** Leaving a page while its scrollbar was still inside the two-second idle-hide
+  after a scroll froze that row forever: it was skipped before the liveness check so it was never dropped, it was
+  counted as needing a frame anyway, and the ticker's own parked-set was never cleared when the page was evicted —
+  so a recycled node index inherited it and froze a *new* page's scrollbar too. The loop held at panel rate with
+  nothing animating, for the rest of the session. Parking now lands the bar at rest and retires its row. A bar that
+  was visible when you navigate away is gone when you come back, rather than resuming mid-fade. (#118)
+- **Every awake frame repainted the whole window.** An animated node marked every ancestor up to the root as moved,
+  and the renderer damages a moved node's subtree bounds — which at the root is the window. One scrolling title
+  therefore repainted every pixel, at panel rate, against the renderer's own promise that "a spinner repaints a tiny
+  region". A pose now damages only the node that actually moved: measured coverage for a small animated leaf goes
+  from 100 % to 0.53 %. A row whose value did not change damages nothing at all, so a 60 Hz animation on a 120 Hz
+  panel stops paying for the frames in between — and those frames now skip the scene recording as well as the
+  present. (#118)
+- **Two things moving in different corners forced a full repaint.** The partial-repaint path was capped at a single
+  rectangle whenever anything on screen was mid-fade, so a scrolling title near the top and a playhead at the bottom
+  were merged into one rectangle covering most of the window, which then failed the coverage test and repainted
+  everything. They stay separate now. (#118)
+- **A fading edge disabled partial repaint entirely.** Every list in Wavee has a soft fade at its edges, and that
+  alone made a frame ineligible no matter how little of it had changed — so in practice almost every frame repainted
+  the whole window. (#118)
+- **The weak-GPU memory budgets never applied.** The adapter was classified *after* the image pipeline had already
+  been sized, and an unclassified adapter counts as a discrete one, so every UMA machine — the Snapdragon included —
+  silently ran with desktop-GPU budgets: 32 MB of pixel pool instead of 16, 64 MB of image cache instead of 24,
+  16 MB of blur cache instead of 8. (#118)
+- **Album art was budgeted at the wrong size.** The cache counted decoded pixels while the GPU commits a rounded-up
+  square texture, so a 150-pixel cover was counted as 90 KB and actually held 262 KB. The cache believed it was
+  inside its cap while holding roughly three and a half times it. Covers are also now released when you navigate
+  away from a page, instead of only when some unrelated image finished loading. (#118)
+- **A video kept its decoder alive for the whole session.** Playing one video left a second graphics device, a Media
+  Foundation engine and its decode surfaces resident until the app closed — none of it visible to any memory
+  counter, because the app only ever receives a handle to it. It is now released after the video has been idle for
+  half a minute, while skipping between tracks still costs nothing. (#118)
+- **The memory governor could never fire.** It read whole-machine memory pressure, which on a 16-32 GB laptop stays
+  near zero while Wavee holds a gigabyte, and nothing was registered at the level it sheds at when pressure is
+  normal — so the thirty-second check freed nothing, ever, on either count. (#118)
+
+### Changed
+
+- **Large responses are no longer copied twice.** Each catalog response was buffered and then copied again, and
+  compressed bodies were copied a third time purely to satisfy a constructor — every one of them on the large-object
+  heap, which nothing in the app ever compacts. (#118)
+- **The diagnostics can now see GPU memory the engine does not own.** `mem.sample` reports the adapter's own
+  per-process figure beside the tracked total, so the difference — Media Foundation's surfaces, the driver's arenas,
+  shader compilation — is a named number instead of an unexplained gap. Image memory is also broken down per texture
+  size rather than collapsed into one row, and frame repaint coverage is reported as a percentage, since every
+  successful partial frame used to round to "0.0". (#118)
 
 ## [0.2.9] - 2026-09-11
 
