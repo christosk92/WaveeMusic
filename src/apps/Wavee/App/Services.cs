@@ -1,4 +1,5 @@
 ﻿using System.Linq;
+using FluentGpu;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using Wavee.Core;
@@ -412,6 +413,18 @@ public sealed class Services
             WhatsNew, Concerts, Playback);
         SidebarBinder.UseHost(new WaveeBuiltInDataSources.ContributionHost(SidebarSources), SidebarSources);
         Sidebar.Binder = SidebarBinder;
+        // Priority 1 — the cheapest thing to lose, and until now the level NOTHING registered at. MemoryGovernor.Trim
+        // maps Normal to maxPriority 1, so with priorities 2 and 3 the only ones present, the every-30-seconds poll
+        // walked the array and shed nothing whatever the reading was. The class doc named "prefetch art" as the
+        // intended priority-1 arena and the governor's own tests register exactly that; production never did. The
+        // engine image cache IS that arena: trimming it drops unpinned (off-screen) covers and keeps every pinned one.
+        Residency.Register(1, "prefetch-art", () =>
+        {
+            if (FluentApp.EngineImages is not { } images) return 0L;
+            long before = images.UsedBytes + images.DerivedUsedBytes;
+            images.TrimToBudget();
+            return Math.Max(0L, before - (images.UsedBytes + images.DerivedUsedBytes));
+        });
         // Wire the detail caches as a sheddable arena (priority 2 = shed under MODERATE+ pressure, so at-rest A→B→A stays
         // instant; the LRU insert-cap already bounds steady state). The entity-store "unpinned drop" (priority 3/4) is the
         // documented follow-up — it needs a reachability pin-set to evict live entities safely.

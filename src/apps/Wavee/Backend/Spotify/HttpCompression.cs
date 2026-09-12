@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using Google.Protobuf;
 
 namespace Wavee.Backend.Spotify;
@@ -29,18 +30,31 @@ public static class HttpCompression
         return ms.ToArray();
     }
 
-    public static byte[] Gunzip(ReadOnlySpan<byte> data)
+    /// <summary>A read-only stream OVER the compressed bytes, copying only when the memory is not array-backed (which
+    /// no caller here is). The decompress pair used to take a span, which forced <c>new MemoryStream(data.ToArray())</c>
+    /// — a full extra copy of every compressed response, on the large-object heap for anything past 85 KB, purely to
+    /// satisfy a constructor. The write side of this file already documents exactly this hazard; the read side simply
+    /// never got the same treatment.</summary>
+    static MemoryStream ReadOnlyOver(ReadOnlyMemory<byte> data)
     {
-        using var src = new MemoryStream(data.ToArray());
+        if (MemoryMarshal.TryGetArray(data, out ArraySegment<byte> seg) && seg.Array is { } backing)
+            return new MemoryStream(backing, seg.Offset, seg.Count, writable: false);
+        byte[] copy = data.ToArray();
+        return new MemoryStream(copy, 0, copy.Length, writable: false);
+    }
+
+    public static byte[] Gunzip(ReadOnlyMemory<byte> data)
+    {
+        using var src = ReadOnlyOver(data);
         using var gz = new GZipStream(src, CompressionMode.Decompress);
         using var dst = new MemoryStream();
         gz.CopyTo(dst);
         return dst.ToArray();
     }
 
-    public static byte[] BrotliDecompress(ReadOnlySpan<byte> data)
+    public static byte[] BrotliDecompress(ReadOnlyMemory<byte> data)
     {
-        using var src = new MemoryStream(data.ToArray());
+        using var src = ReadOnlyOver(data);
         using var br = new BrotliStream(src, CompressionMode.Decompress);
         using var dst = new MemoryStream();
         br.CopyTo(dst);

@@ -69,4 +69,52 @@ public class MemoryGovernorTests
         // …and the registry is intact afterwards: only the permanent arena, sheddable exactly once.
         Assert.Equal(1, gov.Trim(MemoryPressure.Critical));
     }
+
+    // ── MemoryPressurePolicy: the reading that decides which of the arenas above actually shed ──────────────────────
+    // The level used to come from whole-machine memory load against the CLR's high-memory threshold, which on a
+    // 16-32 GB laptop sits near zero while this process holds a gigabyte — so the governor never left Normal however
+    // much Wavee itself was using. Pressure is read from the PROCESS footprint now, the thing shedding actually
+    // changes, with machine load kept only as a ceiling.
+
+    [Fact]
+    public void Pressure_IsDrivenByThisProcessFootprint_NotWholeMachineLoad()
+    {
+        // A quiet machine (load 0) and a fat process: the old reading said Normal forever; this one escalates.
+        Assert.Equal(MemoryPressure.Normal, MemoryPressurePolicy.From(300L * 1024 * 1024, machineLoad: 0.0));
+        Assert.Equal(MemoryPressure.Moderate, MemoryPressurePolicy.From(MemoryPressurePolicy.ModerateBytes, 0.0));
+        Assert.Equal(MemoryPressure.Critical, MemoryPressurePolicy.From(MemoryPressurePolicy.CriticalBytes, 0.0));
+    }
+
+    [Fact]
+    public void Pressure_MachineLoadOnlyEverRaisesTheLevel()
+    {
+        // A small process on a machine under real pressure still sheds…
+        Assert.Equal(MemoryPressure.Moderate, MemoryPressurePolicy.From(10L * 1024 * 1024, MemoryPressurePolicy.MachineModerateLoad));
+        Assert.Equal(MemoryPressure.Critical, MemoryPressurePolicy.From(10L * 1024 * 1024, MemoryPressurePolicy.MachineCriticalLoad));
+        // …and a quiet machine never LOWERS a level the process footprint already earned.
+        Assert.Equal(MemoryPressure.Critical, MemoryPressurePolicy.From(MemoryPressurePolicy.CriticalBytes, 0.0));
+    }
+
+    [Fact]
+    public void Pressure_BoundariesAreInclusive_AndOneByteBelowIsNot()
+    {
+        Assert.Equal(MemoryPressure.Normal, MemoryPressurePolicy.From(MemoryPressurePolicy.ModerateBytes - 1, 0.0));
+        Assert.Equal(MemoryPressure.Moderate, MemoryPressurePolicy.From(MemoryPressurePolicy.CriticalBytes - 1, 0.0));
+    }
+
+    [Fact]
+    public void Normal_ShedsPriorityOne_WhichIsTheLevelProductionLeftEmpty()
+    {
+        // The governor maps Normal to maxPriority 1. With only priorities 2 and 3 registered — which is what shipped —
+        // every Normal tick walked the array and shed nothing, forever. This is that bug as a test.
+        var withoutPriorityOne = new MemoryGovernor();
+        withoutPriorityOne.Register(2, "detail-cache", static () => 20);
+        withoutPriorityOne.Register(3, "entity-store", static () => 30);
+        Assert.Equal(0, withoutPriorityOne.Trim(MemoryPressure.Normal));
+
+        var withPriorityOne = new MemoryGovernor();
+        withPriorityOne.Register(1, "prefetch-art", static () => 10);
+        withPriorityOne.Register(2, "detail-cache", static () => 20);
+        Assert.Equal(10, withPriorityOne.Trim(MemoryPressure.Normal));
+    }
 }

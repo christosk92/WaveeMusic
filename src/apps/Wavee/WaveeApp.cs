@@ -253,11 +253,17 @@ sealed class WaveeApp : Component
             // it sheds nothing — each cache's LRU cap already bounds steady state; under real pressure it sheds further.
             governorTimer.Value ??= new System.Threading.Timer(_ =>
             {
+                // Pressure is read from THIS PROCESS's footprint, not from whole-machine load. The old reading was
+                // MemoryLoadBytes / HighMemoryLoadThresholdBytes — the machine against ~90 % of physical — which on a
+                // 16-32 GB laptop sits near zero while Wavee holds a gigabyte. The governor was keyed to a signal the
+                // app cannot move, so it never left Normal. Machine load is still passed in, but only as a ceiling.
                 var info = GC.GetGCMemoryInfo();
-                double load = info.HighMemoryLoadThresholdBytes > 0 ? (double)info.MemoryLoadBytes / info.HighMemoryLoadThresholdBytes : 0.0;
-                var level = load >= 1.0 ? Wavee.Backend.Residency.MemoryPressure.Critical
-                          : load >= 0.85 ? Wavee.Backend.Residency.MemoryPressure.Moderate
-                          : Wavee.Backend.Residency.MemoryPressure.Normal;
+                double machineLoad = info.HighMemoryLoadThresholdBytes > 0
+                    ? (double)info.MemoryLoadBytes / info.HighMemoryLoadThresholdBytes
+                    : 0.0;
+                long privateBytes;
+                using (var self = System.Diagnostics.Process.GetCurrentProcess()) privateBytes = self.PrivateMemorySize64;
+                var level = Wavee.Backend.Residency.MemoryPressurePolicy.From(privateBytes, machineLoad);
                 post(() => _services.Residency.Trim(level));
             }, null, dueTime: 30_000, period: 30_000);
 

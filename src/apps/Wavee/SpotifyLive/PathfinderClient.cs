@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -44,8 +44,12 @@ public sealed class PathfinderClient
         Action<Utf8JsonWriter>? writeVariables, Platform platform = Platform.Desktop, CancellationToken ct = default)
     {
         var body = BuildBody(operationName, sha256Hash, writeVariables);
-        var bytes = await QueryBodyBytesAsync(operationName, body, platform, ct).ConfigureAwait(false);
-        return bytes is null ? null : JsonDocument.Parse(bytes);
+        try
+        {
+            var seg = await FetchAsync(operationName, body, platform, ct).ConfigureAwait(false);
+            return JsonDocument.Parse(new ReadOnlyMemory<byte>(seg.Array!, seg.Offset, seg.Count));
+        }
+        catch (PathfinderRequestException) { return null; }
     }
 
     /// <summary>The required read: throws <see cref="PathfinderRequestException"/> instead of answering null.</summary>
@@ -53,17 +57,26 @@ public sealed class PathfinderClient
         Action<Utf8JsonWriter>? writeVariables, Platform platform = Platform.Desktop, CancellationToken ct = default)
     {
         var body = BuildBody(operationName, sha256Hash, writeVariables);
-        return JsonDocument.Parse(await FetchAsync(operationName, body, platform, ct).ConfigureAwait(false));
+        var seg = await FetchAsync(operationName, body, platform, ct).ConfigureAwait(false);
+        return JsonDocument.Parse(new ReadOnlyMemory<byte>(seg.Array!, seg.Offset, seg.Count));
     }
 
     public async Task<byte[]?> QueryBodyBytesAsync(string operationName, byte[] body,
         Platform platform = Platform.Desktop, CancellationToken ct = default)
     {
-        try { return await FetchAsync(operationName, body, platform, ct).ConfigureAwait(false); }
+        // The ONE caller that needs a standalone array pays for it here, rather than every parse paying for it.
+        try
+        {
+            var seg = await FetchAsync(operationName, body, platform, ct).ConfigureAwait(false);
+            return seg.Offset == 0 && seg.Count == seg.Array!.Length ? seg.Array : seg.ToArray();
+        }
         catch (PathfinderRequestException) { return null; }
     }
 
-    async Task<byte[]> FetchAsync(string operationName, byte[] body, Platform platform, CancellationToken ct)
+    /// <summary>The one request path, returning the response as a SEGMENT of the buffer it was read into rather than
+    /// an exact-size copy. Callers that only parse it never need the copy; the one caller that hands bytes onward
+    /// materialises it explicitly, so the cost is visible at the call site instead of paid by everyone.</summary>
+    async Task<ArraySegment<byte>> FetchAsync(string operationName, byte[] body, Platform platform, CancellationToken ct)
     {
         try
         {
@@ -79,7 +92,13 @@ public sealed class PathfinderClient
             if (resp.Status is < 200 or >= 300) throw new PathfinderRequestException(operationName, resp.Status);
             using var ms = new MemoryStream();
             await resp.Body.CopyToAsync(ms, ct).ConfigureAwait(false);
-            return ms.ToArray();
+            // GetBuffer, not ToArray. Home and library payloads routinely exceed the 85 KB large-object threshold, so
+            // ToArray made every one of them TWO large-object allocations — the stream's own doubling buffer and an
+            // exact-size copy of it — where one will do. The buffer outlives the stream (MemoryStream.Dispose does not
+            // release it) and the segment is handed straight to a JsonDocument.Parse overload that takes memory, so
+            // nothing copies it again. Nothing in this process ever compacts the large-object heap, which is why the
+            // per-response churn showed up as ~112 MB of fragmentation rather than as transient allocation.
+            return ms.TryGetBuffer(out ArraySegment<byte> seg) ? seg : new ArraySegment<byte>(ms.ToArray());
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (PathfinderRequestException ex) { _log.Info(ex.Message); throw; }
