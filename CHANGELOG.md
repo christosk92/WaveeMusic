@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to **Wavee** are documented here.
 
@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
-## [0.2.10] - unreleased
+## [0.2.10] - 2026-09-12
 
 Idle GPU and memory on the Snapdragon. Wavee sat at 50-68 % GPU and 520 MB-1 GB of working set with nothing on
 screen moving, and the investigation behind this section is in `docs/plans/wavee/gpu-memory-investigation-2026-09-11.md`.
