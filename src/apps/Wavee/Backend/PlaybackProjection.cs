@@ -1470,13 +1470,29 @@ public sealed class LiveConnectDevices : IConnectDevices
 
     public void Update(IReadOnlyList<ConnectDeviceRow> rows)
     {
+        // Cluster heartbeats routinely repeat the roster. Compare the complete PUBLIC projection before allocating:
+        // retaining this array also preserves downstream signal identity, so unchanged devices do not rebuild the bar.
+        // Order is observable in the picker; every projected field (including rounded volume) participates.
+        var current = _devices;
+        bool unchanged = current.Count == rows.Count;
+        for (int i = 0; unchanged && i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var device = current[i];
+            unchanged = device.Id == row.Id && device.Name == row.Name && device.Kind == row.Kind
+                && device.IsActive == row.IsActive && device.VolumePercent == VolumePercent(row.Volume0_65535);
+        }
+        if (unchanged) return;
+
         var list = new PlaybackDevice[rows.Count];
         for (int i = 0; i < rows.Count; i++)
         {
             var r = rows[i];
-            list[i] = new PlaybackDevice(r.Id, r.Name, r.Kind, r.IsActive, (int)Math.Round(r.Volume0_65535 / 655.35));
+            list[i] = new PlaybackDevice(r.Id, r.Name, r.Kind, r.IsActive, VolumePercent(r.Volume0_65535));
         }
         _devices = list;
         _changed.OnNext(list);
     }
+
+    static int VolumePercent(int volume0_65535) => (int)Math.Round(volume0_65535 / 655.35);
 }

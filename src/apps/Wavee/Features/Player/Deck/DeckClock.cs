@@ -50,6 +50,7 @@ sealed class DeckClock : Component
     public required PlaybackBridge Bridge;
     public required IDeckModel Model;
     public required DeckSignals Out;
+    public required bool UsesLevels;
 
     /// <summary>The deck's current turntable speed in rpm, re-read per tick (the option can flip while mounted).</summary>
     public required Func<float> Rpm;
@@ -127,6 +128,18 @@ sealed class DeckClock : Component
         bool railOpen = ui?.RailOpen.Value ?? true;
         bool run = !reduced && railOpen && (playing || pwr || buffering || !settled);
         UseInterval(Tick, TickMs, enabled: run);
+        var active = UseIsActive();
+        UseEffect(() =>
+        {
+            var source = b.LevelSource.Value;
+            bool visible = active.Value;
+            bool needsLevels = UsesLevels && visible && !Motion.ReducedMotion
+                && (ui?.RailOpen.Value ?? true)
+                && (b.IsPlaying.Value || b.IsBuffering.Value || !_settled.Value);
+            if (!needsLevels || source is null) return null;
+            var lease = source.AcquireLevels();
+            return lease.Dispose;
+        });
 
         // Reduced motion / rail closed / settled: there is no ticker, so a STATE CHANGE is the clock. Same hook, same
         // order, every render — only the dep changes (the canon rule: reduced motion is a value, not a branch).

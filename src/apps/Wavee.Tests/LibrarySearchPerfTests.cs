@@ -270,6 +270,9 @@ public sealed class CountingStore : IStore, ILibraryCandidateStore
     public IReadOnlyList<SavedItem> SavedItems(string setId) => _inner.SavedItems(setId);
     public void SetMembership(string playlistUri, IReadOnlyList<PlaylistMember> rows, byte[]? baseRev) => _inner.SetMembership(playlistUri, rows, baseRev);
     public bool HasMembership(string playlistUri) => _inner.HasMembership(playlistUri);
+    public void SetMembershipFailed(string playlistUri) => _inner.SetMembershipFailed(playlistUri);
+    public bool MembershipFailed(string playlistUri) => _inner.MembershipFailed(playlistUri);
+    public void ClearMembershipFailed(string playlistUri) => _inner.ClearMembershipFailed(playlistUri);
     public IReadOnlyList<PlaylistMember> Membership(string playlistUri) => _inner.Membership(playlistUri);
     public byte[]? PlaylistRevision(string playlistUri) => _inner.PlaylistRevision(playlistUri);
     public void SetRootlist(IReadOnlyList<RootlistEntry> entries) => _inner.SetRootlist(entries);

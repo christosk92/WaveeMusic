@@ -158,8 +158,15 @@ public static partial class DeepLink
             q = amp < 0 ? default : q[(amp + 1)..];
             if (pair.Length == 0) continue;
             int eq = pair.IndexOf('=');
-            string key = Uri.UnescapeDataString((eq < 0 ? pair : pair[..eq]).ToString());
-            string val = eq < 0 || eq + 1 >= pair.Length ? "" : Uri.UnescapeDataString(pair[(eq + 1)..].ToString());
+            // TRIM AFTER UNESCAPING, not before. The whole-URI Trim() in TryExtractUri/TryParse runs on the raw string,
+            // so it cannot see whitespace that only EXISTS once the value is decoded: `%20` at the end of a value
+            // unescapes to a trailing space that then rides all the way into a route key. That is not hypothetical —
+            // `route=pl` + `arg=spotify:playlist:<id>%20` composed the key `pl:spotify:playlist:<id> `, ShellRoutes.IsKnown
+            // accepted it on the `pl:` prefix, and Spotify rejected the malformed URI with HTTP 400; because the rows
+            // skeleton region has no failed state, the playlist then sat in placeholder rows forever. A sibling symptom
+            // in the same log was the route `home ` failing IsKnown outright (`deeplink.route.unknown: home `).
+            string key = Uri.UnescapeDataString((eq < 0 ? pair : pair[..eq]).ToString()).Trim();
+            string val = eq < 0 || eq + 1 >= pair.Length ? "" : Uri.UnescapeDataString(pair[(eq + 1)..].ToString()).Trim();
             if (key.Equals("route", StringComparison.OrdinalIgnoreCase)) route = val;
             else if (key.Equals("arg", StringComparison.OrdinalIgnoreCase)) arg = val;
             else if (key.Equals("ctx", StringComparison.OrdinalIgnoreCase)) ctx = val;

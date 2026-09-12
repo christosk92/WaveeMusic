@@ -89,6 +89,7 @@ sealed class DeckHost : Component
                     Bridge = bridge,
                     Model = model,
                     Out = signals,
+                    UsesLevels = Preset.Id is NpvPlayerCatalog.Vu or NpvPlayerCatalog.Winamp or NpvPlayerCatalog.Wmp,
                     Gesture = Gesture,
                     ThumpRequested = RaiseThump,
                     Rpm = CurrentRpm,

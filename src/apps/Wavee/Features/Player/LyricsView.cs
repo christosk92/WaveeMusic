@@ -1120,6 +1120,7 @@ sealed class LyricsView : Component
         _scrollSnapped = false;
         ResetWipeThrottle();
         RebaseClock(posMs);   // seed the dejittered clock anchor for the freshly loaded doc
+        WakeMotion();         // a document landing is motion the demand test can only discover ON a step
     }
 
     // Which secondary layers this document carries, scanned ONCE per document (PrepareDocument) — never per frame and
@@ -1241,6 +1242,7 @@ sealed class LyricsView : Component
         ResetWipeThrottle();
         _clock.Reset(0L, FrameTime.NowQpc, false);   // reset so a freshly loaded doc re-anchors on its first sample
         _lastSampleQpc = 0L;
+        WakeMotion();   // the next step re-decides against an empty surface (and quiesces it)
     }
 
     void ReceiveUpgrade(LyricsDocument upgrade)
@@ -1601,6 +1603,7 @@ sealed class LyricsView : Component
     void ApplyDofSuppression(SceneStore? scene)
     {
         _dofRampPending = true;
+        WakeMotion();   // the ramp is an integrator: it needs frames, and this edge can arrive from a scroll callback
         // Resolve it now if a scene is at hand (the mode can flip from a scroll callback, outside the ticker); otherwise
         // the next OnFrame picks it up — LyricsTicker keeps ticking for the whole detached/resyncing window.
         if (scene is not null) DriveDofRamp(scene, FrameTime.NowMs);
@@ -1885,6 +1888,63 @@ sealed class LyricsView : Component
     // handoff, so the cascade always finishes instead of freezing the document off its focal band.
     internal bool CascadeRunningValue => _cascadeRunning.Value;
 
+    // ── Motion demand (LyricsMotionDemand) ───────────────────────────────────────────────────────────────────────────
+    // Whether the stepper must be mounted AT ALL. `playing` used to stand in for this, which held the UI thread at panel
+    // rate for the whole of a track: an instrumental intro with the panel open measured 4146 frames in 30 s, 4085 of
+    // them record-only, to render 61. OnFrame republishes this at the end of every step from the lane states it has
+    // just finished driving, and — when nothing is live — publishes the media instant to be woken at instead. Both are
+    // ticker-only subscriptions (like FollowModeValue), so neither ever re-renders LyricsView or a row.
+    readonly Signal<bool> _motionLive = new(true);       // starts live: the first step decides for itself
+    readonly Signal<LyricsMotionWake> _motionWake = new(new LyricsMotionWake(0, -1f));
+    readonly Signal<bool> _motionRecheck = new(false);   // no document / untimed / video-suppressed: slow TIMER re-check
+    int _motionWakeSeq;
+    long _motionWakeAtMs = long.MinValue;   // the media instant the pending timeout already targets (MinValue = none)
+
+    internal bool MotionLiveValue => _motionLive.Value;
+    internal LyricsMotionWake MotionWakeValue => _motionWake.Value;
+    internal bool MotionRecheckValue => _motionRecheck.Value;
+
+    /// <summary>Force the surface back to per-frame motion from OUTSIDE a step — the handful of places that arm work
+    /// the demand test would otherwise only discover on a frame that is no longer being produced (a document landing,
+    /// a scroll-snap reset, a lyric-tap seek, a σ suppression edge). The ticker re-mounts the stepper on the next
+    /// reconcile and the step that follows re-decides from the real lane states.</summary>
+    void WakeMotion()
+    {
+        ClearMotionWake();
+        _motionLive.Value = true;
+    }
+
+    /// <summary>Publish the one-shot re-arm for a quiescent surface. Deduplicated on the ABSOLUTE media instant: a
+    /// second quiescent step that resolves the same deadline leaves the pending timeout alone instead of restarting
+    /// it (and re-rendering the ticker).</summary>
+    void ArmMotionWake(long wakeAtMs, long nowMs)
+    {
+        if (wakeAtMs >= LyricsMotionDemand.None) { ClearMotionWake(); return; }
+        if (wakeAtMs == _motionWakeAtMs) return;
+        _motionWakeAtMs = wakeAtMs;
+        _motionWake.Value = new LyricsMotionWake(++_motionWakeSeq, MathF.Max(1f, (float)(wakeAtMs - nowMs)));
+    }
+
+    /// <summary>Retire the pending re-arm (the ticker cancels the timeout on the negative delay). Idempotent, and
+    /// silent when nothing was armed, so a live step never writes a signal.</summary>
+    void ClearMotionWake()
+    {
+        if (_motionWakeAtMs == long.MinValue) return;
+        _motionWakeAtMs = long.MinValue;
+        _motionWake.Value = new LyricsMotionWake(++_motionWakeSeq, -1f);
+    }
+
+    /// <summary>Quiesce a surface whose lanes cannot be resolved from the media clock at all: no bridge, no document,
+    /// an untimed one, or sync suppressed by a video. There is no deadline to re-arm from — the condition that ends
+    /// these states is not a clock instant — so the ticker re-checks on a slow timer while playback runs. A timer wake
+    /// is not a frame-clock subscription: it asks the host for nothing.</summary>
+    void QuiesceUnresolved(PlaybackBridge? b)
+    {
+        _motionLive.Value = false;
+        ClearMotionWake();
+        _motionRecheck.Value = b is not null && b.IsPlaying.Peek();
+    }
+
     // The non-zero-comp gate below is still exactly right under the write band: a line only ever holds a written,
     // non-zero transform while its comp is non-zero. In band, WriteCascade's landing write is exact (0.0005 DIP) so
     // comp == 0 and the node's identity transform become true together; out of band, ArmCascade already zeroed both.
@@ -2000,13 +2060,13 @@ sealed class LyricsView : Component
         _scrollSnapped = false;   // the next follow is the HARD first-landing jump, with the cascade left at rest
         ZeroCascade(Context.Scene);
         ResetWipeThrottle();
+        WakeMotion();
     }
 
     internal void OnFrame(bool forceVisual = false, long probeNowMs = long.MinValue)
     {
         var b = _b; var doc = _doc;
-        if (b is null || doc is null || doc.Lines.Count == 0) return;
-        if (!IsTimed(doc)) return;
+        if (b is null || doc is null || doc.Lines.Count == 0 || !IsTimed(doc)) { QuiesceUnresolved(b); return; }
         // A VIDEO is a different edit of the song, so these line timings — which belong to the AUDIO edit — no longer
         // describe what is being heard (LyricsSyncGate). Suppressing sync here, at the ONE driver, is what makes the
         // whole timed apparatus stop together: no active/voice resolve, no emphasis rewrite, no follow scroll, no wipe.
@@ -2021,8 +2081,19 @@ sealed class LyricsView : Component
             if (_activeLine.Peek() != -1) _activeLine.Value = -1;
             if (_voiceLine.Peek() != -1) _voiceLine.Value = -1;
             ResetFollowState(Context.Scene);   // drop any armed follow so the view does not keep chasing a stale target
+            QuiesceUnresolved(b);
             return;
         }
+
+        // RE-ARM SEED. The stepper was unmounted since the last step, so the two INTEGRATORS (DriveDofRamp,
+        // DriveCascade) hold a wall stamp whose difference is the whole quiescent gap rather than one frame — their
+        // clamps would spend it as a single 100 ms / CascadeDtMaxMs lurch on the very frame a handoff starts. Zero both
+        // so each takes its documented first-step SEED instead (KaraokeWipeIntervalMs), which is exactly the "no
+        // previous stamp to difference on" case they were written for. Nothing else can be mis-seeded by a gap: the
+        // wipe split, the glow envelope and the dots' fill/breath are pure functions of the media clock, so the first
+        // frame after a re-mount lands on the same value it would have had if the stepper had never left. Never under
+        // the probe, which deliberately steps the cascade on real wall dt with the clock held still.
+        if (!_motionLive.Peek() && !ProbeSyncMode) { _dofRampWallMs = 0L; _casQpc = 0L; }
 
         // Dejittered media clock (LyricsMediaClock — see its type doc for the TickCount64 bug this replaced). The
         // authoritative signal is PlaybackBridge.LastPositionSample: a (position, the QPC instant it was true) pair,
@@ -2135,7 +2206,7 @@ sealed class LyricsView : Component
         bool runGlow = !deferHeavy || activeChanged || voiceChanged || forceVisual;
 
         var scene = Context.Scene;
-        if (scene is null) return;
+        if (scene is null) { QuiesceUnresolved(b); return; }   // nothing to write to yet — re-check on the slow timer
         TickFollowState(scene, wallMs);
 
         // ── Core lane (always): the reserved band, the programmatic scroll follow, then the interlude dots ──
@@ -2188,6 +2259,29 @@ sealed class LyricsView : Component
             if (voiceLine >= 0 && (uint)voiceLine < (uint)doc.Lines.Count)
                 ApplyVoiceGlowEnvelope(scene, doc, voiceLine, nowMs);
         }
+
+        // ── Motion demand: does the NEXT frame have anything to advance? (LyricsMotionDemand) ─────────────────────────
+        // Published here, after every lane has been driven, so the flags are this step's OUTCOME and not its inputs —
+        // the two integrators have already self-quiesced and the glow cross-fade has already retired itself. The wipe
+        // writes below change no lane state, which is why the early returns inside them cannot skip this.
+        var demand = LyricsMotionDemand.Evaluate(new LyricsMotionLanes(
+            Playing: playing,
+            VoiceActive: voiceLine >= 0,
+            DotsActive: dotsUp,
+            GlowFadeActive: _glowOutLine >= 0,
+            DofRampPending: _dofRampPending,
+            CascadePending: _cascadePending,
+            // An OWED first landing only counts while there is a line to land on: before the first line resolves (an
+            // instrumental intro) `_scrollSnapped` is false simply because the follow has had nothing to do yet, and
+            // reading that as motion would keep the stepper mounted for exactly the case this gate exists to kill.
+            FollowUnsettled: (!_scrollSnapped && active >= 0) || _reserveRelatchFrames > 0,
+            Following: _followMode.Peek() == LyricsFollowMode.Following,
+            NowMs: nowMs,
+            NextEventMs: LyricsMotionDemand.NextEventMs(doc.Lines, active, nowMs, LeadMs)));
+        _motionRecheck.Value = false;
+        _motionLive.Value = demand.NeedsTicks;
+        if (demand.NeedsTicks) ClearMotionWake();
+        else ArmMotionWake(demand.WakeAtMs, nowMs);
 
         // The karaoke wipe/glow live on the VOICE line (true time), trailing the emphasis line during the lead window. Drive
         // the READABLE main text wipe (the visible reveal) as the primary; the glow wipe (sung-only bloom) rides the same
@@ -2496,6 +2590,7 @@ sealed class LyricsView : Component
         // ScrollActiveIntoView relies on that: a hard jump with a non-zero comp left over would displace the document.
         ZeroCascade(Context.Scene);
         ResetWipeThrottle();
+        WakeMotion();   // an owed first landing is motion: the next step must run even if the last one quiesced
     }
 
     void ResetWipeThrottle()
@@ -3094,18 +3189,24 @@ sealed class LyricsTicker : Component
         }, DepKey.Empty);
 
         var b = bridge.Value;                                  // subscribe → re-render when the bridge arrives
-        bool playing = b is not null && b.IsPlaying.Value;     // subscribe IsPlaying → re-gate the interval on play/pause
+        if (b is not null) _ = b.IsPlaying.Value;              // subscribe IsPlaying → re-evaluate the gates on a transport edge
         var followMode = Owner.FollowModeValue;                 // isolated subscription: never re-renders LyricsView/rows
         bool cascading = Owner.CascadeRunningValue;             // ditto — flips twice per handoff, never per frame
+        bool motionLive = Owner.MotionLiveValue;                // ditto — the demand test's verdict (LyricsMotionDemand)
 
-        // Play-start edge → one immediate advance (matches the old dueTime:0 ticker); paused → subscribe PositionMs so a
-        // scrub while paused re-wipes to the new spot. Re-runs on any bridge/IsPlaying change.
+        // Play-start edge → one immediate advance (matches the old dueTime:0 ticker), and PositionMs in BOTH transport
+        // states: a scrub while paused re-wipes to the new spot, and while PLAYING it is what carries a seek to a
+        // surface whose stepper is unmounted mid-gap (the bridge publishes on every seek/transport edge, plus a ~1 Hz
+        // projection tick — a rate this deliberately does NOT lean on as a poller: the motion re-arm below is the
+        // mechanism, this is the correctness backstop for the events no media instant predicts). Re-runs on any
+        // bridge/IsPlaying change.
         UseSignalEffect(() =>
         {
             var bb = bridge.Value;
             if (bb is null) return;
             if (bb.IsPlaying.Value)
             {
+                _ = bb.PositionMs.Value;
                 if (!LyricsView.ProbeSyncMode) Owner.OnFrame();
             }
             else
@@ -3125,10 +3226,38 @@ sealed class LyricsTicker : Component
         // compensated position. Following + paused + settled remains completely quiescent and still wakes only for
         // PositionMs changes through the effect above. ProbeSyncMode drives OnFrame synchronously (ProbeStep), so the
         // stepper stays unmounted under the probe.
-        bool needsTicks = playing || cascading || followMode != LyricsFollowMode.Following;
+        //
+        // `playing` is NOT one of the conditions any more — it never was one: it is the transport, not motion. The step
+        // itself publishes MotionLiveValue from the lanes it has just driven (LyricsMotionDemand), so an instrumental
+        // intro, a gap between verses, an outro and a paused-but-settled surface all idle the loop completely. The two
+        // flags beside it are the edges that arm work from OUTSIDE a step — a cascade that must finish across a pause,
+        // and the detached/resync countdown — neither of which a step is running to observe.
+        bool needsTicks = motionLive || cascading || followMode != LyricsFollowMode.Following;
         Element? stepper = needsTicks && !LyricsView.ProbeSyncMode
             ? Embed.Comp(() => new LyricsFrameStepper { Owner = Owner })
             : null;
+
+        // The RE-ARM for a quiescent surface: one shot, at the media instant the next thing actually moves (the
+        // upcoming line's lead-shifted handoff, or its first syllable), minus LyricsMotionDemand.ArmLeadMs so the
+        // stepper is already mounted and stepping when it lands. A timeout wakes the host ONCE; it never asks for
+        // panel-rate frames the way a FrameClock.Tick subscription does. The Seq in the wake is what restarts it (a
+        // dep change), and a negative delay means there is nothing left to wake for.
+        var wake = Owner.MotionWakeValue;
+        var wakeTimer = UseTimeout(
+            () => { if (!LyricsView.ProbeSyncMode) Owner.OnFrame(); },
+            MathF.Max(wake.DelayMs, 1f),
+            DepKey.From(wake.Seq));
+        if (needsTicks || wake.DelayMs < 0f) wakeTimer.Cancel();
+
+        // …and the slow re-check for the states with NO media deadline at all: no document yet, an untimed one, or a
+        // video suppressing sync (LyricsView.QuiesceUnresolved). These used to hold the frame clock at panel rate for
+        // the whole of a track while the step did nothing but return. UseInterval never re-renders and pauses itself
+        // while the surface is parked or the window is minimized.
+        UseInterval(
+            () => { if (!LyricsView.ProbeSyncMode) Owner.OnFrame(); },
+            LyricsMotionDemand.UnresolvedRecheckMs,
+            enabled: Owner.MotionRecheckValue && !needsTicks);
+
         return new BoxEl
         {
             HitTestVisible = false, Width = 0f, Height = 0f,

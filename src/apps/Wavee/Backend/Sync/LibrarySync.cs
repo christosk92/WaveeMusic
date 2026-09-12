@@ -301,7 +301,18 @@ public sealed class LibrarySync : IPlaylistTuningSource, IAsyncDisposable
                 {
                     try { await Dispatch(cmd).ConfigureAwait(false); }
                     catch (OperationCanceledException) when (_ct.IsCancellationRequested) { cmd.Done?.TrySetResult(); return; }
-                    catch (Exception ex) { _log.Info("sync: " + cmd.Kind + " failed: " + ex.Message); }
+                    catch (Exception ex)
+                    {
+                        _log.Info("sync: " + cmd.Kind + " failed: " + ex.Message);
+                        // Carry the bad news to the UI. `Done` below completes as SUCCESS whatever happened (callers use
+                        // it as a barrier, not a result), and every layer above this swallows the outcome, so without
+                        // this line a membership fetch that threw leaves the detail page showing placeholder rows with
+                        // nothing anywhere to say it is never going to finish. Only the two kinds that are SUPPOSED to
+                        // land a membership baseline mark it — a push/revalidate failure is a different problem and must
+                        // not blank a list that already has rows (the store guards that too).
+                        if (cmd.Kind is SyncKind.OpenPlaylist or SyncKind.HydratePlaylist && cmd.Uri.Length > 0)
+                            _store.SetMembershipFailed(cmd.Uri);
+                    }
                     finally { cmd.Done?.TrySetResult(); }
                 }
         }

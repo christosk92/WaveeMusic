@@ -180,8 +180,10 @@
       "comfortable": "Comfortable"
     },
     "empty": {
+      "$comment": "The three things that can stand in for rows. `noTracks` is a VERDICT (the membership landed and it is empty); `loadFailed` is the absence of a verdict (the fetch failed and nothing is resident) and is deliberately a different sentence — saying \"Nothing here yet\" about a playlist we simply could not read is a lie the user cannot act on.",
       "noTracks": "Nothing here yet",
-      "noMatch": "No songs match your filter"
+      "noMatch": "No songs match your filter",
+      "loadFailed": "Couldn't load these songs"
     },
     "discography": {
       "$comment": "The artist page's inline album drawer (AlbumDrawerPanel) — capped at AlbumDrawerVerdict.CapPerColumn rows per column; past the cap the last slot links to the full album page instead of growing the drawer.",

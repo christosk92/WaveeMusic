@@ -65,4 +65,22 @@ public class DeepLinkParseTests
         Assert.False(DeepLink.TryParse("wavee://play?link=not%20a%20link", out _));
         Assert.False(DeepLink.TryParse("wavee://play", out _));
     }
+
+    /// <summary>A query value is trimmed AFTER it is unescaped. The whole-URI Trim() runs on the raw string, so an
+    /// encoded `%20` at the end of a value used to survive into the value itself — and a route key is built by
+    /// concatenation (`route + ":" + arg`), so `spotify:playlist:<id> ` reached the backend, came back HTTP 400, and
+    /// left the playlist showing skeleton rows forever. Both halves of the pair are trimmed: a padded KEY would
+    /// silently drop the field instead.</summary>
+    [Fact]
+    public void EncodedTrailingSpace_DoesNotSurviveIntoRouteOrArg()
+    {
+        Assert.True(DeepLink.TryParse("wavee://open?route=pl&arg=spotify%3Aplaylist%3A2pnt79m93NytfAj2lByLlQ%20", out var verb));
+        Assert.Equal(DeepLinkKind.Open, verb.Kind);
+        Assert.Equal("pl", verb.Route);
+        Assert.Equal("spotify:playlist:2pnt79m93NytfAj2lByLlQ", verb.Arg);
+
+        // Leading padding and a padded key are the same defect from the other side.
+        Assert.True(DeepLink.TryParse("wavee://open?%20route%20=%20home", out var padded));
+        Assert.Equal("home", padded.Route);
+    }
 }

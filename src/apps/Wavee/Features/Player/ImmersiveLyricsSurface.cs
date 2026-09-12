@@ -88,7 +88,7 @@ sealed class ImmersiveLyricsSurface : Component
     // backdrop for free even when no ticker is running (setting off / reduced motion).
     NodeHandle _driftNode;
     NodeHandle _root;                     // the surface root — the node the shield and the focus re-park park focus on
-    long _driftOriginQpc;                 // QPC origin (Stopwatch.GetTimestamp — never TickCount64, which quantises to ~15.6 ms)
+    readonly StageDriftClock _driftClock = new();
     Action? _driftTick;                   // the interval callback, allocated once (never per render)
     IReadSignal<Size2>? _viewport;        // Peeked by the tick — never subscribed from it
 
@@ -148,6 +148,8 @@ sealed class ImmersiveLyricsSurface : Component
         var track = b?.CurrentTrack.Value;
         string art = track?.Image?.Url is { Length: > 0 } u ? ImageSource.Normalize(u) ?? "" : "";
         string? blurHash = track?.Image?.BlurHash;
+        bool playing = b?.IsPlaying.Value ?? false;
+        bool runDrift = drift && playing && art.Length > 0;
 
         // Escape routes to the FOCUSED node and bubbles up its ancestors, so the surface takes focus once at mount.
         // The root stays focusable (and does NOT set AllowFocusOnInteraction=false) so a click on the surface's own
@@ -161,8 +163,10 @@ sealed class ImmersiveLyricsSurface : Component
         // the carrier at its last offset — put it back on the exact centre the declared parent transform establishes.
         UseEffect(() => { if (!drift) ResetDrift(); }, DepKey.From(drift));
 
-        // OFF ⇒ no ticker at all (not a ticking no-op): a still backdrop must cost literally nothing per frame.
-        UseInterval(DriftTickAction, DriftIntervalMs, enabled: drift && art.Length > 0);
+        // Pause preserves the current pose and phase. The user's setting still controls whether the material is
+        // animated; only active playback advances its clock and arms the decorative timer.
+        UseEffect(() => _driftClock.SetRunning(runDrift, DriftNowSeconds()), DepKey.From(runDrift));
+        UseInterval(DriftTickAction, DriftIntervalMs, enabled: runDrift);
 
         return new BoxEl
         {
@@ -500,15 +504,16 @@ sealed class ImmersiveLyricsSurface : Component
     // ── the drift ticker ─────────────────────────────────────────────────────────────────────────────────────────────
     // ZERO managed allocation per tick: Peek only (never .Value — a subscription here would re-render the surface at
     // 30 Hz), scalar float math into one stack Affine2D, one ref write into the paint column.
+    static double DriftNowSeconds() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
+
     void DriftTick()
     {
+        if (!_driftClock.Running) return;
         var scene = Context.Scene;
         var h = _driftNode;
         if (scene is null || h.IsNull || !scene.IsLive(h) || _viewport is null) return;
 
-        long qpc = Stopwatch.GetTimestamp();
-        if (_driftOriginQpc == 0L) _driftOriginQpc = qpc;   // t = 0 on the first tick ⇒ the surface opens with no jump
-        float t = (float)((qpc - _driftOriginQpc) / (double)Stopwatch.Frequency);
+        float t = (float)_driftClock.Sample(DriftNowSeconds());
 
         var vp = _viewport.Peek();
         float vw = BodyW(vp.Width), vh = BodyH(vp.Height);
@@ -538,7 +543,7 @@ sealed class ImmersiveLyricsSurface : Component
 
     void ResetDrift()
     {
-        _driftOriginQpc = 0L;
+        _driftClock.Reset();
         var scene = Context.Scene;
         var h = _driftNode;
         if (scene is null || h.IsNull || !scene.IsLive(h)) return;

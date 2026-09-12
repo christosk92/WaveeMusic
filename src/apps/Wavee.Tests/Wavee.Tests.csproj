@@ -376,6 +376,7 @@
     <Compile Include="..\Wavee\Features\Detail\ContextBandLayout.cs" />
     <!-- the immersive stage's pure width ladder (StageLayoutTests drives the real allocator) -->
     <Compile Include="..\Wavee\Features\Player\StageLayout.cs" />
+    <Compile Include="..\Wavee\Features\Player\StageDriftClock.cs" />
     <!-- …and its pure INK ARM: the two colour ladders (dark = WaveeOnMedia verbatim, light = the mirrored ground) as a
          value type over Tok/WaveePalette/ColorRamp only. Engine-free of everything the renderers need — no cover plane,
          no theme state, no window — so StageLayoutTests can drive BOTH arms without mutating Tok.Theme (this project
@@ -616,6 +617,9 @@
          (Stopwatch.Frequency as the injectable-QPC-rate ctor default) — no FluentGpu reference, same
          engine-free-by-construction precedent as LyricsBlurPolicy.cs above. -->
     <Compile Include="..\Wavee\Features\Player\LyricsMediaClock.cs" />
+    <!-- The lyrics per-frame stepper's mount gate (LyricsMotionDemandTests): `using System;` + Wavee.Core's LyricLine
+         for the deadline scan — no FluentGpu reference, same engine-free-by-construction precedent as above. -->
+    <Compile Include="..\Wavee\Features\Player\LyricsMotionDemand.cs" />
     <!-- S3 #18: the now-playing equalizer's tick/still-shape decision (`using System;`-only, no FluentGpu reference) —
          EqualizerMotionPolicyTests pin it against production code instead of a copy of the branch. -->
     <Compile Include="..\Wavee\Components\EqualizerMotionPolicy.cs" />

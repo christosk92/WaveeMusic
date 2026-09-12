@@ -23,6 +23,7 @@ public static class MemorySampler
     static long _lastAllocBytes;
     static long _lastAllocTicks;
     static long _peakWorkingSet;
+    static bool _loggedElementSizes;
 
     /// <summary>Frame tick from <see cref="NavigationFrameWatch"/>: a periodic sample while the app renders.</summary>
     public static void OnFrame()
@@ -46,6 +47,15 @@ public static class MemorySampler
     /// <summary>Write one <c>mem.sample</c> line now. <paramref name="reason"/> says why ("periodic", "nav-end route=…").</summary>
     public static void Sample(string reason)
     {
+        if (!_loggedElementSizes)
+        {
+            _loggedElementSizes = true;
+            WaveeLog.Instance.Event(WaveeLogLevel.Info, "mem", "mem.element-sizes",
+                $"layoutInput={System.Runtime.CompilerServices.Unsafe.SizeOf<FluentGpu.Scene.LayoutInput>()} "
+                + $"textStyle={System.Runtime.CompilerServices.Unsafe.SizeOf<FluentGpu.Text.TextStyle>()} "
+                + $"nodePaint={System.Runtime.CompilerServices.Unsafe.SizeOf<FluentGpu.Scene.NodePaint>()} "
+                + "unit=bytes scope=struct-payload-not-object-or-process-size");
+        }
         _lastSampleAt = NavigationClockMs();
         long nowTicks = Stopwatch.GetTimestamp();
         long allocNow = GC.GetTotalAllocatedBytes(precise: false);
@@ -88,6 +98,10 @@ public static class MemorySampler
               .Append(" imageBytes=").Append(Mb(e.ImageUsedBytes)).Append(" decodeInflight=").Append(e.DecodeInflight)
               .Append(" components=").Append(e.Components).Append(" bindings=").Append(e.NodeBindings).Append(" virtuals=").Append(e.VirtualBoundaries)
               .Append(" animTracks=").Append(e.AnimTracks).Append(" pixelPool=").Append(Mb(e.PixelPoolRetainedBytes)).Append('/').Append(Mb(e.PixelPoolPeakBytes));
+            sb.Append(" | snapshots slots=").Append(e.SnapshotSlots)
+              .Append(" indexedBytes=").Append(e.SnapshotIndexedBytes).Append(" textStyleBytes=").Append(e.SnapshotTextStyleBytes)
+              .Append(" capacity=").Append(e.SnapshotCapacity).Append(" required=").Append(e.SnapshotRequired)
+              .Append(" reclaims=").Append(e.SnapshotReclaims).Append(" reclaimedIndexedBytes=").Append(e.SnapshotReclaimedIndexedBytes);
         }
         if (FluentApp.GpuResidency() is { } g)
         {

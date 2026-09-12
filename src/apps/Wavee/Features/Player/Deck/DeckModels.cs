@@ -46,9 +46,9 @@ static class DeckModels
         };
 
     /// <summary>
-    /// The audio level tap as a pull, not a subscription. The signal is written on the AUDIO PUMP THREAD, so a deck
+    /// The audio level tap as a pull, not a subscription. Levels are published on the non-RT audio control thread, so a deck
     /// must <c>Peek</c> it from its own ticker and never subscribe — a reactive edge there would schedule UI work
-    /// from the pump. Null (no tap: Connect playback, a remote device, the fake backend) is a real answer the synth
+    /// from that thread. DeckClock owns the visible analysis lease. Null (no tap: Connect playback, a remote device, the fake backend) is a real answer the synth
     /// handles by falling back to a level-free envelope.
     /// </summary>
     static Func<(float rms, float peak)?> Levels(PlaybackBridge bridge) => () =>

@@ -186,12 +186,15 @@ public interface IAudioDspControl
 /// with a local PCM tap publishes its live RMS/peak/spectrum here. <see cref="Levels"/> is null for a host that never
 /// has one — no cast failure, just an honest "nothing to show": the fake/silent backend, and a real session that is
 /// merely a Connect VIEWER of another device's playback (nothing decodes locally to measure).
-/// <para><b>Threading:</b> the signal is written on the audio pump thread, off the UI thread — a consumer must
+/// <para><b>Threading:</b> levels are published by the non-RT audio control thread — a consumer must
 /// <c>Peek()</c> it from its own render tick (e.g. a per-frame ticker), never <c>Subscribe</c>/react to it directly,
-/// or every audio block would fan out a UI notification.</para></summary>
+/// to avoid control publications driving UI work independently of its display clock. Hold an analysis lease only
+/// while a meter is active; a capability without demand publishes silence.</para></summary>
 public interface IAudioLevelSource
 {
     FluentGpu.Signals.IReadSignal<FluentGpu.Media.VisualizerFrame>? Levels { get; }
+    /// <summary>Request analysis for a visible meter; dispose on inactivity or source replacement.</summary>
+    IDisposable AcquireLevels();
 }
 
 /// <summary>Optional host capability (the <see cref="IAudioDspControl"/> precedent — discovered by interface, never a

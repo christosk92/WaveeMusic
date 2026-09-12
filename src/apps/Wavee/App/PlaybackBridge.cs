@@ -213,9 +213,20 @@ public sealed class PlaybackBridge
     /// <summary>Live RMS/peak/spectrum off the local PCM tap, when there is one — the <see cref="IAudioLevelSource"/>
     /// precedent, re-pointed at every host swap (fake→pre-login local, go-live, logout). Null means an honest "no local
     /// tap": the fake/silent backend, or a live session that is merely a Connect VIEWER of another device's playback.
-    /// <para><b>Threading:</b> written on the audio pump thread. A consumer must <c>Peek()</c> it from its own render
-    /// tick, never subscribe/react to it directly — every audio block would otherwise fan out a UI notification.</para></summary>
-    public IReadSignal<FluentGpu.Media.VisualizerFrame>? Levels { get; internal set; }
+    /// <para><b>Threading:</b> published coherently by the non-RT audio control thread. A consumer must <c>Peek()</c>
+    /// from its own display tick and hold an active <see cref="IAudioLevelSource.AcquireLevels"/> lease.</para></summary>
+    public IReadSignal<FluentGpu.Media.VisualizerFrame>? Levels => LevelSource.Peek()?.Levels;
+    /// <summary>UI-owned capability identity. A host swap transfers visible meters' demand leases.</summary>
+    public Signal<IAudioLevelSource?> LevelSource { get; } = new(null);
+    IAudioLevelSource? _pendingLevelSource;
+
+    internal void SetLevelSource(IAudioLevelSource? source)
+    {
+        System.Threading.Volatile.Write(ref _pendingLevelSource, source);
+        // Read the latest binding on the UI thread: an old queued go-live post cannot restore a retired host.
+        void Publish() => LevelSource.Value = System.Threading.Volatile.Read(ref _pendingLevelSource);
+        if (_post is { } post) post(Publish); else Publish();
+    }
 
     /// <summary>A committed seek that the deck issued and is still waiting to see reflected in <see cref="PositionMs"/>
     /// (UI-side only: <c>DeckGesture.Commit</c> sets it, <c>DeckClock</c> clears it once the reported position has

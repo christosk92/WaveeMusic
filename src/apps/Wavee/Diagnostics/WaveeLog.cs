@@ -223,6 +223,9 @@ public sealed class WaveeLog : IWaveeLog
         // It has to clear the Info gate or it answers nothing after the fact - "pinned at panel rate, cause unknown"
         // is precisely the report this instrument exists to make answerable.
         || s.StartsWith("[wake]", StringComparison.Ordinal)
+        || s.StartsWith("[repaint]", StringComparison.Ordinal)
+        || s.StartsWith("[repaint-causes]", StringComparison.Ordinal)
+        || s.StartsWith("[repaint-raw-sample]", StringComparison.Ordinal)
         // The present-queue depth and the window's actual monitor/refresh are both invisible from the outside: a queue
         // two frames deep still reports a healthy frame rate (how depth 2 hid ~1 frame of input lag), and a window on
         // a 50 Hz secondary reports the same fps as one on the 120 Hz panel unless the mode line says otherwise.

@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.2.10",
+  "packageVersion": "",
+  "name": "Breaker",
+  "tagline": "An engine that finally goes idle: less GPU with nothing moving, less memory, and lyrics that only wake for the words.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "idle-gpu",
+      "title": "The GPU rests when nothing moves",
+      "body": "Wavee used to hold the graphics chip at half load with nothing on screen changing: every awake frame repainted the whole window, a scrollbar that was still fading when you left a page kept the loop running for the rest of the session, and a pending tooltip, a hovered scrollbar or an open lyrics panel each re-rendered every single frame. Frames now repaint only what changed, blurred and faded surfaces included, and the loop idles the moment the last thing settles. On a Snapdragon laptop an idle album page went from about 55 % GPU to 0 %.",
+      "kind": "fixed",
+      "issues": [
+        118
+      ]
+    },
+    {
+      "id": "memory",
+      "title": "Lighter in memory",
+      "body": "The weak-GPU budgets that never applied now do, album art is budgeted at the size the GPU actually commits, a finished video releases its decoder instead of keeping it for the session, the memory governor can finally free something, and a soft-edged list no longer leases a 56 MB scratch surface to fade a few pixels. Matched runs on the same profile show a smaller working set and a lower peak, and the app tracks every graphics allocation at the size the driver reports.",
+      "kind": "improved",
+      "issues": [
+        118
+      ]
+    },
+    {
+      "id": "lyrics-playback",
+      "title": "Lyrics and playback, quieter",
+      "body": "Open lyrics wake only for the words: an instrumental intro, a break between verses or an outro costs nothing, and the karaoke wipe still lands on the exact syllable. Paused lyrics stop repainting, artwork no longer flashes during playback, a pause can no longer be undone by a late position report, and hidden level meters and neutral effects skip their audio work entirely.",
+      "kind": "fixed",
+      "issues": [
+        118
+      ]
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

@@ -109,6 +109,13 @@ public sealed record DetailModel(
     /// Default TRUE: every other surface (album / Liked / show) carries its rows with the model.</summary>
     public bool MembershipLoaded { get; init; } = true;
 
+    /// <summary>TRUE when the membership fetch for this playlist FAILED and nothing is resident — the list shows a
+    /// "couldn't load" panel with a retry instead of shimmer rows.
+    /// <para>Without this third fact the list has only "are rows resident", so a fetch that 4xx'd or threw is
+    /// indistinguishable from one still in flight and the page shimmers forever. Default FALSE: every surface that
+    /// carries its rows with the model can never be in this state.</para></summary>
+    public bool MembershipFailed { get; init; }
+
     // ── Upcoming release (album path) ────────────────────────────────────────────────────────────────────────────────
     // Init-only, deliberately NOT positional: every `with` expression and DetailModel.Empty above would have to be
     // rewritten for a new positional parameter, and these three are set by exactly one mapper (MapAlbum).

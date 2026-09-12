@@ -356,7 +356,8 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     public event Action<string, string?>? MetadataKnown;
 
     // intents (applied to the session as it becomes ready)
-    bool _playIntent;
+    readonly AudioHostSignalGate _transportSignals;
+    bool _playIntent => _transportSignals.PlayIntent;
     double _volume = 1.0;
     bool _muted;
     bool _crossfadeEnabled;
@@ -448,6 +449,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         WaveeLogger log = default, ChunkDiskCache? bodyDisk = null)
     {
         _log = log;
+        _transportSignals = new AudioHostSignalGate(_signals.OnNext);
         _bodyDisk = bodyDisk;
         _http = http;
         _nativeDecryptorFactory = (_, seed) => decryptors()?.CreateCdnDecryptor(seed);
@@ -513,10 +515,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     // projected position instead of publishing that 0 as fact.
     public bool ClockValid => !_clockStale;
     public bool IsBuffering => _core.IsBuffering.Peek();
-    // Read, not Interlocked: _playIntent is only ever written from the serialized-pump/transport-verb call sites
-    // (Play/Pause/Stop, all UI-thread-driven), and a stale-by-one-write read here is no different from any other
-    // racy bool the controller polls — the PlaybackController.SupplyBodyWhenReadyAsync call site that reads this is
-    // fine with "as of a moment ago", never with a torn value (bool reads/writes are atomic on every supported arch).
+    // Intent is visible immediately, before the serialized session pump completes the physical transport operation.
     public bool PlayIntent => _playIntent;
     public IObservable<AudioHostSignal> Signals => _signals;
     public IObservable<AudioTransitionSignal> Transitions => _transitions;
@@ -547,11 +546,17 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         Enqueue(() => SupplyBodyAsync(b, epoch));
     }
 
-    public void Play() { _playIntent = true; _log.Info($"[posdiag] play-intent raw={RawPositionMs} pos={PositionMs} activeStart={_activeStartMs} lastState={_lastState}"); _diagResumeTicks = 12; Enqueue(async () => { if (_session is null) { _log.Warn("play() arrived over an empty session — nothing loaded, ticker not started"); return; } await _session.PlayAsync().ConfigureAwait(false); StartTicker(); }); }
+    public void Play() { _transportSignals.SetPlayIntent(true); _log.Info($"[posdiag] play-intent raw={RawPositionMs} pos={PositionMs} activeStart={_activeStartMs} lastState={_lastState}"); _diagResumeTicks = 12; Enqueue(async () => { if (_session is null) { _log.Warn("play() arrived over an empty session — nothing loaded, ticker not started"); return; } await _session.PlayAsync().ConfigureAwait(false); StartTicker(); }); }
     // Stop the poll tick once paused: position is frozen and no crossfade commit / Ended / Error can occur while paused
-    // (all Playing-only), and the paused UI state is driven by the controller's optimistic EmitState — not this tick — so
-    // quiescing the 200ms wakeups here is free idle CPU. StartTicker resumes it on the next Play.
-    public void Pause() { _playIntent = false; _log.Info($"[posdiag] pause raw={RawPositionMs} pos={PositionMs} activeStart={_activeStartMs} lastState={_lastState}"); Enqueue(async () => { if (_session is not null) await _session.PauseAsync().ConfigureAwait(false); StopTicker(); }); }
+    // (all Playing-only). Publish Paused through the intent gate before quiescing: a timer callback can still report
+    // the old Playing core while the physical pause is queued, and no future tick will correct it once stopped.
+    // StartTicker resumes it on the next Play.
+    public void Pause()
+    {
+        _transportSignals.Pause(PositionMs);
+        _log.Info($"[posdiag] pause raw={RawPositionMs} pos={PositionMs} activeStart={_activeStartMs} lastState={_lastState}");
+        Enqueue(async () => { if (_session is not null) await _session.PauseAsync().ConfigureAwait(false); StopTicker(); });
+    }
 
     // TEMP DIAGNOSTIC (#3 resume overshoot): log raw/derived position for a few ticks after a resume, then self-disable.
     int _diagResumeTicks;
@@ -566,7 +571,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
 
     public void Stop()
     {
-        _playIntent = false;
+        _transportSignals.SetPlayIntent(false);
         _clockStale = true;   // nothing is playing → report 0, never the torn-down session's last position
         long epoch = Interlocked.Increment(ref _loadEpoch);   // invalidate any in-flight open
         Enqueue(async () =>
@@ -652,6 +657,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     // _effects is always constructed (never null), so this is never null for THIS host; the nullable shape on the
     // interface is for hosts that never have a tap at all (SilentAudioHost, a Connect-viewer session).
     public IReadSignal<VisualizerFrame>? Levels => _effects.Visualizer;
+    public IDisposable AcquireLevels() => _effects.AcquireVisualizer();
 
     // ── IAudioDspControl ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -731,7 +737,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
             // see PlayIntentGate. Attaching a clear head/body is work the host does regardless; the buffering BAR is
             // only ever honest while there is something the user is waiting to hear.
             if (PlayIntentGate.ShouldAnnounceBuffering(_playIntent))
-                _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Prebuffering, 0));
+                _transportSignals.Publish(new AudioHostSignal(AudioHostSignalKind.Prebuffering, 0));
             return;
         }
 
@@ -743,7 +749,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         var bytes = new SpotifyMediaByteSource(stream, skip, kind, start.DurationMs, DbToLinear(start.NormalizationGainDb));
         await OpenSessionAsync(bytes, epoch).ConfigureAwait(false);
         if (PlayIntentGate.ShouldAnnounceBuffering(_playIntent))
-            _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Prebuffering, 0));
+            _transportSignals.Publish(new AudioHostSignal(AudioHostSignalKind.Prebuffering, 0));
     }
 
     AudioFormat _pendingFmt;
@@ -764,7 +770,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
     {
         if (epoch != Volatile.Read(ref _loadEpoch)) { _log.Info($"supply-body ignored stale epoch file={body.FileIdHex}"); return; }
         if (PlayIntentGate.ShouldAnnounceBuffering(_playIntent))
-            _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Buffering, PositionMs));
+            _transportSignals.Publish(new AudioHostSignal(AudioHostSignalKind.Buffering, PositionMs));
 
         // Local file (a "Play file…" pick / a shell drop) — open the file and the session now. Same deferred-open shape
         // as the external branch below: the plan carried an EMPTY head, so LoadFastStart parked the load and THIS is
@@ -1155,7 +1161,13 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
                     _crossfadeInFlight = true;
                 }
             }
-            if (old is PcmAudioSession op3) op3.DeviceFormatChanged += OnDeviceFormatChanged;   // re-arm device-rate switches on old
+            if (old is PcmAudioSession op3)
+            {
+                // Fresh BindEffects claimed the shared meter source. Rollback must explicitly return it to the
+                // surviving session after fresh disposal; rebinding the whole effects surface would race live EQ state.
+                op3.ActivateVisualizerSource();
+                op3.DeviceFormatChanged += OnDeviceFormatChanged;   // re-arm device-rate switches on old
+            }
             // #112: the restored fade lives in a mixer that cannot render, so its Completed edge would never re-arm the drain.
             // Close the hand-off now (identity is already B) so the caller's finally re-arms immediately and the next pass
             // reopens B at the live rate.
@@ -1372,12 +1384,12 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
             if (recovering == _liveRecovering) return;         // edge-triggered: Attempt after Started is not new news
             _liveRecovering = recovering;
             if (recovering)
-                _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Recovering, PositionMs, true, false, false,
+                _transportSignals.Publish(new AudioHostSignal(AudioHostSignalKind.Recovering, PositionMs, true, false, false,
                     PlaybackRecoveryKind.Network));
             else if (_playIntent)
                 // Recovered: clear the banner by re-asserting Playing. Gated on play intent so a reconnect that lands
                 // while the user has paused does not announce playback that is not happening.
-                _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Playing, PositionMs, true, false, false));
+                _transportSignals.Publish(new AudioHostSignal(AudioHostSignalKind.Playing, PositionMs, true, false, false));
         };
         ((IAudioNetworkRecoverySource)live).NetworkRecovery += _liveRecoveryHandler;
 
@@ -1741,6 +1753,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
 
     void StartTicker() => _ticker.Change(200, 200);
     void StopTicker() => _ticker.Change(Timeout.Infinite, Timeout.Infinite);
+    long _lastWorkReportMs;
 
     void Tick()
     {
@@ -1766,7 +1779,17 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
         // how much, and why, instead of the old "xruns=17" cumulative count that only ever surfaced at the NEXT track
         // boundary. Keep the existing [gapless] xrun fields as they are — they still answer "what happened right at
         // the hand-off"; this answers "what happened mid-track that nothing else could see".
-        if (_session is PcmAudioSession xrunSession) DrainXruns(xrunSession, pos, state);
+        if (_session is PcmAudioSession xrunSession)
+        {
+            DrainXruns(xrunSession, pos, state);
+            long workNow = Environment.TickCount64;
+            if (workNow - System.Threading.Interlocked.Read(ref _lastWorkReportMs) >= 30_000)
+            {
+                System.Threading.Interlocked.Exchange(ref _lastWorkReportMs, workNow);
+                var work = xrunSession.ReadWorkCounters();
+                _log.Info($"[audio-work] clock={xrunSession.SampleClock} gain={work.Gain} gainSkipped={work.GainSkipped} channel={work.Channel} channelSkipped={work.ChannelSkipped} transport={work.Transport} transportSkipped={work.TransportSkipped} meter={work.Meter} managerWakes={work.ManagerWakes} managerPasses={work.ManagerPasses} xruns={xrunSession.XrunCount}");
+            }
+        }
 
         if (_diagResumeTicks > 0)   // TEMP (#3): trace position for a few ticks after resume to locate the overshoot
         {
@@ -1862,7 +1885,7 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
                     // The 2-argument tick infers RecoveryKind.None, which the projection writes straight over the
                     // "reconnecting" state - so while a live transport is actually reconnecting the tick must be the
                     // 6-argument form that keeps carrying Network, or the banner flickers off every 200 ms.
-                    _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.PositionTick, pos, true, false, false,
+                    _transportSignals.Publish(new AudioHostSignal(AudioHostSignalKind.PositionTick, pos, true, false, false,
                         LiveSessionRules.TickRecoveryKind(_activeIsLive, _liveRecovering)));
                     break;
                 }
@@ -1875,17 +1898,17 @@ public sealed partial class FluentMediaAudioHost : IAudioHost, IAudioDspControl,
                     // (A3). Skip the repeat PositionTick while a reload is in flight or the clock is provably stale;
                     // the one-shot Playing edge below still fires so the UI is never stuck reporting the OLD state.
                     if (Volatile.Read(ref _softReloading) != 0 || _clockStale) break;
-                    _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.PositionTick, pos));
+                    _transportSignals.Publish(new AudioHostSignal(AudioHostSignalKind.PositionTick, pos));
                 }
-                else _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Playing, pos));
+                else _transportSignals.Publish(new AudioHostSignal(AudioHostSignalKind.Playing, pos));
                 break;
             case PlaybackState.Paused:
-                if (_lastState != PlaybackState.Paused) _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Paused, pos));
+                if (_lastState != PlaybackState.Paused) _transportSignals.Publish(new AudioHostSignal(AudioHostSignalKind.Paused, pos));
                 break;
             case PlaybackState.Opening:
             case PlaybackState.Buffering:
             case PlaybackState.Stalled:
-                if (_lastState != state) _signals.OnNext(new AudioHostSignal(AudioHostSignalKind.Buffering, pos));
+                if (_lastState != state) _transportSignals.Publish(new AudioHostSignal(AudioHostSignalKind.Buffering, pos));
                 break;
             case PlaybackState.Ended:
             {

@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
-## [Unreleased]
+## [0.2.10] - unreleased
 
 Idle GPU and memory on the Snapdragon. Wavee sat at 50-68 % GPU and 520 MB-1 GB of working set with nothing on
 screen moving, and the investigation behind this section is in `docs/plans/wavee/gpu-memory-investigation-2026-09-11.md`.
@@ -16,12 +16,42 @@ Almost all of it is engine work; the app side is the memory governor, the respon
 
 ### Fixed
 
+- **Cached album pages could remain empty after startup.** An incomplete page opened before the live backend was
+  ready now retries its normal catalog load when authentication finishes, preserving the cached header. (#118)
+- **Playback did work for hidden meters and neutral effects.** Level analysis now follows visible meter demand,
+  unity DSP passes skip their sample loops, and audio management sleeps until work arrives. Constant non-unity
+  gain uses SIMD without changing ramps or PCM values. Snapshot text measurements no longer reserve a large
+  payload for every non-text scene slot. (#118)
+- **Artwork could flash during playback.** Image reveals now use shared wall time instead of the animation
+  clock's clamped/resynced delta, so sparse UI publications cannot rewind a completed fade. (#118)
+- **Paused immersive lyrics kept repainting the background.** The decorative drift timer now stops while paused
+  and resumes from its held phase. (#118)
+- **Pause could leave lyrics animating after audio stopped.** A late host position report can no longer overwrite
+  pause intent while the asynchronous audio pause is still queued. Seek-bar position updates also avoid rebuilding
+  its component tree. (#118)
+- **Lyrics and scrolling triggered unnecessary full redraws.** Verified unchanged publications now preserve
+  submission continuity, and off-window damage no longer counts toward the full-redraw cutoff. (#118)
+- **An exit animation could disable its own cleanup backstop.** With animations owned by the render thread,
+  an orphan could not request the UI frame needed to reclaim it. Ready or expired orphans now wake cleanup,
+  and an otherwise idle window waits no longer than the existing two-second backstop. (#118)
+- **Lyrics playback repainted static parts of the page.** The Liked Songs heart clip no longer rejects partial
+  repaint when its mask and rendering layers are separate. Consumed damage now expires independently from new
+  descendant updates, and an older snapshot cannot hold the damage history open after navigation. (#118)
 - **The render loop never went idle.** Leaving a page while its scrollbar was still inside the two-second idle-hide
   after a scroll froze that row forever: it was skipped before the liveness check so it was never dropped, it was
   counted as needing a frame anyway, and the ticker's own parked-set was never cleared when the page was evicted —
   so a recycled node index inherited it and froze a *new* page's scrollbar too. The loop held at panel rate with
   nothing animating, for the rest of the session. Parking now lands the bar at rest and retires its row. A bar that
   was visible when you navigate away is gone when you come back, rather than resuming mid-fade. (#118)
+- **Open lyrics held the UI thread at panel rate through every instrumental gap.** The per-frame stepper mounted on
+  "is playing", so it ran for the whole of a track whether or not anything on the surface was moving: an instrumental
+  intro with the panel open measured 4146 frames in 30 s, 4085 of them recorded and thrown away, to render 61. It now
+  mounts only while a lane is actually in flight — a line being sung, a glow cross-fade, the σ ramp, a handoff
+  cascade, the interlude dots, an owed follow landing or the detached/resync countdown — and an idle surface re-arms
+  from a one-shot timer at the next syllable instead of polling for it. Nothing is lost across the gap: the wipe, the
+  glow and the dots are read from the media clock rather than accumulated, so the first frame back lands exactly where
+  it would have. An intro, a break between verses, an outro, a track with no timed lyrics at all, and a paused surface
+  now cost the loop nothing. (#118)
 - **Every awake frame repainted the whole window.** An animated node marked every ancestor up to the root as moved,
   and the renderer damages a moved node's subtree bounds — which at the root is the window. One scrolling title
   therefore repainted every pixel, at panel rate, against the renderer's own promise that "a spinner repaints a tiny
@@ -36,6 +66,13 @@ Almost all of it is engine work; the app side is the memory governor, the respon
 - **A fading edge disabled partial repaint entirely.** Every list in Wavee has a soft fade at its edges, and that
   alone made a frame ineligible no matter how little of it had changed — so in practice almost every frame repainted
   the whole window. (#118)
+- **A blur on screen did the same thing, for the whole of playback.** The lyrics surface softens the lines around the
+  one you are on, and any blur at all disqualified the frame from partial repaint — so with lyrics open, every frame
+  repainted every pixel at the panel's rate while a single wiping line was all that had actually changed. That was
+  the difference between 69 % of the GPU and a strip. A blurred surface now repaints the strip: the renderer draws a
+  blurred group's source slightly wider than the damaged region so the blur has real pixels to read at the edges,
+  redraws only the damaged part, and grows a moved thing's damage by the reach of any blur above it so nothing stale
+  is left ringing it. Verified pixel-for-pixel against a full redraw on the Snapdragon's GPU. (#118)
 - **The weak-GPU memory budgets never applied.** The adapter was classified *after* the image pipeline had already
   been sized, and an unclassified adapter counts as a discrete one, so every UMA machine — the Snapdragon included —
   silently ran with desktop-GPU budgets: 32 MB of pixel pool instead of 16, 64 MB of image cache instead of 24,
@@ -51,6 +88,24 @@ Almost all of it is engine work; the app side is the memory governor, the respon
 - **The memory governor could never fire.** It read whole-machine memory pressure, which on a 16-32 GB laptop stays
   near zero while Wavee holds a gigabyte, and nothing was registered at the level it sheds at when pressure is
   normal — so the thirty-second check freed nothing, ever, on either count. (#118)
+- **A playlist could sit on placeholder rows forever.** Opening one from a link whose address carried an encoded
+  trailing space sent that space all the way to Spotify, which rejected the request — and because the track list had
+  no way to say "this failed", it went on shimmering as though the songs were still on their way. Nine minutes of it
+  in one session, over a playlist that had opened perfectly a few minutes earlier. Link addresses are now trimmed
+  after they are decoded rather than before, and a fetch that dies says so, with a Retry, instead of pretending to
+  load. A list that already has songs never blanks itself into an error if a later refresh fails.
+- **A pending tooltip kept the UI thread awake.** The tooltip's show delay, its five-second dwell and the menu and
+  command-bar cascade timers were an invisible animation polled from a per-frame re-render, so hovering anything while
+  scrolling pinned the loop at panel rate: one twelve-second scroll counted several hundred needless tooltip renders
+  and 463 frames held awake by that poller alone. They are now one-shot host timers that fire once and never
+  re-render; the delays are unchanged. (#118)
+- **A fading edge leased a 56 MB scratch for a few strips.** The edge-fade snapshot stacked its four edge strips
+  vertically at the widest strip's width, so a full-window fade asked for a 1792×8192 surface to hold under a
+  tenth of that area. The strips now pack side by side and the same fade leases 28 MB. (#118)
+- **A scrollbar's hover dwell kept the loop awake.** The conscious scrollbar counted its 400 and 500 ms expand and
+  contract dwells by re-rendering a stepper every frame, so every hover and every scroll bought a run of frames in
+  which nothing moved. The dwell is now a one-shot host timer; only the 167 ms width tween and a held page-repeat
+  still step per frame. (#118)
 
 ### Changed
 
@@ -62,6 +117,11 @@ Almost all of it is engine work; the app side is the memory governor, the respon
   shader compilation — is a named number instead of an unexplained gap. Image memory is also broken down per texture
   size rather than collapsed into one row, and frame repaint coverage is reported as a percentage, since every
   successful partial frame used to round to "0.0". (#118)
+- **The frame log now names what is keeping the loop awake.** When something subscribes to the frame clock the loop
+  runs at panel rate for as long as it stays subscribed, and the log could only say *that* one had — never which one,
+  which turned a one-line answer into an afternoon of guessing. The thirty-second line now ends with the count and
+  the components themselves (`pollers=1:LyricsFrameStepper`), and a gate holds both halves: that the names are right,
+  and that the count falls back to zero when they unmount.
 
 ## [0.2.9] - 2026-09-11
 

@@ -538,7 +538,7 @@ public sealed class Services
         var providers = MediaProviders;
         stub.CanPlayLocally = uri => providers?.OwnerOf(uri) is not null;
         Playback.LocalPlaybackSupported.Value = true;
-        Playback.Levels = (_preLogin.AudioHost as Wavee.Backend.IAudioLevelSource)?.Levels;
+        Playback.SetLevelSource(_preLogin.AudioHost as Wavee.Backend.IAudioLevelSource);
         return stub;
     }
 
@@ -799,7 +799,7 @@ public sealed class Services
         svc._preLoginFactory = preLoginFactory;
         svc._preLogin = preLogin;
         svc.Playback.LocalPlaybackSupported.Value = true;
-        svc.Playback.Levels = (preLogin.AudioHost as Wavee.Backend.IAudioLevelSource)?.Levels;
+        svc.Playback.SetLevelSource(preLogin.AudioHost as Wavee.Backend.IAudioLevelSource);
         svc.MutTransport = mutTransport;
         svc.RealCold = cold;
         svc.RealMutations = mutEngine;
@@ -874,7 +874,7 @@ public sealed class Services
         // Re-point the level tap at the live stack (AttachLive already ran — see its ordering contract): null when
         // this device is a pure Connect VIEWER of another device's playback (LiveConnect.Audio is the local-decode
         // stack only, absent for a viewer), same as the pre-login local host being replaced above.
-        Playback.Levels = (LiveHost?.Connect.Audio?.Host as Wavee.Backend.IAudioLevelSource)?.Levels;
+        Playback.SetLevelSource(LiveHost?.Connect.Audio?.Host as Wavee.Backend.IAudioLevelSource);
         Log.Info("app", "playback backend swapped to LIVE (Connect device + now-playing + remote control + account active)"
             + " + real lyrics feed (aggregator + reranker)");
     }

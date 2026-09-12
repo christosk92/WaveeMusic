@@ -395,6 +395,17 @@ public sealed class CachedStore : IStore, ILibraryCandidateStore, IDisposable
         // rows can still be detected by their contents; newly-created empty playlists remain exact in the hot mirror.
         return _cold.GetPlaylistRevision(playlistUri) is not null || _cold.LoadMembership(playlistUri).Count > 0;
     }
+    /// <summary>Failure is a HOT-only fact: it describes this session's last fetch attempt, not anything worth
+    /// persisting to the cold tier (a cached failure would outlive the outage that caused it and greet the user with an
+    /// error panel on a playlist that loads fine today). <see cref="HasMembership"/> consults the cold tier first, so a
+    /// playlist with persisted rows never reaches the failed branch anyway.</summary>
+    public void SetMembershipFailed(string playlistUri)
+    {
+        if (HasMembership(playlistUri)) return;   // cold rows count: show them rather than an error
+        _hot.SetMembershipFailed(playlistUri);
+    }
+    public bool MembershipFailed(string playlistUri) => _hot.MembershipFailed(playlistUri);
+    public void ClearMembershipFailed(string playlistUri) => _hot.ClearMembershipFailed(playlistUri);
     public byte[]? PlaylistRevision(string playlistUri) => _hot.PlaylistRevision(playlistUri) ?? _cold.GetPlaylistRevision(playlistUri);
     public void SetRootlist(IReadOnlyList<RootlistEntry> entries)
     {

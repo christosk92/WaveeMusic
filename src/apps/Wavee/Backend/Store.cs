@@ -97,6 +97,20 @@ public interface IStore
     void SetMembership(string playlistUri, IReadOnlyList<PlaylistMember> rows, byte[]? baseRev);
     /// <summary>True when a playlist has a known membership baseline, including a valid empty playlist.</summary>
     bool HasMembership(string playlistUri);
+    /// <summary>Record that the membership fetch for this playlist FAILED, and bump so the open page re-reads.
+    /// <para>Without this there is no third state: the detail list asks only "is a baseline resident", so a fetch that
+    /// 4xx'd, timed out or threw is indistinguishable from one still in flight and the page shows placeholder rows
+    /// forever (the sync loop logs the failure at Info and completes the command's TCS as success, so nothing else
+    /// carries the bad news to the UI). Cleared by <see cref="SetMembership"/> and by an eviction, so a retry starts
+    /// from a clean slate rather than inheriting a stale verdict.</para></summary>
+    void SetMembershipFailed(string playlistUri);
+    /// <summary>True when the last membership fetch for this playlist failed and nothing has succeeded since.</summary>
+    bool MembershipFailed(string playlistUri);
+    /// <summary>Drop the failure verdict and bump — what a RETRY does before re-requesting. It has to be explicit:
+    /// <see cref="SetMembershipFailed"/> is bump-once (a second failure on an already-failed playlist notifies nobody),
+    /// so a retry that left the flag standing would make the second failure invisible and the button look dead. Bumping
+    /// also returns the page to its loading look for the duration of the new attempt.</summary>
+    void ClearMembershipFailed(string playlistUri);
     IReadOnlyList<PlaylistMember> Membership(string playlistUri);
     byte[]? PlaylistRevision(string playlistUri);
     void SetRootlist(IReadOnlyList<RootlistEntry> entries);
@@ -501,6 +515,9 @@ public sealed class InMemoryStore : IStore
     readonly Dictionary<(string set, string uri), (SyncState Sync, long AddedAt)> _saved = new();
     readonly Dictionary<string, HashSet<string>> _savedBySet = new();   // set → uris, so SavedUris is O(set), not O(all-saved)
     readonly Dictionary<string, (IReadOnlyList<PlaylistMember> Rows, byte[]? Rev)> _membership = new();
+    // Playlists whose membership fetch failed with nothing resident — the third state the detail list needs so a dead
+    // fetch reads as "couldn't load, retry" instead of an eternal loading skeleton. Guarded by _gate like _membership.
+    readonly HashSet<string> _membershipFailed = new(StringComparer.Ordinal);
     IReadOnlyList<RootlistEntry> _rootlist = Array.Empty<RootlistEntry>();
     byte[]? _rootlistRev;
     readonly SimpleSubject<StoreChange> _changes = new();
@@ -907,7 +924,34 @@ public sealed class InMemoryStore : IStore
 
     public void SetMembership(string playlistUri, IReadOnlyList<PlaylistMember> rows, byte[]? baseRev)
     {
-        lock (_gate) _membership[playlistUri] = (rows, baseRev);
+        // A landed baseline retires any previous failure verdict: success is the only thing that clears it, so a page
+        // showing the failed state flips back to rows on the same bump that delivers them.
+        lock (_gate) { _membership[playlistUri] = (rows, baseRev); _membershipFailed.Remove(playlistUri); }
+        Bump(playlistUri);
+    }
+
+    public void SetMembershipFailed(string playlistUri)
+    {
+        if (string.IsNullOrEmpty(playlistUri)) return;
+        // Do NOT overwrite a resident baseline with a failure: a revalidate that fails against rows we already hold is
+        // a stale-data problem, not an empty-page problem, and blanking good rows into an error panel would be worse
+        // than showing them. The failed state exists only for "we have nothing AND we are not going to get it".
+        lock (_gate)
+        {
+            if (_membership.ContainsKey(playlistUri)) return;
+            if (!_membershipFailed.Add(playlistUri)) return;   // already failed — no redundant bump
+        }
+        Bump(playlistUri);
+    }
+
+    public bool MembershipFailed(string playlistUri)
+    {
+        lock (_gate) return _membershipFailed.Contains(playlistUri);
+    }
+
+    public void ClearMembershipFailed(string playlistUri)
+    {
+        lock (_gate) { if (!_membershipFailed.Remove(playlistUri)) return; }
         Bump(playlistUri);
     }
 
@@ -923,7 +967,12 @@ public sealed class InMemoryStore : IStore
 
     /// <summary>Drop a resident membership baseline (the WARM-tier evictor calls this); the cold tier keeps it, so the
     /// next access rehydrates it.</summary>
-    public void EvictMembership(string playlistUri) { lock (_gate) _membership.Remove(playlistUri); }
+    public void EvictMembership(string playlistUri)
+    {
+        // Drop the failure verdict with the baseline: eviction means "the next access rehydrates", and a retained
+        // verdict would make that fresh attempt render as already-failed before it had run.
+        lock (_gate) { _membership.Remove(playlistUri); _membershipFailed.Remove(playlistUri); }
+    }
     public int ResidentMembershipCount { get { lock (_gate) return _membership.Count; } }
 
     public byte[]? PlaylistRevision(string playlistUri)

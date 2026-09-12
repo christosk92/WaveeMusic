@@ -145,7 +145,6 @@ sealed class SeekBar : Component
         // Subscribe to the LOW-frequency signals that change the bar's STRUCTURE (mount/unmount the ticker) only.
         bool playing = b.IsPlaying.Value;
         bool buffering = b.IsBuffering.Value;
-        long posTick = b.PositionMs.Value;   // subscribe → re-anchor the interpolation each ~1 Hz tick
         if (DiagEnabled)
             WaveeLog.Instance.Event(WaveeLogLevel.Debug, "ui", "seekbar.render", "Seek bar rendered",
                 fields:
@@ -156,13 +155,14 @@ sealed class SeekBar : Component
                 ]);
 
         // Anchor the smooth-playhead interpolation: snapshot wall + position whenever PositionMs changes, then refresh
-        // the resting display (covers the paused/seek-while-paused case — the ticker isn't mounted then).
-        UseEffect(() =>
+        // the resting display (covers the paused/seek-while-paused case — the ticker isn't mounted then). Track the
+        // position in this effect, not Render: a transport sample changes the playhead, not the seek bar's tree.
+        UseSignalEffect(() =>
         {
             _tickWallMs = Environment.TickCount64;
-            _tickPosMs = b.PositionMs.Peek();
+            _tickPosMs = b.PositionMs.Value;
             Recompute();
-        }, posTick);
+        });
 
         // RE-ANCHOR on a play/pause flip. Position doesn't tick while paused, so on RESUME the interpolation would
         // extrapolate `_tickPosMs + (now - _tickWallMs)` across the whole paused gap for one frame (the timestamp jumps

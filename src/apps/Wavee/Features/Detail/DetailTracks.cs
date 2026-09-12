@@ -413,20 +413,52 @@ sealed class TrackList : Component
         Children = [new TextEl(noTracks ? Loc.Get(Strings.Detail.Empty.NoTracks) : Loc.Get(Strings.Detail.Empty.NoMatch)) { Size = 14f, Color = Tok.TextTertiary }],
     };
 
+    /// <summary>Shown when the membership fetch FAILED and nothing is resident. Deliberately not the empty message:
+    /// "Nothing here yet" is a verdict about the playlist, and claiming it about a list we could not read is a lie the
+    /// user cannot act on. Retry re-requests the membership — the store drops the failure verdict on the way in, so the
+    /// region falls back to shimmer while the new attempt runs and to rows if it lands.</summary>
+    Element ListFailed() => new BoxEl
+    {
+        Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
+        Padding = new Edges4(Spacing.L, Spacing.XXL, Spacing.L, Spacing.XXL),
+        Children =
+        [
+            new TextEl(Loc.Get(Strings.Detail.Empty.LoadFailed)) { Size = 14f, Color = Tok.TextTertiary },
+            Button.Standard(Loc.Get(Strings.Common.Retry), RetryMembership),
+        ],
+    };
+
+    /// <summary>Re-request this playlist's membership after a failed fetch. Evicting first is what makes the retry a
+    /// real attempt rather than a no-op: it clears the failure verdict AND the (absent) baseline, so the hydrator has
+    /// no reason to consider the playlist already answered.</summary>
+    void RetryMembership()
+    {
+        if (_svc is not { } svc || _model.ContextUri is not { Length: > 0 } uri) return;
+        svc.RealStore?.ClearMembershipFailed(uri);
+        // No bump is needed here and none is taken: whichever way the new attempt resolves it writes through the store —
+        // SetMembership on success, SetMembershipFailed on failure — and each of those bumps this page itself.
+        _ = svc.Library.GetPlaylistAsync(uri, HydrationLevel.Open, CancellationToken.None);
+    }
+
     /// <summary>What stands in for the rows when there are none to show (<see cref="PlaylistListState"/>): shimmer rows
-    /// while the membership is still unknown, else the empty / no-match message. The Loading arm is a skeleton boundary
-    /// keyed on the MODEL's flag, not the page loadable (the header is Ready — only the rows are not), deriving the
-    /// same <see cref="RowsShimmer"/> the cold page shows, so the two loading looks are one look.</summary>
+    /// while the membership is still unknown, the failure panel when the fetch died, else the empty / no-match message.
+    /// The Loading arm is a skeleton boundary keyed on the MODEL's flags, not the page loadable (the header is Ready —
+    /// only the rows are not), deriving the same <see cref="RowsShimmer"/> the cold page shows, so the two loading looks
+    /// are one look.
+    /// <para>Loading and Failed share ONE region so the engine owns the Pending→Failed swap from its own live thunks:
+    /// a fetch that dies while the shimmer is on screen flips to the panel without waiting for a re-render, which is
+    /// exactly the transition that used to be unrepresentable (<c>Failed</c> was hard-wired <c>false</c>, so a dead
+    /// fetch shimmered forever).</para></summary>
     Element ListPlaceholder(PlaylistRowsState state, ColumnSet set, TrackSize[] tracks, float rowH, float art) => state switch
     {
-        PlaylistRowsState.Loading => new SkelRegionEl(
-            Pending: () => { var m = _full.Value.Value; return PlaylistListState.IsLoading(m.MembershipLoaded, m.Tracks.Count); },
-            Failed: static () => false,
+        PlaylistRowsState.Loading or PlaylistRowsState.Failed => new SkelRegionEl(
+            Pending: () => { var m = _full.Value.Value; return PlaylistListState.IsLoading(m.MembershipLoaded, m.MembershipFailed, m.Tracks.Count); },
+            Failed: () => { var m = _full.Value.Value; return PlaylistListState.IsFailed(m.MembershipLoaded, m.MembershipFailed, m.Tracks.Count); },
             // Ready with rows: this element is replaced by the real list in the same flush that flipped the flag; the
             // spacer is what stands there for that flush. Ready with none: the membership landed empty.
             Content: () => _full.Value.Value.Tracks.Count == 0 ? FilterEmpty(noTracks: true) : new BoxEl(),
             ShimmerSource: () => RowsShimmer(set, tracks, rowH, art),
-            OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false)
+            OnFailed: ListFailed, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false)
             with { Key = "rows:loading" },
         PlaylistRowsState.Empty => FilterEmpty(noTracks: true),
         _ => FilterEmpty(noTracks: false),
@@ -436,7 +468,7 @@ sealed class TrackList : Component
     /// stuck on the loading skeleton — a membership that never lands — is visible in the log with its inputs.</summary>
     PlaylistRowsState ListStateFor(DetailModel model, int visible)
     {
-        var state = PlaylistListState.For(model.MembershipLoaded, _tracks.Count, visible);
+        var state = PlaylistListState.For(model.MembershipLoaded, model.MembershipFailed, _tracks.Count, visible);
         if (state != _lastListState && _kind is DetailKind.Playlist or DetailKind.Liked)
         {
             _lastListState = state;
@@ -962,7 +994,9 @@ sealed class TrackList : Component
                 // While the gate is capable but not yet LIVE the total is just the track count, so an empty list has no
                 // header to render either — fall back to the empty-playlist message exactly like a non-recs page does.
                 // A membership that has not landed is not an empty playlist: shimmer, never a header over nothing.
-                if (listState == PlaylistRowsState.Loading || (visible == 0 && (_tracks.Count > 0 || !recsLive)))
+                // Failed rides with Loading: a membership we could not READ is no more an empty playlist than one still
+                // in flight, so it must not fall through to a "Recommended" header over nothing either.
+                if (listState is PlaylistRowsState.Loading or PlaylistRowsState.Failed || (visible == 0 && (_tracks.Count > 0 || !recsLive)))
                     return ListPlaceholder(listState, set, tracks, rowH, art);
                 // The bound slots branch on the recycled index (RowOrRecContent): track rows keep the selection skin;
                 // the "Recommended" header + rec rows render their OWN content, so they never join the track multi-select
@@ -2876,7 +2910,7 @@ sealed class TrackList : Component
                             Direction = 1,
                             Children =
                             [
-                                _o.ListPlaceholder(PlaylistListState.For(_o._model.MembershipLoaded, _o._tracks.Count, visible),
+                                _o.ListPlaceholder(PlaylistListState.For(_o._model.MembershipLoaded, _o._model.MembershipFailed, _o._tracks.Count, visible),
                                                    shape.Set, shape.Tracks, _rowH, shape.Art),
                             ],
                         }

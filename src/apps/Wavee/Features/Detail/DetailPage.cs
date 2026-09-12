@@ -106,7 +106,7 @@ sealed class DetailPage : Component
         // Stable per-instance loadable, re-driven by the route dep key — DetailShell freezes the model at construction,
         // so the loadable INSTANCE must be stable across route swaps (a fresh store-cache instance per route would leave
         // the reused shell pinned to the first item — the master-detail reactivity bug). KeepAlive caches the parked page.
-        var model = UseResource(async ct =>
+        var resource = UseResource(async ct =>
         {
             var loaded = await LoadAsync(svc, kind, id, ct).ConfigureAwait(false);
             // The daylist rollover window may be absent from the playlist4 wire (unpinned by any capture); the Home
@@ -156,7 +156,8 @@ sealed class DetailPage : Component
                     WaveeLogField.Of("previewLargest", DetailCoverTrace.Id(preview?.Cover, preferLargest: true)),
                     WaveeLogField.Of("loadedLargest", DetailCoverTrace.Id(loaded.Cover, preferLargest: true)));
             return WithOwners(kind, id, loaded);   // the page's owner identities, for the store-change predicate below
-        }, preview ?? PendingSeed(kind), route.Name).Loadable;
+        }, preview ?? PendingSeed(kind), route.Name);
+        var model = resource.Loadable;
 
         // LIVE in-place refresh: an active page re-projects resident store data into the SAME loadable, never Pending.
         // This path is deliberately separate from the initial hydrated load. A store notification must not schedule
@@ -166,6 +167,64 @@ sealed class DetailPage : Component
         var realStore = svc.RealStore;
         var realSync = svc.RealSync;
         var active = UseIsActive();
+        var liveRetry = UseRef(new Wavee.Backend.Hydration.LiveReadyRetry());
+        // Cache-first startup can complete the route resource against OfflineEntityHydrator. Store bulks only
+        // re-map resident rows (None), so they cannot recover a header-only album. Retry the SAME catalog open on
+        // the final go-live signal, once, without hiding cached content or creating a bulk -> fetch feedback loop.
+        Context.UseSignalEffect(() =>
+        {
+            var retryRoute = _route.Value;
+            bool live = svc.Playback.Auth.Value == AuthStatus.Authenticated;
+            bool nowActive = active.Value;
+            bool fetching = resource.IsFetching.Value;
+            var (retryKind, retryId) = ParseDetail(retryRoute);
+            // This recovery concerns entity-backed detail pages. Liked membership has its own live sync owner.
+            bool complete = retryId is null || svc.Hydrator.LevelOf(retryId) >= HydrationLevel.Open;
+            long ticket = liveRetry.Value.TryBegin(retryRoute.Name, live, nowActive, fetching, complete);
+            if (ticket == 0) return;
+            var cancellation = new CancellationTokenSource();
+            var token = cancellation.Token;
+            _ = ReloadAfterLiveAsync();
+            Reactive.OnCleanup(() =>
+            {
+                cancellation.Cancel();
+                cancellation.Dispose();
+                liveRetry.Value.Cancel(ticket);
+            });
+
+            async Task ReloadAfterLiveAsync()
+            {
+                try
+                {
+                    var fresh = await LoadAsync(svc, retryKind, retryId, token).ConfigureAwait(false);
+                    post(() =>
+                    {
+                        if (token.IsCancellationRequested || !active.Peek()
+                            || _route.Peek().Name != retryRoute.Name
+                            || svc.Playback.Auth.Peek() != AuthStatus.Authenticated
+                            || !liveRetry.Value.Complete(ticket)) return;
+                        var current = model.Value.Peek();
+                        var next = WithOwners(retryKind, retryId, fresh) with
+                        {
+                            Cover = ImageSource.PreferVisible(fresh.Cover, current.Cover),
+                        };
+                        resource.Mutate(next, refresh: false);
+                        _lastCover = next.Cover;
+                    });
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+                catch (Exception ex)
+                {
+                    post(() =>
+                    {
+                        if (token.IsCancellationRequested || !liveRetry.Value.Complete(ticket)) return;
+                        WaveeLog.Instance.Event(WaveeLogLevel.Warning, "detail", "detail.live-ready.failed",
+                            "live-ready detail retry failed; keeping cached content",
+                            fields: [WaveeLogField.Of("route", retryRoute.Name), WaveeLogField.Of("error", ex.Message)]);
+                    });
+                }
+            }
+        });
         var activationSeen = UseRef(false);
         var wasActive = UseRef(false);
         Context.UseSignalEffect(() =>
@@ -431,7 +490,7 @@ sealed class DetailPage : Component
     internal static async Task<DetailModel?> ReloadPlaylistDetailAsync(Services svc, string uri, CancellationToken ct = default)
     {
         var p = await LoadPlaylistAsync(svc, uri, HydrationLevel.Open, ct).ConfigureAwait(false);
-        return p is null ? null : MapPlaylist(p, membershipLoaded: MembershipLoaded(svc, p));
+        return p is null ? null : MapPlaylist(p, membershipLoaded: MembershipLoaded(svc, p), membershipFailed: MembershipFailed(svc, p));
     }
 
     /// <summary>Has the store adopted a membership baseline for this playlist? Read from the store's own baseline
@@ -443,6 +502,14 @@ sealed class DetailPage : Component
         => svc.RealStore is not { } store
            || EntityUri.KindOf(p.Uri) != EntityKind.Playlist
            || store.HasMembership(p.Uri);
+
+    /// <summary>Did the membership fetch for this playlist FAIL, with nothing resident to show instead? Mirrors
+    /// <see cref="MembershipLoaded"/>'s gates exactly — a surface with no real store, or one that is not a Spotify
+    /// playlist, carries its rows with the record and has no fetch that could have failed.</summary>
+    static bool MembershipFailed(Services svc, Playlist p)
+        => svc.RealStore is { } store
+           && EntityUri.KindOf(p.Uri) == EntityKind.Playlist
+           && store.MembershipFailed(p.Uri);
 
     // A podcast show folds onto the shared detail surface: rail = cover + PODCAST pill + publisher/episode-count meta +
     // description + Play/Follow; the right column renders Episodes (DetailConfig.Show.Content == Episodes → EpisodeList).
@@ -484,7 +551,7 @@ sealed class DetailPage : Component
         catch (TimeoutException) { }              // slow counter → header renders without the segment
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
         if (playlist is null) return DetailModel.Empty;
-        return MapPlaylist(playlist, count, MembershipLoaded(svc, playlist));
+        return MapPlaylist(playlist, count, MembershipLoaded(svc, playlist), MembershipFailed(svc, playlist));
     }
 
     /// <summary>The playlist route id as a uri. Ids arrive bare from the route but a full uri also flows through some
@@ -492,7 +559,7 @@ sealed class DetailPage : Component
     static string PlaylistUri(string id)
         => EntityUri.Parse(id).IsSpotify ? id : "spotify:playlist:" + id;   // "is it already a uri?" via the ONE parser
 
-    static DetailModel MapPlaylist(Playlist p, long? saveCount = null, bool membershipLoaded = true)
+    static DetailModel MapPlaylist(Playlist p, long? saveCount = null, bool membershipLoaded = true, bool membershipFailed = false)
     {
         var tracks = p.Tracks ?? Array.Empty<Track>();
         // Data-drive the optional columns: show Date-added if any track has one, and Added-by only when the playlist is
@@ -547,6 +614,7 @@ sealed class DetailPage : Component
             // Known gates CanView: a thin header's all-false rights are placeholders, not a revocation.
             Notice = PlaylistPageNoticeRules.Cold(p.DeletedByOwner, p.Capabilities.Known, p.Capabilities.CanView, p.Capabilities.IsOwner),
             MembershipLoaded = membershipLoaded,
+            MembershipFailed = membershipFailed,
         };
     }
 
