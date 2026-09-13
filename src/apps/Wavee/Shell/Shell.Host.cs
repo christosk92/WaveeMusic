@@ -221,6 +221,7 @@ public static partial class Shell
             PlayLog.Flush();
             Notify.HostShutdown();
             Playback.Os.Shutdown();
+            s_fetchWake?.Dispose();
             gate?.Dispose();
         }
     }
@@ -257,8 +258,17 @@ public static partial class Shell
     static readonly System.Collections.Concurrent.ConcurrentQueue<Action> s_earlyPosts = new();
     static volatile Action<Action>? s_uiPost;
 
-    static void InstallMarshallers()
+    static int s_marshallersInstalled;
+    static Action<Action>? s_marshal;
+    static System.Threading.Timer? s_fetchWake;
+    static int s_fetchWakeAt = int.MaxValue;
+
+    /// <summary>Installs the UI-thread poster into every cross-thread seam. Called FIRST in <c>App.Main</c> (after the
+    /// headless arm), before any boot can post: posts queue until the root attaches the engine's poster, then drain in
+    /// order (G-013). Idempotent: <see cref="Run"/> calls it too. Only this and the headless host assign these seams.</summary>
+    public static void InstallMarshallers()
     {
+        if (Interlocked.Exchange(ref s_marshallersInstalled, 1) != 0) return;
         Action<Action> post = static a =>
         {
             if (s_uiPost is { } live) { live(a); return; }
@@ -270,6 +280,7 @@ public static partial class Shell
         Spotify.Post = post;
         Store.Post = post;
         Wavee.Palette.Post = post;
+        s_marshal = post;
         Sidebar.Activate(post);          // the sidebar store's write completions and the binder's publishes land on the UI thread
 
         // THE frame tick. `Fetch.Pump()` is how an expired backoff re-sends with nothing else happening, and
@@ -284,7 +295,30 @@ public static partial class Shell
             Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             Fetch.Pump();
             Wavee.Palette.Tick();
+            ArmFetchWake();
         };
+    }
+
+    /// <summary>The one idle wake (decision D23): a one-shot timer armed to the earliest fetch backoff deadline, which
+    /// posts the pump through the UI poster when no frame would. Re-armed only when the deadline moves, so a rendered
+    /// frame costs one integer compare. UI THREAD.</summary>
+    static void ArmFetchWake()
+    {
+        int at = Fetch.NextWakeAt();
+        if (at == s_fetchWakeAt) return;
+        s_fetchWakeAt = at;
+        if (at == int.MaxValue) { s_fetchWake?.Change(Timeout.Infinite, Timeout.Infinite); return; }
+        long dueMs = Math.Max(0L, (at - (long)Entities.Now) * 1000L);
+        s_fetchWake ??= new System.Threading.Timer(static _ => s_marshal?.Invoke(OnFetchWake), null, Timeout.Infinite, Timeout.Infinite);
+        s_fetchWake.Change(dueMs, Timeout.Infinite);
+    }
+
+    static void OnFetchWake()
+    {
+        s_fetchWakeAt = int.MaxValue;
+        Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        Fetch.Pump();
+        ArmFetchWake();
     }
 
     /// <summary>The root's first render hands over the engine's UI-thread poster. Idempotent.</summary>
@@ -293,6 +327,9 @@ public static partial class Shell
         if (s_uiPost is not null) return;
         s_uiPost = post;
         DrainEarlyPosts(post);
+        // The toast platform's UI half: activations and deep links from toasts arrive through the same intake as a second
+        // launch (G-009). The window exists by the root's first render.
+        Notify.HostInstall(post, static link => ApplyDeepLink(link));
     }
 
     static void DrainEarlyPosts(Action<Action> post)

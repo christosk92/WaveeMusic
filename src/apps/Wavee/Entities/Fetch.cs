@@ -641,6 +641,20 @@ public static partial class Fetch
     /// <para>A backoff that expires with nothing else happening has no timer of its own: the HOST calls this on its
     /// frame tick, which is the only clock this layer is allowed to have (P10 — timers are named, few, and owned by
     /// the shell). Without that call a sleeping bucket waits for the next plan, which is a delay, never a loss.</para></summary>
+    /// <summary>The earliest app second at which a backed-off bucket becomes sendable, or <see cref="int.MaxValue"/> when
+    /// nothing waits. The host arms its one idle wake timer to it (decision D23), so an expired backoff re-sends while the
+    /// window is idle, minimized or hidden. UI THREAD.</summary>
+    public static int NextWakeAt()
+    {
+        int now = Entities.Now, next = int.MaxValue;
+        for (int i = 0; i < s_order.Count; i++)
+        {
+            Demand d = s_order[i];
+            if (d.Count > 0 && d.ReadyAt > now && d.ReadyAt < next) next = d.ReadyAt;
+        }
+        return next;
+    }
+
     public static void Pump()
     {
         Sync();

@@ -1027,7 +1027,9 @@ public static partial class Platform
         ZoomAutoPolicy.MigrateMode(Settings);
         string osCulture = "";
         HostOsCulture(ref osCulture);
-        Locale = AppLocale.Resolve(Settings, osCulture);
+        var locale = AppLocale.Resolve(Settings, osCulture);
+        HostOpenLocale(ref locale);
+        Locale = locale;
         HostOpenLog();
         HostOpenCredentials();
         Scope = ResolveScope();
@@ -1053,6 +1055,9 @@ public static partial class Platform
     // defaults-only settings, a ring-only log and no credential slot — and no file, registry or Win32 call at all.
     static partial void HostOpenSettings();
     static partial void HostOsCulture(ref string culture);
+    /// <summary>The engine half of the locale: load <c>assets/loc</c>, select the resolved culture (English as the
+    /// terminal fallback), and hand back what the UI will actually show so Spotify metadata follows it (G-017).</summary>
+    static partial void HostOpenLocale(ref AppLocale locale);
     static partial void HostOpenLog();
     static partial void HostOpenCredentials();
 }
@@ -1070,8 +1075,8 @@ internal sealed partial class CredentialJson : JsonSerializerContext { }
 //   · `--fake` argument parsing and `Clock.SeedEpoch` LANDED (gap G-015, orchestrator first cut, decision D17) as
 //     `Platform.Args`/`Platform.Clock` above; `Scope` gets its `--fake` arm in `ResolveScope`. Owner S's Wave 6 work
 //     is everything else this file still owes (`--screenshot`/`--width`/`--height`/the probe flags stay S's).
-//   · AppLocaleBootstrap's engine half: Localization.LoadFolder(assets/loc), OsCultureProvider, SetCulture — the PURE
-//     resolution is above (AppLocale.Resolve) and owner S must read the same answer, not compute a second one.
+//   · AppLocaleBootstrap's engine half LANDED (gap G-017, orchestrator first cut) as `HostOpenLocale`: it loads
+//     assets/loc and selects `AppLocale.Resolve`'s answer; owner S keeps the live culture switch in Settings.
 //   · The rest of ch 28's DATA GAP D3 beside `RuntimePhase`: `RuntimeStatus`, `ProvisioningOutcome` and the pure
 //     `ProgressFraction` / `ShortHash`.
 //   · LogCapturePolicy (the -1-means-build-default fold) and WaveeLogSessions (re-reading the dated file set).

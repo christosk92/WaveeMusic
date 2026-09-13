@@ -76,6 +76,18 @@ public static partial class Platform
         catch { }
     }
 
+    static partial void HostOpenLocale(ref AppLocale locale)
+    {
+        FluentGpu.Localization.Localization.DefaultCulture = AppLocale.English.UiCulture;
+        FluentGpu.Localization.Localization.LoadFolder(Path.Combine(AppContext.BaseDirectory, "assets", "loc"));
+        // English first, always: an unsupported culture must never leave a stale process-global culture selected.
+        FluentGpu.Localization.Localization.SetCulture(AppLocale.English.UiCulture);
+        if (!FluentGpu.Localization.Localization.TrySetCulture(locale.UiCulture))
+            FluentGpu.Localization.Localization.SetCulture(AppLocale.English.UiCulture);
+        string effective = FluentGpu.Localization.Localization.CurrentCulture;
+        locale = new AppLocale(effective, AppLocale.LanguageOf(effective));
+    }
+
     static partial void HostOpenCredentials()
     {
         ICredentialProtector protector = OperatingSystem.IsWindows() ? new DpapiProtector() : new NoOpProtector();
