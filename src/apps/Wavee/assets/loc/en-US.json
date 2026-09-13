@@ -1166,7 +1166,7 @@
       "offline": "Sign in to see notifications from Spotify."
     },
     "update": {
-      "$comment": "Only the ROW TITLES live here. The buttons under them are update.action.* \u2014 the row used to carry its own retry/dismiss strings beside identical ones in update.action, which is two owners for one label.",
+      "$comment": "Only the ROW TITLES live here. The buttons under them are update.action.* — the row used to carry its own retry/dismiss strings beside identical ones in update.action, which is two owners for one label.",
       "availableTitle": "An update is available",
       "completedTitle": "Wavee was updated",
       "failedTitle": "Update failed",
@@ -1567,7 +1567,9 @@
     "concerts": "Concerts",
     "artistConcerts": "{artist} concerts",
     "artistConcertsGeneric": "Artist concerts",
-    "concertDetails": "Concert details"
+    "concertDetails": "Concert details",
+    "discography": "Discography",
+    "connectDiagnostics": "Connect diagnostics"
   },
   "sidebar": {
     "pinned": "Pinned",
@@ -2249,7 +2251,11 @@
     "play": "Play",
     "updateAvailable": "Wavee {version} is available",
     "updateReady": "Wavee {version} is ready to install",
-    "updated": "Wavee updated to {version}"
+    "updated": "Wavee updated to {version}",
+    "daylistTitle": "Your daylist has refreshed",
+    "daylistMovedOn": "It moved on from {window}",
+    "daylistGeneric": "A new mix is waiting.",
+    "newReleaseTitle": "New release"
   },
   "jumplist": {
     "pause": "Pause",
@@ -2358,7 +2364,7 @@
   "whatsNew": {
     "$comment": "The What's-new page, its rail and the after-update dialog. Wavee already uses \"whatsNew\" for Spotify's new-releases feed in the notification centre (notifications.filter.new); these keys are the APP's own release notes.",
     "title": "What's new",
-    "headline": "Wavee {version} \u201C{name}\u201D",
+    "headline": "Wavee {version} “{name}”",
     "headlineBare": "Wavee {version}",
     "dateFormat": "d MMM yyyy",
     "since": "Since you last looked: {count} releases — {from} → {to}. Showing everything new.",
@@ -2445,7 +2451,7 @@
     },
     "installOnQuit": {
       "title": "Install a waiting update when I quit Wavee",
-      "hint": "Wavee downloads it as it closes; Windows restarts nothing \u2014 the new version opens next time."
+      "hint": "Wavee downloads it as it closes; Windows restarts nothing — the new version opens next time."
     },
     "metered": {
       "title": "Download on metered connections",
@@ -2490,8 +2496,8 @@
       "built": "Built {date}",
       "lastChecked": "last checked {when}",
       "neverChecked": "not checked yet",
-      "display": "Wavee {version} \u201C{name}\u201D",
-      "displayBeta": "Wavee {version} \u201C{name}\u201D \u00B7 Beta {beta}",
+      "display": "Wavee {version} “{name}”",
+      "displayBeta": "Wavee {version} “{name}” · Beta {beta}",
       "displayBare": "Wavee {version}",
       "whatsNewIn": "What’s new in {name}",
       "openWhatsNew": "Open What's new",
@@ -2529,7 +2535,7 @@
       "notesBudget": "GitHub issue budget",
       "notesBudgetValue": "{spent} lookups this session · {remaining} requests left on this IP (−1 = unknown)",
       "repair": "Repair auto-update",
-      "repairHint": "Downloads the .appinstaller file through your browser. Open it once it has downloaded \u2014 Windows App Installer takes it from there, and installing from the feed is what re-registers the auto-update association."
+      "repairHint": "Downloads the .appinstaller file through your browser. Open it once it has downloaded — Windows App Installer takes it from there, and installing from the feed is what re-registers the auto-update association."
     }
   },
   "lyrics": {
