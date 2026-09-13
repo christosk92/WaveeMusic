@@ -8,14 +8,9 @@ trademarks of Spotify AB.
 This build incorporates the third-party components listed below. Each remains under its own license;
 the summary here names the license, not its full text -- follow the URL for the authoritative terms.
 
-Generated 2026-08-30 by ops/build/generate-third-party-notices.ps1.
+Generated 2026-09-13 by ops/build/generate-third-party-notices.ps1.
 
 -------------------------------------------------------------------------------
-
-FlacBox  1.0.0
-  license: see package
-  authors: notmasteryet
-  url:     https://flacbox.codeplex.com
 
 Google.Protobuf  3.35.0
   license: BSD-3-Clause
@@ -27,6 +22,11 @@ Grpc.Tools  2.81.0
   authors: The gRPC Authors
   url:     https://github.com/grpc/grpc
   note:    build-time (not redistributed as a binary; governs generated code)
+
+libFLAC  algorithms followed, not vendored
+  license: BSD-3-Clause
+  url:     https://github.com/xiph/flac
+  note:    Wavee's FLAC decoder kernels (src/apps/Wavee/Playback/Playback.Audio.Flac.Kernels.cs) follow libFLAC's bit reader, Rice residual, LPC restoration and CRC routines. Copyright (C) 2000-2009 Josh Coalson, Copyright (C) 2011- Xiph.Org Foundation.
 
 Microsoft.Data.Sqlite  10.0.8
   license: MIT
@@ -42,11 +42,6 @@ NLayer  1.15.0
   license: MIT
   authors: Mark Heath, Andrew Ward
   url:     https://github.com/naudio/NLayer
-
-NVorbis  vendored (src/apps/vendor/NVorbis)
-  license: MIT
-  url:     https://github.com/NVorbis/NVorbis
-  note:    Pure-managed Ogg Vorbis decoder. Copyright (c) Andrew Ward and contributors. Vendored as source so it can be NativeAOT-published with the app.
 
 Segoe Fluent Icons  1.54 (bundled: assets/fonts/SegoeFluentIcons.ttf)
   license: Microsoft font license -- Segoe Fluent Icons is provided by Microsoft for use in Windows applications
@@ -68,6 +63,11 @@ SQLitePCLRaw.bundle_e_sqlite3  3.0.0
   authors: Eric Sink
   url:     https://github.com/ericsink/SQLitePCL.raw
 
+stb_vorbis  1.22 (algorithms transliterated, not vendored)
+  license: MIT (dual-licensed MIT or public domain; used under MIT)
+  url:     https://github.com/nothings/stb
+  note:    Wavee's Ogg Vorbis decoder (src/apps/Wavee/Playback/Playback.Audio.Vorbis.cs) transliterates parts of stb_vorbis.c where the Vorbis I specification leaves the implementation open. Copyright (c) 2017 Sean Barrett.
+
 System.Security.Cryptography.ProtectedData  9.0.0
   license: MIT
   authors: Microsoft
@@ -77,6 +77,11 @@ TerraFX.Interop.Windows  10.0.26100.6
   license: MIT
   authors: Tanner Gooding and Contributors
   url:     https://github.com/terrafx/terrafx.interop.windows
+
+Windows 11 OOBE onboarding animations (eula / connect / patch Lottie)  Bodymovin 5.6.5 exports, as redistributed by Rise Media Player
+  license: UNVERIFIED -- Microsoft-owned artwork; no licence located
+  url:     https://github.com/Rise-Software/Rise-Media-Player
+  note:    user accepted the redistribution risk on 2026-09-02
 
 Yoga  ported to C# via Microsoft.UI.Reactor
   license: MIT

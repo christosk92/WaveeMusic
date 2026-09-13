@@ -1305,4 +1305,108 @@ public static partial class Video
         public static (float X, float Y) Anchor(float w, float h, float viewportW, float viewportH)
             => (MathF.Max(0f, viewportW - w - 16f), MathF.Max(0f, viewportH - h - ReserveBottom - 16f));
     }
+
+    // ── the mini player's gestures, the scrub preview, the join spinner, the fullscreen entry (stage B) ─────────────
+    //
+    // 0.2.9 kept these inside `InWindowVideoPip` / `WaveeShell`; stage B lifted them here so `Video.UI.cs` decides
+    // nothing. Values are 0.2.9's verbatim (ch 24 W8/W11/W12, `InWindowVideoPip.cs:452-534`, `WaveeShell.cs:793-807`).
+
+    /// <summary>Which edges a resize gesture drags; the anchored edges are the ones NOT named. Two edges at once is a
+    /// corner, so one handler covers all eight zones.</summary>
+    [Flags]
+    public enum PipEdge : byte { None = 0, Left = 1, Right = 2, Top = 4, Bottom = 8 }
+
+    /// <summary>The in-window mini player's drag, resize, clamp and layout reservation.</summary>
+    public static class PipGesture
+    {
+        /// <summary>The gap kept from every window edge (and above the player bar).</summary>
+        public const float Margin = 16f;
+
+        /// <summary>A card may sit no closer than <see cref="Margin"/> to either side.</summary>
+        public static float ClampX(float x, float viewportW, float w)
+            => Math.Clamp(x, Margin, MathF.Max(Margin, viewportW - w - Margin));
+
+        /// <summary>…and no closer than <see cref="Margin"/> to the top or to the player bar.</summary>
+        public static float ClampY(float y, float viewportH, float h)
+            => Math.Clamp(y, Margin, MathF.Max(Margin, viewportH - h - Pip.ReserveBottom - Margin));
+
+        /// <summary>The bottom space the page keeps clear: the card's height + the gap while it sits ANCHORED, 0 once the
+        /// user has placed it (a deliberately placed card is a free-floating overlay) or when it is not mounted.</summary>
+        public static float Reserve(bool mounted, bool placed, float h) => mounted && !placed ? h + Margin : 0f;
+
+        /// <summary>Should the card's HEIGHT follow the content? Always until the user sizes it; after that only when the
+        /// content's own shape changes by more than 0.01 (the user owns the width, the content owns the shape).</summary>
+        public static bool ShouldRefit(bool userSized, float fittedRatio, float contentRatio)
+            => !userSized || (fittedRatio > 0f && MathF.Abs(contentRatio - fittedRatio) > 0.01f);
+
+        /// <summary>One resize sample. The ANCHORED edge is the one not being dragged: growing right/bottom is bounded by
+        /// the viewport, growing left/top by the frozen far edge. Floors are <see cref="Pip.MinW"/> × <see cref="Pip.MinH"/>.</summary>
+        public static (float X, float Y, float W, float H) Resize(PipEdge edge, float startX, float startY, float startW,
+            float startH, float dx, float dy, float viewportW, float viewportH)
+        {
+            float x = startX, y = startY, w = startW, h = startH;
+            float right = startX + startW, bottom = startY + startH;
+            if ((edge & PipEdge.Left) != 0)
+            {
+                w = Math.Clamp(startW - dx, Pip.MinW, MathF.Max(Pip.MinW, right - Margin));
+                x = right - w;
+            }
+            else if ((edge & PipEdge.Right) != 0)
+            {
+                w = Math.Clamp(startW + dx, Pip.MinW, MathF.Max(Pip.MinW, viewportW - Margin - startX));
+            }
+            if ((edge & PipEdge.Top) != 0)
+            {
+                h = Math.Clamp(startH - dy, Pip.MinH, MathF.Max(Pip.MinH, bottom - Margin));
+                y = bottom - h;
+            }
+            else if ((edge & PipEdge.Bottom) != 0)
+            {
+                h = Math.Clamp(startH + dy, Pip.MinH, MathF.Max(Pip.MinH, viewportH - Margin - Pip.ReserveBottom - startY));
+            }
+            return (x, y, w, h);
+        }
+    }
+
+    /// <summary>A scrub PREVIEW (a pointer still down on the transport's rail) is a COARSE seek planned through
+    /// <see cref="Playback.Video.SeekPlanner"/>: a buffered keyframe when there is one, the segment start when the grid is
+    /// known, and the raw target as a keyframe seek when the host has no index yet. It is never accurate — the commit on
+    /// release is.</summary>
+    public static class Scrub
+    {
+        /// <summary>Where a preview lands for <paramref name="plan"/>.</summary>
+        public static long PreviewTargetMs(in Playback.Video.SeekPlan plan, long targetMs, long segmentLengthMs)
+            => plan.Verb switch
+            {
+                Playback.Video.SeekVerb.Fetch => segmentLengthMs > 0 ? plan.KeyframeMs : targetMs,
+                Playback.Video.SeekVerb.Ride => targetMs,
+                _ => plan.KeyframeMs >= 0 ? plan.KeyframeMs : targetMs,
+            };
+
+        /// <summary>A preview never asks for decode-to-exact-PTS.</summary>
+        public const bool PreviewAccurate = false;
+    }
+
+    /// <summary>The poster's loading affordance: the artwork shows at once, the spinner only for a join that outlasts
+    /// <see cref="Playback.Video.Budgets.JoiningNoSpinnerMs"/> — a spinner that flashes for 200 ms reports trouble that
+    /// did not happen.</summary>
+    public static class Joining
+    {
+        public const int SpinnerDelayMs = Playback.Video.Budgets.JoiningNoSpinnerMs;
+        public static bool ShowsSpinner(long elapsedMs) => elapsedMs >= SpinnerDelayMs;
+    }
+
+    /// <summary>The fullscreen surface's focus-steal guard. The surface remounts fresh every time it mounts, so only the
+    /// shell-lifetime observer can tell "Requested just BECAME Fullscreen" (F11, the menu, the glyph) from "Requested was
+    /// already Fullscreen and the RESOLVE is only now catching up" (availability returned after a video-less track).</summary>
+    public static class FullscreenEntry
+    {
+        /// <summary>Did the resolved placement just become fullscreen?</summary>
+        public static bool Entered(in PlacementState before, in PlacementState after)
+            => PlacementCore.Resolve(after) == SurfacePlacement.Fullscreen && PlacementCore.Resolve(before) != SurfacePlacement.Fullscreen;
+
+        /// <summary>…and was it the user asking (so the surface may take focus)?</summary>
+        public static bool UserInitiated(in PlacementState before, in PlacementState after)
+            => after.Requested == SurfacePlacement.Fullscreen && before.Requested != SurfacePlacement.Fullscreen;
+    }
 }

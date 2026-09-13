@@ -344,6 +344,53 @@ public static class RootlistOps
         return list;
     }
 }
+/// <summary>THE MARKER STREAM, rebuilt from the flattened projection tree (stage B, J1). 0.2.9 read the stream from the
+/// store bridge (<c>IStore.Rootlist()</c>); in 0.3 the tree IS built from the <c>User.Me</c> rootlist edges, so the pane
+/// derives the stream back from it and every legality question (<see cref="RootlistOps"/>,
+/// <see cref="RootlistDropDecision"/>, <see cref="RootlistTreeNav"/>) is asked against the same facts the rows draw.
+/// <para>The tree is depth-first with depths stamped; a folder is identified by its projection id
+/// (<c>SidebarLibraryEntry.FolderId</c>), which <see cref="RootlistTreeNav.RefOf"/> addresses and which the stream's
+/// group-id parse takes verbatim (it is not a <c>spotify:start-group:</c> uri). An END marker is synthesised when the
+/// next entry is at the folder's depth or shallower, and every folder still open at the end is closed.</para></summary>
+public static class RootlistMarkerStream
+{
+    /// <summary>Fill <paramref name="into"/> (cleared first) with the marker stream <paramref name="tree"/> describes.
+    /// Entries that are neither a playlist nor a folder are skipped; a null tree yields an empty stream.</summary>
+    public static void Build(IReadOnlyList<SidebarLibraryEntry>? tree, List<RootlistEntry> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        into.Clear();
+        if (tree is null || tree.Count == 0) return;
+        var open = new List<int>(8);   // depths of the folders still open, innermost last
+        for (int i = 0; i < tree.Count; i++)
+        {
+            var e = tree[i];
+            if (e.Kind is not (SidebarEntryKind.Playlist or SidebarEntryKind.Folder)) continue;
+            int depth = e.Depth < 0 ? 0 : e.Depth;
+            while (open.Count > 0 && open[^1] >= depth)
+            {
+                into.Add(new RootlistEntry(into.Count, 2, "", null, open[^1]));
+                open.RemoveAt(open.Count - 1);
+            }
+            if (e.IsFolder)
+            {
+                string groupId = e.FolderId.Length > 0 ? e.FolderId : e.Id;
+                into.Add(new RootlistEntry(into.Count, 1, groupId, e.Name, depth, e.AddedAtMs));
+                open.Add(depth);
+            }
+            else
+            {
+                into.Add(new RootlistEntry(into.Count, 0, e.Uri, null, depth, e.AddedAtMs));
+            }
+        }
+        while (open.Count > 0)
+        {
+            into.Add(new RootlistEntry(into.Count, 2, "", null, open[^1]));
+            open.RemoveAt(open.Count - 1);
+        }
+    }
+}
+
 // ── GEOMETRY, EXTENTS, DIFF, RESOLVE, PILL, REORDER, STAGE-HOLD, MENUS, DIAG ─────────────────────────────────────
 //
 // The sidebar pane's pure numeric ladder and per-row bookkeeping: row/indent/tree-content geometry and the plan

@@ -1511,5 +1511,165 @@ public static partial class Deck
         public static bool IsRecordFamily(int presetId) => presetId
             is Rail.PlayerCatalog.Record or Rail.PlayerCatalog.Turntable
             or Rail.PlayerCatalog.Zune or Rail.PlayerCatalog.Picture;
+
+        /// <summary>The ONE option of a preset that is read at MODEL construction rather than by the face — VU ›
+        /// needles (<c>ballistics</c>: the τ) and Winamp › analyser (<c>vis</c>: spectrum vs scope synth); null for
+        /// every other preset. ch 23 §6.4(4): 0.2.9 built the model once, so flipping either restyled the face and
+        /// kept the old physics until a remount. The host compares this option's current slug with the one its model
+        /// was built from and rebuilds the model IN PLACE when they differ — no remount, no entrance fade.</summary>
+        public static string? ModelOptionSlug(int presetId) => presetId switch
+        {
+            Rail.PlayerCatalog.Vu => "ballistics",
+            Rail.PlayerCatalog.Winamp => "vis",
+            _ => null,
+        };
+    }
+
+    // ── 16. the shell's decisions, pure (stage 2: the clock's gates, the grips, the lettering latch) ────────────────
+    //
+    // Everything `Deck.UI.cs` DECIDES rather than draws. 0.2.9 kept these inline in `DeckClock`, `DeckGesture`,
+    // `IpodWheel` and the cover leaves, so the three interaction defects ch 23 §6.4 lists (#1 the headshell has no
+    // cancel, #4 the model options never reach a mounted model, #6 the headshell seeks to 0 over an unknown duration)
+    // were untestable. The shell now calls these and nothing else.
+
+    /// <summary>The deck clock's gates and quanta. <see cref="ShouldTick"/> is the idle-GPU rule for this surface: a
+    /// paused, settled, ended, reduced-motion or rail-closed deck runs NO timer, so it requests no frame.</summary>
+    public static class ClockRules
+    {
+        /// <summary>The self-paced tick — mirrors <c>Design.Cadence.PluggedLoopHz</c>.</summary>
+        public const float TickMs = 1000f / Design.Cadence.PluggedLoopHz;
+
+        /// <summary>A reported position further than this from the interpolation's expectation, with no seek of our
+        /// own pending, IS a seek somebody else made (a Connect device, a media key, a lock-screen scrub).</summary>
+        public const long RemoteJumpMs = 2_500;
+
+        /// <summary>How close a report must land to a seek target before the deck stops forcing the target.</summary>
+        public const long SeekSettleMs = 500;
+
+        /// <summary>The longest a committed seek may pin the playhead before the deck stops trusting it.</summary>
+        public const long SeekLatchMs = 2_000;
+
+        /// <summary>The dt clamp: a resume-from-sleep tick must not integrate ten minutes into a platter.</summary>
+        public const float DtMinSec = 0.001f, DtMaxSec = 0.040f;
+
+        public const float Rpm33 = 33.333f, Rpm45 = 45f;
+
+        /// <summary>The record family's disc diameter as a fraction of the deck — the widest rotating part, so the
+        /// angle quantum it yields is the finest any face needs.</summary>
+        public const float DiscFrac = 0.70f;
+
+        /// <summary>The square edge's grid. The side is part of the host's remount key, so a per-DIP side would remount
+        /// four times as often during a splitter drag (ch 21 §9.1(6)).</summary>
+        public const float SideQuantum = 4f;
+
+        /// <summary>The run gate (ch 23 §0(6)). <paramref name="playWhenReady"/> covers a load that is still resolving;
+        /// <paramref name="settled"/> is the model's own <see cref="IModel.IsSettled"/>. When this is false the ticker
+        /// is OFF and a transport CHANGE is the clock.</summary>
+        public static bool ShouldTick(bool reducedMotion, bool railOpen, bool playing, bool playWhenReady, bool buffering, bool settled)
+            => !reducedMotion && railOpen && (playing || playWhenReady || buffering || !settled);
+
+        /// <summary>May a face's LOOPING motion run (the Winamp marquee, the Canvas drift)? Only while audio is meant to
+        /// be coming out, the rail is open, the window is active and motion is not reduced — a paused deck owns no
+        /// looping animation row, so it wakes no frame.</summary>
+        public static bool LoopsMayRun(bool reducedMotion, bool railOpen, bool active, bool playing)
+            => !reducedMotion && railOpen && active && playing;
+
+        /// <summary>The integration step for one tick, clamped (a first tick uses the nominal step).</summary>
+        public static float DeltaSec(long lastTickMs, long nowMs)
+            => lastTickMs == 0L ? TickMs / 1000f : Math.Clamp((nowMs - lastTickMs) / 1000f, DtMinSec, DtMaxSec);
+
+        /// <summary>A report nobody here asked for moved the playhead: the clock synthesizes a seek target so the medium
+        /// sees an EDGE (lift, swing, lower) instead of a groove that teleported. Never on the first report of a
+        /// track (<paramref name="lastDurationMs"/> 0) and never while a seek of our own is pending.</summary>
+        public static bool IsRemoteJump(long reportedMs, long expectedMs, long lastDurationMs, bool seekPending)
+            => !seekPending && lastDurationMs > 0 && Math.Abs(reportedMs - expectedMs) > RemoteJumpMs;
+
+        /// <summary>Has the transport's report caught up with a seek target?</summary>
+        public static bool SeekLanded(long reportedMs, long targetMs) => Math.Abs(reportedMs - targetMs) < SeekSettleMs;
+
+        /// <summary>Release a committed seek once the report lands, or once the latch window has passed since the
+        /// commit. A zero <paramref name="committedAtMs"/> (no stamp) only releases on landing — 0.2.9 compared against
+        /// an unset stamp and released every latch on its first tick.</summary>
+        public static bool ReleaseSeekLatch(long reportedMs, long committedMs, long nowMs, long committedAtMs)
+            => SeekLanded(reportedMs, committedMs) || (committedAtMs != 0L && nowMs - committedAtMs > SeekLatchMs);
+
+        /// <summary>One rim pixel of rotation: a disc's rim travels π·d per turn, so 360/(π·d) degrees is the smallest
+        /// angle that moves a pixel (0.505° at side 324).</summary>
+        public static float AngleQuantumDeg(float side) => 360f / MathF.Max(1f, MathF.PI * side * DiscFrac);
+
+        /// <summary>Round to a perceptual quantum; a write that lands on the same step writes nothing.</summary>
+        public static float Quantize(float v, float q) => q > 0f ? MathF.Round(v / q) * q : v;
+
+        /// <summary>The platter speed for the <c>rpm</c> option's slug.</summary>
+        public static float RpmFor(string? rpmSlug) => rpmSlug == "45" ? Rpm45 : Rpm33;
+
+        /// <summary>The deck's square edge for a rail width: the content width (<c>rail − 2·inset</c>) on the 4-DIP
+        /// grid, never below one quantum.</summary>
+        public static float SideFor(float railWidth, float inset)
+            => MathF.Max(SideQuantum, MathF.Round((railWidth - 2f * inset) / SideQuantum) * SideQuantum);
+
+        /// <summary>A cross-kind row identity: a track slot and an episode slot are the same <c>int</c>, so the kind
+        /// rides in the high byte. 0 (and any non-positive slot) is "nothing".</summary>
+        public static int RowKey(byte kind, int slot) => slot <= 0 || kind == 0 ? 0 : (kind << 24) | (slot & 0x00FF_FFFF);
+    }
+
+    /// <summary>The two grips' rules — the record's headshell and the iPod's click wheel share one gesture, and this is
+    /// what that gesture asks.</summary>
+    public static class GripRules
+    {
+        /// <summary>One full turn of the click wheel moves the playhead a QUARTER of the track.</summary>
+        public const float WheelGear = 0.25f;
+
+        /// <summary>A grip is live only over a playable, unfailed, seekable item whose duration is KNOWN. ch 23
+        /// §6.4(6): 0.2.9's headshell checked <c>CanSeek</c> and not the duration, so a release over an unknown
+        /// duration committed a seek to 0. Both grips now refuse.</summary>
+        public static bool Enabled(bool hasPlayable, bool failed, bool canSeek, long durationMs)
+            => hasPlayable && !failed && canSeek && durationMs > 0;
+
+        /// <summary>A drag is abandoned when the item or the device changes under the finger (committing it would seek
+        /// the WRONG song).</summary>
+        public static bool StillCurrent(bool active, bool enabled, bool sameItem, bool sameDevice)
+            => active && enabled && sameItem && sameDevice;
+
+        /// <summary>A deck draws a TRACK's medium: the clamp is 0..duration (an unknown duration clamps at zero only).</summary>
+        public static long Clamp(long ms, long durationMs) => durationMs > 0 ? Math.Clamp(ms, 0, durationMs) : Math.Max(0, ms);
+
+        /// <summary>A groove fraction → milliseconds; 0 over an unknown duration.</summary>
+        public static long MsAt(float frac, long durationMs) => durationMs > 0 ? (long)(Ease.Clamp01(frac) * durationMs) : 0L;
+
+        /// <summary>Unwrap an angular delta across the ±π seam — without it a wheel crossing 9 o'clock jumps a quarter
+        /// of the track backwards.</summary>
+        public static float Unwrap(float deltaRad)
+            => deltaRad > MathF.PI ? deltaRad - MathF.Tau : deltaRad < -MathF.PI ? deltaRad + MathF.Tau : deltaRad;
+
+        /// <summary>The wheel's geared advance for one (already unwrapped) angular delta.</summary>
+        public static float WheelAdvance(float frac, float deltaRad) => Ease.Clamp01(frac + deltaRad / MathF.Tau * WheelGear);
+
+        /// <summary>Does releasing the wheel commit? A tap that never moved cancels: it must not fire a seek to where the
+        /// playhead already is.</summary>
+        public static bool ReleaseCommits(bool moved, long durationMs) => moved && durationMs > 0;
+    }
+
+    /// <summary>What a cover/lettering leaf SHOWS. The artwork and the label change when the MECHANISM says so (a
+    /// <see cref="Frame.CoverGen"/> bump), a same-album advance re-letters in place (the medium did not change), and —
+    /// ch 23 §7, the one place 0.3 deliberately differs from 0.2.9's blank label — a new item's text is adopted only
+    /// once it is KNOWN, so an unfetched row never letters a blank sleeve.</summary>
+    public static class Lettering
+    {
+        /// <param name="currentRow">The playing item (<see cref="ClockRules.RowKey"/>), 0 for none.</param>
+        /// <param name="currentAlbum">Its album (or show) row key, 0 when unknown.</param>
+        /// <param name="currentKnown">Does the playing item carry the fields this leaf paints?</param>
+        /// <param name="shownRow">The item the leaf shows now, 0 before its first latch.</param>
+        /// <param name="shownAlbum">That item's album row key.</param>
+        /// <param name="generationMoved">Has <see cref="Frame.CoverGen"/> moved since the leaf last latched?</param>
+        /// <returns>True when the leaf should show <paramref name="currentRow"/>.</returns>
+        public static bool Adopt(int currentRow, int currentAlbum, bool currentKnown, int shownRow, int shownAlbum,
+                                 bool generationMoved)
+        {
+            if (currentRow == 0) return false;                        // nothing playing: keep what is shown
+            if (currentRow == shownRow || shownRow == 0) return true;  // the same item (its text may have landed), or the first latch
+            if (!currentKnown) return false;                          // never swap a lettered leaf for a blank one
+            return generationMoved || (currentAlbum != 0 && currentAlbum == shownAlbum);
+        }
     }
 }

@@ -14,6 +14,8 @@
 //     (device line → volume row → demote), the art as a quantised residual, and the whole scrim alpha ladder.
 //   • `Stage.Pane`    which pane the right-hand region shows. A `static` signal on purpose: "last pane wins" for the
 //     SESSION — not a setting (nothing is written to disk) and not per-track state.
+//   • `Stage.Band` / `Stage.Transport` / `Stage.DriftClock` / `Stage.Drift` (stage B) — the surface's band arithmetic,
+//     the two transport predicates, and the backdrop drift's clock and pose, so `Stage.UI.cs` renders and never decides.
 //
 // STAGEARM / STAGEINK ARE `Platform/Design.cs`'s (`Design.StageArm`, `Design.StageInk`, owner L). §2 homed them here,
 // and this file carried a copy until owner L landed the real one in the same wave — WITH the design system's own
@@ -369,5 +371,121 @@ public static partial class Stage
 
         /// <summary>Flip to the other pane — the pivot links' one writer.</summary>
         public static void Toggle() => Current.Value = Current.Peek() == Lyrics ? Queue : Lyrics;
+    }
+
+    // ── 4. the surface's band arithmetic (stage B) ──────────────────────────────────────────────────────────────────
+    //
+    // ONE definition of how much height the identity column gets, passed into `Layout.Resolve`, so the allocator's
+    // height ladder and the tree that realizes it cannot disagree about the room there is (W14's table:
+    // availH = vpH − 48 − 72 − 88). The wide band height is used unconditionally: the height ladder only runs on the
+    // wide path, so the compact band can never be an input to it.
+
+    /// <summary>The fixed bands the immersive surface is built from.</summary>
+    public static class Band
+    {
+        /// <summary>The window caption strip left live above the surface (the engine's expanded title bar).</summary>
+        public const float CaptionH = 48f;
+        /// <summary>The docked player bar left live below it.</summary>
+        public const float PlayerBarH = 72f;
+        /// <summary>The top band holding the way out, wide and compact.</summary>
+        public const float TopBandH = 88f, CompactTopBandH = 56f;
+        /// <summary>The pivot band along the pane region's bottom edge.</summary>
+        public const float PivotBandH = 72f;
+        /// <summary>The volume rail's LENGTH: the column's content span less the mute glyph and the gap beside it —
+        /// `Slider.Create` takes a length, and a NaN one collapsed the rail to a dash.</summary>
+        public const float VolumeTrackW = Layout.ColumnContentW - 32f - 8f;
+
+        public static float TopBandFor(bool wide) => wide ? TopBandH : CompactTopBandH;
+
+        /// <summary>The body band: the viewport less the caption and the player bar.</summary>
+        public static float BodyH(float viewportH) => MathF.Max(1f, viewportH - CaptionH - PlayerBarH);
+
+        /// <summary>The height the identity column actually gets — the input to <see cref="Layout.Resolve"/>.</summary>
+        public static float ColumnAvailH(float viewportH) => MathF.Max(0f, BodyH(viewportH) - TopBandH);
+    }
+
+    // ── 5. what the transport may do (StageIdentity.cs:89-90) ───────────────────────────────────────────────────────
+
+    /// <summary>The stage transport's two enablement predicates — DIFFERENT on purpose: an error kills prev/next and
+    /// the satellites but leaves the play disc live, and loading kills only the disc.</summary>
+    public static class Transport
+    {
+        public static bool CanTransport(bool hasTrack, bool hasError) => hasTrack && !hasError;
+        public static bool PrimaryEnabled(bool hasTrack, bool loading) => hasTrack && !loading;
+
+        /// <summary>The quality badge names the PLAYING stream or nothing: no published format, or another Connect device
+        /// is active, ⇒ no badge. Silence is the correct answer, not a fallback.</summary>
+        public static bool ShowsQualityBadge(bool hasFormat, bool remoteActive) => hasFormat && !remoteActive;
+
+        /// <summary>The identity title: the track's own title, or "nothing playing" when it is absent or still EQUALS the
+        /// uri (a placeholder row before its metadata landed — never surface a raw uri).</summary>
+        public static bool UsesTitle(string? title, string? uri) => title is { Length: > 0 } && title != uri;
+    }
+
+    // ── 6. the backdrop drift (ImmersiveLyricsSurface.cs:70-82, StageDriftClock.cs) ─────────────────────────────────
+
+    /// <summary>Elapsed presentation time for the decorative drift. Pausing HOLDS the last sampled pose; resuming
+    /// continues that phase without spending the paused wall time. The caller supplies monotonic seconds (the frame
+    /// clock), so the clock itself reads nothing.</summary>
+    public sealed class DriftClock
+    {
+        double _elapsed, _last;
+        bool _sampled;
+        public bool Running { get; private set; }
+
+        public void SetRunning(bool running, double nowSeconds)
+        {
+            if (Running == running) return;
+            Running = running;
+            _last = nowSeconds;
+        }
+
+        public double Sample(double nowSeconds)
+        {
+            if (!Running) return _elapsed;
+            if (!_sampled) { _sampled = true; _last = nowSeconds; return _elapsed; }
+            if (nowSeconds > _last) { _elapsed += nowSeconds - _last; _last = nowSeconds; }
+            return _elapsed;
+        }
+
+        public void Reset()
+        {
+            Running = false;
+            _sampled = false;
+            _elapsed = _last = 0d;
+        }
+    }
+
+    /// <summary>The drift's geometry: two INCOMMENSURATE sinusoids (37 s / 53 s never re-phase inside a session), a
+    /// translation of ±4 % of the body per axis and a ±2 % scale wobble on the SAME two waves, under a 1.30× paint
+    /// overscale that keeps an edge from ever showing.</summary>
+    public static class Drift
+    {
+        public const float PeriodASec = 37f, PeriodBSec = 53f, AmpFrac = 0.04f, ScaleAmp = 0.02f;
+        public const float IntervalMs = 33f, Overscale = 1.30f, SigmaDip = 80f, ResolutionScale = 0.5f;
+        /// <summary>Write gates: a tick whose delta is invisible is dropped (most ticks near a turning point).</summary>
+        public const float WriteEpsDip = 0.15f, WriteEpsScale = 0.0004f;
+        const float Tau = 6.2831853f;
+
+        /// <summary>The carrier's pose at drift time <paramref name="t"/>, for a body of the given size. Divided by
+        /// <see cref="Overscale"/> because the carrier sits UNDER the frame's paint scale.</summary>
+        public readonly record struct Pose(float Dx, float Dy, float Scale);
+
+        public static Pose At(double t, float bodyW, float bodyH)
+        {
+            float sinA = MathF.Sin(Tau * (float)t / PeriodASec);
+            float sinB = MathF.Sin(Tau * (float)t / PeriodBSec);
+            return new Pose(AmpFrac * bodyW * sinA / Overscale, AmpFrac * bodyH * sinB / Overscale,
+                            1f + ScaleAmp * 0.5f * (sinB - sinA));
+        }
+
+        /// <summary>Does the ticker run at all? Setting OFF, OS reduced motion, paused, or no art ⇒ no ticker.</summary>
+        public static bool Runs(bool animatedSetting, bool reducedMotion, bool playing, bool hasArt)
+            => animatedSetting && !reducedMotion && playing && hasArt;
+
+        /// <summary>Is the move from <paramref name="current"/> to <paramref name="next"/> worth a paint write?</summary>
+        public static bool Worth(in Pose current, in Pose next)
+            => MathF.Abs(current.Dx - next.Dx) >= WriteEpsDip || MathF.Abs(current.Dy - next.Dy) >= WriteEpsDip
+            || MathF.Abs(current.Scale - next.Scale) >= WriteEpsScale;
     }
 }

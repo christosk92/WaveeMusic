@@ -3065,3 +3065,52 @@ public sealed class SidebarEntries
         _version.Value = _version.Peek() + 1;
     }
 }
+
+// ── THE LIBRARY WRITE SEAM (stage B, J1) ─────────────────────────────────────────────────────────────────────────────
+// The pane DECIDES every organisation gesture (the slot, the legality, the undo anchors, the destination name) and the
+// library mutation seam EXECUTES it. 0.2.9's `WaveeResourceDrop.MoveRootlist` / `DepositTracks` / `FolderActions.*` /
+// `PlaylistCreateFlow` lived beside the renderer; Platform/Drag.cs §4 sends the rootlist half here and the deposit half to
+// the playlist owner, and neither may re-decide what the pane decided. Set ONCE by the composition root (the owner of
+// the Spotify rootlist/playlist writes); a null member makes the pane REFUSE with a sentence, never a silent no-op.
+
+public static partial class Sidebar
+{
+    /// <summary>The library mutation seam the sidebar's drops, menus and "+" buttons call. Null until installed.</summary>
+    public static SidebarLibraryWrites? LibraryWrites { get; set; }
+}
+
+/// <summary>Delegates only (the ActionServices shape): each one is ONE mutation that awaits the server, then announces,
+/// toasts and offers Undo itself. UI thread in, marshal back through <c>Sidebar.ToUi</c>.</summary>
+public sealed class SidebarLibraryWrites
+{
+    /// <summary>Move rootlist items (tree order, one batch — whatever the selection size) to
+    /// <c>placement</c> of <c>target</c>. <c>destinationName</c> is the toast's subject ("" = "Moved to Your
+    /// Library"); <c>undo</c> is the pre-move inverse batch, or null when no anchor resolves (the toast then carries
+    /// no Undo).</summary>
+    public Action<IReadOnlyList<RootlistItemRef>, RootlistItemRef, RootlistDropPlacement, string, IReadOnlyList<RootlistMove>?>? MoveRootlist;
+
+    /// <summary>Copy a payload's tracks into an editable playlist (uri, display name, payload).</summary>
+    public Action<string, string, DragPayload>? DepositTracks;
+
+    /// <summary>The ONE create-playlist flow: numbered name, optimistic row, optionally inside a folder (null = top
+    /// level), optionally navigating to it.</summary>
+    public Action<string?, bool>? CreatePlaylist;
+
+    /// <summary>Create a playlist seeded from a dropped track set (create, then a silent deposit, then ONE toast).</summary>
+    public Action<DragPayload>? CreatePlaylistWith;
+
+    /// <summary>Create a folder (inside the given folder id, null = top level) holding the given items; an empty list is
+    /// the plain "New folder" verb (which asks for a name).</summary>
+    public Action<string?, IReadOnlyList<RootlistItemRef>>? NewFolderWith;
+
+    /// <summary>Rename a FOLDER (group id, current name) — the rename dialog is the seam's. A playlist renames through
+    /// its registered <c>ActionId.RenamePlaylist</c> verb, never here.</summary>
+    public Action<string, string>? RenameFolder;
+
+    /// <summary>Delete a folder (group id, name, direct child count) — the seam confirms first and refuses without an
+    /// overlay to confirm in.</summary>
+    public Action<string, string, int>? DeleteFolder;
+
+    /// <summary>Resolve an entity's tracks for a deposit (a playlist, an album, a show, a single track), after the drop.</summary>
+    public Func<string, CancellationToken, Task<Track[]>>? ResolveTracks;
+}

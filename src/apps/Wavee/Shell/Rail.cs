@@ -19,6 +19,8 @@
 //     as well as write, so a hand-edited value can never crash a render: it degrades to Record / Cover / choice 0.
 //   • `Rail.NpvDiagnostics` — the always-on `npv` log category. A preference written from FIVE surfaces is only
 //     attributable if each write says which one it came from (CLAUDE.md: always-on logs, no env switches).
+//   • `Rail.Hero` / `Rail.Friends` (stage B) — the pinned hero's derived geometry (the W7b width ladder) and the friends
+//     feed's surface / live-window / relative-time / route rules plus its two host seams.
 //
 // Rules: no allocation after warm-up (P8); no LINQ, no closures, no async, no boxing (P9); UI thread only (C1).
 
@@ -323,5 +325,94 @@ public static partial class Rail
         public static void FlyoutClosed() => Log.Debug(Category, "player style flyout dismissed");
 
         static string Name(int p) => p == PlayerPrefs.Player ? "player" : "cover";
+    }
+
+    // ── 5. the now-playing hero's geometry (stage B; NowPlayingPanel.cs:512, :541-542) ──────────────────────────────
+
+    /// <summary>The pinned hero's derived numbers. There is no width BRANCH anywhere in the rail (ch 21 W7b): every
+    /// number is a derivation of the live rail width, and these are the ones the tile, the toggle and the deck key
+    /// share.</summary>
+    public static class Hero
+    {
+        /// <summary>The header strip's fixed height (eyebrow · Cover|Player · gear).</summary>
+        public const float HeaderRowH = 36f;
+        /// <summary>The tile's own inset on its left, top and right (the app's Spacing.S, restated engine-free).</summary>
+        public const float Inset = 8f;
+        /// <summary>Top of the ART inside the tile — DERIVED, never a literal, so the Art|Video toggle follows the strip.</summary>
+        public const float ArtTop = Inset + HeaderRowH + Inset;
+        /// <summary>The deck's side is part of its remount key, so it is quantised: one remount per 4 DIP of drag.</summary>
+        public const float SideQuantum = 4f;
+
+        /// <summary>The art / deck side: <c>round((railW − 2·S) / 4) · 4</c> — 184 / 324 / 484 at 200 / 340 / 500.</summary>
+        public static float Side(float railWidth)
+            => MathF.Round(MathF.Max(1f, railWidth - 2f * Inset) / SideQuantum) * SideQuantum;
+
+        /// <summary>The whole pinned block: 236 / 376 / 536 at 200 / 340 / 500.</summary>
+        public static float PinnedBlockH(float railWidth) => ArtTop + Side(railWidth);
+    }
+
+    // ── 6. the friends feed (stage B; FriendsPanel.cs, FriendsBridge.cs; ch 21 G6, §9.6 Q5) ─────────────────────────
+
+    /// <summary>The friend-activity feed as the panel reads it: the rows are <c>Edges.Friends</c> under ONE synthetic
+    /// parent, and the coarse state and the two host verbs are seams the Spotify host fills. With no host attached the
+    /// feed reads OFFLINE — the 0.2.9 <c>NullFriendActivityService</c> answer `--fake` shows ("Sign in to see…").</summary>
+    public static class Friends
+    {
+        /// <summary>The synthetic parent every friend edge hangs off (slot 0 is "none" everywhere).</summary>
+        public const int Feed = 1;
+        /// <summary>"Listening now": activity at most this old shows the presence dot and the equalizer.</summary>
+        public const long LiveWindowMs = 120_000;
+        /// <summary>The relative-time / live-window refresh cadence while the panel is visible.</summary>
+        public const float TickMs = 30_000f;
+
+        public enum FeedState : byte { Idle, Loading, Ready, Offline, Error }
+
+        /// <summary>Which surface the panel shows.</summary>
+        public enum Surface : byte { Rows, Skeleton, Empty, Offline, Error }
+
+        /// <summary>The coarse feed state. Written by the host; read by the panel.</summary>
+        public static readonly Signal<FeedState> State = new(FeedState.Offline);
+
+        /// <summary>Host seam: the panel is visible (true) / hidden (false) — mount/unmount drives it.</summary>
+        public static Action<bool>? SetActive { get; set; }
+
+        /// <summary>Host seam: force a full re-seed (the error surface's Retry).</summary>
+        public static Action? Refresh { get; set; }
+
+        /// <summary>ROWS WIN whenever there are any — stale rows stay visible through a refresh or a transient error.</summary>
+        public static Surface SurfaceFor(int rowCount, FeedState state) => rowCount > 0 ? Surface.Rows : state switch
+        {
+            FeedState.Offline => Surface.Offline,
+            FeedState.Error => Surface.Error,
+            FeedState.Idle or FeedState.Loading => Surface.Skeleton,
+            _ => Surface.Empty,
+        };
+
+        /// <summary>Is this activity "listening now"? A zero/unknown timestamp never is.</summary>
+        public static bool IsLive(long nowMs, long timestampMs)
+            => timestampMs > 0 && nowMs - timestampMs <= LiveWindowMs;
+
+        public enum AgeUnit : byte { Now, Minutes, Hours, Days }
+
+        /// <summary>The relative-time bucket: under a minute "now", then minutes, hours, days. A timestamp from the
+        /// future (clock skew) reads as now.</summary>
+        public static AgeUnit Age(long ageMs, out long count)
+        {
+            long min = Math.Max(0L, ageMs) / 60_000L;
+            if (min < 1) { count = 0; return AgeUnit.Now; }
+            if (min < 60) { count = min; return AgeUnit.Minutes; }
+            long hr = min / 60;
+            if (hr < 24) { count = hr; return AgeUnit.Hours; }
+            count = hr / 24;
+            return AgeUnit.Days;
+        }
+
+        /// <summary>Where a row navigates: the listening context first, then the album, then the artist; a row with
+        /// none of the three is INERT (no role, no hover plate, not focusable). The context slot is a PLAYLIST slot —
+        /// the kind the feed's context resolves to.</summary>
+        public enum Target : byte { None, Context, Album, Artist }
+
+        public static Target TargetOf(int contextSlot, int albumSlot, int artistSlot)
+            => contextSlot > 0 ? Target.Context : albumSlot > 0 ? Target.Album : artistSlot > 0 ? Target.Artist : Target.None;
     }
 }

@@ -105,7 +105,6 @@
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.Windows\FluentGpu.Windows.csproj" />
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.WindowsApi\FluentGpu.WindowsApi.csproj" />
     <ProjectReference Include="..\Wavee.Sdk\Wavee.Sdk.csproj" />
-    <ProjectReference Include="..\vendor\NVorbis\NVorbis\NVorbis.csproj" />
   </ItemGroup>
 
   <!-- ── Bundled playback modules ─────────────────────────────────────────────────────────────────────────────

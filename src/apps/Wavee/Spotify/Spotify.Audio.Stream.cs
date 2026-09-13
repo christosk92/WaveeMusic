@@ -1119,8 +1119,8 @@ public static partial class Spotify
                 return n;
             }
 
-            /// <summary>A position write only. It deliberately does NOT retarget: a `Stream` decoder (NVorbis until Wave 6)
-            /// seeks to probe pages — at open, near the end — and a cancel there would kill the cold-start range. The miss
+            /// <summary>A position write only. It deliberately does NOT retarget: a sequential `Stream` consumer (a module
+            /// stream) may seek to probe — at open, near the end — and a cancel there would kill the cold-start range. The miss
             /// on the next read asks for the bytes instead; the cancelling seek is <see cref="Body.Retarget"/>'s, for
             /// Wave 3's random-access adapter.</summary>
             public override long Seek(long offset, SeekOrigin origin)

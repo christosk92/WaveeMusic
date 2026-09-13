@@ -393,6 +393,25 @@ public readonly record struct ToastPlan(
     bool Sticky,
     ToastActionKind[] Actions);
 
+/// <summary>The notification panel's five filter pills, in the order the panel lists them.</summary>
+public enum NotifyFilter : byte { All, Updates, Spotify, New, Activity }
+
+/// <summary>How a row's relative time reads.</summary>
+public enum RelativeUnit : byte { Now, Minutes, Hours, Days }
+
+/// <summary>The update row's glyph chip, by state (the UI maps it to a glyph + tint).</summary>
+public enum UpdateRowGlyph : byte { Download, Refresh, Success, Error, Info }
+
+/// <summary>The update verbs the panel row and the in-app update toast route through <c>Notify.UpdateCommand</c>.
+/// <see cref="Dismiss"/> is the row's own verb (acknowledge; the toast never offers it); <see cref="OpenReleasePage"/>
+/// is the toast's escape hatch when deployment cannot work here (the row never offers it).</summary>
+public enum UpdateRowAction : byte { UpdateNow, WhatsNew, Later, Retry, Dismiss, OpenReleasePage }
+
+/// <summary>One state's update row: glyph, title loc key ("" for the no-copy arm), whether the progress strip replaces
+/// the buttons, and the buttons (the FIRST is the accent one).</summary>
+public readonly record struct UpdateRowArm(UpdateRowGlyph Glyph, string TitleLocKey, bool ShowsProgress,
+    UpdateRowAction[] Actions);
+
 public static partial class Notify
 {
     // ══ 5. NOTIFICATION PREFS — settings ⇄ topics ═══════════════════════════════════════════════════════════════════
@@ -989,6 +1008,11 @@ public static partial class Notify
         IReadOnlyList<Notification> releases,
         IReadOnlyList<Notification> activity)
     {
+        s_lastUpdate = update;
+        s_lastSocial = social;
+        s_lastReleases = releases;
+        s_lastActivity = activity;
+        s_hasSources = true;
         var feed = Merge(update,
             social, Platform.Settings.Get(Platform.Keys.NotificationsGanderLastSeenMs),
             releases, Platform.Settings.Get(Platform.Keys.NotificationsWhatsNewLastSeenMs),
@@ -1001,7 +1025,8 @@ public static partial class Notify
         return feed;
     }
 
-    /// <summary>Mark ONE row read (Home's timeline row click, the panel's row click). Idempotent.</summary>
+    /// <summary>Mark ONE row read (Home's timeline row click, the panel's row click). Idempotent; a real change re-merges
+    /// so the badge and the panel read the new state back (a repeat click costs nothing and never republishes).</summary>
     public static void MarkRead(string? id)
     {
         if (string.IsNullOrEmpty(id)) return;
@@ -1009,16 +1034,190 @@ public static partial class Notify
         string next = ReadIds.Add(set, id);
         if (string.Equals(next, set, StringComparison.Ordinal)) return;
         Platform.Settings.Set(Platform.Keys.NotificationsReadIds, next);
+        Refresh();
     }
 
     /// <summary>Mark everything read: advance BOTH watermarks and CLEAR the per-item set, which a mark-all subsumes.
-    /// Clearing it is what keeps the set bounded across a long-lived install.</summary>
+    /// Clearing it is what keeps the set bounded across a long-lived install. The local activity journal's own read
+    /// flags go through <see cref="ActivityMarkAllRead"/> (the journal is `Entities/Store.cs`'s, ch 19 DATA GAP 3).</summary>
     public static void MarkAllRead(long nowMs)
+    {
+        AdvanceRemoteWatermarks(nowMs);
+        ActivityMarkAllRead?.Invoke();
+        Refresh();
+    }
+
+    /// <summary>The panel OPENED (either anchor): refetch the stale remote feeds, advance both watermarks (opening the
+    /// centre IS seeing the remote rows) and re-merge. The panel's "demand" happens at OPEN, not at mount, and re-runs on
+    /// every open (ch 19 §9.3 item 5).</summary>
+    public static void PanelOpened(long nowMs)
+    {
+        RefreshFeeds?.Invoke();
+        AdvanceRemoteWatermarks(nowMs);
+        Refresh();
+    }
+
+    static void AdvanceRemoteWatermarks(long nowMs)
     {
         Platform.Settings.Set(Platform.Keys.NotificationsGanderLastSeenMs, nowMs);
         Platform.Settings.Set(Platform.Keys.NotificationsWhatsNewLastSeenMs, nowMs);
-        Platform.Settings.Set(Platform.Keys.NotificationsReadIds, "");
+        // A watermark advance subsumes every individually-marked id, so the per-item set is DROPPED rather than kept
+        // growing beside a watermark that already covers it — this is what bounds it in practice.
+        if (Platform.Settings.Get(Platform.Keys.NotificationsReadIds).Length > 0)
+            Platform.Settings.Set(Platform.Keys.NotificationsReadIds, "");
     }
+
+    // The last four sources a rebuild merged — a read-state change re-merges them rather than waiting for a feed push.
+    static Notification? s_lastUpdate;
+    static IReadOnlyList<Notification> s_lastSocial = [], s_lastReleases = [], s_lastActivity = [];
+    static bool s_hasSources;
+
+    /// <summary>Re-merge the last sources against the CURRENT read state and dials (a mark-read, a panel open, a dial
+    /// flip). A no-op before the first <see cref="Rebuild"/>.</summary>
+    public static void Refresh()
+    {
+        if (!s_hasSources) return;
+        Rebuild(s_lastUpdate, s_lastSocial, s_lastReleases, s_lastActivity);
+    }
+
+    // ── the panel's seams (filled by the feed/journal/updater owners; a null seam hides its affordance) ──────────────
+
+    /// <summary>Refetch the remote feeds if stale (the gander + what's-new decode sources, Wave 2/5).</summary>
+    public static Action? RefreshFeeds;
+
+    /// <summary>Mark the local activity journal's rows read (the journal is not in this file).</summary>
+    public static Action? ActivityMarkAllRead;
+
+    /// <summary>Clear the local activity journal — the header's "Clear" (Activity filter only). Null ⇒ no Clear link.</summary>
+    public static Action? ClearActivity;
+
+    /// <summary>Undo an invertible activity row. Returns false when the undo failed (a Warning toast says so). Null ⇒ no
+    /// Undo pill.</summary>
+    public static Func<Notification, Task<bool>>? UndoActivity;
+
+    /// <summary>Run an update verb (the updater's deployment shell, or the simulator while one is walking). Null ⇒ the row
+    /// renders its buttons but they do nothing — an honest inert row rather than a missing one.</summary>
+    public static Action<UpdateRowAction, AppUpdateSnapshot>? UpdateCommand;
+
+    // ══ 12. THE PANEL'S DECISIONS (ch 19 W14-W17) ══════════════════════════════════════════════════════════════════
+
+    /// <summary>The panel's fixed geometry: 380 wide, the feed scrolls at most 460, the whole panel caps at 520.</summary>
+    public const float PanelWidth = 380f, FeedMaxHeight = 460f, PanelMaxHeight = 520f;
+
+    /// <summary>Relative times advance on this cadence while the panel is open (auto-paused when parked).</summary>
+    public const int RelativeTickMs = 30_000;
+
+    /// <summary>The active filter pill. On the model, not the panel, so a re-open keeps the user's pill.</summary>
+    public static readonly Signal<NotifyFilter> Filter = new(NotifyFilter.All);
+
+    /// <summary>The download bar's fraction for the sticky in-app update toast — a FloatSignal so twenty progress ticks
+    /// are twenty float writes, not twenty reconciles. Written even when no toast is planned, so a card that appears
+    /// mid-download starts at the right place.</summary>
+    public static readonly FloatSignal UpdateProgress = new(0f);
+
+    /// <summary>How many playlist edits this session made that the server has not acked yet — the panel's one-line
+    /// "pending sync" answer to "did that actually happen?". Written by the playlist outbox's owner (Wave 5); 0 renders
+    /// nothing, which is nearly always.</summary>
+    public static readonly Signal<int> PendingEdits = new(0);
+
+    /// <summary>The toast action a planned update card offers, as the verb the row/updater seam understands.</summary>
+    public static UpdateRowAction VerbFor(ToastActionKind kind) => kind switch
+    {
+        ToastActionKind.UpdateNow => UpdateRowAction.UpdateNow,
+        ToastActionKind.WhatsNew => UpdateRowAction.WhatsNew,
+        ToastActionKind.Later => UpdateRowAction.Later,
+        ToastActionKind.Retry => UpdateRowAction.Retry,
+        _ => UpdateRowAction.OpenReleasePage,
+    };
+
+    /// <summary>The category a pill shows; null for All.</summary>
+    public static NotifyCategory? CategoryOf(NotifyFilter filter) => filter switch
+    {
+        NotifyFilter.Updates => NotifyCategory.AppUpdate,
+        NotifyFilter.Spotify => NotifyCategory.Social,
+        NotifyFilter.New => NotifyCategory.NewRelease,
+        NotifyFilter.Activity => NotifyCategory.Activity,
+        _ => null,
+    };
+
+    public static bool PassesFilter(in Notification n, NotifyFilter filter)
+        => CategoryOf(filter) is not { } c || n.Category == c;
+
+    /// <summary>"Clear" is rendered ONLY while the Activity pill is selected.</summary>
+    public static bool ShowsClear(NotifyFilter filter) => filter == NotifyFilter.Activity;
+
+    /// <summary>THE EMPTY LADDER. A remote category with zero rows is only EMPTY when its feed actually loaded — a
+    /// loading, failed or offline fetch must say so instead of masquerading as "no notifications". Returns a loc key.</summary>
+    public static string EmptyMessageKey(NotifyFilter filter, FeedState social, FeedState releases)
+    {
+        static string? Remote(FeedState s) => s switch
+        {
+            FeedState.Idle or FeedState.Loading => Strings.Notifications.Loading,
+            FeedState.Error => Strings.Notifications.Feed.Error,
+            FeedState.Offline => Strings.Notifications.Feed.Offline,
+            _ => null,
+        };
+        return filter switch
+        {
+            NotifyFilter.Updates => Strings.Notifications.Empty.Updates,
+            NotifyFilter.Spotify => Remote(social) ?? Strings.Notifications.Empty.Spotify,
+            NotifyFilter.New => Remote(releases) ?? Strings.Notifications.Empty.New,
+            NotifyFilter.Activity => Strings.Notifications.Empty.Activity,
+            _ => social is FeedState.Idle or FeedState.Loading || releases is FeedState.Idle or FeedState.Loading
+                ? Strings.Notifications.Loading
+                : Strings.Notifications.Empty.All,
+        };
+    }
+
+    /// <summary>A row's age as a unit + count: &lt; 1 min "now", &lt; 60 min minutes, &lt; 24 h hours, else days.
+    /// Negative ages clamp to 0.</summary>
+    public static (RelativeUnit Unit, long Count) RelativeAge(long ageMs)
+    {
+        if (ageMs < 0) ageMs = 0;
+        long min = ageMs / 60_000;
+        if (min < 1) return (RelativeUnit.Now, 0);
+        if (min < 60) return (RelativeUnit.Minutes, min);
+        long hr = min / 60;
+        return hr < 24 ? (RelativeUnit.Hours, hr) : (RelativeUnit.Days, hr / 24);
+    }
+
+    /// <summary>The release type pill's FIVE labels (authored in caps in the catalogue — the eyebrow does not transform
+    /// them): EPISODE for an episode, else SINGLE / EP / COMPILATION by album type, ALBUM for anything else (incl.
+    /// null). Returns a loc key.</summary>
+    public static string ReleaseTypeKey(NewReleaseKind kind, string? albumType)
+    {
+        if (kind == NewReleaseKind.Episode) return Strings.Notifications.Release.Episode;
+        if (string.Equals(albumType, "single", StringComparison.OrdinalIgnoreCase)) return Strings.Notifications.Release.Single;
+        if (string.Equals(albumType, "ep", StringComparison.OrdinalIgnoreCase)) return Strings.Notifications.Release.Ep;
+        if (string.Equals(albumType, "compilation", StringComparison.OrdinalIgnoreCase)) return Strings.Notifications.Release.Compilation;
+        return Strings.Notifications.Release.Album;
+    }
+
+    /// <summary>The update row is SIX rows, one per state (ch 19 W15): glyph, title key, and either the progress strip
+    /// or the buttons — the FIRST action is the accent one. <c>None</c>/<c>Checking</c> never reach the panel, but the
+    /// arm exists: an info glyph and an EMPTY title (no copy is invented for it).</summary>
+    public static UpdateRowArm UpdateRow(AppUpdateState state) => state switch
+    {
+        AppUpdateState.Available => new(UpdateRowGlyph.Download, Strings.Notifications.Update.AvailableTitle, false,
+            [UpdateRowAction.UpdateNow, UpdateRowAction.WhatsNew, UpdateRowAction.Later]),
+        // Snoozed: no Later — the user already answered.
+        AppUpdateState.Snoozed => new(UpdateRowGlyph.Download, Strings.Notifications.Update.AvailableTitle, false,
+            [UpdateRowAction.UpdateNow, UpdateRowAction.WhatsNew]),
+        AppUpdateState.Downloading or AppUpdateState.Installing =>
+            new(UpdateRowGlyph.Refresh, Strings.Update.Os.Downloading, true, []),
+        AppUpdateState.Completed => new(UpdateRowGlyph.Success, Strings.Notifications.Update.CompletedTitle, false,
+            [UpdateRowAction.WhatsNew, UpdateRowAction.Dismiss]),
+        AppUpdateState.Failed => new(UpdateRowGlyph.Error, Strings.Notifications.Update.FailedTitle, false,
+            [UpdateRowAction.Retry, UpdateRowAction.Dismiss]),
+        _ => new(UpdateRowGlyph.Info, "", false, []),
+    };
+
+    /// <summary>The release "What's new" opens: the RUNNING build's version once the update landed, else the target's
+    /// semver, else the release tag derived from the target quad. "" ⇒ open the newest notes.</summary>
+    public static string NotesVersion(AppUpdateSnapshot snapshot, string? runningVersion)
+        => snapshot.State == AppUpdateState.Completed
+            ? runningVersion ?? ""
+            : snapshot.TargetSemVer is { Length: > 0 } semver ? semver : AppUpdateVersion.ReleaseTagVersion(snapshot.TargetQuad);
 
     // The SHELL seam (Notify.Host.cs). Erased when that file is absent, so a unit test rebuilds the feed with no
     // WinRT, no AUMID and no toast at all.

@@ -472,6 +472,38 @@ public class PlaybackSilentSinkTests
         Assert.Equal(format.SampleRate, endpoint.Clock.MixRate);
         endpoint.Dispose();
     }
+
+    [Fact]
+    public void The_silent_session_is_connected_so_its_own_feeder_plays_it_to_the_end()
+    {
+        // The engine starts a session's feeder only in `ConnectSignals`, and `Advance` does nothing without a sink: an
+        // unconnected silent session stayed `Idle` forever and `--fake` sat in `Loading`. Nothing here pumps — the
+        // session's own feeder thread must carry it from Opening to Ended. (The null sink is not paced, so 200 ms of
+        // silence renders in a few feeder passes; wall-clock pacing is an open question, headless plan §8 Q4.)
+        var format = new MixFormat(48_000, 2);
+        PcmAudioSession session = Playback.Audio.OpenSilentSession(format, voiceMs: 200, effects: null, volume: 1f);
+        try
+        {
+            Assert.NotEqual(PlaybackState.Idle, session.CurrentState);
+            _ = session.PlayAsync();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (session.CurrentState != PlaybackState.Ended && clock.ElapsedMilliseconds < 10_000) Thread.Sleep(2);
+            Assert.Equal(PlaybackState.Ended, session.CurrentState);
+        }
+        finally { session.DisposeAsync().AsTask().Wait(5_000); }
+    }
+
+    [Theory]
+    [InlineData(180_000, 0, 180_000, 0)]
+    [InlineData(180_000, 60_000, 120_000, 60_000)]      // a resume at 1:00 plays the last two minutes, reporting from 1:00
+    [InlineData(180_000, 999_999, 1, 180_000)]          // past the end: one millisecond of voice, never zero, so Ended arrives
+    [InlineData(180_000, -5, 180_000, 0)]
+    public void A_silent_load_at_a_position_is_not_a_seek(long durationMs, long fromMs, long voiceMs, long offsetMs)
+    {
+        // The silent voice is a signal generator, which the engine's SeekAsync refuses; the load sizes the voice to what
+        // is left and offsets the reported position instead.
+        Assert.Equal(new Playback.Audio.SilentStart(voiceMs, offsetMs), Playback.Audio.SilentStart.For(durationMs, fromMs));
+    }
 }
 
 public class PlaybackMp3GaplessTests

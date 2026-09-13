@@ -388,6 +388,19 @@ public static partial class Shell
             return prev - candidate >= Layout.ChromePromotionHysteresisW ? candidate : prev;
         }
 
+        /// <summary>The tab strip's MEASURED natural extent, as the allocator consumes it: ROUNDED (not floored) to the
+        /// width quantum and floored at one tab's minimum. The strip publishes its content extent on every re-measure;
+        /// quantising here is what stops a sub-pixel title reflow from re-resolving the row.</summary>
+        public static float TabExtentFromMetrics(float contentExtent)
+            => MathF.Max(Layout.ChromeTabMinW,
+                MathF.Round(contentExtent / Layout.ChromeWidthQuantumW) * Layout.ChromeWidthQuantumW);
+
+        /// <summary>The UPWARD seed applied the instant a tab is added or unpinned, so the row can collapse the search in
+        /// the same event turn instead of squeezing the new tab behind a stale measurement. Never lowers the measured
+        /// value — the strip's own measurement does that.</summary>
+        public static float SeedTabExtent(float measured, int tabCount, int pinnedCount)
+            => MathF.Max(measured, EstimatedTabExtent(tabCount, pinnedCount));
+
         static float QuantiseDown(float value)
             => MathF.Floor(value / Layout.ChromeWidthQuantumW) * Layout.ChromeWidthQuantumW;
 
@@ -601,6 +614,33 @@ public static partial class Shell
             }
             if (pins.Count > 0 && selected < 0) selected = 0;
             return new WorkspaceTabsSnapshot(pins.ToArray(), selected);
+        }
+
+        /// <summary>How many tabs are pinned (always a prefix).</summary>
+        public int PinnedCount => PinnedBoundary();
+
+        /// <summary>Closable is a RULE, not a hover: a pinned tab never shows ⓧ, and neither does the last tab.</summary>
+        public static bool IsClosable(WorkspaceTab tab, int tabCount) => !tab.Pinned && tabCount > 1;
+
+        /// <summary>"Close all unpinned tabs" is enabled while ANY tab is unpinned.</summary>
+        public bool HasAnyUnpinned()
+        {
+            for (int i = 0; i < _tabs.Count; i++) if (!_tabs[i].Pinned) return true;
+            return false;
+        }
+
+        /// <summary>"Close other tabs" is enabled while an unpinned tab other than <paramref name="id"/> exists.</summary>
+        public bool HasOtherUnpinned(int id)
+        {
+            for (int i = 0; i < _tabs.Count; i++) if (_tabs[i].Id != id && !_tabs[i].Pinned) return true;
+            return false;
+        }
+
+        /// <summary>"Close tabs to the right" is enabled while an unpinned tab sits right of <paramref name="index"/>.</summary>
+        public bool HasUnpinnedToRight(int index)
+        {
+            for (int i = Math.Max(0, index + 1); i < _tabs.Count; i++) if (!_tabs[i].Pinned) return true;
+            return false;
         }
 
         TabNavResult None() => new(TabNavIntent.None, null, ActiveIndex);

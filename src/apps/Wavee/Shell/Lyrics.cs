@@ -692,8 +692,13 @@ public static partial class Lyrics
         public const float HeldGlowMinMs = 700f;
         /// <summary>The longest swell-in; a shorter note compresses to half its own duration.</summary>
         public const float HeldGlowRampMaxMs = 500f;
-        /// <summary>The melt-out window, measured back from the note's end.</summary>
-        public const float GlowOutMs = 240f;
+        /// <summary>The melt-out window, measured back from the note's (and the LINE's) end. <b>320</b>, 0.2.9's
+        /// <c>GlowOutMs</c> (ch 22 §5: "syllable melt 320 ms into the NOTE's end, line melt 320 ms into the LINE's end").
+        /// Stage B corrected a stage-A port that had folded it into the 240 ms hand-off fade, which is a different
+        /// constant (<see cref="GlowFadeMs"/>).</summary>
+        public const float GlowOutMs = 320f;
+        /// <summary>The voice HAND-OFF cross-fade: an outgoing halo fades out, and a line-synced halo fades in, over this.</summary>
+        public const float GlowFadeMs = 240f;
         /// <summary>The strict-parity amplitude trim, applied ONCE to the finished monotone envelope.</summary>
         public const float HeldGlowPeakScale = 0.75f;
 
@@ -1127,6 +1132,260 @@ public static partial class Lyrics
 
         /// <summary>Persist a blur strength (−1 = auto, else 0..100) and bump.</summary>
         public static void SetBlurStrength(int strength) => global::Wavee.Prefs.Lyrics.SetBlurStrength(strength);
+    }
+
+    // ── 12b. the surface's geometry, ramps and overlays (stage B) ───────────────────────────────────────────────────
+    //
+    // 0.2.9 kept these as private constants and helpers INSIDE `LyricsView`. Stage B lifted every one of them here so
+    // `Lyrics.UI.cs` lays out and drives nodes without re-deriving a single number (the plan's "a new pure decision
+    // goes into CORE with a test"). Values are 0.2.9's verbatim (ch 22 §2/§3/§5, audit-confirmed).
+
+    /// <summary>One surface's lyric-row type and rhythm. The row has NO fixed height: <see cref="Estimate"/> is only
+    /// the measured layout's seed (a single-line row).</summary>
+    public readonly record struct RowMetrics(float FontSize, float LineHeight, float RowPad, float SidePad)
+    {
+        /// <summary>A single-line row: line box + the two vertical pads (the inter-line gap is 2 × pad).</summary>
+        public float Estimate => LineHeight + 2f * RowPad;
+    }
+
+    /// <summary>The fixed metrics of the two surfaces (the 340-DIP rail and the immersive stage) — one table, so the
+    /// row, the run-length measurement, the shimmer and the dots can never disagree about a gutter.</summary>
+    public static class Surface
+    {
+        /// <summary>Where the active row's CONTENT box centres, as a fraction of the lyrics viewport. The stage sits
+        /// higher so more of the upcoming verse shows below it.</summary>
+        public static float FocalBand(bool large) => large ? 0.38f : 0.40f;
+
+        /// <summary>The timed rows: 26/33/700 with 7/22 pads on the rail, 36/46/700 with 9/64 on the stage.</summary>
+        public static RowMetrics Timed(bool large) => large ? new(36f, 46f, 9f, 64f) : new(26f, 33f, 7f, 22f);
+
+        /// <summary>The UNSYNCED reading block: smaller reading type (19/26 · 28/36), the same side gutter.</summary>
+        public static RowMetrics Unsynced(bool large) => large ? new(28f, 36f, 7f, 64f) : new(19f, 26f, 5f, 22f);
+
+        /// <summary>The unsynced block's text alpha over the primary ink.</summary>
+        public const float UnsyncedAlpha = 0.88f;
+
+        /// <summary>The unsynced block's top and bottom padding.</summary>
+        public static float UnsyncedBlockPad(bool large) => large ? 44f : 26f;
+
+        /// <summary>The secondary (translation / romanization) run: this fraction of the lyric size AND line height.</summary>
+        public const float SecondaryFontRatio = 0.62f;
+        /// <summary>…sitting this far under the lyric it belongs to.</summary>
+        public const float SecondaryGapDip = 3f;
+
+        /// <summary>Every INACTIVE row's flat scale — distance is carried by opacity and blur, never by scale.</summary>
+        public const float InactiveScale = 0.98f;
+
+        /// <summary>The row's scale target. Reduced motion flattens it to 1 (a VALUE, never a branch).</summary>
+        public static float ScaleFor(bool active, bool reducedMotion) => reducedMotion || active ? 1f : InactiveScale;
+
+        /// <summary>A row this close to the active one mounts its glow glyphs (so the content swap never pops on the
+        /// focal row).</summary>
+        public const int NearDistance = 2;
+
+        /// <summary>The line-synced halo σ on the ACTIVE row (scaled by the blur strength at the consumption point).</summary>
+        public static float LineSyncedHaloSigma(bool large) => large ? 10f : 7f;
+        /// <summary>The line-synced halo's glyph alpha over the bloom ink.</summary>
+        public const float LineSyncedHaloTextAlpha = 0.4f;
+
+        /// <summary>The resync pill's inset from the bottom of the lyrics viewport.</summary>
+        public static float ResyncInset(bool large) => large ? 28f : 18f;
+        /// <summary>The video note's top inset.</summary>
+        public static float VideoNoteTopPad(bool large) => large ? 20f : 12f;
+
+        /// <summary>The whole document is realized (a 4-5 row overscan pops text shaping and blur layers in as the
+        /// document travels) — capped here.</summary>
+        public const int OverscanCap = 400;
+
+        /// <summary>The six loading bars.</summary>
+        public const int ShimmerRows = 6;
+        /// <summary>The bars' base width — a DIFFERENT set per surface, not the rail's scaled up (520 stage · 255 rail).</summary>
+        public static float ShimmerBaseW(bool large) => large ? 520f : 255f;
+        /// <summary>Bar <paramref name="row"/>'s fraction of <see cref="ShimmerBaseW"/>.</summary>
+        public static float ShimmerRatio(bool large, int row) => large
+            ? row switch { 0 => 0.82f, 1 => 0.66f, 2 => 0.74f, 3 => 0.58f, 4 => 0.70f, _ => 0.50f }
+            : row switch { 0 => 0.86f, 1 => 0.72f, 2 => 0.80f, 3 => 0.62f, 4 => 0.76f, _ => 0.58f };
+        public static float ShimmerBarW(bool large, int row) => ShimmerBaseW(large) * ShimmerRatio(large, row);
+        public static float ShimmerRowH(bool large) => large ? 32f : 22f;
+        public static float ShimmerGap(bool large) => large ? 24f : 18f;
+        public static float ShimmerPadTop(bool large) => large ? 150f : 110f;
+        public const float ShimmerRadius = 6f;
+    }
+
+    /// <summary>The follow scroll: the latch target, the resync countdown and the resync glide's constants.</summary>
+    public static class Follow
+    {
+        /// <summary>A delta at or under this is "already there" — no latch, no cascade.</summary>
+        public const float LatchEpsDip = 0.5f;
+        /// <summary>After the user lets go, the follow re-attaches on its own after this much idle.</summary>
+        public const long ResyncIdleMs = 4000L;
+        /// <summary>The countdown ring's resolution.</summary>
+        public const int ResyncProgressSteps = 120;
+        /// <summary>The resync glide: the kernel's ζ=1 chase, 110 ms half-life, settling at 4 DIP/s.</summary>
+        public const float ResyncHalfLifeMs = 110f, ResyncSettleVel = 4f;
+        /// <summary>Frames the follow re-evaluates after an interlude-reserve edge (the height reaches the extent table
+        /// only on the next arrange).</summary>
+        public const int ReserveRelatchFrames = 4;
+
+        /// <summary>The scroll offset that centres the row's CONTENT box on the band. The reserve (the interlude dots'
+        /// extra top pad) is skipped, so the band opens ABOVE the sung line and the line itself never moves when it
+        /// arms. Clamped to the scrollable range.</summary>
+        public static float Target(float itemY, float itemH, float reserve, float viewportH, float contentH, float band)
+        {
+            float r = MathF.Min(MathF.Max(0f, reserve), itemH);
+            float t = itemY + r + (itemH - r) * 0.5f - viewportH * band;
+            return Math.Clamp(t, 0f, MathF.Max(0f, contentH - viewportH));
+        }
+
+        /// <summary>How much of the countdown is left, quantised UP to <see cref="ResyncProgressSteps"/> rungs.</summary>
+        public static float ResyncProgress(long deadlineMs, long nowMs)
+        {
+            float left = Math.Clamp((deadlineMs - nowMs) / (float)ResyncIdleMs, 0f, 1f);
+            return MathF.Ceiling(left * ResyncProgressSteps) / ResyncProgressSteps;
+        }
+
+        /// <summary>Has the countdown run out?</summary>
+        public static bool ResyncDue(long deadlineMs, long nowMs) => deadlineMs - nowMs <= 0L;
+    }
+
+    /// <summary>The directional depth-of-field ramp: an INCREASE snaps, a DECREASE eases (τ 65 ms, ~95 % in 200 ms).
+    /// Symmetric easing reads as the outgoing line refusing to leave.</summary>
+    public static class DofRamp
+    {
+        public const float TauMs = 65f;
+        /// <summary>The recorder buckets σ at 0.5 in the blur pin key, so a finer gate mints no pins but dirties paint.</summary>
+        public const float WriteEps = 0.5f;
+        /// <summary>A landing is exact: it is written against this, not <see cref="WriteEps"/>.</summary>
+        public const float LandWriteEps = 0.001f;
+        /// <summary>A decrease within this of its target lands exactly (no asymptote residue).</summary>
+        public const float LandEps = 0.01f;
+        /// <summary>The first step's dt when there is no previous stamp to difference.</summary>
+        public const float SeedDtMs = 16f;
+        public const float DtMaxMs = 100f;
+
+        /// <summary>The σ a line is driven TO: 0 while suppressed (the user owns the scroll) and 0 with no active line
+        /// ("no focus yet" is not "six rings from the focus"), else the surface's ladder times the strength.</summary>
+        public static float Target(int index, int active, bool large, float strengthScale, bool suppressed)
+            => suppressed || active < 0 ? 0f : Fx.DofSigma(Math.Min(Math.Abs(index - active), Emphasis.MaxBucket), large) * strengthScale;
+
+        /// <summary>One ramp step. <paramref name="current"/> NaN = never driven ⇒ adopt the target.
+        /// <paramref name="landed"/> is false only while a decrease is still easing.</summary>
+        public static float Step(float current, float target, float dtMs, out bool landed)
+        {
+            landed = true;
+            if (float.IsNaN(current) || target >= current) return target;
+            float k = 1f - MathF.Exp(-Math.Clamp(dtMs, 0f, DtMaxMs) / TauMs);
+            float c = current + (target - current) * k;
+            if (c - target <= LandEps) return target;
+            landed = false;
+            return c;
+        }
+
+        /// <summary>Should the node's σ be rewritten?</summary>
+        public static bool ShouldWrite(float nodeSigma, float value, bool landed)
+            => MathF.Abs(nodeSigma - value) >= (landed ? LandWriteEps : WriteEps);
+    }
+
+    /// <summary>The instrumental break's overlay: three breathing dots above the upcoming line, the band the anchor row
+    /// reserves for them, and their per-frame fill/breath/lift. Both channels run on the MEDIA clock, so the meter is
+    /// dt-deterministic, frozen across a pause and correct after a scrub.</summary>
+    public static class Interlude
+    {
+        /// <summary>The dots retire this long before the next line starts (and the fill reads FULL exactly then).</summary>
+        public const long DotsExitMs = 1000L;
+        public const int DotCount = 3;
+        /// <summary>One full breath.</summary>
+        public const float BreathMs = 2600f;
+        /// <summary>Trough depths of the scale and alpha pulses (both peak at exactly 1).</summary>
+        public const float BreathScaleDepth = 0.06f, BreathAlphaDepth = 0.10f;
+        /// <summary>The paired transform write gate (scale and lift live in ONE matrix, so they are compared together).</summary>
+        public const float ScaleEps = 0.002f, LiftEps = 0.05f;
+
+        public static float DotSize(bool large) => large ? 12f : 9f;
+        public static float DotAir(bool large) => large ? 10f : 8f;
+        public static float DotGap(bool large) => large ? 10f : 8f;
+        /// <summary>The anchor row's extra TOP PAD (pad, not margin: the measured seam reads the border box).</summary>
+        public static float ReserveDip(bool large) => DotSize(large) + 2f * DotAir(large);
+        /// <summary>How far the dots' bottom edge sits above the focal band at rest.</summary>
+        public static float Lift(bool large) => large ? 48f : 36f;
+
+        /// <summary>The dots row's bottom MARGIN under two empty Grow spacers split at <paramref name="band"/>:
+        /// <c>m = (d + lift)/band − d</c>, in which the viewport height cancels — one build-time constant, exact at
+        /// every size (rail 103.5, stage ≈145.9).</summary>
+        public static float AnchorMargin(bool large, float band)
+        {
+            float d = DotSize(large);
+            return (d + Lift(large)) / band - d;
+        }
+
+        /// <summary>Are the dots up? Follow-gated (they are a follow-owned overlay), only inside a real break, and gone
+        /// <see cref="DotsExitMs"/> before the next line.</summary>
+        public static bool DotsUp(bool following, long gapStart, long gapEnd, long nowMs)
+            => following && gapEnd > gapStart && nowMs < gapEnd - DotsExitMs;
+
+        /// <summary>How much of the break has elapsed, 0..1, against a span that ends at the dots' exit.</summary>
+        public static float Progress(long nowMs, long gapStart, long gapEnd)
+        {
+            float span = MathF.Max(1f, (gapEnd - DotsExitMs) - gapStart);
+            return Math.Clamp((nowMs - gapStart) / span, 0f, 1f);
+        }
+
+        /// <summary>The breath phase, peaking at 1. Reduced motion pins it to the peak (the fill keeps running — it is
+        /// information).</summary>
+        public static float Pulse(long nowMs, long gapStart, bool reducedMotion)
+            => reducedMotion ? 1f : 0.5f + 0.5f * MathF.Sin((nowMs - gapStart) / BreathMs * MathF.Tau);
+
+        /// <summary>Dot <paramref name="k"/>'s alpha: the unsung glyph alpha brightening to 1 across its third of the
+        /// break, times the breath.</summary>
+        public static float DotAlpha(int k, float progress, float pulse)
+        {
+            float fill = Math.Clamp(progress * DotCount - k, 0f, 1f);
+            return (Wipe.UnsungAlpha + (1f - Wipe.UnsungAlpha) * fill) * (1f - BreathAlphaDepth * (1f - pulse));
+        }
+
+        /// <summary>The breath's scale.</summary>
+        public static float BreathScale(float pulse) => 1f - BreathScaleDepth * (1f - pulse);
+
+        /// <summary>The extra lift a WRAPPED anchor needs so the dots still sit <see cref="DotAir"/> above its content
+        /// box (floored at 0: a short row keeps the rest anchor).</summary>
+        public static float ExtraLift(float rowContentH, bool large)
+            => MathF.Max(0f, rowContentH * 0.5f + DotAir(large) - Lift(large));
+    }
+
+    /// <summary>The voice line's halo envelopes (the per-frame writer's two formulas).</summary>
+    public static class Glow
+    {
+        /// <summary>The live voice line's halo alpha. Word-synced: the held-note bloom, trimmed, and clamped by the
+        /// LINE's own melt (a held note that ends a line dies on the line's clock). Line-synced: min(fade in, melt out).</summary>
+        public static float VoiceAlpha(Line line, long lineStartMs, long lineEndMs, long nowMs)
+        {
+            float alphaOut = Wipe.EaseOutSine(Math.Clamp((lineEndMs - nowMs) / Wipe.GlowOutMs, 0f, 1f));
+            float alpha;
+            if (line.IsWordByWord && line.Syllables.Count > 0)
+                alpha = Wipe.HeldGlowPeakScale * MathF.Min(Wipe.HeldSyllableGlow(line, nowMs), alphaOut);
+            else
+                alpha = MathF.Min(Wipe.EaseOutSine(Math.Clamp((nowMs - lineStartMs) / Wipe.GlowFadeMs, 0f, 1f)), alphaOut);
+            return MathF.Max(0f, alpha);
+        }
+
+        /// <summary>An OUTGOING halo, <paramref name="elapsedMs"/> into its fade from <paramref name="from"/>.</summary>
+        public static float FadeOut(float from, float elapsedMs)
+            => from * (1f - Wipe.EaseOutSine(Math.Clamp(elapsedMs / Wipe.GlowFadeMs, 0f, 1f)));
+    }
+
+    /// <summary>The seam between the playback host's position sample and the media clock. The host stamps a position
+    /// with ITS frame clock in milliseconds (<c>Playback.State.PosQpc</c>, whose unit is ms); the media clock wants the
+    /// QPC instant it was true. Converting through the sample's AGE — the host clock read now, minus the stamp — is
+    /// correct whatever epoch the host clock uses, so the two sides of every comparison share one clock.</summary>
+    public static class SampleClock
+    {
+        /// <summary>The QPC instant a host-stamped sample was true. A future stamp (a clock that stepped) reads as age 0.</summary>
+        public static long SampleQpc(long sampleStampMs, long hostNowMs, long nowQpc, long qpcFrequency)
+        {
+            long ageMs = Math.Max(0L, hostNowMs - sampleStampMs);
+            long freq = qpcFrequency > 0 ? qpcFrequency : 1000L;
+            return nowQpc - ageMs * freq / 1000L;
+        }
     }
 
     // ── 13. the aggregator's working values ─────────────────────────────────────────────────────────────────────────

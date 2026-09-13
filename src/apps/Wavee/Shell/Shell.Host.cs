@@ -127,6 +127,7 @@ public static partial class Shell
         ParseArgs(args, out int frames, out string? screenshot, out int winW, out int winH);
 
         InstallCrashNet();
+        InstallMarshallers();
 
         // The harness arms (`--frames` / `--screenshot`) skip the gate so a visual-diff loop can spawn freely.
         SingleInstanceGate? gate = null;
@@ -220,6 +221,60 @@ public static partial class Shell
             else if (args[i] == "--width" && i + 1 < args.Length && int.TryParse(args[i + 1], out int w) && w >= 300) winW = w;
             else if (args[i] == "--height" && i + 1 < args.Length && int.TryParse(args[i + 1], out int h) && h >= 300) winH = h;
         }
+    }
+
+    // ── 2.1 the UI-thread marshallers and the frame tick ────────────────────────────────────────────────────────────
+    //
+    // FOUR CORE seams default to running a callback INLINE, which is what keeps their unit suites single-threaded:
+    // `Playback.ToUi`, `Spotify.Post`, `Store.Post` and `Palette.Post`. Left at that default in the GUI, a network or
+    // audio thread folds Playback's state and writes the entity tables concurrently with the UI thread. ONLY this method
+    // (and the future headless host, which owns its own loop) may assign them — no page, test double or feature file.
+    //
+    // The engine's poster only exists once the host does (inside `FluentAppHarness.Run`), so the seams are installed
+    // HERE, before the first frame, with a poster that QUEUES until the root component hands over the real one on its
+    // first render (`AttachUiPoster`). A callback posted between the two is delivered in order on the UI thread, never
+    // inline on the thread that posted it.
+
+    static readonly System.Collections.Concurrent.ConcurrentQueue<Action> s_earlyPosts = new();
+    static volatile Action<Action>? s_uiPost;
+
+    static void InstallMarshallers()
+    {
+        Action<Action> post = static a =>
+        {
+            if (s_uiPost is { } live) { live(a); return; }
+            s_earlyPosts.Enqueue(a);
+            // The root may have attached between the check and the enqueue: drain through it so nothing strands.
+            if (s_uiPost is { } late) DrainEarlyPosts(late);
+        };
+        Playback.ToUi = post;
+        Spotify.Post = post;
+        Store.Post = post;
+        Wavee.Palette.Post = post;
+
+        // THE frame tick. `Fetch.Pump()` is how an expired backoff re-sends with nothing else happening, and
+        // `Palette.Tick()` is how the grading debounce fires; both are two comparisons when idle. It rides the host's
+        // per-RENDERED-frame relay, so an idle window (no frames) ticks nothing — a deadline that lands while idle is
+        // served on the next frame, which both layers document as a delay, never a loss. The lambda is static: zero
+        // allocation per frame.
+        FluentApp.FrameCompleted += static _ =>
+        {
+            Fetch.Pump();
+            Wavee.Palette.Tick();
+        };
+    }
+
+    /// <summary>The root's first render hands over the engine's UI-thread poster. Idempotent.</summary>
+    static void AttachUiPoster(Action<Action> post)
+    {
+        if (s_uiPost is not null) return;
+        s_uiPost = post;
+        DrainEarlyPosts(post);
+    }
+
+    static void DrainEarlyPosts(Action<Action> post)
+    {
+        while (s_earlyPosts.TryDequeue(out var queued)) post(queued);
     }
 
     /// <summary>The two PROCESS-level handlers. The UI-thread one lives in the engine loop; these catch everything
@@ -545,7 +600,11 @@ public static partial class Shell
     sealed class RootHost : Component
     {
         public override Element Render()
-            => RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
+        {
+            // The first render is the earliest point the engine's poster exists; the marshallers queued until now.
+            AttachUiPoster(UsePost());
+            return RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
+        }
     }
 
     // ══ 6. HISTORY.JSON — the navigation log's store (ch 16) ════════════════════════════════════════════════════════

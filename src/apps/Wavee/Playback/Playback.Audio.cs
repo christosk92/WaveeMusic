@@ -4,8 +4,12 @@
 // Role: SHELL
 // Owner: H
 // Wave: 3
-// Budget: 2470 lines (2250 + 220 for the FLAC adapter)
-// Spec: plan §4.9 + ch 31 §9.4 + FLAC plan §4
+// Budget: 3010 lines (2250 + 220 for the FLAC adapter + 510 for the Vorbis adapter over the CORE decoder, its pure
+//         granule clock, `IRandomAccessBytes` and `RingSource` — Vorbis plan §6.1 estimated +260; over it because the
+//         clock and the landing peek are their own public type, so the frame accounting, the gapless trim and the seek
+//         hand-off are unit facts rather than prose, and about a third of the rest is doc comments — + 30 for the
+//         connected silent session, headless plan §3.5)
+// Spec: plan §4.9 + ch 31 §9.4 + FLAC plan §4 + Vorbis plan §5.5, §6
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // WHAT THIS FILE IS. The audio pump: one serialized queue of load work, one long-lived WASAPI session, a decoder per
@@ -544,7 +548,8 @@ public static partial class Playback
             }
 
             // The container skip is a property of the FORMAT and of the first bytes, and it is applied to the byte
-            // seam rather than to the decoder, so no codec ever learns that Spotify prefixes its Ogg bodies.
+            // seam rather than to the decoder, so no codec ever learns that Spotify prefixes its Ogg bodies. A Spotify
+            // body is already container-relative (the skip lives in `Spotify.Audio.Body`); a module stream is sniffed.
             ApplySkip(bytes, in opened);
 
             lock (s_gate) { s_opened = opened; s_activeDurMs = opened.DurationMs; }
@@ -640,14 +645,8 @@ public static partial class Playback
         {
             long durMs = row.Kind == EntityKind.Track && row.Slot > 0 ? new Track(row.Slot).DurationMs : 0;
             if (durMs <= 0) durMs = 180_000;
-            var format = new MixFormat(48_000, 2);
-            IAudioEndpoint endpoint = SilentSink(format);
-            var session = new PcmAudioSession(format, endpoint.Sink, endpoint.Clock, 1024, driveWithOwnThread: true, endpoint);
-            session.Configure(PcmAudioPlayer.BuildGraphSpec(s_effects, format));
-            session.BindEffects(s_effects);
-            IAudioSource voice = SilentVoice(format, durMs);
-            long frames = durMs * format.SampleRate / 1000;
-            session.SetVoice(voice, TimeSpan.FromMilliseconds(durMs), frames, NormMode.Off, -18f, s_volume);
+            SilentStart start = SilentStart.For(durMs, fromMs);
+            PcmAudioSession session = OpenSilentSession(new MixFormat(48_000, 2), start.VoiceMs, s_effects, s_volume);
             if (IsStale(chain)) { await session.DisposeAsync().ConfigureAwait(false); return; }
 
             lock (s_gate)
@@ -657,14 +656,49 @@ public static partial class Playback
                 s_bytes = null;
                 s_opened = new Opened(Spotify.Audio.Format.Unknown, durMs, 0f, "", 0, false);
                 s_activeDurMs = durMs;
-                s_activeStartMs = 0;
+                s_activeStartMs = -start.PositionOffsetMs;   // the position reads from where the load asked (SilentStart)
                 s_activePrimaryId = session.PrimaryVoiceIdValue;
                 s_clockStale = false;
             }
             Post(Input.Duration((int)Math.Min(durMs, int.MaxValue), epoch));
-            if (fromMs > 0) await session.SeekAsync(TimeSpan.FromMilliseconds(fromMs), SeekMode.Accurate).ConfigureAwait(false);
             await session.PlayAsync().ConfigureAwait(false);
             StartTicker();
+        }
+
+        /// <summary>The silent session, built OUTSIDE the `MediaPlayer` facade and therefore CONNECTED here. The engine
+        /// starts a session's own feeder only inside `ConnectSignals` (`PcmAudioPlayer.cs:1079-1087`) and its `Advance`
+        /// returns at once while no signal sink is connected, so an unconnected session never left `Idle`: `PlayAsync`
+        /// only set a flag, the tick never posted `Started`, and `--fake` sat in `Loading` forever (headless plan §1.1).
+        /// The core behind the sink is private and unobserved — the pump reads <c>CurrentState</c> and
+        /// <c>PlayedFrames</c> off the session itself, so no signal write here reaches the UI thread's graph.
+        /// <para>Not paced: the headless endpoint's null sink accepts every frame, so the clock runs as fast as the feeder
+        /// spins rather than at wall-clock speed. Whether that is fixed here or in the engine is open (headless plan §8
+        /// Q4).</para></summary>
+        public static PcmAudioSession OpenSilentSession(MixFormat format, long voiceMs, IAudioEffects? effects, float volume)
+        {
+            IAudioEndpoint endpoint = SilentSink(format);
+            var session = new PcmAudioSession(format, endpoint.Sink, endpoint.Clock, 1024, driveWithOwnThread: true, endpoint);
+            session.Configure(PcmAudioPlayer.BuildGraphSpec(effects, format));
+            if (effects is not null) session.BindEffects(effects);
+            IAudioSource voice = SilentVoice(format, voiceMs);
+            long frames = Math.Max(1, voiceMs * format.SampleRate / 1000);
+            session.SetVoice(voice, TimeSpan.FromMilliseconds(voiceMs), frames, NormMode.Off, -18f, volume);
+            session.ConnectSignals(new MediaSignalSink(new MediaPlayerCore()));
+            return session;
+        }
+
+        /// <summary>Where a silent load starts. The silent voice is not seekable — the engine's `SeekAsync` accepts only a
+        /// decoder, trimming or memory source and throws for a signal generator — so a load at <c>fromMs</c> is not a seek:
+        /// the voice holds only what is left (never zero frames) and the reported position is offset to where the load
+        /// asked. PURE.</summary>
+        public readonly record struct SilentStart(long VoiceMs, long PositionOffsetMs)
+        {
+            public static SilentStart For(long durationMs, long fromMs)
+            {
+                long duration = Math.Max(0, durationMs);
+                long from = Math.Clamp(fromMs, 0, duration);
+                return new SilentStart(Math.Max(1, duration - from), from);
+            }
         }
 
         static async Task DisposeSessionAsync()
@@ -741,77 +775,650 @@ public static partial class Playback
         {
             Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => new FlacAudioDecoder(opened.GainDb),
             Spotify.Audio.Format.Mp3 => new Mp3AudioDecoder(opened.GainDb),
-            _ => new VorbisAudioDecoder(opened.GainDb),
+            _ => new VorbisAudioDecoder(opened.GainDb, opened.DurationMs),
         };
 
         /// <summary>The normalization gain as a linear multiplier, folded into the conversion that happens anyway —
         /// one multiply per sample and no extra pass. `Platform.Keys.NormalizationEnabled` (default true) gates it;
         /// off ⇒ 1. The engine's own `ReplayGainInfo` stays unity for the primary voice so the two do not compound.</summary>
         internal static float GainLinear(float gainDb)
-            => Platform.Settings.Get(Platform.Keys.NormalizationEnabled) ? MathF.Pow(10f, gainDb / 20f) : 1f;
+            => NormalizationFactor(Platform.Settings.Get(Platform.Keys.NormalizationEnabled), gainDb);
 
-        /// <summary>Ogg Vorbis, over the vendored NVorbis. The SPEC priming packet and the end-of-stream granule trim
-        /// are already applied by the decoder itself, so `GaplessInfo.None` here is the TRUTHFUL value — a blind
-        /// "conservative lead-in" would cut real audio.</summary>
-        public sealed class VorbisAudioDecoder : IAudioDecoder
+        /// <summary>The largest boost or cut a gain figure may ask for. Spotify's track gains sit within ±15 dB; the Ogg
+        /// figure is four bytes of a header (byte 144), and a garbage float there must never become a deafening
+        /// multiply.</summary>
+        public const float MaxGainDb = 30f;
+
+        /// <summary>The normalization gain as ONE linear factor (Vorbis plan §6.3): <c>10^(dB/20)</c>, clamped to
+        /// ±<see cref="MaxGainDb"/>, and — when the track peak is known — capped so <c>peak × factor ≤ 1</c> (librespot
+        /// <c>get_factor</c>, player.rs:383-395). Off, or a non-finite figure, ⇒ exactly 1. PURE; the decoders fold the
+        /// answer into the interleave multiply (Vorbis) or the int→float scale constant (FLAC).</summary>
+        public static float NormalizationFactor(bool enabled, float gainDb, float peak = 0f)
         {
-            readonly float _gain;
-            NVorbis.VorbisReader? _reader;
-            LinearResampler? _resampler;
-            MixFormat _target;
-            float[] _src = [];
-            int _hold, _srcChannels;
+            if (!enabled || !float.IsFinite(gainDb) || gainDb == 0f) return 1f;
+            float factor = MathF.Pow(10f, Math.Clamp(gainDb, -MaxGainDb, MaxGainDb) / 20f);
+            if (peak > 0f && float.IsFinite(peak) && factor * peak > 1f) factor = 1f / peak;
+            return factor;
+        }
 
-            readonly PullSamples _pull;
+        // ── 9a. Ogg Vorbis: the engine-facing adapter over the CORE decoder (Vorbis plan §6) ─────────────────────────
+        //
+        // The CORE — the Ogg page reader, the page index, the seek planner (`Playback.Audio.Ogg.cs`) and the Vorbis I
+        // decoder (`Playback.Audio.Vorbis.cs`), owner V — is pure over spans. THIS is the I/O around it, in the FLAC
+        // adapter's shape: a byte window over the byte seam, the CORE over the window, the engine's resampler at the
+        // decode edge. Three facts from the decoder's side shape it:
+        //   · OUTPUT IS ALWAYS INTERLEAVED STEREO (mono duplicated, 3+ channels downmixed), so the mix format reported
+        //     is `Vorbis.OutputChannels`, never the file's channel count.
+        //   · `Reader.Reposition(WindowOffset + Cursor)` IS A REFILL and keeps a packet spanning the boundary; any other
+        //     offset is a seek. A landing always restarts from nothing (`VorbisClock.Restart`), so the peek and the
+        //     decode walk the same packets.
+        //   · A PAGE'S GRANULE IS THE END of the last packet completed on it (`SeekPlan.OffsetGranule` included), so a
+        //     position is always `granuleAtEnd − frames`, never the resume page's granule itself.
 
-            public VorbisAudioDecoder(float gainDb)
+        /// <summary>THE ADAPTER'S SAMPLE CLOCK over the Ogg granules (Vorbis I §A.2), pure so a test can drive it with
+        /// a real file's packet sequence. Every packet is placed from the page that ends it; the end of the stream is
+        /// trimmed at the EOS granule; a seek's landing drops the frames before its target. Granule domain throughout:
+        /// the ORIGIN is the granule of the first frame a decode from the first audio page produces — 0 for a
+        /// libvorbis file, negative when the first page claims fewer samples than its packets make (a lead-in the
+        /// engine's `TrimmingSource` skips), positive for a stream cut out of a longer one.</summary>
+        public struct VorbisClock
+        {
+            /// <summary>No position yet: a landing whose peek could not reach a page granule.</summary>
+            public const long Unknown = long.MinValue;
+
+            /// <summary>The granule of the next frame the decoder produces — the end of the last admitted packet.</summary>
+            public long Position;
+
+            /// <summary>After a seek: frames before this granule are dropped. <see cref="Unknown"/> when there is none.</summary>
+            public long Target;
+
+            public static VorbisClock At(long position) => new() { Position = position, Target = Unknown };
+
+            /// <summary>What to hand out of one decoded packet: skip <see cref="Skip"/> frames of its output, then
+            /// hand out <see cref="Count"/>. <see cref="Start"/> is the packet's first granule, <see cref="Unknown"/>
+            /// when it could not be placed.</summary>
+            public readonly record struct Run(int Skip, int Count, long Start);
+
+            /// <summary>Place one decoded packet. <paramref name="granuleAtEnd"/> is the page granule when the packet
+            /// is the last one completed on its page (else −1); <paramref name="eos"/> says that page is the stream's
+            /// last, whose granule TRUNCATES rather than ends (libvorbis block.c:864-936).</summary>
+            public Run Admit(int frames, long granuleAtEnd, bool eos)
             {
-                _gain = GainLinear(gainDb);
-                _pull = ReadSource;          // ONE delegate, made once: a method group in `Read` allocates per block
+                if (frames < 0) frames = 0;
+                long start;
+                if (granuleAtEnd >= 0 && !eos) start = granuleAtEnd - frames;            // the page pins it
+                else if (Position != Unknown) start = Position;                           // the running count
+                else if (granuleAtEnd >= 0) start = granuleAtEnd - frames;               // the EOS page, with no clock
+                else return new Run(frames, 0, Unknown);                                  // nothing placeable yet
+                Position = start + frames;
+                int keep = eos && granuleAtEnd >= 0 ? Ogg.TrimTail(start, frames, granuleAtEnd) : frames;
+                int skip = Target != Unknown && Target > start ? (int)Math.Min(keep, Target - start) : 0;
+                if (keep - skip <= 0) return new Run(keep, 0, start);
+                Target = Unknown;                                                         // reached: frames flow from here
+                return new Run(skip, keep - skip, start);
             }
 
-            public GaplessInfo Gapless => GaplessInfo.None;
+            /// <summary>The granule of the first frame a decode that resumes at <paramref name="windowOffset"/> will
+            /// produce (Vorbis plan §4.3): walk the packets WITHOUT decoding — <c>PeekFrames</c> reads the first byte
+            /// of each — to the first one that ends a page, and subtract every packet's frames up to it from that
+            /// page's granule. The first packet primes and yields nothing, exactly as <c>DecodePacket</c> after
+            /// <c>Prime</c> does. <see cref="Unknown"/> when the window ends first (<paramref name="needMore"/>) or the
+            /// page is the EOS page. Either way the reader is left restarted at the window, so the decode that follows
+            /// walks the same packets.</summary>
+            public static long LandingStart(Ogg.Reader reader, Vorbis.Decoder decoder, ReadOnlySpan<byte> window,
+                long windowOffset, out bool needMore)
+            {
+                needMore = false;
+                Restart(reader, windowOffset);
+                long start = Unknown, frames = 0;
+                int prevN = 0;
+                while (true)
+                {
+                    Ogg.Reader.Next next = reader.NextPacket(window, out ReadOnlySpan<byte> packet, out long granule);
+                    if (next == Ogg.Reader.Next.Corrupt) continue;
+                    if (next == Ogg.Reader.Next.NeedMore) { needMore = true; break; }
+                    if (next != Ogg.Reader.Next.Packet) break;
+                    int f = decoder.PeekFrames(packet, ref prevN);
+                    if (f < 0) continue;                                    // not audio: DecodePacket skips it too
+                    frames += f;
+                    if (granule < 0) continue;
+                    if (!reader.SawEos) start = granule - frames;
+                    break;
+                }
+                Restart(reader, windowOffset);
+                return start;
+            }
+
+            /// <summary>Re-point <paramref name="reader"/> at <paramref name="windowOffset"/> as a SEEK, never a refill:
+            /// <c>Reposition</c> keeps a spanning packet whenever the offset happens to equal <c>WindowOffset +
+            /// Cursor</c>, and −1 is never that.</summary>
+            public static void Restart(Ogg.Reader reader, long windowOffset)
+            {
+                reader.Reposition(-1);
+                reader.Reposition(windowOffset);
+            }
+
+            /// <summary>The engine's seek frame — MIX domain, counted from the decoder's own first frame — as a granule.</summary>
+            public static long TargetGranule(long mixFrame, int sourceRate, int mixRate, long origin)
+                => ToSource(Math.Max(0, mixFrame), sourceRate, mixRate) + origin;
+
+            /// <summary>A granule as the MIX-domain frame counted from the decoder's first frame (what a seek answers).</summary>
+            public static long MixFrameOf(long granule, int sourceRate, int mixRate, long origin)
+                => ToMix(Math.Max(0, granule - origin), sourceRate, mixRate);
+
+            public static long ToMix(long sourceFrames, int sourceRate, int mixRate)
+                => sourceRate <= 0 || mixRate <= 0 || sourceRate == mixRate
+                    ? sourceFrames : (long)Math.Round((double)sourceFrames * mixRate / sourceRate);
+
+            public static long ToSource(long mixFrames, int sourceRate, int mixRate)
+                => sourceRate <= 0 || mixRate <= 0 || sourceRate == mixRate
+                    ? mixFrames : (long)Math.Round((double)mixFrames * sourceRate / mixRate);
+
+            /// <summary>§4.4's <see cref="GaplessInfo"/> from the granules, in MIX frames. The lead-in is the stream
+            /// before granule 0; the exact length is the last granule counted from where the emitted audio starts.
+            /// With no tail it is <see cref="GaplessInfo.None"/>-shaped: the engine takes the declared duration and the
+            /// decoder still trims at the EOS granule when it gets there.</summary>
+            public static GaplessInfo Gapless(long origin, long lastGranule, int sourceRate, int mixRate)
+            {
+                int leadIn = origin < 0 ? (int)Math.Min(int.MaxValue, ToMix(-origin, sourceRate, mixRate)) : 0;
+                if (lastGranule < 0) return new GaplessInfo(leadIn, 0, -1, TailKnown: false);
+                long exact = Math.Max(0, lastGranule - Math.Max(0, origin));
+                return new GaplessInfo(leadIn, 0, ToMix(exact, sourceRate, mixRate), TailKnown: true);
+            }
+
+            /// <summary>Is a tail granule believable for a track of <paramref name="durationMs"/>? The stream layer finds
+            /// it with a byte scan for the last <c>OggS</c>; a figure more than max(5 s, 5 %) from the catalogue's
+            /// duration is not the last page, and a wrong exact length would cut (or pad) the join.</summary>
+            public static bool PlausibleTail(long granule, long durationMs, int sourceRate)
+            {
+                if (granule < 0) return false;
+                if (durationMs <= 0 || sourceRate <= 0) return true;
+                long expected = durationMs * sourceRate / 1000;
+                return Math.Abs(granule - expected) <= Math.Max(5L * sourceRate, expected / 20);
+            }
+
+            /// <summary>The granule of the last CRC-valid page in <paramref name="tail"/> that ends a packet, or −1 —
+            /// a local file's exact length, read at open from its last bytes.</summary>
+            public static long LastGranule(ReadOnlySpan<byte> tail)
+            {
+                long last = -1;
+                int at = 0;
+                while ((at = Ogg.FindPage(tail, at, out Ogg.Page page, out _)) >= 0)
+                {
+                    if (page.Granule >= 0) last = page.Granule;
+                    at += page.Length;
+                }
+                return last;
+            }
+        }
+
+        /// <summary>The byte seam's random-access face (Vorbis plan §5.5), reached by type-testing the
+        /// <see cref="IMediaByteSource"/> a decoder is handed. CONTAINER offsets. <see cref="RingSource"/> implements it;
+        /// a local file keeps the engine's <c>Seek</c> + <c>Read</c>.</summary>
+        public interface IRandomAccessBytes
+        {
+            /// <summary>Copy [offset, offset + dst.Length): &gt;0 copied (short at a store's edge), 0 only at EOF, −1 when
+            /// <paramref name="epoch"/> is no longer the source's or the bounded wait ran out. Blocks, bounded.</summary>
+            int ReadAt(long offset, Span<byte> dst, uint epoch);
+
+            /// <summary>A seek: adopt <paramref name="epoch"/>, cancel what is in flight, and put [probeOffset,
+            /// probeOffset + probeBytes) on the wire FIRST unless it is already resident.</summary>
+            void Retarget(long probeOffset, int probeBytes, uint epoch);
+
+            /// <summary>The seek landed at <paramref name="offset"/>: the sequential fill continues from there.</summary>
+            void ResumeFrom(long offset);
+
+            /// <summary>The epoch the source serves.</summary>
+            uint Epoch { get; }
+
+            /// <summary>The last Ogg page's granule once the tail has been read, else −1.</summary>
+            long TailGranule { get; }
+        }
+
+        /// <summary>One read at a container offset through the random-access face. A −1 from an epoch that moved
+        /// underneath the caller (a refused head splice supersedes the ring — the only epoch change a decoder does not
+        /// make itself) is retried ONCE at the new epoch, where the ring serves the true bytes.</summary>
+        static int ReadAtEpoch(IRandomAccessBytes source, long offset, Span<byte> dst, ref uint epoch)
+        {
+            int n = source.ReadAt(offset, dst, epoch);
+            if (n >= 0) return n;
+            uint now = source.Epoch;
+            if (now == epoch) return n;
+            epoch = now;
+            return source.ReadAt(offset, dst, epoch);
+        }
+
+        /// <summary>Ogg Vorbis over the CORE reader and decoder (Vorbis plan §6.2). Blocks in the byte seam and nowhere
+        /// else; allocates in <see cref="TryOpen"/> and nowhere after (P8) — the window, the reader's spanning buffer and
+        /// the decoder's tables are sized once there.</summary>
+        public sealed class VorbisAudioDecoder : IAudioDecoder
+        {
+            /// <summary>The probe window's 192 KiB ceiling, and more than two maximal pages, so a landing's peek always
+            /// sees the page that pins it.</summary>
+            const int WindowBytes = 192 * 1024;
+
+            /// <summary>How much of a local file's end is read at open for its last granule.</summary>
+            const int TailScanBytes = 64 * 1024;
+
+            /// <summary>Header packets are a few KB; a stream whose three headers are not parsed inside this many bytes
+            /// is not one this decoder plays.</summary>
+            const int HeaderScanLimit = 1 << 20;
+
+            readonly float _gainLinear;
+            readonly long _durationMs;
+            Vorbis.Decoder? _dec;
+            Ogg.Reader? _ogg;
+            byte[] _win = [];
+            IMediaByteSource? _src;
+            IRandomAccessBytes? _ra;
+            MixFormat _target;
+            LinearResampler? _resampler;
+            float[] _conform = [];            // the held packet re-laid for a mix that is not stereo (never, today)
+            VorbisClock _clock;
+            long _winStart;                   // container offset of _win[0]
+            int _winLen;
+            int _hold, _holdOffset;           // frames of the current packet not yet handed out, and where they start
+            long _heldStart;                  // the granule of the first held frame
+            long _firstAudioPage, _origin, _tail = -1;
+            int _rate;
+            uint _epoch;
+            bool _eof;
+
+            /// <param name="gainDb">The normalization figure (`Opened.GainDb`: the catalogue's, else the header's byte 144).</param>
+            /// <param name="durationMs">The declared duration: the seek estimate's slope until the tail is known, and the
+            /// yardstick a tail granule is checked against.</param>
+            public VorbisAudioDecoder(float gainDb, long durationMs = 0)
+            {
+                _gainLinear = GainLinear(gainDb);
+                _durationMs = Math.Max(0, durationMs);
+            }
+
+            public GaplessInfo Gapless { get; private set; } = GaplessInfo.None;
 
             public bool TryOpen(IMediaByteSource src, MixFormat target, out DecodedInfo info)
             {
                 info = default;
+                _src = src;
+                _ra = src as IRandomAccessBytes;
                 _target = target;
-                try
-                {
-                    _reader = new NVorbis.VorbisReader(new ByteSourceStream(src), closeOnDispose: false);
-                    _srcChannels = Math.Max(1, _reader.Channels);
-                    int rate = _reader.SampleRate > 0 ? _reader.SampleRate : target.SampleRate;
-                    _resampler = rate != target.SampleRate ? new LinearResampler(rate, target.SampleRate, target.Channels) : null;
-                    _src = new float[4096 * Math.Max(_srcChannels, target.Channels)];
-                    info = new DecodedInfo(new MediaContentType(Container.Ogg, CodecId.None, CodecId.Vorbis),
-                        new MixFormat(rate, _srcChannels), _reader.TotalTime, default);
-                    return true;
-                }
-                catch (Exception ex) { Log.Warn("audio", "vorbis open failed", ex); return false; }
+                _eof = false;
+                _hold = _holdOffset = 0;
+                if (!src.TryOpen(new DataSpec { Position = 0, Length = -1 })) return false;
+                if (_win.Length == 0) _win = GC.AllocateUninitializedArray<byte>(WindowBytes, pinned: true);
+                _dec ??= new Vorbis.Decoder();
+                Ogg.Reader ogg = _ogg ??= new Ogg.Reader();
+                ogg.Reset();
+                ogg.Index.Clear();
+                _epoch = _ra?.Epoch ?? 0;
+
+                long localTail = _ra is null ? ScanLocalTail() : -1;          // first: it moves a sequential source
+                _winStart = 0;
+                _winLen = 0;
+                VorbisClock.Restart(ogg, 0);
+
+                // The three header packets (Vorbis I §4.2): identification, comment, setup — inside the clear head.
+                Span<byte> ident = stackalloc byte[64];                        // the identification header is 30 bytes
+                if (!NextHeader(out ReadOnlySpan<byte> first) || Vorbis.HeaderType(first) != 1 || first.Length > ident.Length)
+                    return false;
+                first.CopyTo(ident);
+                ident = ident[..first.Length];
+                if (!NextHeader(out ReadOnlySpan<byte> comment) || Vorbis.HeaderType(comment) != 3) return false;
+                if (!NextHeader(out ReadOnlySpan<byte> setup) || !_dec.Open(ident, setup, _gainLinear)) return false;
+                _rate = _dec.SampleRate;
+                if (_rate <= 0) return false;
+
+                // Audio begins on a fresh page (§4.2): the cursor past the setup is the first audio page, and the
+                // origin is peeked from it before a single audio packet decodes (§4.4).
+                _firstAudioPage = ogg.WindowOffset + ogg.Cursor;
+                DropBefore(_firstAudioPage);
+                _origin = PeekLanding();
+                if (_origin == VorbisClock.Unknown) _origin = 0;
+                _clock = VorbisClock.At(_origin);
+
+                long tail = _ra?.TailGranule ?? localTail;
+                _tail = VorbisClock.PlausibleTail(tail, _durationMs, _rate) ? tail : -1;
+                Gapless = VorbisClock.Gapless(_origin, _tail, _rate, target.SampleRate);
+                _resampler = _rate != target.SampleRate ? new LinearResampler(_rate, target.SampleRate, target.Channels) : null;
+                int ch = Math.Max(1, target.Channels);
+                if (ch != Vorbis.OutputChannels && _conform.Length < _dec.MaxFrames * ch) _conform = new float[_dec.MaxFrames * ch];
+
+                double seconds = _tail >= 0 ? (double)Math.Max(0, _tail - Math.Max(0, _origin)) / _rate
+                               : _durationMs / 1000.0;
+                info = new DecodedInfo(new MediaContentType(Container.Ogg, CodecId.None, CodecId.Vorbis),
+                    new MixFormat(_rate, Vorbis.OutputChannels), TimeSpan.FromSeconds(seconds), default);
+                return true;
             }
 
-            public int Read(Span<float> dst) => PullConform(dst, _target, _srcChannels, _gain, ref _hold, _src, _resampler, _pull);
-
-            int ReadSource(Span<float> into)
+            /// <summary>The next header packet, refilling as it goes. A header is never corrupt and never the end.</summary>
+            bool NextHeader(out ReadOnlySpan<byte> packet)
             {
-                try { return _reader?.ReadSamples(into) ?? 0; } catch { return 0; }
+                Ogg.Reader ogg = _ogg!;
+                while (_winStart + _winLen <= HeaderScanLimit)
+                {
+                    Ogg.Reader.Next next = ogg.NextPacket(_win.AsSpan(0, _winLen), out packet, out _);
+                    if (next == Ogg.Reader.Next.Packet) return true;
+                    if (next != Ogg.Reader.Next.NeedMore || !Fill()) break;
+                }
+                packet = default;
+                return false;
             }
 
+            /// <summary>A local file's exact length: its last granule, from its last bytes, read before anything else.
+            /// Only where a seek is cheap — a module stream answers from the declared duration instead.</summary>
+            long ScanLocalTail()
+            {
+                IMediaByteSource src = _src!;
+                SourceCaps caps = src.Caps;
+                if (!caps.Seekable || caps.ExpensiveSeek || src.Length is not long length || length <= 0) return -1;
+                long from = Math.Max(0, length - TailScanBytes);
+                long last = -1;
+                if (src.Seek(from) == from)
+                {
+                    int want = (int)(length - from), got = 0;
+                    while (got < want)
+                    {
+                        int n = src.Read(_win.AsSpan(got, want - got));
+                        if (n <= 0) break;
+                        got += n;
+                    }
+                    last = VorbisClock.LastGranule(_win.AsSpan(0, got));
+                }
+                return src.Seek(0) == 0 ? last : -1;
+            }
+
+            /// <summary>Discard the window before <paramref name="offset"/> and restart the reader there.</summary>
+            void DropBefore(long offset)
+            {
+                int drop = (int)Math.Clamp(offset - _winStart, 0, _winLen);
+                if (drop > 0)
+                {
+                    _win.AsSpan(drop, _winLen - drop).CopyTo(_win);
+                    _winLen -= drop;
+                    _winStart += drop;
+                }
+                VorbisClock.Restart(_ogg!, _winStart);
+            }
+
+            /// <summary>The landing granule for the window as it stands, growing the window (never moving its start)
+            /// while the peek runs out of bytes before a page granule.</summary>
+            long PeekLanding()
+            {
+                for (int grow = 0; ; grow++)
+                {
+                    long start = VorbisClock.LandingStart(_ogg!, _dec!, _win.AsSpan(0, _winLen), _winStart, out bool needMore);
+                    if (!needMore || _winLen >= _win.Length || grow >= 8) return start;
+                    int n = ReadRaw(_winStart + _winLen, _win.AsSpan(_winLen));
+                    if (n <= 0) return start;
+                    _winLen += n;
+                }
+            }
+
+            /// <summary>Refill the window: drop what the reader consumed, keep the unread tail, and read ONCE. The head,
+            /// the ring or the disk hands over whatever it holds, so a decode never waits for bytes it does not need
+            /// yet — a window-sized read at the clear head's edge would hold the first sound until the first body range
+            /// landed. The continuation is <c>Reposition(WindowOffset + Cursor)</c>, which keeps a spanning packet.</summary>
+            bool Fill()
+            {
+                Ogg.Reader ogg = _ogg!;
+                int consumed = Math.Clamp(ogg.Cursor, 0, _winLen);
+                if (consumed > 0)
+                {
+                    _win.AsSpan(consumed, _winLen - consumed).CopyTo(_win);
+                    _winLen -= consumed;
+                    _winStart += consumed;
+                }
+                ogg.Reposition(_winStart);
+                if (_winLen == _win.Length)
+                {
+                    // A full window the reader found no page in is not audio: resync past it rather than refuse the
+                    // track. (A sequential source's cursor is already at the new start.)
+                    _winStart += _winLen;
+                    _winLen = 0;
+                    VorbisClock.Restart(ogg, _winStart);
+                }
+                int n = ReadRaw(_winStart + _winLen, _win.AsSpan(_winLen));
+                if (n <= 0) return false;
+                _winLen += n;
+                return true;
+            }
+
+            /// <summary>One read at a container offset: the random-access face when the source has one, else the
+            /// sequential <c>Read</c>, whose cursor this adapter keeps at <c>_winStart + _winLen</c> by construction.</summary>
+            int ReadRaw(long offset, Span<byte> dst)
+                => _ra is { } ra ? ReadAtEpoch(ra, offset, dst, ref _epoch) : _src!.Read(dst);
+
+            /// <summary>Decode packets until one yields frames the clock hands out. A corrupt or undecodable packet costs
+            /// itself, never the track; the next page granule re-pins the clock.</summary>
+            bool NextFrames()
+            {
+                Ogg.Reader ogg = _ogg!;
+                Vorbis.Decoder dec = _dec!;
+                while (true)
+                {
+                    Ogg.Reader.Next next = ogg.NextPacket(_win.AsSpan(0, _winLen), out ReadOnlySpan<byte> packet, out long granule);
+                    if (next == Ogg.Reader.Next.NeedMore) { if (!Fill()) return false; continue; }
+                    if (next == Ogg.Reader.Next.Eos) return false;
+                    if (next == Ogg.Reader.Next.Corrupt) continue;
+                    if (dec.DecodePacket(packet) != Vorbis.PacketResult.Ok) continue;
+                    bool eos = granule >= 0 && ogg.SawEos;
+                    VorbisClock.Run run = _clock.Admit(dec.Frames, granule, eos);
+                    if (run.Count > 0)
+                    {
+                        _holdOffset = run.Skip;
+                        _hold = run.Count;
+                        _heldStart = run.Start + run.Skip;
+                        if (_target.Channels != Vorbis.OutputChannels) ConformHeld(dec);
+                        return true;
+                    }
+                    if (eos) return false;
+                }
+            }
+
+            /// <summary>Re-lay the held stereo frames for a mix of another width: mono averages, wider pads.</summary>
+            void ConformHeld(Vorbis.Decoder dec)
+            {
+                int ch = Math.Max(1, _target.Channels);
+                ReadOnlySpan<float> stereo = dec.OutputSpan.Slice(_holdOffset * 2, _hold * 2);
+                Span<float> dst = _conform.AsSpan(0, _hold * ch);
+                for (int f = 0; f < _hold; f++)
+                {
+                    float l = stereo[2 * f], r = stereo[2 * f + 1];
+                    int o = f * ch;
+                    if (ch == 1) { dst[o] = 0.5f * (l + r); continue; }
+                    dst[o] = l;
+                    dst[o + 1] = r;
+                    for (int c = 2; c < ch; c++) dst[o + c] = 0f;
+                }
+                _holdOffset = 0;
+            }
+
+            ReadOnlySpan<float> Held()
+            {
+                int ch = Math.Max(1, _target.Channels);
+                return ch == Vorbis.OutputChannels
+                    ? _dec!.OutputSpan.Slice(_holdOffset * 2, _hold * 2)
+                    : _conform.AsSpan(_holdOffset * ch, _hold * ch);
+            }
+
+            void Take(int frames)
+            {
+                _holdOffset += frames;
+                _hold -= frames;
+                _heldStart += frames;
+            }
+
+            public int Read(Span<float> dst)
+            {
+                if (_dec is null || _eof) return 0;
+                int ch = Math.Max(1, _target.Channels);
+                int want = dst.Length / ch;
+                if (want <= 0) return 0;
+                while (true)
+                {
+                    if (_hold == 0 && !NextFrames()) { _eof = true; return 0; }
+                    ReadOnlySpan<float> held = Held();
+                    if (_resampler is { IsActive: true } rs)
+                    {
+                        ResampleResult rr = rs.Process(held, _hold, dst);
+                        Take(rr.Consumed);
+                        // A packet can go wholly into the interpolation history (0 produced): that is not the end.
+                        if (rr.Produced > 0 || rr.Consumed == 0) return rr.Produced;
+                        continue;
+                    }
+                    int frames = Math.Min(want, _hold);
+                    held[..(frames * ch)].CopyTo(dst);
+                    Take(frames);
+                    return frames;
+                }
+            }
+
+            /// <summary>MIX-domain frame in (counted from the decoder's first frame), MIX-domain frame reached out, or −1
+            /// when the byte seam failed. The plan is the CORE's (<c>Ogg.BeginSeek</c> / <c>TryNextProbe</c> /
+            /// <c>Observe</c>); this is the I/O around it: the source is re-targeted BEFORE each probe window is read,
+            /// so the probe is the one request in flight, and the landing peeks its position before it decodes.</summary>
             public long Seek(long frame)
             {
-                if (_reader is null) return -1;
-                try
+                if (_dec is null || _ogg is null || _src is null) return -1;
+                if (_ra is null && !_src.Caps.Seekable) return -1;
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _hold = _holdOffset = 0;
+                _eof = false;
+                _resampler?.Reset();
+                if (_ra is { } ra)
                 {
-                    long srcFrame = _target.SampleRate == _reader.SampleRate
-                        ? frame
-                        : (long)Math.Round((double)frame * _reader.SampleRate / _target.SampleRate);
-                    _reader.SeekTo(srcFrame);
-                    _hold = 0;
-                    _resampler?.Reset();
-                    return frame;
+                    long tail = ra.TailGranule;                          // the tail usually lands after the open
+                    if (_tail < 0 && VorbisClock.PlausibleTail(tail, _durationMs, _rate)) _tail = tail;
+                    _epoch = Math.Max(_epoch, ra.Epoch) + 1;
                 }
-                catch { return -1; }
+
+                long target = VorbisClock.TargetGranule(frame, _rate, _target.SampleRate, _origin);
+                if (_tail >= 0 && target >= _tail)
+                {
+                    _eof = true;                                         // at or past the end: nothing left to play
+                    return VorbisClock.MixFrameOf(_tail, _rate, _target.SampleRate, _origin);
+                }
+                long total = _tail >= 0 ? _tail : _durationMs > 0 ? _durationMs * _rate / 1000 : -1;
+                Ogg.SeekPlan plan = Ogg.BeginSeek(_ogg.Index, _firstAudioPage, _src.Length ?? 0, total,
+                    Math.Max(0, target), _ogg.MaxPageSeen);
+                while (Ogg.TryNextProbe(ref plan, out long at))
+                {
+                    if (!ReadWindowAt(at, plan.WindowBytes, landing: false)) break;
+                    if (Ogg.Observe(ref plan, _ogg.Index, _win.AsSpan(0, _winLen), _winStart) == Ogg.ProbeResult.NoPage) break;
+                }
+
+                // Land: the page the plan resumes at primes the decoder; the peek fixes the first frame's granule from
+                // the first page granule ahead (never from OffsetGranule, which ENDS that page); the clock drops what
+                // precedes the target inside the packet that holds it.
+                if (!ReadWindowAt(plan.Offset, plan.WindowBytes, landing: true)) { _eof = true; return -1; }
+                long start = PeekLanding();
+                _dec.Prime();
+                _clock = VorbisClock.At(start);
+                _clock.Target = target;
+                bool landed = NextFrames();
+                if (!landed) _eof = true;
+                long reached = landed ? _heldStart : _clock.Position != VorbisClock.Unknown ? _clock.Position : target;
+                Log.Info("audio", $"audio.seek codec=vorbis target={target} landed={reached} page={plan.Offset} "
+                                  + $"probes={plan.Probes} tier={plan.Tier} resolved={(plan.Resolved ? 1 : 0)} "
+                                  + $"ms={System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds:0}");
+                return VorbisClock.MixFrameOf(reached, _rate, _target.SampleRate, _origin);
             }
+
+            /// <summary>Read a window at an absolute container offset. On the random-access face the source is
+            /// re-targeted first (a resident window costs nothing) and, for the landing, the sequential fill is resumed
+            /// there before a byte is read.</summary>
+            bool ReadWindowAt(long offset, int bytes, bool landing)
+            {
+                if (_ra is { } ra)
+                {
+                    ra.Retarget(offset, bytes, _epoch);
+                    if (landing) ra.ResumeFrom(offset);
+                }
+                else if (_src!.Seek(offset) != offset) return false;
+                _winStart = offset;
+                _winLen = 0;
+                VorbisClock.Restart(_ogg!, offset);
+                int want = Math.Clamp(bytes, 1, _win.Length);
+                while (_winLen < want)
+                {
+                    int n = ReadRaw(offset + _winLen, _win.AsSpan(_winLen, want - _winLen));
+                    if (n <= 0) break;
+                    _winLen += n;
+                }
+                return _winLen > 0;
+            }
+        }
+
+        /// <summary>Spotify's bytes, for the engine and the decoders (Vorbis plan §5.5): a THIN wrapper over the stream
+        /// layer's <see cref="Spotify.Audio.Body"/> — the clear head, the read-ahead ring, the fetch thread and the disk
+        /// cache all live there (owner F). This adds the engine's sequential face (MP3, and anything else that only
+        /// speaks <c>Read</c>/<c>Seek</c>) and the random-access face the Vorbis and FLAC adapters read. Container
+        /// coordinates throughout: the 0xa7 skip is inside <c>Body</c>.</summary>
+        public sealed class RingSource : IMediaByteSource, IRandomAccessBytes
+        {
+            readonly Spotify.Audio.Body _body;
+            long _cursor;
+
+            public RingSource(Spotify.Audio.Body body) => _body = body;
+
+            public Spotify.Audio.Body Body => _body;
+
+            /// <summary>Container bytes — the catalogue estimate until the first range's <c>Content-Range</c> names it.</summary>
+            public long? Length => _body.Length;
+
+            /// <summary>A seek here is a ring lookup or one probe range, never a stream re-open.</summary>
+            public SourceCaps Caps => new() { Seekable = true, KnownLength = _body.LengthKnown, ExpensiveSeek = false };
+
+            public uint Epoch => _body.Epoch;
+
+            public long TailGranule => _body.TailGranule;
+
+            public bool TryOpen(in DataSpec spec)
+            {
+                _cursor = Math.Max(0, spec.Position);
+                return !_body.Disposed;
+            }
+
+            /// <summary>The sequential read, over <see cref="ReadAt"/> at the cursor. 0 only at EOF (the ring's rule).</summary>
+            public int Read(Span<byte> dst)
+            {
+                uint epoch = _body.Epoch;
+                int n = ReadAtEpoch(this, _cursor, dst, ref epoch);
+                if (n > 0) _cursor += n;
+                return n;
+            }
+
+            /// <summary>A position write only: the next read that misses asks for its bytes. A cancelling seek is
+            /// <see cref="Retarget"/>'s, for the decoders that plan their own probes.</summary>
+            public long Seek(long offset)
+            {
+                _cursor = _body.LengthKnown ? Math.Clamp(offset, 0, _body.Length) : Math.Max(0, offset);
+                return _cursor;
+            }
+
+            public int ReadAt(long offset, Span<byte> dst, uint epoch) => _body.ReadAt(offset, dst, epoch);
+
+            /// <summary>The ring aligns a probe's START down to its 64 KiB slot and sizes the range from there, so the
+            /// bytes between the slot start and <paramref name="probeOffset"/> are added back: the one range on the wire
+            /// always covers the whole window the planner is about to read, instead of stopping short at a slot edge
+            /// and costing a second range.</summary>
+            public void Retarget(long probeOffset, int probeBytes, uint epoch)
+            {
+                long fileOffset = _body.Skip + Math.Max(0, probeOffset);
+                int slack = (int)(fileOffset % Spotify.Audio.Ring.SlotBytes);
+                _body.Retarget(probeOffset, probeBytes + slack, epoch);
+            }
+
+            public void ResumeFrom(long offset)
+            {
+                _cursor = Math.Max(0, offset);
+                _body.ResumeFrom(offset);
+            }
+
+            /// <summary>The engine cancels only a source that is going away — an abandoned open or prepare, a retiring
+            /// voice — so the body is released: a read blocked in the ring's bounded wait returns −1 at once.</summary>
+            public void Cancel() => _body.Dispose();
+
+            public void Close() => _body.Dispose();
         }
 
         /// <summary>MP3, over NLayer. The LAME/Xing gapless numbers are read from the tag before the codec takes the
@@ -985,8 +1592,8 @@ public static partial class Playback
         /// `Func&lt;Span&lt;float&gt;, int&gt;` cannot exist: a ref struct is not a valid type argument.</summary>
         delegate int PullSamples(Span<float> into);
 
-        /// <summary>Pull → channel conform → gain → resample, shared by the two pull decoders. The FLAC adapter has
-        /// its own loop because its core hands over whole planar blocks rather than an interleaved pull.</summary>
+        /// <summary>Pull → channel conform → gain → resample, for the MP3 pull decoder. The FLAC and Vorbis adapters
+        /// have their own loops because their cores hand over whole decoded blocks rather than an interleaved pull.</summary>
         static int PullConform(Span<float> dst, MixFormat target, int srcChannels, float gain,
             ref int hold, float[] scratch, LinearResampler? resampler, PullSamples pull)
         {
@@ -1056,7 +1663,8 @@ public static partial class Playback
             }
         }
 
-        /// <summary>An `IMediaByteSource` as a `Stream`, for the two third-party decoders that only speak `Stream`.
+        /// <summary>An `IMediaByteSource` as a `Stream`, for NLayer, the one third-party decoder left that only speaks
+        /// `Stream`.
         /// It is the thinnest possible adapter: the engine's seam already owns the read-ahead, the bounded wait and
         /// the never-return-zero invariant.</summary>
         public sealed class ByteSourceStream : Stream
@@ -1599,9 +2207,10 @@ public static partial class Playback
         // through `MediaSource.FromPull` (FLAC plan §4.2). Nothing here needs an engine change.
         //
         // THE ONE INVARIANT EVERY SOURCE OWES THE DECODER: `Read` returns 0 ONLY at a true end of stream. Every codec
-        // above this seam latches the first zero as PERMANENT EOF — the engine's own decoder and `AdtsFrameParser`
-        // both do, and NVorbis's page reader gives up after ten — so a transient miss handed up as a short read
-        // silently TRUNCATES the track. §16 is the bounded-wait primitive that guarantees it.
+        // above this seam latches the first zero as PERMANENT EOF — the engine's own decoder, `AdtsFrameParser` and
+        // `DecoderAudioSource` all do — so a transient miss handed up as a short read silently TRUNCATES the track. A
+        // Spotify body guarantees it in its ring's bounded wait (`RingSource`, §9a); §16 is the same primitive for a
+        // module's `Stream`.
 
         // ── 15. the five sources: the routing table ──────────────────────────────────────────────────────────────────
 
@@ -1648,9 +2257,10 @@ public static partial class Playback
         }
 
         /// <summary>Spotify (and the synthetic podcast source, which takes the same `ExternalUrl` arm): the fileId
-        /// ladder, the key, the CDN, and the AES-CTR stream — all of it owner F's `Spotify.Audio.Open`. This wraps its
-        /// `Stream` in the never-return-zero shim and reads the format, duration and normalization gain off the
-        /// answer.</summary>
+        /// ladder, the key, the CDN, and the byte stores — all of it owner F's `Spotify.Audio.Open`. This wraps the
+        /// opened <see cref="Spotify.Audio.Body"/> in <see cref="RingSource"/> (Vorbis plan §5.5) and reads the format,
+        /// duration and normalization gain off the answer. The body's own `ReadAt` already never answers 0 before the
+        /// end, so no shim sits in between.</summary>
         static IMediaByteSource? SpotifySource(EntityId id, CancellationToken ct, out Opened opened, out Fault fault)
         {
             opened = default;
@@ -1659,13 +2269,19 @@ public static partial class Playback
             catch (OperationCanceledException) { fault = Fault.None; return null; }
             catch (Exception ex) { Log.Warn("audio", "spotify open failed", ex); fault = Fault.Network; return null; }
 
-            if (!o.Ok || o.Stream is null) { fault = MapFault(o.Fault); return null; }
+            if (!o.Ok || o.Body is not { } body)
+            {
+                try { o.Stream?.Dispose(); } catch { }
+                fault = o.Fault == Spotify.Audio.Fault.None ? Fault.Unavailable : MapFault(o.Fault);
+                return null;
+            }
 
             fault = Fault.None;
             int kbps = o.DurationMs > 0 && o.Length > 0 ? (int)(o.Length * 8 / o.DurationMs) : BitrateHintKbps(o.Fmt);
             opened = new Opened(o.Fmt, o.DurationMs, o.GainDb, LabelFor(o.Fmt, 0, 0), kbps, IsLive: false);
-            Log.Info("audio", $"audio.open fmt={o.Fmt} len={o.Length} durMs={o.DurationMs} gain={o.GainDb:0.0} dB kbps={kbps}");
-            return new Prefetching(o.Stream, seekable: true);
+            Log.Info("audio", $"audio.open fmt={o.Fmt} len={o.Length} durMs={o.DurationMs} gain={o.GainDb:0.0} dB kbps={kbps} "
+                              + $"head={body.HeadBytes} ring={body.Ring.Seconds}s tail={body.TailGranule}");
+            return new RingSource(body);
         }
 
         static Fault MapFault(Spotify.Audio.Fault f) => f switch
@@ -1733,7 +2349,8 @@ public static partial class Playback
 
         // ── 16. the never-return-zero shim ───────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The byte seam the decoders actually see. Two jobs and no more:
+        /// <summary>The byte seam a module's `Stream` is seen through (a Spotify body is a <see cref="RingSource"/>).
+        /// Two jobs and no more:
         /// <list type="number">
         /// <item>A transient miss is a BOUNDED WAIT, never a short read. `Read` answers 0 only when the inner stream
         /// itself reports a genuine end of stream — because every codec above latches the first zero as permanent EOF
@@ -2125,17 +2742,19 @@ public static partial class Playback
         // normalization gain folded into its scale constant, and the engine's own resampler at the decode edge.
         //
         // TWO NOTES ON WHAT THIS ADAPTER TRUSTS.
-        //   THE WINDOW IS THE READ-AHEAD. `IMediaByteSource.Read` blocks on the CDN when the chunk is not resident —
-        //   on the decode-ahead thread, behind a 1 s ring — and `Prefetching` (§16) guarantees it returns 0
-        //   only at true EOF. The adapter trusts that: a zero here IS the end of the file.
-        //   A SEEK IS 2-4 RANGE REQUESTS. Interpolation lands within a frame or two of the target on a
-        //   ~700-1,400 kbit/s file, each probe a 128 KiB chunk the CTR stream already fetches, and the bound is 32
-        //   probes. 0.2.9's answer to a FLAC seek was a SILENT NO-OP that reported success, so a scrub desynced
-        //   position from audio for the rest of the track.
+        //   THE BYTE SEAM IS THE READ-AHEAD. A Spotify FLAC arrives as a `RingSource` (§9a): the window reads through
+        //   its random-access face, which the clear head, the seconds-sized ring and the disk cache answer, and which
+        //   returns 0 only at true EOF. A local file keeps the engine's sequential `Read`. A zero here IS the end.
+        //   A SEEK IS THE PROBES THE PLANNER ASKS FOR. Interpolation lands within a frame or two of the target on a
+        //   ~700-1,400 kbit/s file; each probe re-targets the ring first, so it is one range request (none when the
+        //   window is resident) with any in-flight fill cancelled, and the bound is 32 probes. 0.2.9's answer to a
+        //   FLAC seek was a SILENT NO-OP that reported success, so a scrub desynced position from audio for the rest
+        //   of the track.
 
-        /// <summary>The engine-facing FLAC decoder: a byte window over an <see cref="IMediaByteSource"/>, the CORE
-        /// <c>Flac.Decoder</c> over the window, float conversion + gain, and the engine's resampler. Runs on the
-        /// engine's decode-ahead thread; blocks in <see cref="IMediaByteSource.Read"/> and nowhere else.</summary>
+        /// <summary>The engine-facing FLAC decoder: a byte window over an <see cref="IMediaByteSource"/> (its
+        /// <see cref="IRandomAccessBytes"/> face when it has one), the CORE <c>Flac.Decoder</c> over the window, float
+        /// conversion + gain, and the engine's resampler. Runs on the engine's decode-ahead thread; blocks in the byte
+        /// seam and nowhere else.</summary>
         public sealed class FlacAudioDecoder : IAudioDecoder
         {
             const int WindowBytes = 64 * 1024;
@@ -2146,6 +2765,8 @@ public static partial class Playback
             readonly Flac.SeekPoint[] _seek = new Flac.SeekPoint[SeekPointCapacity];
             readonly float _gainLinear;
             IMediaByteSource? _src;
+            IRandomAccessBytes? _ra;
+            uint _epoch;
             MixFormat _target;
             Flac.StreamInfo _si;
             int _seekCount;
@@ -2173,6 +2794,8 @@ public static partial class Playback
             {
                 info = default;
                 _src = src;
+                _ra = src as IRandomAccessBytes;
+                _epoch = _ra?.Epoch ?? 0;
                 _target = target;
                 if (!src.TryOpen(new DataSpec { Position = 0, Length = -1 })) return false;
                 _winStart = 0; _winLen = 0; _cursor = 0;
@@ -2213,7 +2836,9 @@ public static partial class Playback
 
             long ToSrc(long mixFrames) => (long)Math.Round((double)mixFrames * _si.SampleRate / _target.SampleRate);
 
-            /// <summary>Top up the window from the source. Keeps the unread tail, reads until full or EOF/error.</summary>
+            /// <summary>Top up the window from the source. Keeps the unread tail, reads until full or EOF/error, and
+            /// answers whether any byte ARRIVED — not whether the window holds some: at the end of a file whose last
+            /// frame is cut short, "the window is not empty" kept the frame loop asking forever.</summary>
             bool Fill()
             {
                 if (_cursor > 0 && _cursor < _winLen)
@@ -2224,15 +2849,21 @@ public static partial class Playback
                     _cursor = 0;
                 }
                 else if (_cursor >= _winLen) { _winStart += _winLen; _winLen = 0; _cursor = 0; }
+                bool arrived = false;
                 while (_winLen < _win.Length)
                 {
-                    int n = _src!.Read(_win.AsSpan(_winLen));
-                    if (n < 0) return false;
-                    if (n == 0) break;
+                    int n = ReadRaw(_winStart + _winLen, _win.AsSpan(_winLen));
+                    if (n <= 0) break;
                     _winLen += n;
+                    arrived = true;
                 }
-                return _winLen > 0;
+                return arrived;
             }
+
+            /// <summary>One read at a source offset: the random-access face when the source has one, else the sequential
+            /// <c>Read</c>, whose cursor this adapter keeps at <c>_winStart + _winLen</c> by construction.</summary>
+            int ReadRaw(long offset, Span<byte> dst)
+                => _ra is { } ra ? ReadAtEpoch(ra, offset, dst, ref _epoch) : _src!.Read(dst);
 
             /// <summary>Decode the next frame into <c>_conformed</c>. False at EOF or on an unrecoverable error. A
             /// corrupt frame is skipped by ONE byte and the sync scan resumes — 0.2.9 latched the first zero read as
@@ -2285,14 +2916,16 @@ public static partial class Playback
 
                 if (_hold == 0 && !NextBlock()) { _eof = true; return 0; }
 
-                if (_resampler is { IsActive: true } rs)
+                while (_resampler is { IsActive: true } rs)
                 {
                     ResampleResult rr = rs.Process(_conformed.AsSpan(0, _hold * ch), _hold, dst);
                     int unread = _hold - rr.Consumed;
                     if (unread > 0 && rr.Consumed > 0) _conformed.AsSpan(rr.Consumed * ch, unread * ch).CopyTo(_conformed);
                     _hold = unread;
                     _samplePos += rr.Consumed;
-                    return rr.Produced;
+                    // A block that went wholly into the interpolation history produced nothing: that is not the end.
+                    if (rr.Produced > 0 || rr.Consumed == 0) return rr.Produced;
+                    if (_hold == 0 && !NextBlock()) { _eof = true; return 0; }
                 }
 
                 int frames = Math.Min(want, _hold);
@@ -2313,9 +2946,11 @@ public static partial class Playback
             public long Seek(long frame)
             {
                 if (_src is null) return -1;
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 long target = Math.Clamp(ToSrc(frame), 0, _si.TotalSamples > 0 ? _si.TotalSamples : long.MaxValue);
                 _hold = 0; _eof = false; _skipSamples = 0;
                 _resampler?.Reset();
+                if (_ra is { } ra) _epoch = Math.Max(_epoch, ra.Epoch) + 1;
 
                 Flac.SeekPlan plan = Flac.BeginSeek(in _si, _seek.AsSpan(0, _seekCount), _firstFrame,
                     _src.Length ?? 0, target, MaxProbes);
@@ -2326,10 +2961,18 @@ public static partial class Playback
                 }
 
                 // Land on the plan's best frame, decode forward, drop the remainder inside the frame that holds the
-                // target. `NextBlock` has already converted that frame, so the drop is a span shift.
-                _src.Seek(plan.Offset);
+                // target. `NextBlock` has already converted that frame, so the drop is a span shift. On the ring the
+                // landing is re-targeted (free when resident) and the sequential fill resumes there.
+                if (_ra is { } landing)
+                {
+                    landing.Retarget(plan.Offset, _win.Length, _epoch);
+                    landing.ResumeFrom(plan.Offset);
+                }
+                else _src.Seek(plan.Offset);
                 _winStart = plan.Offset; _winLen = 0; _cursor = 0;
                 _samplePos = plan.Sample;
+                Log.Info("audio", $"audio.seek codec=flac target={target} page={plan.Offset} probes={plan.Probes} "
+                                  + $"tier={plan.Tier} ms={System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds:0}");
                 while (true)
                 {
                     if (!NextBlock()) { _eof = true; return -1; }
@@ -2349,12 +2992,14 @@ public static partial class Playback
                 return ToMix(target);
             }
 
-            /// <summary>Read one probe window at an absolute source offset. The CORE's `Observe` does everything else
-            /// — including rejecting a false sync by its frame CRC-16, which is the only thing that can tell audio
-            /// data that happens to look like a sync word from a real frame.</summary>
+            /// <summary>Read one probe window at an absolute source offset — on the ring, re-targeted first so the probe is
+            /// the one request in flight. The CORE's `Observe` does everything else — including rejecting a false sync
+            /// by its frame CRC-16, which is the only thing that can tell audio data that happens to look like a sync
+            /// word from a real frame.</summary>
             bool ReadWindowAt(long offset)
             {
-                if (_src!.Seek(offset) < 0) return false;
+                if (_ra is { } ra) ra.Retarget(offset, _win.Length, _epoch);
+                else if (_src!.Seek(offset) < 0) return false;
                 _winStart = offset;
                 _winLen = 0;
                 _cursor = 0;

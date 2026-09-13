@@ -248,6 +248,23 @@ public sealed record SidebarActionBinding(string ProviderId, string ActionId, Si
         TargetKey is null ? 0 : StringComparer.Ordinal.GetHashCode(TargetKey));
 }
 
+/// <summary>The document's persisted binding → owner I's resolution vocabulary (<c>Platform/Actions.cs</c>). The
+/// sidebar resolves and executes every bound row through <see cref="ActionBinding"/> — this is the ONE conversion, so
+/// the wire record (kept for its byte-identical JSON round trip and its tests) never becomes a second resolution type.
+/// The mode enums share their persisted byte values (None, FixedEntity, FixedTrack, NowPlaying, ActiveRoute).</summary>
+public static class SidebarActionBindings
+{
+    public static ActionBinding ToActionBinding(this SidebarActionBinding binding)
+    {
+        ArgumentNullException.ThrowIfNull(binding);
+        string? arguments = binding.Arguments is { } args && args.ValueKind != JsonValueKind.Undefined
+            ? args.GetRawText()
+            : null;
+        return new ActionBinding(binding.ProviderId ?? "", binding.ActionId ?? "",
+            (ActionTargetMode)(byte)binding.TargetMode, binding.TargetKey, arguments);
+    }
+}
+
 /// <summary>The entity family of an item — needed to render a correct placeholder row (and pick the right art
 /// shape: circular for Artist, rounded-square otherwise) BEFORE the entity resolves.</summary>
 public enum SidebarEntityKind : byte

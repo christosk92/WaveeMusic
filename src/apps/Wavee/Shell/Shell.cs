@@ -944,6 +944,29 @@ public static partial class Shell
         /// untouched.</summary>
         public static readonly Signal<bool> ImmersiveLyrics = new(false);
 
+        // ── the frame's derived presentation cells (stage 2, `Shell.UI.cs` writes them from ONE effect each) ───────────
+        //
+        // DERIVED FACTS LIVE ON THE MODEL (ch 18 §7): the sidebar mounts, the player bar and the rail read these instead
+        // of each re-deriving "is the window narrow" from three widths at a call site.
+
+        /// <summary>The whole-shell NARROW band (≤ 720 enters, &lt; 760 leaves — <see cref="Layout.NarrowFor"/>). In it
+        /// the inline sidebar is forced to the 56-DIP compact rail and the hamburger opens the drawer instead of writing
+        /// the user's desktop collapse preference.</summary>
+        public static readonly Signal<bool> NarrowShell = new(false);
+
+        /// <summary>What the INLINE sidebar actually presents: <c>NarrowShell ∨ Sidebar.Collapsed</c>. Never the user's
+        /// preference itself — that is <c>Sidebar.Collapsed</c>, which the narrow band must not overwrite.</summary>
+        public static readonly Signal<bool> SidebarPresentedCompact = new(false);
+
+        /// <summary>The narrow drawer is open. Meaningless (and forced false) outside the narrow band.</summary>
+        public static readonly Signal<bool> DrawerOpen = new(false);
+
+        /// <summary>DIP a FLOATING surface (the in-window video mini player at its default anchor) reserves at the bottom of
+        /// the content host, so the page ends above it instead of under it. Written by the surface (owner K); 0 when
+        /// nothing reserves. The content host's wrapper is UNCONDITIONAL — mounting/unmounting it would remount the
+        /// keep-alive boundary and cold-restart every cached page.</summary>
+        public static readonly Signal<float> FloatingSurfaceReserve = new(0f);
+
         /// <summary>Clicking the already-showing mode CLOSES the rail; otherwise switch to that mode and open.</summary>
         public static void Toggle(RailMode mode)
         {
@@ -1115,7 +1138,8 @@ public static partial class Shell
                     PlayerBarTier.Compact => 172f,
                     _ => 132f,
                 },
-                ArtSize: medium ? 56f : 40f,
+                // 48 from Medium up (ch 20, 0.2.9 `WaveeSize.ArtPlayerBar`), 40 at the two narrow tiers.
+                ArtSize: medium ? Design.Size.ArtPlayerBar : 40f,
                 RowGap: wide ? 8f : medium ? 6f : compact ? 4f : 3f,
                 RowPad: wide ? 12f : medium ? 8f : compact ? 8f : 6f,
                 ClusterGap: medium ? 4f : compact ? 3f : 2f,
@@ -1604,6 +1628,475 @@ public static partial class Shell
                 rows.Add(new Playback.Os.JumpRow(key, title, (byte)r.Subject.Kind));   // the ENTITY kind: `KindLabel`'s fallback reads it
             }
             return rows.ToArray();
+        }
+    }
+
+    // ══ 12. THE FRAME'S RULES (stage 2 — every decision `Shell.UI.cs` would otherwise make inline) ═══════════════════
+    //
+    // A component body lays out and binds; it does not decide. Each rule below is one the 0.2.9 shell carried inline in
+    // a 2,348-line component where nothing could pin it — and two of them (the drag-peek width, the auto-zoom control
+    // loop) are exactly the ones ch 18 §9 records as regressions-in-waiting.
+
+    /// <summary>The frame's geometry, precedence and gating decisions. Pure.</summary>
+    public static class FrameRules
+    {
+        /// <summary>Every seam grip in the shell: the engine's 16-DIP strip (<c>Splitter.StripW</c>), restated so this
+        /// file stays free of a control's constant.</summary>
+        public const float SeamStripW = 16f;
+
+        /// <summary>The rail's breathing gap while it is INLINE (<c>Spacing.S</c>).</summary>
+        public const float RailGapW = 8f;
+
+        /// <summary>The sidebar column's bound width — THE W12 TRAP. A drag that starts on a COLLAPSED rail presents the
+        /// pane expanded for the whole drag (drag peek); the column is <c>ClipToBounds</c>, so deriving its width from
+        /// <paramref name="presentedCompact"/> alone clips a 56-DIP strip of art and tree connectors with every label cut
+        /// off. The peek term must stay in the same expression.</summary>
+        public static float SidebarPaneWidth(bool presentedCompact, bool dragPeek, float expandedWidth)
+            => presentedCompact && !dragPeek ? Layout.CompactRailW : expandedWidth;
+
+        /// <summary>Where the sidebar seam grip sits: the pane's resting right edge (the peek does not move the seam).</summary>
+        public static float SidebarSeamX(bool presentedCompact, float expandedWidth)
+            => presentedCompact ? Layout.CompactRailW : expandedWidth;
+
+        /// <summary>The narrow shell has no sidebar seam at all (the rail is fixed at 56 and the drawer owns the width).</summary>
+        public static float SidebarSeamWidth(bool narrow) => narrow ? 0f : SeamStripW;
+
+        /// <summary>The presented-compact fold: narrow forces compact; otherwise the user's preference.</summary>
+        public static bool PresentedCompact(bool narrow, bool collapsed) => narrow || collapsed;
+
+        /// <summary>The rail's 8-DIP gap exists ONLY while the rail is inline (open AND fits). A closed or floating rail
+        /// leaves the page flush to the window edge.</summary>
+        public static float RailGapWidth(bool open, bool fits) => open && fits ? RailGapW : 0f;
+
+        /// <summary>The rail's row RESERVATION. It SNAPS between 0 and the rail width at commit; the content card's FLIP
+        /// absorbs the shift while the rail panel slide-reveals into the band.</summary>
+        public static float RailReservedWidth(bool open, bool fits, float railWidth) => open && fits ? railWidth : 0f;
+
+        /// <summary>The floating rail's opaque backing shows only while the rail is open and does NOT fit (it overlays the
+        /// page rather than resizing it).</summary>
+        public static bool RailFloats(bool open, bool fits) => open && !fits;
+
+        /// <summary>The rail seam grip: translated to the rail's left edge, on the content side.</summary>
+        public static float RailSeamX(float viewportWidth, float railWidth) => viewportWidth - railWidth - SeamStripW;
+
+        /// <summary>The rail seam grip only exists while the rail is open.</summary>
+        public static float RailSeamWidth(bool open) => open ? SeamStripW : 0f;
+
+        /// <summary>FULL-SCREEN VIDEO UNMOUNTS THE CHROME ROW AND THE PLAYER BAR — one derived predicate drives both, so the
+        /// surface mounting and the chrome leaving cannot disagree by a frame (ch 18 §0.12).</summary>
+        public static bool ChromeMounted(Video.SurfacePlacement resolved) => resolved != Video.SurfacePlacement.Fullscreen;
+
+        /// <summary>What a bare Escape reaching the shell column does, in precedence order.</summary>
+        public enum EscapeAction : byte { None, CloseImmersiveLyrics, ExitVideoFullscreen }
+
+        /// <summary>Escape's precedence at the shell. Everything that should beat the shell already has (an in-flight drag,
+        /// the overlay host's pre-focus Escape, every deeper focused owner) — except the command palette, which is a
+        /// SIBLING layer rather than an overlay entry, hence the explicit guard. Immersive lyrics closes before video
+        /// fullscreen.</summary>
+        public static EscapeAction Escape(bool handled, bool paletteOpen, bool immersiveLyrics, bool videoFullscreen)
+        {
+            if (handled || paletteOpen) return EscapeAction.None;
+            if (immersiveLyrics) return EscapeAction.CloseImmersiveLyrics;
+            return videoFullscreen ? EscapeAction.ExitVideoFullscreen : EscapeAction.None;
+        }
+
+        /// <summary>Bare Space toggles playback only after focused routing declined it and never while a text editor has
+        /// focus (Space is not an accelerator — the dispatcher only matches Ctrl/Alt or F-keys).</summary>
+        public static bool SpaceTogglesPlayback(bool handled, bool textEditorFocused) => !handled && !textEditorFocused;
+
+        /// <summary>What F11 does. It toggles video fullscreen ONLY while a video is active — with nothing playing there is
+        /// nothing to fill the screen with, so the chord is a no-op rather than an empty stage.</summary>
+        public enum FullscreenToggle : byte { None, Enter, Exit }
+
+        public static FullscreenToggle F11(bool isFullscreen, bool videoActive)
+            => isFullscreen ? FullscreenToggle.Exit : videoActive ? FullscreenToggle.Enter : FullscreenToggle.None;
+
+        /// <summary>A search-mode flip while the user was IN the search must hand the caret to the new form: field → icon
+        /// while the field had focus, or icon → field while the flyout was open (ch 18 W4).</summary>
+        public static bool ReissueSearchFocus(MergedSearchMode old, MergedSearchMode next, bool fieldFocused, bool flyoutOpen)
+            => old != next && (old == MergedSearchMode.Field ? fieldFocused : flyoutOpen);
+
+        /// <summary>The back/forward history flyout shows at most this many rows (0.2.9 <c>HistoryMenuMax</c>).</summary>
+        public const int HistoryMenuMax = 8;
+
+        /// <summary>The history flyout's shape for a stack of <paramref name="stackCount"/> routes: how many rows, and
+        /// whether "View all history" follows. An EMPTY stack opens nothing at all (no empty menu).</summary>
+        public static (int Rows, bool HasMore) HistoryMenu(int stackCount)
+            => (Math.Clamp(stackCount, 0, HistoryMenuMax), stackCount > HistoryMenuMax);
+
+        /// <summary>Row <paramref name="row"/> of the flyout addresses this stack index — MOST RECENT FIRST.</summary>
+        public static int HistoryMenuIndex(int stackCount, int row) => stackCount - 1 - row;
+
+        /// <summary>The pin id of the destination a route shows, or null when the surface is deliberately non-pinnable. A
+        /// pin id IS a route key, so this is the route key screened through the sidebar's one recogniser.</summary>
+        public static string? PinIdFor(in Route route)
+            => route.IsNone ? null : SidebarPinId.Canonical(NameOf(route));
+
+        /// <summary>The content host's body for a route.</summary>
+        public enum BodyKind : byte
+        {
+            /// <summary>A page is registered for the kind — render it.</summary>
+            Page,
+            /// <summary>A real destination whose page has not been registered (a Wave-5 page in a Wave-4 build) — an
+            /// EMPTY body, never the not-found page: the destination exists, it just has nothing to draw yet.</summary>
+            Empty,
+            /// <summary>Nothing claims the route (a retired key, a stale tab, a developer route with developer mode off).</summary>
+            NotFound,
+        }
+
+        public static BodyKind BodyFor(in Route route, bool hasPage, bool developerMode)
+            => !IsKnown(route, developerMode) ? BodyKind.NotFound : hasPage ? BodyKind.Page : BodyKind.Empty;
+
+        /// <summary>The CLEARING half of <see cref="Ui.ActiveStagePlayable"/>: a navigation to a route no module watch page
+        /// will mount for clears a stale claim — value-gated, so an idle navigation writes nothing. Module routes are the
+        /// PAGES' to hand over (an unconditional clear could land after the incoming page's claim and erase it).</summary>
+        public static bool ClearsStagePlayable(in Route route, string currentPlayable)
+            => route.Kind != RouteKind.Module && currentPlayable.Length > 0;
+
+        /// <summary>The trailing island's identity form, from the auth fold (ch 18 W17). Never raw session status.</summary>
+        public enum ChipForm : byte { Profile, Connecting, Reconnect, SignIn }
+
+        public static ChipForm ChipFor(AuthState auth) => auth switch
+        {
+            AuthState.Live => ChipForm.Profile,
+            AuthState.Connecting => ChipForm.Connecting,
+            AuthState.Offline => ChipForm.Reconnect,
+            _ => ChipForm.SignIn,
+        };
+
+        /// <summary>The page-scale offline strip (ch 29 W9 C / W10): shown above the kept content while a stored credential
+        /// exists but the session is down. AT MOST ONE LAYER SHOUTS — the chrome's accent Reconnect is the loud one, so
+        /// the strip is caution-tinted with a standard action. A deliberate divergence: 0.2.9's banner had no call site
+        /// (ch 29 parity 46).</summary>
+        public static bool ShowsOfflineStrip(AuthState auth) => auth == AuthState.Offline;
+
+        // ── the large-display auto-zoom control loop (ch 18 W24, large-display-scaling.md §3.2) ──────────────────────
+
+        /// <summary>The zoom re-resolve waits for this much resize quiet (trailing edge). The DIP re-layout itself is
+        /// never debounced — only the zoom half is.</summary>
+        public const float ZoomAutoDebounceMs = 500f;
+
+        /// <summary>Zooms within this of each other are the same zoom (the no-op guard that actually stops re-entry).</summary>
+        public const float ZoomEpsilon = 0.004f;
+
+        public enum ZoomStepKind : byte
+        {
+            /// <summary>Touch nothing.</summary>
+            None,
+            /// <summary>Apply <see cref="ZoomDecision.Zoom"/>.</summary>
+            Apply,
+            /// <summary>Something ELSE moved the zoom while in Auto (a chord, the wheel, the palette): flip the stored mode
+            /// to Manual instead of clobbering the user's pick next tick.</summary>
+            PinManual,
+        }
+
+        /// <summary>One tick's answer plus the loop's carried state (the zoom THIS policy last applied).</summary>
+        public readonly record struct ZoomDecision(ZoomStepKind Kind, float Zoom, float LastAuto, bool Seeded);
+
+        /// <summary>The auto-zoom control loop, as a pure step. <paramref name="baseWidth"/>/<paramref name="baseHeight"/>
+        /// are the window's DIP extent AT ZOOM 1 (<c>viewportDip × Viewport.Zoom</c> — zoom-invariant by construction), so
+        /// a re-entrant tick from our own apply computes the identical suggestion and the no-op guard returns.
+        /// <para>"Someone else moved the zoom" is detected by comparing the LIVE zoom against this policy's OWN last pick,
+        /// not against the suggestion — the only way a static zoom verb with no settings reference can opt a user out of
+        /// Auto.</para></summary>
+        public static ZoomDecision AutoZoom(ZoomAutoMode mode, float baseWidth, float baseHeight, float liveZoom,
+            float lastAuto, bool seeded)
+        {
+            if (mode == ZoomAutoMode.Manual || baseWidth <= 0f || baseHeight <= 0f)
+                return new ZoomDecision(ZoomStepKind.None, liveZoom, lastAuto, seeded);
+            float suggested = ZoomAutoPolicy.Suggest(baseWidth, baseHeight, mode);
+            if (MathF.Abs(suggested - liveZoom) <= ZoomEpsilon)
+                return new ZoomDecision(ZoomStepKind.None, liveZoom, liveZoom, true);
+            if (seeded && MathF.Abs(liveZoom - lastAuto) > ZoomEpsilon)
+                return new ZoomDecision(ZoomStepKind.PinManual, liveZoom, lastAuto, seeded);
+            return new ZoomDecision(ZoomStepKind.Apply, suggested, suggested, true);
+        }
+    }
+
+    // ══ 13. THE MASTHEAD PUBLICATIONS (ch 18 W13) ═══════════════════════════════════════════════════════════════════
+    //
+    // The ONE band ("Browse › Category") is mounted once, above the keep-alive boundary; a page never renders its own
+    // copy. What a page CAN do is publish its live title and its "Show all" tool under its route. UI state, not entity
+    // data — an LRU like the nav origins.
+
+    /// <summary>What a masthead-family page publishes for itself. <see cref="ToolsAction"/> is BEHAVIOUR, not data: a
+    /// re-publish that changes only the delegate updates it silently and never re-renders the band.</summary>
+    public readonly record struct MastheadPublication(string? Title, bool ToolsVisible = false, bool ToolsLoading = false,
+        Action? ToolsAction = null);
+
+    public static class Mastheads
+    {
+        public const int Capacity = 16;
+
+        /// <summary>Bumped only when a publication's DATA changes, so the band re-renders at navigation rate.</summary>
+        public static readonly Signal<int> Version = new(0);
+
+        static readonly Dictionary<string, MastheadPublication> s_map = new(StringComparer.Ordinal);
+        static readonly List<string> s_lru = [];
+
+        static string KeyOf(in Route r) => NameOf(r) + "" + (ArgOf(r) ?? "");
+
+        /// <summary>Publish (or re-publish) a route's masthead. Returns whether the band must re-render.</summary>
+        public static bool Publish(in Route route, in MastheadPublication publication)
+        {
+            string k = KeyOf(route);
+            bool changed = !s_map.TryGetValue(k, out var old)
+                || !string.Equals(old.Title, publication.Title, StringComparison.Ordinal)
+                || old.ToolsVisible != publication.ToolsVisible
+                || old.ToolsLoading != publication.ToolsLoading;
+            s_lru.Remove(k);
+            s_lru.Add(k);
+            s_map[k] = publication;
+            while (s_map.Count > Capacity && s_lru.Count > 0)
+            {
+                s_map.Remove(s_lru[0]);
+                s_lru.RemoveAt(0);
+            }
+            if (changed) Version.Value = Version.Peek() + 1;
+            return changed;
+        }
+
+        /// <summary>Subscribing read (the band).</summary>
+        public static MastheadPublication? For(in Route route)
+        {
+            _ = Version.Value;
+            return s_map.TryGetValue(KeyOf(route), out var p) ? p : null;
+        }
+
+        /// <summary>Non-subscribing read — the "Show all" click resolves the LATEST delegate here.</summary>
+        public static MastheadPublication? Peek(in Route route) => s_map.TryGetValue(KeyOf(route), out var p) ? p : null;
+
+        internal static void Clear()
+        {
+            s_map.Clear();
+            s_lru.Clear();
+        }
+    }
+
+    // ══ 14. THE OMNIBAR'S MODEL (ch 18 W15) — the seam owner P's `Search.cs` plugs into ══════════════════════════════
+    //
+    // The omnibar is owner I's; its SUGGESTION SOURCE is owner P's (Wave 5). Until P installs <see cref="Omnibar.Source"/>
+    // the popup answers from the navigation log the CORE already has, so the field is never a dead end. Nested under
+    // `Shell` so P's own `Search.cs` types (Wave 5) cannot collide with these names.
+
+    public static class Omnibar
+    {
+        /// <summary>A rich row's kind — what it looks like and what choosing it does.</summary>
+        public enum ItemKind : byte { Track, Artist, Album, Playlist, Genre, Episode, Podcast, Audiobook, User }
+
+        /// <summary>One rich suggestion row.</summary>
+        public sealed record Item(ItemKind Kind, EntityUri Uri, string Title, string? Subtitle = null, string? ImageUrl = null);
+
+        /// <summary>One answer: the query completions, then the rich rows.</summary>
+        public sealed record Suggestions(IReadOnlyList<string> Queries, IReadOnlyList<Item> Items)
+        {
+            public static readonly Suggestions Empty = new(Array.Empty<string>(), Array.Empty<Item>());
+
+            public bool IsEmpty => Queries.Count == 0 && Items.Count == 0;
+
+            /// <summary>The inline ghost: the FIRST completion that starts with what was typed and is longer — not blindly
+            /// <c>Queries[0]</c> (<c>loff</c> ghosts <c>loffler</c> even when <c>koffie</c> ranks first).</summary>
+            public static string? GhostFor(string? typed, IReadOnlyList<string>? queries)
+            {
+                if (string.IsNullOrEmpty(typed) || queries is null) return null;
+                for (int i = 0; i < queries.Count; i++)
+                {
+                    string q = queries[i];
+                    if (q.Length > typed.Length && q.StartsWith(typed, StringComparison.OrdinalIgnoreCase)) return q;
+                }
+                return null;
+            }
+        }
+
+        /// <summary>The seam: owner P's suggest request. Null ⇒ the popup answers from the navigation log
+        /// (<see cref="FromHistory"/>). Called off the UI thread's await; the omnibar posts the answer back.</summary>
+        public static Func<string, CancellationToken, Task<Suggestions>>? Source { get; set; }
+
+        /// <summary>Row caps, and the same two caps bound the keyboard cursor and the invoke.</summary>
+        public const int MaxQueryRows = 6, MaxRichRows = 10;
+
+        public static int QueryRowCount(Suggestions s) => Math.Min(MaxQueryRows, s.Queries.Count);
+        public static int RichRowCount(Suggestions s) => Math.Min(MaxRichRows, s.Items.Count);
+        public static int SelectableCount(Suggestions s) => QueryRowCount(s) + RichRowCount(s);
+
+        /// <summary>↑/↓ over the visible rows, wrapping through "none" (−1) at both ends.</summary>
+        public static int MoveHighlight(int current, int delta, int count)
+        {
+            if (count <= 0) return -1;
+            return delta > 0
+                ? (current + 1 >= count ? -1 : current + 1)
+                : (current < 0 ? count - 1 : current - 1);
+        }
+
+        /// <summary>▶ is offered for everything that can play (not a profile, not a genre).</summary>
+        public static bool CanPlay(ItemKind kind) => kind is not (ItemKind.User or ItemKind.Genre);
+
+        /// <summary>♡ is offered on a SONG row only.</summary>
+        public static bool ShowsHeart(ItemKind kind) => kind == ItemKind.Track;
+
+        /// <summary>People are circles (radius 22); everything else a 5-DIP rounded square.</summary>
+        public static bool IsCircular(ItemKind kind) => kind is ItemKind.Artist or ItemKind.User;
+
+        /// <summary>Choosing a row PLAYS it (a track, an episode) rather than navigating.</summary>
+        public static bool ChoosePlays(ItemKind kind) => kind is ItemKind.Track or ItemKind.Episode;
+
+        /// <summary>Where choosing a row navigates, or <see cref="Route.None"/> for a row that plays (or a profile, which
+        /// has no page in 0.3).</summary>
+        public static Route RouteFor(Item item) => item.Kind switch
+        {
+            ItemKind.Artist => new Route(RouteKind.Artist, item.Uri, Intern(item.Title)),
+            ItemKind.Album => new Route(RouteKind.Album, item.Uri, Intern(item.Title)),
+            ItemKind.Playlist => new Route(RouteKind.Playlist, item.Uri, Intern(item.Title)),
+            ItemKind.Podcast or ItemKind.Audiobook => new Route(RouteKind.Show, item.Uri, Intern(item.Title)),
+            ItemKind.Genre => new Route(RouteKind.BrowseCategory, item.Uri, Intern(item.Title)),
+            _ => Route.None,
+        };
+
+        /// <summary>A GENRE row carries its search-lookup origin, so its masthead reads <c>"&lt;query&gt;" › Genre</c> with
+        /// no Browse rung (ch 18 parity 74). Port the origin write with the row, not just the navigation.</summary>
+        public static NavOrigin? GenreOrigin(string? query)
+        {
+            string q = (query ?? "").Trim();
+            return q.Length == 0 ? null : new NavOrigin(q, new Route(RouteKind.Search, default, Intern(q)));
+        }
+
+        /// <summary>The answer the popup gives with no source installed: the user's own recent searches that start or
+        /// contain the typed text (newest first), then the recent ENTITY destinations whose title contains it. Distinct
+        /// by route key; capped at the row caps. Empty text answers nothing.</summary>
+        public static Suggestions FromHistory(IReadOnlyList<HistoryEntry> entries, ReadOnlySpan<char> typed)
+        {
+            var t = typed.Trim();
+            if (t.IsEmpty || entries.Count == 0) return Suggestions.Empty;
+            string needle = t.ToString();
+            var queries = new List<string>(MaxQueryRows);
+            var items = new List<Item>(MaxRichRows);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = entries.Count - 1; i >= 0; i--)
+            {
+                var r = entries[i].Route;
+                if (r.Kind == RouteKind.Search)
+                {
+                    if (queries.Count >= MaxQueryRows || ArgOf(r) is not { Length: > 0 } q) continue;
+                    if (!q.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (seen.Add("q" + q)) queries.Add(q);
+                    continue;
+                }
+                if (items.Count >= MaxRichRows) continue;
+                ItemKind? kind = r.Kind switch
+                {
+                    RouteKind.Album => ItemKind.Album,
+                    RouteKind.Playlist => ItemKind.Playlist,
+                    RouteKind.Artist => ItemKind.Artist,
+                    RouteKind.Show => ItemKind.Podcast,
+                    _ => null,
+                };
+                if (kind is not { } k || !r.Subject.IsValid) continue;
+                string title = Dest(r).Title;
+                if (!title.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
+                if (seen.Add(NameOf(r))) items.Add(new Item(k, r.Subject, title));
+            }
+            return queries.Count == 0 && items.Count == 0 ? Suggestions.Empty : new Suggestions(queries, items);
+        }
+
+        /// <summary>Where the suggestion request stands. The popup renders BY this, and only <see cref="Empty"/> may say
+        /// "No results found".</summary>
+        public enum State : byte
+        {
+            /// <summary>No query — the field is blank; the popup is closed.</summary>
+            Idle,
+            /// <summary>A query exists and its answer has not landed — including the debounce window BEFORE the request is
+            /// sent. The popup shows a progress row (plus the previous answer's rows) and no sentence.</summary>
+            Pending,
+            Results,
+            Empty,
+            /// <summary>The request did not produce an answer — a retry, never "nothing matched".</summary>
+            Failed,
+        }
+
+        /// <summary>The suggestion request lifecycle — a GENERATION-keyed state machine (0.2.9 <c>OmnibarSuggestQuery</c>,
+        /// ported verbatim). <see cref="Begin"/> runs on the UNDEBOUNCED keystroke and enters Pending at once, so "No
+        /// results found" never flashes between a keystroke and its request; an answer for any other generation is
+        /// dropped. Text equality is deliberately NOT the publish guard: a superseded response for a retyped query must
+        /// lose to the newer request even when the texts match. UI thread only.</summary>
+        public sealed class Query
+        {
+            int _generation;
+
+            public int Generation => _generation;
+            public string Text { get; private set; } = "";
+            public State State { get; private set; } = State.Idle;
+
+            /// <summary>While Pending these are the PREVIOUS answer's rows — the field does not blank on every keystroke.</summary>
+            public Suggestions Suggestions { get; private set; } = Suggestions.Empty;
+
+            public Exception? Failure { get; private set; }
+            public bool IsPending => State == State.Pending;
+
+            /// <summary>Raised synchronously after every state change.</summary>
+            public event Action? Changed;
+
+            /// <summary>The keystroke edge. Blank clears; the same trimmed text keeps the generation (an in-flight request
+            /// stays valid); anything else starts a new generation in Pending. Returns the generation the answer must
+            /// carry.</summary>
+            public int Begin(string? query)
+            {
+                string q = (query ?? "").Trim();
+                if (q.Length == 0) { Clear(); return _generation; }
+                if (q == Text && State != State.Idle) return _generation;
+                _generation++;
+                Text = q;
+                State = State.Pending;
+                Failure = null;
+                Changed?.Invoke();
+                return _generation;
+            }
+
+            /// <summary>Re-arm a FAILED query as a new pending generation; a no-op in every other state.</summary>
+            public int Retry()
+            {
+                if (State != State.Failed) return _generation;
+                _generation++;
+                State = State.Pending;
+                Failure = null;
+                Changed?.Invoke();
+                return _generation;
+            }
+
+            /// <summary>Publish an answer for <paramref name="generation"/>; false (nothing changes) when superseded.</summary>
+            public bool Complete(int generation, Suggestions suggestions)
+            {
+                if (generation != _generation) return false;
+                Suggestions = suggestions;
+                State = suggestions.IsEmpty ? State.Empty : State.Results;
+                Failure = null;
+                Changed?.Invoke();
+                return true;
+            }
+
+            /// <summary>Publish a failure. False for a superseded generation AND for a cancellation of the current one —
+            /// cancellation is not an answer (whoever cancelled moved on or is tearing the field down).</summary>
+            public bool Fail(int generation, Exception failure)
+            {
+                if (generation != _generation || failure is OperationCanceledException) return false;
+                Suggestions = Suggestions.Empty;
+                State = State.Failed;
+                Failure = failure;
+                Changed?.Invoke();
+                return true;
+            }
+
+            /// <summary>Back to Idle (NOT Empty: a blank field has no answer). Advances the generation so a late answer for
+            /// the cleared query is dropped.</summary>
+            public void Clear()
+            {
+                if (State == State.Idle) return;
+                _generation++;
+                Text = "";
+                State = State.Idle;
+                Suggestions = Suggestions.Empty;
+                Failure = null;
+                Changed?.Invoke();
+            }
         }
     }
 }
