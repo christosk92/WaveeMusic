@@ -528,7 +528,8 @@ public static partial class Shell
             NowPlayingText.Title => title,
             NowPlayingText.NothingPlaying => Loc.Get(Strings.Player.NothingPlaying),
             NowPlayingText.Reconnecting => Loc.Get(Strings.Player.Reconnecting),
-            NowPlayingText.CannotPlay => Loc.Get(Strings.Player.CannotPlay),
+            // G-212: the reason on the model, not one fixed sentence for every fault.
+            NowPlayingText.CannotPlay => Loc.Get(PlayerBarRules.FaultTitleKey(Playback.Error.Value)),
             _ => Loc.Get(Strings.Player.Loading),
         };
     }
@@ -642,16 +643,29 @@ public static partial class Shell
         if (tracks.Length == 0) return;
         Playback.ToUi(() =>
         {
-            if (Actions.Services.PlayNext is not { } playNext) return;
+            // G-211: nothing must answer with silence — a drop with no queue seam behind it still tells the user why,
+            // instead of the drag simply evaporating.
+            if (Actions.Services.PlayNext is not { } playNext)
+            {
+                Notify.Say(Loc.Get(Strings.Detail.QueueUnavailable), InfoBarSeverity.Warning);
+                return;
+            }
+            // The batch cap: take the FIRST MaxPlayNextDrop tracks of the drop (in drop order), still front-inserted
+            // last-first so the kept prefix plays in the order it was dropped.
+            int cap = PlayerBarRules.DropInsertCount(tracks.Length);
             int n = 0;
-            for (int i = tracks.Length - 1; i >= 0; i--)
+            for (int i = cap - 1; i >= 0; i--)
             {
                 if (!tracks[i].IsValid) continue;
                 playNext(tracks[i].Uri);
                 n++;
             }
-            if (n > 0)
-                Notify.Say(Strings.Detail.AddedToQueue(Strings.Detail.SongCount(n)), InfoBarSeverity.Success);
+            if (n == 0) return;
+            bool truncated = PlayerBarRules.DropWasTruncated(tracks.Length);
+            Notify.Say(truncated
+                    ? Strings.Detail.AddedFirstToQueue(Strings.Detail.SongCount(n))
+                    : Strings.Detail.AddedToQueue(Strings.Detail.SongCount(n)),
+                InfoBarSeverity.Success);
         });
     }
 
@@ -1045,8 +1059,9 @@ public static partial class Shell
     }
 
     /// <summary>One picker, two anchors (the Devices button, the "Playing on" line): upward, right-aligned to the
-    /// anchor, light-dismiss, focus trap. The menu caps its own height (the engine's MenuFlyout scrolls past 468 DIP),
-    /// which closes 0.2.9's uncapped-roster trap (ch 20 §9, parity 81).</summary>
+    /// anchor, light-dismiss, focus trap. The menu caps its own scroll height at <see cref="DeviceRoster.PickerMaxHeight"/>
+    /// (window height − 96 DIP, G-210) rather than trusting the engine's own fixed 468-DIP <c>MenuFlyout</c> cap, which
+    /// closes 0.2.9's uncapped-roster trap (ch 20 §9, parity 81) even on a short/undocked window.</summary>
     static void BarToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
     {
         if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
@@ -1072,6 +1087,7 @@ public static partial class Shell
             var local = Playback.Audio.Devices.Value;
             string? selected = Playback.Audio.SelectedOutputId.Value;
             bool supported = Playback.Audio.Supported.Value;
+            float windowH = UseContextSignal(Viewport.Size).Value.Height;
 
             var connect = Playback.Devices.Rows;
             int remote = DeviceRoster.RemoteSlot(owner, activeSlot, connect);
@@ -1081,11 +1097,17 @@ public static partial class Shell
             var items = new MenuFlyoutItem[rows.Count];
             for (int i = 0; i < rows.Count; i++) items[i] = MapDeviceRow(rows[i]);
 
-            int version = HashCode.Combine(roster, (byte)owner, activeSlot, local.Length, selected, supported);
+            // G-210: a dozen Connect devices must scroll well before the window edge, not just the engine's own fixed
+            // 468-DIP cap — a short/undocked window is smaller than that.
+            float maxH = DeviceRoster.PickerMaxHeight(windowH);
+            var parts = new TemplateParts();
+            parts.Set<ScrollEl>(MenuFlyout.PartScrollViewer, s => s with { MaxHeight = maxH });
+
+            int version = HashCode.Combine(roster, (byte)owner, activeSlot, local.Length, selected, supported, maxH);
             return new BoxEl
             {
                 Direction = 1,
-                Children = [MenuFlyout.Create(items, _close) with { Key = "devices:" + version }],
+                Children = [MenuFlyout.Create(items, _close, parts: parts) with { Key = "devices:" + version }],
             };
         }
 

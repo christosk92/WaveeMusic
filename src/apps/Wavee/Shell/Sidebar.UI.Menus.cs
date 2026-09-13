@@ -22,6 +22,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
+using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -280,7 +281,7 @@ public static partial class Sidebar
             rows.Add(MenuFlyoutItem.Separator);
             Actions.Menu.Group(rows, Actions.Menu.Organize(organize, MoveOutRow(in e), PinRow(in e)));
             rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.renameFolder"), ActionIcons.Resolve(ActionIcons.Rename),
-                writes?.RenameFolder is not null && folderId.Length > 0, () => LibraryWrites?.RenameFolder?.Invoke(folderId, name)));
+                writes?.RenameFolder is not null && folderId.Length > 0, () => PromptRenameFolder(folderId, name)));
             rows.Add(MenuFlyoutItem.Separator);
             rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.deleteFolder"), ActionIcons.Resolve(ActionIcons.Delete),
                 writes?.DeleteFolder is not null && folderId.Length > 0,
@@ -334,10 +335,12 @@ public static partial class Sidebar
             return new ContextMenuModel(rows, Actions.Menu.Header(null, name, null));
         }
 
-        /// <summary>A feed TRACK row: the track grammar as plain rows; never pinnable, never an Open row.</summary>
+        /// <summary>A feed TRACK row: the track grammar as plain rows; never pinnable, never an Open row. An EPISODE row
+        /// (the queue / now-playing feeds emit both, G-173) has no track verbs to offer — building a track target over an
+        /// episode id would allocate a Track row for it — so it opens no menu until the episode grammar lands.</summary>
         ContextMenuModel? TrackModel(ActionServices s, in SidebarLibraryEntry e)
         {
-            if (!EntityId.TryParse(e.Uri, out var id)) return null;
+            if (!EntityId.TryParse(e.Uri, out var id) || id.Kind != EntityKind.Track) return null;
             var ctx = new ActionContext(ActionTarget.ForTracks([Entities.Track(id)]), s);
             var rows = new List<MenuFlyoutItem>(10);
             Actions.Menu.AddRows(rows, in ctx, [ActionId.Play, ActionId.PlayNext, ActionId.AddToQueue, ActionId.ToggleLike,
@@ -567,10 +570,29 @@ public static partial class Sidebar
             });
         }
 
-        /// <summary>The folder row "+"'s plain click: a new playlist inside that folder, navigated to.</summary>
+        /// <summary>The folder row "+"'s plain click: a new playlist inside that folder, navigated to — or, with no create
+        /// seam, the refusal sentence (G-170: this was a silent <c>?.Invoke</c>).</summary>
         internal void NewPlaylistInFolder(string folderId)
         {
-            if (folderId.Length > 0) LibraryWrites?.CreatePlaylist?.Invoke(folderId, true);
+            if (folderId.Length == 0) return;
+            if (LibraryWrites?.CreatePlaylist is { } create) create(folderId, true);
+            else RefuseWrite("new playlist in folder");
+        }
+
+        /// <summary>"Rename folder" / F2 on a folder (G-171, 0.2.9 <c>FolderActions.Rename</c>): the shared single-field
+        /// prompt, seeded with the current name; the seam receives the NEW name, and only a real change
+        /// (<see cref="SidebarFolderRename.Commit"/>) — the group id is untouched, so expansion and pins ride through.
+        /// Re-reads the seam at commit: the dialog outlives the menu that opened it.</summary>
+        internal void PromptRenameFolder(string folderId, string currentName)
+        {
+            if (folderId.Length == 0) return;
+            if (LibraryWrites?.RenameFolder is null) { RefuseWrite("rename folder"); return; }
+            Controls.Prompt(MenuOverlay, Loc.Get("sidebar.renameFolder"), Loc.Get("menu.rename"), currentName, typed =>
+            {
+                if (SidebarFolderRename.Commit(typed, currentName) is not { } next) return;
+                if (LibraryWrites?.RenameFolder is { } rename) rename(folderId, next);
+                else RefuseWrite("rename folder");
+            });
         }
 
         /// <summary>[New playlist in this folder · New folder inside] — the folder row "+".</summary>
@@ -594,7 +616,7 @@ public static partial class Sidebar
             {
                 if (entry.FolderId.Length == 0 || LibraryWrites?.RenameFolder is null) return null;
                 string folderId = entry.FolderId, name = entry.Name;
-                return () => LibraryWrites?.RenameFolder?.Invoke(folderId, name);
+                return () => PromptRenameFolder(folderId, name);
             }
             if (entry.Kind != SidebarEntryKind.Playlist || !entry.IsOwner || entry.Uri.Length == 0) return null;
             if (AppActions.Find(ActionId.RenamePlaylist) is not { } rename || Acts is not { } s) return null;
@@ -660,13 +682,22 @@ public static partial class Sidebar
             ISidebarEditHost host = Edit;
             host.Select(sectionId);
             _optionsSection = sectionId;
+            Action closeIfStillThis = () => CloseSectionOptions(sectionId);
             _optionsPopover = MenuOverlay.Open(anchor,
                 () => new BoxEl
                 {
                     Direction = 1, Width = 320f, Height = 520f, MinHeight = 0f, ClipToBounds = true,
                     // Keyed by the subject: the panel's rows freeze their section at mount, so a popover reopened on
                     // another card must remount the whole surface.
-                    Children = [PropertyPanel(host, "sidebar.section.props") with { Key = "sec-props:" + sectionId }],
+                    Children =
+                    [
+                        PropertyPanel(host, "sidebar.section.props") with { Key = "sec-props:" + sectionId },
+                        // The subject watch: "Remove section" inside the panel clears the subject, and a remove or undo
+                        // elsewhere drops the section — either way the popover closes instead of idling on
+                        // "Select a section…" (G-184).
+                        Embed.Comp(() => new OptionsSubjectWatch(host.Selected, sectionId, closeIfStillThis))
+                            with { Key = "sec-props-watch:" + sectionId },
+                    ],
                 },
                 FlyoutPlacement.RightEdgeAlignedTop,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
@@ -677,6 +708,35 @@ public static partial class Sidebar
                 if (string.Equals(host.Selected.Peek(), sectionId, StringComparison.Ordinal)) host.Select(null);
                 if (string.Equals(_optionsSection, sectionId, StringComparison.Ordinal)) _optionsSection = null;
             };
+        }
+
+        /// <summary>Close the options popover — only while it is still open on <paramref name="sectionId"/>, so a watch
+        /// left over from a popover already replaced by another card's can never close the new one.</summary>
+        void CloseSectionOptions(string sectionId)
+        {
+            if (_optionsPopover is { IsOpen: true } open && string.Equals(_optionsSection, sectionId, StringComparison.Ordinal))
+                open.Close();
+        }
+
+        /// <summary>The popover's zero-size subject watch. One signal effect over the edit session's subject and the
+        /// document version; the decision is <see cref="SidebarEditPlan.OptionsSubjectGone"/>. Props are frozen at mount,
+        /// which is exactly right: a popover is opened fresh, and keyed, per subject.</summary>
+        sealed class OptionsSubjectWatch(Signal<string?> selected, string subject, Action close) : Component
+        {
+            Action? _watch;
+
+            public override Element Render()
+            {
+                UseSignalEffect(_watch ??= Watch);
+                return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+            }
+
+            void Watch()
+            {
+                string? current = selected.Value;
+                _ = LayoutVersion.Value;
+                if (SidebarEditPlan.OptionsSubjectGone(current, subject, Layout.Find(subject) is not null)) close();
+            }
         }
 
         // ══ THE BOUND ACTION ROW (ch 26 W22) ═══════════════════════════════════════════════════════════════════════

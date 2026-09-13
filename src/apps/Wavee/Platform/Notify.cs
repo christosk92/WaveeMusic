@@ -1219,6 +1219,35 @@ public static partial class Notify
             ? runningVersion ?? ""
             : snapshot.TargetSemVer is { Length: > 0 } semver ? semver : AppUpdateVersion.ReleaseTagVersion(snapshot.TargetQuad);
 
+    // ══ 13. TOAST TAG HYGIENE (G-091) ═══════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Windows toast tag/group values are capped at 64 characters; a longer one is SILENTLY DROPPED — the
+    /// banner never raises and nothing throws. <c>"live:" + n.Id</c> and <c>"drop:" + preReleaseUri</c> both build the
+    /// tag from a server id with no length guarantee, so any prefix+id pair long enough to blow the budget folds to a
+    /// short stable hash of the id instead of the id itself — truncation would lose the very uniqueness the tag exists
+    /// for, one character before it saved any length.</summary>
+    public static class TagIds
+    {
+        public const int MaxLength = 64;
+
+        /// <summary>How many hex characters of the id's hash to keep — comfortably unique for a process's live-toast
+        /// set, and short enough that even the longest prefix this file uses stays under <see cref="MaxLength"/>.</summary>
+        const int HashHexChars = 16;
+
+        public static string Clamp(string prefix, string id)
+        {
+            string tag = prefix + id;
+            return tag.Length <= MaxLength ? tag : prefix + Hash(id);
+        }
+
+        static string Hash(string id)
+        {
+            Span<byte> digest = stackalloc byte[32];
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(id), digest);
+            return Convert.ToHexStringLower(digest[..(HashHexChars / 2)]);
+        }
+    }
+
     // The SHELL seam (Notify.Host.cs). Erased when that file is absent, so a unit test rebuilds the feed with no
     // WinRT, no AUMID and no toast at all.
     static partial void HostConsider(in Feed feed);

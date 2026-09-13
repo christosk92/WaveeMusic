@@ -51,13 +51,24 @@ public static partial class Spotify
             AudioFiles = 5,
             TrackDescriptor = 6,
             ArtistV4 = 8, AlbumV4 = 9, TrackV4 = 10, ShowV4 = 11, EpisodeV4 = 12,
+            /// <summary>The account profile a playlist owner, an added-by cell and the chip read (G-044,
+            /// Spotify.Decode.Traits.cs).</summary>
+            UserProfile = 15,
+            /// <summary>A video rendition's AUDIO counterpart (G-044, <c>Edges.TrackVersions</c>).</summary>
+            AudioAssociations = 98,
             VideoAssociations = 99,
             PreRelease = 138,
+            /// <summary>"Playlists featuring this album" (G-044, <c>Edges.AlbumRecommendations</c>).</summary>
+            RecommendedPlaylists = 151,
             VisualIdentity = 179,
             Publishing = 183,
             PlayCount = 185,
+            /// <summary>The credits block (G-044, <c>Edges.TrackCredits</c>).</summary>
+            Credits = 186,
             ListMetadataV2 = 205,
             AudioAttributes = 222,
+            /// <summary>The three-band waveform (G-044, <c>Edges.TrackWaveform</c>).</summary>
+            Waveforms = 237,
         }
 
         /// <summary>THE protobuf parser for this app's read path: a cursor over one frame, a field-number switch, and
@@ -506,6 +517,13 @@ public static partial class Spotify
                         row.CanonicalUri = Identity(s, r.Bytes());
                         row.Known |= (uint)TrackFields.Canonical;
                         break;
+                    case 38:                                           // original_video[] { gid = 1 }
+                        // THE MANIFEST ID (G-056): the FIRST rendition's gid, as the lowercase hex
+                        // `/manifests/v9/json/sources/{id}` is addressed by. Present on a self-contained music-video
+                        // track; a linked-uri track has none and resolves through its counterpart (TrackTable.VideoGid).
+                        if (row.VideoGid.IsEmpty) row.VideoGid = Hex(s, r.Message().Bytes(1));
+                        else r.Skip();
+                        break;
                     default: r.Skip(); break;
                 }
             }
@@ -915,6 +933,12 @@ public static partial class Spotify
                 case Ext.VideoAssociations: VideoAssociations(payload, entityUri, s); break;
                 case Ext.VisualIdentity: VisualIdentity(payload, s); break;
                 case Ext.PreRelease: PreRelease(payload, entityUri, s); break;
+                // G-044: the five kinds the Api asked for and this dispatch used to drop (Spotify.Decode.Traits.cs).
+                case Ext.UserProfile: UserProfile(payload, entityUri, s); break;
+                case Ext.Credits: Credits(payload, entityUri, s); break;
+                case Ext.RecommendedPlaylists: RecommendedPlaylists(payload, entityUri, s); break;
+                case Ext.AudioAssociations: AudioAssociations(payload, entityUri, s); break;
+                case Ext.Waveforms: Waveform(payload, entityUri, s); break;
                 default: break;
             }
         }
@@ -1214,6 +1238,9 @@ public static partial class Spotify
             var r = new ProtoReader(proto);
             StagedId video = default;
             TextRef still = default;
+            int files = 0;
+            long bestArea = 0;
+            ushort width = 0, height = 0;
 
             while (r.Next())
             {
@@ -1222,14 +1249,33 @@ public static partial class Spotify
                 while (a.Next())
                 {
                     if (a.Field == 1) video = Identity(s, a.Bytes());         // associated_uri
-                    else if (a.Field == 2)                                    // files { file[] { file_id } }
+                    else if (a.Field == 2)                                    // files { file[] { file_id, variant, w, h } }
                     {
-                        var files = a.Message();
-                        while (files.Next())
+                        var group = a.Message();
+                        while (group.Next())
                         {
-                            if (files.Field != 1) { files.Skip(); continue; }
-                            var fileId = files.Message().Bytes(1);
-                            if (!fileId.IsEmpty && still.IsEmpty) still = Image(s, fileId);
+                            if (group.Field != 1) { group.Skip(); continue; }
+                            var file = group.Message();
+                            ReadOnlySpan<byte> fileId = default;
+                            int w = 0, h = 0;
+                            while (file.Next())
+                            {
+                                if (file.Field == 1) fileId = file.Bytes();
+                                else if (file.Field == 3) w = file.Int32();
+                                else if (file.Field == 4) h = file.Int32();
+                                else file.Skip();
+                            }
+                            if (fileId.IsEmpty) continue;
+                            files++;
+                            if (still.IsEmpty) still = Image(s, fileId);
+                            // The natural size (G-058) is the LARGEST rendition's: the cap and the PiP fit want the
+                            // shape, and every variant of one video shares it — the largest is simply the best-stated.
+                            if (w > 0 && h > 0 && w <= ushort.MaxValue && h <= ushort.MaxValue && (long)w * h > bestArea)
+                            {
+                                bestArea = (long)w * h;
+                                width = (ushort)w;
+                                height = (ushort)h;
+                            }
                         }
                     }
                     else a.Skip();
@@ -1239,7 +1285,12 @@ public static partial class Spotify
             ref var row = ref s.Tracks.RowFor(id, Authority.Full, (uint)TrackFields.Video);
             row.VideoUri = video;
             row.VideoImage = still;
-            if (!video.IsEmpty) row.Flags |= (uint)TrackFlags.HasVideo;
+            row.VideoW = width;
+            row.VideoH = height;
+            // THE VERDICT IS 0.2.9'S (G-057): a video exists when the association names a counterpart OR carries renditions
+            // of its own. A self-contained music-video track answers with files and no `associated_uri`, and reading only
+            // the counterpart hid the film lane for exactly the tracks that ARE videos.
+            if (!video.IsEmpty || files > 0) row.Flags |= (uint)TrackFlags.HasVideo;
         }
 
         /// <summary>Kind 179 → the palette, keyed by the IMAGE the payload names and never by the entity uri. That
@@ -1468,7 +1519,7 @@ public static partial class Spotify
                 while (a.Next())
                 {
                     if (a.Field == 1) edge.Aux = UserUri(s, a.Bytes());       // added_by (a username, not a uri)
-                    else if (a.Field == 2) edge.At = AtMost((long)a.Varint()); // timestamp, unix SECONDS on this wire
+                    else if (a.Field == 2) edge.At = Instant((long)a.Varint()); // timestamp: ms (recents) or s — Instant reads both
                     else if (a.Field == 11) Chart(a.Message(), ref edge);
                     else if (a.Field == 12) edge.Text = Hex(s, a.Bytes());    // item_id — the reconciler key
                     else a.Skip();
@@ -1560,6 +1611,9 @@ public static partial class Spotify
             public StagedId Uri;
             /// <summary>The suffix of a <c>content_type_*</c> key ("music", "podcasts"): the filter chips' axis.</summary>
             public RecentsContentType ContentType;
+            /// <summary>The suffix VERBATIM when <see cref="ContentType"/> could not name it (G-060, ch 16 §8: "the wire
+            /// token IS the label") — empty for a token the byte already carries, so a known token costs no text.</summary>
+            public TextRef RawContentType;
             public long PlayedAtMs;
             /// <summary>The header's declared child count — never <c>child_uri.Count</c>, which the server truncates.</summary>
             public int ChildCount;
@@ -1579,6 +1633,8 @@ public static partial class Spotify
             public TextRef ItemId;
             public StagedId Uri;
             public RecentsContentType ContentType;
+            /// <inheritdoc cref="RecentsItem.RawContentType"/>
+            public TextRef RawContentType;
             public long PlayedAtMs;
             public int ChildCount;
             public RecentsReason Reason;
@@ -1623,13 +1679,13 @@ public static partial class Spotify
                 while (a.Next())
                 {
                     if (a.Field == 2) item.PlayedAtMs = (long)a.Varint();
-                    else if (a.Field == 11) FormatAttribute(a.Message(), ref item);
+                    else if (a.Field == 11) FormatAttribute(a.Message(), s, ref item);
                     else if (a.Field == 12) item.ItemId = Hex(s, a.Bytes());
                     else a.Skip();
                 }
             }
 
-            static void FormatAttribute(ProtoReader attribute, ref RecentsItem item)
+            static void FormatAttribute(ProtoReader attribute, Staging s, ref RecentsItem item)
             {
                 attribute.Fields(1, 2, out var key, out var value);
                 if (key.IsEmpty) return;
@@ -1657,6 +1713,7 @@ public static partial class Spotify
                     item.ContentType = Is(suffix, "music") ? RecentsContentType.Music
                                      : Is(suffix, "podcasts") ? RecentsContentType.Podcasts
                                      : RecentsContentType.None;
+                    if (item.ContentType == RecentsContentType.None && !suffix.IsEmpty) item.RawContentType = s.AddText(suffix);
                 }
             }
 
@@ -1710,6 +1767,7 @@ public static partial class Spotify
                 row.ItemId = item.ItemId;
                 row.Uri = item.Uri;
                 row.ContentType = item.ContentType;
+                row.RawContentType = item.RawContentType;
                 row.PlayedAtMs = item.PlayedAtMs;
                 row.ChildCount = childCount;
                 row.Reason = item.Reason;

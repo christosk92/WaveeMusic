@@ -1128,10 +1128,15 @@ public static partial class Notify
     ///
     /// <para>The MESSAGE is a resolved localized string, never an interpolation built at the call site for a toast that
     /// may be deduped away: the engine keys de-duplication on <paramref name="dedupeKey"/> ?? the message, so several
-    /// lanes raising one card for one event pass a shared key rather than hoping their sentences match.</para></summary>
+    /// lanes raising one card for one event pass a shared key rather than hoping their sentences match.</para>
+    /// <para>D29: <paramref name="title"/> and <paramref name="customContent"/> pass straight through to
+    /// <see cref="ToastOptions"/> — this is what let the update-lifecycle card (owner-I's progress bar, ch 19 §0 #11)
+    /// move off a bare <see cref="Toast.Show"/> call and back through the ONE announce-rule door. Custom content still
+    /// gets the severity/action/dedupe treatment; it only replaces the standard title/message body.</para></summary>
     public static ToastHandle Say(string message, InfoBarSeverity severity = InfoBarSeverity.Informational,
                                   string? actionLabel = null, Action? onAction = null,
-                                  string? dedupeKey = null, float durationMs = 5000f)
+                                  string? dedupeKey = null, float durationMs = 5000f,
+                                  string? title = null, Func<Element>? customContent = null)
     {
         bool hasAction = actionLabel is { Length: > 0 } && onAction is not null;
         bool assertive = severity is InfoBarSeverity.Error or InfoBarSeverity.Warning;
@@ -1140,10 +1145,12 @@ public static partial class Notify
         return Toast.Show(message, new ToastOptions
         {
             Severity = severity,
+            Title = title,
             ActionLabel = hasAction ? actionLabel : null,
             OnAction = hasAction ? onAction : null,
             DedupeKey = dedupeKey,
             DurationMs = durationMs,
+            CustomContent = customContent,
         });
     }
 }

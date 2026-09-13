@@ -8,9 +8,9 @@
 //
 // Every layout-store fact opens its own fresh temp directory under Path.GetTempPath() and deletes it in Dispose();
 // nothing here ever reads, writes or deletes anything under Platform.LocalFolder, %LOCALAPPDATA%\Wavee or the
-// registry. The one path-composition fact (DefaultPath) asserts the STRING only, against the documented
-// "%LOCALAPPDATA%\Wavee\sidebar-layout.json" contract — it never calls Platform.LocalFolder (whose getter creates
-// the real directory as a side effect) and never touches the file itself.
+// registry. The one path-composition fact asserts `SidebarLayoutStore.PathUnder` — the "<profile>\WaveeMusic\
+// sidebar-layout.json" contract (decision D8, 0.2.9's path) — and never calls Platform.LocalFolder (whose getter
+// creates the real directory as a side effect).
 //
 // Regions, in file order:
 //   SidebarLayoutStoreTests              — file I/O: first run, atomic write + ONE rotated .bak, corruption
@@ -419,15 +419,29 @@ public class SidebarLayoutStoreTests : IDisposable
     // ── paths ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void DefaultPath_sits_beside_store_json_in_the_wavee_local_folder()
+    public void The_document_lives_under_WaveeMusic_beside_history_json_as_it_did_in_0_2_9()
     {
-        // Composed as a STRING only — this never calls Platform.LocalFolder (its getter creates the real directory)
-        // and never reads or writes the real file. "Wavee" is Platform.Host.cs's own Publisher constant; 0.3 dropped
-        // 0.2.9's extra "WaveeMusic" segment (the file now sits directly beside store.json).
-        string expected = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Wavee", "sidebar-layout.json");
-        Assert.Equal(expected, SidebarLayoutStore.DefaultPath());
+        // Decision D8 / G-175: 0.2.9's own path, so an upgrader keeps their layout, pins, V3 order and expanded folders.
+        // Composed through the pure half only — DefaultPath() reads Platform.LocalFolder, whose getter creates the real
+        // profile directory, which no test may do.
+        string root = Path.Combine(_dir, "profile");
+        Assert.Equal(Path.Combine(root, "WaveeMusic", "sidebar-layout.json"), SidebarLayoutStore.PathUnder(root));
+        Assert.Equal(Path.GetDirectoryName(Path.Combine(root, "WaveeMusic", "history.json")),
+                     Path.GetDirectoryName(SidebarLayoutStore.PathUnder(root)));
+        Assert.False(Directory.Exists(root));                 // composing a path creates nothing
+    }
+
+    [Fact]
+    public void FlushNow_lands_the_debounced_write_before_the_window_would_have_elapsed()
+    {
+        // G-176's store fact: Commit only arms the 300 ms debounce, so a process that exits right after an edit
+        // loses it; FlushNow fires the armed write immediately and WaitForWrites is the exit tail's bounded drain.
+        var store = Store();
+        store.Commit(DocWith("sec_last_edit"));
+        Assert.False(File.Exists(_path));                     // armed, not written
+        store.FlushNow();
+        Assert.True(store.WaitForWrites(10_000), "the flushed write did not land");
+        Assert.Equal(new[] { "sec_last_edit" }, SectionIdsOf(store.Load().Doc!));
     }
 
     [Fact]

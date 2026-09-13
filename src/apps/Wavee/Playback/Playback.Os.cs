@@ -122,6 +122,7 @@ public static partial class Playback
             Taskbar.OnStateChanged(in s);
             JumpList.OnStateChanged(in s);
             PowerPolicy.OnStateChanged(in s);
+            Tray.Host.Publish(in s);   // the fifth sink, the notification-area icon (Platform/Tray.Host.cs; edge-deduped there)
             // ONE seam by design (`Playback.Host`'s §"seams to owner H"): a card refresh and a timeline tick arrive
             // the same way and the BRIDGES decide the cost, because each owns its own latch and its own bail-out.
             PublishPosition(in s);

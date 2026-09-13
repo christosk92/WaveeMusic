@@ -424,6 +424,206 @@ public class PkceTests
     }
 }
 
+/// <summary>G-030 — the interactive sign-in's wire decisions (`Spotify.OAuth`), pinned against the shapes RFC 6749 / 7636 /
+/// 8628 define and 0.2.9's `DeviceCodeFlowTests` drove: the authorize url, the loopback redirect, the token endpoint's
+/// answers and the device-grant poll ladder. No socket, no clock.</summary>
+public class OAuthTests
+{
+    const string State = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+
+    static byte[] Utf8(string s) => System.Text.Encoding.UTF8.GetBytes(s);
+
+    [Fact]
+    public void The_authorize_url_carries_the_pkce_challenge_the_state_and_the_loopback_redirect()
+    {
+        string redirect = Spotify.OAuth.RedirectUri(53117);
+        Assert.Equal("http://127.0.0.1:53117/login", redirect);
+
+        string url = Spotify.OAuth.AuthorizeUrl("client-id", redirect, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", State);
+        Assert.StartsWith("https://accounts.spotify.com/authorize?client_id=client-id&response_type=code", url);
+        Assert.Contains("&redirect_uri=http%3A%2F%2F127.0.0.1%3A53117%2Flogin", url);
+        Assert.Contains("&code_challenge_method=S256&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", url);
+        Assert.Contains("&state=" + State, url);
+        Assert.Contains("&scope=streaming%20", url);
+    }
+
+    [Fact]
+    public void The_form_bodies_are_url_encoded()
+    {
+        Assert.Equal("grant_type=authorization_code&code=a%2Fb&redirect_uri=http%3A%2F%2F127.0.0.1%3A1%2Flogin&client_id=c&code_verifier=v",
+            Spotify.OAuth.CodeExchangeForm("a/b", "http://127.0.0.1:1/login", "c", "v"));
+        Assert.Equal("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&device_code=DC&client_id=c",
+            Spotify.OAuth.DevicePollForm("DC", "c"));
+        Assert.StartsWith("client_id=c&scope=streaming%20", Spotify.OAuth.DeviceAuthorizeForm("c"));
+    }
+
+    [Fact]
+    public void The_request_target_is_the_get_line_or_nothing()
+    {
+        Assert.Equal("/login?code=x&state=y",
+            System.Text.Encoding.ASCII.GetString(Spotify.OAuth.RequestTarget(Utf8("GET /login?code=x&state=y HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"))));
+        Assert.True(Spotify.OAuth.RequestTarget(Utf8("")).IsEmpty);                       // a pre-connect that said nothing
+        Assert.True(Spotify.OAuth.RequestTarget(Utf8("GET /login?code=x")).IsEmpty);      // no end of line yet
+        Assert.True(Spotify.OAuth.RequestTarget(Utf8("POST /login HTTP/1.1\r\n")).IsEmpty);
+    }
+
+    [Fact]
+    public void A_redirect_with_our_state_yields_the_unescaped_code()
+    {
+        var outcome = Spotify.OAuth.ParseRedirect(Utf8("/login?code=AQ%2Bb_c-d&state=" + State), State, out string code);
+        Assert.Equal(Spotify.OAuth.Redirect.Code, outcome);
+        Assert.Equal("AQ+b_c-d", code);
+    }
+
+    [Fact]
+    public void A_redirect_is_believed_only_with_our_state()
+    {
+        Assert.Equal(Spotify.OAuth.Redirect.StateMismatch, Spotify.OAuth.ParseRedirect(Utf8("/login?code=abc&state=other"), State, out _));
+        Assert.Equal(Spotify.OAuth.Redirect.StateMismatch, Spotify.OAuth.ParseRedirect(Utf8("/login?code=abc"), State, out _));
+        // A refusal carrying somebody else's state is not this sign-in's refusal either.
+        Assert.Equal(Spotify.OAuth.Redirect.StateMismatch, Spotify.OAuth.ParseRedirect(Utf8("/login?error=access_denied&state=x"), State, out _));
+    }
+
+    [Fact]
+    public void A_refusal_a_stray_path_and_an_empty_answer_are_told_apart()
+    {
+        Assert.Equal(Spotify.OAuth.Redirect.Denied, Spotify.OAuth.ParseRedirect(Utf8("/login?error=access_denied&state=" + State), State, out string code));
+        Assert.Equal("", code);
+        Assert.Equal(Spotify.OAuth.Redirect.NotOurs, Spotify.OAuth.ParseRedirect(Utf8("/favicon.ico"), State, out _));
+        Assert.Equal(Spotify.OAuth.Redirect.Incomplete, Spotify.OAuth.ParseRedirect(Utf8("/login?state=" + State), State, out _));
+    }
+
+    [Fact]
+    public void A_token_answer_yields_the_access_token_and_its_lifetime()
+    {
+        var answer = Spotify.OAuth.ParseToken(200, Utf8("""{"access_token":"AT","token_type":"Bearer","expires_in":3599,"refresh_token":"RT","scope":"streaming"}"""),
+            out string token, out int expires);
+        Assert.Equal(Spotify.OAuth.TokenAnswer.Token, answer);
+        Assert.Equal("AT", token);
+        Assert.Equal(3599, expires);
+    }
+
+    [Theory]
+    [InlineData(400, """{"error":"authorization_pending"}""", Spotify.OAuth.TokenAnswer.Pending)]
+    [InlineData(400, """{"error":"slow_down"}""", Spotify.OAuth.TokenAnswer.SlowDown)]
+    [InlineData(400, """{"error":"expired_token"}""", Spotify.OAuth.TokenAnswer.Expired)]
+    [InlineData(400, """{"error":"access_denied"}""", Spotify.OAuth.TokenAnswer.Denied)]
+    [InlineData(400, """{"error":"invalid_grant","error_description":"Invalid authorization code"}""", Spotify.OAuth.TokenAnswer.Refused)]
+    [InlineData(500, """{"error":"server_error"}""", Spotify.OAuth.TokenAnswer.Transient)]
+    [InlineData(502, "<html>Bad Gateway</html>", Spotify.OAuth.TokenAnswer.Transient)]
+    [InlineData(200, "", Spotify.OAuth.TokenAnswer.Transient)]
+    [InlineData(200, """{"token_type":"Bearer"}""", Spotify.OAuth.TokenAnswer.Transient)]
+    public void Every_other_token_answer_folds_to_its_rung(int status, string body, Spotify.OAuth.TokenAnswer expected)
+    {
+        Assert.Equal(expected, Spotify.OAuth.ParseToken(status, Utf8(body), out string token, out _));
+        Assert.Equal("", token);
+    }
+
+    [Fact]
+    public void A_device_authorization_answer_parses_and_falls_back_sensibly()
+    {
+        Assert.True(Spotify.OAuth.TryParseDeviceCode(200, Utf8("""{"device_code":"DC","user_code":"ABCD","verification_uri":"https://spotify.com/pair","verification_uri_complete":"https://spotify.com/pair?code=ABCD","expires_in":600,"interval":5}"""),
+            out var full));
+        Assert.Equal(new Spotify.OAuth.DeviceCode("DC", "ABCD", "https://spotify.com/pair", "https://spotify.com/pair?code=ABCD", 600, 5), full);
+
+        Assert.True(Spotify.OAuth.TryParseDeviceCode(200, Utf8("""{"device_code":"DC","user_code":"WXYZ","verification_uri":"https:\/\/spotify.com\/pair","expires_in":300}"""),
+            out var bare));
+        Assert.Equal("https://spotify.com/pair", bare.VerificationUriComplete);   // an escaped slash, and the missing complete uri
+        Assert.Equal(5, bare.IntervalSeconds);                                     // RFC 8628's default
+
+        Assert.False(Spotify.OAuth.TryParseDeviceCode(400, Utf8("""{"error":"invalid_client"}"""), out _));
+        Assert.False(Spotify.OAuth.TryParseDeviceCode(200, Utf8("""{"device_code":"DC","verification_uri":"u","expires_in":300}"""), out _));
+        Assert.False(Spotify.OAuth.TryParseDeviceCode(200, Utf8("not json"), out _));
+    }
+
+    [Fact]
+    public void The_poll_ladder_widens_only_on_slow_down_and_stops_on_a_terminal_answer()
+    {
+        Assert.Equal(10_000, Spotify.OAuth.NextPollIntervalMs(Spotify.OAuth.TokenAnswer.SlowDown, 5_000));
+        Assert.Equal(15_000, Spotify.OAuth.NextPollIntervalMs(Spotify.OAuth.TokenAnswer.SlowDown, 10_000));
+        Assert.Equal(5_000, Spotify.OAuth.NextPollIntervalMs(Spotify.OAuth.TokenAnswer.Pending, 5_000));
+        Assert.Equal(5_000, Spotify.OAuth.NextPollIntervalMs(Spotify.OAuth.TokenAnswer.Transient, 5_000));
+
+        Assert.True(Spotify.OAuth.KeepsPolling(Spotify.OAuth.TokenAnswer.Pending));
+        Assert.True(Spotify.OAuth.KeepsPolling(Spotify.OAuth.TokenAnswer.SlowDown));
+        Assert.True(Spotify.OAuth.KeepsPolling(Spotify.OAuth.TokenAnswer.Transient));   // one blip must not kill a pairing
+        Assert.False(Spotify.OAuth.KeepsPolling(Spotify.OAuth.TokenAnswer.Token));
+        Assert.False(Spotify.OAuth.KeepsPolling(Spotify.OAuth.TokenAnswer.Expired));
+        Assert.False(Spotify.OAuth.KeepsPolling(Spotify.OAuth.TokenAnswer.Denied));
+        Assert.False(Spotify.OAuth.KeepsPolling(Spotify.OAuth.TokenAnswer.Refused));
+    }
+
+    [Fact]
+    public void The_sign_in_state_moves_one_flow_at_a_time()
+    {
+        var idle = Spotify.SignInState.Idle;
+        Assert.False(idle.HasChallenge);
+        var waiting = idle.With(Spotify.SignInMethod.Browser, Spotify.SignInStage.Waiting);
+        Assert.Equal(Spotify.SignInStage.Waiting, waiting.Browser);
+        Assert.Equal(Spotify.SignInStage.Idle, waiting.Code);
+        var coded = waiting with { Code = Spotify.SignInStage.Waiting, UserCode = "ABCD" };
+        Assert.True(coded.HasChallenge);
+        var failed = coded.With(Spotify.SignInMethod.DeviceCode, Spotify.SignInStage.Failed, Spotify.SignInError.Network);
+        Assert.Equal(Spotify.SignInStage.Waiting, failed.Browser);
+        Assert.Equal(Spotify.SignInError.Network, failed.Error);
+        Assert.False(failed.HasChallenge);
+    }
+}
+
+/// <summary>G-073 — the two dealer MESSAGE topics beside the cluster: the inbound volume (its `SetVolumeCommand` read the way
+/// 0.2.9 read it, and the body our own `Connect.VolumeBody` writes reads back) and the logout request.</summary>
+public class DealerTopicTests
+{
+    static Spotify.DealerMessage Message(string uri, byte[] scratch)
+        => Spotify.DealerFrame.Parse(System.Text.Encoding.UTF8.GetBytes("{\"type\":\"message\",\"uri\":\"" + uri + "\",\"payloads\":[]}"), scratch);
+
+    [Fact]
+    public void The_volume_and_logout_topics_are_classified_and_the_cluster_is_neither()
+    {
+        var scratch = new byte[1024];
+        var volume = Message("hm://connect-state/v1/connect/volume", scratch);
+        Assert.True(volume.IsConnectVolume);
+        Assert.False(volume.IsConnectLogout);
+        Assert.False(volume.IsClusterUpdate);
+
+        var logout = Message("hm://connect-state/v1/connect/logout", scratch);
+        Assert.True(logout.IsConnectLogout);
+        Assert.False(logout.IsConnectVolume);
+
+        var cluster = Message("hm://connect-state/v1/cluster", scratch);
+        Assert.False(cluster.IsConnectVolume);
+        Assert.False(cluster.IsConnectLogout);
+    }
+
+    [Fact]
+    public void A_set_volume_command_reads_its_volume_and_the_senders_message_id()
+    {
+        // volume 19496, command_options { message_id 300 }, logging_params {}, connection_type "wlan"
+        byte[] body = [0x08, 0xa8, 0x98, 0x01, 0x12, 0x03, 0x08, 0xac, 0x02, 0x1a, 0x00, 0x22, 0x04, (byte)'w', (byte)'l', (byte)'a', (byte)'n'];
+        Assert.True(Spotify.DealerFrame.TryReadSetVolume(body, out int volume, out uint messageId));
+        Assert.Equal(19496, volume);
+        Assert.Equal(300u, messageId);
+    }
+
+    [Fact]
+    public void The_volume_body_we_send_reads_back()
+    {
+        Span<byte> body = stackalloc byte[16];
+        int n = Spotify.Connect.VolumeBody(65535, body);
+        Assert.True(Spotify.DealerFrame.TryReadSetVolume(body[..n], out int volume, out uint messageId));
+        Assert.Equal(65535, volume);
+        Assert.Equal(0u, messageId);
+    }
+
+    [Fact]
+    public void A_body_without_a_volume_or_a_truncated_one_is_refused()
+    {
+        Assert.False(Spotify.DealerFrame.TryReadSetVolume([], out _, out _));
+        Assert.False(Spotify.DealerFrame.TryReadSetVolume([0x22, 0x04, (byte)'w', (byte)'l', (byte)'a', (byte)'n'], out _, out _));
+        Assert.False(Spotify.DealerFrame.TryReadSetVolume([0x08, 0xa8], out _, out _));   // the varint never ends
+    }
+}
+
 public class SpotifyTextTests
 {
     [Fact]

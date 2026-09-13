@@ -114,6 +114,11 @@ public enum TrackFlags : uint
     /// <summary>The USER attached a local mp4 (ch 01 GAP 7, ch 04's "user-attached local video override", ch 05 D11).
     /// Its own bit, so <c>Track.HasVideo</c> stays ONE ordinal probe over the OR of both planes.</summary>
     VideoOverride = 1 << 17,
+    /// <summary>The video source is a LIVE broadcast (ch 24 DATA GAP 1, G-058): the LIVE chip, Go live and the DVR rail,
+    /// and a re-watch that opens live-shaped before the manifest lands. Written by the VIDEO HOST when the resolving
+    /// source says so — never by a catalogue answer, which is why it is outside <see cref="VideoMask"/> and survives a
+    /// kind-99 commit. The default is "finite": a wrong guess the other way rendered a six-hour broadcast as 0:03.</summary>
+    LiveVideo = 1 << 18,
 
     // Files group (FLAC plan §5.2). The ladder itself is `Edges.TrackFormats`; these two are the cheap read every
     // surface that only wants a BADGE takes — one load and one mask, no edge walk, for a versions row or a list lane.
@@ -182,6 +187,18 @@ public sealed class TrackTable : Table
     /// derivable from the track's own gid, and without a column the app would have to re-fetch TrackV4 per track to
     /// ask one question about it. It is the one column that moved the footprint gate (FootprintGateTests).</para></summary>
     public Column<UInt128> OriginalAudio;
+    /// <summary>THE MANIFEST ID (G-056): <c>Track.original_video[0].gid</c> (metadata.proto field 38) as 32 lowercase hex
+    /// characters — what <c>/manifests/v9/json/sources/{id}</c> is addressed by. Set for a SELF-CONTAINED music-video
+    /// track; empty for a linked-uri one, whose manifest id is its video counterpart's own (the resolver's second tier:
+    /// own gid → <see cref="VideoCounterpart"/>'s gid → a TrackV4 read of the counterpart). Like
+    /// <see cref="OriginalAudio"/> it is a KEY, not a rendered value: written by whoever carries it, never cleared by
+    /// an answer that does not, and needing no authority gate. 4 B/row.</summary>
+    public Column<StringId> VideoGid;
+    /// <summary>The music video's natural size in pixels (G-058, ch 24 DATA GAP 1): the largest rendition kind 99 names.
+    /// 0 = unknown, and the cap then seeds 16:9 exactly as before — read FIRST by the docked cap and the PiP fit so a
+    /// 4:3 or vertical video does not open at the wrong shape and refit. Two bytes each, under
+    /// <see cref="TrackFields.Video"/>.</summary>
+    public Column<ushort> VideoW, VideoH;
 
     // ── authority, per column GROUP (D16) ──
     public Column<byte> IdentityAuthority, ExtrasAuthority;
@@ -209,6 +226,9 @@ public sealed class TrackTable : Table
         LocalVideo.EnsureCapacity(capacity);
         Isrc.EnsureCapacity(capacity);
         OriginalAudio.EnsureCapacity(capacity);
+        VideoGid.EnsureCapacity(capacity);
+        VideoW.EnsureCapacity(capacity);
+        VideoH.EnsureCapacity(capacity);
         IdentityAuthority.EnsureCapacity(capacity);
         ExtrasAuthority.EnsureCapacity(capacity);
     }
@@ -227,6 +247,9 @@ public sealed class TrackTable : Table
         ClearText(ref VideoImage, slot);
         ClearText(ref LocalVideo, slot);
         ClearText(ref Isrc, slot);
+        ClearText(ref VideoGid, slot);
+        VideoW[slot] = 0;
+        VideoH[slot] = 0;
         // NOT a string, and here on purpose: this hook is the row's RETIREMENT (`FreeSlot`, `ReleaseAllText`), and the
         // audio key is the one column the planner reads WITHOUT a `Known` gate — it is what it uses to decide whether a
         // row can be asked for its format ladder at all (Fetch.cs). A recycled slot that kept the previous tenant's key
@@ -312,6 +335,14 @@ public readonly partial struct Track(int slot) : IEquatable<Track>
     public Track VideoCounterpart => new(T.VideoCounterpart[Slot]);
     public StringId VideoImageId => T.VideoImage[Slot];
     public StringId LocalVideoId => T.LocalVideo[Slot];
+    /// <inheritdoc cref="TrackTable.VideoGid"/>
+    public StringId VideoGidId => T.VideoGid[Slot];
+    /// <inheritdoc cref="TrackTable.VideoW"/>
+    public ushort VideoWidth => T.VideoW[Slot];
+    /// <inheritdoc cref="TrackTable.VideoW"/>
+    public ushort VideoHeight => T.VideoH[Slot];
+    /// <inheritdoc cref="TrackFlags.LiveVideo"/>
+    public bool IsLiveVideo => (T.Flags[Slot] & (uint)TrackFlags.LiveVideo) != 0;
     /// <summary>Tempo ×10 (1284 = 128.4 BPM).</summary>
     public ushort Tempo => T.Tempo[Slot];
     public byte Key => T.Key[Slot];
@@ -369,6 +400,10 @@ public struct StagedTrack : IStagedRow
     public int DurationMs, AvailableAt;
     /// <inheritdoc cref="TrackTable.OriginalAudio"/>
     public UInt128 OriginalAudio;
+    /// <inheritdoc cref="TrackTable.VideoGid"/>
+    public TextRef VideoGid;
+    /// <inheritdoc cref="TrackTable.VideoW"/>
+    public ushort VideoW, VideoH;
     public uint PlayCount, CamelotColor;
     /// <summary>The row's <see cref="TrackFlags"/>. Only the bits of the groups named in <see cref="Known"/> are read.</summary>
     public uint Flags;
@@ -449,6 +484,9 @@ public static partial class Entities
             // hit or a playlist item blank the key a full answer already learned. Filling the column is NOT the same
             // as knowing `Files`: this is the key to the ladder, the ladder is kind 5's answer.
             if (row.OriginalAudio != UInt128.Zero) t.OriginalAudio[slot] = row.OriginalAudio;
+            // The manifest id is the same kind of fact (G-056): a key carried by TrackV4 alone, never cleared by an
+            // answer that does not carry it, and not a group anyone renders.
+            if (!row.VideoGid.IsEmpty) t.SetText(ref t.VideoGid, slot, s.Intern(row.VideoGid));
 
             if ((known & (uint)TrackFields.Identity) != 0
                 && t.Accepts(slot, (uint)TrackFields.Identity, auth, in t.IdentityAuthority))
@@ -522,6 +560,8 @@ public static partial class Entities
             {
                 if (!row.VideoUri.IsEmpty) t.VideoCounterpart[slot] = s.Slot(t, in row.VideoUri);
                 t.SetText(ref t.VideoImage, slot, s.Intern(row.VideoImage));
+                t.VideoW[slot] = row.VideoW;
+                t.VideoH[slot] = row.VideoH;
                 // The user's own mp4 is written at Local authority by the curation store, so a catalogue answer that
                 // carries no override must not clear one (ch 01 GAP 7): keep the override bit unless this row states it.
                 uint videoBits = row.Flags & (uint)TrackFlags.VideoMask;

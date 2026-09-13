@@ -1,0 +1,6 @@
+{"data":{"browseSection":{"uri":"spotify:section:weekly",
+  "data":{"__typename":"BrowseGenericSectionData","title":{"transformedLabel":"Weekly Song Charts"}},
+  "sectionItems":{"totalCount":74,"pagingInfo":{"nextOffset":40},"items":[
+    {"content":{"data":{"__typename":"Playlist","uri":"spotify:playlist:37i9dQZEVXbKCOlAmDpukL","name":"Top Songs - El Salvador"}}},
+    {"content":{"data":{"__typename":"Playlist","uri":"spotify:playlist:37i9dQZEVXbLRQDuF5jeBp","name":"Top Songs - USA"}}}
+  ]}}}}

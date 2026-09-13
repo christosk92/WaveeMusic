@@ -354,16 +354,7 @@ public static partial class Spotify
                     case 3:                                        // map<string, string> { key = 1, value = 2 }
                         {
                             track.Message().Fields(1, 2, out var key, out var value);
-                            if (key.IsEmpty || value.IsEmpty) break;
-                            if (Is(key, "title")) row.Title = into.AddText(value);
-                            else if (Is(key, "artist_name")) row.ArtistName = into.AddText(value);
-                            else if (Is(key, "album_title")) row.AlbumTitle = into.AddText(value);
-                            else if (Is(key, "artist_uri") && row.ArtistUri.IsEmpty) row.ArtistUri = into.AddText(value);
-                            else if (Is(key, "album_uri") && row.AlbumUri.IsEmpty) row.AlbumUri = into.AddText(value);
-                            else if (Is(key, "image_xlarge_url")) row.Image = into.AddText(value);
-                            else if (Is(key, "image_large_url")) large = into.AddText(value);
-                            else if (Is(key, "image_url")) plain = into.AddText(value);
-                            else if (Is(key, "duration")) duration = Math.Max(0, Number(value));
+                            TrackMeta(key, value, into, ref row, ref large, ref plain, ref duration);   // Spotify.Decode.Remote.cs
                             break;
                         }
                     case 6: row.Provider = into.AddText(track.Bytes()); break;
@@ -391,7 +382,10 @@ public static partial class Spotify
         /// garbled BODY on a KNOWN endpoint must not reply `DeviceDoesNotSupportCommand` and get the sender cached
         /// out of ever sending that endpoint again. <see cref="DedupeKey"/> folds (sender, message id, endpoint)
         /// because message ids are recycled across endpoints — without the endpoint term a fresh
-        /// `set_shuffling_context` landing on an old id looked like a replay and was dropped.</para></summary>
+        /// `set_shuffling_context` landing on an old id looked like a replay and was dropped.</para>
+        /// <para>It is the VERB. What a <see cref="RemoteCmd.Play"/> or <see cref="RemoteCmd.Transfer"/> asks to play — the
+        /// context, the track to start at, the position, the transferred queue — is <see cref="ConnectLoad"/>'s, decoded
+        /// from the same body into a pooled <see cref="ClusterBuffer"/> (Spotify.Decode.Remote.cs, G-071).</para></summary>
         public readonly record struct RemoteCommand(
             RemoteCmd Kind, bool Ok, int MessageId, long SeekToMs, bool BoolArg,
             EntityId Track, ulong SenderHash, ulong SessionHash, ulong DedupeKey);

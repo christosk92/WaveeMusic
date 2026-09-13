@@ -367,8 +367,20 @@ public static partial class Playback
                 effects: s_effects,
                 maxBlock: 1024,
                 driveWithOwnThread: false,
-                onSessionCreated: static session => new AudioFeedThread(session, sampleRate: session.Format.SampleRate).Start(),
+                onSessionCreated: static session =>
+                {
+                    FollowSilentSession(session);
+                    new AudioFeedThread(session, sampleRate: session.Format.SampleRate).Start();
+                },
                 decoderFactory: TakePendingDecoder);
+
+        /// <summary>Point a paced silent endpoint at its session's mixer, so a drained session's trailing silence drains
+        /// instead of refilling the sink and <c>Ended</c> can arrive (<see cref="PacedSilentEndpoint"/>, THE TAIL). Before
+        /// the feed renders.</summary>
+        static void FollowSilentSession(PcmAudioSession session)
+        {
+            if (session.Sink is PacedSilentEndpoint paced) paced.Follow(session.Mixer);
+        }
 
         /// <summary>Read the persisted DSP preferences. Seeded BEFORE the first open, so a session never renders one
         /// block with a flat EQ and then ramps.</summary>
@@ -752,6 +764,7 @@ public static partial class Playback
         {
             IAudioEndpoint endpoint = SilentSink(format);
             var session = new PcmAudioSession(format, endpoint.Sink, endpoint.Clock, 1024, driveWithOwnThread: false, endpoint);
+            FollowSilentSession(session);
             session.Configure(PcmAudioPlayer.BuildGraphSpec(effects, format));
             if (effects is not null) session.BindEffects(effects);
             var feed = new AudioFeedThread(session, sampleRate: format.SampleRate);   // attaches itself; the session disposes it
@@ -2656,7 +2669,13 @@ public static partial class Playback
         /// real time — the RT feed waits on <see cref="WaitForWritable"/> the way it waits on a WASAPI event. The played
         /// count is the authoritative clock, QPC-stamped in the same 100 ns domain the session projects with. A starved
         /// stretch LOSES time (the clock stalls at what was written), as a device's played count does, instead of bursting
-        /// ahead when data returns. Allocation-free; one lock (the feed, the clock tick and a disposer call in).</summary>
+        /// ahead when data returns. Allocation-free; one lock (the feed, the clock tick and a disposer call in).
+        /// <para>THE TAIL. The engine publishes <c>Ended</c> only once the mixer is drained AND the buffered sink is empty
+        /// (<c>WritableFrames &gt;= CapacityFrames</c>), yet its RT feed keeps rendering the drained mixer's silence into
+        /// the sink, so a sink that queues that filler is refilled every wake and never reads empty — a silent session sat
+        /// in <c>Playing</c> forever with its clock running past the end. A <see cref="Follow"/>ed endpoint therefore
+        /// accepts the drained mixer's trailing silence without queuing or "playing" it: the content's tail drains, the
+        /// clock holds at the content's end, and the gate opens (see <see cref="IsTrailingFillerLocked"/>).</para></summary>
         public sealed class PacedSilentEndpoint : IAudioEndpoint, IBufferedAudioSink, IAudioClockSource
         {
             /// <summary>The buffer a WASAPI shared-mode client gets by default, and what the feed's sizing assumes.</summary>
@@ -2667,6 +2686,10 @@ public static partial class Playback
             readonly long _ticksPerSecond;
             long _written, _played, _lastTicks;
             bool _started;
+            // The session's mixer (set once, before the feed renders) and the mixer frame of the first write that found it
+            // drained; -1 while content is still playing.
+            CrossfadeMixer? _mixer;
+            long _drainedAtSeq = -1;
 
             /// <param name="format">The mix format the "device" opened at.</param>
             /// <param name="capacityMs">The buffer, in milliseconds of audio.</param>
@@ -2697,11 +2720,23 @@ public static partial class Playback
 
             public int WritableFrames { get { lock (_gate) { AdvanceLocked(); return CapacityFrames - (int)(_written - _played); } } }
 
+            /// <summary>Follow the session this endpoint feeds, so the drained mixer's trailing silence is recognised as
+            /// filler rather than content. Call once, after the session is constructed and before its feed renders.</summary>
+            public void Follow(CrossfadeMixer mixer)
+            {
+                lock (_gate)
+                {
+                    _mixer = mixer;
+                    _drainedAtSeq = -1;
+                }
+            }
+
             public int Write(ReadOnlySpan<float> src, int frames)
             {
                 lock (_gate)
                 {
                     AdvanceLocked();
+                    if (IsTrailingFillerLocked()) return Math.Max(0, frames);   // accepted into nothing: never queued, never played
                     int room = CapacityFrames - (int)(_written - _played);
                     int accepted = Math.Clamp(frames, 0, Math.Max(0, room));
                     _written += accepted;
@@ -2736,6 +2771,7 @@ public static partial class Playback
                     _written = 0;
                     _played = 0;
                     _lastTicks = _now();
+                    _drainedAtSeq = -1;   // a reset rewinds the mixer's frame count too
                 }
             }
 
@@ -2760,14 +2796,33 @@ public static partial class Playback
                     AdvanceLocked();
                     int writable = CapacityFrames - (int)(_written - _played);
                     int threshold = Math.Max(1, CapacityFrames / 4);
-                    waitMs = !_started || writable >= threshold
-                        ? 1
-                        : (int)Math.Ceiling((threshold - writable) * 1000.0 / Math.Max(1, Format.SampleRate));
+                    // Stopped (paused, ended, not yet started): nothing renders, so sleep until a transport command wakes the
+                    // feed or the engine's timeout passes, as a WASAPI client does. Started with room: render now.
+                    waitMs = !_started
+                        ? timeoutMs
+                        : writable >= threshold
+                            ? 1
+                            : (int)Math.Ceiling((threshold - writable) * 1000.0 / Math.Max(1, Format.SampleRate));
                 }
                 controlWake.WaitOne(Math.Clamp(waitMs, 1, Math.Max(1, timeoutMs)));
             }
 
             public void Dispose() => Stop();
+
+            /// <summary>Is this write the drained mixer's trailing silence? <c>Write</c> runs on the render thread right after
+            /// the block it carries was mixed, so the mixer's <c>ConsumeSeq</c> is the frame count up to the end of that
+            /// block (a partial accept's remainder is re-submitted before the next mix, at the same count). The FIRST write
+            /// that finds the mixer drained may still carry the voice's last frames and is queued — as is any remainder of
+            /// it; every write after the count has moved past that frame is pure filler. A mixer that is no longer drained
+            /// (a voice was installed) re-arms the rule.</summary>
+            bool IsTrailingFillerLocked()
+            {
+                if (_mixer is not { } mixer) return false;
+                if (!mixer.DrainedPublished) { _drainedAtSeq = -1; return false; }
+                long seq = mixer.ConsumeSeq;
+                if (_drainedAtSeq < 0 || seq < _drainedAtSeq) { _drainedAtSeq = seq; return false; }
+                return seq > _drainedAtSeq;
+            }
 
             /// <summary>Consume queued frames for the time elapsed since the last look. Whole frames only; the remainder
             /// of a tick stays on the clock so the pace does not drift.</summary>

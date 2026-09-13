@@ -20,8 +20,10 @@
 //   · `LinkModules` / `MatchLink` — owner T's module host: the match-capable modules, and the router. Null router ⇒
 //                                the dialog answers "Nothing installed can play this link." in place.
 //   · `NotificationsLauncher` — owner I1's panel launcher, re-anchored to the chip when the ladder folds the bell.
-//   · `UpdateVerb`            — the updater's verbs (Update now / Later / Retry / Open release page / Dismiss).
 //   · `ReportDialogOpener`    — owner R's report dialog (`wavee://open?route=report`).
+// The update toast's action button routes through `Notify.UpdateCommand` (G-092) via `Notify.VerbFor` — NOT a second
+// seam of its own: 0.2.9-era `UpdateVerb` and the panel row's `Notify.UpdateCommand` were two doors an update host
+// would have had to fill, and with neither wired an update toast's button did nothing.
 // The runtime banner reads `Setup.Runtime` (`+Screens/Setup.UI.Runtime.cs`), whose host the SHELL half installs.
 
 using System.Threading;
@@ -73,9 +75,6 @@ public static partial class Shell
     /// <summary>Owner I1's notification-panel launcher: (overlay, anchor thunk, the handle cell).</summary>
     public static Action<IOverlayService, Func<NodeHandle>, Ref<OverlayHandle?>>? NotificationsLauncher;
 
-    /// <summary>The updater's verbs, raised from the update toast's single action button (What's new is handled here).</summary>
-    public static Action<ToastActionKind>? UpdateVerb;
-
     /// <summary>Owner R's report dialog: (overlay, kind arg).</summary>
     public static Action<IOverlayService, string>? ReportDialogOpener;
 
@@ -119,6 +118,7 @@ public static partial class Shell
                     new BoxEl { MaxWidth = Setup.RuntimeRules.BannerMaxWidth, Children = [Embed.Comp(() => new RuntimeBannerChrome())] },
                     Embed.Comp(() => new UpdateToastWatcher()),
                     Embed.Comp(() => new RuntimeToastWatcher()),
+                    Setup.SignInDoor(),                               // opens the sign-in surface on request or on a fresh SignInRequired (B5)
                 ],
             };
         }
@@ -313,19 +313,16 @@ public static partial class Shell
             var first = hasAction ? plan.Actions[0] : default;
             bool downloading = snapshot.State == AppUpdateState.Downloading;
             string title = plan.Title;
-            Toast.Show(plan.Body, new ToastOptions
-            {
-                Severity = plan.Severity,
-                Title = title.Length > 0 ? title : null,
-                DurationMs = plan.Sticky ? 0f : 5000f,
-                DedupeKey = UpdateToastKey,
-                // A toast shows ONE action — the first planned; the notification row renders all of them.
-                ActionLabel = hasAction ? Notify.AppUpdateToasts.Label(first) : null,
-                OnAction = hasAction ? () => RunUpdateAction(first, snapshot) : null,
-                // The padded custom card exists only while Downloading; Installing/Failed are standard sticky InfoBars on
-                // the same key, so they replace the card's body in place.
-                CustomContent = downloading ? () => UpdateProgressCard(title) : null,
-            });
+            // D29: through the ONE toast door (G-212) — a direct Toast.Show bypassed Notify.Say's announce rule.
+            Notify.Say(plan.Body, plan.Severity,
+                actionLabel: hasAction ? Notify.AppUpdateToasts.Label(first) : null,
+                onAction: hasAction ? () => RunUpdateAction(first, snapshot) : null,
+                dedupeKey: UpdateToastKey,
+                durationMs: plan.Sticky ? 0f : 5000f,
+                title: title.Length > 0 ? title : null,
+                // The padded custom card exists only while Downloading; Installing/Failed are standard sticky InfoBars
+                // on the same key, so they replace the card's body in place.
+                customContent: downloading ? () => UpdateProgressCard(title) : null);
         }
 
         static Element UpdateProgressCard(string title) => new BoxEl
@@ -339,10 +336,13 @@ public static partial class Shell
         };
     }
 
-    /// <summary>An update action from a toast or the panel: What's new navigates; everything else is the updater's.</summary>
+    /// <summary>An update action from a toast or the panel: What's new navigates; everything else routes through the
+    /// SAME <see cref="Notify.UpdateCommand"/> door the notification-centre row uses (G-092), via
+    /// <see cref="Notify.VerbFor"/> — a toast offers one <see cref="ToastActionKind"/>, the row offers an
+    /// <see cref="UpdateRowAction"/>, and only one of the two needs an update host behind it.</summary>
     public static void RunUpdateAction(ToastActionKind kind, AppUpdateSnapshot snapshot)
     {
-        if (kind != ToastActionKind.WhatsNew) { UpdateVerb?.Invoke(kind); return; }
+        if (kind != ToastActionKind.WhatsNew) { Notify.UpdateCommand?.Invoke(Notify.VerbFor(kind), snapshot); return; }
         string version = snapshot.TargetSemVer is { Length: > 0 } semver
             ? semver
             : Notify.AppUpdateVersion.ReleaseTagVersion(snapshot.TargetQuad);
@@ -469,7 +469,7 @@ public static partial class Shell
                 case Actions.ProfileRow.Theme:
                     bool light = Actions.ProfileRules.OffersLightTheme(dark);   // labelled with the TARGET theme
                     items.Add(new MenuFlyoutItem(Loc.Get(light ? Strings.Shell.LightTheme : Strings.Shell.DarkTheme),
-                        light ? Icons.Sun : Icons.Moon, Invoke: () => { close(); ToggleThemeFromMenu(requestTheme); }));
+                        light ? Icons.Sun : Icons.Moon, Invoke: () => { close(); ToggleTheme(requestTheme); }));
                     break;
                 case Actions.ProfileRow.LogOut:
                     items.Add(new MenuFlyoutItem(Loc.Get(Strings.Auth.LogOut), Icons.SignOut,
@@ -556,16 +556,6 @@ public static partial class Shell
             }
         }
         return items.ToArray();
-    }
-
-    /// <summary>The menu's theme row: flip to the other palette, persist the explicit choice, and ask the host for the
-    /// animated in-place re-theme.</summary>
-    static void ToggleThemeFromMenu(Action<float>? requestTheme)
-    {
-        var next = Theme.Dark ? ThemeKind.Light : ThemeKind.Dark;
-        if (SeedPalette is { } seed) seed(next); else Tok.Use(next);
-        Platform.Settings.Set(Platform.Keys.ThemeMode, next == ThemeKind.Dark ? 2 : 1);
-        requestTheme?.Invoke(Design.Motion.Standard);
     }
 
     /// <summary>Open a web url in the user's browser — only an http(s) url with a host ever reaches the shell.</summary>

@@ -11,7 +11,8 @@
 //   IN   `OnDealer` — the dealer receive thread hands every non-protocol frame here. Parse it with owner D's pure
 //        `DealerFrame.Parse`, decode it with owner E's pure `Decode.ClusterUpdate` / `Decode.ConnectCommand`, ack a
 //        REQUEST with `Spotify.Reply`, and post the RESULT as a value. Nothing is interpreted here — this file does
-//        not know what "shuffle" means, and it must not learn.
+//        not know what "shuffle" means, and it must not learn. Two MESSAGE topics beside the cluster (G-073): an inbound
+//        `connect/volume` becomes a `Volume` item, and `connect/logout` is the user's own `Spotify.Logout()`.
 //   OUT  `PublishState` — our player state to the connect-state service, debounced, sequence-numbered, gzipped.
 //   OUT  `Send` — a command to ANOTHER device (the transfer / player-command / volume routes).
 //
@@ -43,7 +44,13 @@ public static partial class Spotify
         // ── 1. the mailbox ───────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>What kind of thing came off the dealer.</summary>
-        public enum ItemKind : byte { None = 0, Cluster, RemoteCommand }
+        public enum ItemKind : byte
+        {
+            None = 0, Cluster, RemoteCommand,
+            /// <summary>Another device set OUR volume (`connect/volume`): <see cref="Item.Volume"/> on the wire scale
+            /// (0..65535) and the sender's <see cref="Item.VolumeMessageId"/>, which the next PutState should echo (G-073).</summary>
+            Volume,
+        }
 
         /// <summary>One decoded dealer result. A VALUE, except for <see cref="Buffer"/> — the delta's text and its
         /// device/track runs live in that buffer, so the CONSUMER must call <see cref="Release"/> when it is done with
@@ -54,6 +61,10 @@ public static partial class Spotify
             public readonly Decode.ClusterDelta Delta;
             public readonly Decode.ClusterBuffer? Buffer;
             public readonly Decode.RemoteCommand Command;
+            /// <summary><see cref="ItemKind.Volume"/> only: 0..65535.</summary>
+            public readonly int Volume;
+            /// <summary><see cref="ItemKind.Volume"/> only: the sender's message id (0 when it sent none).</summary>
+            public readonly uint VolumeMessageId;
             /// <summary>The session epoch this arrived under (C4). A consumer drops anything older than its own.</summary>
             public readonly uint Epoch;
 
@@ -63,6 +74,8 @@ public static partial class Spotify
                 Delta = delta;
                 Buffer = buffer;
                 Command = default;
+                Volume = 0;
+                VolumeMessageId = 0;
                 Epoch = epoch;
             }
 
@@ -72,6 +85,19 @@ public static partial class Spotify
                 Delta = default;
                 Buffer = null;
                 Command = command;
+                Volume = 0;
+                VolumeMessageId = 0;
+                Epoch = epoch;
+            }
+
+            internal Item(int volume, uint messageId, uint epoch)
+            {
+                Kind = ItemKind.Volume;
+                Delta = default;
+                Buffer = null;
+                Command = default;
+                Volume = volume;
+                VolumeMessageId = messageId;
                 Epoch = epoch;
             }
         }
@@ -184,6 +210,24 @@ public static partial class Spotify
                 Reply(message.Key, ok: true);
                 if (command.Kind != Decode.RemoteCmd.Unknown) Enqueue(new Item(command, epoch));
                 else Log.Warn("spotify", "connect command not understood — acked and dropped");
+                return;
+            }
+
+            if (message.IsConnectVolume)
+            {
+                // A value like any other: the reducer owns the volume, so the glue only reads the three varints (G-073).
+                if (DealerFrame.TryReadSetVolume(message.Payload, out int volume, out uint messageId))
+                    Enqueue(new Item(volume, messageId, epoch));
+                else Log.Warn("spotify", "connect volume message had no readable SetVolumeCommand");
+                return;
+            }
+
+            if (message.IsConnectLogout)
+            {
+                // The "Log out" another client offers for this device (PutState advertises supports_logout): exactly the
+                // user's own sign-out — sockets down, credential wiped, the account's surfaces torn down. Posted (C1).
+                Log.Info("spotify", "another device asked this one to log out");
+                Logout();
                 return;
             }
 

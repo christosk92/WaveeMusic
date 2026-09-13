@@ -120,6 +120,26 @@ public sealed partial class Scope
     public readonly BrowseTable Browses = new();
 }
 
+/// <summary>THE TREE'S THREE RELATIONS (G-045's browse decoders land here). Browse is a tree of pages whose branches are
+/// section rows, and each hop is a plain ordered list of slots in a table the relation itself names — so none of them
+/// needs a payload, and the one cross-table hop (a section's category tiles) is still single-table on each side.
+///
+///     Browses[wavee:browse]  ── BrowseDirectory ──▶ Browses[spotify:page:…]     (browseAll's ~70 tiles, in wire order)
+///     Browses[spotify:page:] ── BrowseSections  ──▶ Sections[spotify:section:…] (browsePage's bands, paged by section)
+///     Sections[a grid band]  ── SectionCategories ▶ Browses[spotify:page:…]     (a grid / related band's tiles)
+///
+/// A SHELF band's cards are entities, and they ride <c>Edges.SectionCards</c> exactly as a Home band's do.</summary>
+public sealed partial class Edges
+{
+    /// <summary>Parent = the directory's browse row, targets = category tile rows.</summary>
+    public readonly EdgeTable<NoEdge> BrowseDirectory = new();
+    /// <summary>Parent = a browse page row, targets = <see cref="SectionTable"/> rows; Partial until the page's own
+    /// section total is reached.</summary>
+    public readonly EdgeTable<NoEdge> BrowseSections = new();
+    /// <summary>Parent = a <see cref="SectionTable"/> row of a grid or related band, targets = browse node rows.</summary>
+    public readonly EdgeTable<NoEdge> SectionCategories = new();
+}
+
 // ── 3. the handle ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>One browse node — the directory, a category tile, a category page, or a genre (all the same row). Partial
@@ -196,6 +216,19 @@ public static partial class Entities
         return new Browse(Current.Browses.Slot(Browse.PageUriOf(uri, buffer)));
     }
 
+    /// <summary>A BROWSE band by its own uri — the <c>browse-section:</c> drill route's entry point. A section uri does
+    /// not say which composer made it (<c>spotify:section:…</c> for both), and the planner routes an unformed section to
+    /// <c>homeSection</c>; so a row nobody has answered for yet is stamped a browse shelf HERE, before the page asks,
+    /// and <c>Fetch.SubjectOf</c> then routes it to <c>browseSection</c>. A row whose form an answer already wrote is
+    /// left exactly as it is.</summary>
+    public static Section BrowseSection(ReadOnlySpan<char> uri)
+    {
+        var sections = Current.Sections;
+        int slot = sections.Slot(uri);
+        if (sections.Form[slot] == (byte)SectionKind.Unknown) sections.Form[slot] = (byte)SectionKind.BrowseShelf;
+        return new(slot);
+    }
+
     /// <inheritdoc cref="Ensure(Table,ReadOnlySpan{int},uint,FetchPriority)"/>
     public static void Ensure(ReadOnlySpan<Browse> rows, BrowseFields wanted, FetchPriority priority = FetchPriority.Visible)
         => Ensure(Current.Browses, Slots(rows), (uint)wanted, priority);
@@ -228,19 +261,84 @@ public struct StagedBrowse : IStagedRow
     public readonly StagedId Identity => Id;
 }
 
+/// <summary>Which browse relation a <see cref="StagedBrowseRun"/> rewrites (the three on <see cref="Edges"/> above).</summary>
+public enum BrowseRelation : byte { Directory, PageSections, SectionCategories }
+
+/// <summary>One parent's rewritten browse relation: a slice of <see cref="Staging.BrowseChildren"/>.
+/// <see cref="Offset"/> &lt; 0 is a whole <c>Replace</c>; &ge; 0 a <c>ReplacePage</c> (a browse page's sections page by
+/// <c>pagePagination</c>).</summary>
+public struct StagedBrowseRun
+{
+    public StagedId Parent;
+    public BrowseRelation Relation;
+    public int Start, Length, Offset, Total;
+}
+
 public sealed partial class Staging
 {
     StagedList<StagedBrowse>? _browses;
+    StagedList<StagedId>? _browseChildren;
+    StagedList<StagedBrowseRun>? _browseRuns;
     /// <summary>Lazy: a decode that touches no browse node allocates no browse list.</summary>
     public StagedList<StagedBrowse> Browses => _browses ??= Register(new StagedList<StagedBrowse>());
+    /// <summary>The children of every staged browse run, in run order.</summary>
+    public StagedList<StagedId> BrowseChildren => _browseChildren ??= Register(new StagedList<StagedId>());
+    /// <inheritdoc cref="StagedBrowseRun"/>
+    public StagedList<StagedBrowseRun> BrowseRuns => _browseRuns ??= Register(new StagedList<StagedBrowseRun>());
     internal StagedList<StagedBrowse>? StagedBrowses => _browses;
+    internal StagedList<StagedId>? StagedBrowseChildren => _browseChildren;
+    internal StagedList<StagedBrowseRun>? StagedBrowseRuns => _browseRuns;
+}
+
+public static partial class Entities
+{
+    static int[] s_browseTargets = new int[64];
+
+    /// <summary>The browse nodes and the tree's three relations, wired into <c>Entities.Commit</c> after the Home
+    /// subjects (G-051: before this hook `Browse.Commit` had no caller anywhere, so a decoded browse page staged every
+    /// tile and landed none). The nodes first, then the runs that point at them.</summary>
+    static partial void CommitBrowse(Staging s)
+    {
+        Browse.Commit(s);
+
+        var runs = s.StagedBrowseRuns;
+        if (runs is null || runs.Count == 0) return;
+        var children = s.StagedBrowseChildren is { } c ? c.Span : default;
+        var edges = Current.Edges;
+
+        foreach (ref readonly var run in runs.Span)
+        {
+            if (run.Start < 0 || run.Length < 0 || run.Start + run.Length > children.Length) continue;
+            Table parentTable = run.Relation == BrowseRelation.SectionCategories ? Current.Sections : Current.Browses;
+            Table childTable = run.Relation == BrowseRelation.PageSections ? Current.Sections : Current.Browses;
+            int parent = s.Slot(parentTable, in run.Parent);
+            if (parent == Table.None) continue;
+
+            if (s_browseTargets.Length < run.Length) s_browseTargets = new int[Math.Max(run.Length, s_browseTargets.Length * 2)];
+            int n = 0;
+            for (int i = 0; i < run.Length; i++)
+            {
+                int child = s.Slot(childTable, in children[run.Start + i]);
+                if (child != Table.None) s_browseTargets[n++] = child;
+            }
+
+            EdgeTable<NoEdge> relation = run.Relation switch
+            {
+                BrowseRelation.PageSections => edges.BrowseSections,
+                BrowseRelation.SectionCategories => edges.SectionCategories,
+                _ => edges.BrowseDirectory,
+            };
+            var targets = s_browseTargets.AsSpan(0, n);
+            if (run.Offset >= 0) relation.ReplacePage(parent, run.Offset, targets, default, run.Total);
+            else relation.Replace(parent, targets, default, EdgeState.Complete, n);
+        }
+    }
 }
 
 public readonly partial struct Browse
 {
-    /// <summary>Copy a staged batch of browse nodes into the columns. NOT wired into <c>Entities.Commit</c> yet — its
-    /// partial hooks are one per ENTITY KIND and a browse node is not one, so the orchestrator adds the single call
-    /// (see this wave's return). Same shape as every kind commit (D16).</summary>
+    /// <summary>Copy a staged batch of browse nodes into the columns. Called by <c>Entities.CommitBrowse</c>, the
+    /// commit chain's hook for this synthetic subject (G-051). Same shape as every kind commit (D16).</summary>
     public static void Commit(Staging s)
     {
         var staged = s.StagedBrowses;

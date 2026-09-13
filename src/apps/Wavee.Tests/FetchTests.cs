@@ -3,7 +3,7 @@
 // Wave 1's gate for Entities/Fetch.cs (plan §5's "Plan dedupe", §4.15's `Second_plan_in_same_epoch_asks_nothing`).
 // These are the tests the 0.2.9 hydration path could not have: "have we already asked?" was spread across a ledger,
 // a coordinator, six negative memos and a per-uri Resource, so the question had four answers and no assertion could
-// name one. Here it is `wanted & ~known & ~inflight` over three columns, and every fact below is a column read.
+// name one. Here it is `wanted & ~known & ~asked` over two columns, and every fact below is a column read.
 //
 // The rows are REAL rows in the current scope's TrackTable, driven through the base `Table` surface (`Slot`, `Known`,
 // `Applied`) — no mock, no fake table. The only stand-in is the transport, because a test that opened a socket would
@@ -196,10 +196,14 @@ public class FetchTests : IDisposable
         t.Known[slots[2]] |= Identity;
         Span<int> dst = stackalloc int[8];
 
-        int n = Fetch.Select(t, slots, Identity, Fetch.Stamp(scope.Epoch), dst);
+        int n = Fetch.Select(t, slots, Identity, dst);
 
         Assert.Equal(3, n);
-        for (int i = 0; i < slots.Length; i++) Assert.Equal(0u, t.Inflight[slots[i]]);   // nothing was marked
+        for (int i = 0; i < slots.Length; i++)
+        {
+            Assert.Equal(0u, t.Inflight[slots[i]]);                                          // nothing was marked
+            Assert.Equal(0u, t.Asked[slots[i]]);
+        }
     }
 
     [Fact]
@@ -794,6 +798,173 @@ public class FetchTests : IDisposable
         Assert.Equal(0u, t.Inflight[slots[0]]);
         Fetch.Plan(scope, t, slots, Identity | Extras, FetchPriority.Visible);
         Assert.Equal(2, provider.Seen.Count);
+    }
+
+    // ── the per-group seal (G-040) ──────────────────────────────────────────────────────────────────────────────────
+    //
+    // THE REQUEST LOOP this closes: a TrackV4 answer fills Identity and clears the in-flight mark, and PlayCount — which
+    // TrackV4 never carries — was still `wanted & ~known`, so the next `Ensure(Row)` (the sidebar's per-rebuild Fill) re-
+    // POSTed the same V4, forever. The planner now remembers which GROUPS it asked (`Table.Asked`) for the scope.
+
+    /// <summary>Commit what a TrackV4 answer commits for one row: Identity and Availability, at full authority.</summary>
+    static void AnswerIdentity(uint ticket, EntityId id)
+    {
+        var s = Staging.Rent();
+        ref var row = ref s.Tracks.RowFor(id, Authority.Full, (uint)(TrackFields.Identity | TrackFields.Availability));
+        row.Title = s.Text("an answered title");
+        Fetch.Answer(ticket, s);
+    }
+
+    [Fact]
+    public void A_partial_answer_does_not_re_ask()
+    {
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        TrackTable t = scope.Tracks;
+        int[] slots = GidRows(t, 1, 404_040);
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Assert.Single(provider.Seen);
+        Assert.Equal((uint)TrackFields.Row, provider.Seen[0].Wanted);
+
+        AnswerIdentity(provider.Seen[0].Ticket, t.Id[slots[0]]);
+        Assert.True(t.Knows(slots[0], (uint)TrackFields.Identity));
+        Assert.False(t.Knows(slots[0], (uint)TrackFields.PlayCount));   // the answer did not carry it…
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Assert.Single(provider.Seen);                                     // …and nobody asks for it again this scope
+        Assert.Equal((uint)TrackFields.PlayCount, t.Asked[slots[0]] & (uint)TrackFields.PlayCount);
+    }
+
+    [Fact]
+    public void A_group_nobody_asked_for_yet_still_goes_out_alone()
+    {
+        // The seal is per GROUP, not per row: a row whose Identity is answered (or in flight) and whose Audio has never
+        // been asked asks for Audio — and for Audio only, so the Identity POST is not repeated beside it.
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        TrackTable t = scope.Tracks;
+        int[] slots = GidRows(t, 3, 505_050);
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);   // still in flight
+        Fetch.Plan(scope, t, slots, (uint)(TrackFields.Identity | TrackFields.Audio), FetchPriority.Visible);
+
+        Assert.Equal(2, provider.Seen.Count);
+        Assert.Equal((uint)TrackFields.Identity, provider.Seen[0].Wanted);
+        Assert.Equal((uint)TrackFields.Audio, provider.Seen[1].Wanted);
+        Assert.Equal(3, provider.Seen[1].Count);
+    }
+
+    [Fact]
+    public void A_terminal_failure_un_asks_only_the_groups_that_failed()
+    {
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        TrackTable t = scope.Tracks;
+        int[] slots = GidRows(t, 1, 606_060);
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.PlayCount, FetchPriority.Visible);
+        Fetch.Failed(provider.Seen[1].Ticket, 404, 0);
+
+        Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[0]]);     // the Identity ask is still out and still ours
+        Fetch.Plan(scope, t, slots, (uint)(TrackFields.Identity | TrackFields.PlayCount), FetchPriority.Visible);
+        Assert.Equal(3, provider.Seen.Count);
+        Assert.Equal((uint)TrackFields.PlayCount, provider.Seen[2].Wanted);
+    }
+
+    [Fact]
+    public void A_scope_switch_forgets_every_seal_with_its_tables()
+    {
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        int[] before = GidRows(scope.Tracks, 1, 707_070);
+        Fetch.Plan(scope, scope.Tracks, before, (uint)TrackFields.Row, FetchPriority.Visible);
+
+        Entities.Switch(CatalogScope.Fake(locale: "nl-NL", market: "NL"));
+        Scope next = Entities.Current;
+        int[] after = GidRows(next.Tracks, 1, 707_070);                   // the same identity, a new row
+        Assert.Equal(0u, next.Tracks.Asked[after[0]]);
+        Fetch.Plan(next, next.Tracks, after, (uint)TrackFields.Row, FetchPriority.Visible);
+
+        Assert.Equal(2, provider.Seen.Count);
+    }
+
+    // ── subjects: the synthetic tables' routing (G-041) ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_home_feed_nobody_owns_is_routed_to_the_scopes_own_catalogue()
+    {
+        // `wavee:home` names no provider, and the planner used to abandon it — so the Home page skeletoned forever. It
+        // is the SCOPE's catalogue's: the seed's in a fake scope, Spotify's in a live one.
+        Scope scope = Boot();                                                 // CatalogScope.Fake(): provider "fake"
+        var provider = new HoldingProvider(EntityProvider.Fake);
+        Fetch.Register(provider);
+        int home = scope.Homes.Slot(Home.FeedUri.AsSpan());
+        Assert.Equal(EntityProvider.None, scope.Homes.Id[home].Provider);
+
+        Fetch.Plan(scope, scope.Homes, new[] { home }, (uint)HomeFields.All, FetchPriority.Visible);
+
+        FetchBatch batch = provider.Last!;
+        Assert.Equal(1, provider.Batches);
+        Assert.Equal(FetchSubject.Home, batch.Subject);
+        Assert.Equal(EntityKind.Unknown, batch.Kind);
+        Assert.Equal((uint)HomeFields.All, batch.Wanted);
+        Assert.Equal(Home.FeedUri, batch.Uri(0));
+        Assert.Equal(EntityProvider.Spotify, Fetch.CatalogProvider(new CatalogScope("spotify", "a", "en", "US", 0, true)));
+    }
+
+    [Fact]
+    public void Four_synthetic_tables_that_share_a_kind_never_share_a_request()
+    {
+        // All four answer EntityKind.Unknown, and the bucket used to be keyed by kind: a Home row and a search row
+        // asking bit 0 landed in ONE bucket over two different tables.
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Fake);
+        Fetch.Register(provider);
+        int home = scope.Homes.Slot(Home.FeedUri.AsSpan());
+        int search = Entities.Search("daft punk".AsSpan()).Slot;
+
+        Fetch.Plan(scope, scope.Homes, new[] { home }, 1u, FetchPriority.Visible);
+        Fetch.Plan(scope, scope.Searches, new[] { search }, 1u, FetchPriority.Visible);
+
+        Assert.Equal(2, provider.Seen.Count);
+        Assert.All(provider.Seen, x => Assert.Equal(1, x.Count));
+    }
+
+    [Fact]
+    public void A_subject_is_read_off_the_table_and_a_section_off_its_family()
+    {
+        Scope scope = Boot();
+        int home = scope.Homes.Slot(Home.FeedUri.AsSpan());
+        int homeBand = Entities.Section("spotify:section:home-band".AsSpan()).Slot;
+        int browseBand = Entities.BrowseSection("spotify:section:browse-band".AsSpan()).Slot;
+        int directory = Entities.BrowseDirectory().Slot;
+        int page = Entities.BrowseNode("spotify:genre:0JQ5DAqbMKFSi39LMRT0Cy".AsSpan()).Slot;
+        int track = GidRows(scope.Tracks, 1, 909)[0];
+
+        Assert.Equal(FetchSubject.Home, Fetch.SubjectOf(scope, scope.Homes, home));
+        Assert.Equal(FetchSubject.HomeSection, Fetch.SubjectOf(scope, scope.Sections, homeBand));
+        Assert.Equal(FetchSubject.BrowseSection, Fetch.SubjectOf(scope, scope.Sections, browseBand));
+        Assert.Equal(FetchSubject.BrowseDirectory, Fetch.SubjectOf(scope, scope.Browses, directory));
+        Assert.Equal(FetchSubject.BrowsePage, Fetch.SubjectOf(scope, scope.Browses, page));
+        Assert.Equal(FetchSubject.Entity, Fetch.SubjectOf(scope, scope.Tracks, track));
+    }
+
+    [Fact]
+    public void Stamping_a_browse_band_never_overwrites_a_form_an_answer_wrote()
+    {
+        Scope scope = Boot();
+        int slot = scope.Sections.Slot("spotify:section:answered".AsSpan());
+        scope.Sections.Form[slot] = (byte)SectionKind.BrowseCategoryGrid;
+
+        Assert.Equal(slot, Entities.BrowseSection("spotify:section:answered".AsSpan()).Slot);
+        Assert.Equal((byte)SectionKind.BrowseCategoryGrid, scope.Sections.Form[slot]);
     }
 
     // ── the scope epoch (C7) ────────────────────────────────────────────────────────────────────────────────────────

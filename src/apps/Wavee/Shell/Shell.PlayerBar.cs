@@ -65,6 +65,17 @@ public static partial class Shell
         /// <summary>At or under this linear volume the glyph reads as muted.</summary>
         public const float MuteThreshold = 0.001f;
 
+        /// <summary>The play-next drop's batch cap (G-211, ch 19 #87): a dropped playlist/album inserts at most this
+        /// many tracks before the front of the queue; the rest are silently NOT the drop's problem — the toast says
+        /// "Added the first N" rather than pretending the whole thing landed.</summary>
+        public const int MaxPlayNextDrop = 100;
+
+        /// <summary>How many of <paramref name="totalTracks"/> a play-next drop actually inserts.</summary>
+        public static int DropInsertCount(int totalTracks) => Math.Min(totalTracks, MaxPlayNextDrop);
+
+        /// <summary>Did the cap actually cut anything, i.e. does the toast say "the first N" rather than just "N"?</summary>
+        public static bool DropWasTruncated(int totalTracks) => totalTracks > MaxPlayNextDrop;
+
         /// <summary>The software mute's restore level when there is no output device to mute (the fake path).</summary>
         public const float SoftwareUnmuteLevel = 0.7f;
 
@@ -175,6 +186,20 @@ public static partial class Shell
         /// saved bit but is not a like, and an unlike is a plain swap.</summary>
         public static bool LikePops(int previousSlot, bool previouslyLiked, int slot, bool liked)
             => liked && !previouslyLiked && slot > 0 && previousSlot == slot;
+
+        /// <summary>The bar's error TITLE, one loc key per <see cref="Playback.Fault"/> reason (G-212): 0.2.9 printed
+        /// the same "Can't play this track" whatever went wrong, though the model always knew which. <c>None</c> never
+        /// reaches the bar (the title only renders in <see cref="PlayerState.Error"/>) and folds to the generic
+        /// sentence rather than throwing on a call made out of sequence.</summary>
+        public static string FaultTitleKey(Playback.Fault fault) => fault switch
+        {
+            Playback.Fault.Network => Strings.Player.Fault.Network,
+            Playback.Fault.Unavailable => Strings.Player.Fault.Unavailable,
+            Playback.Fault.DrmRequired => Strings.Player.Fault.DrmRequired,
+            Playback.Fault.DecodeFailed => Strings.Player.Fault.DecodeFailed,
+            Playback.Fault.RuntimeMissing => Strings.Player.Fault.RuntimeMissing,
+            _ => Strings.Player.Fault.Unknown,
+        };
     }
 
     // ══ 2. THE DEVICE ROSTER, READ ══════════════════════════════════════════════════════════════════════════════════
@@ -222,6 +247,19 @@ public static partial class Shell
             3 => Icons.TvMonitor,
             _ => Icons.ThisPc,
         };
+
+        /// <summary>The picker's inset from the window edges before it scrolls (G-210, ch 20 §9 trap): the engine's
+        /// own <c>MenuFlyout</c> cap (468 DIP) is a FIXED number that still overruns a short window. The picker's cap
+        /// tracks the LIVE window instead.</summary>
+        public const float PickerWindowInset = 96f;
+
+        /// <summary>The picker's scroll viewport cap for a window of <paramref name="windowHeightDip"/>: the window
+        /// height less <see cref="PickerWindowInset"/>, floored so a tiny/undocked window never collapses the picker
+        /// to nothing.</summary>
+        public const float PickerMinHeight = 120f;
+
+        public static float PickerMaxHeight(float windowHeightDip)
+            => MathF.Max(PickerMinHeight, windowHeightDip - PickerWindowInset);
     }
 
     // ══ 3. THE SEEK RAIL ════════════════════════════════════════════════════════════════════════════════════════════

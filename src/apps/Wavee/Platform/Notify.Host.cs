@@ -91,7 +91,45 @@ public static partial class Notify
         ReleaseDrops.UnscheduleAll();
         Daylist.Unschedule();
         try { ToastNotifier.Default.RemoveGroup(LiveGroup); } catch (Exception) { /* fail-soft */ }
-        try { ToastImageCache.Default.Clear(); } catch (Exception) { /* fail-soft */ }
+        try { s_toastImages.Clear(); } catch (Exception) { /* fail-soft */ }
+    }
+
+    /// <summary>Wavee's OWN toast-image cache (G-091): the engine's <see cref="ToastImageCache.Default"/> is rooted at
+    /// <c>%LOCALAPPDATA%\FluentGpu\toastimg</c> — a generic engine folder, not this app's — and is otherwise unbounded
+    /// (cleared only by <see cref="SignedOut"/>, which never ran before this wave). This instance roots the cache at
+    /// <c>%LOCALAPPDATA%\Wavee\toastimg</c> instead; <see cref="TrimToastImageCache"/> gives it the 50 MB ceiling the
+    /// engine type does not have on its own.</summary>
+    static readonly ToastImageCache s_toastImages = new("Wavee");
+
+    /// <summary>The toast-image cache's soft cap. Enforced opportunistically (after a localize that actually wrote a
+    /// file) rather than on a timer — the folder only grows while toasts with remote art are being raised, which is
+    /// already a human-rate event.</summary>
+    const long ToastImageCacheCapBytes = 50L * 1024 * 1024;
+
+    /// <summary>Evict the OLDEST (by last-write) cached images until the folder is back under
+    /// <see cref="ToastImageCacheCapBytes"/>. Fail-soft throughout: the cache is a courtesy (it only saves a re-download
+    /// of art already fetched once), never a correctness requirement.</summary>
+    static void TrimToastImageCache()
+    {
+        try
+        {
+            string dir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "toastimg");
+            if (!System.IO.Directory.Exists(dir)) return;
+
+            var files = new System.IO.DirectoryInfo(dir).GetFiles();
+            long total = 0;
+            for (int i = 0; i < files.Length; i++) total += files[i].Length;
+            if (total <= ToastImageCacheCapBytes) return;
+
+            Array.Sort(files, static (a, b) => a.LastWriteTimeUtc.CompareTo(b.LastWriteTimeUtc));
+            for (int i = 0; i < files.Length && total > ToastImageCacheCapBytes; i++)
+            {
+                total -= files[i].Length;
+                try { files[i].Delete(); } catch (Exception) { /* another process may have raced us; fine either way */ }
+            }
+        }
+        catch (Exception) { /* fail-soft: see the class remark */ }
     }
 
     /// <summary>Process exit: revoke the activator so the next launch registers cleanly.</summary>
@@ -172,7 +210,7 @@ public static partial class Notify
                 // Remote art must become a LOCAL FILE: the unpackaged AUMID image path silently drops http(s). A
                 // PACKAGED process skips localization entirely (the Shell fetches the url itself), which is why art
                 // behaves differently packaged vs unpackaged — expected, not a bug.
-                try { toast.AppLogo(ToastImageCache.Default.Localize(image), circle); }
+                try { toast.AppLogo(s_toastImages.Localize(image), circle); TrimToastImageCache(); }
                 catch (Exception) { /* art is optional; the text still says what happened */ }
             }
             bool shown = ToastNotifier.Default.Show(toast);
@@ -297,7 +335,7 @@ public static partial class Notify
         return "wavee://open?route=" + Uri.EscapeDataString(Shell.NameOf(route));
     }
 
-    static string TagFor(in Notification n) => "live:" + n.Id;
+    static string TagFor(in Notification n) => TagIds.Clamp("live:", n.Id);
 
     /// <summary>The <c>&amp;arg=</c> the "Updated" toast deep-links with — the semver whose notes to open. Omitted
     /// entirely when we do not know it, so the route lands on the newest release rather than on nothing.</summary>
@@ -567,7 +605,7 @@ public static partial class Notify
 
                 if (link.CoverUrl is { Length: > 0 } cover)
                 {
-                    try { toast.Hero(ToastImageCache.Default.Localize(cover)); }
+                    try { toast.Hero(s_toastImages.Localize(cover)); TrimToastImageCache(); }
                     catch (Exception) { /* no hero is fine; the text toast still announces the drop */ }
                 }
 
@@ -603,7 +641,7 @@ public static partial class Notify
 
         /// <summary>Stable per-album tag, so a reconcile REPLACES its own earlier entry instead of stacking
         /// duplicates.</summary>
-        static string TagFor(string preReleaseUri) => "drop:" + preReleaseUri;
+        static string TagFor(string preReleaseUri) => TagIds.Clamp("drop:", preReleaseUri);
     }
 
     // ══ 5. THE ACTION CENTRE'S HOUSEKEEPING ════════════════════════════════════════════════════════════════════════

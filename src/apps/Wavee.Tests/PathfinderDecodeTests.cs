@@ -270,13 +270,214 @@ public class PathfinderDecodeTests
         var me = Entities.User(EntityUri.Parse(System.Text.Encoding.UTF8.GetString(Spotify.Decode.DefaultMe).AsSpan()));
         var rootlist = Entities.Current.Edges.Rootlist;
         Assert.Equal(EdgeState.Complete, rootlist.State(me.Slot));
-        Assert.Equal(24, rootlist.Count(me.Slot));
+        // 24 rows on the wire: 23 playlists and ONE folder — which lands as a start marker, and its end marker is built
+        // after its last member (G-046), so the stream is 25 edges.
+        Assert.Equal(25, rootlist.Count(me.Slot));
 
         // The first row is Liked Songs — a pseudo playlist, and the one row the library never fetches.
         var liked = PlaylistOf("spotify:collection:tracks");
         Assert.Equal(liked.Slot, rootlist.Targets(me.Slot)[0]);
         Assert.Equal(0, rootlist.Payload(me.Slot)[0].Position);
     }
+
+    [Fact]
+    public void A_library_folder_is_a_marker_pair_with_its_group_id_and_never_a_user_row()
+    {
+        // `spotify:user:<u>:folder:bf9e64dce09a1afc`, depth 0, "New Folder", holding one depth-1 playlist. Before G-046
+        // this row was staged as a USER named "New Folder", and its sidebar id was its position (G-047).
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.Export(Fixture("playlists.json"), s, Spotify.Decode.DefaultMe);
+        TestScope.CommitAndPublish(s);
+
+        var me = Entities.User(EntityUri.Parse(System.Text.Encoding.UTF8.GetString(Spotify.Decode.DefaultMe).AsSpan()));
+        var rows = Entities.Current.Edges.Rootlist.Payload(me.Slot);
+        var targets = Entities.Current.Edges.Rootlist.Targets(me.Slot);
+
+        int start = -1;
+        for (int i = 0; i < rows.Length; i++) if ((RootlistKind)rows[i].Kind == RootlistKind.FolderStart) { start = i; break; }
+        Assert.Equal(20, start);
+        Assert.Equal("bf9e64dce09a1afc", Entities.Strings.Resolve(rows[start].FolderId));
+        Assert.Equal("New Folder", Entities.Strings.Resolve(rows[start].FolderName));
+        Assert.Equal(Table.None, targets[start]);
+
+        Assert.Equal(RootlistKind.Item, (RootlistKind)rows[start + 1].Kind);          // Evening Commute, inside it
+        Assert.Equal(1, rows[start + 1].Depth);
+        Assert.Equal(RootlistKind.FolderEnd, (RootlistKind)rows[start + 2].Kind);     // closed by the next depth-0 row
+        Assert.Equal("bf9e64dce09a1afc", Entities.Strings.Resolve(rows[start + 2].FolderId));
+        Assert.Equal(0, rows[start + 2].Depth);
+
+        Assert.False(Entities.Current.Users.TryGetSlot(
+            "spotify:user:31unjfmo3oefvlz36ef3eb6kj5tq:folder:bf9e64dce09a1afc".AsSpan(), out _));
+    }
+
+    // ── browse (ch 13 §7, G-045) ────────────────────────────────────────────────────────────────────────────────────
+
+    static Browse NodeOf(string uri) => Entities.BrowseNode(uri.AsSpan());
+
+    [Fact]
+    public void Browse_all_lands_every_tile_once_in_wire_order_under_the_directory()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.BrowseAll(Fixture("browse-all.json"), s);
+        TestScope.CommitAndPublish(s);
+
+        var directory = Entities.BrowseDirectory();
+        Assert.True(directory.Knows(BrowseFields.All));
+        var tiles = Entities.Current.Edges.BrowseDirectory;
+        Assert.Equal(EdgeState.Complete, tiles.State(directory.Slot));
+        Assert.Equal(3, tiles.Count(directory.Slot));                                // the titleless tile is dropped
+
+        var music = NodeOf("spotify:page:0JQ5DAqbMKFSi39LMRT0Cy");
+        Assert.Equal(music.Slot, tiles.Targets(directory.Slot)[0]);
+        Assert.Equal("Music", Entities.Strings.Resolve(music.TitleId));             // under the DOUBLE `data`
+        Assert.Equal(0xFF1E3264u, music.Color);
+        Assert.Equal("https://i.scdn.co/image/music", Entities.Strings.Resolve(music.ImageId));
+        Assert.False(music.IsClientFeature);
+
+        var live = new Browse(tiles.Targets(directory.Slot)[1]);
+        Assert.True(live.IsClientFeature);                                          // routes by featureUri…
+        Assert.Equal("spotify:concerts", live.Id.Text);                             // …never by its xlink
+        Assert.Equal("Live Events", Entities.Strings.Resolve(live.TitleId));
+
+        var pop = NodeOf("spotify:genre:0JQ5DAqbMKFEC4WFtoNRpw");                   // a genre is its page
+        Assert.Equal(pop.Slot, tiles.Targets(directory.Slot)[2]);
+        Assert.Equal(0u, pop.Color);                                                // a malformed colour is none, not wrong
+    }
+
+    [Fact]
+    public void Browse_page_lands_its_header_its_bands_their_cards_and_their_tiles()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.BrowsePage(Fixture("browse-page.json"), "spotify:page:0JQ5DAqbMKFSi39LMRT0Cy"u8, 0, s);
+        TestScope.CommitAndPublish(s);
+
+        var page = NodeOf("spotify:page:0JQ5DAqbMKFSi39LMRT0Cy");
+        Assert.True(page.Knows(BrowseFields.Page));
+        Assert.Equal(0xFFDC148Cu, page.Accent);
+        Assert.Equal(11, page.TotalSections);
+        Assert.Equal(10, page.NextSectionOffset);
+        Assert.Equal("Music", Entities.Strings.Resolve(page.TitleId));             // a node nobody listed gets its title
+
+        var bands = Entities.Current.Edges.BrowseSections;
+        Assert.Equal(2, bands.Count(page.Slot));
+        Assert.Equal(EdgeState.Partial, bands.State(page.Slot));                    // 2 of 11
+
+        // The shelf: its kind was read FIRST even though the wire put `sectionItems` before `data`.
+        var shelf = new Section(bands.Targets(page.Slot)[0]);
+        Assert.Equal(SectionKind.BrowseShelf, shelf.Kind);
+        Assert.Equal("Hip-Hop Workout Music", Entities.Strings.Resolve(shelf.TitleId));
+        Assert.Equal(8, shelf.Total);
+        Assert.Equal(2, shelf.Raw);
+        Assert.Equal(1, shelf.Cards);
+        Assert.Equal(1, shelf.Unsupported);                                         // the NotFound item
+        Assert.Equal(PlaylistOf("spotify:playlist:37i9dQZF1DXcBWIGoYBM5M").Slot, Assert.Single(shelf.CardSlots.ToArray()));
+
+        // The grid: further CATEGORIES (browse is a tree), not entity cards.
+        var grid = new Section(bands.Targets(page.Slot)[1]);
+        Assert.Equal(SectionKind.BrowseCategoryGrid, grid.Kind);
+        Assert.True(grid.CardSlots.IsEmpty);
+        var categories = Entities.Current.Edges.SectionCategories;
+        Assert.Equal(2, categories.Count(grid.Slot));
+        Assert.Equal(NodeOf("spotify:page:pop").Slot, categories.Targets(grid.Slot)[0]);
+        Assert.Equal(NodeOf("spotify:genre:rock").Slot, categories.Targets(grid.Slot)[1]);
+        Assert.Equal(0xFF477D95u, NodeOf("spotify:page:pop").Color);
+    }
+
+    [Fact]
+    public void A_browse_page_body_with_only_its_typename_is_a_real_empty_page()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.BrowsePage("""{"data":{"browse":{"__typename":"BrowseSectionContainer"}}}"""u8, "spotify:page:x"u8, 0, s);
+        TestScope.CommitAndPublish(s);
+
+        var page = NodeOf("spotify:page:x");
+        Assert.True(page.Knows(BrowseFields.Page));
+        Assert.Equal(0, Entities.Current.Edges.BrowseSections.Count(page.Slot));
+    }
+
+    [Fact]
+    public void A_browse_section_page_lands_at_its_offset_with_the_raw_cursor()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var uri = Spotify.Decode.BrowseSection(Fixture("browse-section.json"), 20, s);
+        Assert.False(uri.IsEmpty);
+        TestScope.CommitAndPublish(s);
+
+        var band = Entities.Section("spotify:section:weekly".AsSpan());
+        Assert.Equal(40, band.NextOffset);                                          // passed through untouched
+        Assert.Equal(74, band.Total);
+        Assert.Equal(22, band.Raw);                                                 // offset 20 + the 2 items of this page
+        var cards = Entities.Current.Edges.SectionCards;
+        Assert.Equal(22, cards.Count(band.Slot));                                   // a page at 20 leaves 0-19 to arrive
+        Assert.Equal(EdgeState.Partial, cards.State(band.Slot));
+        Assert.Equal(PlaylistOf("spotify:playlist:37i9dQZEVXbLRQDuF5jeBp").Slot, cards.Targets(band.Slot)[21]);
+    }
+
+    [Fact]
+    public void A_home_section_drill_lands_its_band_and_accounts_for_every_raw_item()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var uri = Spotify.Decode.HomeSection(Fixture("home-section.json"), 0, s);
+        Assert.False(uri.IsEmpty);
+        TestScope.CommitAndPublish(s);
+
+        var band = Entities.Section("spotify:section:0JQ5DAIiKWzVFULQfUm85Y".AsSpan());
+        Assert.Equal("Made for you", Entities.Strings.Resolve(band.TitleId));
+        Assert.Equal("Picked today", Entities.Strings.Resolve(band.SubtitleId));
+        Assert.Equal(SectionKind.HomeGeneric, band.Kind);
+        Assert.Equal(64, band.Total);
+        Assert.Equal(20, band.NextOffset);
+        Assert.Equal(3, band.Raw);
+        Assert.Equal(band.Raw, band.Cards + band.Unsupported + band.Duplicates);
+        Assert.Equal(2, band.CardSlots.Length);
+
+        // A 200 whose homeSections carried nothing is "this did not work", never an empty band.
+        var nothing = Staging.Rent();
+        Assert.True(Spotify.Decode.HomeSection("""{"data":{"homeSections":{"sections":[]}}}"""u8, 0, nothing).IsEmpty);
+        Assert.True(Spotify.Decode.HomeSection("""{"data":{}}"""u8, 0, nothing).IsEmpty);
+        Staging.Return(nothing);
+    }
+
+    // ── gander (G-045) ──────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Gander_notifications_become_social_rows_with_their_required_fields_and_their_verdicts()
+    {
+        var rows = new List<Notification>();
+        int n = Spotify.Decode.Notifications(Fixture("gander-notifications.json"), rows);
+
+        Assert.Equal(3, n);
+        var follow = rows[0];
+        Assert.Equal("ntf-1001", follow.Id);
+        Assert.Equal(NotifyCategory.Social, follow.Category);
+        Assert.Equal("fakeuser42 started following you", follow.Title);
+        Assert.True(follow.IsUnread);
+        Assert.Equal(new DateTimeOffset(2026, 7, 9, 16, 2, 24, 11, TimeSpan.Zero).ToUnixTimeMilliseconds(), follow.TimestampMs);
+        Assert.Equal(SocialActionType.Navigate, follow.ActionType);
+        Assert.Equal("spotify:user:fakeuser42", follow.ActionUri);
+        Assert.Equal("https://i.example/img/fakeuser42.jpg", follow.ImageUrl);
+        Assert.Equal("fakeuser42", follow.ActName);
+
+        Assert.Equal(SocialActionType.NavigateWebview, rows[1].ActionType);
+        Assert.False(rows[1].IsUnread);
+        Assert.Equal("Ada", rows[1].ActName);                                       // the FIRST non-blank name
+        Assert.Null(rows[2].ActionUri);
+        Assert.Equal(SocialActionType.NavigateWebview, rows[2].ActionType);         // no action is a web view (0.2.9)
+    }
+
+    [Theory]
+    [InlineData("2026-07-09T16:02:24.011Z", 2026, 7, 9, 16, 2, 24, 11)]
+    [InlineData("2026-07-09T16:02:24Z", 2026, 7, 9, 16, 2, 24, 0)]
+    [InlineData("2026-07-09T18:02:24.5+02:00", 2026, 7, 9, 16, 2, 24, 500)]
+    public void An_iso_instant_parses_to_unix_milliseconds(string iso, int y, int mo, int d, int h, int mi, int s, int ms)
+        => Assert.Equal(new DateTimeOffset(y, mo, d, h, mi, s, ms, TimeSpan.Zero).ToUnixTimeMilliseconds(),
+                        Spotify.Decode.IsoInstantMs(System.Text.Encoding.UTF8.GetBytes(iso)));
 
     // ── the allocation gate (P1, P8) ────────────────────────────────────────────────────────────────────────────────
 

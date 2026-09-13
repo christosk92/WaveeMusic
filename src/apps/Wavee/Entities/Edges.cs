@@ -63,6 +63,12 @@ public enum EdgeState : byte
     Partial = 1,
     /// <summary>Every child is here. An empty complete list is a real, renderable "this playlist has no tracks".</summary>
     Complete = 2,
+    /// <summary>Nobody has answered AND the last ask failed (G-050): the skeleton must become a Retry vacancy, not stay a
+    /// skeleton forever. <b>Never stored and never persisted</b> — <see cref="EdgeTable{TEdge}.State"/> cannot answer
+    /// it; only <see cref="EdgeTableBase.Readiness"/> does, and only while the list is still Unknown. A list that has
+    /// rows keeps rendering them after a failed refresh (the failure stays readable through
+    /// <see cref="EdgeTableBase.FailureOf"/>).</summary>
+    Failed = 3,
 }
 
 /// <summary>Optimistic-write state for ONE edge (C6). The UI shows the flip immediately, the shell PUTs, and
@@ -78,7 +84,126 @@ public enum EdgePending : byte
     Remove = 2,
 }
 
-// ── 2. the CSR table ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ── 2. the fetch marks: what the edge door remembers per parent (G-042, G-050) ───────────────────────────────────────
+
+/// <summary>The payload-agnostic half of a relation: the two per-parent marks the edge door plans with, and the
+/// readiness a surface renders. A base class and not an interface for the same reason <see cref="Publishable"/> is one
+/// (P9): the planner holds relations of eleven payload types through one reference, with no boxing and no generic
+/// dispatch (<c>Fetch.Edges.cs</c>).
+///
+/// <para><b>ASKED</b> is "the highest page offset anybody asked for, plus one" (0 = never). Pages are asked in order —
+/// the first, then <c>Count</c> — so one int is the whole memory, and "has page <c>o</c> been asked" is
+/// <c>asked &gt; o</c>. It is the edge twin of <see cref="Table.Asked"/>, and it is what stops a sidebar that rebuilds
+/// every frame from re-reading the rootlist every frame.</para>
+///
+/// <para><b>FAILURE</b> is the status of the last ask that did not land (0 = none). A terminal failure un-asks the page
+/// (so the next mount really retries) AND records the status (so the mount that is showing right now can say so):
+/// 0.2.9's Loadable carried both halves, and the V3 error banner, the Retry vacancy and parity item 73 read them.</para>
+///
+/// <para>Single writer, UI thread (C1). A mark is not a structural write: it bumps no version — but a failure DOES mark
+/// the relation dirty, because <see cref="Readiness"/> changed and a bound surface has to re-read it.</para></summary>
+public abstract class EdgeTableBase : Publishable
+{
+    Column<int> _asked;
+    Column<int> _failure;          // status + FailureBias; 0 = none (a zeroed column reads as "never failed")
+    int _marked;
+
+    /// <summary>The stored failure is <c>status + 2</c>, so the three non-HTTP codes below survive a zeroed column.</summary>
+    const int FailureBias = 2;
+
+    /// <summary>The provider had no route for this relation and answered with nothing.</summary>
+    public const int NoRoute = -1;
+    /// <summary>The request never reached a server (DNS, socket, timeout) — HTTP status 0.</summary>
+    public const int Transport = 0;
+
+    /// <inheritdoc cref="EdgeTable{TEdge}.State"/>
+    public abstract EdgeState State(int parent);
+
+    /// <inheritdoc cref="EdgeTable{TEdge}.Count"/>
+    public abstract int Count(int parent);
+
+    /// <summary>THE state a surface renders (G-050): <see cref="State"/>, except that an Unknown list whose last ask
+    /// failed reads <see cref="EdgeState.Failed"/>. Everything that is not a surface — the store, the planner — reads
+    /// <see cref="State"/>, which never answers Failed.</summary>
+    public EdgeState Readiness(int parent)
+    {
+        var state = State(parent);
+        return state == EdgeState.Unknown && IsFailed(parent) ? EdgeState.Failed : state;
+    }
+
+    /// <summary>Did the last ask for this parent fail without landing?</summary>
+    public bool IsFailed(int parent) => (uint)parent < (uint)_marked && _failure[parent] != 0;
+
+    /// <summary>The status of that failure: an HTTP status, <see cref="Transport"/> (0) or <see cref="NoRoute"/>.
+    /// Meaningful only when <see cref="IsFailed"/>; reads <see cref="Transport"/> otherwise.</summary>
+    public int FailureOf(int parent) => IsFailed(parent) ? _failure[parent] - FailureBias : Transport;
+
+    /// <summary>Has the page at <paramref name="offset"/> (or a later one) been asked for this parent, this scope?</summary>
+    public bool WasAsked(int parent, int offset) => (uint)parent < (uint)_marked && _asked[parent] > Math.Max(0, offset);
+
+    /// <summary>The planner asked for the page at <paramref name="offset"/>. Clears a recorded failure: a new ask is a new
+    /// attempt, and the surface goes back to "loading".</summary>
+    public void MarkAsked(int parent, int offset)
+    {
+        if (parent < 0) return;
+        EnsureMarks(parent);
+        int page = Math.Max(0, offset) + 1;
+        if (_asked[parent] < page) _asked[parent] = page;
+        if (_failure[parent] != 0) { _failure[parent] = 0; MarkDirty(); }
+    }
+
+    /// <summary>The ask for the page at <paramref name="offset"/> did not land: un-ask it (the next mount retries) and
+    /// record why (the surface showing now can say so).</summary>
+    public void MarkFailed(int parent, int offset, int status)
+    {
+        if (parent < 0) return;
+        EnsureMarks(parent);
+        int page = Math.Max(0, offset);
+        if (_asked[parent] > page) _asked[parent] = page;
+        _failure[parent] = status + FailureBias;
+        MarkDirty();
+    }
+
+    /// <summary>An answer came back for this parent WITHOUT its list — the route had nothing, or nobody owns the
+    /// parent. Recorded as <see cref="NoRoute"/> and the ask is KEPT: the planner does not ask again this scope (the
+    /// row twin is a group that stays asked), and the surface renders a vacancy rather than a skeleton forever.</summary>
+    public void MarkUnanswered(int parent, int offset)
+    {
+        if (parent < 0) return;
+        EnsureMarks(parent);
+        int page = Math.Max(0, offset) + 1;
+        if (_asked[parent] < page) _asked[parent] = page;
+        _failure[parent] = NoRoute + FailureBias;
+        MarkDirty();
+    }
+
+    /// <summary>An answer landed for this parent: whatever failed before did not stay failed.</summary>
+    public void MarkAnswered(int parent)
+    {
+        if ((uint)parent >= (uint)_marked || _failure[parent] == 0) return;
+        _failure[parent] = 0;
+        MarkDirty();
+    }
+
+    /// <summary>Forget every ask for this parent — a refresh (a dealer push, a pull-to-refresh, the login sync). The
+    /// list itself is untouched: stale rows keep rendering until the new answer replaces them.</summary>
+    public void ForgetAsked(int parent)
+    {
+        if ((uint)parent >= (uint)_marked) return;
+        _asked[parent] = 0;
+    }
+
+    void EnsureMarks(int parent)
+    {
+        if (parent < _marked) return;
+        int capacity = Math.Max(parent + 1, Math.Max(16, _marked * 2));
+        _asked.EnsureCapacity(capacity);
+        _failure.EnsureCapacity(capacity);
+        _marked = parent + 1;
+    }
+}
+
+// ── 3. the CSR table ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>One relation: parent slot → an ordered run of child slots, each with an unmanaged
 /// <typeparamref name="TEdge"/> payload. See the file header for the layout, the span rule and the pending bits.
@@ -87,7 +212,7 @@ public enum EdgePending : byte
 /// but a synthetic subject works exactly as well: the queue's parent is the playback session (1), a home section's
 /// parent is a slot <c>Home.cs</c> mints, the friends feed's parent is one synthetic subject (ch 21 G6). The per-parent
 /// columns grow on demand, so any small int is a legal parent.</para></summary>
-public sealed class EdgeTable<TEdge> : Publishable where TEdge : unmanaged
+public sealed class EdgeTable<TEdge> : EdgeTableBase where TEdge : unmanaged
 {
     // per parent
     // `_total` is what the SERVER said the total is; 0 = it has not said (see ReplacePage). The honest extent a
@@ -138,11 +263,12 @@ public sealed class EdgeTable<TEdge> : Publishable where TEdge : unmanaged
         => (uint)parent >= (uint)_parents ? default : _pending.Span.Slice(_start[parent], _length[parent]);
 
     /// <summary>How many children are present right now (not how many there will be — that is <see cref="Total"/>).</summary>
-    public int Count(int parent) => (uint)parent >= (uint)_parents ? 0 : _length[parent];
+    public override int Count(int parent) => (uint)parent >= (uint)_parents ? 0 : _length[parent];
 
     /// <summary>Unknown / partial / complete. A page renders a skeleton for Unknown and an empty state only for
-    /// Complete — the distinction 0.2.9 had to infer from a null list.</summary>
-    public EdgeState State(int parent) => (uint)parent >= (uint)_parents ? EdgeState.Unknown : (EdgeState)_state[parent];
+    /// Complete — the distinction 0.2.9 had to infer from a null list. Never <see cref="EdgeState.Failed"/>: that is
+    /// <see cref="EdgeTableBase.Readiness"/>'s answer, and this one is what the store persists.</summary>
+    public override EdgeState State(int parent) => (uint)parent >= (uint)_parents ? EdgeState.Unknown : (EdgeState)_state[parent];
 
     /// <summary>The server-reported total while <see cref="EdgeState.Partial"/> (the scrollbar's real extent), else the
     /// present count.</summary>
@@ -487,7 +613,7 @@ public sealed class EdgeTable<TEdge> : Publishable where TEdge : unmanaged
     }
 }
 
-// ── 3. the payloads ──────────────────────────────────────────────────────────────────────────────────────────────────
+// ── 4. the payloads ───────────────────────────────────────────────────────────────────────────────────────────────────
 // One struct per relation that carries data ON the edge rather than on either end (D10). All unmanaged, all small: a
 // payload column is `n` edges × sizeof(TEdge) and nothing else.
 
@@ -547,8 +673,22 @@ public readonly record struct PlaylistTrackEdge(
 /// (G6) — there is no <c>IsLiked</c> column anywhere (P3).</summary>
 public readonly record struct LibraryEdge(int AddedAt, byte Flags);
 
-/// <summary>A rootlist row: the sidebar's flat, ordered, foldered list of the user's playlists.</summary>
-public readonly record struct RootlistEdge(ushort Position, byte Depth, byte Kind, StringId FolderName, int AddedAt);
+/// <summary>A rootlist row: the sidebar's flat, ordered, foldered list of the user's playlists — the wire's own marker
+/// stream (<see cref="RootlistKind"/>), one edge per item AND one per <c>start-group</c>/<c>end-group</c> marker.
+///
+/// <para><paramref name="FolderId"/> is THE FOLDER'S IDENTITY (D10, G-047): the bare group id off
+/// <c>spotify:start-group:&lt;hex&gt;:&lt;name&gt;</c> / <c>spotify:end-group:&lt;hex&gt;</c> — 16 lowercase hex characters
+/// as the client mints it (0.2.9 <c>SpotifyIds.NewGroupId</c>), kept verbatim because the server accepts whatever a
+/// client once wrote. Set on BOTH markers of a folder and on nothing else: an item's folder is the innermost open
+/// <see cref="RootlistKind.FolderStart"/> before it, exactly as the stream says. It is the id every surface keys a folder
+/// on (the sidebar's <c>folder:&lt;hex&gt;</c> row and pin ids, persisted expanded state, the rootlist writes), and unlike
+/// <paramref name="Position"/> it does not move when the folder does. <paramref name="FolderName"/> is the decoded name
+/// (<c>+</c> is a space, then percent-unescaped) and is set on the START marker only.</para>
+///
+/// <para>Both strings are OWNED by the edge (the file header's rule): <c>Entities.CommitRootlist</c> AddRefs them and
+/// releases the list it replaces, and <see cref="Edges.ReleaseText"/> gives the whole relation back with its scope.</para></summary>
+public readonly record struct RootlistEdge(ushort Position, byte Depth, byte Kind, StringId FolderName, int AddedAt,
+                                           StringId FolderId = default);
 
 /// <summary>A queue row. <paramref name="ItemId"/> is Spotify's own 64-bit queue identity, which is what makes a row
 /// stable across a reorder; <paramref name="Bucket"/> splits now-playing / user queue / next-up / history.</summary>
@@ -561,7 +701,7 @@ public readonly record struct DiscographyEdge(byte Kind);
 /// strings, so the panel's rows route through the ordinary factories and the string soup goes away.</summary>
 public readonly record struct FriendEdge(int UserSlot, long TimestampMs, int TrackSlot, int AlbumSlot, int ArtistSlot, int ContextSlot);
 
-// ── 4. merch: the one side table ─────────────────────────────────────────────────────────────────────────────────────
+// ── 5. merch: the one side table ─────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>One merch listing (§9.6 Q4, ch 05 D8). Four interned strings: name, the PRICE AS THE WIRE GIVES IT
 /// ("$25", "£19.00" — a formatted, localized, currency-bearing string, which is why it is text and not the
@@ -602,7 +742,7 @@ public sealed class MerchTable
     }
 }
 
-// ── 5. the relations ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ── 6. the relations ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>Every relation in one place, one per scope (they die with their <see cref="Scope"/>, D9).
 ///
@@ -658,4 +798,336 @@ public sealed partial class Edges
     /// payload with the same value in every entry — one byte per hit, and no reader has to know which facet it is
     /// reading.</summary>
     public readonly EdgeTable<KindEdge> SearchResult = new();
+
+    // the TRAIT relations (G-044): four extension kinds the track drawer and the album page read, each "the row is the
+    // payload" or a plain list, and each landed by §8 below
+    /// <summary>Extension kind 186: the credits block, in the server's own grouped order. Parent = track slot; the
+    /// target is the credited ARTIST's slot, or <see cref="Table.None"/> for an unlinked contributor (a session player
+    /// with no artist page). Owned text: see <see cref="CreditEdge"/>.</summary>
+    public readonly EdgeTable<CreditEdge> TrackCredits = new();
+    /// <summary>Extension kinds 98 / 99: the recording's other RENDITIONS — the audio counterpart of a music video and
+    /// the video counterpart of a song. Parent = track slot, targets = track slots, the payload says which way.</summary>
+    public readonly EdgeTable<VersionEdge> TrackVersions = new();
+    /// <summary>Extension kind 237 reduced to <see cref="Spotify.Decode.WaveformColumns"/> magnitudes (0-255, the loudest
+    /// column = 255). Parent = track slot; payload-only, targets unused — ~38 KB of wire per track becomes 220 bytes,
+    /// once, at decode (0.2.9 <c>SpotifyTrackExpansionService.MapWaveform</c>).</summary>
+    public readonly EdgeTable<byte> TrackWaveform = new();
+    /// <summary>Extension kind 151: "playlists featuring this album", at most twelve (0.2.9's Take(12)). Parent = album
+    /// slot, targets = playlist slots.</summary>
+    public readonly EdgeTable<NoEdge> AlbumRecommendations = new();
+
+    // The rootlist's revision, per parent — `{counter},{hex}` as the playlist routes want it back (Spotify.Api's
+    // `FormatRevision`), ref-counted like every owned string. One string for the whole list, so a column keyed by parent
+    // is the honest shape (the same call Recents.cs made for its snapshot revision).
+    Column<StringId> _rootlistRevision;
+    int _rootlistRevisionCount;
+
+    /// <summary>The revision the parent's rootlist was answered at, or <see cref="StringId.Empty"/> — the base revision
+    /// a rootlist write and a <c>/diff</c> read send.</summary>
+    public StringId RootlistRevision(int parent)
+        => (uint)parent >= (uint)_rootlistRevisionCount ? StringId.Empty : _rootlistRevision[parent];
+
+    /// <summary>Record the revision an answer carried (AddRef the new, release the old).</summary>
+    public void SetRootlistRevision(int parent, StringId revision)
+    {
+        if (parent < 0) return;
+        if (parent >= _rootlistRevisionCount)
+        {
+            _rootlistRevision.EnsureCapacity(parent + 1);
+            _rootlistRevision.Clear(_rootlistRevisionCount, parent + 1 - _rootlistRevisionCount);
+            _rootlistRevisionCount = parent + 1;
+        }
+        Entities.RetainText(ref _rootlistRevision[parent], revision);
+    }
+
+    /// <summary>Give back the strings one parent's rootlist owns — the folder names and group ids — before the list is
+    /// replaced (<c>Entities.CommitRootlist</c> AddRefs the new list FIRST, so a folder that kept its name keeps its id).</summary>
+    internal void ReleaseRootlistText(int parent)
+    {
+        var rows = Rootlist.Payload(parent);
+        for (int i = 0; i < rows.Length; i++)
+        {
+            Entities.Strings.Release(rows[i].FolderName);
+            Entities.Strings.Release(rows[i].FolderId);
+        }
+    }
+
+    /// <summary>Give back the strings one track's credits own.</summary>
+    internal void ReleaseCreditText(int parent)
+    {
+        var rows = TrackCredits.Payload(parent);
+        for (int i = 0; i < rows.Length; i++)
+        {
+            Entities.Strings.Release(rows[i].Name);
+            Entities.Strings.Release(rows[i].Role);
+            Entities.Strings.Release(rows[i].Group);
+        }
+    }
+
+    /// <summary>THE SCOPE'S EDGE-OWNED TEXT, handed back when the scope is retired (G-052; <c>Scope.ReleaseText</c>
+    /// calls it after the tables). Every relation whose payload holds a string it AddRef'd is walked here, and so is
+    /// every per-parent revision column — the recents snapshot's (declared in Recents.cs, a part of this class) and the
+    /// rootlist's. A relation that interns without AddRef (a permanent string) is not listed, because releasing what
+    /// nobody retained is the one mistake worse than the leak.</summary>
+    public void ReleaseText()
+    {
+        for (int p = 0; p < Rootlist.ParentCount; p++) ReleaseRootlistText(p);
+        for (int p = 0; p < TrackCredits.ParentCount; p++) ReleaseCreditText(p);
+        for (int p = 0; p < _rootlistRevisionCount; p++) Entities.ReleaseText(ref _rootlistRevision[p]);
+        _rootlistRevisionCount = 0;
+        for (int p = 0; p < _recentsRevisionCount; p++) Entities.ReleaseText(ref _recentsRevision[p]);
+        _recentsRevisionCount = 0;
+    }
+}
+
+/// <summary>One credit row (extension kind 186, <c>credits_v2_trait.proto</c>): the person, the role, the server's
+/// group heading. Three OWNED strings — AddRef'd at commit, released when the track's credits are replaced and when
+/// the scope retires (<see cref="Edges.ReleaseText"/>).</summary>
+public readonly record struct CreditEdge(StringId Name, StringId Role, StringId Group);
+
+/// <summary>Which way a <see cref="Edges.TrackVersions"/> edge points.</summary>
+public enum TrackVersionKind : byte
+{
+    /// <summary>Kind 98: the AUDIO counterpart of a video rendition.</summary>
+    Audio = 0,
+    /// <summary>Kind 99: the VIDEO counterpart of an audio recording.</summary>
+    Video = 1,
+}
+
+/// <summary>The payload of a <see cref="Edges.TrackVersions"/> edge.</summary>
+public readonly record struct VersionEdge(TrackVersionKind Kind);
+
+// ── 7. the rootlist marker stream (G-046, G-047) ─────────────────────────────────────────────────────────────────────
+//
+// THE ROOTLIST HAS ITS OWN STAGED SHAPE, because its payload carries two strings the generic staged edge has one slot
+// for: a folder's NAME and its GROUP ID. The wire is a flat stream —
+//
+//     spotify:playlist:A
+//     spotify:start-group:edb339e10aebcf38:Workout      FolderStart  depth 0  name "Workout"  id "edb339e10aebcf38"
+//     spotify:playlist:B                                Item         depth 1
+//     spotify:end-group:edb339e10aebcf38                FolderEnd    depth 0                   id "edb339e10aebcf38"
+//
+// — and it lands verbatim: one edge per item AND per marker, markers targeting slot 0, in wire order, with the wire
+// index as the position. The sidebar's tree is BUILT from this stream (Sidebar.cs `WalkRootlist`); storing the stream
+// is what makes a reorder a single index move.
+
+/// <summary>One staged rootlist row (item or marker). Text is a <see cref="TextRef"/>: the decoder cannot intern (C1).</summary>
+public struct StagedRootlistRow
+{
+    /// <summary>The playlist, for an <see cref="RootlistKind.Item"/>; empty for a marker.</summary>
+    public StagedId Target;
+    /// <summary>The decoded folder name (start marker only).</summary>
+    public TextRef Name;
+    /// <summary>The bare group id (both markers).</summary>
+    public TextRef FolderId;
+    public int AddedAt;
+    public ushort Position;
+    public byte Depth;
+    public RootlistKind Kind;
+}
+
+/// <summary>One answered rootlist: the account it hangs off, its revision, and the slice of
+/// <see cref="Staging.RootlistRows"/> it produced.</summary>
+public struct StagedRootlist
+{
+    public StagedId Parent;
+    public TextRef Revision;
+    public int Start, Length;
+}
+
+public sealed partial class Staging
+{
+    StagedList<StagedRootlistRow>? _rootlistRows;
+    StagedList<StagedRootlist>? _rootlists;
+
+    /// <inheritdoc cref="StagedRootlistRow"/>
+    public StagedList<StagedRootlistRow> RootlistRows => _rootlistRows ??= Register(new StagedList<StagedRootlistRow>());
+    /// <inheritdoc cref="StagedRootlist"/>
+    public StagedList<StagedRootlist> Rootlists => _rootlists ??= Register(new StagedList<StagedRootlist>());
+
+    internal StagedList<StagedRootlistRow>? StagedRootlistRows => _rootlistRows;
+    internal StagedList<StagedRootlist>? StagedRootlists => _rootlists;
+}
+
+// ── 8. the trait relations (G-044) ───────────────────────────────────────────────────────────────────────────────────
+
+/// <summary>Which trait relation a <see cref="StagedTraitRun"/> rewrites — the four §6 names, and the tables they land
+/// in are fixed by it (parent and child), exactly as <see cref="Relation"/> fixes them for the generic runs.</summary>
+public enum TraitRelation : byte { TrackCredits, TrackVersions, TrackWaveform, AlbumRecommendations }
+
+/// <summary>One staged trait member: a credit row, a version, a recommended playlist. A union read by the run's
+/// relation: credits read the three texts and <see cref="Target"/> (the artist); versions read <see cref="Target"/> and
+/// <see cref="B0"/> (the <see cref="TrackVersionKind"/>); recommendations read <see cref="Target"/>.</summary>
+public struct StagedTrait
+{
+    public StagedId Target;
+    public TextRef Name, Role, Group;
+    public byte B0;
+}
+
+/// <summary>One parent's rewritten trait relation. A waveform carries no members: its 220 magnitudes ride
+/// <see cref="Bytes"/> in the staging arena.</summary>
+public struct StagedTraitRun
+{
+    public StagedId Parent;
+    public TraitRelation Relation;
+    public int Start, Length;
+    public TextRef Bytes;
+}
+
+public sealed partial class Staging
+{
+    StagedList<StagedTrait>? _traits;
+    StagedList<StagedTraitRun>? _traitRuns;
+
+    /// <inheritdoc cref="StagedTrait"/>
+    public StagedList<StagedTrait> Traits => _traits ??= Register(new StagedList<StagedTrait>());
+    /// <inheritdoc cref="StagedTraitRun"/>
+    public StagedList<StagedTraitRun> TraitRuns => _traitRuns ??= Register(new StagedList<StagedTraitRun>());
+
+    internal StagedList<StagedTrait>? StagedTraits => _traits;
+    internal StagedList<StagedTraitRun>? StagedTraitRuns => _traitRuns;
+}
+
+public static partial class Entities
+{
+    // UI thread only (C1); grown to the widest run seen and never shrunk (P8).
+    static int[] s_traitTargets = new int[64];
+    static RootlistEdge[] s_rootlistPayload = new RootlistEdge[64];
+    static CreditEdge[] s_creditPayload = new CreditEdge[64];
+    static VersionEdge[] s_versionPayload = new VersionEdge[64];
+    static NoEdge[] s_traitNone = new NoEdge[64];
+
+    /// <summary>Land every staged rootlist: resolve the account, resolve each ITEM to a playlist slot (a marker targets
+    /// <see cref="Table.None"/>), AddRef the folder strings, release the list being replaced, and <c>Replace</c> —
+    /// Complete, empty included (an account with no playlists has an empty rootlist, and that is an answer).</summary>
+    static partial void CommitRootlist(Staging s)
+    {
+        var lists = s.StagedRootlists;
+        if (lists is null || lists.Count == 0) return;
+        var rows = s.StagedRootlistRows is { } r ? r.Span : default;
+        var edges = Current.Edges;
+
+        foreach (ref readonly var list in lists.Span)
+        {
+            if (list.Start < 0 || list.Length < 0 || list.Start + list.Length > rows.Length) continue;
+            int parent = s.Slot(Current.Users, in list.Parent);
+            if (parent == Table.None) continue;
+            GrowTraits(list.Length);
+
+            var page = rows.Slice(list.Start, list.Length);
+            for (int i = 0; i < page.Length; i++)
+            {
+                ref readonly var row = ref page[i];
+                s_traitTargets[i] = row.Kind == RootlistKind.Item ? s.Slot(Current.Playlists, in row.Target) : Table.None;
+                s_rootlistPayload[i] = new RootlistEdge(row.Position, row.Depth, (byte)row.Kind,
+                                                        Retained(s.Intern(row.Name)), row.AddedAt,
+                                                        Retained(s.Intern(row.FolderId)));
+            }
+            edges.ReleaseRootlistText(parent);             // AFTER the AddRefs above: an unchanged folder keeps its id
+            edges.Rootlist.Replace(parent, s_traitTargets.AsSpan(0, page.Length),
+                                   s_rootlistPayload.AsSpan(0, page.Length), EdgeState.Complete, page.Length);
+            if (!list.Revision.IsEmpty) edges.SetRootlistRevision(parent, s.Intern(list.Revision));
+        }
+    }
+
+    /// <summary>Land every staged trait run (credits, versions, waveform, recommendations). Each is a whole-list
+    /// <c>Replace</c>, Complete, EMPTY INCLUDED: "this track has no credits" is the answer that stops the drawer asking
+    /// (finding 27's rule, as for descriptors).</summary>
+    static partial void CommitTraits(Staging s)
+    {
+        var runs = s.StagedTraitRuns;
+        if (runs is null || runs.Count == 0) return;
+        var members = s.StagedTraits is { } m ? m.Span : default;
+        var edges = Current.Edges;
+
+        foreach (ref readonly var run in runs.Span)
+        {
+            if (run.Start < 0 || run.Length < 0 || run.Start + run.Length > members.Length) continue;
+            var page = members.Slice(run.Start, run.Length);
+
+            switch (run.Relation)
+            {
+                case TraitRelation.TrackCredits:
+                    {
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        if (parent == Table.None) break;
+                        GrowTraits(page.Length);
+                        for (int i = 0; i < page.Length; i++)
+                        {
+                            ref readonly var row = ref page[i];
+                            s_traitTargets[i] = s.Slot(Current.Artists, in row.Target);   // None for an unlinked name
+                            s_creditPayload[i] = new CreditEdge(Retained(s.Intern(row.Name)), Retained(s.Intern(row.Role)),
+                                                                Retained(s.Intern(row.Group)));
+                        }
+                        edges.ReleaseCreditText(parent);
+                        edges.TrackCredits.Replace(parent, s_traitTargets.AsSpan(0, page.Length),
+                                                   s_creditPayload.AsSpan(0, page.Length), EdgeState.Complete, page.Length);
+                        break;
+                    }
+                case TraitRelation.TrackVersions:
+                    {
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        if (parent == Table.None) break;
+                        GrowTraits(page.Length);
+                        int n = 0;
+                        for (int i = 0; i < page.Length; i++)
+                        {
+                            int target = s.Slot(Current.Tracks, in page[i].Target);
+                            if (target == Table.None || target == parent) continue;   // a rendition of itself is not a version
+                            s_traitTargets[n] = target;
+                            s_versionPayload[n++] = new VersionEdge((TrackVersionKind)page[i].B0);
+                        }
+                        edges.TrackVersions.Replace(parent, s_traitTargets.AsSpan(0, n), s_versionPayload.AsSpan(0, n),
+                                                    EdgeState.Complete, n);
+                        break;
+                    }
+                case TraitRelation.TrackWaveform:
+                    {
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        if (parent == Table.None) break;
+                        var magnitudes = s.Utf8(run.Bytes);
+                        GrowTraits(magnitudes.Length);
+                        s_traitTargets.AsSpan(0, magnitudes.Length).Clear();         // payload-only: targets unused
+                        edges.TrackWaveform.Replace(parent, s_traitTargets.AsSpan(0, magnitudes.Length), magnitudes,
+                                                    EdgeState.Complete, magnitudes.Length);
+                        break;
+                    }
+                case TraitRelation.AlbumRecommendations:
+                    {
+                        int parent = s.Slot(Current.Albums, in run.Parent);
+                        if (parent == Table.None) break;
+                        GrowTraits(page.Length);
+                        int n = 0;
+                        for (int i = 0; i < page.Length; i++)
+                        {
+                            int target = s.Slot(Current.Playlists, in page[i].Target);
+                            if (target != Table.None) s_traitTargets[n++] = target;
+                        }
+                        edges.AlbumRecommendations.Replace(parent, s_traitTargets.AsSpan(0, n), s_traitNone.AsSpan(0, n),
+                                                           EdgeState.Complete, n);
+                        break;
+                    }
+            }
+        }
+    }
+
+    /// <summary>Intern-then-own: AddRef a freshly interned id so the edge that stores it OWNS it (the file header's rule).</summary>
+    static StringId Retained(StringId id)
+    {
+        Strings.AddRef(id);
+        return id;
+    }
+
+    static void GrowTraits(int n)
+    {
+        if (n <= s_traitTargets.Length) return;
+        int size = s_traitTargets.Length;
+        while (size < n) size *= 2;
+        s_traitTargets = new int[size];
+        s_rootlistPayload = new RootlistEdge[size];
+        s_creditPayload = new CreditEdge[size];
+        s_versionPayload = new VersionEdge[size];
+        s_traitNone = new NoEdge[size];
+    }
 }

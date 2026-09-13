@@ -190,9 +190,11 @@
     <Protobuf Include="Spotify\Protos\**\*.proto" GrpcServices="None" ProtoRoot="Spotify\Protos" />
   </ItemGroup>
 
-  <!-- Bundled fake-catalog cover art + the loc JSON + the font files: copied next to the exe (the fake covers are
-       loaded by Entities/Entities.Fake.cs; Platform/Platform.cs loads assets/loc/*.json; Platform/Design.cs loads
-       assets/fonts/SegoeFluentIcons.ttf + wavee-icons.otf by path - see assets/fonts/FONTS.md). -->
+  <!-- Bundled fake-catalog cover art + the loc JSON + the font files: copied next to the exe for their consumers
+       (Entities/Entities.Fake.cs's fake covers, the engine-side assets/loc/*.json load, and
+       assets/fonts/SegoeFluentIcons.ttf + wavee-icons.otf - see assets/fonts/FONTS.md). As of the 0.3 restructure the
+       loc-JSON load and AppLocaleBootstrap's engine half are still owner S's (Platform.cs's "LEFT FOR OWNER S" block);
+       until that lands, these files are staged but unread at runtime. -->
   <ItemGroup>
     <Content Include="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

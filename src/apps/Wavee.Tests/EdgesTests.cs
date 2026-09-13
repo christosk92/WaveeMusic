@@ -413,4 +413,91 @@ public class EdgesTests
         Assert.Equal(EntityKind.Unknown, edges.SearchResult.Payload(6)[0].Kind);
         Assert.Equal(EdgeState.Partial, edges.SearchResult.State(6));
     }
+
+    // ── the fetch marks (G-042, G-050) ──────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_page_asked_is_remembered_and_every_page_below_it_counts_as_asked()
+    {
+        var edges = new EdgeTable<NoEdge>();
+        Assert.False(edges.WasAsked(Parent, 0));
+
+        edges.MarkAsked(Parent, 0);
+        Assert.True(edges.WasAsked(Parent, 0));
+        Assert.False(edges.WasAsked(Parent, 50));                           // the next page is a new ask
+
+        edges.MarkAsked(Parent, 50);
+        Assert.True(edges.WasAsked(Parent, 50));
+        Assert.True(edges.WasAsked(Parent, 0));                             // pages are asked in order
+
+        edges.ForgetAsked(Parent);
+        Assert.False(edges.WasAsked(Parent, 0));                            // a refresh asks again
+    }
+
+    [Fact]
+    public void A_failed_ask_is_un_asked_and_an_unknown_list_reads_failed_until_an_answer_lands()
+    {
+        // G-050: a skeleton that never resolves is the one state a surface must not be left in. `State` stays the
+        // stored truth (Unknown); `Readiness` is what the V3 banner and the Retry vacancy read.
+        var edges = new EdgeTable<NoEdge>();
+        edges.MarkAsked(Parent, 0);
+        edges.MarkFailed(Parent, 0, 503);
+
+        Assert.False(edges.WasAsked(Parent, 0));                            // the next mount really retries
+        Assert.True(edges.IsFailed(Parent));
+        Assert.Equal(503, edges.FailureOf(Parent));
+        Assert.Equal(EdgeState.Unknown, edges.State(Parent));
+        Assert.Equal(EdgeState.Failed, edges.Readiness(Parent));
+
+        edges.MarkAsked(Parent, 0);                                         // a new attempt goes back to loading
+        Assert.False(edges.IsFailed(Parent));
+        Assert.Equal(EdgeState.Unknown, edges.Readiness(Parent));
+
+        edges.MarkFailed(Parent, 0, EdgeTableBase.Transport);
+        Assert.True(edges.IsFailed(Parent));
+        Assert.Equal(EdgeTableBase.Transport, edges.FailureOf(Parent));    // status 0 survives the zeroed column
+        edges.Replace(Parent, Three, [], EdgeState.Complete, 3);
+        edges.MarkAnswered(Parent);
+        Assert.False(edges.IsFailed(Parent));
+        Assert.Equal(EdgeState.Complete, edges.Readiness(Parent));
+    }
+
+    [Fact]
+    public void A_list_with_rows_keeps_rendering_them_after_a_failed_refresh()
+    {
+        var edges = new EdgeTable<NoEdge>();
+        edges.Replace(Parent, Three, [], EdgeState.Complete, 3);
+        edges.MarkFailed(Parent, 0, 500);
+
+        Assert.Equal(EdgeState.Complete, edges.Readiness(Parent));          // the rows stand…
+        Assert.True(edges.IsFailed(Parent));                                // …and the failure is still readable
+    }
+
+    [Fact]
+    public void An_answer_without_the_list_stays_asked_and_says_no_route()
+    {
+        var edges = new EdgeTable<NoEdge>();
+        edges.MarkUnanswered(Parent, 0);
+
+        Assert.True(edges.WasAsked(Parent, 0));                             // sealed for the scope
+        Assert.Equal(EdgeTableBase.NoRoute, edges.FailureOf(Parent));
+        Assert.Equal(EdgeState.Failed, edges.Readiness(Parent));            // a vacancy, not a skeleton forever
+    }
+
+    [Fact]
+    public void An_ask_is_not_a_structural_write_but_a_failure_publishes()
+    {
+        TestScope.Fresh();
+        var edges = Entities.Current.Edges.Rootlist;
+        Entities.Publish();
+        uint before = edges.Version(Parent);
+
+        edges.MarkAsked(Parent, 0);
+        Assert.Equal(before, edges.Version(Parent));
+        Assert.Equal(0, Entities.PendingPublications);
+
+        edges.MarkFailed(Parent, 0, 404);
+        Assert.Equal(1, Entities.PendingPublications);                      // Readiness changed: a bound surface re-reads
+        Entities.Publish();
+    }
 }

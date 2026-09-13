@@ -9,7 +9,9 @@
 //
 // THE SOCKETS. Everything in this file is I/O: two named threads (the AP channel and the dealer websocket), a third
 // that serves the 30 s keepalive and the server-clock re-probe, the three HTTP mints (apresolve, clienttoken,
-// login5), and the audio-key request table. Every DECISION they need is in `Spotify.cs` and is pure.
+// login5), the audio-key request table, and the interactive sign-in's two flows (§13: the PKCE loopback listener and the
+// device-grant poll, each on its own named thread). Every DECISION they need is in `Spotify.cs` / `Spotify.OAuth.cs`
+// and is pure.
 //
 // The rules this file is written under (C1-C10):
 //   C1  this file never writes a table, an edge or a signal, and never touches `Entities.Strings`, from a shell
@@ -88,9 +90,24 @@ public static partial class Spotify
     /// <para>Empty when the slot was never opened (a unit test) or holds nothing: the fold answers
     /// <see cref="SessionFault.NoCredential"/> and no socket is opened.</para></summary>
     static Credential LoadCredential()
-        => Platform.TryLoadCredential(out var stored) && !stored.IsEmpty
+    {
+        lock (InteractiveGate) if (!s_interactive.IsEmpty) return s_interactive;
+        return Platform.TryLoadCredential(out var stored) && !stored.IsEmpty
             ? new Credential((CredentialKind)(byte)stored.Kind, stored.Username, stored.Secret)
             : default;
+    }
+
+    /// <summary>The OAuth access token an interactive sign-in just obtained (§13). IN MEMORY ONLY — 0.2.9 never persisted
+    /// the OAuth token either: the AP login presents it once, and the welcome's reusable blob is what reaches the slot.
+    /// It wins over the slot while present (the user just signed in, whatever was stored), survives a network retry, and
+    /// is dropped by the welcome that replaced it, a sign-out, or a verdict that clears the credential.</summary>
+    static Credential s_interactive;
+    static readonly Lock InteractiveGate = new();
+
+    static void ClearInteractive()
+    {
+        lock (InteractiveGate) s_interactive = default;
+    }
 
     // ── 2. the client identity ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -205,25 +222,70 @@ public static partial class Spotify
     /// (resolve → connect → handshake → login → mint → pump), so <c>OpenAp</c> and <c>Mint*</c> describe what that
     /// procedure is already doing and are asserted by the tests rather than dispatched twice. Everything that
     /// CROSSES a thread is executed: <c>ResolveHosts</c> starts the AP thread (one per session), <c>Backoff</c> arms
-    /// the one-shot retry timer, <c>OpenDealer</c> starts the websocket thread, <c>CloseAll</c> abandons the epoch,
-    /// the two credential effects call the store seam, <c>Welcome</c> adopts the account's market and catalog scope,
-    /// and <c>AnnounceDevice</c> asks the Connect glue for the hello PUT.</para></summary>
+    /// the one-shot retry timer, <c>OpenDealer</c> starts the websocket thread, <c>CloseAll</c> abandons the epoch (and
+    /// empties the Connect mailbox: every queued cluster describes a connection that no longer exists — G-036),
+    /// the two credential effects call the store seam, <c>SignedOut</c> tears the account's surfaces down,
+    /// <c>Welcome</c> adopts the account's market and catalog scope, and <c>AnnounceDevice</c> asks the Connect glue
+    /// for the hello PUT.</para>
+    /// <para>The credential slot moves BEFORE the signals do: an observer folding "the phase" with "is a credential
+    /// stored" (the shell's auth fold) must see the slot as of this transition, not the one before it.</para></summary>
     internal static void Apply(in SessionEvent e)
     {
         Session s = Current;
         SessionEffects fx = Step(ref s, e);
         Volatile.Write(ref s_box, new Box(s));
+
+        if ((fx & SessionEffects.ClearCredential) != 0)
+        {
+            ClearInteractive();
+            ForgetAccount();
+            Platform.ClearCredential();
+            Log.Info("spotify", "stored credential cleared");
+        }
+        if ((fx & SessionEffects.SaveCredential) != 0) SaveWelcomeCredential();
+
         Status.Value = s.Phase;
         Fault.Value = s.Fault;
 
-        if ((fx & SessionEffects.CloseAll) != 0) CloseEpoch();
-        if ((fx & SessionEffects.ClearCredential) != 0) { Platform.ClearCredential(); Log.Info("spotify", "stored credential cleared"); }
-        if ((fx & SessionEffects.SaveCredential) != 0) SaveWelcomeCredential();
+        if ((fx & SessionEffects.CloseAll) != 0) { CloseEpoch(); Connect.Clear(); }
+        if ((fx & SessionEffects.SignedOut) != 0) SignOutTeardown();
         if ((fx & SessionEffects.Welcome) != 0) AdoptWelcome(in s);
         if ((fx & SessionEffects.ResolveHosts) != 0) StartAp(s.Epoch);
         if ((fx & SessionEffects.OpenDealer) != 0) StartDealer(s.Epoch);
         if ((fx & SessionEffects.Backoff) != 0) ArmRetry(BackoffMs(s));
         if ((fx & SessionEffects.AnnounceDevice) != 0) Connect.AnnounceDevice();
+    }
+
+    /// <summary>UI THREAD (the <see cref="SessionEffects.SignedOut"/> effect): the account is gone from this PC. Playback
+    /// gives up ownership — only where a player host exists, which is exactly when <c>Playback.Boot</c> has set
+    /// <c>Connect.Hello</c> — and the account's OS surfaces come down: the jump list's recents and every scheduled toast
+    /// (G-036/G-037, ch 14 DATA GAP 8). The OS half runs only where there is a window; a headless run and a unit test own
+    /// no jump list and no toast registration to take down.</summary>
+    static void SignOutTeardown()
+    {
+        if (Connect.Hello is not null) Playback.Post(Playback.Input.Release(Playback.ReleaseCause.Logout));
+        if (FluentGpu.FluentApp.WindowHandle != 0) SignOutOsSurfaces();
+    }
+
+    /// <summary>The credential is gone, so the login it produced is too: <see cref="AccessToken"/> must not keep minting
+    /// bearers from the reusable blob of an account that signed out or was refused. The client token stays — it attests
+    /// the device, not the account.</summary>
+    static void ForgetAccount()
+    {
+        // No TokenGate here: a login5 refresh holds it for a whole HTTP round trip and this runs on the UI thread (C9). A
+        // refresh racing past these writes is harmless — `AccessToken` refuses to answer once the login is gone.
+        Volatile.Write(ref s_login, null);
+        Volatile.Write(ref s_accessToken, null);
+        Volatile.Write(ref s_accessExpiresAtMs, 0);
+    }
+
+    /// <summary>Its own method, so a host with no window never even compiles a reference to the OS surfaces.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static void SignOutOsSurfaces()
+    {
+        Playback.Os.SignedOut();
+        Notify.SignedOut();
+        Log.Info("spotify", "signed out: playback released, jump list and scheduled toasts cleared");
     }
 
     /// <summary>UI THREAD (the <see cref="SessionEffects.Welcome"/> effect): the ONE place the signed-in account reaches
@@ -233,11 +295,21 @@ public static partial class Spotify
     /// nothing.</summary>
     static void AdoptWelcome(in Session s)
     {
+        // A new AP session is a new answer from the audio-key service: an earlier refusal latch (and the keys cached under
+        // another account) must not outlive the login that produced them (G-034).
+        Audio.ResetKeyLatch();
+
         string market = s.Country.IsEmpty ? "" : Entities.Strings.Resolve(s.Country);
         Api.Market = market;
+        string account = s.Username.IsEmpty ? "" : Entities.Strings.Resolve(s.Username);
+        // `session.lastAccount` (G-031): the scope's fallback when the slot is empty, and the account-switch witness. The
+        // library itself needs no reset here — the catalog scope is partitioned by account, so a switch below opens the
+        // other account's table set.
+        if (RememberAccount(Platform.Settings, account) == AccountChange.Switched)
+            Log.Info("spotify", "account switched (" + Platform.Redact(account) + ")");
+
         var scope = Entities.Current;
         if (scope is null) return;
-        string account = s.Username.IsEmpty ? "" : Entities.Strings.Resolve(s.Username);
         CatalogScope next = WelcomeScope(scope.Key, account, market, s.Tier);
         if (next == scope.Key) return;
         Entities.Switch(next);
@@ -274,11 +346,28 @@ public static partial class Spotify
     }
 
     /// <summary>Start a session with the stored credential. Returns immediately (C9): the work happens on the AP
-    /// thread, and the caller watches <see cref="Status"/>.</summary>
+    /// thread, and the caller watches <see cref="Status"/>.
+    /// <para>With nothing to resume the fold answers <see cref="SessionFault.NoCredential"/> AND an interactive sign-in is
+    /// requested (<see cref="SignIn.Requests"/>): every "Sign in" affordance in the app calls this one method, and the
+    /// GUI's sign-in door (<c>Setup.SignInDoor</c>) opens the surface on the request. A headless host mounts no door and
+    /// reads the fault instead.</para></summary>
     public static void Login()
     {
         Boot();
-        Publish(new SessionEvent(SessionEventKind.Login, Flag: !LoadCredential().IsEmpty));
+        bool resumable = !LoadCredential().IsEmpty;
+        Publish(new SessionEvent(SessionEventKind.Login, Flag: resumable));
+        if (!resumable) Post(static () => SignIn.Requests.Value = SignIn.Requests.Peek() + 1);
+    }
+
+    /// <summary>UI THREAD: log in with a token an interactive flow just obtained (§13). A session still running (a
+    /// refused account, a reconnect in progress) is closed first, WITHOUT touching the slot; the AP thread then presents
+    /// the token, and the welcome's reusable blob replaces it in the slot.</summary>
+    static void LoginWithToken(string accessToken)
+    {
+        Boot();
+        lock (InteractiveGate) s_interactive = new Credential(CredentialKind.OAuthToken, "", accessToken);
+        if (Current.Phase is not (SessionPhase.Offline or SessionPhase.Failed)) Apply(new SessionEvent(SessionEventKind.Disconnect));
+        Apply(new SessionEvent(SessionEventKind.Login, Flag: true));
     }
 
     /// <summary>Sign out: tear every socket down, forget the tokens, wipe the stored credential.</summary>
@@ -293,6 +382,9 @@ public static partial class Spotify
     static readonly Lock ThreadGate = new();
     static CancellationTokenSource s_epochCts = new();
     static int s_apRunning, s_dealerRunning, s_keepaliveRunning;
+    /// <summary>An AP start that arrived while the previous epoch's thread was still unwinding (a re-login right after a
+    /// close): that thread starts it from its <c>finally</c>, so the request is deferred rather than lost. 0 = none.</summary>
+    static uint s_apRestartEpoch;
     static Timer? s_retryTimer;
 
     /// <summary>The token every thread of the CURRENT epoch watches. Replaced whole by <see cref="CloseEpoch"/>.</summary>
@@ -324,7 +416,8 @@ public static partial class Spotify
     {
         lock (ThreadGate)
         {
-            if (Interlocked.CompareExchange(ref s_apRunning, 1, 0) != 0) return;
+            if (Interlocked.CompareExchange(ref s_apRunning, 1, 0) != 0) { s_apRestartEpoch = epoch; return; }
+            s_apRestartEpoch = 0;
             var ct = s_epochCts.Token;
             new Thread(() => ApLoop(epoch, ct)) { IsBackground = true, Name = "wavee-spotify-ap" }.Start();
         }
@@ -404,9 +497,19 @@ public static partial class Spotify
         public byte[] Reusable = [];
     }
 
-    /// <summary>The AP credential was rejected — final for this credential, and the ONLY case that clears the stored
-    /// one. A transport failure is a plain exception and merely fails over to the next access point.</summary>
-    sealed class ApRejectedException(string message) : Exception(message);
+    /// <summary>One AP AuthFailure (cmd 0xAD), with its <c>keyexchange.proto</c> error code (<c>-1</c> = unreadable). Not yet
+    /// a verdict: <see cref="ConnectAndLogin"/> runs it through the D24 ladder (<see cref="OnApReject"/>). A transport
+    /// failure is a plain exception and merely fails over to the next access point.</summary>
+    sealed class ApRejectedException(int code, string message) : Exception(message)
+    {
+        public int Code { get; } = code;
+    }
+
+    /// <summary>The ladder's terminal answer: the login stops with this verdict, which decides whether the credential survives.</summary>
+    sealed class ApRefusedException(RejectVerdict verdict, string message) : Exception(message)
+    {
+        public RejectVerdict Verdict { get; } = verdict;
+    }
 
     /// <summary>The AP asked us to connect elsewhere (login_failed = TryAnotherAP): retry the NEXT access point.</summary>
     sealed class ApTryAnotherException(string message) : Exception(message);
@@ -448,10 +551,12 @@ public static partial class Spotify
         }
         catch (OperationCanceledException) { }
         catch (ObjectDisposedException) { }                          // the epoch closed the socket under us
-        catch (ApRejectedException ex)
+        catch (ApRefusedException ex)
         {
-            Log.Warn("spotify", "the AP rejected the stored credential: " + ex.Message);
-            Publish(new SessionEvent(SessionEventKind.AuthRejected));
+            Log.Warn("spotify", "the AP refused the login (" + ex.Verdict + "): " + ex.Message
+                + (ex.Verdict == RejectVerdict.Transient ? " — the credential is kept" : ""));
+            if (!ct.IsCancellationRequested)
+                Publish(new SessionEvent(SessionEventKind.AuthRejected, Number: (long)ex.Verdict));
         }
         catch (Exception ex)
         {
@@ -462,7 +567,14 @@ public static partial class Spotify
         finally
         {
             CloseApSocket();
-            Volatile.Write(ref s_apRunning, 0);
+            uint restart;
+            lock (ThreadGate)
+            {
+                Volatile.Write(ref s_apRunning, 0);
+                restart = s_apRestartEpoch;
+                s_apRestartEpoch = 0;
+            }
+            if (restart != 0 && restart != epoch && restart == Current.Epoch) StartAp(restart);
         }
     }
 
@@ -500,11 +612,18 @@ public static partial class Spotify
         }
     }
 
+    /// <summary>Walk the access points until one logs in. A refusal goes through the D24 ladder (<see cref="OnApReject"/>):
+    /// the FIRST bad-credentials answer buys one more attempt against a fresh access point (the next one in the list,
+    /// wrapping), the second is the definitive verdict; "try another AP" is plain failover; anything else stops with the
+    /// credential kept. A retry that then fails on transport is a network failure, never a verdict.</summary>
     static void ConnectAndLogin(in Credential cred, List<(string Host, int Port)> accessPoints, CancellationToken ct)
     {
         Exception? last = null;
-        foreach (var (host, port) in accessPoints)
+        int badCredentials = 0;
+        int budget = accessPoints.Count;
+        for (int attempt = 0; attempt < budget; attempt++)
         {
+            var (host, port) = accessPoints[attempt % accessPoints.Count];
             ct.ThrowIfCancellationRequested();
             TcpClient? tcp = null;
             try
@@ -528,7 +647,26 @@ public static partial class Spotify
                 PublishPreferredLocale();
                 return;
             }
-            catch (ApRejectedException) { tcp?.Dispose(); throw; }
+            catch (ApRejectedException ex)
+            {
+                tcp?.Dispose();
+                switch (OnApReject(ex.Code, badCredentials, out RejectVerdict verdict))
+                {
+                    case RejectStep.RetryFreshAccessPoint:
+                        badCredentials++;
+                        budget = Math.Max(budget, attempt + 2);   // exactly one more attempt, even on a one-AP list
+                        Log.Warn("spotify", "access point " + host + " refused the credential (" + ex.Message
+                            + ") — one retry against a fresh access point before believing it");
+                        last = new IOException("the retry against a fresh access point did not complete");
+                        continue;
+                    case RejectStep.NextAccessPoint:
+                        last = ex;
+                        Log.Info("spotify", "access point " + host + " asked for another — trying the next");
+                        continue;
+                    default:
+                        throw new ApRefusedException(verdict, ex.Message);
+                }
+            }
             catch (OperationCanceledException) { tcp?.Dispose(); throw; }
             catch (Exception ex)
             {
@@ -685,13 +823,15 @@ public static partial class Spotify
                         break;
                     case Handshake.CmdAuthFailure:
                         string detail;
+                        int code = -1;
                         try
                         {
                             var f = Wavee.Protocol.APLoginFailed.Parser.ParseFrom(payload);
-                            detail = f.ErrorCode + " " + f.ErrorDescription;
+                            code = (int)f.ErrorCode;
+                            detail = f.ErrorCode.ToString();
                         }
-                        catch (InvalidProtocolBufferException) { detail = payload.Length + " bytes"; }
-                        throw new ApRejectedException(detail);
+                        catch (InvalidProtocolBufferException) { detail = "unreadable failure, " + payload.Length + " bytes"; }
+                        throw new ApRejectedException(code, detail);
                     case Handshake.CmdCountryCode:
                         result.Country = Encoding.UTF8.GetString(payload);
                         trailers++;
@@ -824,6 +964,7 @@ public static partial class Spotify
         if (login is null || login.Reusable.Length == 0) return;
         Platform.SaveCredential(new Wavee.Credential(Wavee.CredentialKind.ReusableBlob, login.Username,
             Convert.ToBase64String(login.Reusable), Refresh: null));
+        ClearInteractive();   // the blob supersedes an interactive sign-in's token: every later login resumes from the slot
     }
 
     // ── 9. the tokens (client-token attestation, then login5) ────────────────────────────────────────────────────────
@@ -1070,11 +1211,42 @@ public static partial class Spotify
         }
     }
 
-    /// <summary>The attestation header value, or null. Cheap: minted with the session and refreshed with it.</summary>
+    /// <summary>The attestation header value, or null. Cheap while it is fresh; within <see cref="TokenRefreshLeadMs"/> of
+    /// its expiry (or when the login's mint failed) the FIRST caller re-mints it and the others wait for that one answer
+    /// (G-035 — minted once per AP attempt, it used to be sent past its expiry). SHELL THREADS ONLY — the re-mint blocks.
+    /// A failed re-mint keeps the old value and backs off for <see cref="ClientTokenRetryMs"/>, so a dead
+    /// clienttoken.spotify.com costs one attempt a minute, not one per request.</summary>
     public static string? ClientToken()
     {
-        lock (TokenGate) return s_clientToken;
+        string? token;
+        long expiresAt;
+        lock (TokenGate) { token = s_clientToken; expiresAt = s_clientTokenExpiresAtMs; }
+        if (s_login is null || !TokenDue(NowMs, expiresAt)) return token;
+
+        lock (ClientTokenRefreshGate)
+        {
+            lock (TokenGate)
+            {
+                // Another api thread refreshed it while this one waited for the gate.
+                if (!TokenDue(NowMs, s_clientTokenExpiresAtMs)) return s_clientToken;
+            }
+            string? fresh = null;
+            try { fresh = MintClientToken(EpochToken); }
+            catch (OperationCanceledException) { }                   // the epoch closed mid-mint: the stale value stands
+            if (fresh is null)
+            {
+                lock (TokenGate) s_clientTokenExpiresAtMs = NowMs + ClientTokenRetryMs + TokenRefreshLeadMs;
+                return token;
+            }
+            Publish(new SessionEvent(SessionEventKind.ClientTokenMinted, Text: Text.Add(fresh), Number: s_clientTokenExpiresAtMs));
+            return fresh;
+        }
     }
+
+    /// <summary>The back-off after a failed client-token re-mint (P10: a named interval, no timer — the next caller retries).</summary>
+    public const long ClientTokenRetryMs = 60_000;
+
+    static readonly Lock ClientTokenRefreshGate = new();
 
     /// <summary>The spclient base url the request runner prefixes onto a folded path.</summary>
     public static string SpclientBaseUrl()
@@ -1456,5 +1628,325 @@ public static partial class Spotify
             Volatile.Write(ref s_box, new Box(s));
             if (drift) Log.Info("spotify", "server-clock drift — the next keepalive tick re-probes");
         });
+    }
+
+    // ── 13. the interactive sign-in (G-030, D2) ──────────────────────────────────────────────────────────────────────
+    //
+    // A fresh profile's way in. Two flows, each one attempt on its own named background thread, each cancellable, and
+    // either may run beside the other (the surface shows the pairing code while the browser is open): the first token
+    // wins, cancels its sibling and is handed to the session (`LoginWithToken`). Everything decided along the way is
+    // `Spotify.OAuth` (pure); what the surface renders is `SignIn.State` (UI thread only, written through `Post`).
+    // LOGGING: stages and HTTP statuses only — never a token, a code, a verifier or a pairing code.
+
+    /// <summary>The interactive sign-in: PKCE loopback (primary) and the device grant (fallback). SHELL.</summary>
+    public static class SignIn
+    {
+        /// <summary>What the sign-in surface renders. UI THREAD.</summary>
+        public static Signal<SignInState> State { get; } = new(SignInState.Idle);
+
+        /// <summary>Bumped (UI thread) each time something asked for the sign-in surface — <see cref="Login"/> with nothing to
+        /// resume. The GUI's door watches it; nothing else does.</summary>
+        public static Signal<int> Requests { get; } = new(0);
+
+        /// <summary>Opens the authorize url. The OS default handler unless a host swaps it; throwing means "no browser".</summary>
+        public static Action<string> OpenBrowser { get; set; } = static url =>
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
+
+        /// <summary>How long the loopback listener waits for the browser to come back (P10: a named window, not a poll).</summary>
+        public const int BrowserWindowMs = 10 * 60 * 1000;
+
+        /// <summary>A redirect's request arrives the moment its connection opens; a connection that stays silent this long is a
+        /// browser pre-connect, and waiting longer would hold the real redirect in the backlog.</summary>
+        const int RequestHeadBytes = 8192, RequestReadTimeoutMs = 2_000;
+
+        static readonly Lock Gate = new();
+        static CancellationTokenSource? s_browser, s_code;
+
+        /// <summary>Start (or restart) one flow. Returns immediately (C9). A restart cancels that flow's previous attempt; the
+        /// other flow is left alone.</summary>
+        public static void Start(SignInMethod method)
+        {
+            Spotify.Boot();
+            var cts = new CancellationTokenSource();
+            CancellationTokenSource? previous;
+            lock (Gate)
+            {
+                if (method == SignInMethod.Browser) { previous = s_browser; s_browser = cts; }
+                else { previous = s_code; s_code = cts; }
+            }
+            previous?.Cancel();
+            Post(() =>
+            {
+                if (IsCurrent(method, cts))
+                    State.Value = State.Peek().With(method, SignInStage.Starting) with { Handed = false };
+            });
+            var thread = method == SignInMethod.Browser
+                ? new Thread(() => BrowserFlow(cts)) { Name = "wavee-signin-browser" }
+                : new Thread(() => DeviceFlow(cts)) { Name = "wavee-signin-code" };
+            thread.IsBackground = true;
+            thread.Start();
+            Log.Info("spotify", "sign-in: " + (method == SignInMethod.Browser ? "browser" : "device code") + " flow started");
+        }
+
+        /// <summary>Stop one flow (the surface's Cancel while the browser is out). Its rung returns to Idle.</summary>
+        public static void Cancel(SignInMethod method)
+        {
+            CancellationTokenSource? cts;
+            lock (Gate)
+            {
+                if (method == SignInMethod.Browser) { cts = s_browser; s_browser = null; }
+                else { cts = s_code; s_code = null; }
+            }
+            cts?.Cancel();
+            Post(() => State.Value = State.Peek().With(method, SignInStage.Idle));
+        }
+
+        /// <summary>Stop both flows and forget the state — the surface closed. A token already handed to the session is not
+        /// recalled: that login finishes (or fails) on its own.</summary>
+        public static void Reset()
+        {
+            CancellationTokenSource? browser, code;
+            lock (Gate) { browser = s_browser; code = s_code; s_browser = null; s_code = null; }
+            browser?.Cancel();
+            code?.Cancel();
+            Post(static () => State.Value = SignInState.Idle);
+        }
+
+        static bool IsCurrent(SignInMethod method, CancellationTokenSource cts)
+        {
+            lock (Gate) return ReferenceEquals(method == SignInMethod.Browser ? s_browser : s_code, cts);
+        }
+
+        static void Report(SignInMethod method, CancellationTokenSource cts, SignInStage stage, SignInError error = SignInError.None)
+            => Post(() => { if (IsCurrent(method, cts)) State.Value = State.Peek().With(method, stage, error); });
+
+        /// <summary>A flow holds a token: on the UI thread, if that attempt is still the current one, cancel the sibling and
+        /// log in with it.</summary>
+        static void Handoff(SignInMethod method, CancellationTokenSource cts, string accessToken)
+        {
+            Log.Info("spotify", "sign-in: authorized (" + (method == SignInMethod.Browser ? "browser" : "device code") + ") — logging in");
+            Post(() =>
+            {
+                if (!IsCurrent(method, cts)) return;          // cancelled while the exchange was in flight
+                CancellationTokenSource? sibling;
+                lock (Gate)
+                {
+                    if (method == SignInMethod.Browser) { sibling = s_code; s_code = null; }
+                    else { sibling = s_browser; s_browser = null; }
+                }
+                sibling?.Cancel();
+                // Both rungs rest: the sibling's pairing code died with its flow, and from here the session's phase is the
+                // progress. A code the user wants after a failed login is a fresh one.
+                State.Value = SignInState.Idle with { Handed = true };
+                LoginWithToken(accessToken);
+            });
+        }
+
+        // ── the browser: authorization code + PKCE over a 127.0.0.1 loopback redirect ─────────────────────────────────
+
+        static void BrowserFlow(CancellationTokenSource cts)
+        {
+            CancellationToken ct = cts.Token;
+            using var window = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            window.CancelAfter(BrowserWindowMs);
+            TcpListener? listener = null;
+            try
+            {
+                Span<char> buffer = stackalloc char[64];
+                Pkce.NewVerifier(buffer);
+                string verifier = new(buffer);
+                Span<char> challengeChars = stackalloc char[64];
+                string challenge = new(challengeChars[..Pkce.Challenge(verifier, challengeChars)]);
+                Pkce.NewVerifier(buffer[..43]);
+                string state = new(buffer[..43]);
+
+                // A raw TCP listener on an OS-assigned loopback port: no http.sys URL reservation, no firewall prompt, and
+                // the port is held from bind to close (no probe-then-bind race).
+                listener = new TcpListener(System.Net.IPAddress.Loopback, 0);
+                listener.Start(4);
+                int port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+                string redirect = OAuth.RedirectUri(port);
+                using var stop = window.Token.Register(static l => { try { ((TcpListener)l!).Stop(); } catch (SocketException) { } }, listener);
+
+                try { OpenBrowser(OAuth.AuthorizeUrl(Identity.ClientId, redirect, challenge, state)); }
+                catch (Exception ex)                                      // a host-swappable seam: whatever it throws means "no browser"
+                {
+                    Log.Warn("spotify", "sign-in: no browser could be opened", ex);
+                    Report(SignInMethod.Browser, cts, SignInStage.Failed, SignInError.BrowserUnavailable);
+                    return;
+                }
+                Report(SignInMethod.Browser, cts, SignInStage.Waiting);
+                Log.Info("spotify", "sign-in: browser opened (loopback port " + port + ")");
+
+                byte[] head = new byte[RequestHeadBytes];
+                string code;
+                while (true)
+                {
+                    using TcpClient client = listener.AcceptTcpClient();   // Stop() on cancel/window unblocks it
+                    client.ReceiveTimeout = RequestReadTimeoutMs;
+                    client.SendTimeout = RequestReadTimeoutMs;
+                    NetworkStream stream = client.GetStream();
+                    int length;
+                    try { length = ReadHead(stream, head); }
+                    catch (IOException) { continue; }                     // a pre-connect that never spoke
+                    ReadOnlySpan<byte> target = OAuth.RequestTarget(head.AsSpan(0, length));
+                    if (target.IsEmpty) continue;
+                    OAuth.Redirect outcome = OAuth.ParseRedirect(target, state, out code);
+                    if (outcome == OAuth.Redirect.Code) { Respond(stream, 200, signedIn: true); break; }
+                    if (outcome == OAuth.Redirect.Denied)
+                    {
+                        Respond(stream, 200, signedIn: false);
+                        Log.Info("spotify", "sign-in: the browser sign-in was declined");
+                        Report(SignInMethod.Browser, cts, SignInStage.Denied);
+                        return;
+                    }
+                    Respond(stream, outcome == OAuth.Redirect.NotOurs ? 404 : 400, signedIn: false);
+                }
+
+                Report(SignInMethod.Browser, cts, SignInStage.Exchanging);
+                var (status, body) = PostForm(OAuth.TokenEndpoint, OAuth.CodeExchangeForm(code, redirect, Identity.ClientId, verifier), ct);
+                OAuth.TokenAnswer answer = OAuth.ParseToken(status, body, out string access, out _);
+                if (answer == OAuth.TokenAnswer.Token) { Handoff(SignInMethod.Browser, cts, access); return; }
+                Log.Warn("spotify", "sign-in: the authorization code was not exchanged (" + status + ", " + answer + ")");
+                Report(SignInMethod.Browser, cts, SignInStage.Failed,
+                    answer == OAuth.TokenAnswer.Refused ? SignInError.Refused : SignInError.Network);
+            }
+            catch (Exception ex)                                          // the flow's own thread: nothing may escape it
+            {
+                if (ct.IsCancellationRequested) return;
+                if (window.IsCancellationRequested)
+                {
+                    Log.Info("spotify", "sign-in: the browser did not come back inside its window");
+                    Report(SignInMethod.Browser, cts, SignInStage.Expired);
+                    return;
+                }
+                Log.Warn("spotify", "sign-in: the browser flow failed (" + ex.GetType().Name + ")");
+                Report(SignInMethod.Browser, cts, SignInStage.Failed, SignInError.Network);
+            }
+            finally
+            {
+                try { listener?.Stop(); } catch (SocketException) { }
+            }
+        }
+
+        /// <summary>Read an HTTP request head (up to the blank line, the buffer, or the peer's close). Returns the bytes read.</summary>
+        static int ReadHead(NetworkStream stream, byte[] head)
+        {
+            int length = 0;
+            while (length < head.Length)
+            {
+                int n = stream.Read(head, length, head.Length - length);
+                if (n <= 0) break;
+                length += n;
+                if (head.AsSpan(0, length).IndexOf("\r\n\r\n"u8) >= 0) break;
+            }
+            return length;
+        }
+
+        /// <summary>The one page the browser shows before its tab is closed. English on purpose: it is served before, and
+        /// independently of, the app's localization, and it carries no data.</summary>
+        static void Respond(NetworkStream stream, int status, bool signedIn)
+        {
+            string html = status != 200 ? ""
+                : "<!doctype html><meta charset=utf-8><title>Wavee</title>"
+                + "<body style=\"font:16px Segoe UI,system-ui,sans-serif;text-align:center;padding:56px;background:#0b0b0c;color:#f5f5f4\">"
+                + (signedIn
+                    ? "<h2>You're signed in to Wavee.</h2><p style=\"color:#a8a29e\">You can close this tab and return to the app.</p>"
+                    : "<h2>Sign-in was cancelled.</h2><p style=\"color:#a8a29e\">You can close this tab and try again in the app.</p>")
+                + "</body>";
+            byte[] body = Encoding.UTF8.GetBytes(html);
+            string reason = status switch { 200 => "OK", 404 => "Not Found", _ => "Bad Request" };
+            byte[] header = Encoding.ASCII.GetBytes("HTTP/1.1 " + status + " " + reason
+                + "\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " + body.Length
+                + "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+            try
+            {
+                stream.Write(header, 0, header.Length);
+                stream.Write(body, 0, body.Length);
+            }
+            catch (IOException) { }                                     // the tab closed first: nothing to tell it
+        }
+
+        // ── the device grant: a pairing code and a QR ────────────────────────────────────────────────────────────────
+
+        static void DeviceFlow(CancellationTokenSource cts)
+        {
+            CancellationToken ct = cts.Token;
+            try
+            {
+                var (status, body) = PostForm(OAuth.DeviceAuthorizeEndpoint, OAuth.DeviceAuthorizeForm(Identity.ClientId), ct);
+                if (!OAuth.TryParseDeviceCode(status, body, out OAuth.DeviceCode grant))
+                {
+                    Log.Warn("spotify", "sign-in: no pairing code (" + status + ")");
+                    Report(SignInMethod.DeviceCode, cts, SignInStage.Failed, SignInError.Network);
+                    return;
+                }
+                long expiresAt = NowMs + grant.ExpiresInSeconds * 1000L;
+                Post(() =>
+                {
+                    if (!IsCurrent(SignInMethod.DeviceCode, cts)) return;
+                    State.Value = State.Peek() with
+                    {
+                        Code = SignInStage.Waiting, Error = SignInError.None, UserCode = grant.UserCode,
+                        VerificationUri = grant.VerificationUri, VerificationUriComplete = grant.VerificationUriComplete,
+                        CodeExpiresAtMs = expiresAt,
+                    };
+                });
+                Log.Info("spotify", "sign-in: pairing code issued (expires in " + grant.ExpiresInSeconds + "s)");
+
+                string form = OAuth.DevicePollForm(grant.Code, Identity.ClientId);
+                int intervalMs = grant.IntervalSeconds * 1000;
+                while (NowMs < expiresAt)
+                {
+                    if (ct.WaitHandle.WaitOne(intervalMs)) return;
+                    OAuth.TokenAnswer answer;
+                    string access;
+                    try
+                    {
+                        var (pollStatus, pollBody) = PostForm(OAuth.TokenEndpoint, form, ct);
+                        answer = OAuth.ParseToken(pollStatus, pollBody, out access, out _);
+                    }
+                    catch (Exception ex) when (!ct.IsCancellationRequested
+                                               && ex is HttpRequestException or IOException or OperationCanceledException)
+                    {
+                        answer = OAuth.TokenAnswer.Transient;             // one blip must not kill a multi-minute pairing
+                        access = "";
+                    }
+                    if (answer == OAuth.TokenAnswer.Token) { Handoff(SignInMethod.DeviceCode, cts, access); return; }
+                    if (answer == OAuth.TokenAnswer.Expired) break;
+                    if (!OAuth.KeepsPolling(answer))
+                    {
+                        Log.Info("spotify", "sign-in: the pairing ended (" + answer + ")");
+                        Report(SignInMethod.DeviceCode, cts,
+                            answer == OAuth.TokenAnswer.Denied ? SignInStage.Denied : SignInStage.Failed,
+                            answer == OAuth.TokenAnswer.Refused ? SignInError.Refused : SignInError.None);
+                        return;
+                    }
+                    intervalMs = OAuth.NextPollIntervalMs(answer, intervalMs);
+                }
+                Log.Info("spotify", "sign-in: the pairing code expired before it was approved");
+                Report(SignInMethod.DeviceCode, cts, SignInStage.Expired);
+            }
+            catch (Exception ex)                                          // the flow's own thread: nothing may escape it
+            {
+                if (ct.IsCancellationRequested) return;
+                Log.Warn("spotify", "sign-in: the pairing flow failed (" + ex.GetType().Name + ")");
+                Report(SignInMethod.DeviceCode, cts, SignInStage.Failed, SignInError.Network);
+            }
+        }
+
+        /// <summary>One form POST. The status is returned, never thrown: an OAuth error is a 4xx with a JSON body the fold
+        /// reads. Transport failures throw.</summary>
+        static (int Status, byte[] Body) PostForm(string url, string form, CancellationToken ct)
+        {
+            using var msg = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(Encoding.ASCII.GetBytes(form)) };
+            msg.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+            msg.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            using var resp = Http.Send(msg, ct);
+            using var stream = resp.Content.ReadAsStream(ct);
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            return ((int)resp.StatusCode, buffer.ToArray());
+        }
     }
 }

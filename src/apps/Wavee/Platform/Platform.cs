@@ -798,6 +798,45 @@ public static partial class Glyphs
 
 public static partial class Platform
 {
+    // ── --fake argv + the seed's clock (ch 31 §0.15, §1.2, §7.3; gap G-015, decision D17) ──────────────────────────
+
+    /// <summary>This launch's parsed argv flags. Read once, in <see cref="Boot"/>, from the process's own command
+    /// line — no signature change to <see cref="Boot"/> or to <c>Main</c> is needed for this file to see them.
+    /// Deliberately NOT settings-backed and NOT an environment variable (CLAUDE.md's working rules): a flag here is
+    /// re-read from argv on every launch, the same way <c>--headless</c> is (<c>Diagnostics.Probe.TryRun</c>).</summary>
+    public static class Args
+    {
+        /// <summary>`--fake`: boot against the offline demo seed (<c>Entities.SeedFake</c>, a silent audio sink)
+        /// instead of a live Spotify session (ch 31 §1.2's whole composition). Read by <see cref="ResolveScope"/>
+        /// and by the app's boot sequence (App.cs, reported) to decide whether to call <c>Entities.SeedFake</c>,
+        /// skip <c>Spotify.Login</c>, and select <c>Playback.Audio.UseSilentEndpoint()</c>.</summary>
+        public static bool Fake { get; private set; }
+
+        /// <summary>`--fake --live-clock`: <see cref="Clock.SeedEpoch"/> takes the real wall clock instead of the
+        /// fixed default — for a human demoing the app, where "3 days ago" should mean 3 days ago. Never the default:
+        /// a screenshot taken on any day must be identical (ch 31 §7.3), which needs the FIXED instant.</summary>
+        public static bool FakeLiveClock { get; private set; }
+
+        internal static void Parse(string[] argv)
+        {
+            Fake = Array.IndexOf(argv, "--fake") >= 0;
+            FakeLiveClock = Fake && Array.IndexOf(argv, "--live-clock") >= 0;
+        }
+    }
+
+    /// <summary>The fake seed's one time input (ch 31 §7.3). Everything <c>Entities.SeedFake</c> dates is
+    /// <c>SeedEpoch</c> plus a constant offset — nothing in the seed reads a second clock.</summary>
+    public static class Clock
+    {
+        /// <summary>A stamped instant, never "now" — so a screenshot taken on any day is identical and the Wave 5
+        /// gate is reproducible. The exact value carries no meaning beyond "it never moves".</summary>
+        public const long FixedSeedEpoch = 1_788_000_000;
+
+        /// <summary>The default: <see cref="FixedSeedEpoch"/>. Under `--fake --live-clock`
+        /// (<see cref="Args.FakeLiveClock"/>): the real clock, for a demo where relative dates should track today.</summary>
+        public static long SeedEpoch => Args.FakeLiveClock ? DateTimeOffset.UtcNow.ToUnixTimeSeconds() : FixedSeedEpoch;
+    }
+
     // ── settings ────────────────────────────────────────────────────────────────────────────────────────────────────
 
     static IAppSettings? s_backing;
@@ -950,6 +989,13 @@ public static partial class Platform
 
     static CatalogScope ResolveScope()
     {
+        // `--fake` (ch 31 §0.1, §1.2): an ACCOUNT-bearing demo scope, deliberately distinct from `CatalogScope.Fake()`
+        // below (that one is the "no credential, no last account" fallback for a genuinely fresh real install — empty
+        // account, on purpose). `Entities.FakeAccount` is the bare literal `Entities.SeedFake` stages its "me" row
+        // under, because `Entities.cs`'s `ResolveMe` treats `scope.Key.Account` as that row's literal identity text
+        // (`scope.Users.Slot(scope.Key.Account.AsSpan())`) — the same convention a real login's username takes.
+        if (Args.Fake) return new CatalogScope("fake", Entities.FakeAccount, Locale.UiCulture, "US", Tier: 0, AllowExplicit: true);
+
         string account = TryLoadCredential(out var credential) ? credential.Username : "";
         if (account.Length == 0) account = Settings.Get(Keys.LastAccount);
         return account.Length == 0
@@ -972,6 +1018,11 @@ public static partial class Platform
     /// One-shot and allowed to allocate. Nothing here opens a socket, a database or a window.</summary>
     public static void Boot()
     {
+        // Self-contained (no `Main(string[] args)` signature change needed anywhere): the process's own command
+        // line, read once, is exactly what `Environment.GetCommandLineArgs()` is for. Every flag below is argv
+        // only — CLAUDE.md forbids an environment-variable switch for behaviour or verification (ch 31 §0.15,
+        // which is precisely why `WAVEE_FAKE_CHALLENGE` does NOT get ported as a second env var).
+        Args.Parse(Environment.GetCommandLineArgs());
         HostOpenSettings();
         ZoomAutoPolicy.MigrateMode(Settings);
         string osCulture = "";
@@ -1016,7 +1067,9 @@ internal sealed partial class CredentialJson : JsonSerializerContext { }
 // ── LEFT FOR OWNER S (Wave 6), deliberately not stubbed here ─────────────────────────────────────────────────────────
 //   · NetworkPolicy (ch 29 §9.10, ~160) and the three composition sites that read it.
 //   · The ambient power policy (~60) and its cadence block.
-//   · `--fake` argument parsing and `Clock.SeedEpoch`; `Scope` gets its `--fake` arm THERE, not here.
+//   · `--fake` argument parsing and `Clock.SeedEpoch` LANDED (gap G-015, orchestrator first cut, decision D17) as
+//     `Platform.Args`/`Platform.Clock` above; `Scope` gets its `--fake` arm in `ResolveScope`. Owner S's Wave 6 work
+//     is everything else this file still owes (`--screenshot`/`--width`/`--height`/the probe flags stay S's).
 //   · AppLocaleBootstrap's engine half: Localization.LoadFolder(assets/loc), OsCultureProvider, SetCulture — the PURE
 //     resolution is above (AppLocale.Resolve) and owner S must read the same answer, not compute a second one.
 //   · The rest of ch 28's DATA GAP D3 beside `RuntimePhase`: `RuntimeStatus`, `ProvisioningOutcome` and the pure

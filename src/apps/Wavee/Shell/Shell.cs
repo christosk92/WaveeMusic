@@ -435,8 +435,9 @@ public static partial class Shell
     // `GoDeepLinkOpen` that 0.2.9 left untested. A deep link is UNTRUSTED input — it arrives from the OS, a browser,
     // another app — so the composed key is checked against the route table before it can become a tab.
 
-    /// <summary>The <c>wavee://</c> verbs.</summary>
-    public enum DeepLinkKind : byte { None, Open, Play, Resume, Pause, Report }
+    /// <summary>The <c>wavee://</c> verbs. <see cref="Quit"/> (<c>wavee://quit</c>) closes the app even when closing
+    /// hides it to the notification area (tray plan §4.7); it never raises the window (<c>Tray.WakeFor</c>).</summary>
+    public enum DeepLinkKind : byte { None, Open, Play, Resume, Pause, Report, Quit }
 
     /// <summary>A parsed verb. Unknown or garbage input yields <see cref="DeepLinkKind.None"/>; the parser never
     /// throws. Exactly one of <see cref="Context"/> (a Spotify context uri) and <see cref="Link"/> (a pasted module
@@ -481,6 +482,7 @@ public static partial class Shell
         }
         if (name.Equals("resume", StringComparison.OrdinalIgnoreCase)) return new DeepLinkVerb(DeepLinkKind.Resume, default);
         if (name.Equals("pause", StringComparison.OrdinalIgnoreCase)) return new DeepLinkVerb(DeepLinkKind.Pause, default);
+        if (name.Equals("quit", StringComparison.OrdinalIgnoreCase)) return new DeepLinkVerb(DeepLinkKind.Quit, default);
         return default;
     }
 

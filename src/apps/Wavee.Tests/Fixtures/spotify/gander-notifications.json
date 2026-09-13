@@ -1,0 +1,34 @@
+{
+  "latestCursor": "MTY5OTk5OTk5OQ==",
+  "notifications": [
+    {
+      "id": "ntf-1001",
+      "createdTimestamp": "2026-07-09T16:02:24.011Z",
+      "title": "fakeuser42 started following you",
+      "isNew": true,
+      "storageId": "stor-aaa",
+      "action": { "type": "NAVIGATE", "uri": "spotify:user:fakeuser42" },
+      "entityImage": { "imageUrl": "https://i.example/img/fakeuser42.jpg" },
+      "multiUserImage": {
+        "userImages": [ { "userDisplayName": "fakeuser42" } ]
+      }
+    },
+    {
+      "id": "ntf-1002",
+      "createdTimestamp": "2026-06-28T08:07:43.660Z",
+      "title": "Your followed artist has a concert near you",
+      "isNew": false,
+      "storageId": "stor-bbb",
+      "action": { "type": "NAVIGATE_WEBVIEW", "uri": "https://www.example.com/concert/123" },
+      "multiUserImage": {
+        "userImages": [ { "userDisplayName": "Ada" }, { "userDisplayName": "Grace" } ]
+      }
+    },
+    {
+      "id": "ntf-1003",
+      "createdTimestamp": "2026-06-27T14:07:38.344Z",
+      "title": "Announcement with no image or action",
+      "isNew": true
+    }
+  ]
+}

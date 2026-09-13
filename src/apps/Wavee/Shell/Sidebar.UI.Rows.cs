@@ -1138,16 +1138,18 @@ public static partial class Sidebar
         /// The band's Reorderable cannot host it — the pane mounts no list wrapper, so its foreign seams have no target
         /// and its slot math would measure from the wrong origin. A card-to-card drag is a ReorderPayload whose Item is
         /// null, so it never unwraps here. Every delegate runs per frame while a drag is live, so none allocates: a count
-        /// comparison and two constant-key lookups.
+        /// comparison, a document walk and constant-key lookups.
         /// </summary>
         static DropTargetSpec PaletteDrop(PaneView owner, string sectionId) =>
             Drop.Target<SidebarSectionDropPayload>(
                 SidebarEditPlan.SectionDragKind,
-                accepts: _ => owner.CanAcceptPaletteDrop,
+                // The section cap AND a card a new section can land above: a child card inside a group accepted the chip,
+                // cued "Add here" and then dispatched nothing (G-184).
+                accepts: _ => owner.CanAcceptPaletteDropBefore(sectionId),
                 onDrop: (payload, _) => owner.AddSectionFromPalette(sectionId, payload),
                 caption: _ => Loc.Get(PaneLoc.EditDropHere),
-                // The ONE refusal (the section cap) is a reason the user can act on — never an invisible refusal.
-                refusalCaption: _ => Loc.Get(PaneLoc.EditDropFull));
+                // Every refusal is a reason the user can act on — never an invisible refusal.
+                refusalCaption: _ => Loc.Get(owner.PaletteRefusalKey(sectionId)));
 
         /// <summary>A 24-DIP card affordance. Non-focusable: the card's (or the band wrapper's) stop is the row's, and every
         /// command here is also in the context menu.</summary>

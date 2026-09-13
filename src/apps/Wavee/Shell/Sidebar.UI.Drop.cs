@@ -159,7 +159,7 @@ public static partial class Sidebar
                 if (playlistUri is { Length: > 0 } target && source.CanCopyTracks)
                 {
                     if (LibraryWrites?.DepositTracks is { } deposit) deposit(target, playlistName ?? "", source);
-                    else RefuseDrop(SidebarDropRefusal.Unavailable, "no deposit seam");
+                    else RefuseDrop(SidebarDropRefusal.WritesUnavailable, "no deposit seam");
                     return;
                 }
                 if (slot >= 0) AcceptForeign(sectionId, s.Payload, slot);
@@ -202,7 +202,10 @@ public static partial class Sidebar
         internal DropTargetSpec RailFolderDropSpec(in SidebarLibraryEntry folder, DragPayload target)
         {
             string folderId = folder.FolderId;
-            string cueKey = RailTileKey(in folder);
+            // The cue key is the ENTRY id — what both readers ask `IsRailDropActive` with (the rail's folder tile and the
+            // flyout's folder row). It was the tile's "rail:"-prefixed NODE key, which neither reader used, so an armed
+            // folder destination never lit.
+            string cueKey = folder.Id;
             string name = folder.Name;
 
             RootlistMoveCheck Check(DragPayload source)
@@ -304,9 +307,11 @@ public static partial class Sidebar
             if (target.Deposit)
             {
                 // The retained centre gesture: a WRITABLE playlist under the pointer takes the payload's tracks.
-                if (playlistUri is { Length: > 0 } uri && LibraryWrites?.DepositTracks is { } deposit)
+                if (playlistUri is not { Length: > 0 } uri)
+                    RefuseDrop(SidebarDropRefusal.Unavailable, "deposit without a writable playlist");
+                else if (LibraryWrites?.DepositTracks is { } deposit)
                     deposit(uri, playlistName ?? "", source);
-                else RefuseDrop(SidebarDropRefusal.Unavailable, "deposit without a writable playlist");
+                else RefuseDrop(SidebarDropRefusal.WritesUnavailable, "no deposit seam");
                 return;
             }
             // Captured BEFORE the mutation (once the rootlist moved, where things were is unknowable). A batch resolves
@@ -324,7 +329,7 @@ public static partial class Sidebar
         {
             if (LibraryWrites?.MoveRootlist is not { } move)
             {
-                RefuseDrop(SidebarDropRefusal.Unavailable, "no rootlist seam");
+                RefuseDrop(SidebarDropRefusal.WritesUnavailable, "no rootlist seam");
                 return;
             }
             move(RefsOf(source), target, placement, destinationName, undo);
@@ -357,6 +362,7 @@ public static partial class Sidebar
         /// and "clear sorting to reorder" carries the one action a mode can fix it with (#85 H3).</summary>
         void RefuseDrop(SidebarDropRefusal refusal, string why)
         {
+            if (refusal == SidebarDropRefusal.WritesUnavailable) { RefuseWrite(why); return; }
             Log.Warn("sidebar", "rootlist drop refused at commit: " + refusal + " (" + why + ")");
             if (RefusalSentence(refusal) is not { Length: > 0 } sentence) return;
             if (refusal == SidebarDropRefusal.SortedList && Config.SortedListRefusalAction is { } fix)
@@ -413,46 +419,59 @@ public static partial class Sidebar
             onSpringLoad: (p, _) => { if (p.CanCopyTracks || p.CanPin) SetDragPeek(true); });
 
         /// <summary>THE HEADER "+" AS A DROP DESTINATION: a rootlist payload ⇒ a new top-level folder holding it; a track
-        /// set that is not a rootlist item ⇒ a new playlist from it; anything else is transparent.</summary>
+        /// set that is not a rootlist item ⇒ a new playlist from it; anything else is transparent. Every answer is
+        /// <see cref="SidebarCreateDropRules.Header"/>'s: a missing seam member REFUSES with its sentence instead of arming
+        /// a cue for a drop that would do nothing (G-170).</summary>
         internal DropTargetSpec HeaderCreateDropSpec()
-        {
-            static bool FromTracks(DragPayload p) => p.CanCopyTracks && !p.RootlistItem;
-            return Drop.Target<DragPayload>(Drag.Resource,
-                accepts: static p => IsFiling(p) || FromTracks(p),
-                transparent: static p => !IsFiling(p) && !FromTracks(p),
-                caption: static p => IsFiling(p)
+            => Drop.Target<DragPayload>(Drag.Resource,
+                accepts: static p => SidebarCreateDropRules.Header(p, LibraryWrites)
+                    is SidebarCreateDrop.NewFolder or SidebarCreateDrop.NewPlaylist,
+                transparent: static p => SidebarCreateDropRules.Header(p, LibraryWrites) == SidebarCreateDrop.Transparent,
+                caption: static p => SidebarCreateDropRules.IsFiling(p)
                     ? Loc.Format("drag.newFolderFromThis", ("count", p.RootlistCount))
                     : Loc.Get("drag.newPlaylistFromThis"),
-                onEnter: (_, _) => HeaderCreateDropActive.SetIfChanged(true),
-                onOver: (_, _) => HeaderCreateDropActive.SetIfChanged(true),
+                refusalCaption: static _ => RefusalSentence(SidebarDropRefusal.WritesUnavailable),
+                onEnter: (p, _) => HeaderCreateDropActive.SetIfChanged(CreateArmed(SidebarCreateDropRules.Header(p, LibraryWrites))),
+                onOver: (p, _) => HeaderCreateDropActive.SetIfChanged(CreateArmed(SidebarCreateDropRules.Header(p, LibraryWrites))),
                 onLeave: _ => HeaderCreateDropActive.Value = false,
                 onDrop: (p, _) =>
                 {
                     HeaderCreateDropActive.Value = false;
-                    if (IsFiling(p)) LibraryWrites?.NewFolderWith?.Invoke(null, RefsOf(p));
-                    else if (FromTracks(p)) LibraryWrites?.CreatePlaylistWith?.Invoke(p);
+                    var writes = LibraryWrites;
+                    switch (SidebarCreateDropRules.Header(p, writes))
+                    {
+                        case SidebarCreateDrop.NewFolder: writes!.NewFolderWith!(null, RefsOf(p)); break;
+                        case SidebarCreateDrop.NewPlaylist: writes!.CreatePlaylistWith!(p); break;
+                        case SidebarCreateDrop.Refused: RefuseWrite("header create drop"); break;
+                    }
                 },
                 visualPolicy: DropTargetVisualPolicy.Spotlight,
                 spotlightWhen: SpotlightFor);
-        }
 
         /// <summary>Playlists dropped on a folder row's "+" ⇒ a new SUB-folder inside it. A track set is transparent: it
-        /// is crossing on its way to a playlist row.</summary>
+        /// is crossing on its way to a playlist row. <see cref="SidebarCreateDropRules.Folder"/> decides, seam included.</summary>
         internal DropTargetSpec FolderCreateDropSpec(string folderId, string folderName, Signal<bool> active)
             => Drop.Target<DragPayload>(Drag.Resource,
-                accepts: static p => IsFiling(p),
-                transparent: static p => !IsFiling(p),
+                accepts: static p => SidebarCreateDropRules.Folder(p, LibraryWrites) == SidebarCreateDrop.NewFolder,
+                transparent: static p => SidebarCreateDropRules.Folder(p, LibraryWrites) == SidebarCreateDrop.Transparent,
                 caption: _ => Loc.Format("drag.newFolderInside", ("name", folderName)),
-                onEnter: (_, _) => active.SetIfChanged(true),
-                onOver: (_, _) => active.SetIfChanged(true),
+                refusalCaption: static _ => RefusalSentence(SidebarDropRefusal.WritesUnavailable),
+                onEnter: (p, _) => active.SetIfChanged(CreateArmed(SidebarCreateDropRules.Folder(p, LibraryWrites))),
+                onOver: (p, _) => active.SetIfChanged(CreateArmed(SidebarCreateDropRules.Folder(p, LibraryWrites))),
                 onLeave: _ => active.Value = false,
                 onDrop: (p, _) =>
                 {
                     active.Value = false;
-                    LibraryWrites?.NewFolderWith?.Invoke(folderId, RefsOf(p));
+                    var writes = LibraryWrites;
+                    if (SidebarCreateDropRules.Folder(p, writes) == SidebarCreateDrop.NewFolder)
+                        writes!.NewFolderWith!(folderId, RefsOf(p));
+                    else RefuseWrite("folder create drop");
                 },
                 visualPolicy: DropTargetVisualPolicy.Spotlight,
                 spotlightWhen: SpotlightFor);
+
+        /// <summary>The "+" plate lights only for a drop that will actually create something.</summary>
+        static bool CreateArmed(SidebarCreateDrop outcome) => outcome is SidebarCreateDrop.NewFolder or SidebarCreateDrop.NewPlaylist;
 
         // ── pins (the drop and the menus share these two mutations and their toasts) ───────────────────────────────
 

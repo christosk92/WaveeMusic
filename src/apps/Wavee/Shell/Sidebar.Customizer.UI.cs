@@ -71,12 +71,24 @@ public static partial class Sidebar
             : null;
 
     /// <summary>The template miniature's deterministic sample catalog (ch 26 §7 DATA GAPS: index-addressable, never the
-    /// live library, or the dialog would gate on the network and flicker between opens). Owner Q's
-    /// <c>Entities.SeedFake()</c> fills these in Wave 5; while null the miniature draws neutral placeholder art with the
-    /// kind word and no counts.</summary>
-    internal static Func<int, MiniatureSample>? MiniaturePlaylist { get; set; }
-    internal static Func<int, MiniatureSample>? MiniatureArtist { get; set; }
-    internal static Func<string, int?>? MiniatureShortcutCount { get; set; }
+    /// live library, or the dialog would gate on the network and flicker between opens). Wired unconditionally, on
+    /// BOTH backends (ch 31 §7.2 rule D): <c>Entities.Sample</c>/<c>SampleShortcutCount</c> are pure functions of the
+    /// seed's own generator arithmetic and never read <c>Entities.Current</c>, so the customizer previews the same
+    /// template whether or not <c>Entities.SeedFake()</c> ever ran for this launch — a real account's live sidebar
+    /// badge (166) and this preview's (also 166 in this cut) may legitimately still read differently in a later wave
+    /// that gives the template its own numbers; nothing here couples them. Settable so a test can substitute a
+    /// smaller catalog.</summary>
+    internal static Func<int, MiniatureSample>? MiniaturePlaylist { get; set; } = index =>
+    {
+        var s = Entities.Sample(EntityKind.Playlist, index);
+        return new MiniatureSample(Entities.Strings.Resolve(s.Title), Entities.Strings.Resolve(s.Image), s.Count);
+    };
+    internal static Func<int, MiniatureSample>? MiniatureArtist { get; set; } = index =>
+    {
+        var s = Entities.Sample(EntityKind.Artist, index);
+        return new MiniatureSample(Entities.Strings.Resolve(s.Title), Entities.Strings.Resolve(s.Image), s.Count);
+    };
+    internal static Func<string, int?>? MiniatureShortcutCount { get; set; } = Entities.SampleShortcutCount;
 
     internal readonly record struct MiniatureSample(string Name, string? ArtUrl, int Count);
 

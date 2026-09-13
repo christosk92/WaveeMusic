@@ -23,6 +23,8 @@ using De = Wavee.Protocol.DescriptorExtension;
 using Aa = Wavee.Protocol.AudioAttributes;
 using Af = Wavee.Protocol.Audiofiles;
 using Md = Wavee.Protocol.Metadata;
+using Pl = Wavee.Protocol.Playlist;
+using Wf = Wavee.Waveforms;
 using Xm = Wavee.Protocol.ExtendedMetadata;
 
 namespace Wavee.Tests;
@@ -844,6 +846,387 @@ public class DecodeTests
                 },
             },
         };
+    }
+
+    // ── the manifest id and the video's shape (G-056, G-057, G-058) ─────────────────────────────────────────────────
+
+    static string HexOf(byte[] bytes) => Convert.ToHexString(bytes).ToLowerInvariant();
+
+    [Fact]
+    public void TrackV4_keeps_the_first_renditions_gid_as_the_manifest_id_and_a_later_answer_never_clears_it()
+    {
+        TestScope.Fresh();
+        var withVideo = new Md.Track
+        {
+            Gid = Bs(Gid(10)),
+            Name = "a self-contained music video",
+            OriginalVideo = { new Md.Video { Gid = Bs(Gid(77)) }, new Md.Video { Gid = Bs(Gid(88)) } },
+        }.ToByteArray();
+        var s = Staging.Rent();
+        Spotify.Decode.TrackV4(withVideo, s);
+        TestScope.CommitAndPublish(s);
+        Assert.Equal(HexOf(Gid(77)), Entities.Strings.Resolve(TrackOf(10).VideoGidId));
+
+        // A TrackV4 that names no rendition (a re-answer, a thinner payload) is not an answer about the key.
+        var again = Staging.Rent();
+        Spotify.Decode.TrackV4(TrackV4Bytes(), again);
+        TestScope.CommitAndPublish(again);
+        Assert.Equal(HexOf(Gid(77)), Entities.Strings.Resolve(TrackOf(10).VideoGidId));
+    }
+
+    [Fact]
+    public void Renditions_with_no_counterpart_are_still_a_video_and_the_largest_states_its_shape()
+    {
+        // A self-contained music-video track answers kind 99 with FILES and no `associated_uri` (0.2.9's verdict:
+        // files > 0 or a counterpart). Reading only the counterpart hid the film lane for exactly the tracks that ARE videos.
+        TestScope.Fresh();
+        var proto = new Xm.VideoAssociations
+        {
+            Association = new Xm.Association
+            {
+                Files = new Xm.VideoFileGroup
+                {
+                    File =
+                    {
+                        new Xm.VideoFile { FileId = Bs(Gid(141)), Width = 640, Height = 360 },
+                        new Xm.VideoFile { FileId = Bs(Gid(142)), Width = 1080, Height = 1920 },
+                        new Xm.VideoFile { FileId = Bs(Gid(143)), Width = 720, Height = 1280 },
+                    },
+                },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.VideoAssociations(proto, Encoding.UTF8.GetBytes(UriOf(EntityKind.Track, 11)), s);
+        TestScope.CommitAndPublish(s);
+
+        var track = TrackOf(11);
+        Assert.True(track.HasVideo);
+        Assert.Equal(Table.None, track.VideoCounterpart.Slot);
+        Assert.Equal(1080, track.VideoWidth);                  // a vertical video opens vertical, not 16:9
+        Assert.Equal(1920, track.VideoHeight);
+        Assert.False(track.IsLiveVideo);                       // the default is FINITE; only the video host flips it
+    }
+
+    // ── the trait kinds the decoder used to drop (G-044) ────────────────────────────────────────────────────────────
+
+    static byte[] UriBytes(EntityKind kind, byte seed) => Encoding.UTF8.GetBytes(UriOf(kind, seed));
+
+    [Fact]
+    public void Credits_land_in_the_servers_order_with_the_linked_artist_and_the_unlinked_name()
+    {
+        TestScope.Fresh();
+        var proto = new Ca.CreditsTrait
+        {
+            Rows =
+            {
+                new Ca.CreditRow { Name = "roti.", Role = "Main Artist", ArtistUri = UriOf(EntityKind.Artist, 40),
+                                   Group = new Ca.CreditRow.Types.Group { Name = "Performers" } },
+                new Ca.CreditRow { Name = "A Session Cellist", Role = "Cello",
+                                   Group = new Ca.CreditRow.Types.Group { Name = "Performers" } },
+                new Ca.CreditRow { Role = "a row that names nobody" },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.Credits(proto, UriBytes(EntityKind.Track, 12), s);
+        TestScope.CommitAndPublish(s);
+
+        var credits = Entities.Current.Edges.TrackCredits;
+        int track = TrackOf(12).Slot;
+        Assert.Equal(EdgeState.Complete, credits.State(track));
+        Assert.Equal(2, credits.Count(track));
+        Assert.Equal(ArtistOf(40).Slot, credits.Targets(track)[0]);
+        Assert.Equal(Table.None, credits.Targets(track)[1]);          // an unlinked contributor keeps its row
+        var cellist = credits.Payload(track)[1];
+        Assert.Equal("A Session Cellist", Entities.Strings.Resolve(cellist.Name));
+        Assert.Equal("Cello", Entities.Strings.Resolve(cellist.Role));
+        Assert.Equal("Performers", Entities.Strings.Resolve(cellist.Group));
+
+        // "This track has no credits" is an answer: the relation settles Complete and the drawer stops asking.
+        var none = Staging.Rent();
+        Spotify.Decode.Credits(default, UriBytes(EntityKind.Track, 13), none);
+        TestScope.CommitAndPublish(none);
+        Assert.Equal(EdgeState.Complete, credits.State(TrackOf(13).Slot));
+        Assert.Equal(0, credits.Count(TrackOf(13).Slot));
+    }
+
+    [Fact]
+    public void Recommended_playlists_are_playlists_only_and_stop_at_twelve()
+    {
+        TestScope.Fresh();
+        var proto = new Xm.RecommendedPlaylists();
+        proto.Recommendation.Add(new Xm.RecommendedPlaylists.Types.Item { Uri = UriOf(EntityKind.Album, 1) });   // not a playlist
+        for (byte i = 0; i < 14; i++)
+            proto.Recommendation.Add(new Xm.RecommendedPlaylists.Types.Item { Uri = UriOf(EntityKind.Playlist, (byte)(100 + i)) });
+
+        var s = Staging.Rent();
+        Spotify.Decode.RecommendedPlaylists(proto.ToByteArray(), UriBytes(EntityKind.Album, 20), s);
+        TestScope.CommitAndPublish(s);
+
+        var recommendations = Entities.Current.Edges.AlbumRecommendations;
+        int album = AlbumOf(20).Slot;
+        Assert.Equal(Spotify.Decode.MaxRecommendedPlaylists, recommendations.Count(album));
+        Assert.Equal(Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(100))).Slot, recommendations.Targets(album)[0]);
+    }
+
+    [Fact]
+    public void An_audio_association_lands_the_recordings_audio_rendition_as_a_version()
+    {
+        TestScope.Fresh();
+        var proto = new Xm.VideoAssociations
+        {
+            Association = new Xm.Association { AssociatedUri = UriOf(EntityKind.Track, 31) },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.AudioAssociations(proto, UriBytes(EntityKind.Track, 30), s);
+        TestScope.CommitAndPublish(s);
+
+        var versions = Entities.Current.Edges.TrackVersions;
+        int track = TrackOf(30).Slot;
+        Assert.Equal(TrackOf(31).Slot, Assert.Single(versions.Targets(track).ToArray()));
+        Assert.Equal(TrackVersionKind.Audio, versions.Payload(track)[0].Kind);
+    }
+
+    [Fact]
+    public void A_waveform_is_reduced_once_to_220_columns_with_each_band_walked_across_its_own_length()
+    {
+        TestScope.Fresh();
+        // band_low is LONGER than the others on the wire; a spike at the very end of each band must land in the LAST
+        // column for all three — one shared cursor would put the shorter bands' spikes early.
+        var low = new byte[12_886];
+        var mid = new byte[12_466];
+        var high = new byte[12_466];
+        low[^1] = 200; mid[^1] = 200; high[^1] = 200;
+        low[0] = 10;
+        var proto = new Wf.ThreeBandWaveforms
+        {
+            SampleRate = 44_100, HopMs = 20, BandLow = Bs(low), BandMid = Bs(mid), BandHigh = Bs(high),
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.Waveform(proto, UriBytes(EntityKind.Track, 40), s);
+        TestScope.CommitAndPublish(s);
+
+        var columns = Entities.Current.Edges.TrackWaveform.Payload(TrackOf(40).Slot);
+        Assert.Equal(Spotify.Decode.WaveformColumns, columns.Length);
+        Assert.Equal(255, columns[^1]);                                    // the loudest column is the ceiling
+        Assert.Equal((byte)((10 * 255 + 300) / 600), columns[0]);          // normalised against the track's own peak
+        Assert.Equal(0, columns[110]);
+
+        // Silence is an answer too — an empty waveform, Complete.
+        var quiet = Staging.Rent();
+        Spotify.Decode.Waveform(new Wf.ThreeBandWaveforms { BandLow = Bs(new byte[64]) }.ToByteArray(), UriBytes(EntityKind.Track, 41), quiet);
+        TestScope.CommitAndPublish(quiet);
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.TrackWaveform.State(TrackOf(41).Slot));
+        Assert.Equal(0, Entities.Current.Edges.TrackWaveform.Count(TrackOf(41).Slot));
+    }
+
+    /// <summary>The kind-15 body as captured: every scalar in a wrapper, images repeated.</summary>
+    static byte[] ProfileBody(string username, string name, params (int W, int H, string Url)[] images)
+    {
+        using var stream = new MemoryStream();
+        var o = new CodedOutputStream(stream);
+        o.WriteTag(1, WireFormat.WireType.LengthDelimited); o.WriteBytes(Wrapped(1, username));
+        o.WriteTag(2, WireFormat.WireType.LengthDelimited); o.WriteBytes(Wrapped(1, name));
+        foreach (var (w, h, url) in images)
+        {
+            using var image = new MemoryStream();
+            var io = new CodedOutputStream(image);
+            io.WriteTag(1, WireFormat.WireType.Varint); io.WriteInt32(w);
+            io.WriteTag(2, WireFormat.WireType.Varint); io.WriteInt32(h);
+            io.WriteTag(3, WireFormat.WireType.LengthDelimited); io.WriteString(url);
+            io.Flush();
+            o.WriteTag(3, WireFormat.WireType.LengthDelimited); o.WriteBytes(ByteString.CopyFrom(image.ToArray()));
+        }
+        o.WriteTag(11, WireFormat.WireType.LengthDelimited); o.WriteBytes(Wrapped(1, "ignored"));
+        o.Flush();
+        return stream.ToArray();
+
+        static ByteString Wrapped(int field, string value)
+        {
+            using var inner = new MemoryStream();
+            var w = new CodedOutputStream(inner);
+            w.WriteTag(field, WireFormat.WireType.LengthDelimited);
+            w.WriteString(value);
+            w.Flush();
+            return ByteString.CopyFrom(inner.ToArray());
+        }
+    }
+
+    [Fact]
+    public void A_user_profile_is_protobuf_the_largest_avatar_wins_and_the_row_is_the_one_that_asked()
+    {
+        TestScope.Fresh();
+        var body = ProfileBody("Christos", "Christos K",
+            (64, 64, "https://i.scdn.co/image/small"), (300, 300, "https://i.scdn.co/image/large"));
+
+        var s = Staging.Rent();
+        Spotify.Decode.Extension(Spotify.Decode.Ext.UserProfile, "spotify:user:christos"u8, body, s);
+        TestScope.CommitAndPublish(s);
+
+        var user = Entities.User(EntityUri.Parse("spotify:user:christos".AsSpan()));
+        Assert.True(user.Knows(UserFields.Identity));
+        Assert.Equal("Christos K", Entities.Strings.Resolve(user.NameId));
+        Assert.Equal("https://i.scdn.co/image/large", Entities.Strings.Resolve(user.ImageId));
+    }
+
+    [Fact]
+    public void A_profile_answer_in_json_reads_both_spellings_and_one_with_neither_is_still_an_answer()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.Profile("""{"username":"x","display_name":"Web Name","images":[{"url":"https://i/web.jpg"}]}"""u8,
+                               "spotify:user:web"u8, s);
+        Spotify.Decode.Profile("""{"username":"y","name":"Spclient Name","image_url":"https://i/sp.jpg"}"""u8,
+                               "spotify:user:spclient"u8, s);
+        Spotify.Decode.UserProfile(" {\"name\":\"sniffed\"}"u8, "spotify:user:sniffed"u8, s);
+        Spotify.Decode.Profile("{}"u8, "spotify:user:private"u8, s);
+        TestScope.CommitAndPublish(s);
+
+        static User U(string uri) => Entities.User(EntityUri.Parse(uri.AsSpan()));
+        Assert.Equal("Web Name", Entities.Strings.Resolve(U("spotify:user:web").NameId));
+        Assert.Equal("https://i/web.jpg", Entities.Strings.Resolve(U("spotify:user:web").ImageId));
+        Assert.Equal("Spclient Name", Entities.Strings.Resolve(U("spotify:user:spclient").NameId));
+        Assert.Equal("sniffed", Entities.Strings.Resolve(U("spotify:user:sniffed").NameId));   // 0x20 then '{' is JSON
+        Assert.True(U("spotify:user:private").Knows(UserFields.Identity));                     // learned: no public name
+    }
+
+    // ── the rootlist marker stream (G-046, G-047) ───────────────────────────────────────────────────────────────────
+
+    const string GroupId = "edb339e10aebcf38";
+
+    static byte[] RootlistBytes()
+    {
+        static Pl.Item Row(string uri, long ms) => new() { Uri = uri, Attributes = new Pl.ItemAttributes { Timestamp = ms } };
+        var revision = new byte[] { 0, 0, 1, 44, 0xde, 0xad, 0xbe, 0xef };
+        return new Pl.SelectedListContent
+        {
+            Revision = Bs(revision),
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items =
+                {
+                    Row(UriOf(EntityKind.Playlist, 1), 1_700_000_000_000),
+                    Row("spotify:start-group:" + GroupId + ":Work+%26+Study", 1_700_000_100_000),
+                    Row(UriOf(EntityKind.Playlist, 2), 0),
+                    Row("spotify:start-group:0011223344556677:Deep%3Anested", 0),
+                    Row(UriOf(EntityKind.Playlist, 3), 0),
+                    Row("spotify:end-group:0011223344556677", 0),
+                    Row("spotify:end-group:" + GroupId, 0),
+                    Row("spotify:collection:tracks", 0),                    // not a playlist: skipped, position kept
+                    Row(UriOf(EntityKind.Playlist, 4), 0),
+                },
+            },
+        }.ToByteArray();
+    }
+
+    [Fact]
+    public void A_rootlist_lands_every_folder_as_a_marker_pair_with_its_group_id_and_its_name()
+    {
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        var s = Staging.Rent();
+        Spotify.Decode.Rootlist(RootlistBytes(), me, s);
+        TestScope.CommitAndPublish(s);
+
+        var user = Entities.User(EntityUri.Parse("spotify:user:christos".AsSpan()));
+        var rootlist = Entities.Current.Edges.Rootlist;
+        var rows = rootlist.Payload(user.Slot);
+        var targets = rootlist.Targets(user.Slot);
+        Assert.Equal(EdgeState.Complete, rootlist.State(user.Slot));
+        Assert.Equal(8, rows.Length);
+
+        Assert.Equal(RootlistKind.Item, (RootlistKind)rows[0].Kind);
+        Assert.Equal(Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(1))).Slot, targets[0]);
+        Assert.Equal((int)(1_700_000_000_000 / 1000), rows[0].AddedAt);            // milliseconds on the wire
+
+        Assert.Equal(RootlistKind.FolderStart, (RootlistKind)rows[1].Kind);
+        Assert.Equal(Table.None, targets[1]);
+        Assert.Equal(GroupId, Entities.Strings.Resolve(rows[1].FolderId));        // D10: the bare group id
+        Assert.Equal("Work & Study", Entities.Strings.Resolve(rows[1].FolderName));
+        Assert.Equal(0, rows[1].Depth);
+        Assert.Equal(1, rows[1].Position);
+
+        Assert.Equal(1, rows[2].Depth);                                            // inside the folder
+        Assert.Equal("Deep:nested", Entities.Strings.Resolve(rows[3].FolderName));
+        Assert.Equal(2, rows[4].Depth);
+        Assert.Equal(RootlistKind.FolderEnd, (RootlistKind)rows[5].Kind);
+        Assert.Equal(1, rows[5].Depth);                                            // the end marker sits at its start's depth
+        Assert.Equal(RootlistKind.FolderEnd, (RootlistKind)rows[6].Kind);
+        Assert.Equal(GroupId, Entities.Strings.Resolve(rows[6].FolderId));
+        Assert.Equal(0, rows[6].Depth);
+        Assert.Equal(8, rows[7].Position);                                         // the skipped collection kept its index
+
+        Assert.Equal("300,deadbeef", Entities.Strings.Resolve(Entities.Current.Edges.RootlistRevision(user.Slot)));
+    }
+
+    [Fact]
+    public void A_re_answered_rootlist_keeps_its_folder_ids_alive()
+    {
+        // The commit AddRefs the new list BEFORE it releases the old one: a folder whose id did not change must not be
+        // reclaimed in between (Edges.cs's owned-text rule).
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        for (int i = 0; i < 3; i++)
+        {
+            var s = Staging.Rent();
+            Spotify.Decode.Rootlist(RootlistBytes(), me, s);
+            TestScope.CommitAndPublish(s);
+        }
+        var user = Entities.User(EntityUri.Parse("spotify:user:christos".AsSpan()));
+        var row = Entities.Current.Edges.Rootlist.Payload(user.Slot)[1];
+        Assert.Equal(GroupId, Entities.Strings.Resolve(row.FolderId));
+        Assert.Equal(row.FolderId, Entities.Strings.Intern(GroupId));              // still the live id, not a re-mint
+    }
+
+    [Theory]
+    [InlineData("New+Folder", "New Folder")]
+    [InlineData("A%2BB+C", "A+B C")]                  // `+` is a space FIRST, then the escapes: %2B survives as '+'
+    [InlineData("caf%C3%A9+mix", "café mix")]
+    [InlineData("has%3Acolon+too", "has:colon too")]
+    [InlineData("broken%zz", "broken%zz")]            // a malformed escape is kept verbatim
+    public void A_folder_name_decodes_plus_first_then_percent(string escaped, string expected)
+    {
+        var s = Staging.Rent();
+        var name = Spotify.Decode.FolderName(s, Encoding.UTF8.GetBytes(escaped));
+        Assert.Equal(expected, Encoding.UTF8.GetString(s.Utf8(name)));
+        Staging.Return(s);
+    }
+
+    // ── recents: the wire token is the label (G-060) ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void An_unknown_recents_content_type_keeps_its_wire_token_and_a_known_one_costs_no_text()
+    {
+        static Pl.Item Played(string uri, string contentType) => new()
+        {
+            Uri = uri,
+            Attributes = new Pl.ItemAttributes { FormatAttributes = { new Pl.FormatListAttribute { Key = contentType } } },
+        };
+        var page = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items = { Played(UriOf(EntityKind.Album, 1), "content_type_audiobooks"), Played(UriOf(EntityKind.Album, 2), "content_type_music") },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        var items = new Spotify.Decode.RecentsItem[4];
+        int n = Spotify.Decode.RecentsPage(page, s, items);
+
+        Assert.Equal(2, n);
+        Assert.Equal(RecentsContentType.None, items[0].ContentType);
+        Assert.Equal("audiobooks", Encoding.UTF8.GetString(s.Utf8(items[0].RawContentType)));
+        Assert.Equal(RecentsContentType.Music, items[1].ContentType);
+        Assert.True(items[1].RawContentType.IsEmpty);
+        Staging.Return(s);
     }
 
     // ── the allocation gate (P1, P8) ────────────────────────────────────────────────────────────────────────────────

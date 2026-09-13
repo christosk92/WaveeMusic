@@ -52,6 +52,31 @@ public static partial class Shell
         SetPage(RouteKind.History, static (in Route _) => HistoryPage());
         SetPage(RouteKind.SidebarCustomize, static (in Route _) => Sidebar.CustomizerPage());
         if (NotificationsLauncher is null) NotificationsLauncher = OpenNotificationPanel;
+
+        Design.Install();   // G-196: Tok.Use(Tok.NeutralPalette, _) rather than the engine's own default ramp
+        Actions.InstallUi();   // G-195: Stage.NowPlayingMenu
+
+        // G-193: a rich-text anchor's entity uri → the app's route key, through the SAME table `GoTo` uses.
+        Controls.RouteForUri = static uri =>
+        {
+            var route = For(EntityUri.Parse(uri));
+            return route.Kind == RouteKind.NotFound ? null : NameOf(route);
+        };
+
+        // G-027: the shell's own three ActionServices verbs. Play/PlayNext/AddToQueue/StartRadio are the queue owner's;
+        // IsSaved/SetSaved are User.cs's; every entity file's AppActions.Register call fills the context-menu table —
+        // none of those seams live in this file, so they are left null here rather than guessed at.
+        Actions.Services.Go = static route => GoTo(route);
+        Actions.Services.CurrentRoute = static () => Current.Peek();
+        Actions.Services.CurrentDestination = static () =>
+        {
+            var route = Current.Peek();
+            return SidebarPinId.FromRoute(NameOf(route)) is not null ? route : null;   // a destination is what the sidebar can pin
+        };
+        // The extension registry itself — the customizer's action picker and every BOUND row resolve through it.
+        // Idempotent: a second InstallUi (a login-gate re-run) replaces `Registry.Current` with a freshly-built table
+        // rather than double-registering into a live one (`Registry.Build`'s own contract).
+        Actions.Services.Extensions = Actions.Registry.Build(Actions.Services);
     }
 
     /// <summary>The window frame. Mounted once by <see cref="RootFactory"/>.</summary>
@@ -282,6 +307,10 @@ public static partial class Shell
                 // The toast activation → deep-link hop: a toast reaches exactly the destinations a link can.
                 Notify.HostInstall(post, static raw => ApplyDeepLink(raw));
                 DrainActivation();   // a payload parked before the window existed
+                // G-010: the window is guaranteed to exist by the time the frame's mount effect runs (this component
+                // IS the window's content), so activation no longer waits on the FIRST reducer effect to happen to
+                // land after it. `Activate` itself is idempotent (`s_active` gate) and self-heals a hwnd of 0.
+                Playback.Os.Activate(FluentApp.WindowHandle, Playback.Snap());
                 return () =>
                 {
                     FluentApp.AppNavigationCommand -= onNav;
@@ -1438,7 +1467,13 @@ public static partial class Shell
         var kids = new List<Element>(3)
         {
             new TextEl(Loc.Get(Strings.Notifications.Title)) { Size = 15f, Weight = 700, Color = Tok.TextPrimary, Grow = 1f },
-            PanelLink(Loc.Get(Strings.Notifications.MarkAllRead), static () => Notify.MarkAllRead(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())),
+            // G-090: Mark all read must also clear the OS banners it acknowledges — otherwise every live toast this
+            // session raised keeps sitting in the Action Center after the in-app centre says everything is read.
+            PanelLink(Loc.Get(Strings.Notifications.MarkAllRead), static () =>
+            {
+                Notify.MarkAllRead(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                Notify.ClearLive();
+            }),
         };
         if (Notify.ShowsClear(filter) && Notify.ClearActivity is { } clear)
             kids.Add(PanelLink(Loc.Get(Strings.Notifications.Clear), clear));
@@ -1622,6 +1657,7 @@ public static partial class Shell
     static void OpenSocial(Notification n)
     {
         Notify.MarkRead(n.Id);
+        Notify.Dismiss(n.Id);   // G-090: acting on the in-app row also pulls its live OS banner, if one is still up
         if (n.ActionType == SocialActionType.Navigate && n.ActionUri is { Length: > 0 } uri
             && !uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
             && For(EntityUri.Parse(uri)) is { IsNone: false } route)
@@ -1660,6 +1696,7 @@ public static partial class Shell
     static void OpenRelease(Notification n)
     {
         Notify.MarkRead(n.Id);
+        Notify.Dismiss(n.Id);   // G-090
         if (n.ReleaseKind == NewReleaseKind.Album && For(n.Subject, n.Title) is { IsNone: false } route)
         {
             GoTo(route);

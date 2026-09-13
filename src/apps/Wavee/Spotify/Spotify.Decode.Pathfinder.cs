@@ -903,7 +903,15 @@ public static partial class Spotify
         /// <para>The cards land as a <see cref="Relation.SectionCards"/> run over the band (ch 10 §7). They go on the
         /// PENDING stack because this walk is nested inside the home's own section run, and they close HERE, before
         /// the section's edge is pushed, so neither run's slice interleaves with the other's.</para></summary>
-        static StagedId Section(ref Utf8JsonReader r, Staging s)
+        static StagedId Section(ref Utf8JsonReader r, Staging s) => Section(ref r, s, offset: -1);
+
+        /// <summary>One band, as a whole list (<paramref name="offset"/> &lt; 0: the Home feed's inline band) or as the
+        /// page at <paramref name="offset"/> of a "Show all" drill (<c>homeSection</c>, G-045). A page lands as a
+        /// <c>ReplacePage</c> with an UNSTATED total — the band's own total overshoots in 7 of 31 captured sections, and
+        /// a stated one would settle the list Complete on a number the cursor contradicts — and its ledger is the RAW
+        /// cursor: <c>Raw = offset + items this page</c>, <c>Cards = offset + cards this page</c>
+        /// (<see cref="SectionPaging.Advance"/>).</summary>
+        static StagedId Section(ref Utf8JsonReader r, Staging s, int offset)
         {
             ref var row = ref s.Sections.RowFor(default, Authority.Full, (uint)SectionFields.Identity);
             row.NextOffset = SectionPaging.NoCursor;
@@ -911,15 +919,21 @@ public static partial class Spotify
 
             for (int depth = r.CurrentDepth; Next(ref r, depth);)
             {
-                if (r.ValueTextEquals("uri"u8)) { r.Read(); row.Id = JsonId(ref r, s); }
+                if (r.ValueTextEquals("uri"u8)) { r.Read(); if (row.Id.IsEmpty) row.Id = JsonId(ref r, s); }
                 else if (r.ValueTextEquals("data"u8)) Data(ref r, s, ref row);
                 else if (r.ValueTextEquals("sectionItems"u8)) Items(ref r, s, ref row);
                 else SkipValue(ref r);
             }
 
             var uri = row.Id;
+            if (offset > 0)
+            {
+                row.Raw = SectionPaging.Advance(offset, row.Raw);
+                row.Cards += offset;
+            }
             if (!s.Sections.Settle()) { s.Edges.Pop(cards); return default; }
-            s.Edges.Close(Relation.SectionCards, in uri, cards);
+            if (offset >= 0) s.Edges.ClosePage(Relation.SectionCards, in uri, cards, offset, total: 0);
+            else s.Edges.Close(Relation.SectionCards, in uri, cards);
             return uri;
 
             static void Data(ref Utf8JsonReader r, Staging s, ref StagedSection row)
@@ -987,57 +1001,6 @@ public static partial class Spotify
 
             if (s.Edges.Pending(mark) > 0) s.Edges.Close(Relation.SearchResult, in subject, mark);
             else s.Edges.Pop(mark);
-        }
-
-        /// <summary>`libraryV3` → the rootlist run over the account's own row: the playlists, folders and pseudo
-        /// playlists the sidebar lists, in the server's order, each with its depth and its added-at instant.</summary>
-        public static void LibraryV3(ref Utf8JsonReader r, ReadOnlySpan<byte> meUri, Staging s)
-        {
-            if (meUri.IsEmpty) { r.Skip(); return; }
-            var me = Identity(s, meUri);
-            int mark = s.Edges.PendingMark, total = 0, position = 0;
-
-            for (int d = Fields(ref r); Next(ref r, d);)
-            {
-                if (r.ValueTextEquals("totalCount"u8)) { r.Read(); total = (int)Num(ref r); }
-                else if (r.ValueTextEquals("items"u8) && EnterArray(ref r))
-                {
-                    for (int list = r.CurrentDepth; Element(ref r, list);)
-                        if (Row(ref r, s, position)) position++;
-                }
-                else SkipValue(ref r);
-            }
-
-            int n = s.Edges.Pending(mark);
-            if (n > 0) s.Edges.Close(Relation.Rootlist, in me, mark, EdgeState.Complete, total == 0 ? n : total);
-            else s.Edges.Pop(mark);
-
-            static bool Row(ref Utf8JsonReader r, Staging s, int position)
-            {
-                var node = default(Node);
-                int credit = s.CreditMark, mark = s.Edges.PendingMark, rowDepth = 0;
-                TextRef addedAt = default;
-
-                for (int depth = r.CurrentDepth; Next(ref r, depth);)
-                {
-                    if (r.ValueTextEquals("depth"u8)) { r.Read(); rowDepth = (int)Num(ref r); }
-                    else if (r.ValueTextEquals("addedAt"u8)) addedAt = OneText(ref r, s, "isoString"u8);
-                    else NodeProperty(ref r, s, ref node, credit);
-                }
-
-                s.TakeCredit(credit);
-                if (s.Edges.Pending(mark) > 0) CloseArtists(s, in node, mark);
-
-                var uri = Stage(s, in node, Authority.Thin);
-                if (uri.IsEmpty) return false;
-                ref var edge = ref s.Edges.Push();
-                edge.Target = uri;
-                edge.U0 = (ushort)Math.Min(position, ushort.MaxValue);
-                edge.B0 = (byte)Math.Clamp(rowDepth, 0, 255);
-                edge.B1 = (byte)RootlistKind.Item;
-                if (!addedAt.IsEmpty) { IsoDate(s.Utf8(addedAt), out _, out int at, out _); edge.At = at; }
-                return true;
-            }
         }
 
         // ── 12. the bundled-export offline fixture path (ch 31 §9.5) ─────────────────────────────────────────────────

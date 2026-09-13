@@ -74,11 +74,16 @@ public static partial class Spotify
     }
 
     /// <summary>Why the session stopped. A fault is what the UI reports and what decides whether the stored credential
-    /// survives: only <see cref="SessionFault.CredentialRejected"/> clears it (0.2.9's rule, and its reason — a
-    /// connectivity blip must never wipe a valid credential).</summary>
+    /// survives: only <see cref="SessionFault.CredentialRejected"/> (a bad-credentials verdict CONFIRMED against a fresh
+    /// access point, D24) and a definitely-Free <see cref="SessionFault.NotPremium"/> (D12) clear it — 0.2.9's rule, and
+    /// its reason: a connectivity blip must never wipe a valid credential.</summary>
     public enum SessionFault : byte
     {
         None = 0, NoCredential, CredentialRejected, NoAccessPoint, Network, Protocol, TokenRefused, NotPremium,
+        /// <summary>The AP refused the login for a reason that is NOT a verdict on the credential (a protocol error, a
+        /// travel restriction, "could not validate", an unreadable failure). The credential is KEPT (D24): the chip offers
+        /// Reconnect, never a sign-in.</summary>
+        LoginRefused,
     }
 
     /// <summary>The account's product tier, from the AP's ProductInfo push (cmd 0x50) — the authoritative source
@@ -141,9 +146,12 @@ public static partial class Spotify
         Connected,
         /// <summary>The Shannon channel is negotiated (gs verified, keys derived).</summary>
         HandshakeOk,
-        /// <summary>APWelcome. <c>Id</c> = username, <c>Id2</c> = country, <c>Id3</c> = product, <c>Number</c> = tier.</summary>
+        /// <summary>APWelcome. <c>Id</c> = username, <c>Id2</c> = country, <c>Id3</c> = product, <c>Number</c> = tier.
+        /// Anything but a confirmed Premium tier is refused here (the Premium gate, D12).</summary>
         Welcome,
-        /// <summary>The AP rejected the credential. Terminal: the stored credential is cleared.</summary>
+        /// <summary>The AP refused the login. Terminal. <c>Number</c> = a <see cref="RejectVerdict"/>: only
+        /// <see cref="RejectVerdict.Definitive"/> and <see cref="RejectVerdict.NotPremium"/> clear the stored credential;
+        /// the default, <see cref="RejectVerdict.Transient"/>, keeps it (D24).</summary>
         AuthRejected,
         /// <summary>The client-token was minted. <c>Text</c> = the token, <c>Number</c> = expiry (unix ms).</summary>
         ClientTokenMinted,
@@ -182,7 +190,7 @@ public static partial class Spotify
         OpenDealer = 1 << 4,
         /// <summary>Persist the reusable credential the welcome carried.</summary>
         SaveCredential = 1 << 5,
-        /// <summary>Wipe the stored credential — ONLY on a genuine rejection.</summary>
+        /// <summary>Wipe the stored credential — ONLY on a sign-out, a confirmed bad-credentials verdict or a Free account.</summary>
         ClearCredential = 1 << 6,
         /// <summary>Serve <see cref="BackoffMs"/> and then post <see cref="SessionEventKind.Retry"/>.</summary>
         Backoff = 1 << 7,
@@ -194,6 +202,10 @@ public static partial class Spotify
         /// <summary>A fresh dealer connection id: announce this device to connect-state (the hello PUT, headless plan §1.6
         /// item 5). Once per transition into <see cref="SessionPhase.Online"/>, so a reconnect announces again.</summary>
         AnnounceDevice = 1 << 10,
+        /// <summary>The account is gone from this PC (a sign-out, a confirmed rejection, a Free account refused): release
+        /// playback ownership and take the account's OS surfaces down — the jump-list recents and every scheduled toast
+        /// (G-036/G-037). Always travels with <see cref="ClearCredential"/>.</summary>
+        SignedOut = 1 << 11,
     }
 
     /// <summary>THE state machine. Pure: same session + same event ⇒ same session + same effects, no clock, no socket,
@@ -228,29 +240,60 @@ public static partial class Spotify
                 return SessionEffects.None;
 
             case SessionEventKind.Welcome:
+            {
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
                 s.Username = e.Id;
                 s.Country = e.Id2;
                 s.Product = e.Id3;
                 s.Tier = (Tier)(byte)e.Number;
-                s.HasCredential = true;
                 s.Attempt = 0;
+                if (s.Tier != Tier.Premium)
+                {
+                    // THE PREMIUM GATE (D12, 0.2.9 `LiveSessionHost`): only a CONFIRMED Premium product streams. A known
+                    // Free account is refused and its credential wiped, so the next launch cannot resume straight back into
+                    // the wall. An UNKNOWN tier (the 0x50 trailer missed its window) is refused too — never optimistically
+                    // Premium — but its credential is KEPT: a late packet is not a verdict on the account (D24's reason).
+                    bool free = s.Tier == Tier.Free;
+                    s.Phase = SessionPhase.Failed;
+                    s.Fault = SessionFault.NotPremium;
+                    s.ConnectionId = default;
+                    s.HasCredential = s.HasCredential && !free;
+                    s.Epoch++;
+                    return SessionEffects.CloseAll
+                         | (free ? SessionEffects.ClearCredential | SessionEffects.SignedOut : SessionEffects.None);
+                }
+                s.HasCredential = true;
                 s.Phase = SessionPhase.Minting;
                 return SessionEffects.SaveCredential | SessionEffects.MintClientToken | SessionEffects.Welcome;
+            }
 
             case SessionEventKind.AuthRejected:
                 s.Phase = SessionPhase.Failed;
-                s.Fault = SessionFault.CredentialRejected;
-                s.HasCredential = false;
+                s.ConnectionId = default;
                 s.Epoch++;
-                return SessionEffects.ClearCredential | SessionEffects.CloseAll;
+                switch ((RejectVerdict)(byte)e.Number)
+                {
+                    case RejectVerdict.Definitive:
+                        s.Fault = SessionFault.CredentialRejected;
+                        s.HasCredential = false;
+                        return SessionEffects.ClearCredential | SessionEffects.CloseAll | SessionEffects.SignedOut;
+                    case RejectVerdict.NotPremium:
+                        s.Fault = SessionFault.NotPremium;
+                        s.HasCredential = false;
+                        return SessionEffects.ClearCredential | SessionEffects.CloseAll | SessionEffects.SignedOut;
+                    default:
+                        // Not a verdict on the credential: stop, keep it, let the user (or the next launch) try again.
+                        s.Fault = SessionFault.LoginRefused;
+                        return SessionEffects.CloseAll;
+                }
 
             case SessionEventKind.ClientTokenMinted:
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
                 s.ClientToken = e.Text;
                 s.ClientTokenExpiresAtMs = e.Number;
-                // The bearer's mint is gated on the attestation, so the two are ordered, not parallel.
-                return SessionEffects.MintAccessToken;
+                // The bearer's mint is gated on the attestation, so the two are ordered, not parallel — at LOGIN. A refresh
+                // while Online (G-035) replaces the attestation alone: the bearer it gated is still good.
+                return s.Phase == SessionPhase.Online ? SessionEffects.None : SessionEffects.MintAccessToken;
 
             case SessionEventKind.AccessTokenMinted:
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
@@ -286,10 +329,17 @@ public static partial class Spotify
                 return SessionEffects.ResolveHosts;
 
             case SessionEventKind.Logout:
-                uint epoch = s.Epoch + 1;
+            {
+                // Everything the account owned goes; the boot identity stays, because a sign-in after a sign-out is the
+                // same device (Disconnect's rule below, minus the credential).
+                Session kept = s;
                 s = default;
-                s.Epoch = epoch;
-                return SessionEffects.CloseAll | SessionEffects.ClearCredential;
+                s.Epoch = kept.Epoch + 1;
+                s.DeviceId = kept.DeviceId;
+                s.ClientId = kept.ClientId;
+                s.Locale = kept.Locale;
+                return SessionEffects.CloseAll | SessionEffects.ClearCredential | SessionEffects.SignedOut;
+            }
 
             case SessionEventKind.Disconnect:
             {
@@ -328,6 +378,66 @@ public static partial class Spotify
     {
         int shift = (int)Math.Min(s.Attempt == 0 ? 0u : s.Attempt - 1, 4u);
         return Math.Min(30, 3 * (1 << shift)) * 1000;
+    }
+
+    // ── 1b. the refusal ladder (D24), the token lead (G-035), the account memory (G-031) ─────────────────────────────
+
+    /// <summary>What one AP refusal means for the stored credential. <see cref="Transient"/> is the DEFAULT (0), so a
+    /// refusal nobody classified can never cost the user their sign-in.</summary>
+    public enum RejectVerdict : byte { Transient = 0, Definitive = 1, NotPremium = 2 }
+
+    /// <summary>What the AP thread does after one refusal.</summary>
+    public enum RejectStep : byte { Stop = 0, RetryFreshAccessPoint, NextAccessPoint }
+
+    /// <summary><c>keyexchange.proto</c> <c>ErrorCode</c>s the ladder reads; every other code is not a verdict.</summary>
+    public const int ApErrorTryAnotherAp = 0x2, ApErrorPremiumRequired = 0xb, ApErrorBadCredentials = 0xc;
+
+    /// <summary>THE D24 LADDER. A bad-credentials answer is believed only when a SECOND access point repeats it: the first
+    /// one asks for one retry against a fresh access point, the second stops with <see cref="RejectVerdict.Definitive"/>
+    /// (the one verdict that clears the credential). "Premium required" is the AP's own tier verdict (D12). "Try another
+    /// AP" is failover, not a refusal. Anything else — or an unreadable failure (<c>-1</c>) — stops and keeps the
+    /// credential. PURE; <paramref name="badCredentialsSoFar"/> is the count this login attempt has already seen.</summary>
+    public static RejectStep OnApReject(int apErrorCode, int badCredentialsSoFar, out RejectVerdict verdict)
+    {
+        switch (apErrorCode)
+        {
+            case ApErrorBadCredentials:
+                verdict = RejectVerdict.Definitive;
+                return badCredentialsSoFar == 0 ? RejectStep.RetryFreshAccessPoint : RejectStep.Stop;
+            case ApErrorPremiumRequired:
+                verdict = RejectVerdict.NotPremium;
+                return RejectStep.Stop;
+            case ApErrorTryAnotherAp:
+                verdict = RejectVerdict.Transient;
+                return RejectStep.NextAccessPoint;
+            default:
+                verdict = RejectVerdict.Transient;
+                return RejectStep.Stop;
+        }
+    }
+
+    /// <summary>How long before its expiry a token is re-minted — one lead for the bearer and the attestation, so a request
+    /// never leaves on a token that dies in flight.</summary>
+    public const long TokenRefreshLeadMs = 120_000;
+
+    /// <summary>Is a token expiring at <paramref name="expiresAtMs"/> due for a re-mint at <paramref name="nowMs"/>? 0 = none
+    /// held, which is always due. PURE: the clock is the argument.</summary>
+    public static bool TokenDue(long nowMs, long expiresAtMs) => expiresAtMs <= 0 || nowMs >= expiresAtMs - TokenRefreshLeadMs;
+
+    /// <summary>How the account that just went live relates to the last one this install saw.</summary>
+    public enum AccountChange : byte { Same = 0, First, Switched }
+
+    /// <summary>Remember the account that went live in <c>session.lastAccount</c> — what <c>Platform.Scope</c> falls back to
+    /// when the credential slot is empty, and the only witness of an account switch. Writes ONLY on a change; the name is
+    /// kept as the AP spelled it (the scope carries that spelling) and compared case-insensitively.</summary>
+    public static AccountChange RememberAccount(IAppSettings settings, string? account)
+    {
+        string next = account?.Trim() ?? "";
+        if (next.Length == 0) return AccountChange.Same;
+        string last = settings.Get(Platform.Keys.LastAccount);
+        if (string.Equals(last, next, StringComparison.OrdinalIgnoreCase)) return AccountChange.Same;
+        settings.Set(Platform.Keys.LastAccount, next);
+        return last.Length == 0 ? AccountChange.First : AccountChange.Switched;
     }
 
     // ── 2. the server clock (ported from Backend/SpotifyServerClock.cs, folded into the session) ─────────────────────
@@ -954,6 +1064,12 @@ public static partial class Spotify
         public bool IsRequest => Kind == DealerFrameKind.Request;
         /// <summary>A Connect cluster push — the frame `Spotify.Connect` folds into <c>Input.Cluster</c> (plan §4.10).</summary>
         public bool IsClusterUpdate => Kind == DealerFrameKind.Message && Uri.StartsWith("hm://connect-state/v1/cluster"u8);
+        /// <summary>Another device moved OUR volume (`connect/volume`): a MESSAGE whose payload is a `SetVolumeCommand`,
+        /// read by <see cref="DealerFrame.TryReadSetVolume"/> (0.2.9 subscribed the same topic).</summary>
+        public bool IsConnectVolume => Kind == DealerFrameKind.Message && Uri.StartsWith("hm://connect-state/v1/connect/volume"u8);
+        /// <summary>Another device asked this one to log out (`connect/logout`) — the verb PutState's `supports_logout`
+        /// advertises.</summary>
+        public bool IsConnectLogout => Kind == DealerFrameKind.Message && Uri.StartsWith("hm://connect-state/v1/connect/logout"u8);
     }
 
     /// <summary>The dealer's JSON frames. Reflection-free (<c>Utf8JsonReader</c>, never a DOM) and allocation-free
@@ -1094,6 +1210,70 @@ public static partial class Spotify
                 return -1;   // more inflated bytes than the buffer holds
             }
             catch (InvalidDataException) { return -1; }
+        }
+
+        /// <summary>A `SetVolumeCommand` (the `connect/volume` MESSAGE): field 1 = volume (varint, 0..65535), field 2 =
+        /// `command_options` whose field 1 is the SENDER's message id (the id our PutState must echo). Unknown fields are
+        /// skipped; a body with no volume answers false. PURE, allocation-free (ported from 0.2.9
+        /// `ConnectCommandRouter.TryParseSetVolume`).</summary>
+        public static bool TryReadSetVolume(ReadOnlySpan<byte> payload, out int volume, out uint messageId)
+        {
+            volume = 0;
+            messageId = 0;
+            bool haveVolume = false;
+            int o = 0;
+            while (o < payload.Length)
+            {
+                if (!TryVarint(payload, ref o, out ulong key)) break;
+                int field = (int)(key >> 3), wire = (int)(key & 7);
+                if (field == 1 && wire == 0)
+                {
+                    if (!TryVarint(payload, ref o, out ulong raw) || raw > int.MaxValue) break;
+                    volume = (int)Math.Min(raw, 65535UL);
+                    haveVolume = true;
+                }
+                else if (field == 2 && wire == 2)
+                {
+                    if (!TryVarint(payload, ref o, out ulong length) || length > (ulong)(payload.Length - o)) break;
+                    ReadOnlySpan<byte> options = payload.Slice(o, (int)length);
+                    o += (int)length;
+                    int p = 0;
+                    while (p < options.Length && TryVarint(options, ref p, out ulong k))
+                    {
+                        if (k == 0x08) { if (TryVarint(options, ref p, out ulong id)) messageId = unchecked((uint)id); break; }
+                        if (!SkipField(options, ref p, (int)(k & 7))) break;
+                    }
+                }
+                else if (!SkipField(payload, ref o, wire)) break;
+            }
+            return haveVolume;
+        }
+
+        static bool TryVarint(ReadOnlySpan<byte> bytes, ref int offset, out ulong value)
+        {
+            value = 0;
+            for (int shift = 0; shift < 64 && offset < bytes.Length; shift += 7)
+            {
+                byte b = bytes[offset++];
+                value |= (ulong)(b & 0x7F) << shift;
+                if ((b & 0x80) == 0) return true;
+            }
+            return false;
+        }
+
+        static bool SkipField(ReadOnlySpan<byte> bytes, ref int offset, int wire)
+        {
+            switch (wire)
+            {
+                case 0: return TryVarint(bytes, ref offset, out _);
+                case 1: if (bytes.Length - offset < 8) return false; offset += 8; return true;
+                case 2:
+                    if (!TryVarint(bytes, ref offset, out ulong length) || length > (ulong)(bytes.Length - offset)) return false;
+                    offset += (int)length;
+                    return true;
+                case 5: if (bytes.Length - offset < 4) return false; offset += 4; return true;
+                default: return false;
+            }
         }
 
         /// <summary>The pong the server's ping wants.</summary>

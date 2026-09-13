@@ -970,6 +970,14 @@ public abstract class Table : Publishable
     /// <summary>The scope epoch that owns this row's in-flight request, 0 = none (C7). Ten pages asking for the same
     /// rows in one drain produce one request; a scope switch bumps the epoch and orphans the late answer.</summary>
     public Column<uint> Inflight;
+    /// <summary>THE GROUPS THE PLANNER HAS ASKED FOR, this scope (G-040). <c>Inflight</c> answers "is a request out";
+    /// this answers "which groups has anybody already asked about", and it is the one that stops the request loop: a
+    /// TrackV4 answer fills Identity and clears <c>Inflight</c> through <see cref="Applied"/>, and without a per-GROUP
+    /// memory the next <c>Ensure(Row)</c> re-POSTed the same V4 for the PlayCount it never carries. The planner's
+    /// filter is <c>wanted &amp; ~Known &amp; ~Asked</c>; a group asked and not answered stays asked — the "exhausted"
+    /// seal — until a transport failure un-asks it (<c>Fetch.Failed</c>) or the scope is replaced (the tables are new).
+    /// 4 B/row, the price of the whole seal (FootprintGateTests' arithmetic: +40,004 B at 10k rows).</summary>
+    public Column<uint> Asked;
 
     /// <summary>THE row's identity, packed (see the class summary and <see cref="EntityId"/>). Read it freely — kind,
     /// provider and the gid are field loads. WRITE it only through <see cref="Alloc(EntityId)"/> / <see cref="Bind"/> /
@@ -1023,6 +1031,7 @@ public abstract class Table : Publishable
         Known[slot] = 0;
         Authority[slot] = (byte)Wavee.Authority.None;
         Inflight[slot] = 0;
+        Asked[slot] = 0;
         FetchedAt[slot] = 0;
         Touched[slot] = Entities.Now;
         MarkDirty();
@@ -1052,6 +1061,7 @@ public abstract class Table : Publishable
             Known[slot] = 0;
             Authority[slot] = (byte)Wavee.Authority.None;
             Inflight[slot] = 0;
+            Asked[slot] = 0;
             FetchedAt[slot] = 0;
             Touched[slot] = Entities.Now;
         }
@@ -1082,6 +1092,7 @@ public abstract class Table : Publishable
         Known[slot] = 0;
         Authority[slot] = (byte)Wavee.Authority.None;
         Inflight[slot] = 0;
+        Asked[slot] = 0;
         Free.Push(slot);
         MarkDirty();
     }
@@ -1367,6 +1378,7 @@ public abstract class Table : Publishable
         FetchedAt.EnsureCapacity(capacity);
         Touched.EnsureCapacity(capacity);
         Inflight.EnsureCapacity(capacity);
+        Asked.EnsureCapacity(capacity);
         Id.EnsureCapacity(capacity);
         // Load ≤ 0.75 → capacity * 4/3, rounded up to a power of two (the mask is the whole probe's arithmetic).
         int buckets = 32;
@@ -1434,6 +1446,12 @@ public sealed partial class Scope
     /// <summary>Every entity table, for the store's warm/trim walk. Edge tables are reached through <see cref="Edges"/>.</summary>
     public readonly Table[] Tables;
 
+    /// <summary>The four SYNTHETIC-subject tables — Home feeds, sections, search subjects and browse nodes. Deliberately
+    /// a second array and not part of <see cref="Tables"/>: that one is the store's warm/trim walk, and a feed is not
+    /// something to warm from disk (Home.cs's scope block). They still OWN interned text, which is the one reason this
+    /// array exists: <see cref="ReleaseText"/> walks it (G-052).</summary>
+    public readonly Table[] Subjects;
+
     /// <summary>Bumps on every switch. A request stamps it into <see cref="Table.Inflight"/>; a commit for an older
     /// epoch is dropped instead of writing into a table nobody is looking at (C7).</summary>
     public uint Epoch;
@@ -1446,6 +1464,9 @@ public sealed partial class Scope
     {
         Key = key;
         Tables = [Tracks, Albums, Artists, Playlists, Shows, Episodes, Users, Concerts];
+        // Declared in Home.cs / Search.cs / Browse.cs; every field initializer of every part has run before a
+        // constructor body, so the four references are live here.
+        Subjects = [Homes, Sections, Searches, Browses];
     }
 
     /// <summary>Fire every dirty table's <c>Changed</c> once (ch 31 calls it at the end of the seed). Same publication
@@ -1456,10 +1477,17 @@ public sealed partial class Scope
     /// (<see cref="Entities.Switch"/> / a re-<see cref="Entities.Boot"/>): the tables themselves are garbage in one
     /// piece (P5), but the engine's <c>StringTable</c> is process-wide, and an id nobody releases is permanent
     /// (defect 1, doc §4.4) — so a market switch would otherwise raise the app's floor by a whole catalog's text
-    /// every time. Edge-owned text (a payload <c>StringId</c>, a merch row) is its owner's to release the same way.</summary>
+    /// every time.
+    /// <para>THREE populations, and until G-052 only the first was walked: the eight entity tables, the four synthetic
+    /// subject tables (every greeting, band title, browse tile and query — a login now runs a <see cref="Entities.Switch"/>
+    /// on every welcome, so this was a leak per sign-in, not per market change), and the edge-owned strings the edge
+    /// layer ref-counts itself (<see cref="Edges.ReleaseText"/>: the recents revision, the rootlist's folder names and
+    /// group ids, the trait relations' credit text).</para></summary>
     public void ReleaseText()
     {
         for (int i = 0; i < Tables.Length; i++) Tables[i].ReleaseAllText();
+        for (int i = 0; i < Subjects.Length; i++) Subjects[i].ReleaseAllText();
+        Edges.ReleaseText();
     }
 }
 
@@ -1750,6 +1778,19 @@ public static partial class Entities
     /// <summary>The active table set (D9). Replaced whole by <see cref="Switch"/>.</summary>
     public static Scope Current { get; private set; } = null!;
 
+    /// <summary>THE SCOPE GENERATION, as a signal (G-179): bumps on every <see cref="Boot"/> and every
+    /// <see cref="Switch"/>, and on nothing else. A subscriber that captured a table's <c>Changed</c> signal holds a
+    /// signal of a table set that may be gone — the welcome effect now switches scope on every login, so the sidebar
+    /// binder went quietly deaf the moment a user signed in. Reading this FIRST inside an effect is what re-runs it
+    /// against the new set: the new tables' signals are then the ones it subscribes to.
+    /// <para>A generation and not <see cref="Scope.Epoch"/>: a re-Boot mints a fresh scope at epoch 0 again, and a
+    /// value that did not change would not wake anyone. UI thread only (C1), like every write here.</para></summary>
+    public static readonly Signal<uint> ScopeEpoch = new(0);
+
+    static uint s_scopeGeneration;
+
+    static void BumpScopeEpoch() => ScopeEpoch.Value = ++s_scopeGeneration;
+
     /// <summary>Bumped once per drain that changed anything (C3). Every table that changed in that drain publishes this
     /// same number, so a page can answer "did anything at all move since I painted?" with one comparison.</summary>
     public static uint Publication { get; private set; }
@@ -1768,6 +1809,7 @@ public static partial class Entities
         FetchBoot();
         ResolveMe(Current);
         StoreWarm(Current);
+        BumpScopeEpoch();                                  // LAST: a woken subscriber must find the new set whole
     }
 
     /// <summary>Locale, market, tier, explicit filter or account changed (D9): build a new set, bump the epoch so every
@@ -1783,10 +1825,30 @@ public static partial class Entities
         Current = new Scope(key) { Epoch = epoch };
         ResolveMe(Current);
         StoreWarm(Current);
+        BumpScopeEpoch();
     }
 
+    /// <summary>The account's own row. A SPOTIFY scope's account is the bare username the session hands over, and the
+    /// row is keyed by the uri every wire answer names the account with — <c>spotify:user:&lt;username&gt;</c> — so a
+    /// library answer staged against that uri lands on THIS row, and the row routes to the Spotify provider when the
+    /// edge door asks for its relations. Keyed by the bare name (as before), the account row had no provider and every
+    /// library relation was staged onto a second, different user row. Any other scope keeps the account text verbatim
+    /// (the seed resolves its own "me" row, <c>Entities.Fake.cs</c>).</summary>
     static void ResolveMe(Scope scope)
-        => scope.MeSlot = scope.Key.Account.Length == 0 ? Table.None : scope.Users.Slot(scope.Key.Account.AsSpan());
+    {
+        string account = scope.Key.Account;
+        if (account.Length == 0) { scope.MeSlot = Table.None; return; }
+        const string user = "spotify:user:";
+        if (scope.Key.Provider != "spotify" || account.Contains(':') || user.Length + account.Length > EntityUri.StackChars)
+        {
+            scope.MeSlot = scope.Users.Slot(account.AsSpan());
+            return;
+        }
+        Span<char> uri = stackalloc char[EntityUri.StackChars];
+        user.AsSpan().CopyTo(uri);
+        account.AsSpan().CopyTo(uri[user.Length..]);
+        scope.MeSlot = scope.Users.Slot(uri[..(user.Length + account.Length)]);
+    }
 
     // The SHELL seams. Implemented by Entities/Store.cs and Entities/Fetch.cs as parts of THIS partial class; an
     // unimplemented partial method is erased by the compiler, so this file — and every test over it — stands alone.
@@ -1936,7 +1998,15 @@ public static partial class Entities
         // The synthetic subjects, before the edges that hang off them: a section run whose rows nobody filled would
         // allocate a slot and never paint (ch 10 §7).
         CommitHome(staging);
+        // Browse nodes are synthetic subjects too (G-051: `Browse.Commit` had no caller, so a decoded browse page
+        // staged its tiles and landed none). After Home, because a browse page's bands ARE section rows.
+        CommitBrowse(staging);
         CommitEdges(staging);
+        // The rootlist marker stream and the trait relations (credits, versions, waveform, recommendations) carry
+        // payloads the generic run does not (a folder's group id; a credit's name and role), so their owner lands
+        // them — after the rows, for the same reason every edge rides after the rows (Edges.cs §6, §7).
+        CommitRootlist(staging);
+        CommitTraits(staging);
         // Recents is its own relation with its own payload (ch 16 §7.2) and rides after the edges for the same reason
         // the edges ride after the rows.
         CommitRecents(staging);
@@ -1954,7 +2024,10 @@ public static partial class Entities
     static partial void CommitUsers(Staging s);
     static partial void CommitConcerts(Staging s);
     static partial void CommitHome(Staging s);
+    static partial void CommitBrowse(Staging s);
     static partial void CommitEdges(Staging s);
+    static partial void CommitRootlist(Staging s);
+    static partial void CommitTraits(Staging s);
     static partial void CommitRecents(Staging s);
     static partial void CommitGradings(Staging s);
 

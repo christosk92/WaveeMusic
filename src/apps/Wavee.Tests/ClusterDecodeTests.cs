@@ -271,4 +271,176 @@ public class ClusterDecodeTests
     // `PutState` was a named stub in Wave 2 and is a real encoder in Wave 3 (owner G, against the field map the stub
     // wrote down). Its facts live with the reducer that feeds it — `PlaybackRulesTests`, which round-trips a snapshot
     // through the generated `PutStateRequest` parser.
+
+    // ── what an inbound play or transfer asks to play (G-071) ───────────────────────────────────────────────────────
+
+    static string Str(Spotify.Decode.ClusterBuffer buffer, TextRef text) => Encoding.UTF8.GetString(buffer.Utf8(text));
+
+    [Fact]
+    public void An_inbound_play_carries_its_context_its_start_track_its_position_and_its_origin()
+    {
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var load = Spotify.Decode.ConnectLoad(Encoding.UTF8.GetBytes("""
+            {"message_id":12,"sent_by_device_id":"phone","command":{"endpoint":"play",
+              "context":{"uri":"spotify:playlist:0dijb70Boi9TIdmiLLq13V","url":"context://spotify:playlist:0dijb70Boi9TIdmiLLq13V"},
+              "play_origin":{"feature_identifier":"playlist","feature_version":"1.2.3","view_uri":"spotify:playlist:0dijb70Boi9TIdmiLLq13V"},
+              "prepare_play_options":{"skip_to":{"track_uri":"spotify:track:7idegBIikag5rTZP4WZihP","track_uid":"2a826aa43895001e","track_index":3},
+                                      "player_options_override":{"shuffling_context":true,"repeating_context":true}},
+              "options":{"seek_to":61000,"initially_paused":true}}}
+            """), buffer);
+
+        Assert.Equal(Spotify.Decode.RemoteCmd.Play, load.Kind);
+        Assert.Equal("spotify:playlist:0dijb70Boi9TIdmiLLq13V", Str(buffer, load.ContextUri));
+        Assert.Equal("context://spotify:playlist:0dijb70Boi9TIdmiLLq13V", Str(buffer, load.ContextUrl));
+        Assert.Equal("spotify:track:7idegBIikag5rTZP4WZihP", Str(buffer, load.SkipToUri));
+        Assert.Equal("2a826aa43895001e", Str(buffer, load.SkipToUid));
+        Assert.Equal(3, load.SkipToIndex);
+        Assert.Equal(61_000, load.SeekToMs);
+        Assert.True(load.InitiallyPaused);
+        // 0.2.9 read `player_options_override` under `options` only and dropped the desktop's `prepare_play_options` one.
+        Assert.Equal(1, load.Shuffle);
+        Assert.Equal((sbyte)Spotify.Decode.RepeatMode.Context, load.Repeat);
+        Assert.Equal("playlist", Str(buffer, load.FeatureIdentifier));
+        Assert.Equal(0, load.TrackCount);                                  // no embedded pages: the host resolves the uri
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+    }
+
+    [Fact]
+    public void A_play_with_embedded_pages_carries_its_rows_and_an_unstated_start_says_so()
+    {
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var load = Spotify.Decode.ConnectLoad(Encoding.UTF8.GetBytes("""
+            {"command":{"endpoint":"play","context":{"uri":"spotify:station:track:7idegBIikag5rTZP4WZihP","pages":[
+              {"tracks":[{"uri":"spotify:track:7idegBIikag5rTZP4WZihP","uid":"a","metadata":{"title":"Cold Brew Chapters","duration":"234959"}},
+                         {"uid":"no-uri"},
+                         {"uri":"spotify:track:1111111111111111111111","uid":"b"}]}]}}}
+            """), buffer);
+
+        Assert.Equal(2, load.TrackCount);
+        var rows = buffer.Tracks(load.TrackStart, load.TrackCount);
+        Assert.Equal("Cold Brew Chapters", Str(buffer, rows[0].Title));
+        Assert.Equal(234_959, rows[0].DurationMs);
+        Assert.Equal("b", Str(buffer, rows[1].Uid));
+        Assert.Equal(-1, load.SkipToIndex);
+        Assert.Equal(-1, load.SeekToMs);
+        Assert.Equal(-1, load.Shuffle);
+        Assert.Equal(-1, load.Repeat);
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+    }
+
+    [Fact]
+    public void An_inbound_transfer_decodes_the_phones_whole_state_out_of_its_base64()
+    {
+        var state = new Wavee.Protocol.Transfer.TransferState
+        {
+            Options = new Wavee.Protocol.Transfer.TransferPlayerOptions { ShufflingContext = true, RepeatingTrack = true },
+            Playback = new Wavee.Protocol.Transfer.TransferPlayback
+            {
+                Timestamp = 1_700_000_000_000,
+                PositionAsOfTimestamp = 42_000,
+                Speed = 1.0,
+                Paused = true,
+                CurrentTrack = new Wavee.Protocol.Transfer.TransferContextTrack
+                {
+                    Gid = ByteString.CopyFrom(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }),
+                    Uid = "current-uid",
+                    Metadata = { { "title", "the song on the phone" } },
+                },
+            },
+            CurrentSession = new Wavee.Protocol.Transfer.TransferSession
+            {
+                Context = new Wavee.Protocol.Transfer.TransferContext { Uri = "spotify:album:1I80HwIDdWXtmA3Fqsbqnl", Url = "context://x" },
+                CurrentUid = "session-uid",
+            },
+            Queue = new Wavee.Protocol.Transfer.TransferQueue
+            {
+                IsPlayingQueue = true,
+                Tracks = { new Wavee.Protocol.Transfer.TransferContextTrack { Uri = "spotify:track:1111111111111111111111", Uid = "q1" } },
+            },
+        };
+        // A JSON encoder may escape '/' as "\/": the decode must read the string it MEANS.
+        string json = "{\"command\":{\"endpoint\":\"transfer\",\"data\":\"" + Convert.ToBase64String(state.ToByteArray()).Replace("/", "\\/")
+                    + "\",\"options\":{\"restore_paused\":\"kill\",\"restore_position\":\"extrapolate\","
+                    + "\"restore_track\":\"always_play_something\",\"retain_session\":\"do_not_retain\"}}}";
+
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var load = Spotify.Decode.ConnectLoad(Encoding.UTF8.GetBytes(json), buffer);
+
+        Assert.Equal(Spotify.Decode.RemoteCmd.Transfer, load.Kind);
+        Assert.True(load.HasPlayback);
+        Assert.Equal(1_700_000_000_000, load.TimestampMs);
+        Assert.Equal(42_000, load.PositionAsOfMs);
+        Assert.True(load.Paused);
+        Assert.Equal(1, load.Shuffle);
+        Assert.Equal((sbyte)Spotify.Decode.RepeatMode.Track, load.Repeat);
+        Assert.True(load.HasCurrent);
+        // A gid with no uri is spelled back as a track uri (0.2.9's rule), with no interner.
+        Assert.Equal(EntityId.ForGid(EntityKind.Track, state.Playback.CurrentTrack.Gid.ToByteArray()).Text,
+                     Str(buffer, load.Current.Uri));
+        Assert.Equal("the song on the phone", Str(buffer, load.Current.Title));
+        Assert.Equal("spotify:album:1I80HwIDdWXtmA3Fqsbqnl", Str(buffer, load.ContextUri));
+        Assert.Equal("session-uid", Str(buffer, load.CurrentUid));
+        Assert.True(load.IsPlayingQueue);
+        Assert.Equal(1, load.TrackCount);
+        Assert.Equal("q1", Str(buffer, buffer.Tracks(load.TrackStart, 1)[0].Uid));
+        Assert.True(load.ForcePlay && load.Extrapolate && load.AlwaysPlaySomething && load.NewSession);
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+    }
+
+    [Fact]
+    public void A_verb_that_is_not_a_load_stages_nothing()
+    {
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var load = Spotify.Decode.ConnectLoad(
+            """{"command":{"endpoint":"pause","context":{"pages":[{"tracks":[{"uri":"spotify:track:x"}]}]}}}"""u8, buffer);
+        Assert.Equal(Spotify.Decode.RemoteCmd.Unknown, load.Kind);
+        Assert.Equal(0, buffer.TrackCount);
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+    }
+
+    // ── context-resolve and autoplay (G-045, G-070) ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_resolved_context_lands_its_rows_in_order_with_the_first_next_page_and_its_sort()
+    {
+        var json = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "spotify", "context-resolve.json"));
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var page = Spotify.Decode.ContextResolve(json, buffer);
+
+        Assert.Equal("spotify:user:x:collection", Str(buffer, page.Uri));
+        Assert.Equal("hm://context/page/2", Str(buffer, page.NextPageUrl));      // the FIRST non-empty one wins
+        Assert.Equal("added_at DESC", Str(buffer, page.SortingCriteria));
+        Assert.False(page.Infinite);
+        Assert.Equal(3, page.TrackCount);                                        // the uri-less row is dropped
+        var rows = buffer.Tracks(page.TrackStart, page.TrackCount);
+        Assert.Equal("uidA", Str(buffer, rows[0].Uid));
+        Assert.Equal("context", Str(buffer, rows[0].Provider));
+        Assert.Equal("Cold Brew Chapters", Str(buffer, rows[0].Title));
+        Assert.Equal("https://i.scdn.co/image/large", Str(buffer, rows[0].Image)); // large beats plain
+        Assert.Equal(234_959, rows[0].DurationMs);
+        Assert.Equal("autoplay", Str(buffer, rows[1].Provider));
+        Assert.Equal("uidC", Str(buffer, rows[2].Uid));                          // page two, in order
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+
+        var station = Spotify.Decode.ClusterBuffer.Rent();
+        Assert.True(Spotify.Decode.ContextResolve("""{"uri":"spotify:station:track:7idegBIikag5rTZP4WZihP","tracks":[]}"""u8, station).Infinite);
+        Spotify.Decode.ClusterBuffer.Return(station);
+    }
+
+    [Fact]
+    public void The_autoplay_request_is_the_context_and_the_recent_tracks_as_full_uris()
+    {
+        var recent = new[]
+        {
+            EntityId.ForGid(EntityKind.Track, new byte[] { 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 1 }),
+            EntityId.ForGid(EntityKind.Track, new byte[] { 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 2 }),
+        };
+        var body = new byte[256];
+        int n = Spotify.Decode.AutoplayRequest("spotify:playlist:0dijb70Boi9TIdmiLLq13V"u8, recent, body);
+
+        var parsed = Wavee.Protocol.Playback.AutoplayContextRequest.Parser.ParseFrom(body.AsSpan(0, n).ToArray());
+        Assert.Equal("spotify:playlist:0dijb70Boi9TIdmiLLq13V", parsed.ContextUri);
+        Assert.Equal(new[] { recent[0].Text, recent[1].Text }, parsed.RecentTrackUri.ToArray());
+        Assert.False(parsed.IsVideo);
+    }
 }

@@ -98,22 +98,29 @@ public static partial class Sidebar
     }
 
     /// <summary>The projection binder, built once per process. 0.2.9 mounted a component pump at the app root; in 0.3
-    /// the binder is a plain service whose <c>Sync()</c> is idempotent (one trigger-struct compare), so both pane
-    /// mounts may pump it.</summary>
+    /// the binder is a plain service whose <c>Sync()</c> is idempotent (one trigger fold), so both pane mounts may pump
+    /// it. The two feed seams are read HERE, once — which is why their owners install them before the first mount.</summary>
     static SidebarProjectionBinder EnsureBinder()
     {
         if (Binder is { } existing) return existing;
         var binder = new SidebarProjectionBinder();
-        var table = WaveeBuiltInDataSources.RegisterAll(binder);
+        var table = WaveeBuiltInDataSources.RegisterAll(binder, NewReleasesFetch, ConcertsFetch);
         binder.UseHost(new WaveeBuiltInDataSources.ContributionHost(table), table);
-        WaveeBuiltInDataSources.Attach(table, ToUi, binder.OnSourceChanged);
+        WaveeBuiltInDataSources.Attach(table, s_sourcePost, binder.OnSourceChanged);
         Binder = binder;
         return binder;
     }
 
-    /// <summary>The binder's subscription, as ONE signal effect: every table/edge the projection reads and every
-    /// preference that reshapes it. The binder itself only Peeks (it is not a computation), so this is what makes a
-    /// hydrated playlist title, a rootlist push or a V3 filter change reach the pane.</summary>
+    /// <summary>The marshaller handed to the async sources: an INDIRECTION through <see cref="ToUi"/>, so an
+    /// <see cref="Activate"/> that lands after the binder exists (a shell remount) still reaches every source.</summary>
+    static readonly Action<Action> s_sourcePost = static a => ToUi(a);
+
+    /// <summary>The binder's subscription, as ONE signal effect: every table/edge the projection or a feed reads, the
+    /// two shell logs, playback, and every preference that reshapes the pass. The binder itself only Peeks (it is not a
+    /// computation), so this is what makes a hydrated playlist title, a rootlist push, a navigation, a play or a V3 filter
+    /// change reach the pane. It SYNCS, never invalidates: the binder's gate folds the row versions of exactly the rows
+    /// the sidebar shows, so a wake from a table change elsewhere in the app costs one fold, not a three-pass rebuild
+    /// (G-180, sidebar decision D8).</summary>
     static void PumpBinder()
     {
         var binder = EnsureBinder();
@@ -124,12 +131,25 @@ public static partial class Sidebar
             _ = edges.SavedAlbums.Changed.Value;
             _ = edges.FollowedArtists.Changed.Value;
             _ = edges.SavedShows.Changed.Value;
-            _ = edges.Liked.Changed.Value;
+            _ = edges.AlbumArtists.Changed.Value;
             _ = scope.Playlists.Changed.Value;
+            _ = scope.Users.Changed.Value;
             _ = scope.Albums.Changed.Value;
             _ = scope.Artists.Changed.Value;
             _ = scope.Shows.Changed.Value;
+            // The feeds (G-173): queue and now playing, their track/episode rows, top tracks, concerts.
+            _ = edges.Queue.Changed.Value;
+            _ = edges.TrackArtists.Changed.Value;
+            _ = edges.ArtistPopular.Changed.Value;
+            _ = edges.FeedSection.Changed.Value;
+            _ = scope.Tracks.Changed.Value;
+            _ = scope.Episodes.Changed.Value;
+            _ = scope.Concerts.Changed.Value;
         }
+        _ = Playback.Current.Value;
+        // The recency feeds and the Recents sort (G-172).
+        _ = Shell.History.Store.Version.Value;
+        _ = Shell.PlayLog.Version.Value;
         _ = PinsVersion.Value;
         _ = LayoutVersion.Value;
         _ = FolderVersion.Value;
@@ -143,12 +163,7 @@ public static partial class Sidebar
 
         bool first = binder.Revision == 0;
         if (first) binder.Start();
-        else
-        {
-            // A title/cover hydration moves no edge version, so the trigger fold alone would not rebuild for it.
-            binder.Invalidate();
-            binder.Sync();
-        }
+        else binder.Sync();
         if (first) s_binderEpoch.Value = s_binderEpoch.Peek() + 1;
     }
 
@@ -745,13 +760,17 @@ public static partial class Sidebar
         {
             int layoutVer = LayoutVersion.Value;
             int entriesVer = Binder is { } b ? b.Entries.Version.Value : 0;
+            // Everything else the planner reads from the binder — pins band, recency, queue / now playing, feeds, a
+            // contributed section's rows — moves THIS edge, not the entries cell (G-172/G-173).
+            int inputVer = Binder is { } bi ? bi.InputVersion.Value : 0;
             int pinsVer = PinsVersion.Value;
             int folderVer = FolderVersion.Value;
             int binderEpoch = s_binderEpoch.Value;
             int revision = Binder?.Revision ?? 0;
             int mode = Config.ModeEpoch?.Invoke() ?? 0;
             return DepKey.Combine(DepKey.From(layoutVer, entriesVer, pinsVer, folderVer),
-                DepKey.Combine(DepKey.From(revision, mode, SidebarEditPlan.Fold(in edit), binderEpoch), search));
+                DepKey.Combine(DepKey.From(revision, mode, SidebarEditPlan.Fold(in edit), binderEpoch),
+                    DepKey.Combine(DepKey.From(inputVer), search)));
         }
 
         PlanStage BuildStage(SidebarCustomLayout document, string search, SidebarEditState? edit)
@@ -1525,7 +1544,7 @@ public static partial class Sidebar
         {
             if (Config.ReadOnly) return;
             var command = SidebarEditPlan.ToMoveSection(Layout, Plan.Rows, _sectionBand.Start, _sectionBand.Count, from, to);
-            if (command is not null) Sidebar.Dispatch(command);
+            if (command is not null) DispatchCanvas(command);
         }
 
         /// <summary>The ItemsView displacement channel in plan-row space. Stable delegate (ListOptions freeze at mount).</summary>
@@ -1827,7 +1846,7 @@ public static partial class Sidebar
         internal void SetSectionHidden(string sectionId, bool hidden)
         {
             if (Config.ReadOnly || SidebarEditPlan.IsPinnedCard(sectionId)) return;
-            Sidebar.Dispatch(new SetSectionHidden(sectionId, hidden));
+            DispatchCanvas(new SetSectionHidden(sectionId, hidden));
         }
 
         /// <summary>The card menu's Move up/down: addresses the document, so it works while the drag band is disarmed.</summary>
@@ -1840,30 +1859,68 @@ public static partial class Sidebar
             int siblings = at.Parent is null ? layout.Sections.Count : at.Parent.ChildList.Count;
             int next = at.Index + delta;
             if (next < 0 || next >= siblings) return;
-            Sidebar.Dispatch(new MoveSection(sectionId, at.Parent?.Id, next));
+            DispatchCanvas(new MoveSection(sectionId, at.Parent?.Id, next));
         }
 
         internal void RemoveEditSection(string sectionId)
         {
             if (Config.ReadOnly || SidebarEditPlan.IsPinnedCard(sectionId)) return;
-            if (Sidebar.Dispatch(new RemoveSection(sectionId)) != SidebarRejectReason.None) return;
+            if (DispatchCanvas(new RemoveSection(sectionId)) != SidebarRejectReason.None) return;
             if (string.Equals(Edit.Expanded.Peek(), sectionId, StringComparison.Ordinal)) Edit.Expanded.Value = null;
         }
 
         /// <summary>Is there room for one more section? Runs per frame per target during a palette drag — a compare only.</summary>
         internal bool CanAcceptPaletteDrop => !Config.ReadOnly && Layout.SectionCount < SidebarLayoutReducer.MaxSections;
 
+        /// <summary>The per-CARD accept: room for a section AND a card a new section can land above (a child card inside a
+        /// group is not a top-level slot). Allocation-free, per frame.</summary>
+        internal bool CanAcceptPaletteDropBefore(string sectionId)
+            => CanAcceptPaletteDrop && SidebarEditPlan.CanAddBefore(Layout, sectionId);
+
+        /// <summary>Why this card refuses a palette chip — the caption the drag chip shows beside its not-allowed glyph, so
+        /// the refusal is said while the user is still aiming (a loc lookup, never a composed string).</summary>
+        internal string PaletteRefusalKey(string sectionId)
+        {
+            var layout = Layout;
+            if (Config.ReadOnly || layout.SectionCount >= SidebarLayoutReducer.MaxSections) return PaneLoc.EditDropFull;
+            return layout.Locate(sectionId).Index < 0
+                ? SidebarRejectText.LocKey(SidebarRejectReason.UnknownSection)!
+                : SidebarRejectText.LocKey(SidebarRejectReason.NestingTooDeep)!;
+        }
+
         internal void AddSectionFromPalette(string beforeSectionId, SidebarSectionDropPayload payload)
         {
             if (Config.ReadOnly) return;
-            var command = SidebarEditPlan.ToAddSection(Layout, beforeSectionId, payload);
-            if (command is not null) Sidebar.Dispatch(command);
+            // The accept already refused the cases the caption explains; a command that still cannot be built (a kind this
+            // build does not know) is said, not swallowed.
+            if (SidebarEditPlan.ToAddSection(Layout, beforeSectionId, payload) is { } command) DispatchCanvas(command);
+            else SayCanvasRejection(SidebarRejectReason.UnknownSection);
         }
 
         internal void DuplicateEditSection(string sectionId, string copyTitle)
         {
             if (Config.ReadOnly || SidebarEditPlan.IsPinnedCard(sectionId)) return;
-            Sidebar.Dispatch(new DuplicateSection(sectionId, copyTitle));
+            DispatchCanvas(new DuplicateSection(sectionId, copyTitle));
+        }
+
+        /// <summary>A canvas command — a card drag, a card-menu verb, a palette drop — through the edit session, so the
+        /// options popover's controls see the verdict (<c>RejectEpoch</c> / <c>LastReject</c>), and, because the canvas has
+        /// no inline reject strip of its own, a rejection is SAID (G-184: these went straight to <c>Sidebar.Dispatch</c>
+        /// and a refused one was silent).</summary>
+        SidebarRejectReason DispatchCanvas(SidebarCommand command)
+        {
+            var reason = Edit.Apply(command);
+            SayCanvasRejection(reason);
+            return reason;
+        }
+
+        /// <summary>The rejection sentence as a toast. A NoChange is silence, not a rejection (the gesture that produced it
+        /// landed where it started).</summary>
+        static void SayCanvasRejection(SidebarRejectReason reason)
+        {
+            if (reason is SidebarRejectReason.None or SidebarRejectReason.NoChange) return;
+            if (SidebarRejectText.LocKey(reason) is { } key)
+                Notify.Say(Loc.Get(key), InfoBarSeverity.Informational, dedupeKey: "sidebar.canvas.reject");
         }
 
         /// <summary>A folder activation through the mode seam, structurally animated only when it discloses inline.</summary>
@@ -1965,8 +2022,23 @@ public static partial class Sidebar
         internal readonly Signal<bool> HeaderCreateDropActive = new(false);
 
         /// <summary>The ONE create-playlist verb every "+" shares (numbered name, optimistic row, navigate) — the
-        /// library seam's; absent seam ⇒ nothing, never a half-made playlist.</summary>
-        internal static void CreatePlaylistFlow() => LibraryWrites?.CreatePlaylist?.Invoke(null, true);
+        /// library seam's. An absent seam is never a half-made playlist and never a silent click either: it says why
+        /// (G-170).</summary>
+        internal static void CreatePlaylistFlow()
+        {
+            if (LibraryWrites?.CreatePlaylist is { } create) create(null, true);
+            else RefuseWrite("create playlist");
+        }
+
+        /// <summary>The "never a silent no-op" arm of every library write the pane issues (a "+" click, a create drop,
+        /// a folder verb): a log line for us, the refusal's sentence for the user. Static — a click verb has no pane
+        /// instance to hand (Classic's rail "+" is a static factory).</summary>
+        internal static void RefuseWrite(string verb)
+        {
+            Log.Warn("sidebar", "library write refused: no seam for " + verb);
+            if (RefusalSentence(SidebarDropRefusal.WritesUnavailable) is { Length: > 0 } sentence)
+                Notify.Say(sentence, InfoBarSeverity.Informational, dedupeKey: "sidebar.writes-unavailable");
+        }
 
         /// <summary>A projection entry as the drag payload every destination reads. Tracks resolve through the library
         /// seam, lazily, after a compatible drop (the payload factory is cold by contract).</summary>
@@ -1987,7 +2059,11 @@ public static partial class Sidebar
             if (uri.Length > 0 && kind is DragKind.Playlist or DragKind.Album or DragKind.Show or DragKind.Track
                 && LibraryWrites?.ResolveTracks is { } resolve)
                 resolver = ct => resolve(uri, ct);
-            return new DragPayload(kind, entry.Id, uri, entry.Name,
+            // A FOLDER travels as its wire uri (`spotify:folder:<hex>`), one of the two spellings `Drag.FolderKey`
+            // reduces to the group id — so its RootRefs, the self check and the marker stream all address the same hex.
+            // The entry id ("folder:<hex>") is neither spelling; `SidebarPinId.Canonical` maps the uri back for a pin drop.
+            string id = kind == DragKind.Folder && entry.FolderId.Length > 0 ? EntityUri.FolderPrefix + entry.FolderId : entry.Id;
+            return new DragPayload(kind, id, uri, entry.Name,
                 TrackResolver: resolver,
                 RootlistItem: rootlistItem && kind is DragKind.Playlist or DragKind.Folder,
                 ArtUrl: entry.Cover.IsEmpty ? null : Controls.ArtUrl(entry.Cover));

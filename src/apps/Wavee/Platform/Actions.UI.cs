@@ -931,4 +931,41 @@ public static partial class Actions
             };
         }
     }
+
+    // ══ 13. THE NOW-PLAYING MENU (G-195) ═══════════════════════════════════════════════════════════════════════════════
+    //
+    // The stage's identity strip and the player bar's title cluster share ONE right-click menu — both already call
+    // `Stage.NowPlayingMenu` (`Shell/Stage.UI.cs`, `Shell/Shell.PlayerBar.UI.cs:321`); nothing filled the seam. THIN ON
+    // PURPOSE: the full track-menu grammar (Add to playlist, Move ▸, Organize ▸, the deposit submenu, the destructive
+    // rows) is Wave 4.5's `Entities/Track.UI.cs` — this offers only what resolves through seams already in this file,
+    // so a verb neither wave has registered yet is simply ABSENT (`Menu.Row`'s own contract), never a promise that does
+    // nothing.
+
+    /// <summary>Install the shell seam this file owns. Called once by the composition root
+    /// (<see cref="Shell.InstallUi"/>).</summary>
+    public static void InstallUi() => Stage.NowPlayingMenu = NowPlayingMenu;
+
+    /// <summary>The now-playing menu: header → PlayNext/AddToQueue/Like/Radio → Go to album/artist/credits → Share.
+    /// Null while nothing is playing or the playable is not a track (an episode's menu is Wave 4.5's too).</summary>
+    public static ContextMenuModel? NowPlayingMenu()
+    {
+        var r = Playback.Current.Peek();
+        if (r.IsNone || r.Kind != EntityKind.Track) return null;
+        var track = new Track(r.Slot);
+        if (!track.IsValid) return null;
+
+        var ctx = new ActionContext(ActionTarget.ForNowPlaying(track), Services);
+        var rows = new List<MenuFlyoutItem>(8);
+        Menu.AddRows(rows, in ctx, [ActionId.PlayNext, ActionId.AddToQueue, ActionId.ToggleLike, ActionId.GoToSongRadio]);
+
+        var nav = new List<MenuFlyoutItem>(3);
+        Menu.AddRows(nav, in ctx, [ActionId.GoToAlbum, ActionId.GoToArtist, ActionId.ViewCredits]);
+        if (nav.Count > 0) { Menu.OpenGroup(rows); rows.AddRange(nav); }
+
+        if (Menu.Share(in ctx) is { } share) { Menu.OpenGroup(rows); rows.Add(share); }
+        if (rows.Count == 0) return null;
+
+        var header = Menu.Header(Controls.ArtUrl(track.ImageId), track.Title, null);
+        return new ContextMenuModel(rows, header);
+    }
 }

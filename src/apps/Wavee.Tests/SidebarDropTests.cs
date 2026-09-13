@@ -799,6 +799,7 @@ public class SidebarDropRefusalTextTests
     [InlineData(SidebarDropRefusal.SortedList)]
     [InlineData(SidebarDropRefusal.NotLoaded)]
     [InlineData(SidebarDropRefusal.Unavailable)]
+    [InlineData(SidebarDropRefusal.WritesUnavailable)]
     public void EveryRefusal_HasItsOwnLocKey(SidebarDropRefusal refusal)
         => Assert.NotEqual("", SidebarDropRefusalText.LocKey(refusal));
 

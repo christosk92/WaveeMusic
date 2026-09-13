@@ -10,6 +10,9 @@
 // the logout that erases it — are pinned here against a real `FileLocalStore` in a temp directory with the protector
 // swapped for a no-op, exactly as `PlatformTests`' `CredentialSlotTests` does it. Nothing here reaches the network or
 // the user's profile.
+//
+// Gap batch B5 added: the Premium gate (D12), the refusal verdicts (D24), the SignedOut effect (G-036/G-037), the
+// client-token refresh fold (G-035), `session.lastAccount` (G-031) and the sign-in request a resume-less login makes (G-030).
 
 using Wavee;
 using Xunit;
@@ -34,6 +37,17 @@ public class SessionStepTests
         Step(ref s, Spotify.SessionEventKind.ClientTokenMinted, text: new(8, 4), number: 1_000);
         Step(ref s, Spotify.SessionEventKind.AccessTokenMinted, text: new(12, 4), number: 2_000);
         Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(16, 4));
+        return s;
+    }
+
+    /// <summary>A login up to the point the AP answers the credential.</summary>
+    static Spotify.Session Handshaken()
+    {
+        var s = default(Spotify.Session);
+        Step(ref s, Spotify.SessionEventKind.Login, flag: true);
+        Step(ref s, Spotify.SessionEventKind.Hosts);
+        Step(ref s, Spotify.SessionEventKind.Connected);
+        Step(ref s, Spotify.SessionEventKind.HandshakeOk);
         return s;
     }
 
@@ -79,7 +93,7 @@ public class SessionStepTests
         Step(ref s, Spotify.SessionEventKind.Hosts);
         Step(ref s, Spotify.SessionEventKind.Connected);
         Step(ref s, Spotify.SessionEventKind.HandshakeOk);
-        var fx = Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Free);
+        var fx = Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium);
 
         Assert.Equal(Spotify.SessionPhase.Minting, s.Phase);
         Assert.True(s.HasCredential);
@@ -163,21 +177,108 @@ public class SessionStepTests
     }
 
     [Fact]
-    public void A_rejection_clears_the_credential_and_is_terminal()
+    public void A_definitive_rejection_clears_the_credential_signs_out_and_is_terminal()
     {
         var s = default(Spotify.Session);
         Step(ref s, Spotify.SessionEventKind.Login, flag: true);
-        var fx = Step(ref s, Spotify.SessionEventKind.AuthRejected);
+        var fx = Step(ref s, Spotify.SessionEventKind.AuthRejected, number: (long)Spotify.RejectVerdict.Definitive);
 
         Assert.Equal(Spotify.SessionPhase.Failed, s.Phase);
         Assert.Equal(Spotify.SessionFault.CredentialRejected, s.Fault);
         Assert.False(s.HasCredential);
-        Assert.Equal(Spotify.SessionEffects.ClearCredential | Spotify.SessionEffects.CloseAll, fx);
+        Assert.Equal(Spotify.SessionEffects.ClearCredential | Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.SignedOut, fx);
 
         // Terminal: nothing but a fresh Login moves it again.
         Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.Retry));
-        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.Welcome));
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium));
         Assert.Equal(Spotify.SessionPhase.Failed, s.Phase);
+    }
+
+    /// <summary>D24: a refusal that is not a verdict on the credential — and the DEFAULT verdict, so an unclassified one —
+    /// stops the login and keeps the credential (the chip then offers Reconnect, never a sign-in).</summary>
+    [Fact]
+    public void A_transient_or_unclassified_refusal_keeps_the_credential()
+    {
+        var s = default(Spotify.Session);
+        Step(ref s, Spotify.SessionEventKind.Login, flag: true);
+        uint epoch = s.Epoch;
+        var fx = Step(ref s, Spotify.SessionEventKind.AuthRejected);
+
+        Assert.Equal(Spotify.SessionPhase.Failed, s.Phase);
+        Assert.Equal(Spotify.SessionFault.LoginRefused, s.Fault);
+        Assert.True(s.HasCredential);
+        Assert.Equal(epoch + 1, s.Epoch);
+        Assert.Equal(Spotify.SessionEffects.CloseAll, fx);
+    }
+
+    [Fact]
+    public void The_ap_saying_premium_required_clears_the_credential_as_not_premium()
+    {
+        var s = default(Spotify.Session);
+        Step(ref s, Spotify.SessionEventKind.Login, flag: true);
+        var fx = Step(ref s, Spotify.SessionEventKind.AuthRejected, number: (long)Spotify.RejectVerdict.NotPremium);
+
+        Assert.Equal(Spotify.SessionFault.NotPremium, s.Fault);
+        Assert.False(s.HasCredential);
+        Assert.Equal(Spotify.SessionEffects.ClearCredential | Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.SignedOut, fx);
+    }
+
+    /// <summary>D12, 0.2.9's Premium gate: a known Free account is refused at the welcome — never saved, never minted for —
+    /// and its credential wiped, so the next launch cannot resume into the same wall.</summary>
+    [Fact]
+    public void A_free_account_is_refused_at_the_welcome_and_its_credential_cleared()
+    {
+        var s = Handshaken();
+        uint epoch = s.Epoch;
+        var fx = Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Free);
+
+        Assert.Equal(Spotify.SessionPhase.Failed, s.Phase);
+        Assert.Equal(Spotify.SessionFault.NotPremium, s.Fault);
+        Assert.Equal(Spotify.Tier.Free, s.Tier);
+        Assert.False(s.HasCredential);
+        Assert.Equal(epoch + 1, s.Epoch);
+        Assert.Equal(Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.ClearCredential | Spotify.SessionEffects.SignedOut, fx);
+    }
+
+    /// <summary>An UNKNOWN tier (the product packet missed its window) is refused too — never optimistically Premium — but
+    /// a late packet is not a verdict on the account: the credential stays, and the next attempt may well pass.</summary>
+    [Fact]
+    public void An_unknown_tier_is_refused_but_its_credential_is_kept()
+    {
+        var s = Handshaken();
+        var fx = Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Unknown);
+
+        Assert.Equal(Spotify.SessionPhase.Failed, s.Phase);
+        Assert.Equal(Spotify.SessionFault.NotPremium, s.Fault);
+        Assert.True(s.HasCredential);
+        Assert.Equal(Spotify.SessionEffects.CloseAll, fx);
+    }
+
+    [Fact]
+    public void Only_a_lost_account_signs_out()
+    {
+        var online = Online();
+        Assert.True(SignsOut(online, Spotify.SessionEventKind.Logout));
+        Assert.False(SignsOut(online, Spotify.SessionEventKind.Disconnect));
+        Assert.False(SignsOut(online, Spotify.SessionEventKind.Dropped, (long)Spotify.SessionFault.Network));
+        Assert.False(SignsOut(Handshaken(), Spotify.SessionEventKind.AuthRejected, (long)Spotify.RejectVerdict.Transient));
+        Assert.True(SignsOut(Handshaken(), Spotify.SessionEventKind.AuthRejected, (long)Spotify.RejectVerdict.Definitive));
+
+        static bool SignsOut(Spotify.Session s, Spotify.SessionEventKind kind, long number = 0)
+            => (Step(ref s, kind, number: number) & Spotify.SessionEffects.SignedOut) != 0;
+    }
+
+    /// <summary>G-035: a client-token refresh while online replaces the attestation alone; only the login's first
+    /// attestation gates a bearer mint.</summary>
+    [Fact]
+    public void A_client_token_refresh_while_online_mints_nothing_else()
+    {
+        var s = Online();
+        var fx = Step(ref s, Spotify.SessionEventKind.ClientTokenMinted, text: new(40, 4), number: 99_000);
+        Assert.Equal(Spotify.SessionEffects.None, fx);
+        Assert.Equal(new Spotify.TokenRef(40, 4), s.ClientToken);
+        Assert.Equal(99_000, s.ClientTokenExpiresAtMs);
+        Assert.Equal(Spotify.SessionPhase.Online, s.Phase);
     }
 
     [Fact]
@@ -236,25 +337,62 @@ public class SessionStepTests
         Step(ref s, Spotify.SessionEventKind.Hosts);
         Step(ref s, Spotify.SessionEventKind.Connected);
         Step(ref s, Spotify.SessionEventKind.HandshakeOk);
-        Step(ref s, Spotify.SessionEventKind.Welcome);
+        Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium);
         Step(ref s, Spotify.SessionEventKind.ClientTokenMinted);
         Assert.Equal(Spotify.SessionEffects.OpenDealer, Step(ref s, Spotify.SessionEventKind.AccessTokenMinted));
     }
 
     [Fact]
-    public void A_logout_forgets_everything_except_the_epoch()
+    public void A_logout_forgets_the_account_but_keeps_the_epoch_and_the_boot_identity()
     {
         var s = Online();
+        s.DeviceId = new Spotify.TokenRef(100, 8);
         uint epoch = s.Epoch;
         var fx = Step(ref s, Spotify.SessionEventKind.Logout);
 
-        Assert.Equal(Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.ClearCredential, fx);
+        Assert.Equal(Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.ClearCredential | Spotify.SessionEffects.SignedOut, fx);
         Assert.Equal(Spotify.SessionPhase.Offline, s.Phase);
         Assert.Equal(epoch + 1, s.Epoch);           // a monotonic epoch: nothing in flight may come back
         Assert.True(s.AccessToken.IsEmpty);
         Assert.True(s.ClientToken.IsEmpty);
         Assert.False(s.HasCredential);
         Assert.Equal(Spotify.Tier.Unknown, s.Tier);
+        Assert.Equal(new Spotify.TokenRef(100, 8), s.DeviceId);   // a sign-in after a sign-out is the same device
+    }
+
+    /// <summary>G-035's clock, as an argument: a token is due inside the refresh lead, and one never held always is.</summary>
+    [Fact]
+    public void A_token_is_due_inside_the_refresh_lead_and_when_none_is_held()
+    {
+        long expires = 1_000_000;
+        Assert.False(Spotify.TokenDue(expires - Spotify.TokenRefreshLeadMs - 1, expires));
+        Assert.True(Spotify.TokenDue(expires - Spotify.TokenRefreshLeadMs, expires));
+        Assert.True(Spotify.TokenDue(expires + 5, expires));
+        Assert.True(Spotify.TokenDue(0, 0));
+    }
+
+    /// <summary>D24's ladder: the first bad-credentials answer buys exactly one retry against a fresh access point, the
+    /// second is the verdict; "premium required" stops as NotPremium; "try another AP" is failover; anything else — an
+    /// unreadable failure included — stops with the credential kept.</summary>
+    [Fact]
+    public void The_refusal_ladder_believes_bad_credentials_only_twice()
+    {
+        Assert.Equal(Spotify.RejectStep.RetryFreshAccessPoint, Spotify.OnApReject(Spotify.ApErrorBadCredentials, 0, out var first));
+        Assert.Equal(Spotify.RejectVerdict.Definitive, first);
+        Assert.Equal(Spotify.RejectStep.Stop, Spotify.OnApReject(Spotify.ApErrorBadCredentials, 1, out var second));
+        Assert.Equal(Spotify.RejectVerdict.Definitive, second);
+
+        Assert.Equal(Spotify.RejectStep.Stop, Spotify.OnApReject(Spotify.ApErrorPremiumRequired, 0, out var premium));
+        Assert.Equal(Spotify.RejectVerdict.NotPremium, premium);
+
+        Assert.Equal(Spotify.RejectStep.NextAccessPoint, Spotify.OnApReject(Spotify.ApErrorTryAnotherAp, 1, out var another));
+        Assert.Equal(Spotify.RejectVerdict.Transient, another);
+
+        foreach (int code in new[] { -1, 0x0, 0x5, 0x9, 0xd, 0xf, 0x10, 0x11 })
+        {
+            Assert.Equal(Spotify.RejectStep.Stop, Spotify.OnApReject(code, 0, out var verdict));
+            Assert.Equal(Spotify.RejectVerdict.Transient, verdict);
+        }
     }
 
     [Fact]
@@ -265,6 +403,49 @@ public class SessionStepTests
         Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.HandshakeOk));
         Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.Hosts));
         Assert.Equal(Spotify.SessionPhase.Offline, s.Phase);
+    }
+}
+
+/// <summary>G-031: `session.lastAccount` — written when the account that went live is new or different, never otherwise, and
+/// compared the way usernames compare (case-insensitively), over a memory settings store.</summary>
+public class AccountMemoryTests
+{
+    [Fact]
+    public void The_first_account_is_remembered()
+    {
+        var settings = new MemoryAppSettings();
+        Assert.Equal(Spotify.AccountChange.First, Spotify.RememberAccount(settings, "someone"));
+        Assert.Equal("someone", settings.Get(Platform.Keys.LastAccount));
+    }
+
+    [Fact]
+    public void The_same_account_writes_nothing_whatever_its_casing()
+    {
+        var settings = new MemoryAppSettings();
+        settings.Set(Platform.Keys.LastAccount, "someone");
+        int written = settings.WrittenCount;
+
+        Assert.Equal(Spotify.AccountChange.Same, Spotify.RememberAccount(settings, "SomeOne "));
+        Assert.Equal("someone", settings.Get(Platform.Keys.LastAccount));
+        Assert.Equal(written, settings.WrittenCount);
+    }
+
+    [Fact]
+    public void A_different_account_is_a_switch()
+    {
+        var settings = new MemoryAppSettings();
+        settings.Set(Platform.Keys.LastAccount, "someone");
+        Assert.Equal(Spotify.AccountChange.Switched, Spotify.RememberAccount(settings, "somebody-else"));
+        Assert.Equal("somebody-else", settings.Get(Platform.Keys.LastAccount));
+    }
+
+    [Fact]
+    public void An_anonymous_welcome_never_touches_the_key()
+    {
+        var settings = new MemoryAppSettings();
+        Assert.Equal(Spotify.AccountChange.Same, Spotify.RememberAccount(settings, ""));
+        Assert.Equal(Spotify.AccountChange.Same, Spotify.RememberAccount(settings, null));
+        Assert.False(settings.WasWritten(Platform.Keys.LastAccount));
     }
 }
 
@@ -472,6 +653,19 @@ public class SessionCredentialTests : IDisposable
         Assert.Equal(Spotify.SessionFault.NoCredential, Spotify.Current.Fault);
         Assert.Equal(Spotify.SessionPhase.Failed, Spotify.Status.Value);
         Assert.False(Spotify.Current.HasCredential);
+    }
+
+    /// <summary>G-030: every "Sign in" affordance calls <c>Spotify.Login()</c>; with nothing to resume that is a request for
+    /// the sign-in surface — one request per call, so a second press re-opens a surface the user closed.</summary>
+    [Fact]
+    public void A_login_with_nothing_to_resume_requests_the_sign_in_surface_each_time()
+    {
+        int before = Spotify.SignIn.Requests.Value;
+
+        Spotify.Login();
+        Assert.Equal(before + 1, Spotify.SignIn.Requests.Value);
+        Spotify.Login();
+        Assert.Equal(before + 2, Spotify.SignIn.Requests.Value);
     }
 
     [Fact]

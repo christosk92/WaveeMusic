@@ -644,6 +644,61 @@ public class SidebarSourcesTests
         Assert.Equal("spotify:track:dup", into[0].Id);         // the repeat collapses into ONE row
     }
 
+    [Fact]
+    public void Queue_source_emits_a_queued_episode_as_a_track_row_named_by_its_show()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        ref var show = ref s.Shows.Add();
+        show.Id = s.Text("spotify:show:daily");
+        show.Title = s.Text("The Daily");
+        show.Known = (uint)ShowFields.Identity;
+        show.Authority = Authority.Full;
+        ref var ep = ref s.Episodes.Add();
+        ep.Id = s.Text("spotify:episode:e1");
+        ep.Title = s.Text("Monday");
+        ep.ShowUri = s.Text("spotify:show:daily");
+        ep.Known = (uint)EpisodeFields.Identity;
+        ep.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+
+        var episode = Entities.Episode(EntityUri.Parse("spotify:episode:e1"));
+        var track = Entities.Track(EntityUri.Parse("spotify:track:t1"));
+        EntityRef[] refs = [new(EntityKind.Episode, episode.Slot), new(EntityKind.Track, track.Slot)];
+        QueueEdge[] rows =
+        [
+            new(0, (byte)QueueProvider.Queue, (byte)QueueBucket.UserQueue),
+            new(0, (byte)QueueProvider.Context, (byte)QueueBucket.NextUp),
+        ];
+        Queue.Replace(refs, rows);
+
+        var into = new List<SidebarLibraryEntry>();
+        int n = new SidebarQueueSource().Fill(into, SidebarSourceRequest.Default);
+
+        Assert.Equal(2, n);                                   // the episode is no longer skipped (G-173)
+        Assert.Equal("spotify:episode:e1", into[0].Id);
+        Assert.Equal(SidebarEntryKind.Track, into[0].Kind);   // plays, never navigates, never pins
+        Assert.Equal("Monday", into[0].Name);
+        Assert.Equal("The Daily", into[0].Creator);
+        Assert.Null(SidebarPinId.FromEntry(into[0]));
+        Assert.Equal("spotify:track:t1", into[1].Id);
+    }
+
+    [Fact]
+    public void A_playable_already_in_another_sections_slice_still_lands_in_this_one()
+    {
+        TestScope.Fresh();
+        var track = Entities.Track(EntityUri.Parse("spotify:track:shared"));
+        var ref0 = new EntityRef(EntityKind.Track, track.Slot);
+        var pool = new List<SidebarLibraryEntry>();
+
+        Assert.True(SidebarSourceMap.TryAddPlayable(ref0, pool, 0, sliceStart: 0));      // "Now playing"'s slice
+        Assert.True(SidebarSourceMap.TryAddPlayable(ref0, pool, 0, sliceStart: 1));      // "Queue"'s slice starts after it
+        Assert.False(SidebarSourceMap.TryAddPlayable(ref0, pool, 1, sliceStart: 1));     // but never twice in one slice
+        Assert.False(SidebarSourceMap.TryAddPlayable(default, pool, 0));                 // nothing plays
+        Assert.Equal(2, pool.Count);
+    }
+
     // ── wavee.nowPlaying ──────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -762,7 +817,7 @@ public class SidebarSourcesTests
     }
 
     [Fact]
-    public void New_releases_source_resolves_reported_rows_and_drops_the_unresolved_one()
+    public void New_releases_source_resolves_reported_rows_and_stubs_the_unresolved_one()
     {
         var album = new SidebarLibraryEntry(
             SidebarPinId.AlbumPrefix + "spotify:album:5", SidebarEntryKind.Album, "spotify:album:5", "Real Album",
@@ -779,19 +834,31 @@ public class SidebarSourcesTests
         source.EnsureFresh(SidebarSourceRequest.Default);
         Assert.Equal(1, fetchCalls);
 
+        int changed = 0;
+        source.Changed += () => changed++;
         source.Report(SidebarSourceState.Ready,
         [
             new SidebarNewReleaseRow("spotify:album:5", 1_700_000_000_000L),
             new SidebarNewReleaseRow("spotify:album:unknown", 1L),
         ]);
+        Assert.Equal(1, changed);                                     // the ROWS moved: always a notify
 
         var into = new List<SidebarLibraryEntry>();
         int n = source.Fill(into, SidebarSourceRequest.Default);
 
-        Assert.Equal(1, n);                                           // the unresolved uri is dropped, not stubbed
+        Assert.Equal(2, n);
         Assert.Equal("Real Album", into[0].Name);
         Assert.Equal(1_700_000_000_000L, into[0].SortStamp);
+        // G-174 (0.2.9 parity): an unresolved release is a DIMMED stub — empty name, its own pin id and kind — never dropped.
+        Assert.Equal(SidebarPinId.AlbumPrefix + "spotify:album:unknown", into[1].Id);
+        Assert.Equal(SidebarEntryKind.Album, into[1].Kind);
+        Assert.Equal("", into[1].Name);
+        Assert.Equal(1L, into[1].SortStamp);
         Assert.Equal(SidebarSourceState.Ready, source.State);
+
+        // A second Ready report with different rows (health unchanged) still notifies — or the section keeps the old list.
+        source.Report(SidebarSourceState.Ready, [new SidebarNewReleaseRow("spotify:album:5", 2L)]);
+        Assert.Equal(2, changed);
     }
 
     // ── wavee.concerts ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -884,7 +951,11 @@ public class SidebarSourcesTests
         int n = source.Fill(into, SidebarSourceRequest.Default);
 
         Assert.Equal(3, n);                                    // the schema's own default cap
-        Assert.Equal("spotify:concert:d", into[0].Id);          // soonest-first: "d" carries the earliest date
+        // Soonest-first ("d" carries the earliest date), keyed by the concert's ROUTE key — the bare spotify:concert:
+        // uri parsed to NotFound, so every concert row navigated to the not-found page (G-174).
+        Assert.Equal("concert:d", into[0].Id);
+        Assert.Equal(Shell.RouteKind.Concert, Shell.Parse(into[0].RouteKey!).Kind);
+        Assert.Equal(baseDate - 3_000L, into[0].SortStamp);    // the event instant: the row's date block
         Assert.Equal(SidebarSourceState.Ready, source.State);
         Assert.False(source.NeedsPrompt);
     }

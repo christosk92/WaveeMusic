@@ -1,14 +1,14 @@
 // ── Entities/Fetch.cs — CORE planner + SHELL runner (owner C, wave 1, budget 700; plan §2, §4.5) ─────────────────────
 //
 // THE PLANNER. Every page in the app asks for data the same way — `Entities.Ensure(rows, wanted)` — and this file is
-// what that becomes: `wanted & ~known & ~inflight`, deduped by the scope epoch, disk before network, and batched by
-// provider and shape (§5.4, C7, P4).
+// what that becomes: `wanted & ~known & ~asked`, deduped per GROUP for the life of the scope, disk before network, and
+// batched by provider and shape (§5.4, C7, P4).
 //
 // It replaces, by construction, the four mechanisms 0.2.9 needed to answer "have we already asked for this?":
 // `HydrationLedger`'s (locale, uri, level) seals, `ResourceCoordinator`'s job table and waiters, six per-service
 // negative memos, and `MetadataService`'s per-uri `Resource`. All four existed because "what is missing" was a
-// question about OBJECTS. Here it is one AND-NOT over one column, so the answer is a bitmask and the dedupe is a
-// stamp — and neither needs a second store to remember it.
+// question about OBJECTS. Here it is one AND-NOT over two columns, so the answer is a bitmask and the dedupe is a bit
+// — and neither needs a second store to remember it.
 //
 // The two halves, and the line between them:
 //   CORE (pure, no I/O, no allocation after warm-up): `Plan` / `Continue` decide WHICH rows need WHAT, and mark them.
@@ -16,38 +16,46 @@
 //     `RateLimitMiddleware` (the 429 clamp) and `Mutation`/`LibrarySync` §8.3 (min(60 s, 2^attempts)).
 //   SHELL: the runner keeps at most four requests in flight, hands each provider a batch of at most 300 uris (the
 //     one copy of the extended-metadata ceiling 0.2.9 spread across seven services), and takes answers back on the
-//     UI thread through `Answer` / `Failed`.
+//     UI thread through `Answer` / `Failed`. WHICH routes a provider sends for a batch is `FetchRoutes` (the named
+//     partial `Fetch.Routes.cs`), and the relation half of the door is `Fetch.Edges.cs`.
 //
-// THE THREE MARKS, and what each one means — they are the whole state machine, and there is no other:
-//   `Inflight[slot] == stamp`  we have asked for this row in this scope and have not been told the answer yet.
-//                              `Table.Applied` clears it when a group lands; a TRANSPORT failure clears it (a 503 is
-//                              not an answer); an answer that filled NOTHING deliberately leaves it set, which is
-//                              the "exhausted" seal 0.2.9's ledger needed a second cache to hold.
+// THE FOUR MARKS, and what each one means — they are the whole state machine, and there is no other:
+//   `Asked[slot] & group`      somebody asked for this GROUP of this row in this scope (G-040). Set when a plan marks
+//                              the row; it SURVIVES the answer — a group asked and not answered is the "exhausted"
+//                              seal 0.2.9's ledger needed a second cache to hold, and it is what stops a TrackV4 answer
+//                              (which fills Identity and not PlayCount) from being re-POSTed by the next `Ensure(Row)`.
+//                              A TERMINAL transport failure un-asks the batch's groups (a 503 is not an answer); the
+//                              scope being replaced drops every mark with its tables.
+//   `Inflight[slot] == stamp`  a request for this row is out right now. `Table.Applied` clears it when a group lands;
+//                              the store's trim reads it as "pinned". It no longer gates the dedupe — `Asked` does.
 //   `FetchedAt[slot] != 0`     somebody has answered about this row before — including the disk answering "I do not
 //                              have it" (Store.ReadCore stamps the whole batch). It is what makes the disk leg run
 //                              ONCE per row per session instead of once per page mount.
 //   `Known[slot] & group`      the group is filled. Nothing else is a hydration level, and there are no others.
 //
+// A BUCKET IS (provider, subject, kind, need, priority). `need` is the per-row `wanted & ~known & ~asked` — not the
+// page's `wanted` — so a row whose Identity is already in flight and whose PlayCount is not asks for PlayCount alone,
+// and a partial answer never re-asks what it already answered. Rows of one `Ensure` nearly always share one need.
+//
+// SUBJECTS (G-041). A row of the eight entity tables is addressed by its kind. The four SYNTHETIC tables — Home feeds,
+// sections, search subjects, browse nodes — all answer `EntityKind.Unknown`, and their uris (`wavee:home`,
+// `wavee:search:…`, `wavee:browse`) are owned by no provider, so the planner used to abandon every one of them. A row's
+// SUBJECT is decided here, off the table it lives in (`FetchSubject`), and a synthetic subject nobody owns is routed to
+// the SCOPE's own catalogue provider: Home in a Spotify scope is Spotify's, in `--fake` it is the seed's.
+//
 // IDENTITY, SINCE 2026-09-12 (docs/plans/wavee/wavee-0.3-entity-identity-memory.md, option 2). A row is named by a
-// packed 24-byte `EntityId`, and this file is one of the two the doc measured as paying for the old spelling:
-//   · ROUTING WAS A RE-PARSE. `Queue` resolved the interned uri per row and walked `EntityUri.ProviderOf` over the
-//     text to decide which transport owns it — 45-100 ns of prefix walking per row per plan, for a fact the parse had
-//     already established once (doc §1.3 item 3). It is now `Id[slot].Provider`: one field read off a column.
-//   · THE BUCKET HELD A `string[]`. Every pending row pinned a `string` reference per bucket (doc §4.4's last bullet).
-//     A bucket now holds `(slot, EntityId)` pairs and the batch carries the ids; a gid row has NO uri text anywhere,
-//     and the six catalog kinds off the Spotify wire are all gid rows.
-//   · WHAT A PROVIDER GETS is therefore an identity, not a string: `batch.Ids[i]` for the 16 raw gid bytes a metadata
-//     POST actually wants (`WriteGid`, zero allocation, no base62 at all), and `batch.Uri(i)` when it genuinely needs
-//     text. The wire→slot half of the same round trip is `table.Slot(kind, gid16)`, 3 ns (doc §2).
-// The planner's fast path is unchanged in shape and still allocates nothing after warm-up: `FetchTests` pins that
-// over a 300-uri batch, which is the doc's own unit of measurement.
+// packed 24-byte `EntityId`: routing reads `Id[slot].Provider` (one field) and a bucket holds `(slot, EntityId)` pairs,
+// so a gid row crosses to the provider as 16 bytes and no string (`batch.Ids[i]`, `WriteGid`); `batch.Uri(i)` is the
+// door for a provider that genuinely needs text. The planner's fast path allocates nothing after warm-up: `FetchTests`
+// pins that over a 300-uri batch, which is the doc's own unit of measurement.
 //
 // Rules: P4 (batch APIs only), P8/P9 (the planner allocates nothing per call after warm-up — no LINQ, no closures,
 // no async; the runner's buffers are pooled and grow ×2), C1 (every mutation here is on the UI thread), C7 (the
-// scope epoch is the dedupe key AND the drop key), C8 (bounded: at most four requests, 300 uris each).
+// scope epoch is the drop key), C8 (bounded: at most four requests, 300 uris each).
 
 using System.Buffers;
 using System.Diagnostics;
+using FluentGpu.Foundation;
 
 namespace Wavee;
 
@@ -59,16 +67,31 @@ namespace Wavee;
 /// reads a kind, a provider and 16 gid bytes off them with no table and no interner (C1). The rows that have uri TEXT
 /// carry it in <see cref="Text"/>, resolved on the UI thread when the batch was filled, because resolving an id off
 /// the UI thread is only safe while that id is alive and a batch outlives the guarantee. <see cref="Uri"/> answers
-/// either kind from any thread: a gid formats (81 ns, one string), a text row hands back the string already there.</para></summary>
+/// either kind from any thread: a gid formats (81 ns, one string), a text row hands back the string already there.</para>
+///
+/// <para><b>What to send.</b> <see cref="FetchRoutes.For(FetchBatch,Span{FetchRoute},out uint)"/> turns
+/// (<see cref="Subject"/>, <see cref="Kind"/>, <see cref="Wanted"/>) into the extension kinds, pathfinder operations and
+/// spclient routes that fill those groups; an EDGE batch (<see cref="Subject"/> == <see cref="FetchSubject.Edge"/>) is
+/// <see cref="FetchRoutes.ForEdge"/> of (<see cref="Edge"/>, <see cref="Offset"/>), and its rows are the PARENTS.</para></summary>
 public sealed class FetchBatch
 {
     /// <summary>The answer key. Unique for the life of the process; a duplicate or late answer is dropped by it.</summary>
     public uint Ticket;
     public EntityProvider Provider;
+    /// <summary>The kind of the rows' table. For a synthetic subject this is <see cref="EntityKind.Unknown"/> and
+    /// <see cref="Subject"/> is what names the table; for an edge batch it is the PARENT table's kind.</summary>
     public EntityKind Kind;
-    /// <summary>The field groups the page asked for, as the kind's <c>&lt;Kind&gt;Fields</c> bits. A provider that can
-    /// only answer some of them answers those; the rest stay missing and the row is not asked again this scope.</summary>
+    /// <summary>Which table the rows live in, beyond their kind (G-041): an entity row, one of the synthetic subjects,
+    /// or the parents of an edge request.</summary>
+    public FetchSubject Subject;
+    /// <summary>The field groups this batch asks for, as the table's <c>&lt;Kind&gt;Fields</c> bits — the rows' shared
+    /// NEED, never more. A provider that can only answer some of them answers those; the rest stay asked (sealed) for
+    /// the scope. Zero for an edge batch.</summary>
     public uint Wanted;
+    /// <summary>The relation an edge batch asks for (<see cref="FetchEdge.None"/> for a row batch).</summary>
+    public FetchEdge Edge;
+    /// <summary>The page offset an edge batch asks for (0 for a row batch, and for the first page).</summary>
+    public int Offset;
     public FetchPriority Priority;
     /// <summary>The scope epoch this batch belongs to. Stamp it into the answer's <c>Staging.Epoch</c> and the commit
     /// drops the whole batch if the scope has been replaced meanwhile (C7).</summary>
@@ -86,10 +109,15 @@ public sealed class FetchBatch
     public string?[] Text = [];
     /// <summary>The slots the rows came from, parallel to <see cref="Ids"/>. The runner's business, not the provider's.</summary>
     public int[] Slots = [];
-    /// <summary>The extended-metadata kind this batch asks for, or 0 for "the kind's own default" (a provider maps that
-    /// from <see cref="Kind"/>). Non-zero for exactly one group today: <see cref="Fetch.AudioFilesKind"/> = 5, the FLAC
-    /// ladder, whose request is a <c>spotify:audio:</c> uri in <see cref="Text"/> and whose ANSWER is keyed by that
-    /// same uri — so a provider maps the answer back to the row it asked for with <see cref="IdFor"/> (plan §5.2).</summary>
+    /// <summary>For an EDGE batch, the revision each parent's list was last answered at, parallel to <see cref="Ids"/> —
+    /// resolved on the UI thread at send like <see cref="Text"/> — or null when none is held (a first read). It is what
+    /// lets a provider choose the <c>/diff</c> read over the full one without touching a table: the rootlist's
+    /// (<c>Edges.RootlistRevision</c>) and the recents snapshot's (<c>Edges.RecentsRevision</c>). Null for a row batch.</summary>
+    public string?[] Revisions = [];
+    /// <summary>The extended-metadata kind this batch asks for, or 0 for "the kind's own routes" (a provider maps that
+    /// through <see cref="FetchRoutes"/>). Non-zero for exactly one group today: <see cref="Fetch.AudioFilesKind"/> = 5,
+    /// the FLAC ladder, whose request is a <c>spotify:audio:</c> uri in <see cref="Text"/> and whose ANSWER is keyed by
+    /// that same uri — so a provider maps the answer back to the row it asked for with <see cref="IdFor"/> (plan §5.2).</summary>
     public int Extension;
 
     /// <summary>The batch as identities — the span a provider builds its request from.</summary>
@@ -156,8 +184,8 @@ public abstract class FetchProvider
     public virtual void Abandon(uint epoch) { }
 }
 
-/// <summary>The planner and the runner. Called by <c>Entities.Ensure</c> through the <c>PlanFetch</c> hook; nothing
-/// in the app calls it directly, and there is no single-uri entry point to reach for (P4).</summary>
+/// <summary>The planner and the runner. Called by <c>Entities.Ensure</c> through the <c>PlanFetch</c> hook (rows) and by
+/// <c>Entities.EnsureEdge</c> (relations, <c>Fetch.Edges.cs</c>); there is no single-uri entry point to reach for (P4).</summary>
 public static partial class Fetch
 {
     /// <summary>THE per-request entity ceiling — one extended-metadata POST. 0.2.9 carried seven copies of this 300
@@ -179,10 +207,7 @@ public static partial class Fetch
     // `spotify:audio:<base62(original_audio.uuid)>` entity instead, because TRACK_V4's own `file[]` carries Ogg and AAC
     // and never a FLAC row (librespot #1578/#1583; observed in a live capture). That makes it a different uri AND a
     // different extension kind from everything else a track wants, so it gets its OWN bucket and can never ride
-    // another group's POST — the planner's shape key already separates it, since `wanted` is part of that key.
-    //
-    // Nothing else about the path changes: the ceiling is the same 300 per POST (P4), the dedupe is the same in-flight
-    // stamp (C7), and the answer lands through the same `Answer` door.
+    // another group's POST — the planner's shape key already separates it, since the need is part of that key.
 
     /// <summary>The extended-metadata kind for <see cref="TrackFields.Files"/>: <c>AUDIO_FILES = 5</c>
     /// (<c>extension_kind.proto</c>). Named here because the planner is what decides a batch asks for it.</summary>
@@ -207,14 +232,14 @@ public static partial class Fetch
     /// <summary>Does this bucket ask the derived audio entity? True for the <see cref="TrackFields.Files"/> bucket and
     /// nothing else — and it is an equality, not a mask test: a bucket that mixed Files with another group would be a
     /// bucket the planner failed to split (see <see cref="Queue"/>).</summary>
-    static bool IsAudioFiles(EntityKind kind, uint wanted)
-        => kind == EntityKind.Track && wanted == (uint)TrackFields.Files;
+    static bool IsAudioFiles(FetchSubject subject, EntityKind kind, uint wanted)
+        => subject == FetchSubject.Entity && kind == EntityKind.Track && wanted == (uint)TrackFields.Files;
 
     // ── the pure half (CORE) ────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The dedupe stamp for a scope. <c>Inflight = 0</c> means "nobody is asking", so the stamp must never be
-    /// 0 — and the FIRST scope's epoch IS 0. One addition, and the whole C7 mechanism works on the first launch as
-    /// well as after a locale switch. (The bug this prevents is silent: every row would re-request forever.)</summary>
+    /// <summary>The in-flight stamp for a scope. <c>Inflight = 0</c> means "nobody is asking", so the stamp must never
+    /// be 0 — and the FIRST scope's epoch IS 0. One addition, and the in-flight mark works on the first launch as well as
+    /// after a locale switch.</summary>
     public static uint Stamp(uint epoch) => epoch + 1;
 
     /// <summary>Is this status worth trying again? A transport error (0, no status), a rate limit, or a server fault.
@@ -232,21 +257,23 @@ public static partial class Fetch
         return Math.Min(60, 1 << shift);
     }
 
-    /// <summary>THE filter, pure over columns and allocation-free: which of <paramref name="slots"/> still need any
-    /// bit of <paramref name="wanted"/> and are not already in flight for <paramref name="stamp"/>. Writes them into
-    /// <paramref name="dst"/> and returns how many.
+    /// <summary>A row's NEED: the groups of <paramref name="wanted"/> it does not know and nobody has asked for yet
+    /// this scope. The one expression the whole dedupe is (G-040).</summary>
+    public static uint NeedOf(Table table, int slot, uint wanted) => wanted & ~table.Known[slot] & ~table.Asked[slot];
+
+    /// <summary>THE filter, pure over columns and allocation-free: which of <paramref name="slots"/> still NEED any bit
+    /// of <paramref name="wanted"/> (<see cref="NeedOf"/>). Writes them into <paramref name="dst"/> and returns how many.
     /// <para>It does NOT mark anything — <see cref="Plan"/> does that after it has somewhere to send them. Keeping
     /// the decision separate from the side effect is what lets a test assert the decision (§4.15).</para></summary>
-    public static int Select(Table table, ReadOnlySpan<int> slots, uint wanted, uint stamp, Span<int> dst)
+    public static int Select(Table table, ReadOnlySpan<int> slots, uint wanted, Span<int> dst)
     {
         if (wanted == 0) return 0;
         int n = 0;
         for (int i = 0; i < slots.Length && n < dst.Length; i++)
         {
             int slot = slots[i];
-            if (slot == Table.None) continue;                       // slot 0 is "none": there is nothing to fetch
-            if ((wanted & ~table.Known[slot]) == 0) continue;        // already known — the common case, one AND-NOT
-            if (table.Inflight[slot] == stamp) continue;             // already asked in this scope (C7)
+            if (slot <= Table.None || slot >= table.Count) continue;   // slot 0 is "none": there is nothing to fetch
+            if (NeedOf(table, slot, wanted) == 0) continue;            // known, or already asked — one AND-NOT
             dst[n++] = slot;
         }
         return n;
@@ -254,13 +281,17 @@ public static partial class Fetch
 
     // ── state (SHELL) ───────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>One (provider, kind, wanted, priority) bucket of rows waiting to go out. That tuple IS the "shape" of
-    /// a request: everything in a bucket can ride the same POST, and nothing outside it can.</summary>
+    /// <summary>One (provider, subject, kind, need, priority) bucket of rows waiting to go out — or, for an edge,
+    /// (provider, relation, offset, priority) of PARENTS. That tuple IS the "shape" of a request: everything in a
+    /// bucket can ride the same request, and nothing outside it can.</summary>
     sealed class Demand
     {
         public EntityProvider Provider;
         public EntityKind Kind;
+        public FetchSubject Subject;
         public uint Wanted;
+        public FetchEdge Edge;
+        public int Offset;
         public FetchPriority Priority;
         public Table Table = null!;
         public int Count;
@@ -295,7 +326,9 @@ public static partial class Fetch
         }
     }
 
-    static readonly Dictionary<long, Demand> s_buckets = new(16);
+    // Keyed by the whole shape. A (long, long) pair because the edge half of the key does not fit beside the row half in
+    // one word: provider | subject | kind | priority | edge in the first, need-or-offset in the second.
+    static readonly Dictionary<(long, long), Demand> s_buckets = new(16);
     static readonly List<Demand> s_order = new(16);                 // stable iteration; the dictionary is the index
     static readonly Dictionary<uint, FetchBatch> s_active = new(8);
     static readonly Stack<FetchBatch> s_pool = new(8);
@@ -357,13 +390,13 @@ public static partial class Fetch
 
     // ── the planner ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>"These rows, these groups." The one entry point (through <c>Entities.Ensure</c>), and the whole of
-    /// §5.4's access path:
+    /// <summary>"These rows, these groups." The one entry point for rows (through <c>Entities.Ensure</c>), and the
+    /// whole of §5.4's access path:
     /// <list type="number">
-    /// <item>filter to the rows that are missing something and are not already in flight (<see cref="Select"/>);</item>
-    /// <item>mark them in flight for this scope, so the other nine pages asking this drain ask for nothing (C7);</item>
+    /// <item>filter to the rows that NEED something — missing and not yet asked for (<see cref="Select"/>);</item>
+    /// <item>mark those groups asked for this scope, so the other nine pages asking this drain ask for nothing (C7);</item>
     /// <item>split disk / network on "has anything ever answered about this row" and send the disk leg first;</item>
-    /// <item>bucket the rest by (provider, kind, groups, priority) and pump.</item>
+    /// <item>bucket the rest by (provider, subject, kind, need, priority) and pump.</item>
     /// </list>
     /// The disk leg answers through <see cref="Continue"/>, which is step 4 for whatever sqlite could not fill.</summary>
     public static void Plan(Scope scope, Table table, ReadOnlySpan<int> slots, uint wanted, FetchPriority priority)
@@ -373,19 +406,24 @@ public static partial class Fetch
 
         uint stamp = Stamp(scope.Epoch);
         int[] scratch = ArrayPool<int>.Shared.Rent(slots.Length);
+        uint[] needs = ArrayPool<uint>.Shared.Rent(slots.Length);
         try
         {
-            int need = Select(table, slots, wanted, stamp, scratch);
+            int need = Select(table, slots, wanted, scratch);
             s_planned += slots.Length;
             s_deduped += slots.Length - need;
             if (need == 0) return;
 
             // Mark first, send second. A page that mounts twice in one drain (a remount, a scroll that re-binds) must
-            // produce ONE request, and the mark is what makes the second pass find nothing.
+            // produce ONE request, and the mark is what makes the second pass find nothing. The need is taken BEFORE
+            // the mark (the mark is what would zero it) and travels with the row.
             int now = Entities.Now;
             for (int i = 0; i < need; i++)
             {
                 int slot = scratch[i];
+                uint groups = NeedOf(table, slot, wanted);
+                needs[i] = groups;
+                table.Asked[slot] |= groups;
                 table.Inflight[slot] = stamp;
                 table.Touched[slot] = now;
             }
@@ -394,98 +432,111 @@ public static partial class Fetch
             // previous launch, and sqlite costs one batched query against a round trip. A row the disk has already
             // been asked about — found or not — goes straight out: asking it again is a query that cannot answer.
             int disk = 0;
+            uint diskWanted = 0;
             for (int i = 0; i < need; i++)
             {
                 if (table.FetchedAt[scratch[i]] != 0) continue;
                 (scratch[disk], scratch[i]) = (scratch[i], scratch[disk]);
+                (needs[disk], needs[i]) = (needs[i], needs[disk]);
+                diskWanted |= needs[disk];
                 disk++;
             }
 
             var span = scratch.AsSpan(0, need);
-            if (disk > 0 && Store.Read(scope, table, span[..disk], wanted, priority))
+            var groupsOf = needs.AsSpan(0, need);
+            if (disk > 0 && Store.Read(scope, table, span[..disk], diskWanted, priority))
             {
                 s_toDisk += disk;
-                Queue(table, span[disk..], wanted, priority);   // the rest do not wait for the disk
+                Queue(scope, table, span[disk..], groupsOf[disk..], priority);   // the rest do not wait for the disk
             }
             else
             {
-                Queue(table, span, wanted, priority);           // no store (or it refused): straight out
+                Queue(scope, table, span, groupsOf, priority);                   // no store (or it refused): straight out
             }
             Pump();
         }
-        finally { ArrayPool<int>.Shared.Return(scratch); }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(scratch);
+            ArrayPool<uint>.Shared.Return(needs);
+        }
     }
 
     /// <summary>The disk answered; whatever it could not fill goes to the provider. Called by <c>Store</c> from the
-    /// cold read's completion, on the UI thread, with the same slots the read was asked for.
+    /// cold read's completion, on the UI thread, with the same slots and groups the read was asked for.
     /// <para>It re-derives <c>wanted &amp; ~known</c> rather than trusting the caller's list, so a batch the disk
-    /// filled completely asks for nothing — and it does NOT re-check <c>Inflight</c>, because those marks are this
-    /// plan's own.</para></summary>
+    /// filled completely asks for nothing — and it does NOT subtract <c>Asked</c>, because those marks are this plan's
+    /// own.</para></summary>
     public static void Continue(Scope scope, Table table, ReadOnlySpan<int> slots, uint wanted, FetchPriority priority)
     {
         if (wanted == 0 || slots.IsEmpty) return;
         if (!ReferenceEquals(scope, Entities.Current)) return;   // C7: the disk answered into a replaced set
 
         int[] scratch = ArrayPool<int>.Shared.Rent(slots.Length);
+        uint[] needs = ArrayPool<uint>.Shared.Rent(slots.Length);
         try
         {
             int n = 0;
             for (int i = 0; i < slots.Length; i++)
             {
                 int slot = slots[i];
-                if (slot == Table.None) continue;
-                if ((wanted & ~table.Known[slot]) == 0)
-                {
-                    // The disk had it. `Applied` already cleared the in-flight mark; nothing more to do.
-                    continue;
-                }
-                scratch[n++] = slot;
+                if (slot <= Table.None || slot >= table.Count) continue;
+                // Only the groups this plan asked (and the disk did not fill): a group another plan asked is its own.
+                uint groups = wanted & ~table.Known[slot] & table.Asked[slot];
+                if (groups == 0) continue;                  // the disk had it; `Applied` already cleared the in-flight mark
+                scratch[n] = slot;
+                needs[n++] = groups;
             }
             if (n == 0) return;
-            Queue(table, scratch.AsSpan(0, n), wanted, priority);
+            Queue(scope, table, scratch.AsSpan(0, n), needs.AsSpan(0, n), priority);
             Pump();
         }
-        finally { ArrayPool<int>.Shared.Return(scratch); }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(scratch);
+            ArrayPool<uint>.Shared.Return(needs);
+        }
     }
 
     /// <summary>Bucket rows by the shape of the request they belong to — a local file, a module playable and a
-    /// Spotify track all live in the same <c>TrackTable</c> and cannot ride the same POST.
-    /// <para>The provider is a FIELD on the row's identity now (<see cref="EntityId.Provider"/>): the prefix walk that
-    /// answered this question ran once, at the parse, instead of once per row per plan (doc §1.3 item 3).</para></summary>
-    static void Queue(Table table, ReadOnlySpan<int> slots, uint wanted, FetchPriority priority)
+    /// Spotify track all live in the same <c>TrackTable</c> and cannot ride the same POST, and two rows of one page
+    /// that need different groups cannot either.
+    /// <para>The provider is a FIELD on the row's identity (<see cref="EntityId.Provider"/>), except for a synthetic
+    /// subject nobody owns, which is the scope's catalogue's (<see cref="ProviderFor"/>, G-041).</para></summary>
+    static void Queue(Scope scope, Table table, ReadOnlySpan<int> slots, ReadOnlySpan<uint> needs, FetchPriority priority)
     {
-        // THE ONE SPLIT (see "the one DERIVED request" above): the Files group is a different uri and a different
-        // extension kind, so it is peeled off into its own bucket and the rest ride the shape they always did. A page
-        // that asks for `Row | Files` in one `Ensure` therefore produces two requests, which is what it is.
         var tracks = table as TrackTable;
-        uint derived = tracks is null ? 0u : wanted & (uint)TrackFields.Files;
-        uint plain = wanted & ~derived;
-
         for (int i = 0; i < slots.Length; i++)
         {
             int slot = slots[i];
+            uint need = needs[i];
+            if (need == 0) continue;
             EntityId id = table.Id[slot];
-            EntityProvider provider = id.Provider;
+            FetchSubject subject = SubjectOf(scope, table, slot);
+            EntityProvider provider = ProviderFor(scope, subject, id);
             if (provider == EntityProvider.None)
             {
-                // Nobody owns this uri, so nobody can answer for it. Leave the in-flight mark set: it is the
-                // cheapest possible "do not ask again", and re-deriving the same verdict every drain is not free.
+                // Nobody owns this uri, so nobody can answer for it. Leave the asked bits set: it is the cheapest
+                // possible "do not ask again", and re-deriving the same verdict every drain is not free.
                 s_abandoned++;
                 continue;
             }
+
+            // THE ONE SPLIT (see "the one DERIVED request" above): the Files group is a different uri and a different
+            // extension kind, so it is peeled off into its own bucket and the rest ride the shape they need. A page
+            // that asks for `Row | Files` in one `Ensure` therefore produces two requests, which is what it is.
+            uint derived = tracks is null ? 0u : need & (uint)TrackFields.Files;
+            uint plain = need & ~derived;
             if (plain != 0)
             {
-                Bucket(table, provider, plain, priority).Add(slot, id);
+                Bucket(table, subject, provider, plain, FetchEdge.None, 0, priority).Add(slot, id);
                 s_toNetwork++;
             }
             if (derived == 0) continue;
-            // `wanted & ~known`, per row, for the one group that pays a whole round trip of its own: a bucket's shape
-            // is the REQUEST's, and a row already holding its ladder must not drag a second POST along with the rest.
-            if (table.Knows(slot, (uint)TrackFields.Files)) continue;
 
             if (tracks!.OriginalAudio[slot] != UInt128.Zero)
             {
-                Bucket(table, provider, derived, priority).Add(slot, id);
+                Bucket(table, subject, provider, derived, FetchEdge.None, 0, priority).Add(slot, id);
                 s_toNetwork++;
             }
             else
@@ -494,23 +545,68 @@ public static partial class Fetch
                 // that has only ever been a search hit or a playlist item has none — and a TrackV4 that genuinely names
                 // none seals the group at COMMIT (`CommitTracks`, §5.2), where the answer that said so is in hand. Here
                 // the question is merely premature: un-ask it, so the next `Ensure` after the identity lands really
-                // asks. (When the plain half went out, that batch's own `Applied` clears the mark and this is a no-op.)
+                // asks. (When the plain half went out, that batch's own `Applied` clears the in-flight mark.)
+                table.Asked[slot] &= ~(uint)TrackFields.Files;
                 if (plain == 0) table.Inflight[slot] = 0;
                 s_abandoned++;
             }
         }
     }
 
-    static Demand Bucket(Table table, EntityProvider provider, uint wanted, FetchPriority priority)
+    /// <summary>Which table a row lives in, beyond its kind (G-041). The four synthetic tables are told apart by
+    /// REFERENCE — they all answer <see cref="EntityKind.Unknown"/> — and two of them split once more, on a column:
+    /// a section is a Home band or a Browse band (<see cref="SectionTable.Form"/>; an unformed section is a Home band,
+    /// and <c>Entities.BrowseSection</c> stamps the family before the drill page asks), and a browse node is the
+    /// directory or a page.</summary>
+    public static FetchSubject SubjectOf(Scope scope, Table table, int slot)
     {
-        long key = ((long)(byte)provider << 56) | ((long)(byte)table.Kind << 48) | ((long)(byte)priority << 40) | wanted;
-        if (s_buckets.TryGetValue(key, out Demand? d))
+        if (table.Kind != EntityKind.Unknown) return FetchSubject.Entity;
+        if (ReferenceEquals(table, scope.Homes)) return FetchSubject.Home;
+        if (ReferenceEquals(table, scope.Sections))
+            return (SectionKind)scope.Sections.Form[slot] >= SectionKind.BrowseShelf ? FetchSubject.BrowseSection : FetchSubject.HomeSection;
+        if (ReferenceEquals(table, scope.Searches)) return FetchSubject.Search;
+        if (ReferenceEquals(table, scope.Browses))
+            return scope.Browses.TryGetSlot(Browse.DirectoryUri.AsSpan(), out int directory) && directory == slot
+                ? FetchSubject.BrowseDirectory : FetchSubject.BrowsePage;
+        return FetchSubject.Entity;
+    }
+
+    /// <summary>Who answers for a row: its own provider, or — for a synthetic subject whose uri no provider owns
+    /// (<c>wavee:home</c>, <c>wavee:search:…</c>, <c>wavee:browse</c>) — the SCOPE's catalogue (G-041). An entity row
+    /// nobody owns stays unowned: a guess would address a transport that 404s on it.</summary>
+    public static EntityProvider ProviderFor(Scope scope, FetchSubject subject, in EntityId id)
+    {
+        if (id.Provider != EntityProvider.None || subject is FetchSubject.Entity or FetchSubject.Edge) return id.Provider;
+        return CatalogProvider(scope.Key);
+    }
+
+    /// <summary>The provider a scope's catalogue is: <c>"spotify"</c> is Spotify, <c>"fake"</c> is the seed, anything
+    /// else is nobody (Platform.cs mints the live key, <see cref="CatalogScope.Fake"/> the offline one).</summary>
+    public static EntityProvider CatalogProvider(in CatalogScope key)
+        => key.Provider switch
         {
-            Debug.Assert(ReferenceEquals(d.Table, table), "one bucket, one table: the key packs the kind, so this can only differ across a scope switch that was not dropped.");
+            "spotify" => EntityProvider.Spotify,
+            "fake" => EntityProvider.Fake,
+            _ => EntityProvider.None,
+        };
+
+    static Demand Bucket(Table table, FetchSubject subject, EntityProvider provider, uint wanted, FetchEdge edge, int offset,
+                         FetchPriority priority)
+    {
+        long shape = ((long)(byte)provider << 32) | ((long)(byte)subject << 24) | ((long)(byte)table.Kind << 16)
+                   | ((long)(byte)priority << 8) | (byte)edge;
+        long payload = edge == FetchEdge.None ? wanted : offset;
+        if (s_buckets.TryGetValue((shape, payload), out Demand? d))
+        {
+            Debug.Assert(ReferenceEquals(d.Table, table), "one bucket, one table: the key packs the subject and the kind, so this can only differ across a scope switch that was not dropped.");
             return d;
         }
-        d = new Demand { Provider = provider, Kind = table.Kind, Wanted = wanted, Priority = priority, Table = table };
-        s_buckets[key] = d;
+        d = new Demand
+        {
+            Provider = provider, Kind = table.Kind, Subject = subject, Wanted = edge == FetchEdge.None ? wanted : 0,
+            Edge = edge, Offset = offset, Priority = priority, Table = table,
+        };
+        s_buckets[(shape, payload)] = d;
         s_order.Add(d);
         return d;
     }
@@ -570,7 +666,13 @@ public static partial class Fetch
     {
         int take = Math.Min(MaxUrisPerRequest, d.Count);
         FetchBatch batch = s_pool.Count > 0 ? s_pool.Pop() : new FetchBatch();
-        if (batch.Ids.Length < take) { batch.Ids = new EntityId[take]; batch.Text = new string?[take]; batch.Slots = new int[take]; }
+        if (batch.Ids.Length < take)
+        {
+            batch.Ids = new EntityId[take];
+            batch.Text = new string?[take];
+            batch.Slots = new int[take];
+            batch.Revisions = new string?[take];
+        }
         Array.Copy(d.Ids, batch.Ids, take);
         Array.Copy(d.Slots, batch.Slots, take);
         // The text half is resolved HERE because Send runs on the UI thread and the provider's does not (C1): an id
@@ -582,11 +684,15 @@ public static partial class Fetch
             batch.Text[i] = id.Form == EntityForm.Text ? Entities.Strings.Resolve(id.TextId) : null;
         }
         batch.Extension = 0;
-        if (IsAudioFiles(d.Kind, d.Wanted)) FillAudioUris(batch, (TrackTable)d.Table, take);
+        if (IsAudioFiles(d.Subject, d.Kind, d.Wanted)) FillAudioUris(batch, (TrackTable)d.Table, take);
+        if (d.Subject == FetchSubject.Edge) FillRevisions(batch, d.Edge, take);
         batch.Count = take;
         batch.Provider = d.Provider;
         batch.Kind = d.Kind;
+        batch.Subject = d.Subject;
         batch.Wanted = d.Wanted;
+        batch.Edge = d.Edge;
+        batch.Offset = d.Offset;
         batch.Priority = d.Priority;
         batch.Epoch = s_scopeEpoch;
         batch.Attempt = d.Attempt;
@@ -630,9 +736,10 @@ public static partial class Fetch
     ///
     /// <para><paramref name="staging"/> may be null (the provider had nothing for these uris), and it is HANDED OVER
     /// either way: the commit copies out of it, the store writes it behind, and one of the two returns it to the
-    /// pool. Rows the answer did not fill keep their in-flight mark, and that is deliberate — it is the "we asked and
-    /// this is the answer for now" seal that stops a thin track re-resolving on every cluster update (0.2.9's
-    /// exhausted ledger rung, expressed as the mark that is already there).</para></summary>
+    /// pool. Groups the answer did not fill stay ASKED, and that is deliberate — it is the "we asked and this is the
+    /// answer for now" seal that stops a thin track re-resolving on every cluster update (0.2.9's exhausted ledger rung,
+    /// expressed as the bit that is already there). An EDGE batch that landed nothing records the parents as answered
+    /// with no route, so a surface stops showing a skeleton for a list nobody will ever send (<c>Fetch.Edges.cs</c>).</para></summary>
     public static void Answer(uint ticket, Staging? staging)
     {
         Sync();
@@ -652,6 +759,7 @@ public static partial class Fetch
             Entities.Commit(staging);                                  // drops the batch whole if the scope moved (C7)
             if (!Store.WriteBehind(staging)) Staging.Return(staging);  // write-behind takes ownership when it accepts
         }
+        if (batch.Subject == FetchSubject.Edge && batch.Epoch == s_scopeEpoch) EdgesAnswered(batch);
 
         Recycle(batch);
         Pump();
@@ -660,9 +768,9 @@ public static partial class Fetch
     /// <summary>A provider could not answer. UI THREAD ONLY.
     ///
     /// <para>A transport failure SEALS NOTHING (0.2.9 <c>HydrationLedger</c>: "a transport error is not an answer"):
-    /// a terminal failure clears the in-flight marks so the next page mount really retries. A retryable one keeps
-    /// them and re-queues the batch behind <see cref="Backoff"/> — keeping the marks is what stops a second plan
-    /// from queueing the same rows a second time while the first is sleeping.</para></summary>
+    /// a terminal failure un-asks the batch's groups so the next page mount really retries. A retryable one keeps the
+    /// marks and re-queues the batch behind <see cref="Backoff"/> — keeping the marks is what stops a second plan from
+    /// queueing the same rows a second time while the first is sleeping.</para></summary>
     /// <param name="status">The HTTP status, or 0 for a transport error with none.</param>
     /// <param name="retryAfterSeconds">The server's <c>Retry-After</c>, if it sent one. Clamped by the backoff.</param>
     public static void Failed(uint ticket, int status, int retryAfterSeconds)
@@ -672,11 +780,12 @@ public static partial class Fetch
         s_inFlight--;
         s_failed++;
 
-        Table? table = Entities.TableFor(batch.Kind);
-        bool retry = table is not null && Retryable(status) && batch.Attempt + 1 < MaxAttempts && batch.Epoch == s_scopeEpoch;
+        bool live = batch.Epoch == s_scopeEpoch;
+        Table? table = live ? TableOf(Entities.Current, batch) : null;
+        bool retry = table is not null && Retryable(status) && batch.Attempt + 1 < MaxAttempts;
         if (retry)
         {
-            Demand d = Bucket(table!, batch.Provider, batch.Wanted, batch.Priority);
+            Demand d = Bucket(table!, batch.Subject, batch.Provider, batch.Wanted, batch.Edge, batch.Offset, batch.Priority);
             for (int i = 0; i < batch.Count; i++) d.Add(batch.Slots[i], batch.Ids[i]);
             d.Attempt = batch.Attempt + 1;
             d.ReadyAt = Entities.Now + Backoff(batch.Attempt, status, retryAfterSeconds);
@@ -684,15 +793,10 @@ public static partial class Fetch
         }
         else
         {
-            // Un-ask the rows: the mark is what suppresses the next request, and a failure must not suppress it.
             if (table is not null)
             {
-                uint stamp = Stamp(batch.Epoch);
-                for (int i = 0; i < batch.Count; i++)
-                {
-                    int slot = batch.Slots[i];
-                    if (slot > Table.None && slot < table.Count && table.Inflight[slot] == stamp) table.Inflight[slot] = 0;
-                }
+                if (batch.Subject == FetchSubject.Edge) EdgesFailed(batch, table, status);
+                else Unask(batch, table);
             }
             s_abandoned++;
         }
@@ -701,11 +805,59 @@ public static partial class Fetch
         Pump();
     }
 
+    /// <summary>Un-ask a terminally failed row batch: the in-flight mark goes, and so do the batch's groups — the marks
+    /// are what suppress the next request, and a failure must not suppress it. A slot recycled since the plan (its
+    /// identity moved on) is not this batch's to touch.</summary>
+    static void Unask(FetchBatch batch, Table table)
+    {
+        uint stamp = Stamp(batch.Epoch);
+        for (int i = 0; i < batch.Count; i++)
+        {
+            int slot = batch.Slots[i];
+            if (slot <= Table.None || slot >= table.Count || table.Id[slot] != batch.Ids[i]) continue;
+            if (table.Inflight[slot] == stamp) table.Inflight[slot] = 0;
+            table.Asked[slot] &= ~batch.Wanted;
+        }
+    }
+
+    /// <summary>The table a batch's rows index in the CURRENT scope — by subject, since four tables share a kind; for an
+    /// edge batch, the relation's PARENT table.</summary>
+    static Table? TableOf(Scope scope, FetchBatch batch) => batch.Subject switch
+    {
+        FetchSubject.Entity => Entities.TableFor(batch.Kind),
+        FetchSubject.Home => scope.Homes,
+        FetchSubject.HomeSection or FetchSubject.BrowseSection => scope.Sections,
+        FetchSubject.Search => scope.Searches,
+        FetchSubject.BrowseDirectory or FetchSubject.BrowsePage => scope.Browses,
+        FetchSubject.Edge => ParentTableOf(scope, batch.Edge),
+        _ => null,
+    };
+
+    /// <summary>The held revision of each parent's list, for the relations that have one (UI thread, inside
+    /// <see cref="Send"/>, C1).</summary>
+    static void FillRevisions(FetchBatch batch, FetchEdge edge, int take)
+    {
+        Edges edges = Entities.Current.Edges;
+        for (int i = 0; i < take; i++)
+        {
+            StringId revision = edge switch
+            {
+                FetchEdge.Rootlist => edges.RootlistRevision(batch.Slots[i]),
+                FetchEdge.Recents => edges.RecentsRevision(batch.Slots[i]),
+                _ => StringId.Empty,
+            };
+            batch.Revisions[i] = revision.IsEmpty ? null : Entities.Strings.Resolve(revision);
+        }
+    }
+
     static void Recycle(FetchBatch batch)
     {
         batch.Count = 0;
         batch.Extension = 0;
+        batch.Edge = FetchEdge.None;
+        batch.Offset = 0;
         Array.Clear(batch.Text);                 // do not pin interned strings in a pooled buffer (the ids are values)
+        Array.Clear(batch.Revisions);
         if (s_pool.Count < 8) s_pool.Push(batch);
     }
 }

@@ -118,8 +118,9 @@ public static partial class Shell
     /// <item>the theme seed, BEFORE the window comes up, or the first frame flashes the wrong palette;</item>
     /// <item>the three documents, because the first render reads the restored route;</item>
     /// <item>the loop;</item>
-    /// <item>the exit tail: flush the session document (the shell's unmount cleanup never runs on shutdown, so a
-    /// pending debounced save would be lost), then the toast platform, then the instance gate.</item>
+    /// <item>the exit tail: the tray icon (it must never outlive the window), then flush the session document (the
+    /// shell's unmount cleanup never runs on shutdown, so a pending debounced save would be lost), then the toast
+    /// platform, then the instance gate.</item>
     /// </list></summary>
     public static void Run()
     {
@@ -131,11 +132,13 @@ public static partial class Shell
 
         // The harness arms (`--frames` / `--screenshot`) skip the gate so a visual-diff loop can spawn freely.
         SingleInstanceGate? gate = null;
+        bool startHidden = false;
         if (screenshot is null && frames < 0)
         {
             gate = new SingleInstanceGate();
             var activation = ActivationArgs.FromCurrentProcess("wavee");
-            string payload = activation.Kind == ActivationKind.Launch ? "" : activation.Argument;
+            // A sign-in StartupTask carries its task id, not a deep link: to a running instance it is a bare relaunch.
+            string payload = activation.Kind is ActivationKind.Launch or ActivationKind.StartupTask ? "" : activation.Argument;
             if (!gate.TryAcquire("Wavee", "FluentGpuWindow", payload))
             {
                 // A second launch handed its payload to the running instance through the gate; leaving is the whole
@@ -147,6 +150,16 @@ public static partial class Shell
             if (activation.Kind is ActivationKind.Protocol or ActivationKind.File or ActivationKind.ToastActivated)
                 s_pendingActivation = activation.Argument;
             FluentApp.ActivationRedirected += OnActivationRedirected;
+
+            // The notification area (Platform/Tray.Host.cs). Start hidden ONLY for the launch the user did not click: the
+            // packaged StartupTask, or the unpackaged Run value's --tray. Arming records intent; the icon itself is
+            // created on the UI thread by the root's tracked effect (RootHost below).
+            startHidden = Tray.StartHidden(
+                Platform.Settings.Get(Platform.Keys.TrayStartHidden),
+                Tray.ModeFrom(Platform.Settings.Get(Platform.Keys.TrayIconMode)),
+                activation.Kind == ActivationKind.StartupTask,
+                Tray.HasTrayArg(args));
+            Tray.Host.Arm(startHidden);
         }
 
         SeedTheme();
@@ -184,6 +197,9 @@ public static partial class Shell
                     // library — ONE folder for "everything Wavee wrote", which is what the Storage tab measures and
                     // what factory reset wipes.
                     ImageCacheDirectory = Path.Combine(Platform.LocalFolder, "cache", "images"),
+                    // The sign-in launch into the tray: the window exists, the tree mounts, nothing paints until the icon
+                    // (or a second launch) shows it.
+                    StartHidden = startHidden,
                 },
                 new HarnessOptions { Frames = frames, Screenshot = screenshot });
         }
@@ -195,6 +211,9 @@ public static partial class Shell
         }
         finally
         {
+            // The icon FIRST (tray plan §7.6). It normally left already, on the UI thread, with the close that ended the
+            // loop; this is the belt for a loop that ended any other way.
+            Tray.Host.Shutdown();
             // The shell's unmount cleanup never runs on shutdown (the host does not unmount the tree), so a pending
             // debounced save would be LOST. These three are the only documents that can be mid-debounce.
             Session.Flush();
@@ -251,6 +270,7 @@ public static partial class Shell
         Spotify.Post = post;
         Store.Post = post;
         Wavee.Palette.Post = post;
+        Sidebar.Activate(post);          // the sidebar store's write completions and the binder's publishes land on the UI thread
 
         // THE frame tick. `Fetch.Pump()` is how an expired backoff re-sends with nothing else happening, and
         // `Palette.Tick()` is how the grading debounce fires; both are two comparisons when idle. It rides the host's
@@ -339,13 +359,32 @@ public static partial class Shell
             // session actually gives the scheme back rather than leaving a stale association behind.
             if (Platform.Settings.Get(Platform.Keys.HandleSpotifyLinks)) ProtocolRegistrar.RegisterProtocol("spotify", exe, "Wavee");
             else ProtocolRegistrar.UnregisterProtocol("spotify");
-            // Same both-directions contract for "start Wavee when I sign in".
-            if (Platform.Settings.Get(Platform.Keys.StartOnLogin)) ProtocolRegistrar.RegisterStartup("Wavee", exe);
-            else ProtocolRegistrar.UnregisterStartup("Wavee");
         }
         catch (Exception ex)
         {
             Log.Warn("app", "wavee:// protocol registration failed", ex);
+        }
+        SyncStartupRegistration();
+    }
+
+    /// <summary>UNPACKAGED ONLY (the manifest owns a packaged build's StartupTask). "Start Wavee when I sign in" follows
+    /// the setting in BOTH directions, and the Run value carries <c>--tray</c> exactly when a sign-in launch may start
+    /// hidden (<see cref="Tray.StartupArguments"/>). Called at startup and by <c>Tray.Host.OnSettingsChanged</c>, so a
+    /// toggle reaches the NEXT sign-in rather than the one after the next launch. Fail-soft.</summary>
+    public static void SyncStartupRegistration()
+    {
+        if (PackageIdentity.IsPackaged || Environment.ProcessPath is not { Length: > 0 } exe) return;
+        try
+        {
+            if (Platform.Settings.Get(Platform.Keys.StartOnLogin))
+                ProtocolRegistrar.RegisterStartup("Wavee", exe, Tray.StartupArguments(
+                    Platform.Settings.Get(Platform.Keys.TrayStartHidden),
+                    Tray.ModeFrom(Platform.Settings.Get(Platform.Keys.TrayIconMode))));
+            else ProtocolRegistrar.UnregisterStartup("Wavee");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("app", "start-on-login registration failed", ex);
         }
     }
 
@@ -353,47 +392,29 @@ public static partial class Shell
 
     static string s_pendingActivation = "";
 
-    /// <summary>A second launch's payload, redirected here by the single-instance gate. Fires on the gate's thread, so
-    /// it only PARKS the payload; the shell drains it on the UI thread.</summary>
+    /// <summary>A second launch's payload, redirected here by the single-instance gate. The engine delivers it on the UI
+    /// thread, parked frames included, so a tray-hidden Wavee hears it. It PARKS the payload for the shell's drain, which
+    /// runs it through <see cref="ApplyDeepLink"/> — and that door decides whether the window comes up. A bare relaunch
+    /// never reaches the door (there is nothing to drain), so it wakes here.</summary>
     static void OnActivationRedirected(string raw)
     {
-        Volatile.Write(ref s_pendingActivation, raw ?? "");
-        WakeWindow();
+        raw ??= "";
+        Volatile.Write(ref s_pendingActivation, raw);
+        if (raw.Length == 0 && Tray.WakeFor(DeepLinkKind.None)) Tray.Host.ShowWindow();
     }
 
     /// <summary>The payload waiting to be applied, taken atomically. `Shell.UI.cs` polls this from a UI-thread effect;
     /// a toast activation reaches the same door through <c>Notify.HostInstall</c>'s hop.</summary>
     public static string TakePendingActivation() => Interlocked.Exchange(ref s_pendingActivation, "");
 
-    /// <summary>Bring the window to the foreground when a second launch or a toast asks for it. A minimized window is
-    /// RESTORED first: <c>SetForegroundWindow</c> on an iconic window raises a window nobody can see.</summary>
-    public static void WakeWindow()
-    {
-        nint hwnd = FluentApp.WindowHandle;
-        if (hwnd == 0) return;
-        ShowWindow(hwnd, IsIconic(hwnd) ? SwRestore : SwShow);
-        SetForegroundWindow(hwnd);
-    }
-
-    const int SwShow = 5, SwRestore = 9;
-
-    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    private static partial bool SetForegroundWindow(nint hWnd);
-
-    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    private static partial bool ShowWindow(nint hWnd, int nCmdShow);
-
-    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    private static partial bool IsIconic(nint hWnd);
-
     /// <summary>THE deep-link door. Every intake — an OS protocol activation, a redirected second launch, a toast
-    /// click, the play-a-link dialog — arrives here, so a toast can never reach a destination a link cannot.</summary>
+    /// click, the play-a-link dialog — arrives here, so a toast can never reach a destination a link cannot. The door
+    /// also decides whether the window comes up (<see cref="Tray.WakeFor"/>): an open, a play, a report or an unknown
+    /// payload un-hides, restores and fronts it; a jump-list Pause / Resume and <c>wavee://quit</c> never do.</summary>
     public static void ApplyDeepLink(ReadOnlySpan<char> raw)
     {
         var verb = DeepLink(raw, Platform.Settings.Get(Platform.Keys.DeveloperMode));
+        if (Tray.WakeFor(verb.Kind)) Tray.Host.ShowWindow();
         switch (verb.Kind)
         {
             case DeepLinkKind.Open:
@@ -411,6 +432,9 @@ public static partial class Shell
                 break;
             case DeepLinkKind.Report:
                 OnReportRequested?.Invoke(verb.Arg);
+                break;
+            case DeepLinkKind.Quit:
+                Tray.Host.Quit();   // the latch first: a quit is never turned into a hide by close-to-tray
                 break;
             default:
                 Log.Warn("nav", "deeplink.refused: " + raw.ToString());
@@ -606,6 +630,11 @@ public static partial class Shell
         {
             // The first render is the earliest point the engine's poster exists; the marshallers queued until now.
             AttachUiPoster(UsePost());
+            // The notification-area icon. A SIGNAL effect, not a passive one: it runs NOW, inside the root mount on the
+            // UI thread, so a start-hidden window (which never paints, and passive effects drain only in Paint) still
+            // gets its icon. It re-runs on the auth fold, the culture epoch and a seam attach — reads that subscribe the
+            // effect, never this render. A no-op unless Shell.Run armed the tray.
+            UseSignalEffect(static () => Tray.Host.Watch());
             return RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
         }
     }

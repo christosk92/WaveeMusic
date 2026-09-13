@@ -41,13 +41,10 @@
 //   - SidebarProjectionBinderTests.cs's row-planner facts (SidebarRowPlanner.Build/BuildRail for Extension sections,
 //     the EntityQuery include/exclude-uri facts): SidebarRowPlanner belongs to Sidebar.cs's PLAN region, never named
 //     in this task's authoritative type list either.
-//   - SidebarProjectionBinder's own Sync/Invalidate/CurrentInput/Revision/StateOf/AvailabilityOf as an INTEGRATION
-//     test: Rebuild() reads through the process-wide `Sidebar` static service (Design/V3Filter/Pins/Layout/…), which
-//     needs `Sidebar.Boot()` — and `Boot()` calls `LoadDocument()` against `Sidebar.Store` (`SidebarLayoutStore.
-//     ForApp()`), a `static readonly` field that touches the REAL `sidebar-layout.json` under `%LOCALAPPDATA%` with
-//     no test seam (unlike `Platform.Settings`, which `Platform.UseSettings` can swap for `MemoryAppSettings`).
-//     Exercising the binder's gate would mean either touching the real profile (forbidden) or adding a seam to
-//     production code this task does not own. Reported, not worked around.
+//   - SidebarProjectionBinder's integration facts live in SidebarWiringTests.cs now that the seams exist:
+//     `Sidebar.Store` is lazy with `Sidebar.UseStore(...)` (no real profile touched) and the binder takes its two
+//     shell logs through `ISidebarRecencyLogs`. The rebuild gate, the recency wiring and InputVersion are ported
+//     there; StateOf/AvailabilityOf over a live host still are not.
 //   - The Build-integration half of the FirstSeen facts (rebuild stability / prune-and-persist through
 //     `SidebarProjection.Build`) is not ported yet. It became reachable once an undated edge (AddedAt == 0) stopped
 //     converting to the epoch; `An_undated_playlist_falls_back_to_its_first_seen_stamp` pins that fallback. The pure
@@ -650,15 +647,24 @@ public class SidebarProjectionEdgeFacts
         me.Replace(LibraryEdgeKind.SavedShows, targets, payload, EdgeState.Complete, targets.Length);
     }
 
-    // Rootlist row builders. MISMATCH (see the port report): a folder's pin/route identity is derived from its
-    // FolderStart edge's own Position ("folder:<position>") — there is no separate FolderId column — so it is
-    // stable across a RENAME but MOVES if the folder itself is repositioned in the rootlist.
+    // Rootlist row builders. Folder identity is the rootlist GROUP id the wire carries (decision D10,
+    // `RootlistEdge.FolderId`): the row's FolderId is the bare hex, its Id is "folder:<hex>", its children's
+    // ParentFolderId is the bare hex — stable across a rename AND a move. The edges are built through `with` rather
+    // than the positional constructor, so these builders do not depend on where the column sits in the record.
     static (int Target, RootlistEdge Edge) Item(Playlist p, byte depth, int addedAt = 0) =>
-        (p.Slot, new RootlistEdge(0, depth, (byte)RootlistKind.Item, StringId.Empty, addedAt));
-    static (int Target, RootlistEdge Edge) FolderStart(ushort position, byte depth, string name) =>
-        (Table.None, new RootlistEdge(position, depth, (byte)RootlistKind.FolderStart, Entities.Strings.Intern(name), 0));
+        (p.Slot, default(RootlistEdge) with { Depth = depth, Kind = (byte)RootlistKind.Item, AddedAt = addedAt });
+    static (int Target, RootlistEdge Edge) FolderStart(ushort position, byte depth, string name, string? hex = null) =>
+        (Table.None, default(RootlistEdge) with
+        {
+            Position = position, Depth = depth, Kind = (byte)RootlistKind.FolderStart,
+            FolderName = Entities.Strings.Intern(name),
+            FolderId = Entities.Strings.Intern(hex ?? HexOf(position)),
+        });
     static (int Target, RootlistEdge Edge) FolderEnd(byte depth) =>
-        (Table.None, new RootlistEdge(0, depth, (byte)RootlistKind.FolderEnd, StringId.Empty, 0));
+        (Table.None, default(RootlistEdge) with { Depth = depth, Kind = (byte)RootlistKind.FolderEnd });
+
+    /// <summary>A deterministic 16-hex group id per fixture position ("0000000000000001" …).</summary>
+    static string HexOf(int position) => position.ToString("x16", System.Globalization.CultureInfo.InvariantCulture);
 
     static void SetRootlist(User me, params (int Target, RootlistEdge Edge)[] rows)
     {
@@ -841,8 +847,9 @@ public class SidebarProjectionEdgeFacts
 
         var cafe = rows[1];
         Assert.True(cafe.IsFolder);
-        Assert.Equal("folder:1", cafe.Id);
-        Assert.Equal("folder:1", cafe.FolderId);
+        Assert.Equal("folder:" + HexOf(1), cafe.Id);             // the pin id: ForFolder(group hex)
+        Assert.Equal(HexOf(1), cafe.FolderId);                   // the BARE group hex, 0.2.9's convention
+        Assert.Equal("", cafe.ParentFolderId);                   // top level
         Assert.Equal(2, cafe.ChildCount);                       // two DIRECT playlist children
         Assert.Null(cafe.RouteKey);
         Assert.Equal("", cafe.Uri);
@@ -850,9 +857,9 @@ public class SidebarProjectionEdgeFacts
         Assert.Equal(2, cafe.MosaicTiles!.Count);                // the folder mosaic (unlike a playlist's) still ports
 
         Assert.Equal(1, rows[2].Depth);
-        Assert.Equal("folder:1", rows[2].FolderId);
+        Assert.Equal(HexOf(1), rows[2].FolderId);
         Assert.Equal("Cafe & chill", rows[2].FolderName);
-        Assert.Equal("folder:1", rows[2].ParentFolderId);
+        Assert.Equal(HexOf(1), rows[2].ParentFolderId);
         Assert.Equal("Cafe & chill", rows[2].ParentFolderName);
 
         for (int i = 0; i < rows.Count; i++) Assert.Equal(i, rows[i].SourceOrder);   // rootlist order, folders included
@@ -879,10 +886,59 @@ public class SidebarProjectionEdgeFacts
             FolderEnd(depth: 0));
 
         var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: true);
-        var outer = rows.Find(r => r.Id == "folder:1");
-        var inner = rows.Find(r => r.Id == "folder:2");
+        var outer = rows.Find(r => r.Id == "folder:" + HexOf(1));
+        var inner = rows.Find(r => r.Id == "folder:" + HexOf(2));
         Assert.Equal(2, outer.ChildCount);     // "A" and the "Inner" sub-folder, both direct children
         Assert.Equal(1, inner.ChildCount);     // "Deep"
+        Assert.Equal(HexOf(1), inner.ParentFolderId);   // a sub-folder's parent is the enclosing folder's bare hex
+    }
+
+    /// <summary>D10: a folder's identity is its GROUP id, so moving it — or putting a new folder in front of it — keeps
+    /// its id, its expansion key and its pin; the old position-derived id moved with every reorder.</summary>
+    [Fact]
+    public void A_moved_folder_keeps_its_group_id()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var a = StagePlaylist(s, "spotify:playlist:a", "A", null, 0, PlaylistCaps.None);
+        var b = StagePlaylist(s, "spotify:playlist:b", "B", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me,
+            FolderStart(position: 0, depth: 0, name: "Mixes", hex: "6a1f2c"),
+            Item(a, depth: 1),
+            FolderEnd(depth: 0),
+            Item(b, depth: 0));
+        var (before, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: true);
+
+        SetRootlist(me,
+            Item(b, depth: 0),
+            FolderStart(position: 1, depth: 0, name: "Mixes renamed", hex: "6a1f2c"),
+            Item(a, depth: 1),
+            FolderEnd(depth: 0));
+        var (after, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: true);
+
+        var was = before.Find(r => r.IsFolder);
+        var now = after.Find(r => r.IsFolder);
+        Assert.Equal("folder:6a1f2c", was.Id);
+        Assert.Equal(was.Id, now.Id);
+        Assert.Equal("6a1f2c", now.FolderId);
+        Assert.Equal("6a1f2c", after.Find(r => r.Name == "A").ParentFolderId);
+        // The expansion predicate is asked with the bare hex — the key a 0.2.9 `v3.expandedFolders` array holds.
+        var (expanded, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: false, expanded: id => id == "6a1f2c");
+        Assert.Contains(expanded, r => r.Name == "A");
+    }
+
+    /// <summary>A FolderStart that arrived without a group id still gets a row key unique within the tree, and one no
+    /// real hex id, pin or synced uri can collide with.</summary>
+    [Fact]
+    public void A_folder_without_a_group_id_is_keyed_by_its_position_under_a_non_hex_prefix()
+    {
+        TestScope.Fresh();
+        var edge = default(RootlistEdge) with { Position = 7, Kind = (byte)RootlistKind.FolderStart };
+        Assert.Equal("~7", SidebarProjection.FolderIdOf(in edge));
+        Assert.True(EntityUri.FolderIdOf("spotify:folder:~7").IsEmpty);
     }
 
     [Fact]
@@ -907,7 +963,7 @@ public class SidebarProjectionEdgeFacts
         Assert.Equal(new[] { "Top", "Cafe & chill" }, Names(collapsed));
 
         var (expanded, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: false,
-            expanded: id => id == "folder:1");
+            expanded: id => id == HexOf(1));
         Assert.Equal(new[] { "Top", "Cafe & chill", "Inner one", "Inner two" }, Names(expanded));
     }
 
@@ -1284,6 +1340,18 @@ public class SidebarBinderTriggersFacts
         var before = new SidebarBinderTriggers(PlaybackEpoch: 4L << 20);
         Assert.NotEqual(before, before with { PlaybackEpoch = 5L << 20 });
         Assert.NotEqual(before.Fold(), (before with { PlaybackEpoch = (4L << 20) ^ 99 }).Fold());
+    }
+
+    /// <summary>G-180: the row-version lane and the feed-table lane are real lanes — both halves of their 64 bits reach
+    /// the fold, so a hydration of a sidebar row (or of a demanded feed's table) is a rebuild.</summary>
+    [Fact]
+    public void ALibraryRowOrFeedTableChange_TriggersARebuild()
+    {
+        var before = new SidebarBinderTriggers(LibraryRows: 0x1234_5678_0000_0001L, FeedTables: 7L);
+        Assert.NotEqual(before.Fold(), (before with { LibraryRows = 0x1234_5678_0000_0002L }).Fold());
+        Assert.NotEqual(before.Fold(), (before with { LibraryRows = 0x1234_5679_0000_0001L }).Fold());
+        Assert.NotEqual(before.Fold(), (before with { FeedTables = 8L }).Fold());
+        Assert.NotEqual(before.Fold(), (before with { FeedTables = 7L | (1L << 40) }).Fold());
     }
 }
 

@@ -137,6 +137,25 @@ public static partial class Tray
     public static bool ForegroundAtClick(bool foregroundNow, long msSinceDeactivated)
         => foregroundNow || msSinceDeactivated is >= 0 and <= ClickActivationGraceMs;
 
+    /// <summary>Feeds <see cref="ForegroundAtClick"/>: the host observes every foreground change (a WinEvent hook, armed
+    /// only while a hide mode is on) and this keeps the moment Wavee LEFT the front. -1 = in front, or never left it.</summary>
+    public struct ForegroundLatch
+    {
+        bool _front, _lost;
+        long _lostAtMs;
+
+        public void Seed(bool waveeInFront) { _front = waveeInFront; _lost = false; }
+
+        public void Observe(bool waveeInFront, long nowMs)
+        {
+            if (_front && !waveeInFront) { _lost = true; _lostAtMs = nowMs; }   // only the Wavee → elsewhere edge stamps
+            else if (waveeInFront) _lost = false;
+            _front = waveeInFront;
+        }
+
+        public readonly long MsSinceDeactivated(long nowMs) => _lost ? Math.Max(0L, nowMs - _lostAtMs) : -1;
+    }
+
     /// <summary>Left click / Enter / Space. Hidden or minimized → show. Behind other windows, or no hide mode on → bring
     /// to front. In front with a hide mode on → hide, except for the second NIN_SELECT of a double-click whose first
     /// click just showed the window (a double-click must never flash Wavee and hide it again).</summary>
@@ -188,7 +207,9 @@ public static partial class Tray
         => s_files[(theme == TaskbarTheme.Light ? 3 : 0) + (glyph switch { Glyph.Offline => 1, Glyph.Update => 2, _ => 0 })];
 
     /// <summary>The frames every tray .ico carries (ops/build/generate-tray-icons.ps1).</summary>
-    public static ReadOnlySpan<int> Frames => [16, 20, 24, 32, 40, 48];
+    static readonly int[] s_frames = [16, 20, 24, 32, 40, 48];
+    /// <remarks>Backed by a static array: a collection-expression span property allocates on every read in a Debug build.</remarks>
+    public static ReadOnlySpan<int> Frames => s_frames;
 
     /// <summary>SM_CXSMICON at <paramref name="dpi"/> — MulDiv(16, dpi, 96), what the taskbar draws the icon at.</summary>
     public static int SmallIconMetric(uint dpi) => dpi == 0 ? 16 : (int)((16UL * dpi + 48UL) / 96UL);

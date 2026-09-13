@@ -157,10 +157,21 @@ public class LyricsDofRampTests
     [Fact]
     public void A_decrease_eases_with_a_65ms_time_constant_95_percent_in_200ms()
     {
-        float c = Lyrics.DofRamp.Step(4f, 0f, 200f, out bool landed);
+        // Two 100 ms frames: each step's dt is clamped to DtMaxMs (0.2.9 LyricsView.cs:1625), so 200 ms of easing is
+        // two steps, and together they cover exp(-200/65).
+        float c = Lyrics.DofRamp.Step(4f, 0f, 100f, out bool landed);
+        Assert.False(landed);
+        c = Lyrics.DofRamp.Step(c, 0f, 100f, out landed);
         Assert.False(landed);
         LyrNear.Eq(4f * MathF.Exp(-200f / 65f), c, 0.001f);
         Assert.True(c < 4f * 0.05f);
+    }
+
+    [Fact]
+    public void A_long_frame_gap_is_clamped_to_one_hundred_ms_of_easing()
+    {
+        float c = Lyrics.DofRamp.Step(4f, 0f, 200f, out _);
+        LyrNear.Eq(4f * MathF.Exp(-Lyrics.DofRamp.DtMaxMs / Lyrics.DofRamp.TauMs), c, 0.001f);
     }
 
     [Fact]

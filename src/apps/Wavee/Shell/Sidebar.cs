@@ -2753,6 +2753,9 @@ public enum SidebarDropRefusal : byte
     /// <summary>The geometry is degenerate (no plan row, no viewport, no scene) — refuse with a reason rather than
     /// guess a placement.</summary>
     Unavailable = 7,
+    /// <summary>The library write this gesture needs has no seam installed (<c>Sidebar.LibraryWrites</c> or the one
+    /// member of it) — the "never a silent no-op" arm of every drop, "+" and menu verb that writes the library.</summary>
+    WritesUnavailable = 8,
 }
 
 /// <summary>One localized sentence per refusal, keyed by the RAW dotted loc key (verified present in
@@ -2771,6 +2774,7 @@ public static class SidebarDropRefusalText
         SidebarDropRefusal.NoOp => "drag.alreadyThere",
         SidebarDropRefusal.SortedList => "drag.clearSortingToReorder",
         SidebarDropRefusal.NotLoaded => "drag.stillLoading",
+        SidebarDropRefusal.WritesUnavailable => "drag.libraryUnavailable",
         _ => "",
     };
 }
@@ -4107,10 +4111,13 @@ public static class SidebarSearch
 // of each field changed. Flavor stays DERIVED (Playlist.IsOwner / owner name / Playlist.Editable), never a stored
 // column, so "the data does not say ⇒ None" survives.
 //
-// GAP: RootlistEdge carries FolderName but no FolderId (contract §8's snippet). A folder's pin/route identity is
-// therefore derived from its FolderStart edge's own Position, formatted as "folder:<position>" — stable across a
-// rebuild, but it MOVES if the folder itself is repositioned in the rootlist. The honest fix is an Edges.cs column
-// (RootlistEdge.FolderId), reported rather than invented here.
+// FOLDER IDENTITY (decision D10, 0.2.9's convention): a folder's identity is the rootlist GROUP id the wire carries
+// (`spotify:start-group:<hex>:<name>`), landed on its FolderStart edge as `RootlistEdge.FolderId`. The row's
+// `FolderId` is the BARE hex, its `Id` is `SidebarPinId.ForFolder(hex)` ("folder:<hex>"), and every child's
+// `ParentFolderId` is the bare hex of the folder it sits in — so a folder keeps its expansion, its pin and its sync
+// identity when it is renamed OR moved, and `v3.expandedFolders` / folder pins written by 0.2.9 match again. A
+// FolderStart that arrived WITHOUT a group id (a malformed answer) is keyed "~<position>": unique within the tree so
+// the list can still key its rows, and unable to collide with any real hex id, a persisted pin or a synced uri.
 // GAP: a cover-less playlist's own 2×2 mosaic (0.2.9's PlaylistSummary.MosaicTiles, built from the playlist's own
 // track covers) has no Entities equivalent; a playlist row's MosaicTiles is always null. The FOLDER mosaic (first ≤4
 // CHILD playlist covers) is unaffected and ports in full.
@@ -4255,7 +4262,7 @@ public static class SidebarProjection
             {
                 case RootlistKind.FolderStart:
                 {
-                    string folderId = SidebarPinId.FolderPrefix + ((int)edge.Position).ToString(CultureInfo.InvariantCulture);
+                    string folderId = FolderIdOf(in edge);
                     string folderName = Entities.Strings.Resolve(edge.FolderName);
                     bool descend = includeFolderChildren || !wantFolders || (isFolderExpanded?.Invoke(folderId) ?? false);
                     int rowIndex = -1;
@@ -4265,7 +4272,7 @@ public static class SidebarProjection
                         string parentName = stack.Count > 0 ? stack[stack.Count - 1].Name : "";
                         rowIndex = into.Count;
                         into.Add(new SidebarLibraryEntry(
-                            folderId, SidebarEntryKind.Folder, "", folderName, "",
+                            SidebarPinId.ForFolder(folderId), SidebarEntryKind.Folder, "", folderName, "",
                             StringId.Empty, null, 0, 0,
                             SortStamp: 0, LastVisitedTicksUtc: 0,
                             SourceOrder: order++, Depth: edge.Depth, Circular: false, Flavor: SidebarPlaylistFlavor.None)
@@ -4403,6 +4410,15 @@ public static class SidebarProjection
 
     // ── helpers ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>A FolderStart edge's group id — the bare hex the wire named the folder with (see the region header), or
+    /// "~&lt;position&gt;" for a folder that arrived without one. The interned string is returned as-is: no
+    /// allocation for a well-formed folder.</summary>
+    public static string FolderIdOf(in RootlistEdge edge)
+    {
+        string hex = Entities.Strings.Resolve(edge.FolderId);
+        return hex.Length > 0 ? hex : "~" + ((int)edge.Position).ToString(CultureInfo.InvariantCulture);
+    }
+
     static string OwnerNameOf(in Playlist p)
     {
         var owner = p.Owner;
@@ -4452,7 +4468,9 @@ public readonly record struct SidebarBinderTriggers(
     int V3State = 0,        // packed filter | qualifier | sort | desc | design
     int SearchHash = 0,
     int SourceEpoch = 0,    // bumped by the binder when any registered source raises Changed
-    long PlaybackEpoch = 0) // queue revision + now-playing identity
+    long PlaybackEpoch = 0, // queue revision + now-playing identity
+    long LibraryRows = 0,   // SidebarLibraryFingerprint: the row versions of every entity the projection reads
+    long FeedTables = 0)    // the publication counters of the tables a DEMANDED feed reads (queue, top tracks, concerts)
 {
     /// <summary>Pack the V3 view state (+ the active design) into one lane. Ints, not the enums, because that is how
     /// the preferences store them.</summary>
@@ -4480,13 +4498,100 @@ public readonly record struct SidebarBinderTriggers(
             h = Mix(h, (uint)SourceEpoch);
             h = Mix(h, (uint)PlaybackEpoch);
             h = Mix(h, (uint)(PlaybackEpoch >> 32));
+            h = Mix(h, (uint)LibraryRows);
+            h = Mix(h, (uint)(LibraryRows >> 32));
+            h = Mix(h, (uint)FeedTables);
+            h = Mix(h, (uint)(FeedTables >> 32));
             return (long)h;
         }
     }
 
-    static ulong Mix(ulong h, uint v)
+    static ulong Mix(ulong h, uint v) => SidebarLibraryFingerprint.Mix(h, v);
+}
+
+/// <summary>
+/// THE REBUILD GATE'S CONTENT LANE (G-180, sidebar decision D8). Every table the projection joins — Playlists, Users,
+/// Albums, Artists, Shows — publishes <c>Changed</c> for ANY row in the app, so a gate on those counters rebuilds the
+/// whole three-pass library every time an unrelated album page hydrates. Every row, though, carries a generational
+/// <c>Version</c> that bumps on each write to THAT row (<c>Table.Version</c>, D8). This folds exactly the rows the
+/// projection reads — the rootlist's playlists and their owners, the saved albums with their first three billed
+/// artists, the followed artists, the saved shows, and the entity rows an unlisted pin resolves through — into one
+/// 64-bit value: a hydration of a sidebar row moves it, a hydration anywhere else does not.
+///
+/// <para>Zero allocation, a few column loads per library row, no string ever materialised: cheap enough to run on
+/// every pump wake. Folder markers carry no row (their names ride the rootlist edge, whose own version is in
+/// <c>LibraryEpoch</c>).</para>
+/// </summary>
+public static class SidebarLibraryFingerprint
+{
+    /// <summary>The FNV-1a offset basis every sidebar fold starts from.</summary>
+    public const ulong Seed = 1469598103934665603UL;
+
+    /// <summary>One FNV-1a step.</summary>
+    public static ulong Mix(ulong h, uint v)
     {
         unchecked { h ^= v; h *= 1099511628211UL; return h; }
+    }
+
+    /// <summary>The fold for <paramref name="u"/>'s library plus <paramref name="extra"/> rows (an unlisted pin's
+    /// entity). An out-of-range or zero slot folds a constant, so a hole cannot alias a real row's version.</summary>
+    public static long Of(in User u, ReadOnlySpan<EntityRef> extra)
+    {
+        var scope = Entities.Current;
+        var edges = scope.Edges;
+        ulong h = Seed;
+
+        var playlists = scope.Playlists;
+        var users = scope.Users;
+        var rootlist = u.RootlistSlots;
+        for (int i = 0; i < rootlist.Length; i++) h = PlaylistRow(h, playlists, users, rootlist[i]);
+
+        var albums = scope.Albums;
+        var artists = scope.Artists;
+        var saved = u.SavedAlbumSlots;
+        for (int i = 0; i < saved.Length; i++)
+        {
+            int slot = saved[i];
+            h = Row(h, albums, slot);
+            if ((uint)slot >= (uint)albums.Count) continue;
+            h = Mix(h, edges.AlbumArtists.Version(slot));
+            var billed = edges.AlbumArtists.Targets(slot);
+            int n = billed.Length < 3 ? billed.Length : 3;
+            for (int j = 0; j < n; j++) h = Row(h, artists, billed[j]);
+        }
+
+        var followed = u.FollowedArtistSlots;
+        for (int i = 0; i < followed.Length; i++) h = Row(h, artists, followed[i]);
+
+        var shows = scope.Shows;
+        var savedShows = u.SavedShowSlots;
+        for (int i = 0; i < savedShows.Length; i++) h = Row(h, shows, savedShows[i]);
+
+        for (int i = 0; i < extra.Length; i++)
+        {
+            var r = extra[i];
+            h = r.Kind switch
+            {
+                EntityKind.Playlist => PlaylistRow(h, playlists, users, r.Slot),
+                EntityKind.Album => Row(h, albums, r.Slot),
+                EntityKind.Artist => Row(h, artists, r.Slot),
+                EntityKind.Show => Row(h, shows, r.Slot),
+                _ => Mix(h, 0xFFFF_FFFFu),
+            };
+        }
+        return (long)h;
+    }
+
+    static ulong Row(ulong h, Table table, int slot)
+        => slot > Table.None && slot < table.Count ? Mix(h, table.Version[slot]) : Mix(h, 0xFFFF_FFFEu);
+
+    // A playlist row names its OWNER through the Users table (the creator line and the ByYou/BySpotify flavor), so the
+    // owner row's version rides with it.
+    static ulong PlaylistRow(ulong h, PlaylistTable playlists, Table users, int slot)
+    {
+        h = Row(h, playlists, slot);
+        if (slot <= Table.None || slot >= playlists.Count) return h;
+        return Row(h, users, playlists.Owner[slot]);
     }
 }
 
@@ -4945,6 +5050,61 @@ public static class SidebarSourceMap
             FolderId = "", FolderName = "",
             FirstArtistName = artists.Length > 0 ? new Artist(artists[0]).Name : "",
         };
+    }
+
+    /// <summary>One EPISODE as a sidebar row — the queue's and now-playing's other playable kind (G-173). The same TRACK
+    /// row kind (it plays, it never navigates, it is never pinnable), with the show as its creator line and the show's
+    /// art standing in for an episode that has none of its own.</summary>
+    public static SidebarLibraryEntry FromEpisode(Episode e, int order, long stampMs = 0)
+    {
+        var show = e.Show;
+        bool hasShow = show.Slot > Table.None;
+        string uri = e.Uri.Text;
+        var image = e.ImageId.IsEmpty && hasShow ? show.ImageId : e.ImageId;
+        return new SidebarLibraryEntry(uri, SidebarEntryKind.Track, uri,
+            Entities.Strings.Resolve(e.TitleId), hasShow ? show.Title : "",
+            image, null,
+            ChildCount: 0, AddedAtMs: 0,
+            SortStamp: stampMs,
+            LastVisitedTicksUtc: 0,
+            SourceOrder: order, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        {
+            FolderId = "", FolderName = "", FirstArtistName = "",
+        };
+    }
+
+    /// <summary>Append ONE playable row — a track or an episode — for a queue / now-playing ref. False (nothing added)
+    /// for a ref that is neither kind, points at no row, or names a uri already in this source's slice of
+    /// <paramref name="into"/> (from <paramref name="sliceStart"/>: the pool is shared by every contributed section, and
+    /// a track queued AND playing belongs in both sections; a queue legitimately repeats a track, the row KEY must not).</summary>
+    public static bool TryAddPlayable(EntityRef row, List<SidebarLibraryEntry> into, int order, int sliceStart = 0)
+    {
+        if (row.IsNone) return false;
+        SidebarLibraryEntry entry;
+        switch (row.Kind)
+        {
+            case EntityKind.Track:
+            {
+                var t = new Track(row.Slot);
+                if (!t.IsValid) return false;
+                entry = FromTrack(t, order);
+                break;
+            }
+            case EntityKind.Episode:
+            {
+                var e = new Episode(row.Slot);
+                if (!e.IsValid) return false;
+                entry = FromEpisode(e, order);
+                break;
+            }
+            default:
+                return false;
+        }
+        if (entry.Uri.Length == 0) return false;
+        for (int i = sliceStart < 0 ? 0 : sliceStart; i < into.Count; i++)
+            if (string.Equals(into[i].Id, entry.Id, StringComparison.Ordinal)) return false;
+        into.Add(entry);
+        return true;
     }
 
     /// <summary>Append up to <paramref name="max"/> tracks. Deduped by uri — a queue legitimately repeats a track, but
@@ -5524,6 +5684,10 @@ public static class SidebarPinId
         // Playlists are pinnable from either provider (Spotify AND session-local `wavee:playlist:*`);
         // album/artist/show stay Spotify-only, as the schemes were.
         var u when EntityUri.KindOf(u) == EntityKind.Playlist => PlaylistPrefix + u,
+        // A rootlist folder's wire uri (`spotify:folder:<hex>`) — the spelling a folder DRAG payload carries, so a folder
+        // dropped on the pin band pins exactly like one pinned from its menu (PinSyncRules.TryPinId is the same map).
+        // Ahead of the Parse arms: a folder uri is not a catalogue entity and must not be interned as one.
+        var u when EntityUri.FolderIdOf(u).Length > 0 => ForFolder(EntityUri.FolderIdOf(u).ToString()),
         var u when EntityUri.Parse(u) is { Provider: EntityProvider.Spotify, Kind: EntityKind.Album } => AlbumPrefix + u,
         var u when EntityUri.Parse(u) is { Provider: EntityProvider.Spotify, Kind: EntityKind.Artist } => ArtistPrefix + u,
         var u when EntityUri.Parse(u) is { Provider: EntityProvider.Spotify, Kind: EntityKind.Show } => ShowPrefix + u,
@@ -5684,6 +5848,19 @@ public static class PinRowRule
     {
         if (!hasStore || string.IsNullOrEmpty(pinId)) return PinRowKind.None;
         return isPinned ? PinRowKind.Unpin : PinRowKind.Pin;
+    }
+}
+
+/// <summary>What the folder rename prompt commits (G-171, 0.2.9 <c>FolderActions.Rename</c>): the TRIMMED text, or null
+/// when there is nothing to send — a blank name (a folder with no name is indistinguishable in a list of folders) or
+/// the name it already has (a no-op write that would still round-trip the rootlist and toast).</summary>
+public static class SidebarFolderRename
+{
+    public static string? Commit(string? typed, string current)
+    {
+        string next = (typed ?? "").Trim();
+        if (next.Length == 0 || string.Equals(next, current, StringComparison.Ordinal)) return null;
+        return next;
     }
 }
 
@@ -5897,6 +6074,25 @@ public static class SidebarEditPlan
 
         return new AddSection(payload.Kind, index, ParentId: null, Item: payload.Item, Extension: payload.Extension);
     }
+
+    /// <summary>Would a palette chip dropped on this card translate into a command at all? The allocation-free twin of
+    /// <see cref="ToAddSection"/>'s null arms, for a drop target's per-frame <c>accepts</c>: a CHILD card is not a
+    /// top-level slot, and a card the document no longer holds is nowhere — both must refuse with a sentence rather than
+    /// cue "Add here" and then do nothing.</summary>
+    public static bool CanAddBefore(SidebarCustomLayout? document, string? beforeSectionId)
+    {
+        if (document is null) return false;
+        if (beforeSectionId is not { Length: > 0 } id || IsPinnedCard(id)) return true;
+        var at = document.Locate(id);
+        return at.Index >= 0 && at.Parent is null;
+    }
+
+    /// <summary>Has the options popover lost its subject? It has once the edit session selects another section or none
+    /// (the popover's own "Remove section" clears the subject) and once the document stops holding the section (a remove
+    /// from the card menu, an undo of its add). A popover left open over "Select a section…" is the J2 leftover this
+    /// closes (G-184).</summary>
+    public static bool OptionsSubjectGone(string? selected, string subject, bool subjectInDocument)
+        => !subjectInDocument || !string.Equals(selected, subject, StringComparison.Ordinal);
 
     /// <summary>The section id at a band slot, or "" when the slot is out of the plan.</summary>
     public static string SectionIdAt(IReadOnlyList<SidebarRow>? rows, int bandStart, int bandCount, int slot)

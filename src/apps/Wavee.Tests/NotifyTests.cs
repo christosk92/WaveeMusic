@@ -598,3 +598,45 @@ public class ShutdownUpdatePolicyTests
         Assert.False(Notify.ShutdownUpdatePolicy.IsSettled(AppUpdateState.Available));
     }
 }
+
+// G-091: a toast tag/group built straight from a server id has no length guarantee, and Windows silently drops a
+// tag/group over 64 characters — the banner never raises, and nothing throws to say why.
+public class NotifyTagIdsTests
+{
+    [Fact]
+    public void A_short_id_keeps_the_plain_prefixed_tag()
+        => Assert.Equal("live:abc123", Notify.TagIds.Clamp("live:", "abc123"));
+
+    [Fact]
+    public void An_id_that_would_overrun_the_budget_folds_to_a_short_hash_instead_of_being_truncated()
+    {
+        string longId = new('x', 100);
+        string tag = Notify.TagIds.Clamp("live:", longId);
+        Assert.True(tag.Length <= Notify.TagIds.MaxLength);
+        Assert.StartsWith("live:", tag, StringComparison.Ordinal);
+        Assert.DoesNotContain("xxxx", tag, StringComparison.Ordinal);   // it is a hash, not a truncated copy
+    }
+
+    [Fact]
+    public void The_same_id_always_folds_to_the_same_tag_within_a_run()
+    {
+        string longId = new('y', 200);
+        Assert.Equal(Notify.TagIds.Clamp("live:", longId), Notify.TagIds.Clamp("live:", longId));
+    }
+
+    [Fact]
+    public void Two_different_long_ids_fold_to_different_tags()
+    {
+        string a = Notify.TagIds.Clamp("live:", new string('a', 100));
+        string b = Notify.TagIds.Clamp("live:", new string('b', 100));
+        Assert.NotEqual(a, b);
+    }
+
+    [Fact]
+    public void A_tag_landing_exactly_at_the_cap_is_left_alone()
+    {
+        // "live:" (5) + 59 chars = 64, exactly at the cap — must NOT be hashed.
+        string id = new('z', Notify.TagIds.MaxLength - "live:".Length);
+        Assert.Equal("live:" + id, Notify.TagIds.Clamp("live:", id));
+    }
+}

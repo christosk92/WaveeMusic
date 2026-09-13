@@ -263,6 +263,15 @@ public class PlayerBarDeviceRosterTests
         Assert.Equal(FluentGpu.Controls.Icons.Headphones, Shell.DeviceRoster.LocalGlyph(2));
         Assert.Equal(FluentGpu.Controls.Icons.ThisPc, Shell.DeviceRoster.LocalGlyph(9));
     }
+
+    // G-210: the device picker had no height cap of its own — a dozen Connect devices overran the window.
+    [Fact]
+    public void The_picker_caps_at_the_window_height_less_the_inset()
+        => Assert.Equal(900f - Shell.DeviceRoster.PickerWindowInset, Shell.DeviceRoster.PickerMaxHeight(900f));
+
+    [Fact]
+    public void A_tiny_window_still_leaves_a_usable_picker()
+        => Assert.Equal(Shell.DeviceRoster.PickerMinHeight, Shell.DeviceRoster.PickerMaxHeight(50f));
 }
 
 public class SeekRailRulesTests
@@ -400,5 +409,67 @@ public class TimeLabelRulesTests
         Assert.False(Shell.TimeLabel.OffersGoLive(line, isBehind: true));
         Assert.True(Shell.TimeLabel.RightSlotIsLive(true, true));
         Assert.False(Shell.TimeLabel.RightSlotIsLive(false, true));
+    }
+}
+
+public class PlayerBarFaultTitleTests
+{
+    // G-212: the bar printed "Can't play this track" for every Fault reason. One loc key per reason, and every
+    // non-None reason must resolve to something OTHER than the generic fallback, or the fix is a no-op in disguise.
+    [Fact]
+    public void Every_fault_reason_gets_its_own_title_key()
+    {
+        Assert.Equal(Strings.Player.Fault.Network, Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.Network));
+        Assert.Equal(Strings.Player.Fault.Unavailable, Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.Unavailable));
+        Assert.Equal(Strings.Player.Fault.DrmRequired, Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.DrmRequired));
+        Assert.Equal(Strings.Player.Fault.DecodeFailed, Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.DecodeFailed));
+        Assert.Equal(Strings.Player.Fault.RuntimeMissing, Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.RuntimeMissing));
+        Assert.Equal(Strings.Player.Fault.Unknown, Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.Unknown));
+    }
+
+    [Fact]
+    public void The_reasons_are_pairwise_distinct_keys()
+    {
+        var keys = new[]
+        {
+            Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.Network),
+            Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.Unavailable),
+            Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.DrmRequired),
+            Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.DecodeFailed),
+            Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.RuntimeMissing),
+        };
+        Assert.Equal(keys.Length, System.Linq.Enumerable.Distinct(keys).Count());
+    }
+
+    [Fact]
+    public void An_out_of_sequence_None_falls_back_to_the_generic_title_rather_than_throwing()
+        => Assert.Equal(Strings.Player.Fault.Unknown, Shell.PlayerBarRules.FaultTitleKey(Playback.Fault.None));
+}
+
+public class PlayerBarPlayNextDropCapTests
+{
+    // G-211: a dropped playlist/album had no batch cap at all — a large drop inserted every track with no truncation
+    // toast, and a null queue seam answered with total silence.
+    [Fact]
+    public void A_drop_under_the_cap_inserts_everything_and_is_not_truncated()
+    {
+        Assert.Equal(40, Shell.PlayerBarRules.DropInsertCount(40));
+        Assert.False(Shell.PlayerBarRules.DropWasTruncated(40));
+    }
+
+    [Fact]
+    public void A_drop_over_the_cap_inserts_only_the_cap_and_is_truncated()
+    {
+        int over = Shell.PlayerBarRules.MaxPlayNextDrop + 37;
+        Assert.Equal(Shell.PlayerBarRules.MaxPlayNextDrop, Shell.PlayerBarRules.DropInsertCount(over));
+        Assert.True(Shell.PlayerBarRules.DropWasTruncated(over));
+    }
+
+    [Fact]
+    public void A_drop_exactly_at_the_cap_is_not_truncated()
+    {
+        Assert.Equal(Shell.PlayerBarRules.MaxPlayNextDrop,
+            Shell.PlayerBarRules.DropInsertCount(Shell.PlayerBarRules.MaxPlayNextDrop));
+        Assert.False(Shell.PlayerBarRules.DropWasTruncated(Shell.PlayerBarRules.MaxPlayNextDrop));
     }
 }

@@ -34,7 +34,8 @@
     "addToQueue": "Add to queue",
     "playNext": "Play next",
     "cantMoveAcrossSections": "Can’t move across sections",
-    "reorderHint": "Drag to reorder"
+    "reorderHint": "Drag to reorder",
+    "libraryUnavailable": "Can’t change your library right now"
   },
   "detail": {
     "play": "Play",
@@ -367,7 +368,8 @@
     "goToAlbum": "Go to album",
     "collabOpen": "Open to collaboration",
     "collabCount": "{n, plural, one {# collaborator} other {# collaborators}}",
-    "collabView": "View collaborators"
+    "collabView": "View collaborators",
+    "queueUnavailable": "Can’t add to queue right now"
   },
   "artist": {
     "popular": "Popular",
@@ -1447,6 +1449,14 @@
       "fast": "Fast",
       "soft": "Soft",
       "strong": "Strong"
+    },
+    "fault": {
+      "network": "Can’t play — check your connection",
+      "unavailable": "This track isn’t available",
+      "drmRequired": "This track can’t play here",
+      "decodeFailed": "This track couldn’t be played",
+      "runtimeMissing": "Local playback needs a one-time setup",
+      "unknown": "Can’t play this track"
     }
   },
   "playback": {
@@ -2196,7 +2206,14 @@
       "notMe": "Not me",
       "free": "Spotify Free",
       "noAccount": "Don't have a Spotify account? Sign up",
-      "premiumNote": "Wavee needs Spotify Premium."
+      "premiumNote": "Wavee needs Spotify Premium.",
+      "rejected": "Spotify didn't accept that sign-in. Sign in again to keep listening.",
+      "refused": "Spotify couldn't sign you in right now. Try again in a moment.",
+      "denied": "Sign-in was cancelled.",
+      "browserUnavailable": "Wavee couldn't open your browser. Scan the code with your phone, or go to spotify.com/pair.",
+      "browserTimedOut": "The browser didn't come back to Wavee in time. Try again, or use the code instead.",
+      "codeUnavailable": "We couldn't get a code. Check your connection and try again.",
+      "openPairPage": "Open spotify.com/pair"
     },
     "localPlayback": {
       "header": "Set up local playback",
