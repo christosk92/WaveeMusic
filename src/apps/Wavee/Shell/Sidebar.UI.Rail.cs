@@ -299,7 +299,7 @@ public static partial class Sidebar
         {
             var nav = _nav ??= new SidebarFolderFlyoutNav(RootFolderId, RootFolderName);
             _ = _epoch.Value;
-            _ = Entries.Version.Value + FolderVersion.Value;   // THE live subscription (read, never peeked)
+            _ = (Binder?.Entries ?? Entries).Version.Value + FolderVersion.Value;   // THE live subscription: the binder's cell, which is the one that publishes (read, never peeked)
             var tree = Binder?.CurrentInput.PlaylistTree;
 
             int count = SidebarFolderTree.Children(tree, nav.Current.FolderId, _children);

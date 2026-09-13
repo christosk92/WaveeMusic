@@ -1,0 +1,33 @@
+# ogg320.wh - the Wave 3 gate (plan section 5) and the vorbis plan section 8.3 lines.
+# 10 s of a track through the real pump at the 320 rung, then a far seek, a ring seek and a seek back into what
+# has played, each with its request budget. Track: "Cut To The Feeling" (3:27), the Web API docs example.
+#
+# `set` and `quality` lines come BEFORE `volume`: the audio pump reads them when it boots, and volume boots it.
+# The reducer moves the position the moment a seek is posted, so a seek is proven by `wait seeked` (the pump's
+# own report, compared with the last `stats mark`) and by the position moving PAST the seek point.
+set cache on
+quality veryhigh
+volume 0.2
+stats mark
+play spotify:track:11dFghVXANMlKmJXsNCbNl
+wait playing timeout 20000
+expect cdn.requests<=4                          # cold start = head || resolve || key ; range 1 || tail (vorbis 5.4)
+wait position>=10s timeout 15000
+stats mark
+seek 2:00                                       # far: the first time in this region
+wait seeked timeout 5000
+expect cdn.requests<=2                          # <= 2 typical (vorbis 4.5 row 1)
+wait position>=2:02 && !buffering timeout 6000
+stats mark
+seek +5s                                        # inside the ring
+wait seeked timeout 3000
+expect cdn.requests==0
+stats mark
+seek 0:05                                       # back into what has played: at most one probe
+wait seeked timeout 5000
+expect cdn.requests<=1
+wait position>=0:07 && !buffering timeout 6000
+stats reset
+expect xruns==0                                 # the whole run
+stats
+quit

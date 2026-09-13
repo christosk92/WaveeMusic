@@ -1108,7 +1108,25 @@
       "startOnLogin": "Open Wavee when you sign in to Windows",
       "startOnLoginSub": "Starts in the background so playback is ready",
       "spotifyLinksPackagedSub": "Managed by Windows for installed apps",
-      "restartForLanguage": "Language changes apply after Wavee restarts"
+      "restartForLanguage": "Language changes apply after Wavee restarts",
+      "tray": {
+        "title": "Notification area",
+        "subtitle": "Wavee in the corner of the taskbar",
+        "iconMode": "Show Wavee's icon",
+        "iconModeSub": "Windows keeps new icons behind the arrow in the taskbar corner until you drag them out",
+        "iconAlways": "Always",
+        "iconWhileHidden": "Only while Wavee is hidden",
+        "iconNever": "Never",
+        "iconNeverSub": "With no icon, closing or minimizing Wavee never hides it",
+        "closeToTray": "Closing hides Wavee",
+        "closeToTraySub": "Keep playing from the icon when you close the window",
+        "minimizeToTray": "Minimizing hides Wavee",
+        "minimizeToTraySub": "The taskbar button goes away; the icon brings Wavee back",
+        "startHidden": "Start hidden at sign-in",
+        "startHiddenSub": "Only when Wavee starts with Windows",
+        "needsIcon": "Turned off while the icon is set to Never",
+        "needsStartOnLogin": "Turn on opening Wavee when you sign in first"
+      }
     }
   },
   "shell": {
@@ -1863,7 +1881,9 @@
         "content": "Content",
         "appearance": "Appearance",
         "behavior": "Behavior"
-      }
+      },
+      "tooNew": "This sidebar layout belongs to a newer Wavee",
+      "tooNewSub": "The file at {path} was saved by a newer version of Wavee, so it is left untouched and Wavee Curated is shown instead. Changes made here are not saved until you update."
     },
     "recents": {
       "sourceVisited": "Recently visited",
@@ -2302,7 +2322,8 @@
       "notTrustedOverride": "Signature not trusted; manual override",
       "checkUnavailable": "Signature check unavailable on this platform",
       "signatureUnknown": "Signature unknown",
-      "packLabel": "Spotify {version} · {arch}"
+      "packLabel": "Spotify {version} · {arch}",
+      "title": "Digital signature"
     }
   },
   "crash": {
@@ -2547,6 +2568,31 @@
       "raw": "Raw ({n})",
       "rawNone": "Raw (none)",
       "payloadsNote": "Payloads are only captured when a fan-out actually runs; cached answers have none."
+    },
+    "noLyrics": "No lyrics available",
+    "debug": {
+      "pill": "lyrics debug",
+      "title": "Lyrics search",
+      "close": "close ✕",
+      "noReport": "No search recorded for this track yet — it may be a local/fake track, or the fetch is still in flight. Close and reopen to refresh.",
+      "noSources": "(no sources ran)",
+      "noArtist": "(no artist)",
+      "winner": "★ winner"
     }
+  },
+  "tray": {
+    "openWavee": "Open Wavee",
+    "hideWavee": "Hide Wavee",
+    "quit": "Quit Wavee",
+    "hideIcon": "Hide icon",
+    "devices": "Devices…",
+    "saveToLiked": "Save to Liked Songs",
+    "nothingPlaying": "Nothing playing",
+    "signedOut": "Signed out",
+    "offline": "Offline",
+    "paused": "Paused",
+    "live": "LIVE",
+    "updateReady": "Update ready",
+    "onDevice": "on {device}"
   }
 }

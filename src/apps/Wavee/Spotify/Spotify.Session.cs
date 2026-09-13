@@ -206,7 +206,8 @@ public static partial class Spotify
     /// procedure is already doing and are asserted by the tests rather than dispatched twice. Everything that
     /// CROSSES a thread is executed: <c>ResolveHosts</c> starts the AP thread (one per session), <c>Backoff</c> arms
     /// the one-shot retry timer, <c>OpenDealer</c> starts the websocket thread, <c>CloseAll</c> abandons the epoch,
-    /// and the two credential effects call the store seam.</para></summary>
+    /// the two credential effects call the store seam, <c>Welcome</c> adopts the account's market and catalog scope,
+    /// and <c>AnnounceDevice</c> asks the Connect glue for the hello PUT.</para></summary>
     internal static void Apply(in SessionEvent e)
     {
         Session s = Current;
@@ -218,9 +219,30 @@ public static partial class Spotify
         if ((fx & SessionEffects.CloseAll) != 0) CloseEpoch();
         if ((fx & SessionEffects.ClearCredential) != 0) { Platform.ClearCredential(); Log.Info("spotify", "stored credential cleared"); }
         if ((fx & SessionEffects.SaveCredential) != 0) SaveWelcomeCredential();
+        if ((fx & SessionEffects.Welcome) != 0) AdoptWelcome(in s);
         if ((fx & SessionEffects.ResolveHosts) != 0) StartAp(s.Epoch);
         if ((fx & SessionEffects.OpenDealer) != 0) StartDealer(s.Epoch);
         if ((fx & SessionEffects.Backoff) != 0) ArmRetry(BackoffMs(s));
+        if ((fx & SessionEffects.AnnounceDevice) != 0) Connect.AnnounceDevice();
+    }
+
+    /// <summary>UI THREAD (the <see cref="SessionEffects.Welcome"/> effect): the ONE place the signed-in account reaches
+    /// the rest of the app. The market goes to <c>Api.Market</c> (metadata requests stop going out market-less) and the
+    /// catalog switches to <see cref="WelcomeScope"/> — once per real change: a reconnect's welcome for the same account,
+    /// market and tier leaves the table set alone. A host that never booted <c>Entities</c> (a unit test) switches
+    /// nothing.</summary>
+    static void AdoptWelcome(in Session s)
+    {
+        string market = s.Country.IsEmpty ? "" : Entities.Strings.Resolve(s.Country);
+        Api.Market = market;
+        var scope = Entities.Current;
+        if (scope is null) return;
+        string account = s.Username.IsEmpty ? "" : Entities.Strings.Resolve(s.Username);
+        CatalogScope next = WelcomeScope(scope.Key, account, market, s.Tier);
+        if (next == scope.Key) return;
+        Entities.Switch(next);
+        Log.Info("spotify", "catalog scope adopted (" + Platform.Redact(next.Account) + ", market " + next.Market
+            + ", tier " + s.Tier + ")");
     }
 
     // ── 5. boot, login, logout ───────────────────────────────────────────────────────────────────────────────────────
@@ -261,6 +283,10 @@ public static partial class Spotify
 
     /// <summary>Sign out: tear every socket down, forget the tokens, wipe the stored credential.</summary>
     public static void Logout() => Publish(new SessionEvent(SessionEventKind.Logout));
+
+    /// <summary>Close the session WITHOUT signing out: every socket down and the tokens forgotten, the stored credential
+    /// kept, so the next <see cref="Login"/> resumes. What a shutdown or a headless run's exit calls. Returns immediately.</summary>
+    public static void Disconnect() => Publish(new SessionEvent(SessionEventKind.Disconnect));
 
     // ── 6. epochs and threads ────────────────────────────────────────────────────────────────────────────────────────
 

@@ -263,7 +263,7 @@ public static partial class Actions
         {
             if (Row(ActionId.CopyLink, in ctx) is not { } copy) return null;
             var items = new List<MenuFlyoutItem>(3) { copy };
-            if (MenuRules.SingleShareableUri(in ctx.Target).IsValid)
+            if (MenuRules.SingleShareableUri(ctx.Target).IsValid)
             {
                 if (Row(ActionId.CopySpotifyUri, in ctx) is { } uri) items.Add(uri);
                 if (Row(ActionId.OpenInSpotifyWeb, in ctx) is { } web) items.Add(web);
@@ -480,7 +480,7 @@ public static partial class Actions
             PressedFill = selected ? Design.Colors.SelectedPressed : Tok.FillSubtleTertiary,
             BrushTransitionMs = Design.Motion.Faster,
             Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.RadioButton,
-            FocusVisualMargin = Edges4.All(Design.FocusInsetRow),
+            FocusVisualMargin = Design.FocusInsetRow,
             OnClick = onClick,
             Children =
             [
@@ -677,7 +677,7 @@ public static partial class Actions
                 Direction = 0, Height = art ? 44f : 40f, AlignItems = FlexAlign.Center, Gap = 10f,
                 Padding = new Edges4(6f + item.Depth * PickerIndentStep, 0f, 8f, 0f),
                 Corners = CornerRadius4.All(4f),
-                Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Edges4.All(Design.FocusInsetRow),
+                Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetRow,
                 OnClick = onClick,
                 Children = [lead, text],
             }.Interactive(Interaction.Subtle);

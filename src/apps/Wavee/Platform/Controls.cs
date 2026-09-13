@@ -46,6 +46,11 @@ namespace Wavee;
 
 public static partial class Controls
 {
+    /// <summary>True when <paramref name="service"/> is no real overlay host: null, or the engine's context default (its
+    /// internal no-op service, which app code cannot name). A surface with no host skips menus and flyouts.</summary>
+    public static bool IsNullOverlay([System.Diagnostics.CodeAnalysis.NotNullWhen(false)] IOverlayService? service)
+        => service is null || ReferenceEquals(service, Overlay.Service.Default);
+
     // ══ 0. THE SEAMS ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The library-mutation seam. <c>IsSaved</c> is READ INSIDE RENDER, so it must subscribe (the 0.3 shape is

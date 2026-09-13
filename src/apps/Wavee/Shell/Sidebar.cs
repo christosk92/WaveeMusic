@@ -4700,6 +4700,7 @@ public static class SidebarBinderPipeline
 public sealed class SidebarDataSourceTable : ISidebarContributionHost
 {
     readonly Dictionary<string, ISidebarDataSource> _sources = new(StringComparer.Ordinal);
+    readonly List<ISidebarDataSource> _ordered = new();
     readonly HashSet<string> _disabled = new(StringComparer.Ordinal);
 
     public int Count => _sources.Count;
@@ -4707,7 +4708,21 @@ public sealed class SidebarDataSourceTable : ISidebarContributionHost
     public void Add(ISidebarDataSource? source)
     {
         if (source is null || string.IsNullOrEmpty(source.Id)) return;
+        // A re-registration replaces the source IN PLACE, so the registration order the customizer lists never moves.
+        if (_sources.TryGetValue(source.Id, out var previous)) _ordered[_ordered.IndexOf(previous)] = source;
+        else _ordered.Add(source);
         _sources[source.Id] = source;
+    }
+
+    /// <summary>Every source in REGISTRATION order — the customizer's contribution-pick list (ch 26 W3), which a
+    /// dictionary's enumeration order does not promise.</summary>
+    public IReadOnlyList<ISidebarDataSource> Ordered => _ordered;
+
+    /// <summary>A registered source regardless of its enable flag (the options surface asks "is it registered at all").</summary>
+    public bool TryGet(string? sourceId, [NotNullWhen(true)] out ISidebarDataSource? source)
+    {
+        source = null;
+        return sourceId is { Length: > 0 } && _sources.TryGetValue(sourceId, out source);
     }
 
     /// <summary>Turn a registered contribution off without unregistering it — the honest Disabled row rather than a

@@ -98,16 +98,18 @@ public static partial class Spotify
         public static int Dropped => Volatile.Read(ref s_dropped);
 
         /// <summary>The market and catalogue the metadata service wants alongside the uris. They come off the session
-        /// as <c>StringId</c>s, which a shell thread may not resolve (C1), so `App.cs` copies them here on the
-        /// UI thread when the session goes Online. The empty default is deliberate: the service falls back to the
-        /// bearer's own market, and a WRONG market is worse than none.</summary>
+        /// as <c>StringId</c>s, which a shell thread may not resolve (C1), so the session's <c>Welcome</c> effect
+        /// (<c>Spotify.Apply</c>, UI thread) copies the account's country here the moment the welcome lands. The empty
+        /// default is deliberate: the service falls back to the bearer's own market, and a WRONG market is worse than
+        /// none.</summary>
         public static string Market { get; set; } = "";
 
         /// <inheritdoc cref="Market"/>
         public static string Catalogue { get; set; } = "premium";
 
-        /// <summary>Start the workers and register the <see cref="Fetch"/> provider. Idempotent; `App.cs` calls it
-        /// once, after `Spotify.Boot`.</summary>
+        /// <summary>Start the workers and register the <see cref="Fetch"/> provider. Idempotent and public: the GUI's
+        /// composition and the headless host both call it once, after <c>Spotify.Boot</c>, and <see cref="Run"/> performs
+        /// the same boot lazily for a caller that did not.</summary>
         public static void Boot()
         {
             if (Interlocked.CompareExchange(ref s_booted, 1, 0) != 0) return;

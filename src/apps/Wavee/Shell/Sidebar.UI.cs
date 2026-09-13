@@ -471,7 +471,7 @@ public static partial class Sidebar
         internal SidebarCustomLayout Doc = SidebarCustomLayout.Empty;
         /// <summary>The edit session THE PUBLISHED PLAN WAS BUILT FROM (in lockstep with <see cref="Plan"/>).</summary>
         internal SidebarEditState? PublishedEdit;
-        internal IOverlayService MenuOverlay = NullOverlayService.Instance;
+        internal IOverlayService MenuOverlay = Overlay.Service.Default;
         internal ActionServices? Acts;
         internal Actions.Registry? Registry;
         internal string? MenuHostSectionId;
@@ -519,14 +519,15 @@ public static partial class Sidebar
         public override Element Render()
         {
             _post = UsePost();
-            MenuOverlay = UseContext(Overlay.Service) ?? NullOverlayService.Instance;
+            MenuOverlay = UseContext(Overlay.Service) ?? Overlay.Service.Default;
             Acts = ActionServicesOrNull();
             Registry = Actions.Registry.Current ?? Acts?.Extensions;
 
             // The mode's live document — invoked HERE so the signals it reads subscribe this pane.
             var sourceDoc = Config.Document();
-            // The drawer always renders expanded; a live drag peek presents expanded too (it flips twice per drag).
-            bool compact = !InDrawer && Collapsed.Value && !_dragPeek.Value;
+            // The drawer always renders expanded; a live drag peek presents expanded too (it flips twice per drag). Compact is
+            // what the FRAME presents (collapsed, or the narrow band's 56-DIP column), never `Collapsed` alone.
+            bool compact = !InDrawer && Shell.Ui.SidebarPresentedCompact.Value && !_dragPeek.Value;
             string search = _search.Value;
             // Invoked UNCONDITIONALLY: edit mode must not change the hook sequence (branch on the value, never the hooks).
             var edit = Config.Edit?.Invoke();
@@ -607,7 +608,7 @@ public static partial class Sidebar
             // off the root made every dead spot resolve the WHOLE sidebar as the press/hover owner. The menu goes on a
             // ZStack SHELL plus a CHILDLESS full-bleed shield beneath the content: content wins wherever it hits, the
             // shield takes the rest, and a cascade from a childless node reaches nothing.
-            if (MenuOverlay is not NullOverlayService)
+            if (!Controls.IsNullOverlay(MenuOverlay))
             {
                 var svc = MenuOverlay;
                 Func<ContextMenuModel?> menu = LayoutMenu.Model;
@@ -1892,7 +1893,7 @@ public static partial class Sidebar
         /// 56-DIP strip against the window edge has room on). A second click closes it.</summary>
         internal void OpenRailFolderFlyout(string sectionId, in SidebarLibraryEntry folder)
         {
-            if (MenuOverlay is NullOverlayService) return;
+            if (Controls.IsNullOverlay(MenuOverlay)) return;
             string folderId = folder.FolderId;
             if (folderId.Length == 0) return;
             if (_railFolderFlyout is { IsOpen: true } open) { open.Close(); return; }

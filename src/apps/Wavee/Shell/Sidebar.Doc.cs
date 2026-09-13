@@ -263,6 +263,21 @@ public static class SidebarActionBindings
         return new ActionBinding(binding.ProviderId ?? "", binding.ActionId ?? "",
             (ActionTargetMode)(byte)binding.TargetMode, binding.TargetKey, arguments);
     }
+
+    /// <summary>The inverse: what the customizer's action picker commits becomes the persisted wire record. Opaque
+    /// argument JSON that does not parse is DROPPED rather than thrown (a picker never authors arguments today); an
+    /// unknown future mode byte round-trips as its byte.</summary>
+    public static SidebarActionBinding FromActionBinding(in ActionBinding binding)
+    {
+        JsonElement? arguments = null;
+        if (binding.Arguments is { Length: > 0 } raw)
+        {
+            try { arguments = SidebarJson.Detach(raw); }
+            catch (JsonException) { arguments = null; }
+        }
+        return new SidebarActionBinding(binding.ProviderId ?? "", binding.ActionId ?? "",
+            (SidebarActionTargetMode)(byte)binding.TargetMode, binding.TargetKey, arguments);
+    }
 }
 
 /// <summary>The entity family of an item — needed to render a correct placeholder row (and pick the right art
@@ -3384,4 +3399,370 @@ public static class SidebarLayoutDefaults
         // document — it exists so wrapping an EDITED layout can never silently drop the user's band.
         TopBar = SidebarLayoutWire.WriteTopBar(layout.TopBar, SidebarWireCarry.Empty),
     };
+}
+
+// ── CUSTOMIZER PAGE RULES ────────────────────────────────────────────────────────────────────────────────────────────
+// The decisions the full-page customizer (`Sidebar.Customizer.UI.cs`) and its re-hosted property surface draw, pulled
+// out of the component bodies so a test pins them: what a rejection SAYS, which banner shows, which rows a section's
+// options surface offers and in which group, the one enum treatment, the schema-generated config rows, the hidden-
+// section walk, the palette's append subject and the template miniature's sampling. Loc KEYS only — resolution is the
+// UI's job, so everything here is culture-free.
+
+/// <summary>Every rejection says something (ch 26 §0.3): the 13 reducer reasons plus the five shortcut-band overrides.
+/// The band has its own vocabulary for the same reasons ("Shortcuts holds up to 6 items", not "your sidebar is
+/// full"), so those arms come first.</summary>
+public static class SidebarRejectText
+{
+    /// <summary>The inline message's loc key, or null for <c>None</c> and for a future build's appended reason (which
+    /// stays quiet rather than rendering a missing key).</summary>
+    public static string? LocKey(SidebarRejectReason reason, bool topBar = false) => reason switch
+    {
+        SidebarRejectReason.SectionCapReached when topBar => "sidebar.topbar.capReached",
+        SidebarRejectReason.DuplicateItem when topBar => "sidebar.customizer.topBarDuplicate",
+        SidebarRejectReason.InvalidIcon when topBar => "sidebar.customizer.topBarInvalidIcon",
+        SidebarRejectReason.UnknownItem when topBar => "sidebar.customizer.topBarUnknownItem",
+        SidebarRejectReason.NoChange when topBar => "sidebar.customizer.topBarNoChange",
+
+        SidebarRejectReason.NestingTooDeep or SidebarRejectReason.KindNotNestable => "sidebar.customizer.rejectNesting",
+        SidebarRejectReason.ConfigTooLarge => "sidebar.customizer.rejectConfigTooLarge",
+        SidebarRejectReason.ExtensionRefMissing => "sidebar.customizer.rejectExtensionRefMissing",
+        SidebarRejectReason.SectionCapReached => "sidebar.customizer.rejectSectionCap",
+        SidebarRejectReason.DuplicateItem => "sidebar.customizer.rejectDuplicateItem",
+        SidebarRejectReason.InvalidIcon => "sidebar.customizer.rejectInvalidIcon",
+        SidebarRejectReason.UnknownItem => "sidebar.customizer.rejectUnknownItem",
+        SidebarRejectReason.UnknownSection => "sidebar.customizer.rejectUnknownSection",
+        SidebarRejectReason.UnknownTemplate => "sidebar.customizer.rejectUnknownTemplate",
+        SidebarRejectReason.KindDoesNotAcceptItems => "sidebar.customizer.rejectNoItems",
+        SidebarRejectReason.KindNotDuplicable => "sidebar.customizer.rejectNotDuplicable",
+        SidebarRejectReason.NoChange => "sidebar.customizer.rejectNoChange",
+        _ => null,
+    };
+}
+
+/// <summary>Which load-fault banner the customizer shows.</summary>
+public enum SidebarLoadBanner : byte { None = 0, Unreadable = 1, TooNew = 2 }
+
+/// <summary>The customizer's three banners and the saved dot, decided in one place so "two voices telling one story"
+/// cannot happen: the dot is healthy-only, a write fault owns the Error bar, a load fault owns the Warning bar.
+/// <para>Two 0.3 FIXES over 0.2.9 (ch 26 W7): the load bar names the file PATH and carries the store's diagnostic as a
+/// parenthetical, and a TooNew document — perfectly readable, owned by a newer build — gets its own sentence and no
+/// "Start fresh", because moving a newer build's file aside is a data event nobody asked for.</para></summary>
+public static class SidebarCustomizerBanners
+{
+    public static SidebarLoadBanner LoadBanner(SidebarLoadFault fault, bool dismissed) => dismissed ? SidebarLoadBanner.None
+        : fault switch
+        {
+            SidebarLoadFault.None => SidebarLoadBanner.None,
+            SidebarLoadFault.TooNew => SidebarLoadBanner.TooNew,
+            _ => SidebarLoadBanner.Unreadable,
+        };
+
+    /// <summary>"Start fresh" moves the file aside — offered only for a file this build genuinely cannot read.</summary>
+    public static bool OffersStartFresh(SidebarLoadBanner banner) => banner == SidebarLoadBanner.Unreadable;
+
+    /// <summary>The Error bar: a failed WRITE of one of the three write-fault kinds the user has not dismissed. A
+    /// different fault re-shows it; a healthy write resets the dismissal (see <see cref="DismissedAfter"/>).</summary>
+    public static bool ShowsSaveFault(in SidebarWriteResult health, SidebarPersistenceFault dismissed)
+        => !health.Success
+           && health.Fault is SidebarPersistenceFault.ConfigTooLarge or SidebarPersistenceFault.DocumentTooLarge
+               or SidebarPersistenceFault.IoFailure
+           && health.Fault != dismissed;
+
+    public static SidebarPersistenceFault DismissedAfter(in SidebarWriteResult health, SidebarPersistenceFault dismissed)
+        => health.Success ? SidebarPersistenceFault.None : dismissed;
+
+    /// <summary>"● Saved locally" — only while healthy; the bars speak for every fault, including a load fault.</summary>
+    public static bool ShowsSavedDot(in SidebarWriteResult health) => health.Success;
+
+    /// <summary>The trailing parenthetical a bar appends ("" when there is nothing to add).</summary>
+    public static string DetailSuffix(string? detail) => detail is { Length: > 0 } d ? "  (" + d + ")" : "";
+}
+
+/// <summary>The item-block affordances of one section's options surface (ch 26 W15, parity 80).</summary>
+public readonly record struct SidebarItemAffordances(bool EmptyHint, bool Buttons, bool AddEnabled, bool ActionShortcut,
+                                                     bool ActionEnabled);
+
+/// <summary>Which rows the property surface renders for a section, and in which group. The per-kind option table is
+/// <see cref="SidebarSectionKinds.AllowsDisplayField"/> — this never restates it, it only orders and groups.</summary>
+public static class SidebarPropertyRows
+{
+    public const int GridColumnsMin = 2, GridColumnsMax = 4;
+
+    /// <summary>A Divider has no title worth renaming — it is pure chrome.</summary>
+    public static bool ShowsTitleRow(SidebarSectionKind kind) => kind != SidebarSectionKind.Divider;
+
+    /// <summary>The Behavior half of the display rows; everything else is Appearance.</summary>
+    public static bool IsBehavior(SidebarDisplayField field) => field is SidebarDisplayField.MaxItems
+        or SidebarDisplayField.CollapsedByDefault or SidebarDisplayField.ShowInRail
+        or SidebarDisplayField.RecentsSource or SidebarDisplayField.EmptyBehavior;
+
+    /// <summary>The display rows, in <see cref="SidebarDisplayValues.Order"/>, split by group. Grid columns only while
+    /// the section IS a grid. <c>CollapsedByDefault</c> is NEVER a row: it is an add-time seed no renderer reads, so the
+    /// LIVE collapse row (<see cref="ShowsCollapseRow"/>) stands in its place (round-2 defect 1).</summary>
+    public static void DisplayFields(SidebarSectionSpec section, List<SidebarDisplayField> appearance,
+                                     List<SidebarDisplayField> behavior)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        appearance.Clear();
+        behavior.Clear();
+        var order = SidebarDisplayValues.Order;
+        for (int i = 0; i < order.Length; i++)
+        {
+            var field = order[i];
+            if (!SidebarSectionKinds.AllowsDisplayField(section.Kind, field)) continue;
+            if (field == SidebarDisplayField.GridColumns && section.Opts.Presentation != SidebarPresentation.Grid) continue;
+            if (field == SidebarDisplayField.CollapsedByDefault) continue;
+            (IsBehavior(field) ? behavior : appearance).Add(field);
+        }
+    }
+
+    /// <summary>The LIVE collapse row: every kind with a body whose option table allows the collapse field.</summary>
+    public static bool ShowsCollapseRow(SidebarSectionKind kind)
+        => kind is not (SidebarSectionKind.Divider or SidebarSectionKind.Header)
+           && SidebarSectionKinds.AllowsDisplayField(kind, SidebarDisplayField.CollapsedByDefault);
+
+    /// <summary>Pinned has no add path (its items are overrides for pins made elsewhere) and shows the empty hint at 0;
+    /// EntityEmbed retargets on a second pick, so Add stays live and there is no action shortcut; everything else
+    /// disables both buttons at the item cap.</summary>
+    public static SidebarItemAffordances Items(SidebarSectionKind kind, int itemCount)
+    {
+        if (kind == SidebarSectionKind.Pinned) return new(itemCount == 0, false, false, false, false);
+        bool full = itemCount >= SidebarSectionKinds.ItemCapacity(kind);
+        bool embed = kind == SidebarSectionKind.EntityEmbed;
+        return new(false, true, embed || !full, !embed, !full);
+    }
+
+    /// <summary>"Custom order" is honoured only for a playlist tree or a playlists-only query (the reducer would rewrite
+    /// it otherwise), so the dropdown disables the item rather than silently changing the pick.</summary>
+    public static bool CustomOrderAllowed(SidebarSectionKind kind, SidebarEntityQuery query)
+        => kind == SidebarSectionKind.PlaylistTree || query.Kinds == SidebarEntityKinds.Playlists;
+
+    /// <summary>"Reverse order" means nothing under Custom order.</summary>
+    public static bool DescendingEnabled(SidebarEntityQuery query) => query.Sort != SidebarSortMode.CustomOrder;
+}
+
+/// <summary>THE one enum treatment in the property surface (ch 26 §0.13): short choices → Segmented (pill suppressed),
+/// long ones → a ComboBox, decided from the RESOLVED labels so a long localization demotes itself instead of clipping.
+/// SelectorBar is banned there.</summary>
+public static class SidebarChoiceTreatment
+{
+    public const int SegmentedLabelBudget = 12;
+    public const int SegmentedChoiceBudget = 4;
+
+    public static bool UsesSegmented(IReadOnlyList<string> labels)
+    {
+        if (labels.Count is 0 or > SegmentedChoiceBudget) return false;
+        for (int i = 0; i < labels.Count; i++)
+            if ((labels[i]?.Length ?? 0) > SegmentedLabelBudget) return false;
+        return true;
+    }
+}
+
+/// <summary>What the Extension block of the options surface says instead of generated rows.</summary>
+public enum SidebarExtensionNote : byte { None = 0, PickContribution = 1, ManageExtension = 2 }
+
+/// <summary>The schema-generated config rows (ch 26 §1.1's field-kind table), as data.</summary>
+public static class SidebarConfigFieldRules
+{
+    /// <summary>The int ceiling a schema that declares no usable max gets.</summary>
+    public const int DefaultIntCeiling = 500;
+
+    /// <summary>A UriList menu lists at most this many current entries.</summary>
+    public const int UriListMenuCap = 20;
+
+    public static (int Min, int Max) IntRange(SidebarConfigField field)
+        => (field.Min, field.Max > field.Min ? field.Max : DefaultIntCeiling);
+
+    public static int DefaultInt(SidebarConfigField field)
+        => field.DefaultJson is { Length: > 0 } raw
+           && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) ? v : field.Min;
+
+    public static bool DefaultBool(SidebarConfigField field)
+        => string.Equals(field.DefaultJson, "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>An empty <c>EnumValues</c> falls through to the String row.</summary>
+    public static bool RendersAsEnum(SidebarConfigField field)
+        => field.Kind == SidebarConfigFieldKind.Enum && field.EnumValues is { Count: > 0 };
+
+    /// <summary>The selected enum index: the stored value, else the (JSON-quoted) default, else 0.</summary>
+    public static int ChoiceIndex(SidebarConfigField field, string? value)
+    {
+        var values = field.EnumValues;
+        if (values is null || values.Count == 0) return 0;
+        string? want = value ?? Unquote(field.DefaultJson);
+        for (int i = 0; i < values.Count; i++)
+            if (string.Equals(values[i], want, StringComparison.Ordinal)) return i;
+        return 0;
+    }
+
+    static string? Unquote(string? json)
+        => json is { Length: > 1 } && json[0] == '"' && json[^1] == '"' ? json[1..^1] : json;
+
+    /// <summary>A field whose key names an artist picks an ARTIST — the only kind hint a schema gives today.</summary>
+    public static bool PicksArtist(SidebarConfigField field)
+        => field.Key.Contains("artist", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The 13 first-party vocabulary words reuse catalog keys; anything else shows its RAW value (null here).</summary>
+    public static string? EnumLabelLocKey(string value) => value switch
+    {
+        "all" => "sidebar.option.maxItemsAll",
+        "playlists" => "sidebar.v3.filter.playlists",
+        "albums" => "sidebar.v3.filter.albums",
+        "artists" => "sidebar.v3.filter.artists",
+        "shows" => "sidebar.v3.filter.podcasts",
+        "recents" => "sidebar.option.sortRecents",
+        "added" => "sidebar.option.sortRecentlyAdded",
+        "alphabetical" => "sidebar.option.sortAlphabetical",
+        "creator" => "sidebar.option.sortCreator",
+        "any" => "sidebar.option.qualifierAny",
+        "byYou" => "sidebar.option.qualifierByYou",
+        "bySpotify" => "sidebar.option.qualifierBySpotify",
+        "mixed" => "sidebar.option.qualifierMixed",
+        _ => null,
+    };
+
+    /// <summary>The Extension block's degraded arms: an unaddressable ref asks for a contribution; an unregistered
+    /// source, or a document authored against a NEWER schema than the source declares, says "Manage extension" and
+    /// changes nothing.</summary>
+    public static SidebarExtensionNote NoteFor(SidebarExtensionRef? xref, bool sourceRegistered, int sourceSchemaVersion)
+    {
+        if (xref is not { IsWellFormed: true }) return SidebarExtensionNote.PickContribution;
+        if (!sourceRegistered || xref.SchemaVersion > sourceSchemaVersion) return SidebarExtensionNote.ManageExtension;
+        return SidebarExtensionNote.None;
+    }
+}
+
+/// <summary>The customizer's navigation-level picks.</summary>
+public static class SidebarCustomizerPicks
+{
+    /// <summary>Nothing vanishes into an invisible elsewhere: every hidden section, top-level AND children (depth 1 by
+    /// construction), in document order — including a section of a kind this build does not understand.</summary>
+    public static void HiddenSections(IReadOnlyList<SidebarSectionSpec> sections, List<SidebarSectionSpec> into)
+    {
+        for (int i = 0; i < sections.Count; i++)
+        {
+            var s = sections[i];
+            if (s.Hidden) into.Add(s);
+            var kids = s.ChildList;
+            for (int j = 0; j < kids.Count; j++)
+                if (kids[j].Hidden) into.Add(kids[j]);
+        }
+    }
+
+    /// <summary>The StaticLinks section a destination click APPENDS to, or null for "create a sibling": the options
+    /// popover's subject when there is one, else the expanded card — never the Shortcuts sentinel (its items route
+    /// through the top-bar commands, a decision never re-made here), and only a StaticLinks section.</summary>
+    public static SidebarSectionSpec? AppendTarget(SidebarCustomLayout layout, string? optionsSection, string? expandedSection)
+    {
+        string? id = optionsSection ?? expandedSection;
+        if (id is not { Length: > 0 } || SidebarIds.IsTopBar(id)) return null;
+        return layout.Find(id) is { Kind: SidebarSectionKind.StaticLinks } spec ? spec : null;
+    }
+
+    /// <summary>The item picker's Library tab: never a route, a track or a folder (a folder is not an item target),
+    /// narrowed to <paramref name="filter"/> when given.</summary>
+    public static bool OffersEntry(SidebarEntryKind kind, SidebarEntryKind? filter)
+    {
+        if (filter is { } want && kind != want) return false;
+        return kind is not (SidebarEntryKind.AppRoute or SidebarEntryKind.Track or SidebarEntryKind.Folder);
+    }
+
+    /// <summary>The Library tab lists at most this many rows.</summary>
+    public const int EntityCap = 200;
+
+    public static SidebarEntityKind EntityKindOf(SidebarEntryKind kind) => kind switch
+    {
+        SidebarEntryKind.Playlist => SidebarEntityKind.Playlist,
+        SidebarEntryKind.Album => SidebarEntityKind.Album,
+        SidebarEntryKind.Artist => SidebarEntityKind.Artist,
+        SidebarEntryKind.Show => SidebarEntityKind.Show,
+        SidebarEntryKind.Folder => SidebarEntityKind.PlaylistFolder,
+        SidebarEntryKind.Track => SidebarEntityKind.Track,
+        _ => SidebarEntityKind.None,
+    };
+}
+
+public enum SidebarMiniatureRowKind : byte
+{
+    Divider, Title, GridPair, PinnedPlaylist, PinnedArtist, Shortcut, TreeFolder, TreePlaylist, Sample, Blank,
+}
+
+/// <summary>One miniature row. <see cref="Index"/> is the shortcut's item index for <c>Shortcut</c> and the sample
+/// catalog index for <c>Sample</c>; unused otherwise.</summary>
+public readonly record struct SidebarMiniatureRow(SidebarMiniatureRowKind Kind, SidebarSectionSpec? Section, int Index);
+
+/// <summary>The template confirmation's miniature, as a PLAN (ch 26 W11): what the sidebar will render, not what the
+/// editor lists — hidden sections skipped, a group's children inlined, a grid section drawn as two cells, a blank
+/// template as one centred "+" row. Sample indices are DETERMINISTIC so the dialog never flickers between opens.</summary>
+public static class SidebarMiniaturePlan
+{
+    public const int MaxRows = 14;
+    public const int MaxShortcutRows = 3;
+    public const int PinnedPlaylistSample = 1, PinnedArtistSample = 3, TreePlaylistSample = 5;
+    public const int GridSampleA = 2, GridSampleB = 7, HeroSample = 8, SampleOffset = 6;
+    public static readonly int[] WorkspaceCardSamples = [10, 12, 14];
+
+    public static void Build(SidebarCustomLayout layout, List<SidebarMiniatureRow> into)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        into.Clear();
+        Append(layout.Sections, into);
+        if (into.Count == 0) into.Add(new SidebarMiniatureRow(SidebarMiniatureRowKind.Blank, null, 0));
+    }
+
+    /// <summary>Does the section draw a title row? (user title → template key → the kind's palette name.)</summary>
+    public static bool HasTitle(SidebarSectionSpec section)
+        => section.Title is { Length: > 0 } || section.TitleLocKey is { Length: > 0 }
+           || SidebarSectionKinds.PaletteNameLocKey(section.Kind) is not null;
+
+    static void Append(IReadOnlyList<SidebarSectionSpec> sections, List<SidebarMiniatureRow> into)
+    {
+        // The cap is checked per SECTION (0.2.9 parity): the last section may run past it and the pane clips.
+        for (int i = 0; i < sections.Count && into.Count < MaxRows; i++)
+        {
+            var section = sections[i];
+            if (section.Hidden) continue;
+            AppendSection(section, i, into);
+            if (section.Kind == SidebarSectionKind.CustomGroup) Append(section.ChildList, into);
+        }
+    }
+
+    static void AppendSection(SidebarSectionSpec section, int index, List<SidebarMiniatureRow> into)
+    {
+        if (section.Kind == SidebarSectionKind.Divider)
+        {
+            into.Add(new(SidebarMiniatureRowKind.Divider, section, 0));
+            return;
+        }
+        if (section.Kind == SidebarSectionKind.Header)
+        {
+            into.Add(new(SidebarMiniatureRowKind.Title, section, 0));
+            return;
+        }
+        if (HasTitle(section)) into.Add(new(SidebarMiniatureRowKind.Title, section, 0));
+        if (section.Opts.Presentation == SidebarPresentation.Grid)
+        {
+            into.Add(new(SidebarMiniatureRowKind.GridPair, section, 0));
+            return;
+        }
+        switch (section.Kind)
+        {
+            case SidebarSectionKind.Pinned:
+                into.Add(new(SidebarMiniatureRowKind.PinnedPlaylist, section, PinnedPlaylistSample));
+                into.Add(new(SidebarMiniatureRowKind.PinnedArtist, section, PinnedArtistSample));
+                return;
+            case SidebarSectionKind.CollectionShortcuts or SidebarSectionKind.StaticLinks:
+                var items = section.ItemList;
+                for (int i = 0; i < items.Count && i < MaxShortcutRows; i++)
+                    into.Add(new(SidebarMiniatureRowKind.Shortcut, section, i));
+                return;
+            case SidebarSectionKind.PlaylistTree:
+                into.Add(new(SidebarMiniatureRowKind.TreeFolder, section, 0));
+                into.Add(new(SidebarMiniatureRowKind.TreePlaylist, section, TreePlaylistSample));
+                return;
+            default:
+                into.Add(new(SidebarMiniatureRowKind.Sample, section, index + SampleOffset));
+                return;
+        }
+    }
 }

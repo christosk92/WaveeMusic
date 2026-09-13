@@ -263,6 +263,19 @@ public static partial class Platform
         public static readonly SettingKey<string> LastSeenCrashDumpPath = new("diagnostics.crash.lastDumpPath", "");
         public static readonly SettingKey<long> LastSeenCrashDumpTicksUtc = new("diagnostics.crash.lastDumpTicksUtc", 0L);
 
+        // ── notification area (docs/plans/wavee/wavee-0.3-tray-implementation.md §8, defaults per its §13) ──
+        /// <summary>0 Always · 1 Only while the window is hidden · 2 Never (<see cref="Tray.IconMode"/>; read it through
+        /// <see cref="Tray.ModeFrom"/>). DEFAULT 1 = WhileHidden (§13): a user who never hides Wavee keeps a clean tray.
+        /// Never forces both hide modes off — a hidden window with no icon is a ghost.</summary>
+        public static readonly SettingKey<int> TrayIconMode = new("tray.icon.mode", 1);
+        /// <summary>The caption ✕ / Alt+F4 hide the window instead of quitting. OFF (§13): the Close button quits.</summary>
+        public static readonly SettingKey<bool> TrayCloseToTray = new("tray.closeToTray", false);
+        /// <summary>The caption – / Win+Down hide the window (taskbar button gone) instead of iconifying it. OFF (§13).</summary>
+        public static readonly SettingKey<bool> TrayMinimizeToTray = new("tray.minimizeToTray", false);
+        /// <summary>Start hidden on the SIGN-IN launch only (the StartupTask / the Run value's --tray); meaningless without
+        /// <see cref="StartOnLogin"/>.</summary>
+        public static readonly SettingKey<bool> TrayStartHidden = new("tray.startHidden", false);
+
         // ── gpu ──
         public static readonly SettingKey<long> PreferredGpuLuid = new("gpu.preferredLuid", 0L);
         public static readonly SettingKey<string> PreferredGpuName = new("gpu.preferredName", "");

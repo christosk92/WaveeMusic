@@ -89,7 +89,7 @@ public static partial class Sidebar
 
             void Toggle()
             {
-                if (svc is null || svc is NullOverlayService) return;
+                if (Controls.IsNullOverlay(svc)) return;
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
                 var items = LayoutMenu.Rows();
                 handle.Value = svc.Open(
@@ -119,7 +119,7 @@ public static partial class Sidebar
         /// <summary>The app's one reference-stable seam bag (owner I).</summary>
         static ActionServices? ActionServicesOrNull() => Actions.Services;
 
-        bool HasMenus => MenuOverlay is not NullOverlayService && Acts is not null;
+        bool HasMenus => !Controls.IsNullOverlay(MenuOverlay) && Acts is not null;
 
         // ══ ROW MENUS ══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -158,14 +158,14 @@ public static partial class Sidebar
         /// <summary>An action shortcut / a hand-placed track: the extras alone, or null (nothing to open).</summary>
         internal Func<ContextMenuModel?>? LayoutOnlyMenu(SidebarSectionSpec section, SidebarItemSpec item, int planIndex, string key)
         {
-            if (MenuOverlay is NullOverlayService || NavExtras(section, planIndex, item, key).IsEmpty) return null;
+            if (Controls.IsNullOverlay(MenuOverlay) || NavExtras(section, planIndex, item, key).IsEmpty) return null;
             return () => Actions.Menu.WithLayoutExtras(null, NavExtras(section, planIndex, item, key).Flat());
         }
 
         /// <summary>A missing entity: exactly ONE verb — Remove (absent under a locked document).</summary>
         internal Func<ContextMenuModel?>? MissingItemMenu(string sectionId, SidebarItemSpec? item)
         {
-            if (Config.ReadOnly || MenuOverlay is NullOverlayService || item is not { Id.Length: > 0 } present) return null;
+            if (Config.ReadOnly || Controls.IsNullOverlay(MenuOverlay) || item is not { Id.Length: > 0 } present) return null;
             string itemId = present.Id;
             return () => new ContextMenuModel(
             [
@@ -177,7 +177,7 @@ public static partial class Sidebar
         /// <summary>A folder pin the rootlist lost: exactly ONE verb — Unpin.</summary>
         internal Func<ContextMenuModel?>? MissingFolderMenu(in SidebarLibraryEntry folder)
         {
-            if (MenuOverlay is NullOverlayService) return null;
+            if (Controls.IsNullOverlay(MenuOverlay)) return null;
             string id = folder.Id, name = folder.Name;
             if (PinRowRule.Decide(true, id, IsPinned(id)) != PinRowKind.Unpin) return null;
             return () => new ContextMenuModel(
@@ -500,7 +500,7 @@ public static partial class Sidebar
         /// rootlist change resolves to nothing rather than to the wrong folder. Opens nothing when there is nowhere legal.</summary>
         internal void OpenFolderPicker(IReadOnlyList<string> entryIds)
         {
-            if (MenuOverlay is NullOverlayService) return;
+            if (Controls.IsNullOverlay(MenuOverlay)) return;
             var tree = RootlistTree;
             var selection = RootlistSelection.Normalize(tree, entryIds);
             if (selection.Count == 0) return;
@@ -650,7 +650,7 @@ public static partial class Sidebar
         /// section. A second click on the same card closes it.</summary>
         internal void OpenSectionOptions(string sectionId, Func<NodeHandle> anchor)
         {
-            if (MenuOverlay is NullOverlayService || sectionId.Length == 0) return;
+            if (Controls.IsNullOverlay(MenuOverlay) || sectionId.Length == 0) return;
             if (_optionsPopover is { IsOpen: true } open)
             {
                 bool same = string.Equals(_optionsSection, sectionId, StringComparison.Ordinal);

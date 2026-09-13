@@ -961,11 +961,8 @@ public static partial class Shell
         /// <summary>The narrow drawer is open. Meaningless (and forced false) outside the narrow band.</summary>
         public static readonly Signal<bool> DrawerOpen = new(false);
 
-        /// <summary>DIP a FLOATING surface (the in-window video mini player at its default anchor) reserves at the bottom of
-        /// the content host, so the page ends above it instead of under it. Written by the surface (owner K); 0 when
-        /// nothing reserves. The content host's wrapper is UNCONDITIONAL — mounting/unmounting it would remount the
-        /// keep-alive boundary and cold-restart every cached page.</summary>
-        public static readonly Signal<float> FloatingSurfaceReserve = new(0f);
+        // The floating surface's bottom reservation is owner K's `Video.FloatingSurfaceReserve` (the PiP writes it); the
+        // content host reads that one cell rather than a second copy here.
 
         /// <summary>Clicking the already-showing mode CLOSES the rail; otherwise switch to that mode and open.</summary>
         public static void Toggle(RailMode mode)

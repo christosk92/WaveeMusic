@@ -44,13 +44,14 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
     const string FileB = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
     const int Slot = Audio.Ring.SlotBytes;
     const int MaxRange = Audio.Fetcher.MaxRangeBytes;
+    const float HeaderPeak = 0.9f;
 
     static readonly Lazy<(byte[] Plain, byte[] Cipher)> Big = new(() => SyntheticFile(BigBytes));
     static readonly Lazy<(byte[] Plain, byte[] Cipher)> Small = new(() => SyntheticFile(SmallBytes));
 
-    /// <summary>Random bytes with every accidental `OggS` scrubbed, the track gain at header byte 144, an `OggS` at
-    /// 0xa7 (the container start the key check looks for), and two pages near the end: the last carries
-    /// <see cref="LastGranule"/>. The cipher is the plaintext through the real CTR transform.</summary>
+    /// <summary>Random bytes with every accidental `OggS` scrubbed, the track gain at header byte 144 and its linear peak
+    /// at 148, an `OggS` at 0xa7 (the container start the key check looks for), and two pages near the end: the last
+    /// carries <see cref="LastGranule"/>. The cipher is the plaintext through the real CTR transform.</summary>
     static (byte[] Plain, byte[] Cipher) SyntheticFile(int length)
     {
         var plain = new byte[length];
@@ -59,6 +60,7 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
             if (plain[i] == (byte)'O' && plain[i + 1] == (byte)'g' && plain[i + 2] == (byte)'g' && plain[i + 3] == (byte)'S')
                 plain[i] = 0;
         BitConverter.TryWriteBytes(plain.AsSpan(144, 4), -3.5f);
+        BitConverter.TryWriteBytes(plain.AsSpan(148, 4), HeaderPeak);
         WritePage(plain, Skip, 0);
         WritePage(plain, length - 20_000, LastGranule - 44_100);
         WritePage(plain, length - 4_000, LastGranule);
@@ -74,13 +76,19 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
     }
 
     static Audio.Body NewBody(FakeCdn cdn, Audio.Fetcher fetcher, int length, bool known = true, byte[]? head = null,
-        ChunkDiskCache? disk = null, int waitMs = Audio.Ring.DefaultWaitMs, string fileId = FileA)
+        ChunkDiskCache? disk = null, int waitMs = Audio.Ring.DefaultWaitMs, string fileId = FileA, bool prepared = false,
+        float peak = 0f)
     {
         long estimate = Skip + 60_000L * Audio.NominalBytesPerSecond(Audio.Format.OggVorbis320) / 1000;
         return new Audio.Body(cdn, ["https://cdn-a.test/audio", "https://cdn-b.test/audio"], Key, Skip,
             known ? length : estimate, known, 60_000, Audio.Format.OggVorbis320, 0f, fileId, head, disk, fetcher,
-            metered: false, waitMs: waitMs);
+            metered: false, waitMs: waitMs, peak: peak, prepared: prepared);
     }
+
+    /// <summary>The range a seek probe at container <paramref name="offset"/> must be: [start, end) aligned OUT to whole
+    /// slots at both ends.</summary>
+    static (long Start, long End) ProbeRange(long offset, int length, int bytes = Audio.Ring.ProbeWindow)
+        => (Audio.Ring.AlignDown(Skip + offset), Math.Min(length, Audio.Ring.AlignUp(Skip + offset + bytes)));
 
     /// <summary>Container bytes [offset, offset + count) through `ReadAt`, looping over short reads as a decoder does.</summary>
     static byte[] Read(Audio.Body body, long offset, int count)
@@ -261,8 +269,7 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         WaitIdle(fetcher);
 
         var after = cdn.Ranges[opens..];
-        long probe = Audio.Ring.AlignDown(Skip + far);
-        Assert.Equal((probe, probe + Slot), after[0]);                  // the 48 KiB probe, aligned out to its slot
+        Assert.Equal(ProbeRange(far, BigBytes), after[0]);              // the 48 KiB probe, aligned out at both ends
         Assert.Equal(2, fetcher.Requests - before);                     // + the fill from the landing page to EOF
         output.WriteLine($"far seek: probe 1 + fill {fetcher.Requests - before - 1}; open cost {before}");
     }
@@ -284,10 +291,9 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         WaitUntil(() => cdn.Count >= 2, "the probe to reach the wire");
 
         var ranges = cdn.Ranges;
-        long probe = Audio.Ring.AlignDown(Skip + far);
         Assert.Equal(1, fetcher.Cancelled);
         Assert.Equal((0L, (long)MaxRange), ranges[0]);
-        Assert.Equal((probe, probe + Slot), ranges[1]);                 // ahead of the tail that was already queued
+        Assert.Equal(ProbeRange(far, BigBytes), ranges[1]);             // ahead of the tail that was already queued
 
         cdn.Release();
         WaitIdle(fetcher);
@@ -307,9 +313,11 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         WaitUntil(() => cdn.Live == 1, "range 1 to be held open");
 
         long last = 0;
+        var expected = new (long Start, long End)[10];
         for (int i = 0; i < 10; i++)
         {
             last = 400_000 + i * 250_000L;
+            expected[i] = ProbeRange(last, BigBytes);
             body.Retarget(last, Audio.Ring.ProbeWindow, (uint)(i + 1));
             int expectOpens = i + 2;
             WaitUntil(() => cdn.Count == expectOpens && cdn.Live == 1, $"probe {i} to be held open");
@@ -318,7 +326,8 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         WaitIdle(fetcher);
 
         var ranges = cdn.Ranges;
-        int probes = ranges[1..11].Count(static r => r.End - r.Start == Slot);
+        int probes = 0;
+        for (int i = 0; i < expected.Length; i++) if (ranges[i + 1] == expected[i]) probes++;
         Assert.Equal(10, probes);
         Assert.Equal(10, fetcher.Cancelled);                            // range 1 and nine probes, each by the next seek
         Assert.Equal(1, fetcher.PeakInFlight);
@@ -342,11 +351,197 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         WaitIdle(fetcher);
         int opens = cdn.Count;
 
-        // Slots 12-19 now hold chunks 40-47, so chunks 12-15 are NOT resident: only the epoch keeps this off the wire.
+        // Slots 11-19 now hold chunks 39-47 (the two-slot probe, then the fill), so chunks 12-15 are NOT resident: only
+        // the epoch keeps this off the wire.
         fetcher.Enqueue(body, new Audio.RangeRequest(12L * Slot, 16L * Slot, Epoch: 0, Probe: false));
         WaitIdle(fetcher);
 
         Assert.Equal(opens, cdn.Count);
+    }
+
+    [Fact]
+    public void A_probe_just_short_of_a_slot_edge_is_one_range_aligned_out_at_both_ends()
+    {
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        body.Start();
+        WaitIdle(fetcher);
+        int opens = cdn.Count, before = fetcher.Requests;
+
+        // 1,000 bytes short of the edge between chunks 39 and 40: the window crosses it. Aligning only the START down
+        // made the range stop at the edge, and the last 47 KiB of the window cost a second range and a second wait.
+        long offset = 40L * Slot - Skip - 1_000;
+        body.Retarget(offset, Audio.Ring.ProbeWindow, 1);
+        Assert.Equal(Expected(plain, offset, Audio.Ring.ProbeWindow), Read(body, offset, Audio.Ring.ProbeWindow));
+        WaitIdle(fetcher);
+
+        Assert.Equal((39L * Slot, 41L * Slot), cdn.Ranges[opens]);
+        Assert.Equal(1, fetcher.Requests - before);                     // the probe, and nothing else: the fill is held
+        Assert.True(body.Ring.FillHeld);
+        Assert.True(body.Ring.Waits <= 1, $"{body.Ring.Waits} waits");
+    }
+
+    [Fact]
+    public void A_multi_probe_seek_sends_no_fill_until_the_landing_resumes_it()
+    {
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        body.Start();
+        WaitIdle(fetcher);
+        int before = fetcher.Requests, cancelled = fetcher.Cancelled, opens = cdn.Count;
+
+        // Two probes of one seek, each allowed to land. A fill planned when the first landed would have been the
+        // request the second probe cancels (or, landed, a 512 KiB range nobody reads).
+        const long probe1 = 2_000_000, landing = 2_700_000;
+        body.Retarget(probe1, Audio.Ring.ProbeWindow, 1);
+        Assert.Equal(Expected(plain, probe1, 16_000), Read(body, probe1, 16_000));
+        WaitIdle(fetcher);
+        body.Retarget(landing, Audio.Ring.ProbeWindow, 2);
+        Assert.Equal(Expected(plain, landing, 16_000), Read(body, landing, 16_000));
+        WaitIdle(fetcher);
+
+        Assert.Equal(2, fetcher.Requests - before);
+        Assert.Equal(cancelled, fetcher.Cancelled);
+        Assert.Equal(ProbeRange(probe1, BigBytes), cdn.Ranges[opens]);
+        Assert.Equal(ProbeRange(landing, BigBytes), cdn.Ranges[opens + 1]);
+
+        body.ResumeFrom(landing);                                       // the landing: the held fill goes out, once
+        WaitIdle(fetcher);
+        Assert.False(body.Ring.FillHeld);
+        Assert.Equal(3, fetcher.Requests - before);
+        Assert.Equal((ProbeRange(landing, BigBytes).End, (long)BigBytes), cdn.Ranges[opens + 2]);
+        output.WriteLine($"two-probe seek: {fetcher.Requests - before} requests (2 probes + 1 fill at the landing)");
+    }
+
+    [Fact]
+    public void An_interrupt_releases_a_read_blocked_in_the_ring_wait_until_the_seek_retargets()
+    {
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);               // the production 8 s bound
+        cdn.Hold();
+        body.Start();
+        WaitUntil(() => cdn.Live == 1, "range 1 to be held open");
+
+        uint epoch = body.Epoch;
+        var blocked = Task.Run(() => body.ReadAt(0, new byte[4_096], epoch, interruptible: true));
+        WaitUntil(() => body.Ring.Want >= 0, "the read to block in the ring's wait");
+        var clock = Stopwatch.StartNew();
+        body.InterruptPendingRead();
+        Assert.True(blocked.Wait(3_000), "the interrupted read did not return");
+        Assert.Equal(Audio.Body.Interrupted, blocked.Result);            // not EOF (0), not a fault (−1)
+        Assert.True(clock.ElapsedMilliseconds < 3_000);
+
+        // While the window is open an interruptible miss answers at once. The seek's own retarget closes the window.
+        body.InterruptPendingRead();
+        clock.Restart();
+        Assert.Equal(Audio.Body.Interrupted, body.ReadAt(8_192, new byte[1_024], epoch, interruptible: true));
+        Assert.True(clock.ElapsedMilliseconds < 1_000);
+        const long far = 2_600_000;
+        body.Retarget(far, Audio.Ring.ProbeWindow, epoch + 1);
+        cdn.Release();
+        Assert.Equal(Expected(plain, far, 16_000), Read(body, far, 16_000));
+        var afterSeek = new byte[1_024];
+        Assert.True(body.ReadAt(far, afterSeek, body.Epoch, interruptible: true) > 0);
+        WaitIdle(fetcher);
+    }
+
+    // ── the counters (headless plan §3.4) ───────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Stats_count_probes_cdn_bytes_and_starves_and_since_is_the_delta_against_a_mark()
+    {
+        var (_, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 300);
+        Audio.Stream.Stats mark = Audio.Stream.Stats.Read(fetcher);
+        cdn.Hold();
+        body.Start();
+
+        Assert.Equal(-1, body.ReadAt(0, new byte[4_096], body.Epoch));  // starved against the held range
+        cdn.Release();
+        WaitIdle(fetcher);
+        body.Retarget(2_600_000, Audio.Ring.ProbeWindow, body.Epoch + 1);
+        WaitIdle(fetcher);
+
+        Audio.Stream.Stats now = Audio.Stream.Stats.Read(fetcher);
+        Audio.Stream.Stats delta = now.Since(in mark);
+        Assert.Equal(1L, delta.RingStarves);
+        Assert.Equal(1L, delta.Probes);
+        Assert.Equal((long)fetcher.Requests, delta.Requests);           // a fresh fetcher: its whole count is the delta
+        Assert.True(delta.CdnBytes > 0);
+        Assert.Equal(delta.Requests + delta.Heads + delta.Resolves, delta.HttpRequests);
+        Assert.Equal(0, now.InFlight);
+        Assert.Equal(1, now.PeakInFlight);
+        Assert.True(now.ReadAheadBytes >= (long)body.Ring.Slots * Slot);
+        Assert.Equal(now.PingMs, delta.PingMs);                         // a gauge stays the value's, never a delta
+        output.WriteLine($"stats delta: requests={delta.Requests} probes={delta.Probes} bytes={delta.CdnBytes} " +
+                         $"starves={delta.RingStarves} readAhead={now.ReadAheadBytes}");
+    }
+
+    [Fact]
+    public void Seek_into_the_disk_cache_counts_cache_hits_and_no_probe()
+    {
+        using var dir = new TempDir();
+        SkipWhenTheVolumeIsInsideTheReserve(dir.Path);
+        var (plain, cipher) = Big.Value;
+        PrimeCache(dir.Path, plain, cipher);
+
+        using var disk = new ChunkDiskCache(dir.Path);
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, disk: disk);
+        body.Start();
+        WaitIdle(fetcher);
+        Audio.Stream.Stats mark = Audio.Stream.Stats.Read(fetcher);
+        body.Retarget(2_600_000, Audio.Ring.ProbeWindow, 1);
+        Assert.Equal(Expected(plain, 2_600_000, 32_000), Read(body, 2_600_000, 32_000));
+        WaitIdle(fetcher);
+
+        Audio.Stream.Stats delta = Audio.Stream.Stats.Read(fetcher).Since(in mark);
+        Assert.Equal(0L, delta.Probes);
+        Assert.Equal(0L, delta.Requests);
+        Assert.True(delta.CacheHits >= 2, $"{delta.CacheHits} cache hits for a two-slot probe");
+    }
+
+    // ── the shared read-ahead budget (Vorbis plan §5.3) ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_shared_budget_grants_what_is_left_never_more_than_asked_and_never_below_the_floor()
+    {
+        const long MiB = 1L << 20;
+        int total = (int)(Audio.ReadAheadBudget.TotalBytes / Slot);                 // 375 slots
+        Assert.Equal(260, Audio.ReadAheadBudget.Grant(260, 0));                      // the 600 s tier fits alone
+        Assert.Equal(107, Audio.ReadAheadBudget.Grant(107, 260L * Slot));            // 30 s of FLAC24 beside it
+        Assert.Equal(total - 300, Audio.ReadAheadBudget.Grant(107, 300L * Slot));    // only what is left
+        Assert.Equal(Audio.ReadAheadBudget.MinSlots, Audio.ReadAheadBudget.Grant(40, 24 * MiB));   // spent: the floor
+        Assert.Equal(Audio.ReadAheadBudget.MinSlots, Audio.ReadAheadBudget.Grant(3, 0));           // never below it
+    }
+
+    [Fact]
+    public void A_prepared_body_takes_its_ring_from_the_shared_budget_and_every_body_gives_it_back()
+    {
+        var (_, cipher) = Big.Value;
+        using var fetcher = new Audio.Fetcher();
+        long before = Audio.ReadAheadBudget.InUseBytes;
+        using (var playing = NewBody(new FakeCdn(cipher), fetcher, BigBytes))
+        {
+            Assert.Equal(before + (long)playing.Ring.Slots * Slot, Audio.ReadAheadBudget.InUseBytes);
+            using (var next = NewBody(new FakeCdn(cipher), fetcher, BigBytes, fileId: FileB, prepared: true))
+            {
+                Assert.True(next.Prepared);
+                Assert.True(next.Ring.Seconds <= Audio.ReadAheadBudget.PreparedSeconds);
+                Assert.Equal(before + (long)(playing.Ring.Slots + next.Ring.Slots) * Slot, Audio.ReadAheadBudget.InUseBytes);
+            }
+            Assert.Equal(before + (long)playing.Ring.Slots * Slot, Audio.ReadAheadBudget.InUseBytes);
+        }
+        Assert.Equal(before, Audio.ReadAheadBudget.InUseBytes);
     }
 
     // ── the disk cache ──────────────────────────────────────────────────────────────────────────────────────────────

@@ -51,7 +51,7 @@ public static partial class Shell
         RootFactory = static () => Frame();
         SetPage(RouteKind.History, static (in Route _) => HistoryPage());
         SetPage(RouteKind.SidebarCustomize, static (in Route _) => Sidebar.CustomizerPage());
-        NotificationsLauncher ??= OpenNotificationPanel;
+        if (NotificationsLauncher is null) NotificationsLauncher = OpenNotificationPanel;
     }
 
     /// <summary>The window frame. Mounted once by <see cref="RootFactory"/>.</summary>
@@ -299,11 +299,16 @@ public static partial class Shell
             UseSignalEffect(() =>
             {
                 float sidebarW = Ui.SidebarPresentedCompact.Value ? Layout.CompactRailW : Sidebar.Width.Value;
-                bool fits = Ui.CanFitRail(vp.Value.Width, sidebarW, Ui.RailWidth.Value);
-                Ui.RailFits.SetIfChanged(fits);
-                // The video host-capability REPORT (an input to the availability intersection, never chrome state).
+                Ui.RailFits.SetIfChanged(Ui.CanFitRail(vp.Value.Width, sidebarW, Ui.RailWidth.Value));
+            });
+            // The video host-capability REPORT (an input to the availability intersection, never chrome state). Reads the
+            // published fit, so it runs when a fact flips rather than per resize pixel.
+            UseSignalEffect(() =>
+            {
+                bool fits = Ui.RailFits.Value;
+                bool pageStage = _pageStageHosts.Value;
                 var hooks = s_hooks;
-                var cap = (Video.DockedHosting.DockedHostAvailable(fits, _pageStageHosts.Value) ? Video.PlacementSet.Docked : Video.PlacementSet.None)
+                var cap = (Video.DockedHosting.DockedHostAvailable(fits, pageStage) ? Video.PlacementSet.Docked : Video.PlacementSet.None)
                         | Video.PlacementSet.Floating
                         | ((hooks?.CanOpenDetachedWindow?.Invoke() ?? true) ? Video.PlacementSet.Detached : Video.PlacementSet.None)
                         | (hooks?.WindowSetFullscreen is not null ? Video.PlacementSet.Fullscreen : Video.PlacementSet.None);
@@ -417,7 +422,14 @@ public static partial class Shell
 
             var stack = ZStack(
                 tinted,
-                Stage.View(),
+                // The immersive stage covers the content, the sidebar and the rail, and sits below the banner, the drop cue
+                // and the toast lane. A predicate, not a render read; Direction 1 so an oversized measure is cross-clamped.
+                Flow.Show(static () => Ui.ImmersiveLyrics.Value, new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, HitTestPassThrough = true,
+                    Enter = Stage.EnterTerminal, Exit = Stage.ExitTerminal,
+                    Children = [Stage.View()],
+                }),
                 Overlays(),
                 FileDropLayer(),
                 CommandPalette(),
@@ -718,7 +730,7 @@ public static partial class Shell
         {
             // A floating surface at its default anchor reserves bottom space. The wrapper is UNCONDITIONAL: toggling it in
             // and out of the tree would remount the keep-alive boundary and cold-restart every cached page.
-            float reserve = Ui.FloatingSurfaceReserve.Value;
+            float reserve = Video.FloatingSurfaceReserve.Value;
 
             // The NEUTRAL half of the material hand-over: claimed for exactly the routes no page tints (disjoint sets,
             // so the two effects need no order).
@@ -1040,9 +1052,9 @@ public static partial class Shell
     {
         string? pinId = FrameRules.PinIdFor(route);
         var kind = PinRowRule.Decide(hasStore: true, pinId, Sidebar.IsPinned(pinId));
-        if (kind == PinRowKind.None || pinId is null) return null;
+        if (kind == PinRowKind.None || pinId is not { } id) return null;
         string title = route.Kind == RouteKind.Search ? Loc.Get(Strings.Nav.Search) : Dest(route).Title;
-        return Actions.Menu.Pin(kind == PinRowKind.Unpin, () => PinDestination(pinId, title), () => UnpinDestination(pinId));
+        return Actions.Menu.Pin(kind == PinRowKind.Unpin, () => PinDestination(id, title), () => UnpinDestination(id));
     }
 
     static void PinDestination(string pinId, string title)
@@ -1680,7 +1692,7 @@ public static partial class Shell
 
         var card = new BoxEl
         {
-            Key = (isExpanded ? "ntf:actwrap-card:" : "ntf:act:") + n.Id,
+            Key = "ntf:act:" + n.Id,
             Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, MinHeight = 56f,
             Padding = new Edges4(10f, 8f, 10f, 8f), Corners = CornerRadius4.All(8f),
             HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
@@ -1715,9 +1727,10 @@ public static partial class Shell
     static async Task UndoActivityAsync(Func<Notification, Task<bool>> undo, Notification n)
     {
         bool ok;
-        try { ok = await undo(n); }
+        try { ok = await undo(n).ConfigureAwait(false); }
         catch (Exception ex) { Log.Warn("notify", "activity.undo failed", ex); ok = false; }
-        if (!ok) Notify.Say(Loc.Get(Strings.Notifications.UndoFailed), InfoBarSeverity.Warning);
+        // The toast is a UI-thread write; the journal's await may have resumed anywhere.
+        if (!ok) Notify.ToUi(static () => Notify.Say(Loc.Get(Strings.Notifications.UndoFailed), InfoBarSeverity.Warning));
     }
 
     /// <summary>The target line (always present, so expanding is never a visual no-op) with an Open jump when the

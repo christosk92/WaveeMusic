@@ -102,10 +102,12 @@ public static partial class Spotify
             Offline,
         }
 
-        /// <summary>Which file the ladder picked, and everything the next three steps need. A VALUE.</summary>
+        /// <summary>Which file the ladder picked, and everything the next three steps need. A VALUE.
+        /// <see cref="Peak"/> is the catalogue's LINEAR true peak when the catalogue carried the gain (lossless), else 0 —
+        /// an Ogg body's peak is read from its own header at open (byte 148).</summary>
         public readonly record struct FileChoice(
             byte[] FileId, string FileIdHex, byte[] TrackGid, Format Fmt, long DurationMs, float GainDb,
-            string? ExternalUrl, Fault Fault)
+            string? ExternalUrl, Fault Fault, float Peak = 0f)
         {
             public bool Ok => Fault == Audio.Fault.None && (FileId.Length > 0 || ExternalUrl is { Length: > 0 });
             public static FileChoice Failed(Audio.Fault fault) => new([], "", [], Format.Unknown, 0, 0f, null, fault);
@@ -116,10 +118,13 @@ public static partial class Spotify
         ///
         /// <para><see cref="Body"/> is the same bytes without the `Stream` shape: random access by offset, the epoch a
         /// seek bumps, the head/ring/disk stores. Wave 3's decoders read THAT (`RingSource` wraps it); `Stream` stays
-        /// so the module and local paths, and anything that only speaks `Stream`, keep working through one class.</para></summary>
+        /// so the module and local paths, and anything that only speaks `Stream`, keep working through one class.</para>
+        ///
+        /// <para><see cref="Peak"/> is the LINEAR true peak the normalization gain is capped by (librespot's
+        /// <c>get_factor</c>), 0 when unknown — carried so the adapters' <c>NormalizationFactor</c> can apply the cap.</para></summary>
         public readonly record struct Opened(
-            Stream? Stream, Format Fmt, long Length, long DurationMs, float GainDb, string FileIdHex, Fault Fault,
-            Body? Body = null)
+            System.IO.Stream? Stream, Format Fmt, long Length, long DurationMs, float GainDb, string FileIdHex, Fault Fault,
+            Body? Body = null, float Peak = 0f)
         {
             public bool Ok => Stream is not null && Fault == Audio.Fault.None;
             public static Opened Failed(Audio.Fault fault) => new(null, Format.Unknown, 0, 0, 0f, "", fault);
@@ -253,6 +258,15 @@ public static partial class Spotify
             return gain > headroom ? headroom : gain;
         }
 
+        /// <summary>A true peak in dBFS as the LINEAR amplitude the gain cap compares against; 0 (= unknown) for a figure
+        /// that is not a believable peak. PURE.</summary>
+        public static float PeakLinear(float truePeakDb)
+            => float.IsFinite(truePeakDb) ? SanePeak(MathF.Pow(10f, truePeakDb / 20f)) : 0f;
+
+        /// <summary>A linear peak is a positive amplitude no louder than +12 dBFS; anything else (a garbage header float,
+        /// a NaN, a zero) is "unknown" — a wrong peak would silence a track through the cap. PURE.</summary>
+        public static float SanePeak(float peak) => float.IsFinite(peak) && peak > 0f && peak <= 4f ? peak : 0f;
+
         /// <summary>The whole ladder over the two payloads, pure: TRACK_V4 plus an optional AUDIO_FILES. FLAC wins when
         /// the account returned it AND the setting asked for it; otherwise the Ogg rungs; otherwise the first
         /// alternative that has any file, carrying ITS gid.</summary>
@@ -264,10 +278,11 @@ public static partial class Spotify
                 (byte[] flacId, Format flacFormat) = PickFlac(lossless);
                 if (flacId.Length > 0)
                 {
-                    float gain = lossless.DefaultFileNormalizationParams is { } np
-                        ? NormalizationGain(np.LoudnessDb, np.TruePeakDb) : 0f;
+                    Af.NormalizationParams? np = lossless.DefaultFileNormalizationParams;
+                    float gain = np is not null ? NormalizationGain(np.LoudnessDb, np.TruePeakDb) : 0f;
+                    float peak = np is not null ? PeakLinear(np.TruePeakDb) : 0f;
                     return new FileChoice(flacId, Hexed(flacId), track.Gid.ToByteArray(), flacFormat,
-                        track.HasDuration ? track.Duration : fallbackDurationMs, gain, null, Fault.None);
+                        track.HasDuration ? track.Duration : fallbackDurationMs, gain, null, Fault.None, peak);
                 }
             }
 
@@ -411,6 +426,7 @@ public static partial class Spotify
                 if (MirrorCache.TryGetValue(fileIdHex, out Mirrors cached) && cached.ExpiresAtMs > now) return cached;
             }
 
+            Interlocked.Increment(ref s_statResolves);
             Api.Result result = Api.StorageResolve(fileIdHex, ct);
             if (!result.Ok) return new Mirrors([], 0, Fault.Network);
 
@@ -650,7 +666,9 @@ public static partial class Spotify
         public static Opened Open(string uri, CancellationToken ct) => Open(uri, PreferredQuality(), 0, ct);
 
         /// <inheritdoc cref="Open(string, CancellationToken)"/>
-        public static Opened Open(string uri, Quality quality, long fallbackDurationMs, CancellationToken ct)
+        /// <param name="prepared">The NEXT track, opened ahead of a hand-off: its ring comes out of the shared read-ahead
+        /// budget at no more than <see cref="ReadAheadBudget.PreparedSeconds"/> (Vorbis plan §5.3).</param>
+        public static Opened Open(string uri, Quality quality, long fallbackDurationMs, CancellationToken ct, bool prepared = false)
         {
             if (!Current.IsOnline) return Opened.Failed(Fault.Offline);
 
@@ -659,7 +677,7 @@ public static partial class Spotify
                 : ChooseTrack(uri, quality, fallbackDurationMs, ct);
             if (!choice.Ok) return Opened.Failed(choice.Fault == Fault.None ? Fault.NoFile : choice.Fault);
 
-            return Open(choice, ct);
+            return Open(choice, ct, prepared);
         }
 
         /// <summary>The half after the ladder: the head, the CDN, the key and the byte stores. Split out so a caller
@@ -668,7 +686,8 @@ public static partial class Spotify
         /// <para>The body of it is `Spotify.Audio.Stream.cs`'s <see cref="OpenBody"/>: head ‖ storage-resolve ‖ key in
         /// parallel, then the first body range ‖ the tail. Four HTTP requests cold, one round trip to the first
         /// decodable byte.</para></summary>
-        public static Opened Open(in FileChoice choice, CancellationToken ct) => OpenBody(in choice, ct);
+        public static Opened Open(in FileChoice choice, CancellationToken ct, bool prepared = false)
+            => OpenBody(in choice, ct, prepared);
 
         static FileChoice ChooseTrack(string uri, Quality quality, long fallbackDurationMs, CancellationToken ct)
         {
@@ -727,11 +746,12 @@ public static partial class Spotify
         {
             try
             {
+                Interlocked.Increment(ref s_statHeads);
                 using var deadline = Deadline(ct, 20);
                 using var message = new HttpRequestMessage(HttpMethod.Get, HeadHost + fileIdHex.ToLowerInvariant());
                 using HttpResponseMessage response = Cdn.Send(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
                 if (!response.IsSuccessStatusCode) return [];
-                using Stream body = response.Content.ReadAsStream(deadline.Token);
+                using System.IO.Stream body = response.Content.ReadAsStream(deadline.Token);
                 var buffer = new byte[HeadMaxBytes];
                 int total = 0;
                 while (total < HeadMaxBytes)
@@ -752,5 +772,11 @@ public static partial class Spotify
         /// before the body lands. 0 when the head is too short to hold it.</summary>
         public static float HeadGainDb(ReadOnlySpan<byte> head)
             => head.Length > 148 ? BitConverter.ToSingle(head[144..148]) : 0f;
+
+        /// <summary>The track's LINEAR true peak the header carries at byte 148, right after the gain (librespot's
+        /// <c>NormalisationData</c>: track gain, track peak, album gain, album peak from 144). 0 when the head is too short
+        /// or the figure is not a believable peak (<see cref="SanePeak"/>).</summary>
+        public static float HeadPeak(ReadOnlySpan<byte> head)
+            => head.Length >= 152 ? SanePeak(BitConverter.ToSingle(head[148..152])) : 0f;
     }
 }

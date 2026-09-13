@@ -1,0 +1,12 @@
+# prefetch-next.wh - the next-track prefetch: the boundary costs the range that was still due, never the
+# head || resolve || key trio of a cold start.
+volume 0.2
+play spotify:album:4aawyAB9vmqN3uQ7FjRGTy
+wait playing && position>=1s timeout 20000      # the duration has landed, so end-10s resolves
+seek end-10s
+wait prefetched timeout 9000
+stats mark
+wait next timeout 15000
+wait playing timeout 2000
+expect cdn.requests<=2
+quit

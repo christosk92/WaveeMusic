@@ -39,13 +39,20 @@ public static partial class Platform
 {
     const string Publisher = "Wavee", Product = "Wavee";
 
+    /// <summary>Where the profile lives. "" = `%LOCALAPPDATA%\Wavee` (packaged: the LocalCache, by OS redirection). Set
+    /// BEFORE <see cref="Boot"/> and never after: every path (store.json, logs, library.db, cache/) hangs off it. The GUI
+    /// and the headless host both honour `--profile <dir>` through `Diagnostics.Probe.ProfileArg` (headless plan §3.6).</summary>
+    public static string ProfileRoot { get; set; } = "";
+
     /// <summary>`%LOCALAPPDATA%\Wavee` — or the package's LocalCache on a packaged run, by OS redirection, never by
-    /// a branch here. Created on demand.</summary>
+    /// a branch here — unless <see cref="ProfileRoot"/> names another folder. Created on demand.</summary>
     public static string LocalFolder
     {
         get
         {
-            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Publisher);
+            string dir = ProfileRoot.Length > 0
+                ? ProfileRoot
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Publisher);
             try { Directory.CreateDirectory(dir); } catch { }
             return dir;
         }

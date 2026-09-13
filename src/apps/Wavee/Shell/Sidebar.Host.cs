@@ -849,6 +849,11 @@ public interface ISidebarEditHost
     SidebarRejectReason DispatchTopBar(SidebarCommand command);
 
     void Select(string? sectionId);
+
+    /// <summary>The loc KEY of the last rejection's sentence (<see cref="SidebarRejectText"/>), or null once a command
+    /// succeeds. Read together with <see cref="RejectEpoch"/>, which is the subscription — every host SAYS why a
+    /// control snapped back (ch 26 §0.3, the 0.3 fix for the popover's mute rejection).</summary>
+    string? LastReject { get; }
 }
 
 /// <summary>
@@ -912,7 +917,7 @@ public sealed class SidebarEditSession : ISidebarEditHost
     }
 
     SidebarRejectReason ISidebarEditHost.Dispatch(SidebarCommand command) => Apply(command);
-    SidebarRejectReason ISidebarEditHost.DispatchTopBar(SidebarCommand command) => Apply(command);
+    SidebarRejectReason ISidebarEditHost.DispatchTopBar(SidebarCommand command) => Apply(command, topBar: true);
 
     void ISidebarEditHost.Select(string? sectionId)
     {
@@ -922,36 +927,17 @@ public sealed class SidebarEditSession : ISidebarEditHost
 
     /// <summary>Dispatch and publish the reducer's answer. The epoch moves on a rejection AND on the first success
     /// after one, so a control that snapped to the user's pick snaps back to the document exactly once.
-    /// <see cref="LastReject"/> is updated the same way: set on a rejection, cleared on the next success.</summary>
-    public SidebarRejectReason Apply(SidebarCommand command)
+    /// <see cref="LastReject"/> is updated the same way: set on a rejection, cleared on the next success. The sentence
+    /// is <see cref="SidebarRejectText"/>'s — the page's inline strip reads the same table.</summary>
+    public SidebarRejectReason Apply(SidebarCommand command, bool topBar = false)
     {
         var reason = Sidebar.Dispatch(command);
         bool rejected = reason != SidebarRejectReason.None;
         if (rejected || _rejected) _rejectEpoch.Value = _rejectEpoch.Peek() + 1;
         _rejected = rejected;
-        LastReject = rejected ? RejectLocKey(reason) : null;
+        LastReject = rejected ? SidebarRejectText.LocKey(reason, topBar) : null;
         return reason;
     }
-
-    /// <summary>The customizer's inline-message loc key for a rejection reason. Raw dotted keys (verified present in
-    /// <c>assets/loc/en-US.json</c> under <c>sidebar.customizer.*</c>) rather than a generated <c>Strings</c> member —
-    /// this class does not know whether the codegen's casing matches.</summary>
-    static string? RejectLocKey(SidebarRejectReason reason) => reason switch
-    {
-        SidebarRejectReason.None or SidebarRejectReason.NoChange => "sidebar.customizer.rejectNoChange",
-        SidebarRejectReason.SectionCapReached => "sidebar.customizer.rejectSectionCap",
-        SidebarRejectReason.DuplicateItem => "sidebar.customizer.rejectDuplicateItem",
-        SidebarRejectReason.InvalidIcon => "sidebar.customizer.rejectInvalidIcon",
-        SidebarRejectReason.UnknownItem => "sidebar.customizer.rejectUnknownItem",
-        SidebarRejectReason.UnknownSection => "sidebar.customizer.rejectUnknownSection",
-        SidebarRejectReason.UnknownTemplate => "sidebar.customizer.rejectUnknownTemplate",
-        SidebarRejectReason.KindDoesNotAcceptItems => "sidebar.customizer.rejectNoItems",
-        SidebarRejectReason.KindNotDuplicable => "sidebar.customizer.rejectNotDuplicable",
-        SidebarRejectReason.NestingTooDeep or SidebarRejectReason.KindNotNestable => "sidebar.customizer.rejectNesting",
-        SidebarRejectReason.ConfigTooLarge => "sidebar.customizer.rejectConfigTooLarge",
-        SidebarRejectReason.ExtensionRefMissing => "sidebar.customizer.rejectExtensionRefMissing",
-        _ => null,
-    };
 }
 // ── STORE: sidebar-layout.json persistence, pins, first-seen, navigation recency ──────────────────────────────────────
 // The file I/O + a NAMED debounce for the one user-data document (locked decision 8: never deleted on a version bump),
@@ -2564,6 +2550,10 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         _table = sources ?? host as SidebarDataSourceTable;
         Invalidate();
     }
+
+    /// <summary>The first-party source table behind the host — the customizer's contribution list and its schema
+    /// lookups read it (registration order via <see cref="SidebarDataSourceTable.Ordered"/>).</summary>
+    public SidebarDataSourceTable? Sources => _table;
 
     /// <summary>Idempotent start: do the first rebuild. There is no marshaller to hand out any more (no async pin
     /// hydration, no pump) — a contributed source that needs one gets it from wherever it is attached (out of scope

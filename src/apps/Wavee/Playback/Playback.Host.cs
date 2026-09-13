@@ -262,6 +262,9 @@ public static partial class Playback
 
         // The dealer's mailbox wakes us; the drain reads it. One closure, made once.
         Spotify.Connect.Wake = static () => ToUi(s_drain);
+        // The session reaching Online asks for the hello; the snapshot is ours, so it is captured on the UI thread.
+        s_hellos = 0;
+        Spotify.Connect.Hello = static () => ToUi(s_hello);
 
         Publish();
         StartTicker();
@@ -271,6 +274,22 @@ public static partial class Playback
     /// <summary>The live state, for a diagnostics row or a shell that needs the whole value at once. A COPY — nobody
     /// outside this file writes playback state (C1).</summary>
     public static State Snap() => s_state;
+
+    /// <summary>The value a connect-state PUT encodes, captured NOW: this device's identity, our volume, and — while we
+    /// own playback — the player half (<see cref="Snapshot.Of"/>). UI THREAD (it reads the reducer's state, C1). The
+    /// session's hello and a headless host's <c>--connect</c> announce both send it through
+    /// <c>Spotify.Connect.PublishNow</c>; the message id is minted by the glue.</summary>
+    public static Snapshot SnapshotForConnect(PublishReason reason = PublishReason.NewDevice)
+        => Snapshot.Of(in s_state, in s_identity, reason, 0, UnixNowMs(), FrameNowMs(), CurrentUid());
+
+    /// <summary>Which reason a hello carries: the first announce of this boot is <see cref="PublishReason.NewDevice"/>,
+    /// every later one (a reconnect's fresh connection id) <see cref="PublishReason.NewConnection"/>. Both reach the
+    /// glue as its NewDevice route (<see cref="WireReason"/>); the body's put_state_reason tells the service which. PURE.</summary>
+    public static PublishReason HelloReason(int announcedBefore)
+        => announcedBefore <= 0 ? PublishReason.NewDevice : PublishReason.NewConnection;
+
+    static int s_hellos;
+    static readonly Action s_hello = static () => Announce(HelloReason(s_hellos++));
 
     // ── 6. in: Post (any thread) ────────────────────────────────────────────────────────────────────────────────────
 
@@ -429,7 +448,7 @@ public static partial class Playback
     /// <see cref="State"/> (C1/C9).</summary>
     static void Announce(PublishReason why)
     {
-        var snapshot = Snapshot.Of(in s_state, in s_identity, why, 0, UnixNowMs(), FrameNowMs(), CurrentUid());
+        Snapshot snapshot = SnapshotForConnect(why);
         Spotify.Connect.PutReason reason = WireReason(why);
         if (why is PublishReason.NewDevice or PublishReason.NewConnection) Spotify.Connect.PublishNow(in snapshot, reason);
         else Spotify.Connect.PublishState(in snapshot, reason);
@@ -656,6 +675,7 @@ public static partial class Playback
         s_state = State.Initial;
         s_fx.Clear();
         s_identity = default;
+        s_hellos = 0;
         Ticker(false);
         Publish();
     }

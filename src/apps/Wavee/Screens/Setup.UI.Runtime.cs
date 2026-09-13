@@ -784,7 +784,7 @@ public static partial class Setup
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = 13f, Padding = new Edges4(12f, 9f, 12f, 9f),
         Corners = CornerRadius4.All(Radii.Control), Role = AutomationRole.Button, Focusable = true,
-        FocusVisualMargin = Edges4.All(Design.FocusInsetRow), OnClick = onClick,
+        FocusVisualMargin = Design.FocusInsetRow, OnClick = onClick,
         Children =
         [
             new TextEl(glyph) { Size = 16f, FontFamily = Theme.IconFont, Color = Tok.TextSecondary, Shrink = 0f },

@@ -239,6 +239,26 @@ public static partial class Spotify
             Api.Run(Flush);
         }
 
+        // ── 3a. the hello (headless plan §1.6 item 5) ────────────────────────────────────────────────────────────────
+
+        /// <summary>Set by the host that owns the player state (<c>Playback.Boot</c>): capture a snapshot on the UI thread
+        /// and send it as the hello PUT. Null until then — a session with no player announces nothing, because a device
+        /// with no state to report is not a device worth showing.</summary>
+        public static Action? Hello { get; set; }
+
+        /// <summary>Whether reaching <c>Online</c> announces this device. On for the GUI (every Spotify client shows up in
+        /// every other client's picker); a headless run turns it off unless it was asked to be a Connect device
+        /// (<c>--connect</c>, headless plan §2.9), so a smoke never adds a second row to the user's pickers.</summary>
+        public static bool AnnounceOnOnline { get; set; } = true;
+
+        /// <summary>The session's <c>AnnounceDevice</c> effect: a fresh connection id is in the session box, so the PUT can
+        /// quote it. UI THREAD (it runs inside <c>Spotify.Apply</c>).</summary>
+        internal static void AnnounceDevice()
+        {
+            if (!AnnounceOnOnline) return;
+            Hello?.Invoke();
+        }
+
         static void Flush()
         {
             PutReason reason;

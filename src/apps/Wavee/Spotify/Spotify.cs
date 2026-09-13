@@ -155,8 +155,11 @@ public static partial class Spotify
         Dropped,
         /// <summary>The backoff elapsed; try again.</summary>
         Retry,
-        /// <summary>The user signed out.</summary>
+        /// <summary>The user signed out: close everything and WIPE the stored credential.</summary>
         Logout,
+        /// <summary>Close the session and forget its tokens, but KEEP the stored credential — a shutdown, a headless run
+        /// ending, a "go offline". Only <see cref="Logout"/> (and a genuine rejection) ever clears the credential.</summary>
+        Disconnect,
     }
 
     /// <summary>One folded event. A value with no spans, so a shell can post it across a thread (C2).</summary>
@@ -185,6 +188,12 @@ public static partial class Spotify
         Backoff = 1 << 7,
         /// <summary>Tear every socket down; the epoch has moved (C4).</summary>
         CloseAll = 1 << 8,
+        /// <summary>The account is known: copy its market into <c>Api.Market</c> and switch the catalog to the signed-in
+        /// scope (<see cref="WelcomeScope"/>) — the promise <c>Platform.Scope</c>'s doc makes (headless plan §1.6 item 2).</summary>
+        Welcome = 1 << 9,
+        /// <summary>A fresh dealer connection id: announce this device to connect-state (the hello PUT, headless plan §1.6
+        /// item 5). Once per transition into <see cref="SessionPhase.Online"/>, so a reconnect announces again.</summary>
+        AnnounceDevice = 1 << 10,
     }
 
     /// <summary>THE state machine. Pure: same session + same event ⇒ same session + same effects, no clock, no socket,
@@ -227,7 +236,7 @@ public static partial class Spotify
                 s.HasCredential = true;
                 s.Attempt = 0;
                 s.Phase = SessionPhase.Minting;
-                return SessionEffects.SaveCredential | SessionEffects.MintClientToken;
+                return SessionEffects.SaveCredential | SessionEffects.MintClientToken | SessionEffects.Welcome;
 
             case SessionEventKind.AuthRejected:
                 s.Phase = SessionPhase.Failed;
@@ -251,12 +260,16 @@ public static partial class Spotify
                 return s.Phase == SessionPhase.Online ? SessionEffects.None : SessionEffects.OpenDealer;
 
             case SessionEventKind.DealerOnline:
+            {
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
+                bool wasOnline = s.Phase == SessionPhase.Online;
                 s.ConnectionId = e.Text;
                 s.Phase = SessionPhase.Online;
                 s.Fault = SessionFault.None;
                 s.Attempt = 0;
-                return SessionEffects.None;
+                // The hello is owed to the TRANSITION: a second pusher frame on a live socket is not a new device.
+                return wasOnline ? SessionEffects.None : SessionEffects.AnnounceDevice;
+            }
 
             case SessionEventKind.Dropped:
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
@@ -278,10 +291,36 @@ public static partial class Spotify
                 s.Epoch = epoch;
                 return SessionEffects.CloseAll | SessionEffects.ClearCredential;
 
+            case SessionEventKind.Disconnect:
+            {
+                // Logout's teardown without its wipe: the tokens, hosts and connection id go (they belong to the
+                // sockets), the boot identity and the fact of a stored credential stay.
+                Session kept = s;
+                s = default;
+                s.Epoch = kept.Epoch + 1;
+                s.HasCredential = kept.HasCredential;
+                s.DeviceId = kept.DeviceId;
+                s.ClientId = kept.ClientId;
+                s.Locale = kept.Locale;
+                return SessionEffects.CloseAll;
+            }
+
             default:
                 return SessionEffects.None;
         }
     }
+
+    /// <summary>The catalog scope a welcome implies (D9): the signed-in account, its market and tier, over the locale and
+    /// explicit filter the current scope already carries. A scope that was the offline demo one (no stored credential at
+    /// boot) becomes the "spotify" provider's. Equal to <paramref name="current"/> when nothing changed — a reconnect's
+    /// welcome — which is how the shell knows not to rebuild the table set. PURE.</summary>
+    public static CatalogScope WelcomeScope(in CatalogScope current, string account, string market, Tier tier)
+        => new("spotify",
+            string.IsNullOrEmpty(account) ? current.Account : account,
+            current.Locale,
+            market,
+            (byte)tier,
+            current.AllowExplicit);
 
     /// <summary>The reconnect ladder: 3, 6, 12, 24, capped at 30 s — 0.2.9's `LiveDealerTransport` ladder, folded so
     /// the delay is a function of the session and not of a captured local.</summary>

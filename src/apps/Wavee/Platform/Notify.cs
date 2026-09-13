@@ -1110,9 +1110,9 @@ public static partial class Notify
     /// <summary>The active filter pill. On the model, not the panel, so a re-open keeps the user's pill.</summary>
     public static readonly Signal<NotifyFilter> Filter = new(NotifyFilter.All);
 
-    /// <summary>The download bar's fraction for the sticky in-app update toast — a FloatSignal so twenty progress ticks
-    /// are twenty float writes, not twenty reconciles. Written even when no toast is planned, so a card that appears
-    /// mid-download starts at the right place.</summary>
+    /// <summary>The download bar's fraction for the update row's progress strip in the panel — a FloatSignal so twenty
+    /// progress ticks are twenty float writes, not twenty reconciles. The open panel mirrors <see cref="Update"/> into it,
+    /// so a row that appears mid-download starts at the right place.</summary>
     public static readonly FloatSignal UpdateProgress = new(0f);
 
     /// <summary>How many playlist edits this session made that the server has not acked yet — the panel's one-line

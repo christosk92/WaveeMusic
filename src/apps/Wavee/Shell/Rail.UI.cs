@@ -232,12 +232,12 @@ public static partial class Rail
             TitleText(body),
             HeaderButton(Icons.BackToWindow, Loc.Get(Strings.Player.VideoMiniPlayer), static () =>
             {
-                Announcer.Say(Loc.Get(Strings.Player.VideoMiniPlayer));
+                FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoMiniPlayer));
                 ShowVideoAt(Video.SurfacePlacement.Floating);
             }),
             HeaderButton(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), static () =>
             {
-                Announcer.Say(Loc.Get(Strings.Player.VideoFullScreen));
+                FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoFullScreen));
                 ShowVideoAt(Video.SurfacePlacement.Fullscreen);
             }),
             CloseButton(),

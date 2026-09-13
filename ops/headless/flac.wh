@@ -1,0 +1,16 @@
+# flac.wh - the flac plan section 8.3 line. On a deriver build the lossless rung plays FLAC; on a public-only build
+# the key path answers NoDeriver and the pump plays the 320 rung, which the soft expect records without failing.
+# Run with -EchoLog to keep the `audio.open fmt=` and `audio.key` lines in the capture.
+quality lossless
+volume 0.2
+play spotify:track:11dFghVXANMlKmJXsNCbNl
+wait playing timeout 25000
+expect? format==flac24                          # soft: 16-bit FLAC or the 320 fallback are recorded, not fatal
+stats mark
+seek 2:00
+wait seeked timeout 5000
+wait position>=2:10 && !buffering timeout 15000
+stats reset
+expect xruns==0
+stats
+quit

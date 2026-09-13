@@ -4,12 +4,13 @@
 // Role: SHELL
 // Owner: H
 // Wave: 3
-// Budget: 3010 lines (2250 + 220 for the FLAC adapter + 510 for the Vorbis adapter over the CORE decoder, its pure
+// Budget: 3,480 lines (2250 + 220 for the FLAC adapter + 510 for the Vorbis adapter over the CORE decoder, its pure
 //         granule clock, `IRandomAccessBytes` and `RingSource` — Vorbis plan §6.1 estimated +260; over it because the
 //         clock and the landing peek are their own public type, so the frame accounting, the gapless trim and the seek
 //         hand-off are unit facts rather than prose, and about a third of the rest is doc comments — + 30 for the
-//         connected silent session, headless plan §3.5)
-// Spec: plan §4.9 + ch 31 §9.4 + FLAC plan §4 + Vorbis plan §5.5, §6
+//         connected silent session, + 440 for headless plan §3.5: `Metrics`, the paced silent endpoint, the silent
+//         transport and the seek interrupt)
+// Spec: plan §4.9 + ch 31 §9.4 + FLAC plan §4 + Vorbis plan §5.5, §6 + headless plan §3.5
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // WHAT THIS FILE IS. The audio pump: one serialized queue of load work, one long-lived WASAPI session, a decoder per
@@ -206,6 +207,7 @@ public static partial class Playback
         {
             MediaPlayer? p = Volatile.Read(ref s_player);
             try { p?.SetMuted(muted); } catch { }
+            try { LiveSilentSession()?.SetMuted(muted); } catch { }
             ToUi(() => Muted.Value = muted);
         }
 
@@ -234,7 +236,9 @@ public static partial class Playback
         static PcmAudioSession? s_session;
         static Timer? s_ticker;
         static Task s_tail = Task.CompletedTask;
-        static bool s_booted, s_disposed;
+        static bool s_booted, s_seeded, s_disposed;
+        // `UseSilentEndpoint`: every session renders into the paced silent endpoint and no WASAPI client is ever made.
+        static volatile bool s_forceSilent;
 
         // the epoch pair (C4)
         static uint s_loadEpoch;                   // the reducer's LoadEpoch the live session belongs to
@@ -296,22 +300,25 @@ public static partial class Playback
 
         // ── 5. boot and shutdown ─────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>Build the backend and the player ONCE, on FIRST USE rather than at `Playback.Boot` — a `--fake`
-        /// run, a unit test and a Connect-viewer session must all boot the reducer with no WASAPI client anywhere,
-        /// which is exactly what `Playback.Host`'s boot contract promises.</summary>
+        /// <summary>Build the backend and the player ONCE, on the first REAL load rather than at `Playback.Boot` — a
+        /// `--fake` run, a unit test and a Connect-viewer session must all boot the reducer with no WASAPI client
+        /// anywhere, which is exactly what `Playback.Host`'s boot contract promises. A fake load, a volume change and a
+        /// prepare only <see cref="SeedOnce"/>: none of them needs a device. After <see cref="UseSilentEndpoint"/> the
+        /// backend renders into <see cref="PacedSilentEndpoint"/> and WASAPI is never probed at all.</summary>
         public static void Boot()
         {
             if (s_booted) return;
             s_booted = true;
-            SeedFromSettings();
+            SeedOnce();
             try
             {
                 // The factory's only argument is the mix format; it answers the decoder the pump already chose for the
                 // track it is about to open (FLAC plan §4.2). A stale null would mean "no codec", so it is set before
                 // every open and taken exactly once.
-                s_backend = WasapiPcm.CreateBackend(s_effects, decoderFactory: TakePendingDecoder);
+                s_backend = s_forceSilent ? CreateSilentBackend() : WasapiPcm.CreateBackend(s_effects, decoderFactory: TakePendingDecoder);
                 s_player = MediaPlayer.Build().WithBackend(MediaKind.PcmAudio, s_backend).Build();
                 ToUi(() => Supported.Value = true);
+                if (s_forceSilent) Log.Info("audio", $"audio backend: silent endpoint {SilentFormat.SampleRate} Hz, paced to the wall clock");
             }
             catch (Exception ex)
             {
@@ -324,6 +331,44 @@ public static partial class Playback
             string persisted = Platform.Settings.Get(Platform.Keys.OutputDeviceId);
             if (persisted.Length > 0) ToUi(() => SelectedOutputId.Value = persisted);
         }
+
+        /// <summary>The persisted DSP preferences, once — what a session needs before its first block, and all a fake load,
+        /// a volume change or a prepare needs.</summary>
+        static void SeedOnce()
+        {
+            if (s_seeded) return;
+            s_seeded = true;
+            SeedFromSettings();
+        }
+
+        /// <summary>The mix format of every silent session (the paced endpoint has no device rate to follow).</summary>
+        public static readonly MixFormat SilentFormat = new(48_000, 2);
+
+        /// <summary>Render every session into the paced silent endpoint instead of a WASAPI device: a real track still
+        /// streams, decodes and runs the whole graph, at wall-clock speed, into nothing — the headless `--silent` run
+        /// (headless plan §3.5; the decision was to fix the pacing here, not in the engine, §8 Q4). Call it BEFORE the
+        /// first load: a backend that already opened a device is kept, and the call says so in the log.</summary>
+        public static void UseSilentEndpoint()
+        {
+            s_forceSilent = true;
+            if (s_booted && s_backend is not null)
+                Log.Warn("audio", "UseSilentEndpoint after the audio backend was built — this session keeps its device");
+        }
+
+        /// <summary>True once <see cref="UseSilentEndpoint"/> was called.</summary>
+        public static bool SilentEndpoint => s_forceSilent;
+
+        /// <summary>The silent backend: the same `PcmAudioPlayer` and RT feed shape `WasapiPcm.CreateBackend` builds, over
+        /// <see cref="PacedSilentEndpoint"/> and a plain (non-MMCSS) feed thread, with no device watcher — there is no
+        /// device to lose.</summary>
+        static PcmAudioPlayer CreateSilentBackend()
+            => new(SilentFormat,
+                endpointFactory: static fmt => new PacedSilentEndpoint(fmt),
+                effects: s_effects,
+                maxBlock: 1024,
+                driveWithOwnThread: false,
+                onSessionCreated: static session => new AudioFeedThread(session, sampleRate: session.Format.SampleRate).Start(),
+                decoderFactory: TakePendingDecoder);
 
         /// <summary>Read the persisted DSP preferences. Seeded BEFORE the first open, so a session never renders one
         /// block with a flat EQ and then ramps.</summary>
@@ -362,7 +407,10 @@ public static partial class Playback
         /// outgoing track's position for the track that is starting.</summary>
         public static void Load(EntityRef row, EntityId id, PlayableKind kind, uint epoch, int fromMs = 0)
         {
-            Boot();
+            // A fake playable has no bytes and plays through the silent voice: it needs the DSP seed, never a device.
+            if (id.Provider == EntityProvider.Fake) SeedOnce();
+            else Boot();
+            Interlocked.Exchange(ref s_loadStartedTicks, System.Diagnostics.Stopwatch.GetTimestamp());
             s_clockStale = true;
             long chain = BumpChain();
             Enqueue(() => LoadCoreAsync(row, id, epoch, fromMs, kind, chain));
@@ -370,17 +418,28 @@ public static partial class Playback
 
         /// <summary>Prepare the NEXT playable so the boundary can be a hand-off instead of a hard cut. Best effort by
         /// construction: no prepared slot simply means the next boundary reloads, which is what 0.2.9 did every time
-        /// the reducer had not asked in time.</summary>
+        /// the reducer had not asked in time. Nothing to hand off from means nothing to build, so no device is opened
+        /// here: a live session already booted the backend.</summary>
         public static void Prepare(EntityRef row, EntityId id)
         {
-            Boot();
+            SeedOnce();
             Interlocked.Increment(ref s_prepInFlight);
             Enqueue(() => PrepareCoreAsync(row, id));
         }
 
+        /// <summary>Seek the live track. Two things happen BEFORE the chain: the stream counters are sampled (the seek's
+        /// kind is their delta, <see cref="SeekKindOf"/>), and a decoder blocked in the ring's wait is interrupted
+        /// (<see cref="RingSource.InterruptPendingRead"/>) — the engine's <c>SeekAsync</c> waits for its decode-ahead
+        /// producer to come back to its seek mailbox, and a producer blocked in an underrun comes back only after the
+        /// ring's 8 s bound.</summary>
         public static void Seek(int ms, uint epoch = 0)
         {
-            Enqueue(() => SeekCoreAsync(ms, epoch));
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            Spotify.Audio.Stream.Stats before = Spotify.Audio.Stream.Stats.Read();
+            IMediaByteSource? live;
+            lock (s_gate) live = s_silent ? null : s_bytes;
+            (live as RingSource)?.InterruptPendingRead();
+            Enqueue(() => SeekCoreAsync(ms, epoch, t0, before));
         }
 
         public static void Pause()
@@ -392,6 +451,8 @@ public static partial class Playback
             StopTicker();
             Enqueue(static async () =>
             {
+                // A silent voice's session is this file's, not the facade's: the facade has no session to pause.
+                if (LiveSilentSession() is { } silent) { try { await silent.PauseAsync().ConfigureAwait(false); } catch { } return; }
                 MediaPlayer? p = Volatile.Read(ref s_player);
                 if (p is not null) { try { await p.PauseAsync().ConfigureAwait(false); } catch { } }
             });
@@ -402,10 +463,17 @@ public static partial class Playback
             lock (s_gate) s_playIntent = true;
             Enqueue(static async () =>
             {
+                if (LiveSilentSession() is { } silent) { try { await silent.PlayAsync().ConfigureAwait(false); } catch { } return; }
                 MediaPlayer? p = Volatile.Read(ref s_player);
                 if (p is not null) { try { await p.PlayAsync().ConfigureAwait(false); } catch { } }
             });
             StartTicker();
+        }
+
+        /// <summary>The live session when it is a silent VOICE session (a fake playable), else null.</summary>
+        static PcmAudioSession? LiveSilentSession()
+        {
+            lock (s_gate) return s_silent ? s_session : null;
         }
 
         public static void Stop()
@@ -419,11 +487,14 @@ public static partial class Playback
         /// <summary>Set the output amplitude. The taper is applied HERE (§3) so the slider stays linear.</summary>
         public static void SetVolume(float position)
         {
-            Boot();
+            // A volume change needs no device: the amplitude is applied to whatever session is live and seeded into the
+            // next one at open.
+            SeedOnce();
             float amplitude = VolumeTaper.Amplitude(position);
             lock (s_gate) s_volume = amplitude;
             MediaPlayer? p = Volatile.Read(ref s_player);
             try { p?.SetVolume(amplitude); } catch { }
+            try { LiveSilentSession()?.SetVolume(amplitude); } catch { }
             // The PERSIST is `Playback.Host`'s (it already writes `SavedVolume` on the volume effect); doing it here
             // too would be two writers of one key disagreeing about whether it holds a position or an amplitude.
         }
@@ -639,14 +710,14 @@ public static partial class Playback
         }
 
         /// <summary>`--fake`'s arm (ch 31 GAP 6). The silent VOICE runs the real graph — mixer, DSP chain, level tap,
-        /// the engine's own clock — so what the demo exercises is the shipping path with the device leaf swapped for
-        /// the engine's headless endpoint, and `Ended` arrives at exactly the declared duration.</summary>
+        /// the RT feed — so what the demo exercises is the shipping path with the device leaf swapped for the paced
+        /// silent endpoint, and `Ended` arrives at the declared duration on the wall clock.</summary>
         static async Task OpenSilentAsync(EntityRef row, uint epoch, int fromMs, long chain)
         {
             long durMs = row.Kind == EntityKind.Track && row.Slot > 0 ? new Track(row.Slot).DurationMs : 0;
             if (durMs <= 0) durMs = 180_000;
             SilentStart start = SilentStart.For(durMs, fromMs);
-            PcmAudioSession session = OpenSilentSession(new MixFormat(48_000, 2), start.VoiceMs, s_effects, s_volume);
+            PcmAudioSession session = OpenSilentSession(SilentFormat, start.VoiceMs, s_effects, s_volume);
             if (IsStale(chain)) { await session.DisposeAsync().ConfigureAwait(false); return; }
 
             lock (s_gate)
@@ -671,19 +742,24 @@ public static partial class Playback
         /// only set a flag, the tick never posted `Started`, and `--fake` sat in `Loading` forever (headless plan §1.1).
         /// The core behind the sink is private and unobserved — the pump reads <c>CurrentState</c> and
         /// <c>PlayedFrames</c> off the session itself, so no signal write here reaches the UI thread's graph.
-        /// <para>Not paced: the headless endpoint's null sink accepts every frame, so the clock runs as fast as the feeder
-        /// spins rather than at wall-clock speed. Whether that is fixed here or in the engine is open (headless plan §8
-        /// Q4).</para></summary>
+        /// <para>PACED, and FED. The endpoint is <see cref="PacedSilentEndpoint"/>, whose hardware consumes frames at the
+        /// wall clock's rate, so a three-minute voice ends in three minutes (the engine's headless endpoint accepts every
+        /// frame and ran the clock as fast as the feeder spun — headless plan §8 Q4, fixed here). The session is driven
+        /// by an <see cref="AudioFeedThread"/> exactly as a device session is, not by the engine's single-thread feeder:
+        /// on a feed-less session every transport command (the pause fade, the resume fade-in) drains the mixer queue
+        /// INLINE on the caller's thread while that feeder renders, and routing Pause/Resume here would race it.</para></summary>
         public static PcmAudioSession OpenSilentSession(MixFormat format, long voiceMs, IAudioEffects? effects, float volume)
         {
             IAudioEndpoint endpoint = SilentSink(format);
-            var session = new PcmAudioSession(format, endpoint.Sink, endpoint.Clock, 1024, driveWithOwnThread: true, endpoint);
+            var session = new PcmAudioSession(format, endpoint.Sink, endpoint.Clock, 1024, driveWithOwnThread: false, endpoint);
             session.Configure(PcmAudioPlayer.BuildGraphSpec(effects, format));
             if (effects is not null) session.BindEffects(effects);
+            var feed = new AudioFeedThread(session, sampleRate: format.SampleRate);   // attaches itself; the session disposes it
             IAudioSource voice = SilentVoice(format, voiceMs);
             long frames = Math.Max(1, voiceMs * format.SampleRate / 1000);
             session.SetVoice(voice, TimeSpan.FromMilliseconds(voiceMs), frames, NormMode.Off, -18f, volume);
             session.ConnectSignals(new MediaSignalSink(new MediaPlayerCore()));
+            feed.Start();
             return session;
         }
 
@@ -730,6 +806,7 @@ public static partial class Playback
                 s_activeJoinFrame = 0;
                 s_clockStale = true;
                 s_lastState = PlaybackState.Idle;
+                if (session is not null) RetireXruns(session);
             }
             if (session is not null)
             {
@@ -773,16 +850,17 @@ public static partial class Playback
         /// public because "which codec does a Flac24 rung get" is a promise worth a test rather than a comment.</summary>
         public static IAudioDecoder CreateDecoderFor(in Opened opened) => opened.Format switch
         {
-            Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => new FlacAudioDecoder(opened.GainDb),
-            Spotify.Audio.Format.Mp3 => new Mp3AudioDecoder(opened.GainDb),
-            _ => new VorbisAudioDecoder(opened.GainDb, opened.DurationMs),
+            Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => new FlacAudioDecoder(opened.GainDb, opened.Peak),
+            Spotify.Audio.Format.Mp3 => new Mp3AudioDecoder(opened.GainDb, opened.Peak),
+            _ => new VorbisAudioDecoder(opened.GainDb, opened.DurationMs, opened.Peak),
         };
 
         /// <summary>The normalization gain as a linear multiplier, folded into the conversion that happens anyway —
         /// one multiply per sample and no extra pass. `Platform.Keys.NormalizationEnabled` (default true) gates it;
-        /// off ⇒ 1. The engine's own `ReplayGainInfo` stays unity for the primary voice so the two do not compound.</summary>
-        internal static float GainLinear(float gainDb)
-            => NormalizationFactor(Platform.Settings.Get(Platform.Keys.NormalizationEnabled), gainDb);
+        /// off ⇒ 1. The engine's own `ReplayGainInfo` stays unity for the primary voice so the two do not compound.
+        /// <paramref name="peak"/> is the track's linear true peak (`Opened.Peak`), which caps a boost.</summary>
+        internal static float GainLinear(float gainDb, float peak = 0f)
+            => NormalizationFactor(Platform.Settings.Get(Platform.Keys.NormalizationEnabled), gainDb, peak);
 
         /// <summary>The largest boost or cut a gain figure may ask for. Spotify's track gains sit within ±15 dB; the Ogg
         /// figure is four bytes of a header (byte 144), and a garbage float there must never become a deafening
@@ -958,7 +1036,9 @@ public static partial class Playback
         public interface IRandomAccessBytes
         {
             /// <summary>Copy [offset, offset + dst.Length): &gt;0 copied (short at a store's edge), 0 only at EOF, −1 when
-            /// <paramref name="epoch"/> is no longer the source's or the bounded wait ran out. Blocks, bounded.</summary>
+            /// <paramref name="epoch"/> is no longer the source's or the bounded wait ran out, <see cref="InterruptedRead"/>
+            /// (−2) when a seek interrupted the wait — no bytes, not the end: the adapter hands out silence until its own
+            /// <c>Seek</c> arrives (and flushes it). Blocks, bounded.</summary>
             int ReadAt(long offset, Span<byte> dst, uint epoch);
 
             /// <summary>A seek: adopt <paramref name="epoch"/>, cancel what is in flight, and put [probeOffset,
@@ -975,13 +1055,38 @@ public static partial class Playback
             long TailGranule { get; }
         }
 
+        /// <summary>What <see cref="IRandomAccessBytes.ReadAt"/> answers while a seek has interrupted its wait
+        /// (= <see cref="Spotify.Audio.Body.Interrupted"/>).</summary>
+        public const int InterruptedRead = Spotify.Audio.Body.Interrupted;
+
+        /// <summary>At most this many frames of silence per decoder read while a seek's interrupt is pending: small enough
+        /// that the decode-ahead ring reaches its target in a few passes and the producer returns to its seek mailbox.</summary>
+        const int InterruptSilenceFrames = 1_024;
+
+        /// <summary>Read and clear an adapter's interrupt latch.</summary>
+        static bool TakeInterrupt(ref bool latch)
+        {
+            if (!latch) return false;
+            latch = false;
+            return true;
+        }
+
+        /// <summary>Hand out up to <see cref="InterruptSilenceFrames"/> frames of silence (interleaved, mix domain).</summary>
+        static int Silence(Span<float> dst, int wantFrames, int channels)
+        {
+            int frames = Math.Min(wantFrames, InterruptSilenceFrames);
+            dst[..(frames * channels)].Clear();
+            return frames;
+        }
+
         /// <summary>One read at a container offset through the random-access face. A −1 from an epoch that moved
         /// underneath the caller (a refused head splice supersedes the ring — the only epoch change a decoder does not
-        /// make itself) is retried ONCE at the new epoch, where the ring serves the true bytes.</summary>
+        /// make itself) is retried ONCE at the new epoch, where the ring serves the true bytes. An
+        /// <see cref="InterruptedRead"/> passes straight through.</summary>
         static int ReadAtEpoch(IRandomAccessBytes source, long offset, Span<byte> dst, ref uint epoch)
         {
             int n = source.ReadAt(offset, dst, epoch);
-            if (n >= 0) return n;
+            if (n >= 0 || n == InterruptedRead) return n;
             uint now = source.Epoch;
             if (now == epoch) return n;
             epoch = now;
@@ -1022,14 +1127,15 @@ public static partial class Playback
             long _firstAudioPage, _origin, _tail = -1;
             int _rate;
             uint _epoch;
-            bool _eof;
+            bool _eof, _interrupted;
 
             /// <param name="gainDb">The normalization figure (`Opened.GainDb`: the catalogue's, else the header's byte 144).</param>
             /// <param name="durationMs">The declared duration: the seek estimate's slope until the tail is known, and the
             /// yardstick a tail granule is checked against.</param>
-            public VorbisAudioDecoder(float gainDb, long durationMs = 0)
+            /// <param name="peak">The track's linear true peak (`Opened.Peak`, header byte 148), which caps a boost; 0 = unknown.</param>
+            public VorbisAudioDecoder(float gainDb, long durationMs = 0, float peak = 0f)
             {
-                _gainLinear = GainLinear(gainDb);
+                _gainLinear = GainLinear(gainDb, peak);
                 _durationMs = Math.Max(0, durationMs);
             }
 
@@ -1183,9 +1289,16 @@ public static partial class Playback
             }
 
             /// <summary>One read at a container offset: the random-access face when the source has one, else the
-            /// sequential <c>Read</c>, whose cursor this adapter keeps at <c>_winStart + _winLen</c> by construction.</summary>
+            /// sequential <c>Read</c>, whose cursor this adapter keeps at <c>_winStart + _winLen</c> by construction. An
+            /// interrupted read is "no bytes" here and latches <c>_interrupted</c> for <see cref="Read"/>.</summary>
             int ReadRaw(long offset, Span<byte> dst)
-                => _ra is { } ra ? ReadAtEpoch(ra, offset, dst, ref _epoch) : _src!.Read(dst);
+            {
+                if (_ra is not { } ra) return _src!.Read(dst);
+                int n = ReadAtEpoch(ra, offset, dst, ref _epoch);
+                if (n != InterruptedRead) return n;
+                _interrupted = true;
+                return 0;
+            }
 
             /// <summary>Decode packets until one yields frames the clock hands out. A corrupt or undecodable packet costs
             /// itself, never the track; the next page granule re-pins the clock.</summary>
@@ -1199,7 +1312,11 @@ public static partial class Playback
                     if (next == Ogg.Reader.Next.NeedMore) { if (!Fill()) return false; continue; }
                     if (next == Ogg.Reader.Next.Eos) return false;
                     if (next == Ogg.Reader.Next.Corrupt) continue;
-                    if (dec.DecodePacket(packet) != Vorbis.PacketResult.Ok) continue;
+                    long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                    Vorbis.PacketResult decoded = dec.DecodePacket(packet);
+                    RecordDecode(DecodeVorbis, decoded == Vorbis.PacketResult.Ok ? dec.Frames : 0, _rate,
+                        System.Diagnostics.Stopwatch.GetTimestamp() - t0);
+                    if (decoded != Vorbis.PacketResult.Ok) continue;
                     bool eos = granule >= 0 && ogg.SawEos;
                     VorbisClock.Run run = _clock.Admit(dec.Frames, granule, eos);
                     if (run.Count > 0)
@@ -1255,7 +1372,14 @@ public static partial class Playback
                 if (want <= 0) return 0;
                 while (true)
                 {
-                    if (_hold == 0 && !NextFrames()) { _eof = true; return 0; }
+                    if (_hold == 0 && !NextFrames())
+                    {
+                        // A seek interrupted the byte wait: silence, never an EOF the engine would latch — the seek that is
+                        // on its way flushes it (and a seek that never arrives ends the interrupt within a second).
+                        if (TakeInterrupt(ref _interrupted)) return Silence(dst, want, ch);
+                        _eof = true;
+                        return 0;
+                    }
                     ReadOnlySpan<float> held = Held();
                     if (_resampler is { IsActive: true } rs)
                     {
@@ -1283,6 +1407,7 @@ public static partial class Playback
                 long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 _hold = _holdOffset = 0;
                 _eof = false;
+                _interrupted = false;                                    // the seek the interrupt was waiting for is here
                 _resampler?.Reset();
                 if (_ra is { } ra)
                 {
@@ -1378,11 +1503,14 @@ public static partial class Playback
                 return !_body.Disposed;
             }
 
-            /// <summary>The sequential read, over <see cref="ReadAt"/> at the cursor. 0 only at EOF (the ring's rule).</summary>
+            /// <summary>The sequential read at the cursor. 0 only at EOF (the ring's rule). NEVER interruptible: a sequential
+            /// consumer (NLayer through <see cref="ByteSourceStream"/>) cannot tell "a seek is coming" from the end of the
+            /// track, so it keeps the bounded wait. A −1 from a moved epoch is retried once, as <see cref="ReadAtEpoch"/> does.</summary>
             public int Read(Span<byte> dst)
             {
                 uint epoch = _body.Epoch;
-                int n = ReadAtEpoch(this, _cursor, dst, ref epoch);
+                int n = _body.ReadAt(_cursor, dst, epoch);
+                if (n < 0 && _body.Epoch != epoch) n = _body.ReadAt(_cursor, dst, _body.Epoch);
                 if (n > 0) _cursor += n;
                 return n;
             }
@@ -1395,18 +1523,18 @@ public static partial class Playback
                 return _cursor;
             }
 
-            public int ReadAt(long offset, Span<byte> dst, uint epoch) => _body.ReadAt(offset, dst, epoch);
+            /// <summary>The random-access face the Vorbis and FLAC adapters read — INTERRUPTIBLE, because both hand out
+            /// silence for <see cref="InterruptedRead"/> until their own seek arrives.</summary>
+            public int ReadAt(long offset, Span<byte> dst, uint epoch) => _body.ReadAt(offset, dst, epoch, interruptible: true);
 
-            /// <summary>The ring aligns a probe's START down to its 64 KiB slot and sizes the range from there, so the
-            /// bytes between the slot start and <paramref name="probeOffset"/> are added back: the one range on the wire
-            /// always covers the whole window the planner is about to read, instead of stopping short at a slot edge
-            /// and costing a second range.</summary>
-            public void Retarget(long probeOffset, int probeBytes, uint epoch)
-            {
-                long fileOffset = _body.Skip + Math.Max(0, probeOffset);
-                int slack = (int)(fileOffset % Spotify.Audio.Ring.SlotBytes);
-                _body.Retarget(probeOffset, probeBytes + slack, epoch);
-            }
+            /// <summary>A seek. The ring aligns the probe out to whole slots at both ends, so the one range on the wire
+            /// covers the whole window the planner is about to read.</summary>
+            public void Retarget(long probeOffset, int probeBytes, uint epoch) => _body.Retarget(probeOffset, probeBytes, epoch);
+
+            /// <summary>A seek is on its way (see <see cref="Spotify.Audio.Body.InterruptPendingRead"/>): release a
+            /// decoder blocked in the ring's wait so the engine's producer reaches its seek mailbox now, not after the
+            /// 8 s bound. Any thread; non-blocking.</summary>
+            public void InterruptPendingRead() => _body.InterruptPendingRead();
 
             public void ResumeFrom(long offset)
             {
@@ -1435,9 +1563,9 @@ public static partial class Playback
 
             readonly PullSamples _pullFn;
 
-            public Mp3AudioDecoder(float gainDb)
+            public Mp3AudioDecoder(float gainDb, float peak = 0f)
             {
-                _gain = GainLinear(gainDb);
+                _gain = GainLinear(gainDb, peak);
                 _pullFn = ReadSource;
             }
 
@@ -1472,7 +1600,12 @@ public static partial class Playback
                 if (_file is null) return 0;
                 if (_pull.Length < into.Length) _pull = new float[into.Length];
                 int n;
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 try { n = _file.ReadSamples(_pull, 0, into.Length); } catch { return 0; }
+                // NLayer reads its Stream inside this call, so the MP3 figure includes the byte seam's waits — an honest
+                // floor for the decoder, not a pure CPU number like the Vorbis and FLAC ones.
+                RecordDecode(DecodeMp3, n > 0 ? n / _srcChannels : 0, _file.SampleRate,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - t0);
                 if (n > 0) _pull.AsSpan(0, n).CopyTo(into);
                 return n;
             }
@@ -1727,7 +1860,8 @@ public static partial class Playback
                 if (session is null || s_backend is null) return;          // no live session to hand off from
 
                 using var cts = new CancellationTokenSource();
-                IMediaByteSource? bytes = Open(id, cts.Token, out Opened opened, out Fault fault);
+                // `prepared`: the next ring is sized for the hand-off out of the shared read-ahead budget (Vorbis plan §5.3).
+                IMediaByteSource? bytes = Open(id, cts.Token, out Opened opened, out Fault fault, prepared: true);
                 if (bytes is null) { if (fault != Fault.None) Log.Info("audio", $"prepare skipped: {fault}"); return; }
                 ApplySkip(bytes, in opened);
 
@@ -1760,6 +1894,7 @@ public static partial class Playback
             if (!GaplessJoinClock.PrimedSlotMatches(item.MixRate, sess.Format.SampleRate))
             {
                 Log.Info("audio", "join abandoned reason=rate-mismatch");
+                Interlocked.Increment(ref s_mGaplessAbandoned);
                 DisposePreparedSlot();
                 return false;
             }
@@ -1768,10 +1903,14 @@ public static partial class Playback
             long remaining = s_activeDurMs - ActivePositionMs();
             long join = GaplessJoinClock.ScheduleJoin(s_activeJoinFrame, clock, remaining, sess.Format.SampleRate);
             float rg = sess.ReplayGainScalarFor(item.Loudness);
+            // EXACT when the outgoing voice's length is decoded truth (the tail granule, STREAMINFO, the LAME tag), so the
+            // engine trims it to the sample; otherwise the join rides the catalogue duration and is a degraded butt-join.
+            bool exact = sess.VoiceLengthIsExact;
             lock (s_gate)
             {
                 if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, GainEnvelope.Constant, join, rg, sess.BuildVoiceChain(), id))
                     return false;
+                s_joinExact = exact;
                 s_joinPending = true;
                 s_joinFrame = join;
                 s_joinVoiceId = id;
@@ -1786,7 +1925,7 @@ public static partial class Playback
                 s_prepDurMs = 0;
                 s_prepOverlap = false;
             }
-            Log.Info("audio", $"gapless armed join={join} clock={clock} remainMs={remaining}");
+            Log.Info("audio", $"gapless armed join={join} clock={clock} remainMs={remaining} exact={(exact ? 1 : 0)}");
             return true;
         }
 
@@ -1798,6 +1937,8 @@ public static partial class Playback
             long totalFrames;
             lock (s_gate)
             {
+                if (s_joinExact) Interlocked.Increment(ref s_mGaplessExact);
+                else Interlocked.Increment(ref s_mGaplessDegraded);
                 voice = s_joinVoice;
                 totalFrames = s_joinTotalFrames;
                 s_joinVoice = null;
@@ -1831,6 +1972,7 @@ public static partial class Playback
             if (!GaplessJoinClock.PrimedSlotMatches(item.MixRate, sess.Format.SampleRate))
             {
                 Log.Info("audio", "crossfade abandoned reason=rate-mismatch");
+                Interlocked.Increment(ref s_mGaplessAbandoned);
                 DisposePreparedSlot();
                 return false;
             }
@@ -1867,6 +2009,7 @@ public static partial class Playback
                     catch (Exception ex) { Log.Warn("audio", "set active voice failed", ex); }
                 }
             }
+            Interlocked.Increment(ref s_mCrossfades);
             Log.Info("audio", $"crossfade committed start={start} frames={fadeFrames}");
             Post(Input.Audio(AudioSignal.Started, s_loadEpoch, FrameNowMs(), 0));
             return true;
@@ -1887,6 +2030,7 @@ public static partial class Playback
                 bytes = s_joinBytes;
                 s_joinBytes = null;
             }
+            Interlocked.Increment(ref s_mGaplessAbandoned);
             Log.Info("audio", "join abandoned reason=" + reason);
             try { sess?.SetVoiceEnvelope(voiceId, GainEnvelope.Fade(FadeKind.Out, 0, 1, CrossCurve.Linear)); } catch { }
             if (bytes is not null) { try { bytes.Close(); } catch { } }
@@ -1911,17 +2055,26 @@ public static partial class Playback
 
         // ── 11. seek ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-        static async Task SeekCoreAsync(int ms, uint epoch)
+        /// <param name="t0">The <c>Stopwatch</c> stamp of the <see cref="Seek"/> call (0: a restore's seek, not timed).</param>
+        /// <param name="before">The stream counters at that call — the seek's kind is the delta (<see cref="SeekKindOf"/>).</param>
+        static async Task SeekCoreAsync(int ms, uint epoch, long t0 = 0, Spotify.Audio.Stream.Stats before = default)
         {
-            MediaPlayer? p = Volatile.Read(ref s_player);
             PcmAudioSession? sess;
-            lock (s_gate) sess = s_session;
+            bool silent;
+            lock (s_gate) { sess = s_session; silent = s_silent; }
+            if (silent && sess is not null)
+            {
+                // The facade has no silent session, and the silent voice is a signal generator the engine cannot seek.
+                if (await SilentSeekAsync(sess, ms, epoch).ConfigureAwait(false) && t0 != 0) RecordSeek(ms, t0, before);
+                return;
+            }
+            MediaPlayer? p = Volatile.Read(ref s_player);
             if (p is null || sess is null) { lock (s_gate) s_pendingSeekMs = ms; return; }
             AbandonPendingJoin(sess, "seek");
-            await ApplySeekAsync(ms, epoch).ConfigureAwait(false);
+            await ApplySeekAsync(ms, epoch, t0, before).ConfigureAwait(false);
         }
 
-        static async Task ApplySeekAsync(int ms, uint epoch)
+        static async Task ApplySeekAsync(int ms, uint epoch, long t0 = 0, Spotify.Audio.Stream.Stats before = default)
         {
             MediaPlayer? p = Volatile.Read(ref s_player);
             if (p is null) return;
@@ -1931,6 +2084,7 @@ public static partial class Playback
             lock (s_gate)
             {
                 s_pendingSeekMs = -1;
+                // The engine rebased its position to the target, and `p.Position` is the active voice's own: no offset.
                 s_activeStartMs = 0;
                 if (s_session is { } sess)
                 {
@@ -1938,7 +2092,45 @@ public static partial class Playback
                         sess.SampleClock, s_activeDurMs, ms, sess.Format.SampleRate);
                 }
             }
+            if (t0 != 0) RecordSeek(ms, t0, before);
             PostSignal(AudioSignal.Seeked, epoch == 0 ? s_loadEpoch : epoch, ms);
+        }
+
+        /// <summary>A seek on a silent VOICE session: a fresh silent session holding what is left of the track from
+        /// <paramref name="ms"/> (<see cref="SilentStart"/>), swapped in for <paramref name="old"/>, with the position
+        /// offset CARRIED to the target — the old path zeroed it, so a fake track reported 0:00 after every seek. Play
+        /// intent is kept: a paused track stays paused at its new position. False when a load replaced the session while
+        /// the new one was being built.</summary>
+        static async Task<bool> SilentSeekAsync(PcmAudioSession old, int ms, uint epoch)
+        {
+            long durMs;
+            bool play;
+            lock (s_gate) { durMs = s_activeDurMs; play = s_playIntent; }
+            SilentStart start = SilentStart.For(durMs, ms);
+            PcmAudioSession fresh = OpenSilentSession(SilentFormat, start.VoiceMs, s_effects, s_volume);
+            bool adopted;
+            lock (s_gate)
+            {
+                adopted = s_silent && ReferenceEquals(s_session, old);
+                if (adopted)
+                {
+                    RetireXruns(old);
+                    s_session = fresh;
+                    s_pendingSeekMs = -1;
+                    s_activeStartMs = -start.PositionOffsetMs;
+                    s_activePrimaryId = fresh.PrimaryVoiceIdValue;
+                }
+            }
+            if (!adopted)
+            {
+                try { await fresh.DisposeAsync().ConfigureAwait(false); } catch { }
+                return false;
+            }
+            try { fresh.SetMuted(Muted.Peek()); } catch { }
+            try { await old.DisposeAsync().ConfigureAwait(false); } catch { }
+            if (play) { try { await fresh.PlayAsync().ConfigureAwait(false); } catch { } }
+            PostSignal(AudioSignal.Seeked, epoch == 0 ? s_loadEpoch : epoch, start.PositionOffsetMs);
+            return true;
         }
 
         // ── 12. the 200 ms tick ──────────────────────────────────────────────────────────────────────────────────────
@@ -2054,7 +2246,12 @@ public static partial class Playback
             {
                 case PlaybackState.Playing:
                     if (s_clockStale) break;                            // the flicker guard: a stale clock reports 0
-                    if (!s_startedAnnounced) { s_startedAnnounced = true; PostSignal(AudioSignal.Started, epoch, pos); }
+                    if (!s_startedAnnounced)
+                    {
+                        s_startedAnnounced = true;
+                        RecordFirstAudio();
+                        PostSignal(AudioSignal.Started, epoch, pos);
+                    }
                     else if (s_lastState != PlaybackState.Playing) PostSignal(AudioSignal.Started, epoch, pos);
                     else if (FrameNowMs() - s_lastPositionPostMs >= PositionSampleMs)
                     {
@@ -2103,6 +2300,15 @@ public static partial class Playback
         /// cumulative count — a count says "something has been wrong for a while", an incident says when.</summary>
         static void DrainXruns(PcmAudioSession sess, long posMs, PlaybackState state)
         {
+            lock (s_gate)
+            {
+                // The live session's running totals, for `Metrics`; a torn-down session's were folded in by RetireXruns.
+                if (ReferenceEquals(s_session, sess))
+                {
+                    Volatile.Write(ref s_liveXruns, sess.XrunCount);
+                    Volatile.Write(ref s_liveXrunFrames, sess.XrunFramesLost);
+                }
+            }
             int rate = sess.Format.SampleRate;
             Span<AudioFeedThread.XrunEvent> buf = stackalloc AudioFeedThread.XrunEvent[16];
             int n;
@@ -2216,9 +2422,11 @@ public static partial class Playback
 
         /// <summary>What the pump knows about an opened track beyond its bytes. <see cref="Format"/> is what the
         /// decoder factory switches on; <see cref="Label"/> is what the stage badge and the deck faces print
-        /// (ch 21 §10 item 77, ch 23 W18/W19).</summary>
+        /// (ch 21 §10 item 77, ch 23 W18/W19). <see cref="Peak"/> is the linear true peak the normalization gain is capped
+        /// by (<see cref="NormalizationFactor"/>), 0 when unknown.</summary>
         public readonly record struct Opened(
-            Spotify.Audio.Format Format, long DurationMs, float GainDb, string Label, int BitrateKbps, bool IsLive);
+            Spotify.Audio.Format Format, long DurationMs, float GainDb, string Label, int BitrateKbps, bool IsLive,
+            float Peak = 0f);
 
         /// <summary>Where a module playable's bytes come from (owner T's `Platform/Modules.Host.cs`, Wave 6). A SEAM
         /// rather than a call, so Wave 3 builds and runs with no module host at all: an unattached provider answers
@@ -2231,8 +2439,10 @@ public static partial class Playback
 
         /// <summary>Open the bytes for <paramref name="id"/>. Blocks: metadata, the ladder, the CDN, the key. Runs on
         /// the pump, never on the UI thread. A failure answers a typed <see cref="Playback.Fault"/> and a null
-        /// source; it never throws into the reducer.</summary>
-        public static IMediaByteSource? Open(EntityId id, CancellationToken ct, out Opened opened, out Fault fault)
+        /// source; it never throws into the reducer. <paramref name="prepared"/>: the next track, opened ahead of a
+        /// hand-off — its read-ahead comes out of the shared budget sized for that (Vorbis plan §5.3).</summary>
+        public static IMediaByteSource? Open(EntityId id, CancellationToken ct, out Opened opened, out Fault fault,
+            bool prepared = false)
         {
             opened = default;
             fault = Fault.None;
@@ -2240,7 +2450,7 @@ public static partial class Playback
             {
                 case EntityProvider.Spotify:
                 case EntityProvider.WaveePodcast:
-                    return SpotifySource(id, ct, out opened, out fault);
+                    return SpotifySource(id, ct, prepared, out opened, out fault);
                 case EntityProvider.Local:
                     return LocalSource(id, out opened, out fault);
                 case EntityProvider.Module:
@@ -2261,11 +2471,11 @@ public static partial class Playback
         /// opened <see cref="Spotify.Audio.Body"/> in <see cref="RingSource"/> (Vorbis plan §5.5) and reads the format,
         /// duration and normalization gain off the answer. The body's own `ReadAt` already never answers 0 before the
         /// end, so no shim sits in between.</summary>
-        static IMediaByteSource? SpotifySource(EntityId id, CancellationToken ct, out Opened opened, out Fault fault)
+        static IMediaByteSource? SpotifySource(EntityId id, CancellationToken ct, bool prepared, out Opened opened, out Fault fault)
         {
             opened = default;
             Spotify.Audio.Opened o;
-            try { o = Spotify.Audio.Open(id.Text, ct); }
+            try { o = Spotify.Audio.Open(id.Text, Spotify.Audio.PreferredQuality(), 0, ct, prepared); }
             catch (OperationCanceledException) { fault = Fault.None; return null; }
             catch (Exception ex) { Log.Warn("audio", "spotify open failed", ex); fault = Fault.Network; return null; }
 
@@ -2278,9 +2488,10 @@ public static partial class Playback
 
             fault = Fault.None;
             int kbps = o.DurationMs > 0 && o.Length > 0 ? (int)(o.Length * 8 / o.DurationMs) : BitrateHintKbps(o.Fmt);
-            opened = new Opened(o.Fmt, o.DurationMs, o.GainDb, LabelFor(o.Fmt, 0, 0), kbps, IsLive: false);
-            Log.Info("audio", $"audio.open fmt={o.Fmt} len={o.Length} durMs={o.DurationMs} gain={o.GainDb:0.0} dB kbps={kbps} "
-                              + $"head={body.HeadBytes} ring={body.Ring.Seconds}s tail={body.TailGranule}");
+            opened = new Opened(o.Fmt, o.DurationMs, o.GainDb, LabelFor(o.Fmt, 0, 0), kbps, IsLive: false, o.Peak);
+            Log.Info("audio", $"audio.open fmt={o.Fmt} len={o.Length} durMs={o.DurationMs} gain={o.GainDb:0.0} dB "
+                              + $"peak={o.Peak:0.000} kbps={kbps} head={body.HeadBytes} ring={body.Ring.Seconds}s/"
+                              + $"{body.Ring.Slots} slots prepared={(prepared ? 1 : 0)} tail={body.TailGranule}");
             return new RingSource(body);
         }
 
@@ -2434,10 +2645,152 @@ public static partial class Playback
         /// the rail, the NPV, the deck machines, the lyric wipe, the queue, the stage, SMTC, the taskbar and the jump
         /// list all light up with no network and no audio device (ch 31 §7.4's note — the highest-value single fixture
         /// in that chapter).
-        /// <para>It is the engine's own headless endpoint rather than a Wavee type: the graph, the mixer, the DSP
-        /// chain and the level tap all run exactly as they do on a real device, so what `--fake` exercises is the
-        /// shipping path and not a second one.</para></summary>
-        public static IAudioEndpoint SilentSink(MixFormat format) => new HeadlessAudioEndpoint(format);
+        /// <para>The graph, the mixer, the DSP chain, the RT feed and the level tap all run exactly as they do on a real
+        /// device; only the leaf is swapped. The leaf is <see cref="PacedSilentEndpoint"/> rather than the engine's
+        /// <c>HeadlessAudioEndpoint</c>, whose null sink accepts every frame (<c>WritableFrames</c> = int.MaxValue) and
+        /// so ran a fake track's clock as fast as the feed could spin — headless plan §8 Q4, decided here.</para></summary>
+        public static IAudioEndpoint SilentSink(MixFormat format) => new PacedSilentEndpoint(format);
+
+        /// <summary>A silent device that keeps TIME: its "hardware" consumes queued frames at the wall clock's rate while
+        /// started, and its buffer is finite (<see cref="DefaultCapacityMs"/>), so a session renders into it at exactly
+        /// real time — the RT feed waits on <see cref="WaitForWritable"/> the way it waits on a WASAPI event. The played
+        /// count is the authoritative clock, QPC-stamped in the same 100 ns domain the session projects with. A starved
+        /// stretch LOSES time (the clock stalls at what was written), as a device's played count does, instead of bursting
+        /// ahead when data returns. Allocation-free; one lock (the feed, the clock tick and a disposer call in).</summary>
+        public sealed class PacedSilentEndpoint : IAudioEndpoint, IBufferedAudioSink, IAudioClockSource
+        {
+            /// <summary>The buffer a WASAPI shared-mode client gets by default, and what the feed's sizing assumes.</summary>
+            public const int DefaultCapacityMs = 100;
+
+            readonly Lock _gate = new();
+            readonly Func<long> _now;
+            readonly long _ticksPerSecond;
+            long _written, _played, _lastTicks;
+            bool _started;
+
+            /// <param name="format">The mix format the "device" opened at.</param>
+            /// <param name="capacityMs">The buffer, in milliseconds of audio.</param>
+            /// <param name="clock">The monotonic clock in <paramref name="ticksPerSecond"/> units; the
+            /// <see cref="System.Diagnostics.Stopwatch"/> by default. Tests pass a manual one.</param>
+            public PacedSilentEndpoint(MixFormat format, int capacityMs = DefaultCapacityMs, Func<long>? clock = null,
+                long ticksPerSecond = 0)
+            {
+                Format = format;
+                CapacityFrames = Math.Max(1, (int)((long)Math.Max(1, format.SampleRate) * Math.Max(1, capacityMs) / 1000));
+                if (clock is null) _now = System.Diagnostics.Stopwatch.GetTimestamp;
+                else _now = clock;
+                _ticksPerSecond = clock is null || ticksPerSecond <= 0 ? System.Diagnostics.Stopwatch.Frequency : ticksPerSecond;
+            }
+
+            public MixFormat Format { get; }
+            public IAudioSink Sink => this;
+            public IAudioClockSource Clock => this;
+            public bool IsReady => true;
+            public int CapacityFrames { get; }
+            public int MixRate => Format.SampleRate;
+            public long StreamLatencyFrames => 0;
+            public long WrittenFrames { get { lock (_gate) return _written; } }
+            /// <summary>Frames queued and not yet "played".</summary>
+            public int PaddingFrames { get { lock (_gate) { AdvanceLocked(); return (int)(_written - _played); } } }
+            /// <summary>Whether the "device" is running.</summary>
+            public bool IsStarted { get { lock (_gate) return _started; } }
+
+            public int WritableFrames { get { lock (_gate) { AdvanceLocked(); return CapacityFrames - (int)(_written - _played); } } }
+
+            public int Write(ReadOnlySpan<float> src, int frames)
+            {
+                lock (_gate)
+                {
+                    AdvanceLocked();
+                    int room = CapacityFrames - (int)(_written - _played);
+                    int accepted = Math.Clamp(frames, 0, Math.Max(0, room));
+                    _written += accepted;
+                    return accepted;
+                }
+            }
+
+            public void Start()
+            {
+                lock (_gate)
+                {
+                    if (_started) return;
+                    _started = true;
+                    _lastTicks = _now();
+                }
+            }
+
+            public void Stop()
+            {
+                lock (_gate)
+                {
+                    AdvanceLocked();
+                    _started = false;
+                }
+            }
+
+            /// <summary>Flush the queue while stopped (the engine stops before it resets) and start a new device epoch.</summary>
+            public void Reset()
+            {
+                lock (_gate)
+                {
+                    _written = 0;
+                    _played = 0;
+                    _lastTicks = _now();
+                }
+            }
+
+            public bool TryGetPlayed(out long playedFrames, out long qpc)
+            {
+                lock (_gate)
+                {
+                    AdvanceLocked();
+                    playedFrames = _played;
+                    qpc = (long)(_lastTicks * (1e7 / _ticksPerSecond));
+                    return true;
+                }
+            }
+
+            /// <summary>Wait until a quarter of the buffer is free, a control command wakes the feed, or
+            /// <paramref name="timeoutMs"/> — always at least 1 ms, so a feed with nothing to render never spins.</summary>
+            public void WaitForWritable(WaitHandle controlWake, int timeoutMs)
+            {
+                int waitMs;
+                lock (_gate)
+                {
+                    AdvanceLocked();
+                    int writable = CapacityFrames - (int)(_written - _played);
+                    int threshold = Math.Max(1, CapacityFrames / 4);
+                    waitMs = !_started || writable >= threshold
+                        ? 1
+                        : (int)Math.Ceiling((threshold - writable) * 1000.0 / Math.Max(1, Format.SampleRate));
+                }
+                controlWake.WaitOne(Math.Clamp(waitMs, 1, Math.Max(1, timeoutMs)));
+            }
+
+            public void Dispose() => Stop();
+
+            /// <summary>Consume queued frames for the time elapsed since the last look. Whole frames only; the remainder
+            /// of a tick stays on the clock so the pace does not drift.</summary>
+            void AdvanceLocked()
+            {
+                if (!_started) return;
+                long now = _now();
+                long elapsed = now - _lastTicks;
+                if (elapsed <= 0) return;
+                long frames = elapsed * Format.SampleRate / _ticksPerSecond;
+                if (frames <= 0) return;
+                long queued = _written - _played;
+                if (frames >= queued)
+                {
+                    // Starved (or exactly drained): the clock stops at what was written and the idle time is lost.
+                    _played = _written;
+                    _lastTicks = now;
+                    return;
+                }
+                _played += frames;
+                _lastTicks += frames * _ticksPerSecond / Format.SampleRate;
+            }
+        }
 
         /// <summary>A silent VOICE for a fake track: the right number of frames of nothing, so the engine's own clock
         /// retires it at exactly the declared duration and `Ended` arrives on time.</summary>
@@ -2779,10 +3132,12 @@ public static partial class Playback
             int _hold;
             int _skipSamples;               // samples to drop after a seek (the target was inside the frame)
             long _samplePos;                // next source sample to be emitted
-            bool _eof;
+            bool _eof, _interrupted;
             LinearResampler? _resampler;
 
-            public FlacAudioDecoder(float gainDb) => _gainLinear = GainLinear(gainDb);
+            /// <param name="gainDb">The normalization figure (the catalogue's for a Spotify FLAC).</param>
+            /// <param name="peak">The linear true peak that caps a boost (`Opened.Peak`); 0 = unknown.</param>
+            public FlacAudioDecoder(float gainDb, float peak = 0f) => _gainLinear = GainLinear(gainDb, peak);
 
             public GaplessInfo Gapless { get; private set; } = GaplessInfo.None;
 
@@ -2861,9 +3216,16 @@ public static partial class Playback
             }
 
             /// <summary>One read at a source offset: the random-access face when the source has one, else the sequential
-            /// <c>Read</c>, whose cursor this adapter keeps at <c>_winStart + _winLen</c> by construction.</summary>
+            /// <c>Read</c>, whose cursor this adapter keeps at <c>_winStart + _winLen</c> by construction. An interrupted
+            /// read is "no bytes" here and latches <c>_interrupted</c> for <see cref="Read"/>.</summary>
             int ReadRaw(long offset, Span<byte> dst)
-                => _ra is { } ra ? ReadAtEpoch(ra, offset, dst, ref _epoch) : _src!.Read(dst);
+            {
+                if (_ra is not { } ra) return _src!.Read(dst);
+                int n = ReadAtEpoch(ra, offset, dst, ref _epoch);
+                if (n != InterruptedRead) return n;
+                _interrupted = true;
+                return 0;
+            }
 
             /// <summary>Decode the next frame into <c>_conformed</c>. False at EOF or on an unrecoverable error. A
             /// corrupt frame is skipped by ONE byte and the sync scan resumes — 0.2.9 latched the first zero read as
@@ -2878,6 +3240,7 @@ public static partial class Playback
                     if (at < 0) { if (_winLen == _win.Length) _cursor = _winLen; else return false; continue; }
                     _cursor += at;
                     win = _win.AsSpan(_cursor, _winLen - _cursor);
+                    long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                     Flac.FrameResult fr = _dec.DecodeFrame(win, out int consumed, out Flac.Block block);
                     if (fr == Flac.FrameResult.Overrun)
                     {
@@ -2893,6 +3256,7 @@ public static partial class Playback
                         Flac.ToFloat(block.Channel(0), block.Channel(1), block.Bps, _gainLinear, _conformed);
                     else
                         Flac.ToFloatMulti(block.Planar, block.Channels, block.BlockSize, block.Bps, _gainLinear, _conformed);
+                    RecordDecode(DecodeFlac, block.BlockSize, _si.SampleRate, System.Diagnostics.Stopwatch.GetTimestamp() - t0);
                     _hold = block.BlockSize;
                     if (_skipSamples > 0)
                     {
@@ -2914,7 +3278,7 @@ public static partial class Playback
                 int want = dst.Length / ch;
                 if (want <= 0) return 0;
 
-                if (_hold == 0 && !NextBlock()) { _eof = true; return 0; }
+                if (_hold == 0 && !NextBlock()) return EndOrSilence(dst, want, ch);
 
                 while (_resampler is { IsActive: true } rs)
                 {
@@ -2925,7 +3289,7 @@ public static partial class Playback
                     _samplePos += rr.Consumed;
                     // A block that went wholly into the interpolation history produced nothing: that is not the end.
                     if (rr.Produced > 0 || rr.Consumed == 0) return rr.Produced;
-                    if (_hold == 0 && !NextBlock()) { _eof = true; return 0; }
+                    if (_hold == 0 && !NextBlock()) return EndOrSilence(dst, want, ch);
                 }
 
                 int frames = Math.Min(want, _hold);
@@ -2935,6 +3299,15 @@ public static partial class Playback
                 _hold = rest;
                 _samplePos += frames;
                 return frames;
+            }
+
+            /// <summary>No next frame: silence while a seek's interrupt is pending (never an EOF the engine would latch —
+            /// the seek on its way flushes it), else the end.</summary>
+            int EndOrSilence(Span<float> dst, int want, int ch)
+            {
+                if (TakeInterrupt(ref _interrupted)) return Silence(dst, want, ch);
+                _eof = true;
+                return 0;
             }
 
             /// <summary>Seek to a MIX-domain frame (the engine's contract). Returns the frame actually reached in the
@@ -2949,6 +3322,7 @@ public static partial class Playback
                 long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 long target = Math.Clamp(ToSrc(frame), 0, _si.TotalSamples > 0 ? _si.TotalSamples : long.MaxValue);
                 _hold = 0; _eof = false; _skipSamples = 0;
+                _interrupted = false;                          // the seek the interrupt was waiting for is here
                 _resampler?.Reset();
                 if (_ra is { } ra) _epoch = Math.Max(_epoch, ra.Epoch) + 1;
 
@@ -3005,6 +3379,186 @@ public static partial class Playback
                 _cursor = 0;
                 return Fill();
             }
+        }
+
+        // ── 21. metrics (headless plan §3.5) ─────────────────────────────────────────────────────────────────────────
+        //
+        // What the headless `stats` line, a smoke script's `xruns==0` / `gapless.exact>=1` / `prefetched` conditions and
+        // the Vorbis/FLAC gates read. Every counter is written where the event happens — the pump chain, the 200 ms tick,
+        // the decode-ahead thread — as an Interlocked/Volatile primitive, and read only through `Metrics.Read()` as ONE
+        // value. Nothing here allocates or takes a lock on the decode path.
+
+        /// <summary>How a seek was served, derived from the stream counters across it (<see cref="SeekKindOf"/>) — never
+        /// guessed from the distance.</summary>
+        public enum SeekKind : byte
+        {
+            /// <summary>No probe on the wire and no disk chunk: the ring (or nothing at all) answered.</summary>
+            Ring = 0,
+            /// <summary>At least one probe range went to the CDN.</summary>
+            Far = 1,
+            /// <summary>No probe on the wire, but the disk cache answered chunks.</summary>
+            Disk = 2,
+        }
+
+        /// <summary>The pump's measurements as one value, readable from any thread.</summary>
+        /// <param name="FirstAudioMs">Load → the first <c>Started</c> (PCM through the graph), the last load's; −1 before any.</param>
+        /// <param name="FirstAudioFromHead">That load's first byte came off the clear head (a head-served start), not the body.</param>
+        /// <param name="LastSeekMs">The last timed seek's target.</param>
+        /// <param name="LastSeekLatencyMs">The <see cref="Seek"/> call → the engine's PCM at the target; −1 before any.</param>
+        /// <param name="LastSeekKind">How the last seek was served.</param>
+        /// <param name="Seeks">Timed seeks completed.</param>
+        /// <param name="RingSeekLatencyMs">The last <see cref="SeekKind.Ring"/> seek's latency, −1 before any.</param>
+        /// <param name="FarSeekLatencyMs">The last <see cref="SeekKind.Far"/> seek's latency, −1 before any.</param>
+        /// <param name="DiskSeekLatencyMs">The last <see cref="SeekKind.Disk"/> seek's latency, −1 before any.</param>
+        /// <param name="Xruns">RT-feed underrun incidents, every session this process (the engine's <c>XrunCount</c>).</param>
+        /// <param name="XrunFramesLost">Frames of silence those underruns wrote.</param>
+        /// <param name="GaplessExact">Gapless joins that went live with the outgoing length decoded exactly.</param>
+        /// <param name="GaplessDegraded">Gapless joins that went live on the catalogue duration.</param>
+        /// <param name="GaplessAbandoned">Joins or crossfades armed and then abandoned (a seek, a rate mismatch, the end first).</param>
+        /// <param name="Crossfades">Crossfades committed.</param>
+        /// <param name="DecodeXRealtime">Decode throughput of the PLAYING format, in multiples of real time.</param>
+        /// <param name="VorbisXRealtime">Vorbis decode throughput (packet decode only), this process.</param>
+        /// <param name="FlacXRealtime">FLAC decode throughput (frame decode + float conversion), this process.</param>
+        /// <param name="Mp3XRealtime">MP3 decode throughput (NLayer's read, byte-seam waits included), this process.</param>
+        /// <param name="PrepareArmed">A prepared next track is ready for the hand-off right now.</param>
+        public readonly record struct Metrics(
+            int FirstAudioMs, bool FirstAudioFromHead,
+            int LastSeekMs, int LastSeekLatencyMs, SeekKind LastSeekKind, int Seeks,
+            int RingSeekLatencyMs, int FarSeekLatencyMs, int DiskSeekLatencyMs,
+            long Xruns, long XrunFramesLost,
+            int GaplessExact, int GaplessDegraded, int GaplessAbandoned, int Crossfades,
+            float DecodeXRealtime, float VorbisXRealtime, float FlacXRealtime, float Mp3XRealtime,
+            bool PrepareArmed)
+        {
+            /// <summary>The live measurements.</summary>
+            public static Metrics Read()
+            {
+                float vorbis = CodecXRealtime(DecodeVorbis), flac = CodecXRealtime(DecodeFlac), mp3 = CodecXRealtime(DecodeMp3);
+                float playing = s_opened.Format switch
+                {
+                    Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => flac,
+                    Spotify.Audio.Format.Mp3 => mp3,
+                    Spotify.Audio.Format.Unknown => 0f,
+                    _ => vorbis,
+                };
+                return new Metrics(
+                    Volatile.Read(ref s_mFirstAudioMs), Volatile.Read(ref s_mFirstFromHead) != 0,
+                    Volatile.Read(ref s_mLastSeekMs), Volatile.Read(ref s_mLastSeekLatencyMs),
+                    (SeekKind)Volatile.Read(ref s_mLastSeekKind), Volatile.Read(ref s_mSeeks),
+                    Volatile.Read(ref s_mSeekLatencyByKind[(int)SeekKind.Ring]),
+                    Volatile.Read(ref s_mSeekLatencyByKind[(int)SeekKind.Far]),
+                    Volatile.Read(ref s_mSeekLatencyByKind[(int)SeekKind.Disk]),
+                    Interlocked.Read(ref s_retiredXruns) + Interlocked.Read(ref s_liveXruns),
+                    Interlocked.Read(ref s_retiredXrunFrames) + Interlocked.Read(ref s_liveXrunFrames),
+                    Volatile.Read(ref s_mGaplessExact), Volatile.Read(ref s_mGaplessDegraded),
+                    Volatile.Read(ref s_mGaplessAbandoned), Volatile.Read(ref s_mCrossfades),
+                    playing, vorbis, flac, mp3,
+                    Volatile.Read(ref s_prepItem) is { IsReady: true });
+            }
+        }
+
+        /// <summary>Zero every counter (the headless `stats reset`). The live session's xrun total is re-read at the next
+        /// tick, so only what happens after the reset is counted.</summary>
+        public static void ResetMetrics()
+        {
+            Volatile.Write(ref s_mFirstAudioMs, -1);
+            Volatile.Write(ref s_mFirstFromHead, 0);
+            Volatile.Write(ref s_mLastSeekMs, 0);
+            Volatile.Write(ref s_mLastSeekLatencyMs, -1);
+            Volatile.Write(ref s_mLastSeekKind, 0);
+            Volatile.Write(ref s_mSeeks, 0);
+            for (int i = 0; i < s_mSeekLatencyByKind.Length; i++) Volatile.Write(ref s_mSeekLatencyByKind[i], -1);
+            lock (s_gate)
+            {
+                PcmAudioSession? live = s_session;
+                Interlocked.Exchange(ref s_retiredXruns, live is null ? 0 : -live.XrunCount);
+                Interlocked.Exchange(ref s_retiredXrunFrames, live is null ? 0 : -live.XrunFramesLost);
+                Interlocked.Exchange(ref s_liveXruns, live?.XrunCount ?? 0);
+                Interlocked.Exchange(ref s_liveXrunFrames, live?.XrunFramesLost ?? 0);
+            }
+            Volatile.Write(ref s_mGaplessExact, 0);
+            Volatile.Write(ref s_mGaplessDegraded, 0);
+            Volatile.Write(ref s_mGaplessAbandoned, 0);
+            Volatile.Write(ref s_mCrossfades, 0);
+            for (int i = 0; i < s_decodeMicros.Length; i++)
+            {
+                Interlocked.Exchange(ref s_decodeMicros[i], 0);
+                Interlocked.Exchange(ref s_decodeTicks[i], 0);
+            }
+        }
+
+        /// <summary>The seek's kind from the stream counters sampled at its start and its end: a probe on the wire is a
+        /// FAR seek, a disk chunk with no probe is a DISK seek, neither is a RING seek. The fill that resumes after the
+        /// landing does not count — it is a plain range, not a probe. PURE.</summary>
+        public static SeekKind SeekKindOf(in Spotify.Audio.Stream.Stats before, in Spotify.Audio.Stream.Stats after)
+            => after.Probes > before.Probes ? SeekKind.Far
+             : after.CacheHits > before.CacheHits ? SeekKind.Disk
+             : SeekKind.Ring;
+
+        /// <summary>Decode throughput: audio seconds produced per wall second spent decoding. 0 before any decode. PURE.</summary>
+        public static float XRealtime(long sourceMicros, long wallTicks, long ticksPerSecond)
+            => sourceMicros <= 0 || wallTicks <= 0 || ticksPerSecond <= 0
+                ? 0f
+                : (float)(sourceMicros / 1e6 / ((double)wallTicks / ticksPerSecond));
+
+        const int DecodeVorbis = 0, DecodeFlac = 1, DecodeMp3 = 2;
+
+        static readonly long[] s_decodeMicros = new long[3], s_decodeTicks = new long[3];
+        static readonly int[] s_mSeekLatencyByKind = [-1, -1, -1];
+        static long s_loadStartedTicks, s_liveXruns, s_liveXrunFrames, s_retiredXruns, s_retiredXrunFrames;
+        static int s_mFirstAudioMs = -1, s_mFirstFromHead, s_mLastSeekMs, s_mLastSeekLatencyMs = -1, s_mLastSeekKind, s_mSeeks;
+        static int s_mGaplessExact, s_mGaplessDegraded, s_mGaplessAbandoned, s_mCrossfades;
+        static bool s_joinExact;                   // the pending join's exactness, decided at commit (s_gate)
+
+        /// <summary>Decode-thread: one decoded packet/frame of <paramref name="frames"/> source frames took
+        /// <paramref name="ticks"/>. Two Interlocked adds, no allocation.</summary>
+        static void RecordDecode(int codec, long frames, int sourceRate, long ticks)
+        {
+            if (ticks > 0) Interlocked.Add(ref s_decodeTicks[codec], ticks);
+            if (frames > 0 && sourceRate > 0) Interlocked.Add(ref s_decodeMicros[codec], frames * 1_000_000L / sourceRate);
+        }
+
+        static float CodecXRealtime(int codec)
+            => XRealtime(Interlocked.Read(ref s_decodeMicros[codec]), Interlocked.Read(ref s_decodeTicks[codec]),
+                System.Diagnostics.Stopwatch.Frequency);
+
+        /// <summary>Tick thread, at a load's first <c>Started</c>: the load's time to first audio, and whether the head
+        /// served it.</summary>
+        static void RecordFirstAudio()
+        {
+            long started = Interlocked.Exchange(ref s_loadStartedTicks, 0);
+            if (started == 0) return;
+            int ms = (int)Math.Min(int.MaxValue, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            IMediaByteSource? bytes;
+            lock (s_gate) bytes = s_bytes;
+            bool fromHead = bytes is RingSource ring && ring.Body.FirstFromHead;
+            Volatile.Write(ref s_mFirstAudioMs, ms);
+            Volatile.Write(ref s_mFirstFromHead, fromHead ? 1 : 0);
+            Log.Info("audio", $"audio.first-audio ms={ms} from={(fromHead ? "head" : "body")}");
+        }
+
+        /// <summary>Pump chain, when a timed seek's PCM is at the target: its latency and its kind.</summary>
+        static void RecordSeek(int targetMs, long t0, Spotify.Audio.Stream.Stats before)
+        {
+            Spotify.Audio.Stream.Stats after = Spotify.Audio.Stream.Stats.Read();
+            SeekKind kind = SeekKindOf(in before, in after);
+            int ms = (int)Math.Min(int.MaxValue, System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds);
+            Volatile.Write(ref s_mLastSeekMs, targetMs);
+            Volatile.Write(ref s_mLastSeekLatencyMs, ms);
+            Volatile.Write(ref s_mLastSeekKind, (int)kind);
+            Volatile.Write(ref s_mSeekLatencyByKind[(int)kind], ms);
+            Interlocked.Increment(ref s_mSeeks);
+            Log.Info("audio", $"audio.seek.done to={targetMs} kind={kind} latencyMs={ms} probes={after.Probes - before.Probes} "
+                              + $"requests={after.Requests - before.Requests} cacheHits={after.CacheHits - before.CacheHits}");
+        }
+
+        /// <summary>A session is going away (caller holds <see cref="s_gate"/>): fold its xrun totals into the retired ones.</summary>
+        static void RetireXruns(PcmAudioSession session)
+        {
+            Interlocked.Add(ref s_retiredXruns, session.XrunCount);
+            Interlocked.Add(ref s_retiredXrunFrames, session.XrunFramesLost);
+            Interlocked.Exchange(ref s_liveXruns, 0);
+            Interlocked.Exchange(ref s_liveXrunFrames, 0);
         }
     }
 }
