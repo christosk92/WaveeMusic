@@ -418,7 +418,7 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void An_interrupt_releases_a_read_blocked_in_the_ring_wait_until_the_seek_retargets()
+    public async Task An_interrupt_releases_a_read_blocked_in_the_ring_wait_until_the_seek_retargets()
     {
         var (plain, cipher) = Big.Value;
         var cdn = new FakeCdn(cipher);
@@ -433,8 +433,9 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         WaitUntil(() => body.Ring.Want >= 0, "the read to block in the ring's wait");
         var clock = Stopwatch.StartNew();
         body.InterruptPendingRead();
-        Assert.True(blocked.Wait(3_000), "the interrupted read did not return");
-        Assert.Equal(Audio.Body.Interrupted, blocked.Result);            // not EOF (0), not a fault (−1)
+        Task first = await Task.WhenAny(blocked, Task.Delay(3_000));
+        Assert.True(ReferenceEquals(blocked, first), "the interrupted read did not return");
+        Assert.Equal(Audio.Body.Interrupted, await blocked);             // not EOF (0), not a fault (−1)
         Assert.True(clock.ElapsedMilliseconds < 3_000);
 
         // While the window is open an interruptible miss answers at once. The seek's own retarget closes the window.
@@ -785,6 +786,29 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         var (plain, _) = Small.Value;
         Assert.Equal(-3.5f, Audio.HeadGainDb(plain.AsSpan(0, Audio.HeadMaxBytes)));
         Assert.Equal(0f, Audio.HeadGainDb(plain.AsSpan(0, 100)));
+    }
+
+    [Fact]
+    public void The_peak_is_read_at_byte_148_and_carried_so_the_gain_cap_can_apply()
+    {
+        var (plain, _) = Small.Value;
+        Assert.Equal(HeaderPeak, Audio.HeadPeak(plain.AsSpan(0, Audio.HeadMaxBytes)));
+        Assert.Equal(0f, Audio.HeadPeak(plain.AsSpan(0, 151)));         // too short to hold it: unknown
+
+        // A peak that is not a believable amplitude is UNKNOWN, never a cap: a garbage header float would otherwise
+        // silence the track through `NormalizationFactor`.
+        Assert.Equal(0f, Audio.SanePeak(float.NaN));
+        Assert.Equal(0f, Audio.SanePeak(-0.5f));
+        Assert.Equal(0f, Audio.SanePeak(1_000f));
+        Assert.Equal(0.9f, Audio.SanePeak(0.9f));
+        Assert.Equal(MathF.Pow(10f, -3f / 20f), Audio.PeakLinear(-3f), 5);   // the catalogue's dBFS true peak, linear
+        Assert.Equal(0f, Audio.PeakLinear(float.PositiveInfinity));
+
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(new FakeCdn(Small.Value.Cipher), fetcher, SmallBytes, peak: HeaderPeak);
+        Assert.Equal(HeaderPeak, body.Peak);
+        using var garbage = NewBody(new FakeCdn(Small.Value.Cipher), fetcher, SmallBytes, fileId: FileB, peak: 99f);
+        Assert.Equal(0f, garbage.Peak);
     }
 
     [Fact]

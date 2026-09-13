@@ -461,36 +461,110 @@ public class PlaybackSilentSinkTests
     }
 
     [Fact]
-    public void The_silent_sink_is_the_engine_s_own_headless_endpoint()
+    public void The_silent_sink_is_a_paced_buffered_endpoint_not_the_engine_s_null_sink()
     {
-        // Deliberately NOT a Wavee type: the graph, the mixer, the DSP chain and the level tap must all run exactly
-        // as they do on a real device, so what `--fake` exercises is the shipping path and not a second one.
+        // The engine's HeadlessAudioEndpoint accepts every frame (WritableFrames = int.MaxValue), so a fake track's
+        // clock ran as fast as the feeder spun. The silent sink is a finite buffer the "hardware" drains at the wall
+        // clock's rate (headless plan §8 Q4, fixed in Wavee); everything above it is still the shipping graph.
         var format = new MixFormat(48_000, 2);
         IAudioEndpoint endpoint = Playback.Audio.SilentSink(format);
+        Assert.IsType<Playback.Audio.PacedSilentEndpoint>(endpoint);
         Assert.True(endpoint.IsReady);
         Assert.Equal(format, endpoint.Sink.Format);
         Assert.Equal(format.SampleRate, endpoint.Clock.MixRate);
+        var buffered = Assert.IsAssignableFrom<IBufferedAudioSink>(endpoint.Sink);
+        Assert.Equal(format.SampleRate * Playback.Audio.PacedSilentEndpoint.DefaultCapacityMs / 1000, buffered.CapacityFrames);
         endpoint.Dispose();
     }
 
     [Fact]
-    public void The_silent_session_is_connected_so_its_own_feeder_plays_it_to_the_end()
+    public void The_paced_endpoint_plays_queued_frames_at_the_clock_rate_holds_when_stopped_and_loses_starved_time()
     {
-        // The engine starts a session's feeder only in `ConnectSignals`, and `Advance` does nothing without a sink: an
-        // unconnected silent session stayed `Idle` forever and `--fake` sat in `Loading`. Nothing here pumps — the
-        // session's own feeder thread must carry it from Opening to Ended. (The null sink is not paced, so 200 ms of
-        // silence renders in a few feeder passes; wall-clock pacing is an open question, headless plan §8 Q4.)
+        long now = 0;
         var format = new MixFormat(48_000, 2);
-        PcmAudioSession session = Playback.Audio.OpenSilentSession(format, voiceMs: 200, effects: null, volume: 1f);
+        var endpoint = new Playback.Audio.PacedSilentEndpoint(format, capacityMs: 100, clock: () => now, ticksPerSecond: 1_000);
+        var block = new float[4_800 * 2];
+
+        Assert.Equal(4_800, endpoint.CapacityFrames);
+        Assert.Equal(4_800, endpoint.Write(block, 4_800));
+        Assert.Equal(0, endpoint.Write(block, 10));                     // full: a finite device buffer
+        now = 50;
+        Assert.Equal(0, endpoint.WritableFrames);                       // not started: no hardware time passes
+
+        endpoint.Start();                                               // t = 50
+        now = 75;
+        Assert.Equal(1_200, endpoint.WritableFrames);                   // 25 ms × 48 kHz played
+        Assert.True(endpoint.TryGetPlayed(out long played, out long qpc));
+        Assert.Equal(1_200L, played);
+        Assert.Equal(750_000L, qpc);                                    // stamped at 75 ms, in the 100 ns domain
+
+        now = 200;
+        Assert.Equal(4_800, endpoint.WritableFrames);                   // drained at 150 ms, starved since
+        now = 300;
+        Assert.Equal(4_800, endpoint.Write(block, 4_800));
+        Assert.Equal(4_800, endpoint.PaddingFrames);                    // the starved 150 ms did not "play" these frames
+        now = 310;
+        Assert.Equal(4_320, endpoint.PaddingFrames);                    // 10 ms later, 480 frames are gone
+
+        endpoint.Stop();
+        now = 1_000;
+        Assert.Equal(4_320, endpoint.PaddingFrames);                    // stopped: the clock holds (a pause)
+        Assert.True(endpoint.TryGetPlayed(out played, out _));
+        Assert.Equal(4_800L + 480L, played);
+
+        endpoint.Reset();                                               // a flush: a new device epoch
+        Assert.Equal(0, endpoint.PaddingFrames);
+        Assert.True(endpoint.TryGetPlayed(out played, out _));
+        Assert.Equal(0L, played);
+    }
+
+    [Fact]
+    public async Task The_silent_session_is_fed_and_paced_so_it_plays_to_the_end_at_wall_clock_speed()
+    {
+        // The engine starts a session's output only once it is connected, and a feed-less session drains transport
+        // commands on the caller's thread while its feeder renders: the silent session is connected AND driven by an
+        // RT feed. Nothing here pumps — the feed must carry it from Opening to Ended — and 600 ms of silence cannot end
+        // sooner than the endpoint's wall clock lets it play.
+        var format = new MixFormat(48_000, 2);
+        PcmAudioSession session = Playback.Audio.OpenSilentSession(format, voiceMs: 600, effects: null, volume: 1f);
         try
         {
             Assert.NotEqual(PlaybackState.Idle, session.CurrentState);
-            _ = session.PlayAsync();
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            while (session.CurrentState != PlaybackState.Ended && clock.ElapsedMilliseconds < 10_000) Thread.Sleep(2);
+            await session.PlayAsync();
+            while (session.CurrentState != PlaybackState.Ended && clock.ElapsedMilliseconds < 15_000) await Task.Delay(5);
+            Assert.Equal(PlaybackState.Ended, session.CurrentState);
+            Assert.True(clock.ElapsedMilliseconds >= 450, $"600 ms of silence ended after {clock.ElapsedMilliseconds} ms");
+        }
+        finally { await session.DisposeAsync(); }
+    }
+
+    [Fact]
+    public async Task A_paused_silent_session_holds_its_clock_and_a_resume_plays_it_to_the_end()
+    {
+        // Pause and resume reach the SILENT session itself now (the player facade has none): the pause fades, drains
+        // the endpoint and stops its clock; the resume starts it again.
+        var format = new MixFormat(48_000, 2);
+        PcmAudioSession session = Playback.Audio.OpenSilentSession(format, voiceMs: 1_200, effects: null, volume: 1f);
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            await session.PlayAsync();
+            while (session.PlayedFrames < 9_600 && clock.ElapsedMilliseconds < 10_000) await Task.Delay(5);
+            Assert.True(session.PlayedFrames >= 9_600, "200 ms never played");
+
+            await session.PauseAsync();
+            while (session.CurrentState != PlaybackState.Paused && clock.ElapsedMilliseconds < 10_000) await Task.Delay(5);
+            Assert.Equal(PlaybackState.Paused, session.CurrentState);
+            long held = session.PlayedFrames;
+            await Task.Delay(300);
+            Assert.Equal(held, session.PlayedFrames);
+
+            await session.PlayAsync();
+            while (session.CurrentState != PlaybackState.Ended && clock.ElapsedMilliseconds < 20_000) await Task.Delay(5);
             Assert.Equal(PlaybackState.Ended, session.CurrentState);
         }
-        finally { session.DisposeAsync().AsTask().Wait(5_000); }
+        finally { await session.DisposeAsync(); }
     }
 
     [Theory]
@@ -503,6 +577,55 @@ public class PlaybackSilentSinkTests
         // The silent voice is a signal generator, which the engine's SeekAsync refuses; the load sizes the voice to what
         // is left and offsets the reported position instead.
         Assert.Equal(new Playback.Audio.SilentStart(voiceMs, offsetMs), Playback.Audio.SilentStart.For(durationMs, fromMs));
+    }
+}
+
+public class PlaybackMetricsTests
+{
+    static Spotify.Audio.Stream.Stats Counters(long probes = 0, long cacheHits = 0, long requests = 0)
+        => default(Spotify.Audio.Stream.Stats) with { Probes = probes, CacheHits = cacheHits, Requests = requests };
+
+    [Fact]
+    public void A_seek_is_far_when_a_probe_went_out_disk_when_only_the_cache_answered_and_ring_otherwise()
+    {
+        // The kind is DERIVED from the stream counters across the seek, never guessed from the distance (headless plan
+        // §2.7). The fill that resumes at the landing is a plain range, not a probe, so it never makes a seek "far".
+        Assert.Equal(Playback.Audio.SeekKind.Far,
+            Playback.Audio.SeekKindOf(Counters(probes: 3, cacheHits: 1), Counters(probes: 4, cacheHits: 5)));
+        Assert.Equal(Playback.Audio.SeekKind.Disk,
+            Playback.Audio.SeekKindOf(Counters(cacheHits: 1, requests: 9), Counters(cacheHits: 3, requests: 10)));
+        Assert.Equal(Playback.Audio.SeekKind.Ring,
+            Playback.Audio.SeekKindOf(Counters(requests: 7), Counters(requests: 8)));
+        Assert.Equal(Playback.Audio.SeekKind.Ring, Playback.Audio.SeekKindOf(default, default));
+        // The wire values the headless snapshot carries as a byte: 0 ring · 1 far · 2 disk.
+        Assert.Equal(0, (byte)Playback.Audio.SeekKind.Ring);
+        Assert.Equal(1, (byte)Playback.Audio.SeekKind.Far);
+        Assert.Equal(2, (byte)Playback.Audio.SeekKind.Disk);
+    }
+
+    [Fact]
+    public void Decode_throughput_is_audio_seconds_per_wall_second_spent_decoding()
+    {
+        Assert.Equal(50f, Playback.Audio.XRealtime(sourceMicros: 10_000_000, wallTicks: 200, ticksPerSecond: 1_000), 3);
+        Assert.Equal(1f, Playback.Audio.XRealtime(sourceMicros: 1_000_000, wallTicks: 10_000_000, ticksPerSecond: 10_000_000), 3);
+        Assert.Equal(0f, Playback.Audio.XRealtime(0, 100, 1_000));      // nothing decoded yet
+        Assert.Equal(0f, Playback.Audio.XRealtime(1_000, 0, 1_000));    // no time measured
+    }
+
+    [Fact]
+    public void A_metrics_reset_clears_the_first_audio_and_seek_measurements()
+    {
+        Playback.Audio.ResetMetrics();
+        Playback.Audio.Metrics m = Playback.Audio.Metrics.Read();
+        Assert.Equal(-1, m.FirstAudioMs);
+        Assert.False(m.FirstAudioFromHead);
+        Assert.Equal(-1, m.LastSeekLatencyMs);
+        Assert.Equal(-1, m.RingSeekLatencyMs);
+        Assert.Equal(-1, m.FarSeekLatencyMs);
+        Assert.Equal(-1, m.DiskSeekLatencyMs);
+        Assert.Equal(0, m.Seeks);
+        Assert.Equal(0, m.GaplessExact);
+        Assert.Equal(0, m.GaplessAbandoned);
     }
 }
 

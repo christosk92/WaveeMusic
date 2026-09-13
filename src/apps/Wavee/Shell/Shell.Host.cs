@@ -259,6 +259,9 @@ public static partial class Shell
         // allocation per frame.
         FluentApp.FrameCompleted += static _ =>
         {
+            // The planner's clock (app seconds) FIRST: nothing else in the GUI moves `Entities.Now`, so without this a
+            // fetch backoff never expires in the app (the headless host's tick does the same, Diagnostics.Probe.cs).
+            Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             Fetch.Pump();
             Wavee.Palette.Tick();
         };

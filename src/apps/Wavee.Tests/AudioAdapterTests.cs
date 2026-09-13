@@ -372,6 +372,80 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
         output.WriteLine($"flac seek to {target}: {ra.Retargets} re-targets");
     }
 
+    // ── 5. a seek's interrupt: silence, never the end ───────────────────────────────────────────────────────────────
+
+    /// <summary>A seek interrupts the decoder's blocked byte wait (the engine's SeekAsync waits for the decode-ahead
+    /// producer, and a producer blocked in an underrun would sit out the ring's 8 s bound). The engine latches the first
+    /// non-positive read as EOF, so an interrupted read must come out of the adapter as SILENCE — and the seek that follows
+    /// must land sample-exact exactly as if nothing had happened.</summary>
+    [Fact]
+    public void An_interrupted_vorbis_read_is_silence_not_the_end_and_the_seek_that_follows_is_sample_exact()
+    {
+        byte[] file = VorbisFixture.Bytes("pink-320.ogg");
+        VorbisFixture.Decoded linear = VorbisFixture.DecodeAll(file);
+        Assert.True(Vorbis.TryParseIdentification(VorbisFixture.Headers(file, new Ogg.Reader()).Ident, out Vorbis.Identification id));
+        var mix = new MixFormat(id.SampleRate, 2);
+        var source = new RandomAccessFake(file, linear.LastGranule);
+        var decoder = new Playback.Audio.VorbisAudioDecoder(0f, linear.Frames * 1000 / id.SampleRate);
+        Assert.True(decoder.TryOpen(source, mix, out _));
+        Assert.Equal(8_192 * 2, Drain(decoder, 8_192).Length);
+
+        source.Interrupt = true;
+        Assert.Equal(1, SilentBlocksUntilNoEof(decoder, blocks: 3));
+
+        long target = linear.Frames / 2;
+        Assert.Equal(target, decoder.Seek(target));
+        Assert.False(source.Interrupt);                                   // the seek's own retarget ended it
+        float[] after = Drain(decoder, 4_096);
+        Assert.Equal(4_096 * 2, after.Length);
+        Assert.True(MemoryMarshal.AsBytes(after.AsSpan()).SequenceEqual(
+            MemoryMarshal.AsBytes(linear.Pcm.AsSpan((int)(target * 2), after.Length))));
+    }
+
+    [Fact]
+    public void An_interrupted_flac_read_is_silence_not_the_end_and_the_seek_that_follows_is_sample_exact()
+    {
+        byte[] file = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "flac", "subset",
+            "47 - only STREAMINFO.flac"));
+        var points = new Flac.SeekPoint[8];
+        Flac.Headers h = Flac.ParseHeaders(file, points);
+        var mix = new MixFormat(h.Info.SampleRate, 2);
+        var reference = new Playback.Audio.FlacAudioDecoder(0f);
+        Assert.True(reference.TryOpen(new SequentialFake(file), mix, out _));
+        float[] expected = Drain(reference, h.Info.TotalSamples + 8_192);
+
+        var source = new RandomAccessFake(file, tail: -1);
+        var decoder = new Playback.Audio.FlacAudioDecoder(0f);
+        Assert.True(decoder.TryOpen(source, mix, out _));
+        Assert.Equal(4_096 * 2, Drain(decoder, 4_096).Length);
+
+        source.Interrupt = true;
+        Assert.Equal(1, SilentBlocksUntilNoEof(decoder, blocks: 3));
+
+        long target = h.Info.TotalSamples / 2;
+        Assert.Equal(target, decoder.Seek(target));
+        Assert.False(source.Interrupt);
+        float[] after = Drain(decoder, 4_096);
+        Assert.Equal(4_096 * 2, after.Length);
+        Assert.True(MemoryMarshal.AsBytes(after.AsSpan()).SequenceEqual(
+            MemoryMarshal.AsBytes(expected.AsSpan((int)(target * 2), after.Length))));
+    }
+
+    /// <summary>Read until <paramref name="blocks"/> all-silent blocks came out, asserting no read ever answers ≤ 0 (what
+    /// the engine would latch as the end). Returns 1 when the silent blocks arrived, 0 when the bound ran out first.</summary>
+    static int SilentBlocksUntilNoEof(IAudioDecoder decoder, int blocks)
+    {
+        var block = new float[1_024 * 2];
+        int silent = 0;
+        for (int i = 0; i < 20_000 && silent < blocks; i++)
+        {
+            int n = decoder.Read(block);
+            Assert.True(n > 0, $"read {i} answered {n}: an interrupted read must never look like the end of the track");
+            if (block.AsSpan(0, n * 2).IndexOfAnyExcept(0f) < 0) silent++;
+        }
+        return silent == blocks ? 1 : 0;
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Up to <paramref name="maxFrames"/> frames of interleaved stereo, read the way the engine's producer reads.</summary>
@@ -417,6 +491,9 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
         long _cursor;
 
         public int Retargets, Resumes, Reads;
+        /// <summary>A seek's interrupt, as the ring answers it: every read says <c>InterruptedRead</c> until the adapter's
+        /// own <see cref="Retarget"/> arrives and ends it.</summary>
+        public bool Interrupt;
         public uint Epoch { get; private set; }
         public long TailGranule => tail;
         public long? Length => data.Length;
@@ -443,6 +520,7 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
         public int ReadAt(long offset, Span<byte> dst, uint epoch)
         {
             if (epoch != Epoch) return -1;
+            if (Interrupt) return Playback.Audio.InterruptedRead;
             if (offset >= data.Length || dst.Length == 0) return 0;
             int toSlotEdge = (int)(Slot - offset % Slot);
             int n = (int)Math.Min(Math.Min(dst.Length, toSlotEdge), data.Length - offset);
@@ -450,7 +528,7 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
             return n;
         }
 
-        public void Retarget(long probeOffset, int probeBytes, uint epoch) { Retargets++; Epoch = epoch; }
+        public void Retarget(long probeOffset, int probeBytes, uint epoch) { Retargets++; Epoch = epoch; Interrupt = false; }
 
         public void ResumeFrom(long offset) => Resumes++;
     }
@@ -503,9 +581,9 @@ public sealed class RingSourceTests
         WaitUntil(() => fetcher.Outstanding == 0, "the opening fill to finish");
         int before = cdn.Count;
 
-        // 1,000 bytes short of the edge between chunks 39 and 40 — far past the opening window. The ring aligns a probe's
-        // start down to its slot; without the slack RingSource adds back, the range would stop at the edge and the last
-        // 47 KiB of the window would cost a second range and a second wait.
+        // 1,000 bytes short of the edge between chunks 39 and 40 — far past the opening window. The ring aligns a probe out
+        // to whole slots at BOTH ends (RingSource passes the window through untouched); aligning only the start made the
+        // range stop at the edge, and the last 47 KiB of the window cost a second range and a second wait.
         long offset = 40L * Slot - 1_000;
         const int window = 48 * 1024;
         uint epoch = body.Epoch + 1;

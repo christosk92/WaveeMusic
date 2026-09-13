@@ -4,11 +4,11 @@
 // Role: SHELL
 // Owner: H
 // Wave: 3
-// Budget: 3,480 lines (2250 + 220 for the FLAC adapter + 510 for the Vorbis adapter over the CORE decoder, its pure
+// Budget: 3,570 lines (2250 + 220 for the FLAC adapter + 510 for the Vorbis adapter over the CORE decoder, its pure
 //         granule clock, `IRandomAccessBytes` and `RingSource` — Vorbis plan §6.1 estimated +260; over it because the
 //         clock and the landing peek are their own public type, so the frame accounting, the gapless trim and the seek
 //         hand-off are unit facts rather than prose, and about a third of the rest is doc comments — + 30 for the
-//         connected silent session, + 440 for headless plan §3.5: `Metrics`, the paced silent endpoint, the silent
+//         connected silent session, + 550 for headless plan §3.5: `Metrics`, the paced silent endpoint, the silent
 //         transport and the seek interrupt)
 // Spec: plan §4.9 + ch 31 §9.4 + FLAC plan §4 + Vorbis plan §5.5, §6 + headless plan §3.5
 //

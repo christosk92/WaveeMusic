@@ -68,7 +68,7 @@ public static partial class Diagnostics
             int Xruns, int GaplessExact, int GaplessDegraded, int FirstAudioMs,
             int CdnPeakInFlight = 0, int CdnPingMs = 0, long CdnBytesPerSecond = 0, int RingWaits = 0, int RingStarves = 0,
             int HeadBytes = 0, bool FirstAudioFromHead = false, int LastSeekMs = 0, int LastSeekLatencyMs = 0,
-            byte LastSeekKind = 0, int GaplessAbandoned = 0, float DecodeXRealtime = 0f)
+            byte LastSeekKind = 0, int GaplessAbandoned = 0, float DecodeXRealtime = 0f, int SeekCount = 0)
         {
             /// <summary>Nothing running, every counter zero — the first tick's "previous", and what `stats reset` marks.</summary>
             public static StatusSnapshot Empty => new(0, "Offline", "None", "Unknown", "", "Idle", false, "None", "", 0, 0,
@@ -598,7 +598,8 @@ public static partial class Diagnostics
             Field.Xruns => Compare(now.Xruns - mark.Xruns, c.Int, c.Op),
             Field.GaplessExact => Compare(now.GaplessExact - mark.GaplessExact, c.Int, c.Op),
             Field.Owner => Compare(now.Owner, c),
-            Field.Seeked => Flag(c, now.LastSeekMs != mark.LastSeekMs || now.LastSeekLatencyMs != mark.LastSeekLatencyMs),
+            Field.Seeked => Flag(c, now.SeekCount != mark.SeekCount
+                                    || now.LastSeekMs != mark.LastSeekMs || now.LastSeekLatencyMs != mark.LastSeekLatencyMs),
             Field.SeekKind => Compare(SeekKindName(now.LastSeekKind), c),
             _ => false,
         };
@@ -1002,6 +1003,7 @@ public static partial class Diagnostics
                 w.WriteNumber("xruns", s.Xruns - mark.Xruns);
                 w.WriteNumber("firstAudioMs", s.FirstAudioMs);
                 w.WriteString("firstAudioFrom", s.FirstAudioFromHead ? "head" : "body");
+                w.WriteNumber("seeks", s.SeekCount - mark.SeekCount);
                 w.WriteStartObject("lastSeek");
                 w.WriteNumber("toMs", s.LastSeekMs);
                 w.WriteNumber("latencyMs", s.LastSeekLatencyMs);

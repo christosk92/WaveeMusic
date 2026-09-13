@@ -83,9 +83,83 @@ public class SessionStepTests
 
         Assert.Equal(Spotify.SessionPhase.Minting, s.Phase);
         Assert.True(s.HasCredential);
-        Assert.Equal(Spotify.SessionEffects.SaveCredential | Spotify.SessionEffects.MintClientToken, fx);
+        // The welcome is also where the account reaches the app: its market and its catalog scope (headless plan §1.6
+        // item 2) — one effect, executed by `Spotify.Apply` on the UI thread.
+        Assert.Equal(Spotify.SessionEffects.SaveCredential | Spotify.SessionEffects.MintClientToken
+                     | Spotify.SessionEffects.Welcome, fx);
         // …and the bearer's mint is gated on the attestation, never parallel with it.
         Assert.Equal(Spotify.SessionEffects.MintAccessToken, Step(ref s, Spotify.SessionEventKind.ClientTokenMinted));
+    }
+
+    [Fact]
+    public void Going_online_announces_the_device_once_per_connection()
+    {
+        var s = default(Spotify.Session);
+        Step(ref s, Spotify.SessionEventKind.Login, flag: true);
+        Step(ref s, Spotify.SessionEventKind.Hosts);
+        Step(ref s, Spotify.SessionEventKind.Connected);
+        Step(ref s, Spotify.SessionEventKind.HandshakeOk);
+        Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium);
+        Step(ref s, Spotify.SessionEventKind.ClientTokenMinted);
+        Step(ref s, Spotify.SessionEventKind.AccessTokenMinted);
+
+        // The transition into Online is the hello (headless plan §1.6 item 5): the connection id is in the session box.
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(16, 4)));
+        // A second pusher frame on the live socket is not a new device.
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(20, 4)));
+
+        // A drop and a reconnect is a new connection id, and a new hello.
+        Step(ref s, Spotify.SessionEventKind.Dropped, number: (long)Spotify.SessionFault.Network);
+        Step(ref s, Spotify.SessionEventKind.Retry);
+        Step(ref s, Spotify.SessionEventKind.Hosts);
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(24, 4)));
+        Assert.Equal(new Spotify.TokenRef(24, 4), s.ConnectionId);
+    }
+
+    [Fact]
+    public void A_disconnect_closes_everything_but_keeps_the_credential_and_the_boot_identity()
+    {
+        var s = Online();
+        s.DeviceId = new Spotify.TokenRef(100, 8);
+        s.ClientId = new Spotify.TokenRef(108, 8);
+        s.Locale = new Spotify.TokenRef(116, 2);
+        uint epoch = s.Epoch;
+        var fx = Step(ref s, Spotify.SessionEventKind.Disconnect);
+
+        Assert.Equal(Spotify.SessionEffects.CloseAll, fx);                  // never ClearCredential: that is Logout's alone
+        Assert.Equal(Spotify.SessionPhase.Offline, s.Phase);
+        Assert.Equal(epoch + 1, s.Epoch);
+        Assert.True(s.HasCredential);
+        Assert.True(s.AccessToken.IsEmpty);
+        Assert.True(s.ClientToken.IsEmpty);
+        Assert.True(s.ConnectionId.IsEmpty);
+        Assert.Equal(new Spotify.TokenRef(100, 8), s.DeviceId);
+        Assert.Equal(new Spotify.TokenRef(108, 8), s.ClientId);
+        Assert.Equal(new Spotify.TokenRef(116, 2), s.Locale);
+
+        // Offline, so a late answer from the closed epoch folds to nothing; a fresh Login starts again.
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.DealerOnline));
+        Assert.Equal(Spotify.SessionEffects.ResolveHosts, Step(ref s, Spotify.SessionEventKind.Login, flag: true));
+    }
+
+    [Fact]
+    public void The_welcome_scope_is_the_account_market_and_tier_over_the_current_locale_and_filter()
+    {
+        var booted = new CatalogScope("spotify", "someone", "nl-NL", "", Tier: 0, AllowExplicit: false);
+        CatalogScope signedIn = Spotify.WelcomeScope(booted, "someone", "NL", Spotify.Tier.Premium);
+        Assert.Equal(new CatalogScope("spotify", "someone", "nl-NL", "NL", (byte)Spotify.Tier.Premium, false), signedIn);
+
+        // A reconnect's welcome for the same account, market and tier is the SAME scope: the shell does not rebuild the
+        // table set for it.
+        Assert.Equal(signedIn, Spotify.WelcomeScope(signedIn, "someone", "NL", Spotify.Tier.Premium));
+
+        // The offline demo scope (no credential at boot) becomes the provider's; an empty username keeps the one known.
+        CatalogScope fromFake = Spotify.WelcomeScope(CatalogScope.Fake("en-US"), "someone", "SE", Spotify.Tier.Free);
+        Assert.Equal("spotify", fromFake.Provider);
+        Assert.Equal("someone", fromFake.Account);
+        Assert.Equal("en-US", fromFake.Locale);
+        Assert.Equal("SE", fromFake.Market);
+        Assert.Equal("someone", Spotify.WelcomeScope(signedIn, "", "NL", Spotify.Tier.Premium).Account);
     }
 
     [Fact]
@@ -425,5 +499,20 @@ public class SessionCredentialTests : IDisposable
 
         Assert.False(Platform.TryLoadCredential(out _));
         Assert.Equal(Spotify.SessionPhase.Offline, Spotify.Current.Phase);
+    }
+
+    /// <summary>The other way to end a session: every socket down, the slot untouched — what a shutdown or a headless
+    /// run's exit calls, so the next launch resumes without a sign-in.</summary>
+    [Fact]
+    public void A_disconnect_keeps_the_slot()
+    {
+        Platform.SaveCredential(new Credential(CredentialKind.ReusableBlob, "someone", "c2VjcmV0", null));
+
+        Spotify.Disconnect();
+
+        Assert.True(Platform.TryLoadCredential(out var kept));
+        Assert.Equal("someone", kept.Username);
+        Assert.Equal(Spotify.SessionPhase.Offline, Spotify.Current.Phase);
+        Assert.Equal(Spotify.SessionPhase.Offline, Spotify.Status.Value);
     }
 }

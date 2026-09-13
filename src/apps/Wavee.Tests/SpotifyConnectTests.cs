@@ -216,3 +216,42 @@ public class SpotifyConnectOutboundTests
     public void The_publish_debounce_is_the_one_named_window_this_file_owns()
         => Assert.Equal(50, Spotify.Connect.PublishDebounceMs);
 }
+
+/// <summary>The hello PUT (headless plan §1.6 item 5): the session's `AnnounceDevice` effect asks `Connect.Hello`, which
+/// `Playback.Boot` points at a snapshot captured on the UI thread. The pure halves are pinned here; the fold that fires it
+/// once per connection is `SessionStepTests.Going_online_announces_the_device_once_per_connection`. Joins the entities
+/// collection because `SnapshotForConnect` reads the process-static reducer state `Playback.ResetForTests` owns.</summary>
+[Collection(EntitiesCollection.Name)]
+public class SpotifyConnectHelloTests
+{
+    [Fact]
+    public void The_first_hello_is_a_new_device_and_every_later_one_a_new_connection()
+    {
+        Assert.Equal(Playback.PublishReason.NewDevice, Playback.HelloReason(0));
+        Assert.Equal(Playback.PublishReason.NewConnection, Playback.HelloReason(1));
+        Assert.Equal(Playback.PublishReason.NewConnection, Playback.HelloReason(7));
+    }
+
+    [Fact]
+    public void A_hello_from_an_idle_player_is_an_inactive_device_with_no_player_half()
+    {
+        // librespot's shape: while we do not own playback the PUT carries an idle player_state and OUR volume, never a
+        // mirror of somebody else's track. The glue mints the message id; the capture carries 0.
+        Playback.ResetForTests();
+        Playback.Snapshot hello = Playback.SnapshotForConnect();
+
+        Assert.Equal(Playback.PublishReason.NewDevice, hello.Reason);
+        Assert.False(hello.IsActive);
+        Assert.False(hello.HasTrack);
+        Assert.False(hello.IsPlaying);
+        Assert.Equal(0u, hello.MessageId);
+        Assert.Equal(Playback.PublishReason.NewConnection, Playback.SnapshotForConnect(Playback.PublishReason.NewConnection).Reason);
+    }
+
+    [Fact]
+    public void The_hello_is_announced_on_online_unless_a_host_turned_it_off()
+    {
+        // The GUI is a Connect device the moment it is online; a headless smoke is one only when asked (`--connect`).
+        Assert.True(Spotify.Connect.AnnounceOnOnline);
+    }
+}

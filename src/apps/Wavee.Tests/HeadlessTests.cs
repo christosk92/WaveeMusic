@@ -552,6 +552,8 @@ public class HeadlessConditionTests
     {
         var mark = H.StatusSnapshot.Empty with { LastSeekMs = 120_000, LastSeekLatencyMs = 90 };
         Assert.False(HeadlessFixtures.Holds("seeked", mark, mark: mark));
+        Assert.True(HeadlessFixtures.Holds("seeked", mark with { SeekCount = 1 }, mark: mark));          // a second seek to the same place
+        Assert.True(HeadlessFixtures.Holds("!seeked", mark, mark: mark));
         var landed = mark with { LastSeekMs = 125_000, LastSeekLatencyMs = 4, LastSeekKind = 0 };
         Assert.True(HeadlessFixtures.Holds("seeked", landed, mark: mark));
         Assert.True(HeadlessFixtures.Holds("seek.kind==ring", landed, mark: mark));
@@ -628,6 +630,25 @@ public class HeadlessScriptTests
         }
         Assert.Equal(H.ExitCode.Assertion, action.ExitCode);
         Assert.Equal(1, script.Failed);
+    }
+
+    [Fact]
+    public void Ogg320Script_AnUnderrunAnywhere_FailsTheWholeRunCheck()
+    {
+        H.Script script = HeadlessFixtures.Load(HeadlessFixtures.Ogg320);
+        var player = new HeadlessFakePlayer();
+        H.ScriptAction action = default;
+        H.StepResult failed = default;
+        for (int tick = 0; tick < 2_000 && !action.Finished; tick++)
+        {
+            action = script.Tick(player.Snap());
+            if (action.Verb != H.Verb.None) player.Apply(action);
+            if (action.Verb == H.Verb.Play) player.Xruns++;                     // one xrun during the first seconds
+            while (script.TryTakeResult(out H.StepResult r)) if (!r.Ok) failed = r;
+            player.Advance(100);
+        }
+        Assert.Equal(H.ExitCode.Assertion, action.ExitCode);
+        Assert.Equal("expect xruns==0", failed.Cmd);                             // the marks in between never hid it
     }
 
     [Fact]

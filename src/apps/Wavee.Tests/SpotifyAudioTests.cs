@@ -201,6 +201,9 @@ public class SpotifyAudioLadderTests
         Assert.Equal(Spotify.Audio.Format.Flac24, choice.Fmt);
         Assert.Equal((byte)0xF2, choice.FileId[0]);
         Assert.Equal((byte)0x44, choice.TrackGid[0]);
+        // The catalogue's true peak travels with the gain, LINEAR, so the adapter's gain cap can apply it.
+        Assert.Equal(Spotify.Audio.PeakLinear(-3f), choice.Peak);
+        Assert.True(choice.Peak > 0.7f && choice.Peak < 0.71f);
     }
 
     /// <summary>A lossless payload that arrived while the user is on 320 does not hijack the pick.</summary>

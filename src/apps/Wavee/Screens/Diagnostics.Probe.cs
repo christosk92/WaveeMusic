@@ -279,6 +279,7 @@ public static partial class Diagnostics
             Spotify.Api.Boot();                                       // Fetch.Register(Transport); idempotent
             if (o.Silent) Playback.Audio.UseSilentEndpoint();
             s_connect = o.Connect;
+            Spotify.Connect.AnnounceOnOnline = o.Connect;             // the session's own hello on Online, once per connection; off unless --connect
 
             // 5. the readers, login, the tick, then run
             if (o.Script.Length == 0) StartReader(o.Pipe);
@@ -405,12 +406,11 @@ public static partial class Diagnostics
         }
 
         /// <summary>Once, the first tick the session is Online. The market and the scope switch are the session's own
-        /// `Welcome` effect (Spotify.Session.Apply) — this host does not repeat them; it only sends the optional Connect
-        /// hello (§2.9).</summary>
+        /// `Welcome` effect, and so is the Connect hello when `--connect` set `Spotify.Connect.AnnounceOnOnline` (§2.9):
+        /// this host repeats neither.</summary>
         static void OnOnline()
         {
             s_wasOnline = true;
-            if (s_connect) Hello();
         }
 
         static void Hello()
@@ -470,14 +470,17 @@ public static partial class Diagnostics
                 PositionMs: p.Position(nowMs), DurationMs: p.DurationMs,
                 Format: p.StreamFormat.IsEmpty ? "" : Entities.Strings.Resolve(p.StreamFormat),
                 Volume: p.Volume, Owner: p.Owner.ToString(), LoadEpoch: p.LoadEpoch, PrepareArmed: m.PrepareArmed,
-                CdnRequests: (long)st.Requests, CdnInFlight: (int)st.InFlight, CdnCancelled: (int)st.Cancelled,
+                // cdn.requests is every HTTP request the audio path made — ranges + heads + storage-resolves — which is the
+                // unit vorbis plan §5.4's "cold start = 4" counts; the ranges alone are Stats.Requests.
+                CdnRequests: (long)st.HttpRequests, CdnInFlight: (int)st.InFlight, CdnCancelled: (int)st.Cancelled,
                 CdnHeads: (long)st.Heads, CdnResolves: (long)st.Resolves, CdnCacheHits: (long)st.CacheHits,
                 Xruns: (int)m.Xruns, GaplessExact: (int)m.GaplessExact, GaplessDegraded: (int)m.GaplessDegraded,
                 FirstAudioMs: (int)m.FirstAudioMs,
                 CdnPeakInFlight: (int)st.PeakInFlight, CdnPingMs: (int)st.PingMs, CdnBytesPerSecond: (long)st.BytesPerSecond,
                 RingWaits: (int)st.RingWaits, RingStarves: (int)st.RingStarves, HeadBytes: (int)st.HeadBytes,
                 FirstAudioFromHead: m.FirstAudioFromHead, LastSeekMs: (int)m.LastSeekMs, LastSeekLatencyMs: (int)m.LastSeekLatencyMs,
-                LastSeekKind: (byte)m.LastSeekKind, GaplessAbandoned: (int)m.GaplessAbandoned, DecodeXRealtime: (float)m.DecodeXRealtime);
+                LastSeekKind: (byte)m.LastSeekKind, GaplessAbandoned: (int)m.GaplessAbandoned, DecodeXRealtime: (float)m.DecodeXRealtime,
+                SeekCount: (int)m.Seeks);
         }
 
         /// <summary>The pushed events (§2.5): only on change, one line each.</summary>
@@ -495,7 +498,7 @@ public static partial class Diagnostics
             if (now.Xruns > prev.Xruns) Emit(Headless.JsonLine.Underrun(t, now.Xruns, now.Xruns - prev.Xruns));
             if (now.GaplessExact > prev.GaplessExact || now.GaplessDegraded > prev.GaplessDegraded)
                 Emit(Headless.JsonLine.Gapless(t, in now, in prev));
-            if (now.LastSeekMs != prev.LastSeekMs || now.LastSeekLatencyMs != prev.LastSeekLatencyMs)
+            if (now.SeekCount != prev.SeekCount || now.LastSeekMs != prev.LastSeekMs || now.LastSeekLatencyMs != prev.LastSeekLatencyMs)
                 Emit(Headless.JsonLine.Seek(t, in now));
         }
 
@@ -597,7 +600,8 @@ public static partial class Diagnostics
                     return true;
                 case Headless.Verb.Connect:
                     s_connect = c.Int0 != 0;
-                    if (s_connect && s_wasOnline) Hello();
+                    Spotify.Connect.AnnounceOnOnline = s_connect;      // later reconnects follow the switch
+                    if (s_connect && s_wasOnline) Hello();              // already online: the session will not announce again until it reconnects
                     return true;
                 case Headless.Verb.Log: Log.Info("headless", c.Arg0); return true;
             }
