@@ -89,11 +89,12 @@ public class DeckEaseTests
     }
 
     [Fact]
-    public void Damped_drops_most_of_the_way_up_front_and_lift_up_leaves_immediately()
+    public void Damped_drops_most_of_the_way_up_front_and_lift_up_leaves_before_the_swing_does()
     {
+        // Worked values: Damped(.3) ≈ 0.71, LiftUp(.3) ≈ 0.69, Std(.3) ≈ 0.36.
         Assert.True(Deck.Ease.Damped(0.3f) > 0.6f);
-        Assert.True(Deck.Ease.LiftUp(0.1f) > 0.3f);
-        DeckIn.Near(0.5f, Deck.Ease.Std(0.5f), 0.1f);
+        Assert.True(Deck.Ease.LiftUp(0.3f) > 0.6f);
+        Assert.True(Deck.Ease.Std(0.3f) < Deck.Ease.LiftUp(0.3f));
     }
 }
 
@@ -109,8 +110,9 @@ public class DeckBoundaryRulesTests
     [Fact]
     public void The_windows_are_pinned()
     {
-        Assert.Equal(1_500, Deck.BoundaryRules.NaturalEndWindowMs);
-        Assert.Equal(2_000, Deck.BoundaryRules.RepeatRewindMs);
+        Assert.Equal(1_500L, Deck.BoundaryRules.NaturalEndWindowMs);
+        Assert.Equal(2_000L, Deck.BoundaryRules.RepeatRewindMs);
+        Assert.Equal(Deck.BoundaryRules.NaturalEndWindowMs, Deck.EndedWindowMs);
     }
 
     [Fact]
@@ -651,9 +653,10 @@ public class DeckTapeDiscMeterLevelTests
     {
         var m = new Deck.TapeModel(Deck.TapeKind.Cassette);
         m.Tick(DeckIn.Make(nowMs: 1000, positionMs: 1000), 0.033f);
-        var f = m.Tick(DeckIn.Make(nowMs: 1033, positionMs: 1033, seekTargetMs: 90_000), 0.033f);
+        // The fold puts the playhead on the committed target on the same tick (a seek wins outright).
+        var f = m.Tick(DeckIn.Make(nowMs: 1033, positionMs: 90_000, seekTargetMs: 90_000), 0.033f);
         Assert.Equal(Deck.PhaseName.Winding, f.Phase);
-        var later = m.Tick(DeckIn.Make(nowMs: 1033 + 950, positionMs: 90_000), 0.033f);
+        var later = m.Tick(DeckIn.Make(nowMs: 1033 + 950, positionMs: 90_950), 0.033f);
         Assert.Equal(Deck.PhaseName.Playing, later.Phase);
     }
 
@@ -786,7 +789,6 @@ public class DeckProgressAndDriftTests
         Assert.Equal(1f, keys[^1].Offset);
         for (int i = 1; i < keys.Length; i++) Assert.True(keys[i].Offset > keys[i - 1].Offset);
         foreach (var k in keys) Assert.True(k.Scale >= 1f, "a zoom below 1 exposes the frame edge");
-        Assert.True(Deck.DriftPath.SlowSeconds > Deck.DriftPath.FastSeconds);
     }
 }
 

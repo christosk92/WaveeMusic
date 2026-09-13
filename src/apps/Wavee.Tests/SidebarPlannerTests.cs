@@ -1779,7 +1779,7 @@ public sealed class SidebarRowGeometryTests
 
     [Fact]
     public void ClassicHeight_IsTheCozyWithSubtitleHeight()
-        => Assert.Equal(SidebarRowGeometry.HeightFor(SidebarDensity.Cozy, true), SidebarRowGeometry.ClassicHeight);
+        => Assert.Equal(SidebarRowGeometry.ClassicHeight, SidebarRowGeometry.HeightFor(SidebarDensity.Cozy, true));
 
     [Theory]
     [InlineData(-1, 4f)]
@@ -2847,7 +2847,7 @@ public class SidebarPaneInvariantTests
     [Fact]
     public void ContentLane_IsThePaneEdgePlusTheDepthZeroRowIndent()
     {
-        Assert.Equal(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.IndentFor(0), SidebarRowGeometry.ContentLane);
+        Assert.Equal(SidebarRowGeometry.ContentLane, SidebarRowGeometry.PaneEdge + SidebarRowGeometry.IndentFor(0));
         Assert.Equal(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.RowInsetRight, SidebarRowGeometry.ContentLaneEnd);
         // The landed numbers the screenshots were measured against, pinned so a "harmless" retune is a visible diff.
         Assert.Equal(12f, SidebarRowGeometry.ContentLane);

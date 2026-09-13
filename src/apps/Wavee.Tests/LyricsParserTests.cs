@@ -589,8 +589,8 @@ public class LyricsQueryTests
     [Fact]
     public void Comparison_normalization_is_a_DIFFERENT_function_from_the_search_one()
     {
-        // The reranker aligns on THIS: lowercase, punctuation gone, whitespace collapsed.
-        Assert.Equal("dont stop", Lyrics.Text.Normalize("Don't  Stop!"));
+        // The reranker aligns on THIS: lowercase, each punctuation mark becomes a space (as in 0.2.9), whitespace collapsed.
+        Assert.Equal("don t stop", Lyrics.Text.Normalize("Don't  Stop!"));
         Assert.Equal("", Lyrics.Text.Normalize("♪ ... —"));
         Assert.Equal("Don't Stop!", Lyrics.Query.Normalize("Don't Stop!"));
     }

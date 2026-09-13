@@ -6,9 +6,10 @@
 // Role: CORE
 // Owner: V
 // Wave: 3-parallel (pure over spans, no wave dependency)
-// Budget: 1600 lines (over by ~300: floor 0 and residues 0/1 are here in full because a dropped local .ogg can be
-//         anything; the setup parser validates every index it stores so the packet loops can run without a single
-//         bounds check; and the scalar twins of the vector kernels live beside them so `ForceScalar` is a fact)
+// Budget: 1600 lines (over by ~480, a third of it the 256-literal dB table and doc comments: floor 0 and residues
+//         0/1 are here in full because a dropped local .ogg can be anything; the setup parser validates every index
+//         it stores so the packet loops run without a single bounds check; and the scalar twins of the vector
+//         kernels live beside them so `ForceScalar` is a fact)
 // Spec: docs/plans/wavee/wavee-0.3-vorbis-implementation.md §3 + Vorbis I (xiph.org/vorbis/doc/Vorbis_I_spec.html)
 //
 // WHAT THIS FILE IS. One packet in, interleaved stereo `float` frames out. No `Stream`, no `IMediaByteSource`, no
@@ -276,6 +277,10 @@ public static partial class Playback
             public byte Type;
             // floor 1
             public int Partitions, Multiplier, RangeBits, Values;
+            /// <summary>{256, 128, 86, 64}[Multiplier − 1] and ilog(Range − 1), set by <see cref="PrepareFloor1"/> so
+            /// the packet loop reads two fields instead of a table (a collection-expression span property allocated
+            /// 72 bytes per access on the Debug JIT — 288 bytes a packet).</summary>
+            public int Range, YBits;
             public fixed byte PartitionClass[31];
             public fixed byte ClassDims[16];
             public fixed byte ClassSubclasses[16];
@@ -459,15 +464,13 @@ public static partial class Playback
 
         // ── 5. Floors ───────────────────────────────────────────────────────────────────────────────────────────────
 
-        static ReadOnlySpan<int> FloorRange => [256, 128, 86, 64];
-
         /// <summary>§7.2.3. Fills <paramref name="y"/>[0..Values). False when the floor is unused — the "nonzero" bit is
         /// 0, OR the packet ended inside the floor (spec: "as if the nonzero flag had been unset"; stb :3263).</summary>
-        static bool DecodeFloor1Posts(ref BitReader r, Floor* f, Book* books, uint* fast, uint* sorted, int* sortedEntry,
+        public static bool DecodeFloor1Posts(ref BitReader r, Floor* f, Book* books, uint* fast, uint* sorted, int* sortedEntry,
                                       int* y)
         {
             if (r.Read(1) == 0) return false;
-            int bits = ILog(FloorRange[f->Multiplier - 1] - 1);
+            int bits = f->YBits;
             y[0] = (int)r.Read(bits);
             y[1] = (int)r.Read(bits);
             int offset = 2;
@@ -511,9 +514,9 @@ public static partial class Playback
 
         /// <summary>§7.2.4 step 1: unwrap the posts into absolute amplitudes. Bit 15 of <paramref name="final"/>[i]
         /// is SET when the post is interpolated (step2_flag clear) and so does not end a segment.</summary>
-        static void UnwrapPosts(Floor* f, int* y, int* final)
+        public static void UnwrapPosts(Floor* f, int* y, int* final)
         {
-            int range = FloorRange[f->Multiplier - 1];
+            int range = f->Range;
             final[0] = y[0];
             final[1] = y[1];
             for (int i = 2; i < f->Values; i++)
@@ -538,7 +541,7 @@ public static partial class Playback
         /// <summary>§7.2.4 step 2 fused with §4.3.6's dot product: walk the posts in X order, draw each segment with the
         /// integer line algorithm and MULTIPLY the dB-table value straight into the spectrum (stb <c>do_floor</c> with
         /// <c>LINE_OP = *=</c>, :3072-3108). One pass, no floor buffer.</summary>
-        static void RenderFloor1(Floor* f, int* final, float* spec, int n2, float* db)
+        public static void RenderFloor1(Floor* f, int* final, float* spec, int n2, float* db)
         {
             int mult = f->Multiplier;
             int lx = 0, ly = (final[0] & 0x7FFF) * mult;
@@ -641,6 +644,41 @@ public static partial class Playback
         /// Pinned so the floor loop addresses it by pointer.</summary>
         static readonly float[] s_floor1Db = BuildDbTable();
 
+        /// <summary>The 256-entry table, for callers that render a floor outside a decoder (tests).</summary>
+        public static ReadOnlySpan<float> Floor1InverseDb => s_floor1Db;
+
+        /// <summary>Complete a floor 1 whose X list is filled: the X sort order and each post's low/high neighbour
+        /// (§9.2.4-5; stb :4094-4122). False on a duplicate X (invalid, stb :4101). Setup only.</summary>
+        public static bool PrepareFloor1(Floor* f)
+        {
+            int values = f->Values;
+            if (values < 2 || values > MaxPosts || f->Multiplier < 1 || f->Multiplier > 4) return false;
+            f->Range = f->Multiplier switch { 1 => 256, 2 => 128, 3 => 86, _ => 64 };
+            f->YBits = ILog(f->Range - 1);
+            for (int i = 0; i < values; i++) f->Sorted[i] = (byte)i;
+            for (int i = 1; i < values; i++)
+            {
+                byte key = f->Sorted[i];
+                int j = i - 1;
+                while (j >= 0 && f->X[f->Sorted[j]] > f->X[key]) { f->Sorted[j + 1] = f->Sorted[j]; j--; }
+                f->Sorted[j + 1] = key;
+            }
+            for (int i = 1; i < values; i++) if (f->X[f->Sorted[i]] == f->X[f->Sorted[i - 1]]) return false;
+            for (int i = 2; i < values; i++)
+            {
+                int lo = 0, hi = 1, lx = -1, hx = 1 << 17, x = f->X[i];
+                for (int j = 0; j < i; j++)
+                {
+                    int xj = f->X[j];
+                    if (xj < x && xj > lx) { lx = xj; lo = j; }
+                    if (xj > x && xj < hx) { hx = xj; hi = j; }
+                }
+                f->LowNeighbor[i] = (byte)lo;
+                f->HighNeighbor[i] = (byte)hi;
+            }
+            return true;
+        }
+
         static float[] BuildDbTable()
         {
             ReadOnlySpan<float> src =
@@ -690,7 +728,7 @@ public static partial class Playback
         /// :1865-1933). <paramref name="spec"/> = ch pointers to n2 floats, already zeroed; VQ values are ADDED.
         /// Stops at end of packet: what was decoded stands. Bounds: <c>end ≤ ch × n2</c> is clamped here, the class
         /// map was built so every class &lt; Classifications ≤ 64, every VQ book was checked at Open.</summary>
-        static void DecodeResidue2(ref BitReader r, Residue* res, Book* books, uint* fast, uint* sorted, int* sortedEntry,
+        public static void DecodeResidue2(ref BitReader r, Residue* res, Book* books, uint* fast, uint* sorted, int* sortedEntry,
                                    float* vq, byte* classMap, float** spec, int ch, int n2, byte* partClass)
         {
             int size = ch * n2;
@@ -770,7 +808,7 @@ public static partial class Playback
         /// <summary>Types 0 and 1: one vector per channel, one classification stream per channel (§8.6.2 steps
         /// 1-21). Type 1 adds <c>dims</c> consecutive values; type 0 strides them by <c>psize / dims</c>.
         /// <paramref name="noDecode"/>[c] ≠ 0 skips a channel entirely (nothing is read for it).</summary>
-        static void DecodeResidue01(ref BitReader r, Residue* res, Book* books, uint* fast, uint* sorted, int* sortedEntry,
+        public static void DecodeResidue01(ref BitReader r, Residue* res, Book* books, uint* fast, uint* sorted, int* sortedEntry,
                                     float* vq, byte* classMap, float** spec, byte* noDecode, int ch, int n2,
                                     byte* partClass)
         {
@@ -1335,17 +1373,20 @@ public static partial class Playback
 
         // ── 9. The decoder ──────────────────────────────────────────────────────────────────────────────────────────
         //
-        // Allocation (P8), all in Open, grow-only on the pinned object heap, for the Spotify shape (44.1 kHz stereo,
-        // 256/2048, a libvorbis setup of ~45 books; the exact count is `AllocatedBytes`):
-        //   fast tables          books × 4 KiB            ≈ 180 KB
-        //   sorted + entries     Σ codes longer than 10   ≈ 10-30 KB
-        //   VQ values            Σ Entries × Dims × 4 B   ≈ 100-300 KB
-        //   class maps           Σ classbook Entries × Dims
-        //   Book/Floor/Residue/Mapping/Mode arrays        ≈ 40-90 KB (Floor and Residue carry fixed buffers)
-        //   IMDCT A/B/C/bitrev + w/wr, both sizes          (5n/2 floats + n/8 ushorts) per size = 21.1 KB + 2.6 KB
-        //   per channel: buf n1, prev n1/2, posts 2 × 250 ints (+ floor 0 scratch only when a floor 0 exists)
-        //   buf2 n1/2, partClass, output n1 × 2 floats
-        //   per packet           0 bytes
+        // Allocation (P8), all in Open, grow-only on the pinned object heap. Computed from the setup headers of the
+        // fixtures (44.1 kHz stereo, 256/2048, libvorbis via ffmpeg); `AllocatedBytes` reports the live figure.
+        //                                           pink-320 (44 books)   pink-96 (38 books)
+        //   fast tables    books × 1,024 uints       180,224               155,648   (sized exactly: count is known)
+        //   sorted+entries Σ codes longer than 10      25,600                ~25,000
+        //   VQ values      Σ Entries × Dims floats     45,184               419,904   (lower rates = bigger lattices)
+        //   class maps     Σ classbook Entries × Dims     400                   ~400
+        //   Book/Floor/Residue/Mapping/Mode arrays     ~8,600                ~8,400
+        //   streams (independent of the setup, 2048/256 stereo): IMDCT A/B/C + w/wr 20,736, bitrev 576, buf 16,384,
+        //   prev 8,192, buf2 4,096, floor posts 4,000, output 16,384, flags/pointers/weights 38, partClass 66
+        //                                           = 70,472
+        //   retained after Open                     ≈ 330 KB              ≈ 668 KB
+        //   first Open incl. growth garbage + ~6 KB of parse scratch ≈ 397 KB; a second Open of a setup no larger: 0
+        //   per packet                                0 bytes
 
         public sealed class Decoder
         {
@@ -1509,6 +1550,7 @@ public static partial class Playback
                     int left = isLong && !prevLong ? (n - _n0) >> 2 : 0;
                     int leftEnd = isLong && !prevLong ? (n + _n0) >> 2 : n2;
                     int right = isLong && !nextLong ? (n * 3 - _n0) >> 2 : n2;
+                    int rightEnd = isLong && !nextLong ? (n * 3 + _n0) >> 2 : n;   // past it the window is 0
 
                     Mapping* map = _mappingsP + mode->Mapping;
                     int ch = _ch, stride = _n1;
@@ -1620,7 +1662,7 @@ public static partial class Playback
                     long bytes = (long)n2 * sizeof(float);
                     for (int c = 0; c < ch; c++) Buffer.MemoryCopy(_bufP + c * stride + n2, _prevP + c * half1, bytes, bytes);
                     _tailLen = right - n2;
-                    _lapLen = n - right;
+                    _lapLen = rightEnd - right;                                     // stb: previous_length = right_end − right
                     _prevN = n;
                     Frames = frames;
                     if (r.Overrun) Overruns++;
@@ -1635,6 +1677,7 @@ public static partial class Playback
                 // codebooks
                 _bookCount = (int)r.Read(8) + 1;
                 Grow(ref _books, _bookCount);
+                Grow(ref _fast, _bookCount * FastSize);                            // exact: the count is known now
                 _booksP = Ptr(_books);
                 int fastLen = 0, sortedLen = 0, vqLen = 0;
                 for (int i = 0; i < _bookCount; i++)
@@ -1846,30 +1889,7 @@ public static partial class Playback
                 }
                 f->Values = values;
                 if (r.Overrun) return false;
-                // sorted order (stable insertion sort), duplicate X is invalid (stb :4094-4101)
-                for (int i = 0; i < values; i++) f->Sorted[i] = (byte)i;
-                for (int i = 1; i < values; i++)
-                {
-                    byte key = f->Sorted[i];
-                    int j = i - 1;
-                    while (j >= 0 && f->X[f->Sorted[j]] > f->X[key]) { f->Sorted[j + 1] = f->Sorted[j]; j--; }
-                    f->Sorted[j + 1] = key;
-                }
-                for (int i = 1; i < values; i++) if (f->X[f->Sorted[i]] == f->X[f->Sorted[i - 1]]) return false;
-                // low/high neighbours (§9.2.4-5)
-                for (int i = 2; i < values; i++)
-                {
-                    int lo = 0, hi = 1, lx = -1, hx = 1 << 17, x = f->X[i];
-                    for (int j = 0; j < i; j++)
-                    {
-                        int xj = f->X[j];
-                        if (xj < x && xj > lx) { lx = xj; lo = j; }
-                        if (xj > x && xj < hx) { hx = xj; hi = j; }
-                    }
-                    f->LowNeighbor[i] = (byte)lo;
-                    f->HighNeighbor[i] = (byte)hi;
-                }
-                return true;
+                return PrepareFloor1(f);
             }
 
             void FillBark(Floor* f, int n, int at)

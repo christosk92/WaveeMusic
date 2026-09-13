@@ -495,7 +495,7 @@ public class VideoRetentionWindowTests
     {
         Assert.Equal(0, V.RetentionWindow.WindowStart(5_000));                 // never negative
         Assert.Equal(20_000, V.RetentionWindow.WindowStart(50_000));
-        Assert.Equal(90_000, V.RetentionWindow.WindowEnd(50_000, 240_000));
+        Assert.Equal(110_000, V.RetentionWindow.WindowEnd(50_000, 240_000));  // the whole ahead window fits
         Assert.Equal(200_000, V.RetentionWindow.WindowEnd(190_000, 200_000));  // the tail: never past the end
         Assert.Equal(110_000, V.RetentionWindow.WindowEnd(50_000, 0));         // an unknown duration clamps nothing
     }

@@ -2812,7 +2812,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 if (!p.Knows(PlaylistFields.Identity))
                 { Entities.Ensure(p, PlaylistFields.Identity, FetchPriority.Visible); return null; }
                 return new SidebarLibraryEntry("", SidebarEntryKind.Playlist, "", Entities.Strings.Resolve(p.TitleId),
-                    Entities.Strings.Resolve(p.Owner.NameId), null, null, ChildCount: p.TrackCount, AddedAtMs: 0,
+                    Entities.Strings.Resolve(p.Owner.NameId), p.ImageId, null, ChildCount: p.TrackCount, AddedAtMs: 0,
                     SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0, Circular: false,
                     Flavor: SidebarPlaylistFlavor.None);
             }
@@ -2821,7 +2821,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 var a = new Album(Entities.Current.Albums.Slot(id));
                 if (!a.Knows(AlbumFields.Identity))
                 { Entities.Ensure(a, AlbumFields.Identity, FetchPriority.Visible); return null; }
-                return new SidebarLibraryEntry("", SidebarEntryKind.Album, "", a.Title, "", null, null,
+                return new SidebarLibraryEntry("", SidebarEntryKind.Album, "", a.Title, "", a.ImageId, null,
                     ChildCount: a.TrackCount, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0,
                     Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
             }
@@ -2830,7 +2830,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 var ar = new Artist(Entities.Current.Artists.Slot(id));
                 if (!ar.Knows(ArtistFields.Identity))
                 { Entities.Ensure(ar, ArtistFields.Identity, FetchPriority.Visible); return null; }
-                return new SidebarLibraryEntry("", SidebarEntryKind.Artist, "", ar.Name, "", null, null,
+                return new SidebarLibraryEntry("", SidebarEntryKind.Artist, "", ar.Name, "", ar.ImageId, null,
                     ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0,
                     Circular: true, Flavor: SidebarPlaylistFlavor.None);
             }
@@ -2839,7 +2839,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 var s = new Show(Entities.Current.Shows.Slot(id));
                 if (!s.Knows(ShowFields.Identity))
                 { Entities.Ensure(s, ShowFields.Identity, FetchPriority.Visible); return null; }
-                return new SidebarLibraryEntry("", SidebarEntryKind.Show, "", s.Title, "", null, null,
+                return new SidebarLibraryEntry("", SidebarEntryKind.Show, "", s.Title, "", s.ImageId, null,
                     ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0,
                     Circular: false, Flavor: SidebarPlaylistFlavor.None);
             }

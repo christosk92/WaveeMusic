@@ -578,7 +578,7 @@ public static partial class Controls
             }
         });
 
-        static void Batch(Action write)
+        void Batch(Action write)
         {
             if (Context.Runtime is { } rt) rt.Batch(write); else write();
         }

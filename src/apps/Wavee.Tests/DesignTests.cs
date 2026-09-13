@@ -523,9 +523,9 @@ public class DesignMotionTests
     {
         // Two rungs, near-identical names, different files. The collision is real and load-bearing: matching the bare
         // number to the wrong name gets the wrong duration.
-        Assert.NotEqual(MotionTok.ControlFast.DurationMs, Design.Motion.Fast);
-        Assert.Equal(MotionTok.ControlFaster.DurationMs, Design.Motion.Faster);
-        Assert.Equal(MotionTok.ControlNormal.DurationMs, Design.Motion.Standard);
+        Assert.NotEqual(Design.Motion.Fast, MotionTok.ControlFast.DurationMs);
+        Assert.Equal(Design.Motion.Faster, MotionTok.ControlFaster.DurationMs);
+        Assert.Equal(Design.Motion.Standard, MotionTok.ControlNormal.DurationMs);
     }
 
     [Fact]

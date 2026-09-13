@@ -379,6 +379,7 @@ public static partial class Actions
         public static bool IsValid(string? key)
         {
             if (string.IsNullOrEmpty(key) || key.Length > MaxLength) return false;
+            if (key[^1] == Separator) return false;                 // a trailing separator is an empty last segment
             int segments = 0;
             int i = 0;
             while (i < key.Length)

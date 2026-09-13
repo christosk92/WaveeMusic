@@ -888,7 +888,9 @@ public static partial class Design
             float h = max == c.R ? (c.G - c.B) / d + (c.G < c.B ? 6f : 0f)
                 : max == c.G ? (c.B - c.R) / d + 2f
                 : (c.R - c.G) / d + 4f;
-            return (h * 60f, s, l);
+            h *= 60f;
+            if (h >= 360f - 1e-3f) h = 0f;   // float noise just under a full turn is hue 0
+            return (h, s, l);
         }
 
         /// <summary>HSL (hue in degrees) → RGB.</summary>

@@ -22,6 +22,7 @@ using ClusterOrigin = Wavee.Spotify.Decode.ClusterOrigin;
 
 namespace Wavee.Tests;
 
+[Collection(EntitiesCollection.Name)]
 public class PlaybackOwnershipTests
 {
     static readonly ulong Us = Playback.DeviceHash("wavee-device");

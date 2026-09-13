@@ -5,7 +5,7 @@
 // Role: CORE
 // Owner: V
 // Wave: 3-parallel (pure over spans, no wave dependency)
-// Budget: 600 lines (over by ~250: the CRC's slicing-by-8 tables, `PageIndex` — which §4.2 describes in prose but
+// Budget: 600 lines (over by ~190: the CRC's slicing-by-8 tables, `PageIndex` — which §4.2 describes in prose but
 //         does not write — and the granule arithmetic §4.4 needs are all here rather than in the SHELL, for the same
 //         reason the FLAC planner moved into CORE: a probe count and a lead-in are facts a unit test must be able
 //         to assert without a byte source)
@@ -14,7 +14,7 @@
 // WHAT THIS FILE IS. A byte window in, pages and packets out. It owns no bytes, no stream, no thread and no engine
 // type: the SHELL (`Playback.Audio.cs`, owner H) holds a `byte[]` window over the byte seam and hands this file a
 // `ReadOnlySpan<byte>`; `Reader.NextPacket` answers a span that is a ZERO-COPY slice of that window unless the
-// packet spans a page boundary, in which case it is assembled into the reader's own 64 KiB buffer. That is what
+// packet spans a page boundary, in which case it is assembled into the reader's own 256 KiB buffer. That is what
 // makes every fact in `OggTests.cs` a pure fact over a byte array, and it is why the seek planner — `BeginSeek` /
 // `TryNextProbe` / `Observe`, the same three names as `Flac.SeekPlan` — lives here: the probe count is the number
 // that decides whether a seek is one CDN range request or six, and a number that matters is a number a test pins.
@@ -26,8 +26,8 @@
 // and why a probe window can be dropped anywhere in a file and still resolve (stb `vorbis_find_page`:4561-4629).
 //
 // Rules this file is written under (P1-P16 / C1-C10, relationships_wavee.md §5.11):
-//   P8   ZERO allocation after construction. `Reader` allocates one 64 KiB spanning-packet buffer and one page
-//        index at construction; `TryParsePage`, `FindPage`, `Crc32`, `BeginSeek`, `TryNextProbe` and `Observe`
+//   P8   ZERO allocation after construction. `Reader` allocates one spanning-packet buffer (256 KiB by default)
+//        and one 4,096-entry page index at construction; `TryParsePage`, `FindPage`, `Crc32`, `BeginSeek`, `TryNextProbe` and `Observe`
 //        allocate nothing at all — they are static over spans and a `struct` plan.
 //   P9   No LINQ, no closures, no async, no boxing, no exceptions. A short window is `Truncated`, a bad page is
 //        `BadCrc`, a lost packet is `Corrupt`: all return values, never throws.
@@ -283,10 +283,11 @@ public static partial class Playback
         /// spans pages. Zero allocation after construction.</summary>
         public sealed class Reader
         {
-            readonly byte[] _packet = GC.AllocateUninitializedArray<byte>(MaxPageBytes, pinned: true);
+            readonly byte[] _packet;
             int _packetLen;                     // bytes of an open (spanning) packet held in _packet
             Page _page;                         // the page being walked
             int _seg;                           // the next lacing index in that page
+            int _lastEndSeg;                    // the lacing index that ends the page's LAST completed packet, or −1
             int _bodyPos;                       // the window offset of the next packet's first byte
             uint _serial;
             bool _haveSerial;
@@ -313,7 +314,8 @@ public static partial class Playback
             /// <summary>The largest page seen, in bytes; the probe window is four times this (§4.2).</summary>
             public int MaxPageSeen = 4096;
 
-            /// <summary>True once a page with the EOS flag has been walked to its end.</summary>
+            /// <summary>True once a page with the EOS flag has been walked to its end; the next call answers
+            /// <see cref="Next.Eos"/> instead of asking for more bytes.</summary>
             public bool SawEos;
 
             /// <summary>The logical stream this reader locked onto (the first serial it saw).</summary>
@@ -325,6 +327,18 @@ public static partial class Playback
             public int OpenPacketBytes => _packetLen;
 
             public enum Next : byte { Packet, NeedMore, Eos, Corrupt }
+
+            /// <summary>The largest packet a reader assembles across pages by default: 256 KiB. The plan's §7.1 case is a
+            /// 70 KB packet over three pages; a Vorbis setup header with very large codebooks can pass 64 KiB, so one
+            /// page's worth is not enough. A packet larger than this is <see cref="Next.Corrupt"/>, never a grow.</summary>
+            public const int DefaultMaxPacketBytes = 256 * 1024;
+
+            /// <summary>The one allocation: the spanning-packet buffer (at least one maximal page).</summary>
+            public Reader(int maxPacketBytes = DefaultMaxPacketBytes)
+                => _packet = GC.AllocateUninitializedArray<byte>(Math.Max(maxPacketBytes, MaxPageBytes));
+
+            /// <summary>The capacity of the spanning-packet buffer.</summary>
+            public int MaxPacketBytes => _packet.Length;
 
             /// <summary>Advance to the next packet. <paramref name="packet"/> is valid until the next call or until
             /// the SHELL refills the window. <see cref="Next.NeedMore"/>: refill from <c>WindowOffset + Cursor</c> and
@@ -339,6 +353,7 @@ public static partial class Playback
                 {
                     if (_seg >= _page.Segments)                                   // need a page
                     {
+                        if (SawEos) return Next.Eos;
                         int at = FindPage(win, Cursor, out Page p, out int truncatedAt);
                         if (at < 0)
                         {
@@ -363,6 +378,21 @@ public static partial class Playback
                         _seg = 0;
                         _bodyPos = p.BodyAt;
                         Cursor = at + p.Length;
+                        _lastEndSeg = -1;
+                        for (int s = p.Segments - 1; s >= 0; s--)
+                            if (win[p.LacingAt + s] < 255) { _lastEndSeg = s; break; }
+                        if (p.Continued && _packetLen == 0)
+                        {
+                            // An orphan tail: the packet began before a seek, a hole or a foreign page. Skip the
+                            // fragment (through the first lacing value < 255) so the decoder never primes on half a
+                            // packet; a fragment that fills the page stays orphaned into the next continued page.
+                            while (_seg < _page.Segments)
+                            {
+                                int v = win[_page.LacingAt + _seg++];
+                                _bodyPos += v;
+                                if (v < 255) break;
+                            }
+                        }
                     }
 
                     int start = _bodyPos, len = 0;
@@ -379,17 +409,16 @@ public static partial class Playback
                         if (_packetLen + len > _packet.Length) { _packetLen = 0; return Next.Corrupt; }
                         win.Slice(start, len).CopyTo(_packet.AsSpan(_packetLen));
                         _packetLen += len;
-                        if (_page.Eos) { SawEos = true; return Next.Eos; }
+                        if (_page.Eos) { SawEos = true; _packetLen = 0; return Next.Eos; }  // EOS cuts the open packet
                         continue;                                                            // spans into the next page
                     }
 
-                    bool lastOnPage = _seg >= _page.Segments;
-                    if (lastOnPage)
+                    if (_seg - 1 == _lastEndSeg)                                      // the page's last completed packet
                     {
                         granuleAtEnd = _page.Granule;
                         if (_page.Granule >= 0) LastGranule = _page.Granule;
-                        if (_page.Eos) SawEos = true;
                     }
+                    if (_page.Eos && _seg >= _page.Segments) SawEos = true;
                     if (_packetLen > 0)
                     {
                         if (_packetLen + len > _packet.Length) { _packetLen = 0; return Next.Corrupt; }
@@ -415,7 +444,7 @@ public static partial class Playback
                 _seg = 0;
                 _page = default;
                 _bodyPos = 0;
-                if (!continuing) { _packetLen = 0; _seqKnown = false; _chain = false; }
+                if (!continuing) { _packetLen = 0; _seqKnown = false; _chain = false; SawEos = false; }
             }
 
             /// <summary>Forget the stream entirely (a new file on the same reader). The index is NOT cleared — call
@@ -471,14 +500,15 @@ public static partial class Playback
             public long LastGranule => _n > 0 ? _e[_n - 1].Granule : NoGranule;
 
             /// <summary>Record a page. An append (playing forward) is O(1); a probe into unseen territory is a
-            /// binary-search insert. A duplicate offset is ignored.</summary>
+            /// binary-search insert. A duplicate offset only upgrades the entry's contiguity: a page first seen alone
+            /// in a probe window and later reached by a back-to-back parse becomes adjacent to its predecessor.</summary>
             public void Add(long offset, long granule, bool contiguous)
             {
                 if (offset < 0 || granule < 0) return;
                 if (_n > 0)
                 {
                     long last = _e[_n - 1].Offset;
-                    if (offset == last) return;
+                    if (offset == last) { if (contiguous && _n > 1) _e[_n - 1].Contiguous = true; return; }
                     if (offset > last)
                     {
                         if (_n == _e.Length) Decimate();
@@ -501,7 +531,7 @@ public static partial class Playback
                 while (lo <= hi)
                 {
                     int mid = (lo + hi) >> 1;
-                    if (_e[mid].Offset == offset) return;
+                    if (_e[mid].Offset == offset) { if (contiguous && mid > 0) _e[mid].Contiguous = true; return; }
                     if (_e[mid].Offset < offset) lo = mid + 1; else { at = mid; hi = mid - 1; }
                 }
                 if (_n == _e.Length) { Decimate(); Add(offset, granule, contiguous); return; }

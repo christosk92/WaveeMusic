@@ -1182,7 +1182,7 @@ public static partial class Spotify
             // THE PARALLEL TRIO. `Api.Run` is a named pool (P10); when it refuses, the work runs inline — a slower open,
             // never a failed one. The countdown is never disposed: a cancelled open must not strand a worker's Signal.
             byte[] head = [];
-            Mirrors mirrors = default;
+            Mirrors mirrors = new([], 0, Fault.Network);                   // never `default`: its Urls would be null
             var pending = new CountdownEvent(2);
             bool headInline = cachedChunk0 is not null || !Api.Run(() =>
             {

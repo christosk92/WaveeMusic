@@ -49,11 +49,11 @@ public static partial class Sidebar
     /// <summary>The one pure fold. `Sidebar.Dispatch` (SHELL) is what the app calls — it wraps this with the undo
     /// push, the version bump and the autosave, and returns early when <c>Changed</c> is false.</summary>
     public static SidebarCommandResult Reduce(SidebarCustomLayout layout, SidebarCommand command,
-                                              IReadOnlyCollection<string>? pinnedKeys = null)
+                                              IReadOnlySet<string>? pinnedKeys = null)
         => SidebarLayoutReducer.Apply(layout, command, pinnedKeys);
 
     /// <summary>The fresh-install AND corrupt-fallback document (Wavee Curated).</summary>
-    public static SidebarCustomLayout DefaultLayout() => SidebarLayoutDefaults.Build();
+    public static SidebarCustomLayout DefaultLayout() => SidebarLayoutDefaults.CuratedLayout();
 }
 // ── SIDEBAR LAYOUT DOCUMENT MODEL ──────────────────────────────────────────────────────────────────────────────
 //

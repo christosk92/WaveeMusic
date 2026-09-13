@@ -95,7 +95,7 @@ public static partial class Shell
     static int s_savedPinnedRevision;
 
     /// <summary>Stage 2's frame component. See the file header for why this is a FIELD and not a partial method.</summary>
-    internal static Func<Element>? RootFactory;
+    internal static Func<Element>? RootFactory = null;
 
     /// <summary>The OS file-drop hook. `Shell.UI.cs`'s drop target calls it; owner L's `Drag.cs` owns the rule tables
     /// that decide what a path is, and the local-file verbs are owner O's. A null hook means a drop is ignored, which

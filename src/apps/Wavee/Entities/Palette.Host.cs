@@ -125,7 +125,7 @@ public static partial class Palette
         {
             var id = Entities.Strings.Resolve(keys[i]);
             if (i < answers.Length && answers[i] is { } g)
-                SetGraded(id, in g.Dark, in g.Light, g.HasLight, g.BestFitIsLight);
+                SetGraded(id, g.Dark, g.Light, g.HasLight, g.BestFitIsLight);
             else
                 SetNegative(id);
         }

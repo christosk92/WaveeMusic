@@ -434,7 +434,7 @@ public static partial class Drag
     public static bool LiveSameListReorder(string? playlistUri)
     {
         if (string.IsNullOrEmpty(playlistUri)) return false;
-        var state = InputHooks.Current.Default.GetDragState?.Invoke() ?? default;
+        var state = FluentGpu.Hooks.InputHooks.Current.Default.GetDragState?.Invoke() ?? default;
         if (!state.Active) return false;
         return Unwrap(state.Payload) is { SourceRows.Length: > 0 } resource
                && string.Equals(resource.SourcePlaylistUri, playlistUri, StringComparison.Ordinal);
@@ -444,7 +444,7 @@ public static partial class Drag
     /// now? The sibling of <see cref="LiveSameListReorder"/>, and it exists for the same reason.</summary>
     public static bool LiveRootlistDrag()
     {
-        var state = InputHooks.Current.Default.GetDragState?.Invoke() ?? default;
+        var state = FluentGpu.Hooks.InputHooks.Current.Default.GetDragState?.Invoke() ?? default;
         if (!state.Active) return false;
         return Unwrap(state.Payload) is { RootlistItem: true } resource
                && resource.Kind is DragKind.Playlist or DragKind.Folder;

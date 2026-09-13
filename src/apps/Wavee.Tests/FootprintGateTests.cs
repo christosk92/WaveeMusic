@@ -32,6 +32,7 @@ namespace Wavee.Tests;
 /// managed object — a string per title, a bool column, a boxed enum — costs a few bytes each and nothing catches it
 /// until a library of 50k tracks is resident. The bounds are deliberately generous (the plan says so): a tripwire for
 /// a structural regression, not a score to optimise against.</para></summary>
+[Collection(EntitiesCollection.Name)]
 public class FootprintGateTests(ITestOutputHelper output)
 {
     const int Rows = 10_000;

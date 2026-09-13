@@ -152,8 +152,8 @@ public static partial class Sidebar
     /// <summary>The customize canvas: one uniform card per section, over the LIVE pane. There is no preview of a
     /// sidebar; there is the sidebar.</summary>
     public static SidebarRowPlan PlanEdit(SidebarCustomLayout layout, in SidebarProjectionInput input,
-                                          SidebarPlanBuffers buffers)
-        => SidebarRowPlanner.BuildEdit(layout, in input, buffers);
+                                          in SidebarEditState edit, SidebarPlanBuffers buffers)
+        => SidebarRowPlanner.BuildEdit(layout, in input, in edit, buffers);
 
     /// <summary>The mount key a design switch remounts under — fresh hooks, fresh section and scroll state. A design
     /// switch is a genuine remount, never a re-render with a different flag.</summary>

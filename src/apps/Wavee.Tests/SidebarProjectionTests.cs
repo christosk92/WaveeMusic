@@ -1426,6 +1426,7 @@ public class SidebarBinderPipelineShapeFacts
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // ── UNLISTED PIN — an editorial/Spotify-owned entity the user never saved (PURE) ─────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+[Collection(EntitiesCollection.Name)]
 public class SidebarBinderPipelineUnlistedPinFacts
 {
     [Fact]
