@@ -1,0 +1,14 @@
+# far-seek-disk.wh - run AFTER ogg320.wh on the same profile: the audio body cache answers a far seek into the
+# region the first run played (2:00-2:10), so the seek costs no CDN request.
+set cache on
+quality veryhigh
+volume 0.2
+play spotify:track:11dFghVXANMlKmJXsNCbNl
+wait playing timeout 20000
+wait position>=3s timeout 10000
+stats mark
+seek 2:04
+wait seeked timeout 5000
+expect cdn.requests==0
+expect? seek.kind==disk                         # soft until the seek kind is proven end to end
+quit

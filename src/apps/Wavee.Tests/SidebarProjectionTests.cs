@@ -1,399 +1,474 @@
+// ── Wavee.Tests/SidebarProjectionTests.cs — sort, search, the edge-backed projection, the publish gate, the binder ──
+//
+// Ported from the 0.2.9 suite (src/apps/_old/Wavee.Tests: SidebarSortTests.cs, SidebarProjectionTests.cs,
+// SidebarChurnTests.cs, SidebarProjectionBinderTests.cs) against the 0.3 production code in
+// src/apps/Wavee/Shell/Sidebar.cs (SidebarProjection / SidebarSort / SidebarSearch / SidebarBinderPipeline /
+// SidebarEntriesShadow / SidebarLibraryEntry / SidebarEntryKind(s) / SidebarEntryKindMask / SidebarPlaylistFlavor)
+// and Sidebar.Host.cs (SidebarProjectionBinder / SidebarEntries / SidebarFirstSeen / SidebarRecency).
+//
+// THE BIG 0.3 CHANGE, carried through every fact in the PROJECTION region below: 0.2.9's projection COPIED records
+// out of a `LibraryStore`; 0.3's projection IS a read over `User.Me`'s edges (Rootlist/SavedAlbums/FollowedArtists/
+// SavedShows) joined to Playlist/Album/Artist/Show handles. Every fixture that used to build a `PlaylistNode`/
+// `PlaylistSummary`/`Album`/`Artist`/`Show` DTO tree now stages real rows through `Staging` (exactly like
+// EdgesStagingTests.cs / AlbumTests.cs / ArtistTests.cs / ShowTests.cs / PlaylistTests.cs) and writes the edges
+// through `User.Replace` / `User.ReplaceRootlist` (the same "replace a whole relation from a provider answer" entry
+// point `Entities/User.cs` documents) — never through a mocked store, because there is no store any more.
+//
+// Regions, in file order, each self-contained:
+//   SORT              SidebarSort — every comparator is a TOTAL order; ports ~1:1, PURE.
+//   SEARCH            SidebarSearch — diacritics-insensitive match; PURE.
+//   ENTRY KINDS       SidebarEntryKinds — filter/query → kind-mask mapping; PURE.
+//   PINS-FIRST        SidebarProjection.PinsFirst — the pins-first partition; PURE (operates on plain lists).
+//   FIRST-SEEN        SidebarFirstSeen (Sidebar.Host.cs) — the bounded first-observation map; PURE.
+//   RECENCY           SidebarRecency (Sidebar.Host.cs) — the navigation-recency identity lookup; PURE.
+//   PROJECTION        SidebarProjection.Build over real staged edges — [Collection(EntitiesCollection.Name)].
+//   SHADOW            SidebarEntriesShadow — the publish/churn gate; PURE.
+//   BINDER TRIGGERS   SidebarBinderTriggers — the rebuild gate's trigger fold; PURE.
+//   BINDER SHAPE      SidebarBinderPipeline.Project/Shape — filter → sort → pins-first; PURE.
+//   UNLISTED PIN      SidebarBinderPipeline.ResolveUnlistedPin — the offline-display-cache overlay; PURE.
+//   CONTRIBUTION      SidebarBinderPipeline.Resolve/ResolveExtensions + SidebarDataSourceTable; PURE.
+//
+// DROPPED (see the porting agent's handoff for the full accounting):
+//   - The pin-id vocabulary (SidebarPinId.FromUri/KindOf/RouteOf/FromRoute/UriOf/FolderIdOf/FromEntry, PinId_*): a
+//     dedicated SidebarPinTests.cs already exists in this project and is the declared port target for SidebarPinId —
+//     a second copy here would fork the source of truth over the same production code rather than adding a real
+//     fact. (Its own header names real gaps in its own coverage — KindOf/RouteOf/UriOf/FolderIdOf/the FromUri success
+//     paths are not yet driven anywhere; that belongs in SidebarPinTests.cs, not here.)
+//   - SidebarChurnTests.cs's F3a (ClassicDocumentCache) is already covered by SidebarDesignTests.cs's "REGION 1"
+//     (its header says so explicitly). F3c (the selection sweep, SidebarRowResolve) and F3d (the accent pill,
+//     SidebarPillState) belong to Sidebar.cs's DIFF region — never named in this task's authoritative type list, and
+//     not exercised by anything in this project yet; they are a different port, not weakened here.
+//   - SidebarProjectionBinderTests.cs's row-planner facts (SidebarRowPlanner.Build/BuildRail for Extension sections,
+//     the EntityQuery include/exclude-uri facts): SidebarRowPlanner belongs to Sidebar.cs's PLAN region, never named
+//     in this task's authoritative type list either.
+//   - SidebarProjectionBinder's integration facts live in SidebarWiringTests.cs now that the seams exist:
+//     `Sidebar.Store` is lazy with `Sidebar.UseStore(...)` (no real profile touched) and the binder takes its two
+//     shell logs through `ISidebarRecencyLogs`. The rebuild gate, the recency wiring and InputVersion are ported
+//     there; StateOf/AvailabilityOf over a live host still are not.
+//   - The Build-integration half of the FirstSeen facts (rebuild stability / prune-and-persist through
+//     `SidebarProjection.Build`) is not ported yet. It became reachable once an undated edge (AddedAt == 0) stopped
+//     converting to the epoch; `An_undated_playlist_falls_back_to_its_first_seen_stamp` pins that fallback. The pure
+//     FirstSeen mechanism itself (Stamp/Peek/PruneTo/CopyTo/Load/Frozen) ports in full in the FIRST-SEEN region.
+//
+// House style: xunit.v3; test names are sentences; `Nullable` on; no warnings, no unused locals/usings.
+
 using System;
 using System.Collections.Generic;
-using Wavee.Core;
+using FluentGpu.Foundation;
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-// The unified sidebar projection (F.7.1/F.7.2/F.7.5–F.7.9): per-kind field derivation, the flavor mask + chip-visibility
-// rule, SortStamp resolution (including the playlist first-seen fallback), folder recursion + flattening, the
-// diacritics-insensitive library-only search, recency, and the pins-first partition.
-//
-// Driven against the REAL SidebarProjection / SidebarSearch / SidebarRecency / SidebarFirstSeen (source-included,
-// engine-free), so these are not a copy of the production rules.
-public class SidebarProjectionTests
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── SORT — every comparator ends in an ordinal Id compare (List<T>.Sort is unstable) ───────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarSortFacts
 {
-    // ── fixtures ──────────────────────────────────────────────────────────────────────────────────────────────────────
-    static PlaylistSummary Pl(string id, string name, string owner = "Christos", int tracks = 3,
-                              Image? cover = null, IReadOnlyList<string>? mosaic = null,
-                              bool canEdit = false, bool isOwner = false) =>
-        new("spotify:playlist:" + id, name, owner, tracks, cover, mosaic, canEdit, isOwner);
+    static SidebarLibraryEntry Pl(string id, string name, string creator = "Owner",
+                                  long sortStamp = 0, long visited = 0, int order = 0, long played = 0) =>
+        new("pl:spotify:playlist:" + id, SidebarEntryKind.Playlist, "spotify:playlist:" + id, name, creator,
+            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: sortStamp, LastVisitedTicksUtc: visited,
+            SourceOrder: order, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { LastPlayedMs = played };
 
-    static Album Al(string id, string name, params string[] artists)
-    {
-        var refs = new ArtistRef[artists.Length];
-        for (int i = 0; i < artists.Length; i++) refs[i] = new ArtistRef("ar" + i, "spotify:artist:ar" + i, artists[i]);
-        return new Album("al" + id, "spotify:album:" + id, name, null, refs, 2020, 11);
-    }
+    static SidebarLibraryEntry Artist(string id, string name, int order = 0) =>
+        new("artist:spotify:artist:" + id, SidebarEntryKind.Artist, "spotify:artist:" + id, name, "",
+            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: order, Depth: 0, Circular: true, Flavor: SidebarPlaylistFlavor.None);
 
-    static Artist Ar(string id, string name) => new("ar" + id, "spotify:artist:" + id, name, null);
-    static Show Sh(string id, string name, string publisher) => new("sh" + id, "spotify:show:" + id, name, publisher, null);
-
-    static readonly IReadOnlyList<Album> NoAlbums = Array.Empty<Album>();
-    static readonly IReadOnlyList<Artist> NoArtists = Array.Empty<Artist>();
-    static readonly IReadOnlyList<Show> NoShows = Array.Empty<Show>();
-    static readonly IReadOnlyList<PlaylistNode> NoTree = Array.Empty<PlaylistNode>();
-
-    static SidebarFirstSeen Seen(long now = 1_000_000L) => new(() => now);
-
-    static (List<SidebarLibraryEntry> Rows, SidebarProjectionResult Result) Build(
-        SidebarEntryKindMask kinds,
-        IReadOnlyList<PlaylistNode>? tree = null,
-        IReadOnlyList<Album>? albums = null,
-        IReadOnlyList<Artist>? artists = null,
-        IReadOnlyList<Show>? shows = null,
-        IReadOnlyDictionary<string, long>? addedAt = null,
-        SidebarRecency? recency = null,
-        SidebarFirstSeen? firstSeen = null,
-        bool flatten = true,
-        Func<string, bool>? expanded = null,
-        IReadOnlyDictionary<string, long>? lastPlayed = null)
-    {
-        var into = new List<SidebarLibraryEntry>();
-        var r = SidebarProjection.Build(into, kinds, tree ?? NoTree, albums ?? NoAlbums, artists ?? NoArtists,
-                                       shows ?? NoShows, addedAt, recency, firstSeen ?? Seen(), flatten, expanded,
-                                       lastPlayed);
-        return (into, r);
-    }
-
-    static string[] Names(IReadOnlyList<SidebarLibraryEntry> l)
+    static string[] Names(List<SidebarLibraryEntry> l)
     {
         var a = new string[l.Count];
         for (int i = 0; i < l.Count; i++) a[i] = l[i].Name;
         return a;
     }
 
-    // ── per-kind field derivation (F.7.1) ─────────────────────────────────────────────────────────────────────────────
-    [Fact]
-    public void Playlist_DerivesIdOwnerCountAndMosaic()
+    static List<SidebarLibraryEntry> Sorted(List<SidebarLibraryEntry> list, SidebarV3Sort sort, bool desc = false,
+                                           IReadOnlyList<string>? custom = null)
     {
-        var mosaic = new[] { "u1", "u2", "u3", "u4" };
-        var tree = new PlaylistNode[] { new PlaylistLeaf(Pl("p1", "Focus", "Christos", 42, cover: null, mosaic: mosaic, isOwner: true)) };
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, tree);
-
-        var e = Assert.Single(rows);
-        Assert.Equal("pl:spotify:playlist:p1", e.Id);
-        Assert.Equal(SidebarEntryKind.Playlist, e.Kind);
-        Assert.Equal("spotify:playlist:p1", e.Uri);
-        Assert.Equal("Focus", e.Name);
-        Assert.Equal("Christos", e.Creator);
-        Assert.Equal("Christos", e.OwnerName);
-        Assert.Equal(42, e.ChildCount);
-        Assert.Equal(42, e.TrackCount);
-        Assert.Equal(mosaic, e.MosaicTiles);                     // no cover ⇒ the 2×2 mosaic tiles ride along
-        Assert.False(e.Circular);
-        Assert.True(e.IsPlayable);
-        Assert.True(e.IsOwner);
-        Assert.Equal("pl:spotify:playlist:p1", e.RouteKey);       // the id IS the route key (F.5.4)
-        Assert.Equal(0L, e.AddedAtMs);                             // playlists have no server add-date — stated honestly
+        SidebarSort.Apply(list, sort, desc, custom);
+        return list;
     }
 
     [Fact]
-    public void PlaylistWithACover_CarriesNoMosaic()
+    public void Recents_OrdersByLastPlayedDescending()
     {
-        var tree = new PlaylistNode[]
+        var list = new List<SidebarLibraryEntry>
         {
-            new PlaylistLeaf(Pl("p1", "Has cover", cover: new Image("https://x/cover.jpg"), mosaic: new[] { "a", "b" })),
+            Pl("a", "Alpha", played: 100),
+            Pl("b", "Bravo", played: 300),
+            Pl("c", "Charlie", played: 200),
         };
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, tree);
-        Assert.Null(Assert.Single(rows).MosaicTiles);
+        Assert.Equal(new[] { "Bravo", "Charlie", "Alpha" }, Names(Sorted(list, SidebarV3Sort.Recents)));
     }
 
     [Fact]
-    public void Album_JoinsUpToThreeArtists_AndKeepsTheFirstOne()
+    public void Recents_NeverPlayedSinkAsABlock_OrderedBySortStampThenName()
     {
-        var (rows, _) = Build(SidebarEntryKindMask.Album, albums: new[] { Al("a1", "Discovery", "Daft Punk") });
-        var one = Assert.Single(rows);
-        Assert.Equal("album:spotify:album:a1", one.Id);
-        Assert.Equal("Daft Punk", one.Creator);
-        Assert.Equal("Daft Punk", one.FirstArtistName);
-        Assert.Equal(11, one.TrackCount);
-
-        var (many, _) = Build(SidebarEntryKindMask.Album, albums: new[] { Al("a2", "Split", "A", "B", "C", "D") });
-        Assert.Equal("A, B, C…", Assert.Single(many).Creator);
-        Assert.Equal("A", many[0].FirstArtistName);
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("n1", "NeverOld", sortStamp: 10),
+            Pl("v1", "Played", played: 5),
+            Pl("n2", "NeverNew", sortStamp: 99),
+        };
+        Assert.Equal(new[] { "Played", "NeverNew", "NeverOld" }, Names(Sorted(list, SidebarV3Sort.Recents)));
     }
 
     [Fact]
-    public void Artist_IsCircular_AndHasNoCreator()
+    public void Recents_Descending_ReversesEachBlockIndependently()
     {
-        var (rows, _) = Build(SidebarEntryKindMask.Artist, artists: new[] { Ar("x", "Radiohead") });
-        var e = Assert.Single(rows);
-        Assert.Equal("artist:spotify:artist:x", e.Id);
-        Assert.True(e.Circular);
-        Assert.Equal("", e.Creator);
-        Assert.Equal(0, e.ChildCount);
-        Assert.False(e.IsPlayable);
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("v1", "V1", played: 100),
+            Pl("v2", "V2", played: 200),
+            Pl("n1", "N1", sortStamp: 10),
+            Pl("n2", "N2", sortStamp: 20),
+        };
+        Assert.Equal(new[] { "V1", "V2", "N1", "N2" }, Names(Sorted(list, SidebarV3Sort.Recents, desc: true)));
+    }
+
+    /// <summary>Opening a row (a click ⇒ a navigation ⇒ LastVisitedTicksUtc moves) must NOT reorder "Recents" — only
+    /// playing something does. The comparator does not read LastVisitedTicksUtc at all.</summary>
+    [Fact]
+    public void Recents_AVisitDoesNotReorder()
+    {
+        var a = Pl("a", "Alpha", played: 200, visited: 10);
+        var b = Pl("b", "Bravo", played: 100, visited: 20);
+        var list = new List<SidebarLibraryEntry> { a, b };
+        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list, SidebarV3Sort.Recents)));
+
+        var bVisitedAgain = b with { LastVisitedTicksUtc = 999_999 };
+        var list2 = new List<SidebarLibraryEntry> { a, bVisitedAgain };
+        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list2, SidebarV3Sort.Recents)));
     }
 
     [Fact]
-    public void Shows_ProjectPublisherAsSubtitle()
+    public void RecentlyAdded_FallsBackToSourceOrder_WhenStampsTie()
     {
-        var (rows, _) = Build(SidebarEntryKindMask.Show, shows: new[] { Sh("s1", "The Daily", "The New York Times") });
-        var e = Assert.Single(rows);
-        Assert.Equal("show:spotify:show:s1", e.Id);
-        Assert.Equal("The New York Times", e.Creator);
-        Assert.Equal("The New York Times", e.Publisher);
-        Assert.Equal("", e.OwnerName);                            // an owner-name reader must not see a publisher
-        Assert.True(e.IsPlayable);
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("c", "Charlie", sortStamp: 500, order: 2),
+            Pl("a", "Alpha", sortStamp: 500, order: 0),
+            Pl("b", "Bravo", sortStamp: 500, order: 1),
+            Pl("z", "Zulu", sortStamp: 900, order: 9),
+        };
+        Assert.Equal(new[] { "Zulu", "Alpha", "Bravo", "Charlie" }, Names(Sorted(list, SidebarV3Sort.RecentlyAdded)));
     }
 
     [Fact]
-    public void KindMask_SelectsExactlyTheRequestedFamilies()
+    public void RecentlyAdded_Descending_Reverses()
     {
-        var tree = new PlaylistNode[] { new PlaylistLeaf(Pl("p", "P")) };
-        var albums = new[] { Al("a", "A", "Artist") };
-        var artists = new[] { Ar("r", "R") };
-        var shows = new[] { Sh("s", "S", "Pub") };
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("a", "Alpha", sortStamp: 100),
+            Pl("b", "Bravo", sortStamp: 200),
+        };
+        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list, SidebarV3Sort.RecentlyAdded, desc: true)));
+    }
 
-        var (all, _) = Build(SidebarEntryKindMask.All, tree, albums, artists, shows);
-        Assert.Equal(4, all.Count);
+    [Fact]
+    public void Alphabetical_IsCaseInsensitive_AndDoesNotStripArticles()
+    {
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("t", "The Beatles"),
+            Pl("a", "alpha"),
+            Pl("z", "Zebra"),
+            Pl("b", "Bravo"),
+        };
+        Assert.Equal(new[] { "alpha", "Bravo", "The Beatles", "Zebra" }, Names(Sorted(list, SidebarV3Sort.Alphabetical)));
+    }
 
-        var (onlyShows, _) = Build(SidebarEntryKindMask.Show, tree, albums, artists, shows);
-        Assert.Equal(SidebarEntryKind.Show, Assert.Single(onlyShows).Kind);
+    [Fact]
+    public void Alphabetical_IsATotalOrder_ForIdenticalNamesAndCreators()
+    {
+        var a = Pl("aaa", "Same", "Same");
+        var b = Pl("bbb", "Same", "Same");
+        Assert.True(SidebarSort.Alphabetical(in a, in b, desc: false) < 0);
+        Assert.True(SidebarSort.Alphabetical(in b, in a, desc: false) > 0);
+        Assert.Equal(0, SidebarSort.Alphabetical(in a, in a, desc: false));
+    }
 
+    [Fact]
+    public void Sorting_TwiceIsIdempotent_UnderTheUnstableListSort()
+    {
+        var list = new List<SidebarLibraryEntry>();
+        for (int i = 0; i < 40; i++) list.Add(Pl("id" + i, "Same name", "Same creator", sortStamp: 7, order: 0));
+        var first = Names(Sorted(list, SidebarV3Sort.RecentlyAdded));
+        var second = Names(Sorted(list, SidebarV3Sort.RecentlyAdded));
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void Creator_SortsByCreatorThenName_WithEmptyCreatorsLastInBothDirections()
+    {
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("b", "Beta", "Zoe"),
+            Artist("x", "An Artist"),
+            Pl("a", "Alpha", "Adam"),
+            Pl("c", "Gamma", "Adam"),
+        };
+        Assert.Equal(new[] { "Alpha", "Gamma", "Beta", "An Artist" },
+                     Names(Sorted(list, SidebarV3Sort.Creator)));
+
+        Assert.Equal(new[] { "Beta", "Gamma", "Alpha", "An Artist" },
+                     Names(Sorted(list, SidebarV3Sort.Creator, desc: true)));
+    }
+
+    [Fact]
+    public void Custom_UsesStoredOrder_ThenAppendsUnknownIdsBySourceOrder()
+    {
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("new2", "New2", order: 5),
+            Pl("known2", "Known2", order: 9),
+            Pl("new1", "New1", order: 1),
+            Pl("known1", "Known1", order: 8),
+        };
+        var order = new[] { "pl:spotify:playlist:known1", "pl:spotify:playlist:known2" };
+        Assert.Equal(new[] { "Known1", "Known2", "New1", "New2" },
+                     Names(Sorted(list, SidebarV3Sort.Custom, desc: false, custom: order)));
+    }
+
+    [Fact]
+    public void Custom_AppendedIdsStayPutAcrossTwoBuilds_AndDescIsIgnored()
+    {
+        var order = new[] { "pl:spotify:playlist:k" };
+        var list = new List<SidebarLibraryEntry>
+        {
+            Pl("u2", "U2", order: 2),
+            Pl("k", "K", order: 7),
+            Pl("u1", "U1", order: 1),
+        };
+        var asc = Names(Sorted(list, SidebarV3Sort.Custom, desc: false, custom: order));
+        var desc = Names(Sorted(list, SidebarV3Sort.Custom, desc: true, custom: order));
+        Assert.Equal(new[] { "K", "U1", "U2" }, asc);
+        Assert.Equal(asc, desc);
+    }
+
+    [Fact]
+    public void Custom_WithNoStoredOrder_IsPureSourceOrder()
+    {
+        var list = new List<SidebarLibraryEntry> { Pl("b", "B", order: 2), Pl("a", "A", order: 1) };
+        Assert.Equal(new[] { "A", "B" }, Names(Sorted(list, SidebarV3Sort.Custom, custom: null)));
+    }
+
+    [Fact]
+    public void Custom_IgnoresDuplicateIdsInTheStoredOrder()
+    {
+        var rank = SidebarSort.BuildRanks(new[] { "x", "y", "x" });
+        Assert.Equal(0, rank["x"]);
+        Assert.Equal(1, rank["y"]);
+    }
+
+    [Fact]
+    public void Effective_FallsBackToAlphabetical_WhenCustomIsPickedOutsideThePlaylistsFilter()
+    {
+        Assert.Equal(SidebarV3Sort.Custom, SidebarSort.Effective(SidebarV3Sort.Custom, SidebarV3Filter.Playlists));
+        Assert.Equal(SidebarV3Sort.Alphabetical, SidebarSort.Effective(SidebarV3Sort.Custom, SidebarV3Filter.All));
+        Assert.Equal(SidebarV3Sort.Alphabetical, SidebarSort.Effective(SidebarV3Sort.Custom, SidebarV3Filter.Albums));
+        Assert.Equal(SidebarV3Sort.Recents, SidebarSort.Effective(SidebarV3Sort.Recents, SidebarV3Filter.Albums));
+        Assert.False(SidebarSort.SupportsDirection(SidebarV3Sort.Custom));
+        Assert.True(SidebarSort.SupportsDirection(SidebarV3Sort.Recents));
+    }
+
+    [Fact]
+    public void EveryComparator_IsAntisymmetric_OverAMixedList()
+    {
+        var entries = new[]
+        {
+            Pl("a", "Alpha", "Zoe", sortStamp: 5, visited: 100, order: 3),
+            Pl("b", "Bravo", "", sortStamp: 5, visited: 0, order: 1),
+            Artist("c", "Charlie", order: 2),
+            Pl("d", "alpha", "Adam", sortStamp: 50, visited: 100, order: 0),
+        };
+        var sorts = new[] { SidebarV3Sort.Recents, SidebarV3Sort.RecentlyAdded, SidebarV3Sort.Alphabetical, SidebarV3Sort.Creator };
+        foreach (var s in sorts)
+            foreach (bool desc in new[] { false, true })
+            {
+                var cmp = SidebarSort.For(s, desc);
+                for (int i = 0; i < entries.Length; i++)
+                    for (int j = 0; j < entries.Length; j++)
+                    {
+                        int ab = cmp(entries[i], entries[j]);
+                        int ba = cmp(entries[j], entries[i]);
+                        if (i == j) Assert.Equal(0, ab);
+                        else Assert.True(ab != 0 && Math.Sign(ab) == -Math.Sign(ba),
+                                         $"{s}/{desc} is not a total order at ({i},{j})");
+                    }
+            }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── SEARCH — diacritics-insensitive, allocation-free, library-only ──────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarSearchFacts
+{
+    static SidebarLibraryEntry Entry(string name, string creator) =>
+        new("pl:spotify:playlist:x", SidebarEntryKind.Playlist, "spotify:playlist:x", name, creator,
+            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+
+    [Fact]
+    public void Matches_IsCaseAndDiacriticsInsensitive()
+    {
+        var e = Entry("Café Crème", "Björk");
+        Assert.True(SidebarSearch.Matches(in e, "cafe"));
+        Assert.True(SidebarSearch.Matches(in e, "CRÈME"));
+        Assert.True(SidebarSearch.Matches(in e, "creme"));
+        Assert.True(SidebarSearch.Matches(in e, ""));               // an empty query matches everything
+        Assert.False(SidebarSearch.Matches(in e, "zzz"));
+    }
+
+    [Fact]
+    public void Matches_MatchesCreatorOnlyForTwoOrMoreCharacters()
+    {
+        var e = Entry("Zzz", "Bjork");
+        Assert.False(SidebarSearch.Matches(in e, "b"));              // one letter must not match every creator
+        Assert.True(SidebarSearch.Matches(in e, "bj"));
+    }
+
+    [Fact]
+    public void Normalize_TrimsAndNeverReturnsNull()
+    {
+        Assert.Equal("cafe", SidebarSearch.Normalize("  cafe \n"));
+        Assert.Equal("", SidebarSearch.Normalize(null));
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── ENTRY KINDS + qualifier matching — the filter/query → kind-mask mapping (PURE) ──────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarEntryKindsFacts
+{
+    [Fact]
+    public void From_MapsEachV3FilterToItsKindMask()
+    {
         Assert.Equal(SidebarEntryKindMask.PlaylistTree, SidebarEntryKinds.From(SidebarV3Filter.Playlists));
         Assert.Equal(SidebarEntryKindMask.Show, SidebarEntryKinds.From(SidebarV3Filter.Podcasts));
+        Assert.Equal(SidebarEntryKindMask.Album, SidebarEntryKinds.From(SidebarV3Filter.Albums));
+        Assert.Equal(SidebarEntryKindMask.Artist, SidebarEntryKinds.From(SidebarV3Filter.Artists));
         Assert.Equal(SidebarEntryKindMask.All, SidebarEntryKinds.From(SidebarV3Filter.All));
+    }
+
+    [Fact]
+    public void From_MapsCoreEntityKindsToProjectionKinds()
+    {
         Assert.Equal(SidebarEntryKindMask.PlaylistTree | SidebarEntryKindMask.Album,
-                     SidebarEntryKinds.From(Wavee.Core.Sidebar.SidebarEntityKinds.Playlists | Wavee.Core.Sidebar.SidebarEntityKinds.Albums));
-    }
-
-    // ── folder recursion (F.7.3 + §3.0 obligation 3) ──────────────────────────────────────────────────────────────────
-    static IReadOnlyList<PlaylistNode> NestedTree() => new PlaylistNode[]
-    {
-        new PlaylistLeaf(Pl("top", "Top")),
-        new PlaylistFolder("cafe", "Cafe & chill", new PlaylistNode[]
-        {
-            new PlaylistLeaf(Pl("in1", "Inner one")),
-            new PlaylistFolder("night", "Late night", new PlaylistNode[]
-            {
-                new PlaylistLeaf(Pl("deep", "Deep")),
-            }),
-        }),
-    };
-
-    [Fact]
-    public void FlattenedTree_StampsDepthAndContainingFolder()
-    {
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, NestedTree(), flatten: true);
-
-        Assert.Equal(new[] { "Top", "Cafe & chill", "Inner one", "Late night", "Deep" }, Names(rows));
-
-        Assert.Equal(0, rows[0].Depth);
-        Assert.Equal("", rows[0].FolderId);
-
-        var cafe = rows[1];
-        Assert.True(cafe.IsFolder);
-        Assert.Equal("folder:cafe", cafe.Id);
-        Assert.Equal("cafe", cafe.FolderId);                       // a folder row carries its OWN group id
-        Assert.Equal(2, cafe.ChildCount);                          // DIRECT children only
-        Assert.Null(cafe.RouteKey);                                // a folder never navigates
-        Assert.Equal("", cafe.Uri);
-
-        Assert.Equal(1, rows[2].Depth);
-        Assert.Equal("cafe", rows[2].FolderId);
-        Assert.Equal("Cafe & chill", rows[2].FolderName);
-
-        Assert.Equal(2, rows[4].Depth);                            // Deep, inside Late night, inside Cafe
-        Assert.Equal("night", rows[4].FolderId);
-    }
-
-    /// <summary>Every row carries the folder it SITS IN, folders included — which <c>FolderId</c> cannot say for a
-    /// folder row (there it is the row's OWN group id). It is what "Move out of {folder}" is built from, and the only
-    /// way a row can tell nested from top-level at all.</summary>
-    [Fact]
-    public void NestedEntries_CarryTheirParentFolder()
-    {
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, NestedTree(), flatten: true);
-        // Top, Cafe & chill, Inner one, Late night, Deep
-
-        Assert.Equal("", rows[0].ParentFolderId);                   // a top-level playlist has nothing to move out of
-        Assert.Equal("", rows[1].ParentFolderId);                   // …and neither has a top-level FOLDER
-        Assert.Equal("cafe", rows[1].FolderId);                     // whose own id still lives in FolderId
-
-        Assert.Equal("cafe", rows[2].ParentFolderId);               // Inner one
-        Assert.Equal("Cafe & chill", rows[2].ParentFolderName);
-
-        var night = rows[3];                                        // a NESTED folder: parent ≠ own id
-        Assert.True(night.IsFolder);
-        Assert.Equal("night", night.FolderId);
-        Assert.Equal("cafe", night.ParentFolderId);
-        Assert.Equal("Cafe & chill", night.ParentFolderName);
-
-        Assert.Equal("night", rows[4].ParentFolderId);              // Deep
-        Assert.Equal("Late night", rows[4].ParentFolderName);
-    }
-
-    /// <summary>A RENAME is a name change and nothing else: the entry id and the group id are the client-minted
-    /// rootlist groupId, which is exactly why folder expansion state and folder pins survive a rename with no
-    /// migration at all.</summary>
-    [Fact]
-    public void RenamedFolder_KeepsItsEntryIdAndGroupId()
-    {
-        var before = Build(SidebarEntryKindMask.PlaylistTree, NestedTree(), flatten: true).Rows[1];
-
-        var renamed = new PlaylistNode[]
-        {
-            new PlaylistLeaf(Pl("top", "Top")),
-            new PlaylistFolder("cafe", "Mornings", new PlaylistNode[]
-            {
-                new PlaylistLeaf(Pl("in1", "Inner one")),
-                new PlaylistFolder("night", "Late night", new PlaylistNode[] { new PlaylistLeaf(Pl("deep", "Deep")) }),
-            }),
-        };
-        var after = Build(SidebarEntryKindMask.PlaylistTree, renamed, flatten: true).Rows[1];
-
-        Assert.Equal("Cafe & chill", before.Name);
-        Assert.Equal("Mornings", after.Name);
-        Assert.Equal(before.Id, after.Id);                          // "folder:cafe" — the pin key
-        Assert.Equal(before.FolderId, after.FolderId);              // "cafe" — the expansion key
-    }
-
-    /// <summary>A folder DELETE removes the marker pair and nothing else — the playlists inside move up one level. At
-    /// the projection that is: the folder row is gone, and each child re-parents onto the deleted folder's parent, one
-    /// depth shallower. (The wire half is <c>RootlistFolderOpsTests</c>; this pins what the sidebar then shows.)</summary>
-    [Fact]
-    public void DeletedFolder_ReparentsItsChildrenAtTheParentDepth()
-    {
-        var deep = Build(SidebarEntryKindMask.PlaylistTree, NestedTree(), flatten: true).Rows[4];
-        Assert.Equal(2, deep.Depth);
-        Assert.Equal("night", deep.FolderId);
-
-        // "Late night" deleted: its one playlist stays, now a direct child of "Cafe & chill".
-        var afterDelete = new PlaylistNode[]
-        {
-            new PlaylistLeaf(Pl("top", "Top")),
-            new PlaylistFolder("cafe", "Cafe & chill", new PlaylistNode[]
-            {
-                new PlaylistLeaf(Pl("in1", "Inner one")),
-                new PlaylistLeaf(Pl("deep", "Deep")),
-            }),
-        };
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, afterDelete, flatten: true);
-
-        Assert.Equal(new[] { "Top", "Cafe & chill", "Inner one", "Deep" }, Names(rows));
-        var moved = rows[3];
-        Assert.Equal(1, moved.Depth);                               // one level up
-        Assert.Equal("cafe", moved.FolderId);
-        Assert.Equal("cafe", moved.ParentFolderId);
-        Assert.Equal("Cafe & chill", moved.ParentFolderName);
+                     SidebarEntryKinds.From(SidebarEntityKinds.Playlists | SidebarEntityKinds.Albums));
     }
 
     [Fact]
-    public void CollapsedFolder_IsOpaque_AndAnExpandedOneRevealsItsChildren()
+    public void Has_TestsOneKindAgainstAMask()
     {
-        var (collapsed, _) = Build(SidebarEntryKindMask.PlaylistTree, NestedTree(), flatten: false);
-        Assert.Equal(new[] { "Top", "Cafe & chill" }, Names(collapsed));
-
-        var (expanded, _) = Build(SidebarEntryKindMask.PlaylistTree, NestedTree(), flatten: false,
-                                  expanded: id => id == "cafe");
-        Assert.Equal(new[] { "Top", "Cafe & chill", "Inner one", "Late night" }, Names(expanded));
+        Assert.True(SidebarEntryKinds.Has(SidebarEntryKindMask.PlaylistTree, SidebarEntryKind.Folder));
+        Assert.False(SidebarEntryKinds.Has(SidebarEntryKindMask.Album, SidebarEntryKind.Playlist));
     }
 
     [Fact]
-    public void PlaylistsOnlyMask_HidesFoldersButKeepsEveryLeaf()
+    public void QualifiersAvailable_NeedsTwoDistinctKnownFlavors()
     {
-        // The projection-level twin of FlatConsumers_StillSeeEveryPlaylist: dropping the Folder bit must never drop the
-        // playlists inside a folder.
-        var (rows, _) = Build(SidebarEntryKindMask.Playlist, NestedTree(), flatten: false);
-        Assert.Equal(new[] { "Top", "Inner one", "Deep" }, Names(rows));
-        Assert.Equal(3, SidebarTree.CountLeaves(NestedTree()));
-    }
+        byte onlyByYou = (byte)(1 << (int)SidebarPlaylistFlavor.ByYou);
+        Assert.False(SidebarProjection.QualifiersAvailable(onlyByYou));
 
-    [Fact]
-    public void SourceOrder_FollowsRootlistOrderAcrossFolders()
-    {
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, NestedTree(), flatten: true);
-        for (int i = 0; i < rows.Count; i++) Assert.Equal(i, rows[i].SourceOrder);
-    }
+        byte byYouAndSpotify = (byte)((1 << (int)SidebarPlaylistFlavor.ByYou) | (1 << (int)SidebarPlaylistFlavor.BySpotify));
+        Assert.True(SidebarProjection.QualifiersAvailable(byYouAndSpotify));
 
-    // ── flavor mask + chip visibility (F.7.2) ─────────────────────────────────────────────────────────────────────────
-    [Fact]
-    public void Flavor_PartitionsByYou_BySpotify_AndMixed()
-    {
-        Assert.Equal(SidebarPlaylistFlavor.ByYou, SidebarProjection.FlavorOf(Pl("a", "A", "Christos", isOwner: true)));
-        Assert.Equal(SidebarPlaylistFlavor.BySpotify, SidebarProjection.FlavorOf(Pl("b", "B", "spotify")));
-        Assert.Equal(SidebarPlaylistFlavor.Mixed, SidebarProjection.FlavorOf(Pl("c", "C", "Someone", canEdit: true)));
-        Assert.Equal(SidebarPlaylistFlavor.Mixed, SidebarProjection.FlavorOf(Pl("d", "D", "Someone else")));
-        Assert.Equal(SidebarPlaylistFlavor.None, SidebarProjection.FlavorOf(Pl("e", "E", "")));
-    }
-
-    [Fact]
-    public void QualifierChips_HiddenUntilTwoDistinctKnownFlavorsExist()
-    {
-        var onlyMine = new PlaylistNode[] { new PlaylistLeaf(Pl("a", "A", "Me", isOwner: true)) };
-        var (_, r1) = Build(SidebarEntryKindMask.PlaylistTree, onlyMine);
-        Assert.False(SidebarProjection.QualifiersAvailable(r1.FlavorMask));
-
-        var mixed = new PlaylistNode[]
-        {
-            new PlaylistLeaf(Pl("a", "A", "Me", isOwner: true)),
-            new PlaylistLeaf(Pl("b", "B", "Spotify")),
-            new PlaylistLeaf(Pl("c", "C", "")),                      // unknown never counts toward the two
-        };
-        var (_, r2) = Build(SidebarEntryKindMask.PlaylistTree, mixed);
-        Assert.True(SidebarProjection.QualifiersAvailable(r2.FlavorMask));
-
-        var unknownOnly = new PlaylistNode[] { new PlaylistLeaf(Pl("a", "A", "")), new PlaylistLeaf(Pl("b", "B", "")) };
-        var (_, r3) = Build(SidebarEntryKindMask.PlaylistTree, unknownOnly);
-        Assert.False(SidebarProjection.QualifiersAvailable(r3.FlavorMask));
+        // The "None" (unknown) bit never counts toward the two, however many rows set it.
+        byte byYouAndUnknown = (byte)((1 << (int)SidebarPlaylistFlavor.ByYou) | (1 << (int)SidebarPlaylistFlavor.None));
+        Assert.False(SidebarProjection.QualifiersAvailable(byYouAndUnknown));
     }
 
     [Fact]
     public void MatchesQualifier_TreatsAnyAsEverything()
     {
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree,
-                              new PlaylistNode[] { new PlaylistLeaf(Pl("a", "A", "Me", isOwner: true)) });
-        var e = Assert.Single(rows);
+        var e = new SidebarLibraryEntry("pl:x", SidebarEntryKind.Playlist, "spotify:playlist:x", "X", "Me",
+            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.ByYou);
+
         Assert.True(e.MatchesQualifier(SidebarV3Qualifier.Any));
         Assert.True(e.MatchesQualifier(SidebarV3Qualifier.ByYou));
         Assert.False(e.MatchesQualifier(SidebarV3Qualifier.BySpotify));
     }
+}
 
-    // ── SortStamp resolution (F.7.5) ──────────────────────────────────────────────────────────────────────────────────
-    [Fact]
-    public void SortStamp_UsesTheRealServerTimestamp_WhenTheStoreHasOne()
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── PINS-FIRST — the stable partition every sort mode applies AFTER sorting (PURE) ──────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarProjectionPinsFirstFacts
+{
+    static SidebarLibraryEntry Pl(string id, string name) =>
+        new("pl:spotify:playlist:" + id, SidebarEntryKind.Playlist, "spotify:playlist:" + id, name, "",
+            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+
+    static SidebarPin Pin(string id, string name) => new(id, SidebarEntryKind.Playlist, "", name, 0);
+
+    static string[] Names(List<SidebarLibraryEntry> l)
     {
-        var addedAt = new Dictionary<string, long>(StringComparer.Ordinal) { ["spotify:album:a1"] = 555L };
-        var (rows, _) = Build(SidebarEntryKindMask.Album, albums: new[] { Al("a1", "A", "X") }, addedAt: addedAt);
-        var e = Assert.Single(rows);
-        Assert.Equal(555L, e.AddedAtMs);
-        Assert.Equal(555L, e.SortStamp);
+        var a = new string[l.Count];
+        for (int i = 0; i < l.Count; i++) a[i] = l[i].Name;
+        return a;
     }
 
     [Fact]
-    public void SortStamp_FallsBackToTheFirstSeenStamp_ForPlaylistsAndUndatedSaves()
+    public void PinsLead_InPinOrder_RegardlessOfTheSortOrder()
     {
-        var seen = Seen(now: 9_000L);
-        var tree = new PlaylistNode[] { new PlaylistLeaf(Pl("p1", "P1")) };
-        var (rows, r) = Build(SidebarEntryKindMask.PlaylistTree, tree, firstSeen: seen);
-        Assert.Equal(0L, rows[0].AddedAtMs);
-        Assert.Equal(9_000L, rows[0].SortStamp);
-        Assert.Equal(1, r.NewFirstSeenStamps);                     // a fresh stamp ⇒ the owner must persist
+        var rows = new List<SidebarLibraryEntry> { Pl("a", "Alpha"), Pl("b", "Bravo"), Pl("c", "Charlie") };
+        SidebarSort.Apply(rows, SidebarV3Sort.Alphabetical, desc: false);
+
+        var pins = new[] { Pin("pl:spotify:playlist:c", "Charlie"), Pin("pl:spotify:playlist:a", "Alpha") };
+        int band = SidebarProjection.PinsFirst(rows, pins);
+
+        Assert.Equal(2, band);
+        Assert.Equal(new[] { "Charlie", "Alpha", "Bravo" }, Names(rows));   // PIN order, not sort order
+        Assert.True(rows[0].IsPinned);
+        Assert.True(rows[1].IsPinned);
+        Assert.False(rows[2].IsPinned);
     }
 
     [Fact]
-    public void FirstSeen_IsStableAcrossRebuilds_AndOnlyNewIdsCountAsNew()
+    public void APinOutsideTheCurrentFilter_IsSimplyAbsent()
     {
-        var clock = 100L;
-        var seen = new SidebarFirstSeen(() => clock);
-        var tree1 = new PlaylistNode[] { new PlaylistLeaf(Pl("p1", "P1")) };
-        var (rows1, r1) = Build(SidebarEntryKindMask.PlaylistTree, tree1, firstSeen: seen);
-        Assert.Equal(1, r1.NewFirstSeenStamps);
-
-        clock = 500L;
-        var tree2 = new PlaylistNode[] { new PlaylistLeaf(Pl("p1", "P1")), new PlaylistLeaf(Pl("p2", "P2")) };
-        var (rows2, r2) = Build(SidebarEntryKindMask.PlaylistTree, tree2, firstSeen: seen);
-
-        Assert.Equal(rows1[0].SortStamp, rows2[0].SortStamp);      // an existing playlist keeps its original stamp
-        Assert.Equal(100L, rows2[0].SortStamp);
-        Assert.Equal(500L, rows2[1].SortStamp);                    // the newly added one is genuinely newer
-        Assert.Equal(1, r2.NewFirstSeenStamps);
+        var rows = new List<SidebarLibraryEntry> { Pl("a", "Alpha") };
+        var pins = new[] { Pin("album:spotify:album:zz", "A pinned album"), Pin("pl:spotify:playlist:a", "Alpha") };
+        int band = SidebarProjection.PinsFirst(rows, pins);
+        Assert.Equal(1, band);
+        Assert.Equal(new[] { "Alpha" }, Names(rows));
     }
 
     [Fact]
-    public void FirstSeen_PrunesIdsThatLeftTheLibrary_AndSurvivesARoundTrip()
+    public void NoPins_IsANoOp()
+    {
+        var rows = new List<SidebarLibraryEntry> { Pl("a", "Alpha"), Pl("b", "Bravo") };
+        Assert.Equal(0, SidebarProjection.PinsFirst(rows, Array.Empty<SidebarPin>()));
+        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(rows));
+        Assert.False(rows[0].IsPinned);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── FIRST-SEEN — the bounded local "date added" proxy for playlists (PURE, Sidebar.Host.cs) ─────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarFirstSeenFacts
+{
+    [Fact]
+    public void Stamp_RecordsOnlyTheFirstObservation_PeekNeverRecords()
+    {
+        var seen = new SidebarFirstSeen(() => 100L);
+        Assert.Equal(0L, seen.Peek("a"));
+        Assert.Equal(0, seen.Count);
+        Assert.Equal(100L, seen.Stamp("a"));
+        Assert.Equal(100L, seen.Stamp("a"));      // idempotent: the SAME stamp comes back
+        Assert.Equal(1, seen.NewStamps);
+        Assert.Equal(1, seen.Count);
+    }
+
+    [Fact]
+    public void PrunesIdsThatLeftTheLibrary_AndSurvivesARoundTrip()
     {
         var seen = new SidebarFirstSeen(() => 42L);
         seen.Stamp("pl:a");
@@ -409,42 +484,43 @@ public class SidebarProjectionTests
         reloaded.Load(snapshot);
         Assert.Equal(42L, reloaded.Peek("pl:a"));
         Assert.Equal(0, reloaded.NewStamps);
-        Assert.Equal(42L, reloaded.Stamp("pl:a"));                 // a known id never re-stamps
+        Assert.Equal(42L, reloaded.Stamp("pl:a"));   // a known id never re-stamps
         Assert.Equal(0, reloaded.NewStamps);
     }
 
     [Fact]
-    public void FrozenFirstSeen_NeverRecords()
+    public void Frozen_NeverRecords_ButStillActsJustSeen()
     {
-        var tree = new PlaylistNode[] { new PlaylistLeaf(Pl("p1", "P1")) };
-        var (rows, r) = Build(SidebarEntryKindMask.PlaylistTree, tree, firstSeen: SidebarFirstSeen.Frozen);
-        Assert.Equal(0, r.NewFirstSeenStamps);
-        Assert.True(rows[0].SortStamp > 0);                        // still sortable ("just seen"), just not persisted
-        Assert.Equal(0, SidebarFirstSeen.Frozen.Count);
+        int before = SidebarFirstSeen.Frozen.Count;
+        long stamp = SidebarFirstSeen.Frozen.Stamp("x");
+        Assert.True(stamp > 0);
+        Assert.Equal(before, SidebarFirstSeen.Frozen.Count);
+        Assert.Equal(0, SidebarFirstSeen.Frozen.NewStamps);
     }
+}
 
-    // ── recency (F.7.6) ───────────────────────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── RECENCY — navigation recency, an identity lookup by route key (PURE, Sidebar.Host.cs) ───────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarRecencyFacts
+{
     [Fact]
-    public void Recency_IsAnIdentityLookupOnTheEntryId_NewestVisitWins()
+    public void Build_IsAnIdentityLookupOnRouteKey_NewestVisitWins()
     {
         var visits = new List<SidebarVisit>
         {
             new("pl:spotify:playlist:p1", 100),
             new("album:spotify:album:a1", 150),
-            new("pl:spotify:playlist:p1", 300),                     // later visit to the same route
+            new("pl:spotify:playlist:p1", 300),      // a later visit to the same route
         };
         var recency = SidebarRecency.Build(visits);
         Assert.Equal(300L, recency.LastVisitedTicks("pl:spotify:playlist:p1"));
         Assert.Equal(150L, recency.LastVisitedTicks("album:spotify:album:a1"));
         Assert.Equal(0L, recency.LastVisitedTicks("show:spotify:show:s1"));
-
-        var tree = new PlaylistNode[] { new PlaylistLeaf(Pl("p1", "P1")) };
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, tree, recency: recency);
-        Assert.Equal(300L, rows[0].LastVisitedTicksUtc);
     }
 
     [Fact]
-    public void Recency_BuildsFromAnyRowShape_ViaTheAccessorOverload()
+    public void Build_WorksOverAnyRowShape_ViaTheAccessorOverload()
     {
         var rows = new[] { ("home", 10L), ("pl:x", 20L), ("pl:x", 40L) };
         var recency = SidebarRecency.Build(rows, static r => r.Item1, static r => r.Item2);
@@ -452,30 +528,526 @@ public class SidebarProjectionTests
         Assert.Equal(10L, recency.LastVisitedTicks("home"));
         Assert.Same(SidebarRecency.Empty, SidebarRecency.Build(Array.Empty<SidebarVisit>()));
     }
+}
 
-    // ── played-based recency (F.7.5's "Recents" = played) ────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── PROJECTION — SidebarProjection.Build over REAL staged edges (User.Me's Rootlist/SavedAlbums/FollowedArtists/
+//    SavedShows), the 0.3 replacement for the 0.2.9 LibraryStore fixture ───────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+[Collection(EntitiesCollection.Name)]
+public class SidebarProjectionEdgeFacts
+{
+    // ── fixture plumbing: TestScope.Fresh() boots a fake in-memory scope (TestScope.cs); Staging + CommitAndPublish
+    // land real rows exactly like EdgesStagingTests.cs / AlbumTests.cs / ArtistTests.cs / ShowTests.cs; User.Replace /
+    // User.ReplaceRootlist then write the edges directly, the same public entry point a collection sync uses
+    // (Entities/User.cs: "Replace a whole relation from a provider answer").
+
+    static User Me(string uri = "spotify:user:me")
+    {
+        var me = Entities.User(EntityUri.Parse(uri));
+        Entities.Current.MeSlot = me.Slot;
+        return me;
+    }
+
+    static void StageUser(Staging s, string uri, string name)
+    {
+        ref var row = ref s.Users.Add();
+        row.Id = s.Text(uri);
+        row.Name = s.Text(name);
+        row.Known = (uint)UserFields.Identity;
+        row.Authority = Authority.Full;
+    }
+
+    static Playlist StagePlaylist(Staging s, string uri, string title, string? ownerUri, int trackCount,
+        PlaylistCaps caps, string? image = null)
+    {
+        ref var row = ref s.Playlists.Add();
+        row.Id = s.Text(uri);
+        row.Title = s.Text(title);
+        if (ownerUri is not null) row.OwnerUri = s.Text(ownerUri);
+        row.TrackCount = trackCount;
+        if (image is not null) row.Image = s.Text(image);
+        row.Caps = (byte)caps;
+        row.Known = (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities);
+        row.Authority = Authority.Full;
+        return Entities.Playlist(EntityUri.Parse(uri));
+    }
+
+    static Album StageAlbum(Staging s, string uri, string title, int trackCount, string? image, params string[] artistNames)
+    {
+        ref var row = ref s.Albums.Add();
+        row.Id = s.Text(uri);
+        row.Title = s.Text(title);
+        if (image is not null) row.Image = s.Text(image);
+        row.TrackCount = trackCount;
+        row.Known = (uint)AlbumFields.Identity;
+        row.Authority = Authority.Full;
+
+        if (artistNames.Length > 0)
+        {
+            var run = s.Run(Relation.AlbumArtists);
+            for (int i = 0; i < artistNames.Length; i++)
+            {
+                string artistUri = uri + ":artist:" + i;
+                ref var ar = ref s.Artists.Add();
+                ar.Id = s.Text(artistUri);
+                ar.Name = s.Text(artistNames[i]);
+                ar.Known = (uint)ArtistFields.Identity;
+                ar.Authority = Authority.Full;
+                run.Add(s.Text(artistUri));
+            }
+            StagedId albumId = s.Text(uri);
+            run.End(in albumId);
+        }
+        return Entities.Album(EntityUri.Parse(uri));
+    }
+
+    static Artist StageArtist(Staging s, string uri, string name)
+    {
+        ref var row = ref s.Artists.Add();
+        row.Id = s.Text(uri);
+        row.Name = s.Text(name);
+        row.Known = (uint)ArtistFields.Identity;
+        row.Authority = Authority.Full;
+        return Entities.Artist(EntityUri.Parse(uri));
+    }
+
+    static Show StageShow(Staging s, string uri, string title, string publisher)
+    {
+        ref var row = ref s.Shows.Add();
+        row.Id = s.Text(uri);
+        row.Title = s.Text(title);
+        row.Publisher = s.Text(publisher);
+        row.Known = (uint)ShowFields.Identity;
+        row.Authority = Authority.Full;
+        return Entities.Show(EntityUri.Parse(uri));
+    }
+
+    static void SetSavedAlbums(User me, params (Album Album, int AddedAt)[] saves)
+    {
+        var targets = new int[saves.Length];
+        var payload = new LibraryEdge[saves.Length];
+        for (int i = 0; i < saves.Length; i++) { targets[i] = saves[i].Album.Slot; payload[i] = new LibraryEdge(saves[i].AddedAt, 0); }
+        me.Replace(LibraryEdgeKind.SavedAlbums, targets, payload, EdgeState.Complete, targets.Length);
+    }
+
+    static void SetFollowedArtists(User me, params Artist[] artists)
+    {
+        var targets = new int[artists.Length];
+        var payload = new LibraryEdge[artists.Length];
+        for (int i = 0; i < artists.Length; i++) targets[i] = artists[i].Slot;
+        me.Replace(LibraryEdgeKind.FollowedArtists, targets, payload, EdgeState.Complete, targets.Length);
+    }
+
+    static void SetSavedShows(User me, params Show[] shows)
+    {
+        var targets = new int[shows.Length];
+        var payload = new LibraryEdge[shows.Length];
+        for (int i = 0; i < shows.Length; i++) targets[i] = shows[i].Slot;
+        me.Replace(LibraryEdgeKind.SavedShows, targets, payload, EdgeState.Complete, targets.Length);
+    }
+
+    // Rootlist row builders. Folder identity is the rootlist GROUP id the wire carries (decision D10,
+    // `RootlistEdge.FolderId`): the row's FolderId is the bare hex, its Id is "folder:<hex>", its children's
+    // ParentFolderId is the bare hex — stable across a rename AND a move. The edges are built through `with` rather
+    // than the positional constructor, so these builders do not depend on where the column sits in the record.
+    static (int Target, RootlistEdge Edge) Item(Playlist p, byte depth, int addedAt = 0) =>
+        (p.Slot, default(RootlistEdge) with { Depth = depth, Kind = (byte)RootlistKind.Item, AddedAt = addedAt });
+    static (int Target, RootlistEdge Edge) FolderStart(ushort position, byte depth, string name, string? hex = null) =>
+        (Table.None, default(RootlistEdge) with
+        {
+            Position = position, Depth = depth, Kind = (byte)RootlistKind.FolderStart,
+            FolderName = Entities.Strings.Intern(name),
+            FolderId = Entities.Strings.Intern(hex ?? HexOf(position)),
+        });
+    static (int Target, RootlistEdge Edge) FolderEnd(byte depth) =>
+        (Table.None, default(RootlistEdge) with { Depth = depth, Kind = (byte)RootlistKind.FolderEnd });
+
+    /// <summary>A deterministic 16-hex group id per fixture position ("0000000000000001" …).</summary>
+    static string HexOf(int position) => position.ToString("x16", System.Globalization.CultureInfo.InvariantCulture);
+
+    static void SetRootlist(User me, params (int Target, RootlistEdge Edge)[] rows)
+    {
+        var targets = new int[rows.Length];
+        var payload = new RootlistEdge[rows.Length];
+        for (int i = 0; i < rows.Length; i++) { targets[i] = rows[i].Target; payload[i] = rows[i].Edge; }
+        me.ReplaceRootlist(targets, payload);
+    }
+
+    static (List<SidebarLibraryEntry> Rows, SidebarProjectionResult Result) Build(
+        User me, SidebarEntryKindMask kinds, bool flatten = true, Func<string, bool>? expanded = null,
+        IReadOnlyDictionary<string, long>? lastPlayed = null, SidebarFirstSeen? firstSeen = null,
+        SidebarRecency? recency = null)
+    {
+        var into = new List<SidebarLibraryEntry>();
+        var r = SidebarProjection.Build(into, in me, kinds, firstSeen ?? new SidebarFirstSeen(() => 1_000_000L),
+            recency, includeFolderChildren: flatten, isFolderExpanded: expanded, lastPlayed: lastPlayed);
+        return (into, r);
+    }
+
+    static string[] Names(IReadOnlyList<SidebarLibraryEntry> l)
+    {
+        var a = new string[l.Count];
+        for (int i = 0; i < l.Count; i++) a[i] = l[i].Name;
+        return a;
+    }
+
+    // ── per-kind field derivation ────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Playlist_DerivesIdOwnerAndCount_AndItsCoverlessMosaicIsAGap()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        StageUser(s, "spotify:user:christos", "Christos");
+        var p = StagePlaylist(s, "spotify:playlist:p1", "Focus", "spotify:user:christos", 42,
+            PlaylistCaps.IsOwner | PlaylistCaps.CanView, image: "spotify:image:cover1");
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree);
+        var e = Assert.Single(rows);
+        Assert.Equal("pl:spotify:playlist:p1", e.Id);
+        Assert.Equal(SidebarEntryKind.Playlist, e.Kind);
+        Assert.Equal("spotify:playlist:p1", e.Uri);
+        Assert.Equal("Focus", e.Name);
+        Assert.Equal("Christos", e.Creator);
+        Assert.Equal("Christos", e.OwnerName);
+        Assert.Equal(42, e.ChildCount);
+        Assert.Equal(42, e.TrackCount);
+        Assert.False(e.Circular);
+        Assert.True(e.IsPlayable);
+        Assert.True(e.IsOwner);
+        Assert.Equal("pl:spotify:playlist:p1", e.RouteKey);
+        Assert.Equal("spotify:image:cover1", Entities.Strings.Resolve(e.Cover));
+        // GAP (see Sidebar.cs's own comment above SidebarProjection): 0.2.9's cover-less 2x2 mosaic was built from
+        // the playlist's OWN track covers (PlaylistSummary.MosaicTiles); Entities has no equivalent, so a playlist
+        // row's MosaicTiles is unconditionally null now, cover or no cover.
+        Assert.Null(e.MosaicTiles);
+    }
+
+    [Fact]
+    public void Album_JoinsUpToThreeArtists_AndKeepsTheFirstOne()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        StageAlbum(s, "spotify:album:a1", "Discovery", trackCount: 14, image: null, "Daft Punk");
+        StageAlbum(s, "spotify:album:a2", "Split", trackCount: 9, image: null, "A", "B", "C", "D");
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        var al1 = Entities.Album(EntityUri.Parse("spotify:album:a1"));
+        var al2 = Entities.Album(EntityUri.Parse("spotify:album:a2"));
+        SetSavedAlbums(me, (al2, 100), (al1, 200));   // newest (by our own order) first, as the edge already is
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.Album);
+        Assert.Equal(2, rows.Count);
+        var one = rows.Find(r => r.Name == "Discovery");
+        Assert.Equal("album:spotify:album:a1", one.Id);
+        Assert.Equal("Daft Punk", one.Creator);
+        Assert.Equal("Daft Punk", one.FirstArtistName);
+        Assert.Equal(14, one.TrackCount);
+
+        var many = rows.Find(r => r.Name == "Split");
+        Assert.Equal("A, B, C…", many.Creator);
+        Assert.Equal("A", many.FirstArtistName);
+    }
+
+    [Fact]
+    public void Artist_IsCircular_AndHasNoCreator()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        StageArtist(s, "spotify:artist:x", "Radiohead");
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetFollowedArtists(me, Entities.Artist(EntityUri.Parse("spotify:artist:x")));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.Artist);
+        var e = Assert.Single(rows);
+        Assert.Equal("artist:spotify:artist:x", e.Id);
+        Assert.True(e.Circular);
+        Assert.Equal("", e.Creator);
+        Assert.Equal(0, e.ChildCount);
+        Assert.False(e.IsPlayable);
+    }
+
+    [Fact]
+    public void Show_ProjectsPublisherAsCreatorAndSubtitle()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        StageShow(s, "spotify:show:s1", "The Daily", "The New York Times");
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetSavedShows(me, Entities.Show(EntityUri.Parse("spotify:show:s1")));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.Show);
+        var e = Assert.Single(rows);
+        Assert.Equal("show:spotify:show:s1", e.Id);
+        Assert.Equal("The New York Times", e.Creator);
+        Assert.Equal("The New York Times", e.Publisher);
+        Assert.Equal("", e.OwnerName);
+        Assert.True(e.IsPlayable);
+    }
+
+    [Fact]
+    public void KindMask_SelectsExactlyTheRequestedFamilies()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:p", "P", null, 0, PlaylistCaps.None);
+        StageAlbum(s, "spotify:album:a", "A", 0, null, "Artist");
+        StageArtist(s, "spotify:artist:r", "R");
+        StageShow(s, "spotify:show:sh", "S", "Pub");
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+        SetSavedAlbums(me, (Entities.Album(EntityUri.Parse("spotify:album:a")), 0));
+        SetFollowedArtists(me, Entities.Artist(EntityUri.Parse("spotify:artist:r")));
+        SetSavedShows(me, Entities.Show(EntityUri.Parse("spotify:show:sh")));
+
+        var (all, _) = Build(me, SidebarEntryKindMask.All);
+        Assert.Equal(4, all.Count);
+
+        var (onlyShows, _) = Build(me, SidebarEntryKindMask.Show);
+        Assert.Equal(SidebarEntryKind.Show, Assert.Single(onlyShows).Kind);
+    }
+
+    // ── folder recursion ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void FlattenedTree_StampsDepthFolderIdAndChildCountAndMosaic()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var top = StagePlaylist(s, "spotify:playlist:top", "Top", null, 0, PlaylistCaps.None);
+        var in1 = StagePlaylist(s, "spotify:playlist:in1", "Inner one", null, 0, PlaylistCaps.None, image: "spotify:image:i1");
+        var in2 = StagePlaylist(s, "spotify:playlist:in2", "Inner two", null, 0, PlaylistCaps.None, image: "spotify:image:i2");
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me,
+            Item(top, depth: 0),
+            FolderStart(position: 1, depth: 0, name: "Cafe & chill"),
+            Item(in1, depth: 1),
+            Item(in2, depth: 1),
+            FolderEnd(depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: true);
+        Assert.Equal(new[] { "Top", "Cafe & chill", "Inner one", "Inner two" }, Names(rows));
+
+        Assert.Equal(0, rows[0].Depth);
+        Assert.Equal("", rows[0].FolderId);
+
+        var cafe = rows[1];
+        Assert.True(cafe.IsFolder);
+        Assert.Equal("folder:" + HexOf(1), cafe.Id);             // the pin id: ForFolder(group hex)
+        Assert.Equal(HexOf(1), cafe.FolderId);                   // the BARE group hex, 0.2.9's convention
+        Assert.Equal("", cafe.ParentFolderId);                   // top level
+        Assert.Equal(2, cafe.ChildCount);                       // two DIRECT playlist children
+        Assert.Null(cafe.RouteKey);
+        Assert.Equal("", cafe.Uri);
+        Assert.NotNull(cafe.MosaicTiles);
+        Assert.Equal(2, cafe.MosaicTiles!.Count);                // the folder mosaic (unlike a playlist's) still ports
+
+        Assert.Equal(1, rows[2].Depth);
+        Assert.Equal(HexOf(1), rows[2].FolderId);
+        Assert.Equal("Cafe & chill", rows[2].FolderName);
+        Assert.Equal(HexOf(1), rows[2].ParentFolderId);
+        Assert.Equal("Cafe & chill", rows[2].ParentFolderName);
+
+        for (int i = 0; i < rows.Count; i++) Assert.Equal(i, rows[i].SourceOrder);   // rootlist order, folders included
+    }
+
+    /// <summary>A sub-folder counts as a DIRECT child of its enclosing folder, exactly like a playlist, as 0.2.9
+    /// counted it (one playlist + one sub-folder inside a folder is ChildCount == 2).</summary>
+    [Fact]
+    public void NestedFolder_CountsTowardItsParentsChildCount()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var a = StagePlaylist(s, "spotify:playlist:a", "A", null, 0, PlaylistCaps.None);
+        var deep = StagePlaylist(s, "spotify:playlist:deep", "Deep", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me,
+            FolderStart(position: 1, depth: 0, name: "Outer"),
+            Item(a, depth: 1),
+            FolderStart(position: 2, depth: 1, name: "Inner"),
+            Item(deep, depth: 2),
+            FolderEnd(depth: 1),
+            FolderEnd(depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: true);
+        var outer = rows.Find(r => r.Id == "folder:" + HexOf(1));
+        var inner = rows.Find(r => r.Id == "folder:" + HexOf(2));
+        Assert.Equal(2, outer.ChildCount);     // "A" and the "Inner" sub-folder, both direct children
+        Assert.Equal(1, inner.ChildCount);     // "Deep"
+        Assert.Equal(HexOf(1), inner.ParentFolderId);   // a sub-folder's parent is the enclosing folder's bare hex
+    }
+
+    /// <summary>D10: a folder's identity is its GROUP id, so moving it — or putting a new folder in front of it — keeps
+    /// its id, its expansion key and its pin; the old position-derived id moved with every reorder.</summary>
+    [Fact]
+    public void A_moved_folder_keeps_its_group_id()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var a = StagePlaylist(s, "spotify:playlist:a", "A", null, 0, PlaylistCaps.None);
+        var b = StagePlaylist(s, "spotify:playlist:b", "B", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me,
+            FolderStart(position: 0, depth: 0, name: "Mixes", hex: "6a1f2c"),
+            Item(a, depth: 1),
+            FolderEnd(depth: 0),
+            Item(b, depth: 0));
+        var (before, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: true);
+
+        SetRootlist(me,
+            Item(b, depth: 0),
+            FolderStart(position: 1, depth: 0, name: "Mixes renamed", hex: "6a1f2c"),
+            Item(a, depth: 1),
+            FolderEnd(depth: 0));
+        var (after, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: true);
+
+        var was = before.Find(r => r.IsFolder);
+        var now = after.Find(r => r.IsFolder);
+        Assert.Equal("folder:6a1f2c", was.Id);
+        Assert.Equal(was.Id, now.Id);
+        Assert.Equal("6a1f2c", now.FolderId);
+        Assert.Equal("6a1f2c", after.Find(r => r.Name == "A").ParentFolderId);
+        // The expansion predicate is asked with the bare hex — the key a 0.2.9 `v3.expandedFolders` array holds.
+        var (expanded, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: false, expanded: id => id == "6a1f2c");
+        Assert.Contains(expanded, r => r.Name == "A");
+    }
+
+    /// <summary>A FolderStart that arrived without a group id still gets a row key unique within the tree, and one no
+    /// real hex id, pin or synced uri can collide with.</summary>
+    [Fact]
+    public void A_folder_without_a_group_id_is_keyed_by_its_position_under_a_non_hex_prefix()
+    {
+        TestScope.Fresh();
+        var edge = default(RootlistEdge) with { Position = 7, Kind = (byte)RootlistKind.FolderStart };
+        Assert.Equal("~7", SidebarProjection.FolderIdOf(in edge));
+        Assert.True(EntityUri.FolderIdOf("spotify:folder:~7").IsEmpty);
+    }
+
+    [Fact]
+    public void CollapsedFolder_IsOpaque_AndAnExpandedOneRevealsItsChildren()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var top = StagePlaylist(s, "spotify:playlist:top", "Top", null, 0, PlaylistCaps.None);
+        var in1 = StagePlaylist(s, "spotify:playlist:in1", "Inner one", null, 0, PlaylistCaps.None);
+        var in2 = StagePlaylist(s, "spotify:playlist:in2", "Inner two", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me,
+            Item(top, depth: 0),
+            FolderStart(position: 1, depth: 0, name: "Cafe & chill"),
+            Item(in1, depth: 1),
+            Item(in2, depth: 1),
+            FolderEnd(depth: 0));
+
+        var (collapsed, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: false, expanded: null);
+        Assert.Equal(new[] { "Top", "Cafe & chill" }, Names(collapsed));
+
+        var (expanded, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: false,
+            expanded: id => id == HexOf(1));
+        Assert.Equal(new[] { "Top", "Cafe & chill", "Inner one", "Inner two" }, Names(expanded));
+    }
+
+    [Fact]
+    public void PlaylistsOnlyMask_HidesFoldersButKeepsEveryLeaf()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var top = StagePlaylist(s, "spotify:playlist:top", "Top", null, 0, PlaylistCaps.None);
+        var in1 = StagePlaylist(s, "spotify:playlist:in1", "Inner one", null, 0, PlaylistCaps.None);
+        var in2 = StagePlaylist(s, "spotify:playlist:in2", "Inner two", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me,
+            Item(top, depth: 0),
+            FolderStart(position: 1, depth: 0, name: "Cafe & chill"),
+            Item(in1, depth: 1),
+            Item(in2, depth: 1),
+            FolderEnd(depth: 0));
+
+        // Dropping the Folder bit must never drop the playlists inside a folder.
+        var (rows, _) = Build(me, SidebarEntryKindMask.Playlist, flatten: false);
+        Assert.Equal(new[] { "Top", "Inner one", "Inner two" }, Names(rows));
+    }
+
+    // ── flavor (playlist provenance for the qualifier chips) ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void FlavorOf_PartitionsByYou_BySpotify_Mixed_AndNone()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        StageUser(s, "spotify:user:spotify_editorial", "Spotify");
+        StageUser(s, "spotify:user:zoe", "Zoe");
+        var mine = StagePlaylist(s, "spotify:playlist:mine", "Mine", null, 0, PlaylistCaps.IsOwner | PlaylistCaps.CanView);
+        var editorial = StagePlaylist(s, "spotify:playlist:ed", "Ed", "spotify:user:spotify_editorial", 0, PlaylistCaps.CanView);
+        var collab = StagePlaylist(s, "spotify:playlist:collab", "Collab", "spotify:user:zoe", 0,
+            PlaylistCaps.CanView | PlaylistCaps.CanEditItems);
+        var someoneElses = StagePlaylist(s, "spotify:playlist:se", "SE", "spotify:user:zoe", 0, PlaylistCaps.CanView);
+        var unknown = StagePlaylist(s, "spotify:playlist:unk", "Unknown", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        Assert.Equal(SidebarPlaylistFlavor.ByYou, SidebarProjection.FlavorOf(in mine));
+        Assert.Equal(SidebarPlaylistFlavor.BySpotify, SidebarProjection.FlavorOf(in editorial));
+        Assert.Equal(SidebarPlaylistFlavor.Mixed, SidebarProjection.FlavorOf(in collab));      // collaborative
+        Assert.Equal(SidebarPlaylistFlavor.Mixed, SidebarProjection.FlavorOf(in someoneElses)); // someone else's, view-only
+        Assert.Equal(SidebarPlaylistFlavor.None, SidebarProjection.FlavorOf(in unknown));       // the data does not say
+    }
+
+    // ── LastPlayedMs — the "Recents" sort key, stamped by uri, never by route ───────────────────────────────────────
+
     [Fact]
     public void Build_StampsLastPlayedMs_FromTheMapByUri_AndZeroWhenAbsent()
     {
-        var tree = new PlaylistNode[] { new PlaylistLeaf(Pl("p1", "Played")), new PlaylistLeaf(Pl("p2", "Never")) };
-        var albums = new[] { Al("a1", "PlayedAlbum", "X") };
-        var artists = new[] { Ar("r1", "PlayedArtist") };
-        var shows = new[] { Sh("s1", "PlayedShow", "Pub") };
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var played = StagePlaylist(s, "spotify:playlist:played", "Played", null, 0, PlaylistCaps.None);
+        var never = StagePlaylist(s, "spotify:playlist:never", "Never", null, 0, PlaylistCaps.None);
+        StageAlbum(s, "spotify:album:a1", "PlayedAlbum", 0, null, "X");
+        StageArtist(s, "spotify:artist:r1", "PlayedArtist");
+        StageShow(s, "spotify:show:s1", "PlayedShow", "Pub");
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me, Item(played, depth: 0), Item(never, depth: 0));
+        SetSavedAlbums(me, (Entities.Album(EntityUri.Parse("spotify:album:a1")), 0));
+        SetFollowedArtists(me, Entities.Artist(EntityUri.Parse("spotify:artist:r1")));
+        SetSavedShows(me, Entities.Show(EntityUri.Parse("spotify:show:s1")));
+
         var lastPlayed = new Dictionary<string, long>(StringComparer.Ordinal)
         {
-            ["spotify:playlist:p1"] = 555L,
+            ["spotify:playlist:played"] = 555L,
             ["spotify:album:a1"] = 777L,
             ["spotify:artist:r1"] = 888L,
             ["spotify:show:s1"] = 999L,
         };
 
-        var (rows, _) = Build(SidebarEntryKindMask.All, tree, albums, artists, shows, lastPlayed: lastPlayed);
-
+        var (rows, _) = Build(me, SidebarEntryKindMask.All, lastPlayed: lastPlayed);
         var byName = new Dictionary<string, SidebarLibraryEntry>(StringComparer.Ordinal);
         foreach (var e in rows) byName[e.Name] = e;
 
         Assert.Equal(555L, byName["Played"].LastPlayedMs);
-        Assert.Equal(0L, byName["Never"].LastPlayedMs);               // absent from the map ⇒ never played
+        Assert.Equal(0L, byName["Never"].LastPlayedMs);
         Assert.Equal(777L, byName["PlayedAlbum"].LastPlayedMs);
         Assert.Equal(888L, byName["PlayedArtist"].LastPlayedMs);
         Assert.Equal(999L, byName["PlayedShow"].LastPlayedMs);
@@ -484,158 +1056,766 @@ public class SidebarProjectionTests
     [Fact]
     public void Build_WithNoLastPlayedMap_EveryRowStaysZero()
     {
-        var tree = new PlaylistNode[] { new PlaylistLeaf(Pl("p1", "P1")) };
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, tree, lastPlayed: null);
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:p1", "P1", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree, lastPlayed: null);
         Assert.Equal(0L, Assert.Single(rows).LastPlayedMs);
-    }
-
-    // ── search (F.7.8) ────────────────────────────────────────────────────────────────────────────────────────────────
-    [Fact]
-    public void Search_MatchesNameCaseAndDiacriticsInsensitively()
-    {
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree,
-                              new PlaylistNode[] { new PlaylistLeaf(Pl("p", "Café Crème", "Björk")) });
-        var e = Assert.Single(rows);
-        Assert.True(SidebarSearch.Matches(in e, "cafe"));
-        Assert.True(SidebarSearch.Matches(in e, "CRÈME"));
-        Assert.True(SidebarSearch.Matches(in e, "creme"));
-        Assert.True(SidebarSearch.Matches(in e, ""));               // an empty query matches everything
-        Assert.False(SidebarSearch.Matches(in e, "zzz"));
-    }
-
-    [Fact]
-    public void Search_MatchesCreatorOnlyForTwoOrMoreCharacters()
-    {
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree,
-                              new PlaylistNode[] { new PlaylistLeaf(Pl("p", "Zzz", "Bjork")) });
-        var e = Assert.Single(rows);
-        Assert.False(SidebarSearch.Matches(in e, "b"));             // one letter must not match every creator
-        Assert.True(SidebarSearch.Matches(in e, "bj"));
-    }
-
-    [Fact]
-    public void Search_NormalizesTheQueryOnce()
-    {
-        Assert.Equal("cafe", SidebarSearch.Normalize("  cafe \n"));
-        Assert.Equal("", SidebarSearch.Normalize(null));
-    }
-
-    // ── pins-first (F.7.9) ────────────────────────────────────────────────────────────────────────────────────────────
-    static SidebarPin Pin(string id, string name) =>
-        new(id, SidebarPinId.KindOf(id), SidebarPinId.UriOf(id), name, 0);
-
-    [Fact]
-    public void Pins_LeadInPinOrder_RegardlessOfTheSortOrder()
-    {
-        var tree = new PlaylistNode[]
-        {
-            new PlaylistLeaf(Pl("a", "Alpha")),
-            new PlaylistLeaf(Pl("b", "Bravo")),
-            new PlaylistLeaf(Pl("c", "Charlie")),
-        };
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, tree);
-        SidebarSort.Apply(rows, SidebarV3Sort.Alphabetical, desc: false);
-
-        var pins = new[] { Pin("pl:spotify:playlist:c", "Charlie"), Pin("pl:spotify:playlist:a", "Alpha") };
-        int band = SidebarProjection.PinsFirst(rows, pins);
-
-        Assert.Equal(2, band);
-        Assert.Equal(new[] { "Charlie", "Alpha", "Bravo" }, Names(rows));   // PIN order, not sort order
-        Assert.True(rows[0].IsPinned);
-        Assert.True(rows[1].IsPinned);
-        Assert.False(rows[2].IsPinned);
-    }
-
-    [Fact]
-    public void Pins_OutsideTheCurrentFilterAreSimplyAbsent()
-    {
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree,
-                              new PlaylistNode[] { new PlaylistLeaf(Pl("a", "Alpha")) });
-        var pins = new[] { Pin("album:spotify:album:zz", "A pinned album"), Pin("pl:spotify:playlist:a", "Alpha") };
-        int band = SidebarProjection.PinsFirst(rows, pins);
-        Assert.Equal(1, band);
-        Assert.Equal(new[] { "Alpha" }, Names(rows));
-    }
-
-    [Fact]
-    public void Pins_NoPins_IsANoOp()
-    {
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree,
-                              new PlaylistNode[] { new PlaylistLeaf(Pl("a", "Alpha")), new PlaylistLeaf(Pl("b", "Bravo")) });
-        Assert.Equal(0, SidebarProjection.PinsFirst(rows, Array.Empty<SidebarPin>()));
-        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(rows));
-        Assert.False(rows[0].IsPinned);
-    }
-
-    // ── the pin id scheme (F.5.4) ─────────────────────────────────────────────────────────────────────────────────────
-    [Fact]
-    public void PinId_MapsUrisAndRefusesTracksAndEpisodes()
-    {
-        Assert.Equal("pl:spotify:playlist:x", SidebarPinId.FromUri("spotify:playlist:x"));
-        Assert.Equal("pl:wavee:playlist:x", SidebarPinId.FromUri("wavee:playlist:x"));
-        Assert.Equal("album:spotify:album:x", SidebarPinId.FromUri("spotify:album:x"));
-        Assert.Equal("artist:spotify:artist:x", SidebarPinId.FromUri("spotify:artist:x"));
-        Assert.Equal("show:spotify:show:x", SidebarPinId.FromUri("spotify:show:x"));
-        Assert.Equal("liked", SidebarPinId.FromUri("spotify:collection:tracks"));   // Liked Songs is a ROUTE pin
-        Assert.Null(SidebarPinId.FromUri("spotify:track:x"));
-        Assert.Null(SidebarPinId.FromUri("spotify:episode:x"));
-        Assert.Null(SidebarPinId.FromUri(""));
-        Assert.Null(SidebarPinId.FromUri(null));
-    }
-
-    [Fact]
-    public void PinId_KindAndRouteRoundTrip()
-    {
-        Assert.Equal(SidebarEntryKind.Playlist, SidebarPinId.KindOf("pl:spotify:playlist:x"));
-        Assert.Equal(SidebarEntryKind.Album, SidebarPinId.KindOf("album:spotify:album:x"));
-        Assert.Equal(SidebarEntryKind.Artist, SidebarPinId.KindOf("artist:spotify:artist:x"));
-        Assert.Equal(SidebarEntryKind.Show, SidebarPinId.KindOf("show:spotify:show:x"));
-        Assert.Equal(SidebarEntryKind.Folder, SidebarPinId.KindOf("folder:6a1f2c"));
-        Assert.Equal(SidebarEntryKind.AppRoute, SidebarPinId.KindOf("liked"));
-
-        Assert.Equal("show:spotify:show:x", SidebarPinId.RouteOf("show:spotify:show:x"));
-        Assert.Null(SidebarPinId.RouteOf("folder:6a1f2c"));         // a folder expands in place; it never navigates
-        Assert.Equal("6a1f2c", SidebarPinId.FolderIdOf(SidebarPinId.ForFolder("6a1f2c")));
-        Assert.Equal("spotify:show:x", SidebarPinId.UriOf("show:spotify:show:x"));
-        Assert.Equal("spotify:collection:tracks", SidebarPinId.UriOf("liked"));
-        Assert.Equal("", SidebarPinId.UriOf("folder:6a1f2c"));
-    }
-
-    [Fact]
-    public void PinId_AcceptsDurableDestinations_ButRejectsShellInternals()
-    {
-        Assert.Equal("home", SidebarPinId.FromRoute("home"));
-        Assert.Equal("history", SidebarPinId.FromRoute("history"));
-        Assert.Equal("pl:spotify:playlist:x", SidebarPinId.FromRoute("pl:spotify:playlist:x"));
-        Assert.Equal("browse:spotify:page:music", SidebarPinId.FromRoute("browse:spotify:page:music"));
-        Assert.Null(SidebarPinId.FromRoute("settings"));
-        Assert.Null(SidebarPinId.FromRoute("api-console"));
-        Assert.Null(SidebarPinId.FromRoute(""));
-    }
-
-    [Fact]
-    public void PinId_EntryIdIsThePinId()
-    {
-        var (rows, _) = Build(SidebarEntryKindMask.PlaylistTree, NestedTree(), flatten: true);
-        for (int i = 0; i < rows.Count; i++)
-        {
-            var row = rows[i];   // explicit `in` needs an lvalue — a list indexer result is not one
-            Assert.Equal(row.Id, row.PinKey);
-            Assert.Equal(row.Id, SidebarPinId.FromEntry(in row));
-        }
-        var route = SidebarLibraryEntry.ForRoute("liked", "Liked Songs");
-        Assert.Equal("liked", SidebarPinId.FromEntry(in route));
-        var unpinnable = SidebarLibraryEntry.ForRoute("settings", "Settings");
-        Assert.Null(SidebarPinId.FromEntry(in unpinnable));
     }
 
     [Fact]
     public void Build_ReusesTheCallersList_AndReportsItsCount()
     {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:p1", "P1", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
         var into = new List<SidebarLibraryEntry> { SidebarLibraryEntry.ForRoute("stale", "Stale") };
-        var r = SidebarProjection.Build(into, SidebarEntryKindMask.All, NestedTree(), NoAlbums, NoArtists, NoShows,
-                                       null, null, Seen(), includeFolderChildren: true);
+        var r = SidebarProjection.Build(into, in me, SidebarEntryKindMask.All,
+            new SidebarFirstSeen(() => 1_000_000L), null, includeFolderChildren: true);
         Assert.Equal(into.Count, r.Count);
-        Assert.DoesNotContain("Stale", Names(into));                // the list is cleared, never appended to
+        Assert.DoesNotContain("Stale", Names(into));
+    }
+
+    // ── SortStamp — an edge's AddedAt of 0 means "never dated": AddedAtMs stays 0 and the sort stamp falls back to
+    //    the local first-seen stamp; any other value converts through Store.ToUnix.
+
+    [Fact]
+    public void SortStamp_ForASavedAlbum_ReflectsTheEdgesAddedAt_ViaStoreToUnix()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        StageAlbum(s, "spotify:album:a1", "A", 0, null, "X");
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        var al = Entities.Album(EntityUri.Parse("spotify:album:a1"));
+        SetSavedAlbums(me, (al, 12_345));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.Album);
+        var e = Assert.Single(rows);
+        Assert.Equal(Store.ToUnix(12_345) * 1000L, e.AddedAtMs);
+        Assert.Equal(e.AddedAtMs, e.SortStamp);
+    }
+
+    [Fact]
+    public void An_undated_playlist_falls_back_to_its_first_seen_stamp()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:p1", "P1", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0, addedAt: 0));    // 0 = "never dated"
+
+        var (rows, r) = Build(me, SidebarEntryKindMask.PlaylistTree);
+        Assert.Equal(0L, rows[0].AddedAtMs);
+        Assert.Equal(1_000_000L, rows[0].SortStamp);       // the Build helper's first-seen clock
+        Assert.Equal(1, r.NewFirstSeenStamps);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── SHADOW — a rebuild that changed nothing must not bump the published version (PURE) ──────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarEntriesShadowFacts
+{
+    static SidebarEntriesMeta Meta(int state = 0, Exception? error = null, bool pending = false,
+                                   bool qualifiers = false, int pinCount = 0)
+        => new(state, error, pending, qualifiers, pinCount);
+
+    static SidebarLibraryEntry Playlist(string id, string name = "n", int childCount = 0,
+                                        IReadOnlyList<StringId>? mosaic = null)
+        => new(id, SidebarEntryKind.Playlist, "spotify:playlist:" + id, name, "", default, mosaic, childCount,
+               0, 0, 0, 0, 0, false, SidebarPlaylistFlavor.None);
+
+    [Fact]
+    public void FirstPublish_AlwaysCounts_AsAChange()
+    {
+        var shadow = new SidebarEntriesShadow();
+        Assert.True(shadow.Publish(Array.Empty<SidebarLibraryEntry>(), Meta()));
+        Assert.False(shadow.Publish(Array.Empty<SidebarLibraryEntry>(), Meta()));   // an empty library must not storm
+    }
+
+    [Fact]
+    public void AnIdenticalRepublish_IsNotAChange()
+    {
+        var shadow = new SidebarEntriesShadow();
+        var rows = new List<SidebarLibraryEntry> { Playlist("a"), Playlist("b"), Playlist("c") };
+        Assert.True(shadow.Publish(rows, Meta(pinCount: 1)));
+
+        var again = new List<SidebarLibraryEntry> { Playlist("a"), Playlist("b"), Playlist("c") };
+        Assert.False(shadow.Publish(again, Meta(pinCount: 1)));
+        Assert.False(shadow.Publish(again, Meta(pinCount: 1)));
+    }
+
+    [Fact]
+    public void AnyRowDelta_IsAChange()
+    {
+        var shadow = new SidebarEntriesShadow();
+        var rows = new List<SidebarLibraryEntry> { Playlist("a"), Playlist("b") };
+        Assert.True(shadow.Publish(rows, Meta()));
+
+        Assert.True(shadow.Publish(new List<SidebarLibraryEntry> { Playlist("a") }, Meta()));
+        Assert.True(shadow.Publish(new List<SidebarLibraryEntry> { Playlist("a"), Playlist("b") }, Meta()));
+        Assert.True(shadow.Publish(new List<SidebarLibraryEntry> { Playlist("b"), Playlist("a") }, Meta()));
+        Assert.True(shadow.Publish(new List<SidebarLibraryEntry>
+        {
+            Playlist("b"), Playlist("a", name: "renamed"),
+        }, Meta()));
+        Assert.True(shadow.Publish(new List<SidebarLibraryEntry>
+        {
+            Playlist("b"), Playlist("a", name: "renamed", childCount: 12),
+        }, Meta()));
+        Assert.False(shadow.Publish(new List<SidebarLibraryEntry>
+        {
+            Playlist("b"), Playlist("a", name: "renamed", childCount: 12),
+        }, Meta()));
+    }
+
+    [Fact]
+    public void AnyMetaDelta_IsAChange_EvenWithIdenticalRows()
+    {
+        var shadow = new SidebarEntriesShadow();
+        var rows = new List<SidebarLibraryEntry> { Playlist("a") };
+        Assert.True(shadow.Publish(rows, Meta()));
+
+        Assert.True(shadow.Publish(rows, Meta(state: 1)));
+        Assert.True(shadow.Publish(rows, Meta(state: 1, pending: true)));
+        Assert.True(shadow.Publish(rows, Meta(state: 1, pending: true, qualifiers: true)));
+        Assert.True(shadow.Publish(rows, Meta(state: 1, pending: true, qualifiers: true, pinCount: 3)));
+        Assert.False(shadow.Publish(rows, Meta(state: 1, pending: true, qualifiers: true, pinCount: 3)));
+
+        var boom = new InvalidOperationException("boom");
+        Assert.True(shadow.Publish(rows, Meta(state: 2, error: boom, pending: true, qualifiers: true, pinCount: 3)));
+        Assert.False(shadow.Publish(rows, Meta(state: 2, error: boom, pending: true, qualifiers: true, pinCount: 3)));
+        Assert.True(shadow.Publish(rows, Meta(state: 2, error: new InvalidOperationException("boom"),
+                                              pending: true, qualifiers: true, pinCount: 3)));
+    }
+
+    [Fact]
+    public void MosaicTiles_CompareByValue_SoAFolderyLibraryStillSettles()
+    {
+        var shadow = new SidebarEntriesShadow();
+        Assert.True(shadow.Publish(new List<SidebarLibraryEntry>
+        {
+            Playlist("a", mosaic: new List<StringId> { new(1), new(2) }),
+        }, Meta()));
+        Assert.False(shadow.Publish(new List<SidebarLibraryEntry>
+        {
+            Playlist("a", mosaic: new List<StringId> { new(1), new(2) }),   // equal by value, different instance
+        }, Meta()));
+        Assert.True(shadow.Publish(new List<SidebarLibraryEntry>
+        {
+            Playlist("a", mosaic: new List<StringId> { new(1), new(3) }),   // a real cover change
+        }, Meta()));
+        Assert.True(shadow.Publish(new List<SidebarLibraryEntry>
+        {
+            Playlist("a", mosaic: null),                                    // and losing the mosaic entirely
+        }, Meta()));
+    }
+
+    [Fact]
+    public void ThePublishedShadow_MirrorsTheLastAcceptedRebuild()
+    {
+        var shadow = new SidebarEntriesShadow();
+        shadow.Publish(new List<SidebarLibraryEntry> { Playlist("a"), Playlist("b") }, Meta());
+        Assert.Equal(2, shadow.Published.Count);
+        Assert.Equal("a", shadow.Published[0].Id);
+
+        shadow.Publish(new List<SidebarLibraryEntry> { Playlist("a"), Playlist("b") }, Meta());
+        Assert.Equal(2, shadow.Published.Count);
+        Assert.False(shadow.Publish(new List<SidebarLibraryEntry> { Playlist("a"), Playlist("b") }, Meta()));
+    }
+
+    static SidebarLibraryEntry Folder(string id, string name = "n")
+        => new(id, SidebarEntryKind.Folder, "", name, "", default, null, 0, 0, 0, 0, 0, 0, false,
+              SidebarPlaylistFlavor.None);
+
+    /// <summary>The binder keeps TWO shadows: one over the PUBLISHED (folder-collapse-filtered) rows and one over the
+    /// FULL flattened projection the planner actually reads. A hydration that only touches a child living inside a
+    /// collapsed folder must trip the FULL shadow even though the published one — folder-collapsed, so the child
+    /// never appears in it at all — sees no difference. Mechanical over two independent SidebarEntriesShadow
+    /// instances; no binder required.</summary>
+    [Fact]
+    public void HiddenFolderChildHydration_ChangesTheFullProjection_NotThePublishedRows()
+    {
+        var folder = Folder("f1");
+        var childBefore = Playlist("c1", name: "spotify:playlist:c1", childCount: 0);
+        var childAfter = Playlist("c1", name: "Road Trip", childCount: 42);
+
+        var published = new List<SidebarLibraryEntry> { folder };            // collapsed → child omitted
+        var full = new List<SidebarLibraryEntry> { folder, childBefore };
+
+        var publishedShadow = new SidebarEntriesShadow();
+        var fullShadow = new SidebarEntriesShadow();
+        Assert.True(publishedShadow.Publish(published, Meta()));
+        Assert.True(fullShadow.Publish(full, default));
+
+        var publishedAgain = new List<SidebarLibraryEntry> { folder };
+        Assert.False(publishedShadow.Publish(publishedAgain, Meta()));
+
+        var fullAgain = new List<SidebarLibraryEntry> { folder, childAfter };
+        Assert.True(fullShadow.Publish(fullAgain, default));
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── BINDER TRIGGERS — the rebuild gate's one comparable fold (PURE) ──────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarBinderTriggersFacts
+{
+    [Fact]
+    public void IdenticalTriggers_CompareEqual_SoARedundantSyncDoesNoWork()
+    {
+        var a = new SidebarBinderTriggers(LibraryEpoch: 11, PinsVersion: 2, PlayLogRevision: 3);
+        var b = new SidebarBinderTriggers(LibraryEpoch: 11, PinsVersion: 2, PlayLogRevision: 3);
+        Assert.Equal(a, b);
+        Assert.Equal(a.Fold(), b.Fold());
+    }
+
+    [Fact]
+    public void APinMutation_TriggersARebuild()
+    {
+        var before = new SidebarBinderTriggers(PinsVersion: 4);
+        var after = before with { PinsVersion = 5 };
+        Assert.NotEqual(before, after);
+        Assert.NotEqual(before.Fold(), after.Fold());
+    }
+
+    [Fact]
+    public void APlayLogAppend_TriggersARebuild()
+    {
+        var before = new SidebarBinderTriggers(PlayLogRevision: 17);
+        var after = before with { PlayLogRevision = 18 };
+        Assert.NotEqual(before, after);
+        Assert.NotEqual(before.Fold(), after.Fold());
+    }
+
+    [Fact]
+    public void AFilterSortOrDesignChange_TriggersARebuild()
+    {
+        int all = SidebarBinderTriggers.PackV3((int)SidebarDesign.LibraryV3, (int)SidebarV3Filter.All,
+            (int)SidebarV3Qualifier.Any, (int)SidebarV3Sort.Recents, descending: true);
+        int playlists = SidebarBinderTriggers.PackV3((int)SidebarDesign.LibraryV3, (int)SidebarV3Filter.Playlists,
+            (int)SidebarV3Qualifier.Any, (int)SidebarV3Sort.Recents, descending: true);
+        int alphabetical = SidebarBinderTriggers.PackV3((int)SidebarDesign.LibraryV3, (int)SidebarV3Filter.All,
+            (int)SidebarV3Qualifier.Any, (int)SidebarV3Sort.Alphabetical, descending: true);
+        int ascending = SidebarBinderTriggers.PackV3((int)SidebarDesign.LibraryV3, (int)SidebarV3Filter.All,
+            (int)SidebarV3Qualifier.Any, (int)SidebarV3Sort.Recents, descending: false);
+        int curated = SidebarBinderTriggers.PackV3((int)SidebarDesign.Curated, (int)SidebarV3Filter.All,
+            (int)SidebarV3Qualifier.Any, (int)SidebarV3Sort.Recents, descending: true);
+
+        Assert.Equal(5, new HashSet<int> { all, playlists, alphabetical, ascending, curated }.Count);
+    }
+
+    [Fact]
+    public void ASearchKeystroke_TriggersARebuild()
+    {
+        var before = new SidebarBinderTriggers(SearchHash: "caf".GetHashCode(StringComparison.Ordinal));
+        var after = new SidebarBinderTriggers(SearchHash: "café".GetHashCode(StringComparison.Ordinal));
+        Assert.NotEqual(before, after);
+    }
+
+    [Fact]
+    public void ASourceNotification_TriggersARebuild()
+    {
+        var before = new SidebarBinderTriggers(SourceEpoch: 1);
+        Assert.NotEqual(before, before with { SourceEpoch = 2 });
+    }
+
+    [Fact]
+    public void AQueueOrNowPlayingChange_TriggersARebuild()
+    {
+        var before = new SidebarBinderTriggers(PlaybackEpoch: 4L << 20);
+        Assert.NotEqual(before, before with { PlaybackEpoch = 5L << 20 });
+        Assert.NotEqual(before.Fold(), (before with { PlaybackEpoch = (4L << 20) ^ 99 }).Fold());
+    }
+
+    /// <summary>G-180: the row-version lane and the feed-table lane are real lanes — both halves of their 64 bits reach
+    /// the fold, so a hydration of a sidebar row (or of a demanded feed's table) is a rebuild.</summary>
+    [Fact]
+    public void ALibraryRowOrFeedTableChange_TriggersARebuild()
+    {
+        var before = new SidebarBinderTriggers(LibraryRows: 0x1234_5678_0000_0001L, FeedTables: 7L);
+        Assert.NotEqual(before.Fold(), (before with { LibraryRows = 0x1234_5678_0000_0002L }).Fold());
+        Assert.NotEqual(before.Fold(), (before with { LibraryRows = 0x1234_5679_0000_0001L }).Fold());
+        Assert.NotEqual(before.Fold(), (before with { FeedTables = 8L }).Fold());
+        Assert.NotEqual(before.Fold(), (before with { FeedTables = 7L | (1L << 40) }).Fold());
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── BINDER SHAPE — SidebarBinderPipeline.Project/Shape: filter → qualifier → search → sort → pins-first (PURE) ─────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarBinderPipelineShapeFacts
+{
+    static SidebarLibraryEntry Entry(string id, SidebarEntryKind kind, string uri, string name,
+        string creator = "", long sortStamp = 1, int order = 0, int depth = 0,
+        SidebarPlaylistFlavor flavor = SidebarPlaylistFlavor.None)
+        => new(id, kind, uri, name, creator, default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: sortStamp,
+               LastVisitedTicksUtc: 0, SourceOrder: order, Depth: depth, Circular: false, Flavor: flavor);
+
+    static SidebarLibraryEntry Playlist(string slug, string name, int order = 0,
+        SidebarPlaylistFlavor flavor = SidebarPlaylistFlavor.None)
+        => Entry("pl:spotify:playlist:" + slug, SidebarEntryKind.Playlist,
+                 "spotify:playlist:" + slug, name, "Owner", 100 + order, order, flavor: flavor);
+
+    static SidebarLibraryEntry Album(string slug, string name, int order = 0)
+        => Entry("album:spotify:album:" + slug, SidebarEntryKind.Album,
+                 "spotify:album:" + slug, name, "Artist", 200 + order, order);
+
+    static SidebarLibraryEntry Folder(string id, string name)
+        => Entry("folder:" + id, SidebarEntryKind.Folder, "", name);
+
+    static SidebarPin Pin(string id) => new(id, SidebarEntryKind.Playlist, "", "cached", 0);
+
+    static readonly IReadOnlyList<SidebarLibraryEntry> Library =
+    [
+        Playlist("1", "Alpha", 0, SidebarPlaylistFlavor.ByYou),
+        Playlist("2", "Beta", 1, SidebarPlaylistFlavor.BySpotify),
+        Album("9", "Ceremony", 2),
+        Folder("f1", "Chill"),
+    ];
+
+    static (List<SidebarLibraryEntry> Rows, SidebarEntriesShape Shape) Project(
+        SidebarV3Filter filter = SidebarV3Filter.All,
+        SidebarV3Qualifier qualifier = SidebarV3Qualifier.Any,
+        SidebarV3Sort sort = SidebarV3Sort.Recents,
+        bool desc = true,
+        string? search = null,
+        bool qualifiersAvailable = false,
+        IReadOnlyList<SidebarPin>? pins = null,
+        IReadOnlyList<string>? customOrder = null,
+        IReadOnlyList<SidebarLibraryEntry>? library = null)
+    {
+        var into = new List<SidebarLibraryEntry>();
+        var scratch = new List<SidebarLibraryEntry>();
+        var query = new SidebarV3Query(filter, qualifier, sort, desc, search, qualifiersAvailable);
+        var shape = SidebarBinderPipeline.Project(library ?? Library, into, scratch, in query, pins, customOrder);
+        return (into, shape);
+    }
+
+    [Fact]
+    public void TheFilter_SelectsTheContributingKinds()
+    {
+        Assert.Equal(4, Project().Shape.Count);
+        Assert.Equal(1, Project(SidebarV3Filter.Albums).Shape.Count);
+        Assert.Equal(0, Project(SidebarV3Filter.Artists).Shape.Count);
+        Assert.Equal(3, Project(SidebarV3Filter.Playlists).Shape.Count);   // playlists INCLUDE their folders
+    }
+
+    [Fact]
+    public void Search_MatchesNameAndFlattensFoldersAway()
+    {
+        var (rows, shape) = Project(search: "alpha");
+        Assert.Equal(1, shape.Count);
+        Assert.Equal("Alpha", rows[0].Name);
+        Assert.Equal(0, Project(search: "chill").Shape.Count);   // a folder is a container, not a result
+    }
+
+    [Fact]
+    public void Search_IsCaseAndDiacriticsInsensitive_AndTrims()
+    {
+        Assert.Equal(1, Project(search: "  BETA ").Shape.Count);
+    }
+
+    [Fact]
+    public void AStaleQualifier_CannotHideTheList_WhenTheChipsAreUnavailable()
+    {
+        Assert.Equal(3, Project(SidebarV3Filter.Playlists, SidebarV3Qualifier.BySpotify).Shape.Count);
+        Assert.Equal(1, Project(SidebarV3Filter.Playlists, SidebarV3Qualifier.BySpotify,
+                                qualifiersAvailable: true).Shape.Count);
+    }
+
+    [Fact]
+    public void Pins_LeadInPinOrder_AndPinCountIsTheBandLength()
+    {
+        var pins = new[] { Pin("album:spotify:album:9"), Pin("pl:spotify:playlist:2") };
+        var (rows, shape) = Project(sort: SidebarV3Sort.Alphabetical, desc: false, pins: pins);
+
+        Assert.Equal(2, shape.PinCount);
+        Assert.Equal("album:spotify:album:9", rows[0].Id);
+        Assert.Equal("pl:spotify:playlist:2", rows[1].Id);
+        Assert.True(rows[0].IsPinned);
+        Assert.True(rows[1].IsPinned);
+        Assert.False(rows[2].IsPinned);
+        Assert.Equal(4, shape.Count);
+    }
+
+    [Fact]
+    public void APinTheFilterExcludes_DoesNotAppear()
+    {
+        var pins = new[] { Pin("album:spotify:album:9") };
+        var (rows, shape) = Project(SidebarV3Filter.Playlists, pins: pins);
+        Assert.Equal(0, shape.PinCount);
+        for (int i = 0; i < rows.Count; i++) Assert.NotEqual("album:spotify:album:9", rows[i].Id);
+    }
+
+    [Fact]
+    public void CustomSort_OutsideThePlaylistsFilter_FallsBackToAlphabetical()
+    {
+        var order = new[] { "album:spotify:album:9" };
+        var (rows, _) = Project(SidebarV3Filter.All, sort: SidebarV3Sort.Custom, customOrder: order);
+        Assert.NotEqual("album:spotify:album:9", rows[0].Id);
+    }
+
+    [Fact]
+    public void CustomSort_UnderThePlaylistsFilter_HonoursTheLocalOrder()
+    {
+        var order = new[] { "pl:spotify:playlist:2" };
+        var (rows, _) = Project(SidebarV3Filter.Playlists, sort: SidebarV3Sort.Custom, customOrder: order);
+        Assert.Equal("pl:spotify:playlist:2", rows[0].Id);
+    }
+
+    [Fact]
+    public void Shape_OperatesInPlace_SoTheBinderNeedsNoCopy()
+    {
+        var list = new List<SidebarLibraryEntry> { Playlist("1", "Alpha"), Playlist("2", "Beta") };
+        var scratch = new List<SidebarLibraryEntry>();
+        var query = new SidebarV3Query(SidebarV3Filter.Playlists, Search: "beta");
+        var shape = SidebarBinderPipeline.Shape(list, scratch, in query);
+        Assert.Equal(1, shape.Count);
+        Assert.Single(list);
+        Assert.Equal("Beta", list[0].Name);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── UNLISTED PIN — an editorial/Spotify-owned entity the user never saved (PURE) ─────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+[Collection(EntitiesCollection.Name)]
+public class SidebarBinderPipelineUnlistedPinFacts
+{
+    [Fact]
+    public void NoHydrationYet_StillRendersTheOfflineDisplayCache()
+    {
+        var pin = new SidebarPin("pl:spotify:playlist:korea", SidebarEntryKind.Playlist, "spotify:playlist:korea",
+            "Top Songs - South Korea", AddedAtMs: 1000);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null);
+
+        Assert.True(row.IsPinned);
+        Assert.Equal(pin.Id, row.Id);
+        Assert.Equal(SidebarEntryKind.Playlist, row.Kind);
+        Assert.Equal("Top Songs - South Korea", row.Name);
+        Assert.True(row.Cover.IsEmpty);
+        Assert.Equal(0, row.TrackCount);
+    }
+
+    [Fact]
+    public void OnceHydrated_ProjectsRealArtAndARealTrackCount()
+    {
+        var pin = new SidebarPin("pl:spotify:playlist:korea", SidebarEntryKind.Playlist, "spotify:playlist:korea",
+            "Top Songs - South Korea", AddedAtMs: 1000);
+        var cover = Entities.Strings.Intern("spotify:image:korea-cover");
+        var hydrated = new SidebarLibraryEntry("", SidebarEntryKind.Playlist, "", "", "Spotify", cover, null,
+            ChildCount: 50, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated);
+
+        Assert.True(row.IsPinned);
+        Assert.Equal(pin.Id, row.Id);
+        Assert.Equal("Top Songs - South Korea", row.Name);          // the pin's own cache still names the row
+        Assert.False(row.Cover.IsEmpty);
+        Assert.Equal("spotify:image:korea-cover", Entities.Strings.Resolve(row.Cover));
+        Assert.Equal(50, row.TrackCount);
+        Assert.Equal("Spotify", row.Creator);
+    }
+
+    [Fact]
+    public void TheHydrationOverlay_NeverBlanksAFieldItDidNotResolve()
+    {
+        var pin = new SidebarPin("show:spotify:show:1", SidebarEntryKind.Show, "spotify:show:1", "cached", AddedAtMs: 0);
+        var hydrated = new SidebarLibraryEntry("", SidebarEntryKind.Show, "", "", "Acme Media", default, null,
+            ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated);
+
+        Assert.True(row.Cover.IsEmpty);              // the overlay had none — the (already-empty) base value survives
+        Assert.Equal("Acme Media", row.Creator);      // …but the field the overlay DID carry wins
+    }
+
+    [Fact]
+    public void AFolderPin_IsMissing_AndCarriesItsGroupId()
+    {
+        var pin = new SidebarPin("folder:36405e1711f88d9c", SidebarEntryKind.Folder, "", "F", AddedAtMs: 1000);
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null);
+
+        Assert.True(row.IsPinned);
+        Assert.True(row.Missing);
+        Assert.Equal("36405e1711f88d9c", row.FolderId);
+    }
+
+    [Fact]
+    public void APlaylistPin_IsNotMissing()
+    {
+        var pin = new SidebarPin("pl:spotify:playlist:korea", SidebarEntryKind.Playlist, "spotify:playlist:korea",
+            "Top Songs - South Korea", AddedAtMs: 1000);
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null);
+        Assert.False(row.Missing);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── CONTRIBUTION RESOLUTION — Extension sections resolved against a data-source table (PURE) ────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarBinderPipelineContributionFacts
+{
+    static SidebarLibraryEntry Playlist(string slug, string name) =>
+        new("pl:spotify:playlist:" + slug, SidebarEntryKind.Playlist, "spotify:playlist:" + slug, name, "Owner",
+            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 1, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+
+    static SidebarLibraryEntry Album(string slug, string name) =>
+        new("album:spotify:album:" + slug, SidebarEntryKind.Album, "spotify:album:" + slug, name, "Artist",
+            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 1, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+
+    static SidebarSectionSpec ExtSection(string id, string contribution, int schemaVersion = 1, int maxItems = 0)
+        => new(id, SidebarSectionKind.Extension, null, null)
+        {
+            Extension = new SidebarExtensionRef(SidebarContributions.WaveeExtensionId, contribution, schemaVersion, default),
+            Display = maxItems > 0 ? SidebarDisplayOptions.Default with { MaxItems = maxItems } : null,
+        };
+
+    static SidebarCustomLayout Doc(params SidebarSectionSpec[] sections) => new(SidebarTemplates.Curated, sections);
+
+    /// <summary>A configurable contributed source — the shape a sandboxed extension arrives in.</summary>
+    sealed class StubSource : SidebarDataSourceBase
+    {
+        readonly List<SidebarLibraryEntry> _rows = new();
+        public bool PartialThenThrow;
+        public int SchemaVersion = 1;
+
+        public StubSource(string id) : base(id) { }
+
+        public override SidebarConfigSchema ConfigSchema => new(SchemaVersion, Array.Empty<SidebarConfigField>());
+
+        public StubSource With(params SidebarLibraryEntry[] rows)
+        {
+            _rows.Clear();
+            _rows.AddRange(rows);
+            return this;
+        }
+
+        public void Publish(SidebarSourceState state, bool prompt = false) => SetHealth(state, null, prompt);
+
+        public override int Fill(List<SidebarLibraryEntry> into, in SidebarSourceRequest request)
+        {
+            if (PartialThenThrow)
+            {
+                into.Add(Playlist("partial", "Partial"));
+                throw new InvalidOperationException("boom after a partial fill");
+            }
+            int max = request.MaxItems > 0 ? request.MaxItems : _rows.Count;
+            int n = _rows.Count < max ? _rows.Count : max;
+            for (int i = 0; i < n; i++) into.Add(_rows[i]);
+            return n;
+        }
+    }
+
+    static SidebarSectionSlice Resolve(SidebarSectionSpec section, ISidebarContributionHost? host,
+        List<SidebarLibraryEntry> pool, SidebarContributionCache? cache = null)
+        => SidebarBinderPipeline.Resolve(section, host, pool, cache);
+
+    [Fact]
+    public void AnUnregisteredContribution_ResolvesToMissing()
+    {
+        var pool = new List<SidebarLibraryEntry>();
+        var slice = Resolve(ExtSection("sec_1", "charts"), new SidebarDataSourceTable(), pool);
+        Assert.Equal(SidebarContributionAvailability.Missing, slice.Availability);
+        Assert.Equal(0, slice.Count);
+        Assert.Empty(pool);
+    }
+
+    [Fact]
+    public void ASectionWithNoExtensionRef_ResolvesToMissing()
+    {
+        var pool = new List<SidebarLibraryEntry>();
+        var bare = new SidebarSectionSpec("sec_bare", SidebarSectionKind.Extension, null, null);
+        Assert.Equal(SidebarContributionAvailability.Missing, Resolve(bare, new SidebarDataSourceTable(), pool).Availability);
+    }
+
+    [Fact]
+    public void ADisabledContribution_ResolvesToDisabled_AndKeepsTheSection()
+    {
+        var table = new SidebarDataSourceTable();
+        table.Add(new StubSource(SidebarContributions.Library).With(Playlist("1", "Alpha")));
+        table.SetEnabled(SidebarContributions.Library, false);
+
+        var pool = new List<SidebarLibraryEntry>();
+        var slice = Resolve(ExtSection("sec_1", "library"), table, pool);
+        Assert.Equal(SidebarContributionAvailability.Disabled, slice.Availability);
+        Assert.Empty(pool);
+    }
+
+    [Fact]
+    public void ANewerConfigSchema_ResolvesToIncompatible_AndChangesNothing()
+    {
+        var table = new SidebarDataSourceTable();
+        table.Add(new StubSource(SidebarContributions.Library).With(Playlist("1", "Alpha")));
+
+        var pool = new List<SidebarLibraryEntry>();
+        var slice = Resolve(ExtSection("sec_1", "library", schemaVersion: 2), table, pool);
+        Assert.Equal(SidebarContributionAvailability.Incompatible, slice.Availability);
+        Assert.Empty(pool);
+    }
+
+    [Fact]
+    public void ALiveSource_FillsAWindowIntoTheSharedPool()
+    {
+        var table = new SidebarDataSourceTable();
+        table.Add(new StubSource(SidebarContributions.Library).With(Playlist("1", "Alpha"), Playlist("2", "Beta")));
+
+        var pool = new List<SidebarLibraryEntry>();
+        var slice = Resolve(ExtSection("sec_1", "library"), table, pool);
+
+        Assert.Equal(SidebarContributionAvailability.Live, slice.Availability);
+        Assert.Equal(0, slice.Start);
+        Assert.Equal(2, slice.Count);
+        Assert.Equal(2, pool.Count);
+    }
+
+    [Fact]
+    public void TheSectionsMaxItems_ReachesTheSourceAsTheRequestBound()
+    {
+        var table = new SidebarDataSourceTable();
+        table.Add(new StubSource(SidebarContributions.Library)
+            .With(Playlist("1", "Alpha"), Playlist("2", "Beta"), Playlist("3", "Gamma")));
+
+        var pool = new List<SidebarLibraryEntry>();
+        var slice = Resolve(ExtSection("sec_1", "library", maxItems: 2), table, pool);
+        Assert.Equal(2, slice.Count);
+    }
+
+    [Fact]
+    public void EveryExtensionSection_GetsADisjointWindowOverOnePool()
+    {
+        var table = new SidebarDataSourceTable();
+        table.Add(new StubSource(SidebarContributions.Library).With(Playlist("1", "Alpha")));
+        table.Add(new StubSource(SidebarContributions.Queue).With(Album("9", "Ceremony"), Album("8", "Other")));
+
+        var pool = new List<SidebarLibraryEntry>();
+        var slices = new SidebarExtensionSlices();
+        SidebarBinderPipeline.ResolveExtensions(
+            Doc(ExtSection("sec_1", "library"), ExtSection("sec_2", "queue")), table, pool, slices);
+
+        Assert.True(slices.TryGet("sec_1", out var one));
+        Assert.True(slices.TryGet("sec_2", out var two));
+        Assert.Equal((0, 1), (one.Start, one.Count));
+        Assert.Equal((1, 2), (two.Start, two.Count));
+        Assert.Equal(3, pool.Count);
+    }
+
+    [Fact]
+    public void ExtensionSections_NestedInACustomGroup_AreResolvedToo()
+    {
+        var table = new SidebarDataSourceTable();
+        table.Add(new StubSource(SidebarContributions.Queue).With(Album("9", "Ceremony")));
+
+        var group = new SidebarSectionSpec("sec_group", SidebarSectionKind.CustomGroup, null, null)
+        {
+            Children = new[] { ExtSection("sec_child", "queue") },
+        };
+        var pool = new List<SidebarLibraryEntry>();
+        var slices = new SidebarExtensionSlices();
+        SidebarBinderPipeline.ResolveExtensions(Doc(group), table, pool, slices);
+
+        Assert.True(slices.TryGet("sec_child", out var slice));
+        Assert.Equal(1, slice.Count);
+    }
+
+    [Fact]
+    public void AThrowingSource_LeaksNoPartialRows_AndReportsError()
+    {
+        var table = new SidebarDataSourceTable();
+        table.Add(new StubSource(SidebarContributions.Library) { PartialThenThrow = true });
+
+        var pool = new List<SidebarLibraryEntry> { Album("9", "Pre-existing") };
+        var slice = Resolve(ExtSection("sec_1", "library"), table, pool);
+
+        Assert.Equal(SidebarSourceState.Error, slice.State);
+        Assert.Equal(0, slice.Count);
+        Assert.Single(pool);
+        Assert.Equal("album:spotify:album:9", pool[0].Id);
+    }
+
+    [Fact]
+    public void AFailedSource_ReplaysItsLastGoodSnapshot_AsCached()
+    {
+        var table = new SidebarDataSourceTable();
+        var source = new StubSource(SidebarContributions.Library).With(Playlist("1", "Alpha"), Playlist("2", "Beta"));
+        table.Add(source);
+        var cache = new SidebarContributionCache();
+        var section = ExtSection("sec_1", "library");
+
+        var pool = new List<SidebarLibraryEntry>();
+        var live = Resolve(section, table, pool, cache);
+        Assert.Equal(SidebarContributionAvailability.Live, live.Availability);
+        Assert.True(cache.Has(SidebarContributions.Library));
+
+        source.With();
+        source.Publish(SidebarSourceState.Error);
+        pool.Clear();
+        var stale = Resolve(section, table, pool, cache);
+
+        Assert.Equal(SidebarContributionAvailability.Cached, stale.Availability);
+        Assert.Equal(SidebarSourceState.Ready, stale.State);
+        Assert.Equal(2, stale.Count);
+        Assert.Equal(2, pool.Count);
+    }
+
+    [Fact]
+    public void AFailingSourceWithNoSnapshot_IsAnErrorSlice_NotACachedOne()
+    {
+        var table = new SidebarDataSourceTable();
+        var source = new StubSource(SidebarContributions.Library);
+        source.Publish(SidebarSourceState.Error);
+        table.Add(source);
+
+        var pool = new List<SidebarLibraryEntry>();
+        var slice = Resolve(ExtSection("sec_1", "library"), table, pool, new SidebarContributionCache());
+        Assert.Equal(SidebarContributionAvailability.Live, slice.Availability);
+        Assert.Equal(SidebarSourceState.Error, slice.State);
+        Assert.Equal(0, slice.Count);
+    }
+
+    [Fact]
+    public void AnActionableDegradedState_TravelsToTheSlice()
+    {
+        var table = new SidebarDataSourceTable();
+        var concerts = new StubSource(SidebarContributions.Concerts);
+        concerts.Publish(SidebarSourceState.Ready, prompt: true);
+        table.Add(concerts);
+
+        var pool = new List<SidebarLibraryEntry>();
+        var slice = Resolve(ExtSection("sec_1", "concerts"), table, pool);
+        Assert.True(slice.NeedsPrompt);
+        Assert.Equal(SidebarSourceState.Ready, slice.State);
+        Assert.Equal(0, slice.Count);
+    }
+
+    [Fact]
+    public void TheSliceTable_ReportsAvailabilityForTheSurfacesBadge()
+    {
+        var slices = new SidebarExtensionSlices();
+        slices.Set("sec_1", new SidebarSectionSlice(0, 0, SidebarSourceState.Error, SidebarContributionAvailability.Disabled));
+        Assert.Equal(SidebarContributionAvailability.Disabled, slices.AvailabilityOf("sec_1"));
+        Assert.Equal(SidebarContributionAvailability.Missing, slices.AvailabilityOf("sec_unknown"));
+        slices.Clear();
+        Assert.Equal(0, slices.Count);
     }
 }

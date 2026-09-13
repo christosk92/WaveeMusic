@@ -543,6 +543,28 @@ if (-not (Test-PhaseDone 'preflight')) {
         if (-not (Test-Path $playPlayProbe)) { throw 'src\apps\Wavee.PlayPlay junction missing; a release build is PlayPlay-inclusive (or pass -PublicOnly)' }
         'present'
     }
+    Add-Check 'engine checkout' 'hard' {
+        # D1: the app is built against a sibling engine checkout, resolved exactly like Directory.Build.props
+        # resolves $(EngineRoot) - an env var override first, else ..\fluent-gpu next to this repo. A release is
+        # built from source, so what matters here is not a hardcoded commit (that would just go stale) but that
+        # the resolved checkout exists, is a git repository, and its commit is recorded in the release ledger for
+        # symbolication / provenance - the same reason the app's own commit is stamped into WaveeVersionInfo.
+        $engineRoot = $env:EngineRoot
+        if (-not $engineRoot) { $engineRoot = Join-Path $root '..\fluent-gpu' }
+        if (-not (Test-Path (Join-Path $engineRoot 'src\FluentGpu.Engine\FluentGpu.Engine.csproj'))) {
+            throw "no FluentGpu engine checkout at '$engineRoot' (set EngineRoot, or clone christosk92/fluent-gpu beside this repo)"
+        }
+        $engineRoot = (Resolve-Path $engineRoot).Path
+        $engineSha = (Invoke-Native 'git' @('-C', $engineRoot, 'rev-parse', '--short=7', 'HEAD') -AllowFailure)
+        if ($engineSha.ExitCode -ne 0) { throw "'$engineRoot' is not a git checkout (git rev-parse HEAD failed)" }
+        $engineDirty = (Invoke-Native 'git' @('-C', $engineRoot, 'status', '--porcelain') -AllowFailure)
+        $script:State.engineRoot = $engineRoot
+        $script:State.engineCommit = "$($engineSha.Output -join '')".Trim()
+        if ($engineDirty.ExitCode -eq 0 -and @($engineDirty.Output | Where-Object { "$_".Trim() }).Count -gt 0) {
+            Warn "engine checkout at $engineRoot has uncommitted changes; the release is built from a tree with no commit to record"
+        }
+        "$engineRoot @ $($script:State.engineCommit)"
+    }
     Add-Check 'Windows SDK tools' 'hard' { "$((Get-Tools).Version)" }
     Add-Check 'x64 cross toolchain' 'hard' {
         if ($arches -notcontains 'x64') { return 'SKIP: x64 not requested' }
@@ -848,6 +870,96 @@ if (-not (Test-PhaseDone 'tag')) { Invoke-Tag } else { Note "tag $tag already cr
 if ($script:State.commit) { $commit = "$($script:State.commit)" }
 
 # ===============================================================================================================
+# PlayReady native DLL export check (video plan Q8 / G-152): a release must never ship a PlayReady CDM DLL that
+# fails to export FgPrRuntimeCreate for the architecture it was built for - that export is the only thing
+# DesktopProtectedVideoPlayer P/Invokes into, and a stale/missing one silently degrades DRM video for every
+# install of that arch until the NEXT release. No dumpbin dependency (not guaranteed on this box): the export
+# table is read directly out of the PE image bytes.
+# ===============================================================================================================
+
+function Get-PeExportedNames {
+    <#  Minimal PE export-directory reader. Returns the plain export name list; an image with no export
+        table (or that is not a PE at all) returns @() rather than throwing - the caller decides what that means. #>
+    param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+
+    if ($Bytes.Length -lt 0x40 -or $Bytes[0] -ne 0x4D -or $Bytes[1] -ne 0x5A) { return @() }   # 'MZ'
+    $u16 = { param($o) [BitConverter]::ToUInt16($Bytes, $o) }
+    $u32 = { param($o) [BitConverter]::ToUInt32($Bytes, $o) }
+
+    $peOffset = & $u32 0x3C
+    if ($Bytes.Length -lt ($peOffset + 24) -or $Bytes[$peOffset] -ne 0x50 -or $Bytes[$peOffset + 1] -ne 0x45) { return @() }   # 'PE'
+    $numSections = & $u16 ($peOffset + 6)
+    $optHeaderSize = & $u16 ($peOffset + 20)
+    $optHeaderStart = $peOffset + 24
+    $magic = & $u16 $optHeaderStart
+    $dataDirOffset = $optHeaderStart + $(if ($magic -eq 0x20B) { 112 } else { 96 })   # PE32+ vs PE32
+    $exportRva = & $u32 $dataDirOffset
+    $exportSize = & $u32 ($dataDirOffset + 4)
+    if ($exportRva -eq 0 -or $exportSize -eq 0) { return @() }
+
+    $sections = @()
+    $sectionStart = $optHeaderStart + $optHeaderSize
+    for ($i = 0; $i -lt $numSections; $i++) {
+        $so = $sectionStart + ($i * 40)
+        $sections += [pscustomobject]@{
+            VirtualSize      = & $u32 ($so + 8)
+            VirtualAddress   = & $u32 ($so + 12)
+            SizeOfRawData    = & $u32 ($so + 16)
+            PointerToRawData = & $u32 ($so + 20)
+        }
+    }
+    $rvaToOffset = {
+        param([uint32]$Rva)
+        foreach ($s in $sections) {
+            $size = [Math]::Max($s.VirtualSize, $s.SizeOfRawData)
+            if ($Rva -ge $s.VirtualAddress -and $Rva -lt ($s.VirtualAddress + $size)) {
+                return [uint32]($Rva - $s.VirtualAddress + $s.PointerToRawData)
+            }
+        }
+        $null
+    }
+
+    $expOff = & $rvaToOffset $exportRva
+    if ($null -eq $expOff) { return @() }
+    $numNames = & $u32 ($expOff + 24)
+    $namesRva = & $u32 ($expOff + 32)
+    $namesOff = & $rvaToOffset $namesRva
+    if ($null -eq $namesOff -or $numNames -eq 0) { return @() }
+
+    $names = @()
+    for ($i = 0; $i -lt $numNames; $i++) {
+        $nameOff = & $rvaToOffset (& $u32 ($namesOff + ($i * 4)))
+        if ($null -eq $nameOff) { continue }
+        $end = $nameOff
+        while ($end -lt $Bytes.Length -and $Bytes[$end] -ne 0) { $end++ }
+        $names += [System.Text.Encoding]::ASCII.GetString($Bytes, $nameOff, $end - $nameOff)
+    }
+    $names
+}
+
+function Assert-PlayReadyNativeExport {
+    param([Parameter(Mandatory = $true)][string]$MsixPath, [Parameter(Mandatory = $true)][string]$Arch)
+
+    $entryName = 'FluentGpu.PlayReady.Native.dll'
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($MsixPath)
+    try {
+        $entry = $zip.Entries | Where-Object { $_.FullName -eq $entryName }
+        if (-not $entry) {
+            throw "$(Split-Path -Leaf $MsixPath) ($Arch) ships no $entryName - DRM video would be unavailable for every $Arch install (rebuild ops/tools/playready-native for $Arch)"
+        }
+        $ms = New-Object System.IO.MemoryStream
+        $es = $entry.Open()
+        try { $es.CopyTo($ms) } finally { $es.Dispose() }
+        $names = Get-PeExportedNames $ms.ToArray()
+        if ($names -notcontains 'FgPrRuntimeCreate') {
+            throw "$entryName in $(Split-Path -Leaf $MsixPath) ($Arch) does not export FgPrRuntimeCreate - stale or mismatched native build; rebuild ops/tools/playready-native for $Arch"
+        }
+    }
+    finally { $zip.Dispose() }
+}
+
+# ===============================================================================================================
 # 3 / 4  pack
 # ===============================================================================================================
 
@@ -903,6 +1015,7 @@ function Invoke-Pack {
     if ($id.Publisher -ne $Publisher) {
         throw "publisher mismatch in $(Split-Path -Leaf $msix): '$($id.Publisher)' != '$Publisher' (signing would fail with 0x8007000B)"
     }
+    Assert-PlayReadyNativeExport -MsixPath $msix -Arch $A
     Good "$(Split-Path -Leaf $msix)  $([math]::Round((Get-Item $msix).Length / 1MB, 2)) MB"
     if (Test-Path $symbols) { Good "$(Split-Path -Leaf $symbols)  $([math]::Round((Get-Item $symbols).Length / 1MB, 2)) MB" }
 }

@@ -4,12 +4,13 @@
     <!-- WinExe = Windows GUI subsystem: no console window spawns on launch. -->
     <OutputType>WinExe</OutputType>
     <!-- NativeAOT is the publish target (single self-contained native exe). Scoped to THIS csproj so
-         the net10 app build/run stay JIT; AOT/trim analyzers engage here, never on Wavee.Core's path. -->
+         the net10 app build/run stay JIT; AOT/trim analyzers engage here, never on the referenced engine projects' path. -->
     <PublishAot>true</PublishAot>
     <!-- The Windows composition root references the Windows-only backend, so CA1416 is noise here: the Win32 paths are
-         intentional. The portable Backend/ subtree's cross-platform discipline is enforced by TerraFX-freedom (the
-         VerticalSlice guard), not by this analyzer — and Wavee.Tests, which builds Backend/ cross-platform, likewise
-         suppresses CA1416. The macOS/Linux credential paths (KeyringProtector) stay guarded by OperatingSystem checks. -->
+         intentional. The portable core (Entities/Spotify/Playback)'s cross-platform discipline is enforced by
+         TerraFX-freedom (the VerticalSlice guard), not by this analyzer — and Wavee.Tests, which references this
+         project directly, likewise suppresses CA1416. The macOS/Linux credential paths (KeyringProtector) stay
+         guarded by OperatingSystem checks. -->
     <NoWarn>$(NoWarn);CA1416;NU1701</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Embeds the Wavee W-ribbon into the PE (Explorer / taskbar / Alt-Tab fallback). The Win32 window also loads
@@ -21,7 +22,7 @@
   <!-- Build identity. Wavee.Version.props is the single source of the semver, the per-minor codename and the
        monotonic release counter (WaveeBuild); ops/build/pack-wavee-msix.ps1 stamps the rest via /p: properties and
        ops/release/wavee-release.ps1 owns the counter. Settings → About / crash headers / the update checker read all
-       of it back through AssemblyMetadataAttribute (Wavee.Core WaveeVersionInfo.Parse). -->
+       of it back through AssemblyMetadataAttribute (WaveeVersionInfo.Parse). -->
   <Import Project="Wavee.Version.props" />
   <PropertyGroup>
     <Version>$(WaveeVersion)</Version>
@@ -59,6 +60,8 @@
     <RuntimeHostConfigurationOption Include="System.Buffers.SharedArrayPool.MaxPartitionCount" Value="4" />
     <RuntimeHostConfigurationOption Include="System.Buffers.SharedArrayPool.MaxArraysPerPartition" Value="4" />
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+    <!-- trial (plan §3.1 P16b), measured in Wave 6 -->
+    <RuntimeHostConfigurationOption Include="System.GC.RegionSize" Value="1048576" />
   </ItemGroup>
 
   <Import Project="Wavee.Publish.props" />
@@ -94,15 +97,14 @@
   </Target>
 
   <!-- Composition root: the Windows backend (D3D12 / Win32 / DirectWrite / WIC) wired into the
-       portable engine + control kit, plus the framework-neutral Wavee.Core backend seam. -->
+       portable engine + control kit; the app's own core (Entities/Spotify/Playback/Shell/Screens/Platform) compiles
+       directly into this project under the one `Wavee` namespace, no separate backend project. -->
   <ItemGroup>
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.Engine\FluentGpu.Engine.csproj" />
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.Controls\FluentGpu.Controls.csproj" />
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.Windows\FluentGpu.Windows.csproj" />
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.WindowsApi\FluentGpu.WindowsApi.csproj" />
-    <ProjectReference Include="..\Wavee.Core\Wavee.Core.csproj" />
     <ProjectReference Include="..\Wavee.Sdk\Wavee.Sdk.csproj" />
-    <ProjectReference Include="..\vendor\NVorbis\NVorbis\NVorbis.csproj" />
   </ItemGroup>
 
   <!-- ── Bundled playback modules ─────────────────────────────────────────────────────────────────────────────
@@ -165,10 +167,9 @@
   </ItemGroup>
 
   <!-- Real Spotify wire protocol (handshake + login). Vendored .proto compiled via Grpc.Tools → the Wavee.Protocol
-       namespace. Used ONLY by src/apps/Wavee/SpotifyLive (the live-network layer); the unit-tested Backend stays protobuf-free. -->
+       namespace. Used ONLY by the Spotify subsystem (src/apps/Wavee/Spotify, the live-network layer). -->
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.35.0" />
-    <PackageReference Include="FlacBox" Version="1.0.0" />
     <PackageReference Include="NLayer" Version="1.15.0" />
     <!-- DPAPI (Windows) — the OPTIONAL at-rest protector swapped behind the portable ICredentialProtector seam. -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
@@ -186,12 +187,14 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <Protobuf Include="SpotifyLive\Protos\**\*.proto" GrpcServices="None" ProtoRoot="SpotifyLive\Protos" />
+    <Protobuf Include="Spotify\Protos\**\*.proto" GrpcServices="None" ProtoRoot="Spotify\Protos" />
   </ItemGroup>
 
-  <!-- Bundled fake-catalog cover art + the loc JSON + the font files: copied next to the exe (FakeData.Cover resolves
-       AppContext.BaseDirectory/assets/covers/coverNN.jpg; Localization.LoadFolder reads assets/loc/*.json;
-       Design/Glyphs.cs loads assets/fonts/SegoeFluentIcons.ttf + wavee-icons.otf by path - see assets/fonts/FONTS.md). -->
+  <!-- Bundled fake-catalog cover art + the loc JSON + the font files: copied next to the exe for their consumers
+       (Entities/Entities.Fake.cs's fake covers, the engine-side assets/loc/*.json load, and
+       assets/fonts/SegoeFluentIcons.ttf + wavee-icons.otf - see assets/fonts/FONTS.md). As of the 0.3 restructure the
+       loc-JSON load and AppLocaleBootstrap's engine half are still owner S's (Platform.cs's "LEFT FOR OWNER S" block);
+       until that lands, these files are staged but unread at runtime. -->
   <ItemGroup>
     <Content Include="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
@@ -209,15 +212,6 @@
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.SourceGen\FluentGpu.SourceGen.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Features\Diagnostics\" />
-    <Folder Include="Features\Home\" />
-    <Folder Include="Features\Library\" />
-    <Folder Include="Features\Player\" />
-    <Folder Include="Features\Search\" />
-    <Folder Include="Features\Shell\" />
-  </ItemGroup>
-
   <!-- JIT Debug/Release: NuGet drops e_sqlite3.dll under runtimes/ only; publish colocates it. Copy the arch-matching
        binary next to Wavee.exe so Rider F5 and the publish preflight share the same layout. -->
   <Target Name="CopyESqlite3ToAppRoot" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">

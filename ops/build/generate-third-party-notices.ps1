@@ -45,12 +45,10 @@ $EngineRoot = (Resolve-Path $EngineRoot).Path
 $extraFile = Join-Path $scriptDir 'notices-extra.json'
 $nugetRoot = Join-Path $env:USERPROFILE '.nuget\packages'
 
-# The projects whose PackageReferences end up in a shipped Wavee build. Wavee.Core is deliberately dependency-free and
-# Wavee.Sdk / the modules ride on the SDK alone, but they are listed so a future package reference is picked up here
-# instead of silently escaping the notices.
+# The projects whose PackageReferences end up in a shipped Wavee build. Wavee.Sdk / the modules ride on the SDK
+# alone, but they are listed so a future package reference is picked up here instead of silently escaping the notices.
 $projectGlobs = @(
   'src\apps\Wavee\Wavee.csproj',
-  'src\apps\Wavee.Core\Wavee.Core.csproj',
   'src\apps\Wavee.Sdk\Wavee.Sdk.csproj',
   'src\apps\modules\*\*.csproj'
 )

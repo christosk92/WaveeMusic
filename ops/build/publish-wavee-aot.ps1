@@ -9,10 +9,13 @@
   pwsh ops/build/publish-wavee-aot.ps1 -Diag     # diagnostics build (ScrollTrace + RenderBudget + FG_OPAQUE_WINDOW armed)
 
 .NOTES
-  -Diag defines FLUENTGPU_DIAG solution-wide (src/Directory.Build.props + src/apps/Directory.Build.props). It is a
-  DIFFERENT BINARY from the shipping one: BindContract and BackwardsWriteGuard become default-ON once compiled in, so a
-  feel-measurement session must clear them explicitly (FG_BIND_CONTRACT=0 FG_BACKWARDS_WRITE=0) - ops/diag does this.
-  See ops/diag/README.md.
+  -Diag passes /p:FluentGpuDiag=true, which this repo's (single) root Directory.Build.props turns into the
+  FLUENTGPU_DIAG define for the Wavee app csproj - the CALLING assembly for the engine's [Conditional("FLUENTGPU_DIAG")]
+  diagnostics (ScrollTrace, RenderBudget, FG_OPAQUE_WINDOW), so this is what actually makes those call sites live even
+  though the engine itself is built from its own sibling checkout unchanged. It is a DIFFERENT BINARY from the shipping
+  one: BindContract and BackwardsWriteGuard become default-ON once compiled in, so a feel-measurement session must
+  clear them explicitly (FG_BIND_CONTRACT=0 FG_BACKWARDS_WRITE=0) before launching the diag exe.
+  See docs/plans/wavee-scroll-feel-diagnostics-plan.md for what each diag facility does and how it is gated.
 #>
 [CmdletBinding()]
 param(

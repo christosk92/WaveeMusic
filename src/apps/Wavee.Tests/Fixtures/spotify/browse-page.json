@@ -1,0 +1,18 @@
+{"data":{"browse":{"__typename":"BrowseSectionContainer","uri":"spotify:page:0JQ5DAqbMKFSi39LMRT0Cy",
+  "header":{"title":{"transformedLabel":"Music"},"color":{"hex":"#DC148C"}},
+  "sections":{"totalCount":11,"pagingInfo":{"nextOffset":10},"items":[
+    {"uri":"spotify:section:shelf",
+     "sectionItems":{"totalCount":8,"pagingInfo":{"nextOffset":2},"items":[
+       {"content":{"data":{"__typename":"Playlist","uri":"spotify:playlist:37i9dQZF1DXcBWIGoYBM5M","name":"Today's Top Hits",
+          "description":"desc","coverArt":{"sources":[{"height":300,"url":"https://i/tth","width":300}]}}}},
+       {"content":{"data":{"__typename":"NotFound"}}}
+     ]},
+     "data":{"__typename":"BrowseGenericSectionData","title":{"transformedLabel":"Hip-Hop Workout Music"}}},
+    {"uri":"spotify:section:grid","data":{"__typename":"BrowseGridSectionData","title":{"transformedLabel":"Browse all"}},
+     "sectionItems":{"totalCount":57,"items":[
+       {"uri":"spotify:page:pop","content":{"data":{"__typename":"BrowseSectionContainer",
+          "data":{"cardRepresentation":{"backgroundColor":{"hex":"#477d95"},"title":{"transformedLabel":"Pop"}}}}}},
+       {"uri":"spotify:genre:rock","content":{"data":{"__typename":"BrowseSectionContainer",
+          "data":{"cardRepresentation":{"backgroundColor":{"hex":"#e91429"},"title":{"transformedLabel":"Rock"}}}}}}
+     ]}}
+  ]}}}}

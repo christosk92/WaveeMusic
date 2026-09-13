@@ -13,6 +13,7 @@ Build, sign, and publish the two shipping apps in this tree — **FluentGpu Gall
 | `AppInstaller.template.xml` | `.appinstaller` template for one‑click sideload **auto‑update** |
 | `generate-appicon.ps1` | Regenerates the multi‑res app `.ico` + MSIX tile logos from `appicon-source.png` |
 | `generate-download-buttons.ps1` | Regenerates the README "Download" button PNGs (x64/arm64 × light/dark) |
+| **`generate-tray-icons.ps1`** | Regenerates Wavee's notification-area `.ico` files (3 glyphs x 2 taskbar variants x 6 frames) from `appicon-source.png` + the hand-hinted small-size masks under `tray-icons/`; commits into `src/apps/Wavee/assets/tray/` |
 | `../.github/workflows/msix.yml` | CI: matrix arm64+x64 → (optional Trusted Signing) → GitHub Release + `.appinstaller` |
 | **`pack-wavee-msix.ps1`** | Same pipeline for the **Wavee** app: `dotnet publish` (AOT) → stage → third‑party notices → `makepri` → `makeappx` → `signtool` → `Wavee_<quad>_<arch>.msix` |
 | **`Wavee.AppxManifest.xml`** | Wavee's MSIX manifest template — identity `cproducts.Wavee`, the `wavee://` protocol + toast activation declarations |
@@ -118,4 +119,5 @@ the local dev‑cert flow above). The `.appinstaller` `Publisher` must match the
 powershell -ExecutionPolicy Bypass -File ops/build/generate-appicon.ps1          # .ico (embedded as <ApplicationIcon> + the
                                                                              #  Win32 window icon) + MSIX tile logos
 powershell -ExecutionPolicy Bypass -File ops/build/generate-download-buttons.ps1 # README download buttons
+powershell -ExecutionPolicy Bypass -File ops/build/generate-tray-icons.ps1       # Wavee's notification-area icons
 ```

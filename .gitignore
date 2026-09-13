@@ -153,3 +153,6 @@ tmp_saz_*/
 *.saz
 __pycache__/
 ops/release/store/store-credentials.json
+
+# a checkout's own engine pin (Directory.Build.props imports it when present)
+EngineRoot.local.props

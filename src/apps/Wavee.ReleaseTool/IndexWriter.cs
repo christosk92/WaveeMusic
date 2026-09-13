@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using Wavee.Core.ReleaseNotes;
+using static Wavee.ReleaseNotes;
 
 namespace Wavee.ReleaseTool;
 

@@ -16,8 +16,8 @@
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
 
-    <!-- Warning-clean is enforced (mirrors src/Directory.Build.props); Wavee.Tests and vendored NVorbis opt out
-         per-csproj until their pre-existing warning backlog is cleared. -->
+    <!-- Warning-clean is enforced (mirrors src/Directory.Build.props) for every project under src/apps, Wavee.Tests
+         included; a project opts out only in its own csproj, and none in the solution does. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>$(MSBuildProjectName)</RootNamespace>
   </PropertyGroup>
@@ -32,6 +32,9 @@
   <!-- The FluentGpu engine is a SIBLING checkout, never a package: C:\wavee\fluent-gpu next to C:\wavee\WaveeMusic.
        Every engine ProjectReference in this repo goes through $(EngineRoot) so there is exactly one place to change,
        and a missing checkout fails the build with a sentence instead of forty NU1105s. -->
+  <!-- A checkout may pin its engine in a git-ignored EngineRoot.local.props (a worktree built against a pinned engine
+       worktree, decision D1); a command-line -p:EngineRoot still wins over both. -->
+  <Import Project="$(MSBuildThisFileDirectory)EngineRoot.local.props" Condition="'$(EngineRoot)' == '' and Exists('$(MSBuildThisFileDirectory)EngineRoot.local.props')" />
   <PropertyGroup>
     <EngineRoot Condition="'$(EngineRoot)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..\fluent-gpu'))</EngineRoot>
   </PropertyGroup>

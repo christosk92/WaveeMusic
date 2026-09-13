@@ -34,7 +34,8 @@
     "addToQueue": "Add to queue",
     "playNext": "Play next",
     "cantMoveAcrossSections": "Can’t move across sections",
-    "reorderHint": "Drag to reorder"
+    "reorderHint": "Drag to reorder",
+    "libraryUnavailable": "Can’t change your library right now"
   },
   "detail": {
     "play": "Play",
@@ -367,7 +368,8 @@
     "goToAlbum": "Go to album",
     "collabOpen": "Open to collaboration",
     "collabCount": "{n, plural, one {# collaborator} other {# collaborators}}",
-    "collabView": "View collaborators"
+    "collabView": "View collaborators",
+    "queueUnavailable": "Can’t add to queue right now"
   },
   "artist": {
     "popular": "Popular",
@@ -1108,7 +1110,25 @@
       "startOnLogin": "Open Wavee when you sign in to Windows",
       "startOnLoginSub": "Starts in the background so playback is ready",
       "spotifyLinksPackagedSub": "Managed by Windows for installed apps",
-      "restartForLanguage": "Language changes apply after Wavee restarts"
+      "restartForLanguage": "Language changes apply after Wavee restarts",
+      "tray": {
+        "title": "Notification area",
+        "subtitle": "Wavee in the corner of the taskbar",
+        "iconMode": "Show Wavee's icon",
+        "iconModeSub": "Windows keeps new icons behind the arrow in the taskbar corner until you drag them out",
+        "iconAlways": "Always",
+        "iconWhileHidden": "Only while Wavee is hidden",
+        "iconNever": "Never",
+        "iconNeverSub": "With no icon, closing or minimizing Wavee never hides it",
+        "closeToTray": "Closing hides Wavee",
+        "closeToTraySub": "Keep playing from the icon when you close the window",
+        "minimizeToTray": "Minimizing hides Wavee",
+        "minimizeToTraySub": "The taskbar button goes away; the icon brings Wavee back",
+        "startHidden": "Start hidden at sign-in",
+        "startHiddenSub": "Only when Wavee starts with Windows",
+        "needsIcon": "Turned off while the icon is set to Never",
+        "needsStartOnLogin": "Turn on opening Wavee when you sign in first"
+      }
     }
   },
   "shell": {
@@ -1166,7 +1186,7 @@
       "offline": "Sign in to see notifications from Spotify."
     },
     "update": {
-      "$comment": "Only the ROW TITLES live here. The buttons under them are update.action.* \u2014 the row used to carry its own retry/dismiss strings beside identical ones in update.action, which is two owners for one label.",
+      "$comment": "Only the ROW TITLES live here. The buttons under them are update.action.* — the row used to carry its own retry/dismiss strings beside identical ones in update.action, which is two owners for one label.",
       "availableTitle": "An update is available",
       "completedTitle": "Wavee was updated",
       "failedTitle": "Update failed",
@@ -1429,6 +1449,14 @@
       "fast": "Fast",
       "soft": "Soft",
       "strong": "Strong"
+    },
+    "fault": {
+      "network": "Can’t play — check your connection",
+      "unavailable": "This track isn’t available",
+      "drmRequired": "This track can’t play here",
+      "decodeFailed": "This track couldn’t be played",
+      "runtimeMissing": "Local playback needs a one-time setup",
+      "unknown": "Can’t play this track"
     }
   },
   "playback": {
@@ -1567,7 +1595,9 @@
     "concerts": "Concerts",
     "artistConcerts": "{artist} concerts",
     "artistConcertsGeneric": "Artist concerts",
-    "concertDetails": "Concert details"
+    "concertDetails": "Concert details",
+    "discography": "Discography",
+    "connectDiagnostics": "Connect diagnostics"
   },
   "sidebar": {
     "pinned": "Pinned",
@@ -1861,7 +1891,9 @@
         "content": "Content",
         "appearance": "Appearance",
         "behavior": "Behavior"
-      }
+      },
+      "tooNew": "This sidebar layout belongs to a newer Wavee",
+      "tooNewSub": "The file at {path} was saved by a newer version of Wavee, so it is left untouched and Wavee Curated is shown instead. Changes made here are not saved until you update."
     },
     "recents": {
       "sourceVisited": "Recently visited",
@@ -2174,7 +2206,14 @@
       "notMe": "Not me",
       "free": "Spotify Free",
       "noAccount": "Don't have a Spotify account? Sign up",
-      "premiumNote": "Wavee needs Spotify Premium."
+      "premiumNote": "Wavee needs Spotify Premium.",
+      "rejected": "Spotify didn't accept that sign-in. Sign in again to keep listening.",
+      "refused": "Spotify couldn't sign you in right now. Try again in a moment.",
+      "denied": "Sign-in was cancelled.",
+      "browserUnavailable": "Wavee couldn't open your browser. Scan the code with your phone, or go to spotify.com/pair.",
+      "browserTimedOut": "The browser didn't come back to Wavee in time. Try again, or use the code instead.",
+      "codeUnavailable": "We couldn't get a code. Check your connection and try again.",
+      "openPairPage": "Open spotify.com/pair"
     },
     "localPlayback": {
       "header": "Set up local playback",
@@ -2249,7 +2288,11 @@
     "play": "Play",
     "updateAvailable": "Wavee {version} is available",
     "updateReady": "Wavee {version} is ready to install",
-    "updated": "Wavee updated to {version}"
+    "updated": "Wavee updated to {version}",
+    "daylistTitle": "Your daylist has refreshed",
+    "daylistMovedOn": "It moved on from {window}",
+    "daylistGeneric": "A new mix is waiting.",
+    "newReleaseTitle": "New release"
   },
   "jumplist": {
     "pause": "Pause",
@@ -2296,7 +2339,8 @@
       "notTrustedOverride": "Signature not trusted; manual override",
       "checkUnavailable": "Signature check unavailable on this platform",
       "signatureUnknown": "Signature unknown",
-      "packLabel": "Spotify {version} · {arch}"
+      "packLabel": "Spotify {version} · {arch}",
+      "title": "Digital signature"
     }
   },
   "crash": {
@@ -2358,7 +2402,7 @@
   "whatsNew": {
     "$comment": "The What's-new page, its rail and the after-update dialog. Wavee already uses \"whatsNew\" for Spotify's new-releases feed in the notification centre (notifications.filter.new); these keys are the APP's own release notes.",
     "title": "What's new",
-    "headline": "Wavee {version} \u201C{name}\u201D",
+    "headline": "Wavee {version} “{name}”",
     "headlineBare": "Wavee {version}",
     "dateFormat": "d MMM yyyy",
     "since": "Since you last looked: {count} releases — {from} → {to}. Showing everything new.",
@@ -2445,7 +2489,7 @@
     },
     "installOnQuit": {
       "title": "Install a waiting update when I quit Wavee",
-      "hint": "Wavee downloads it as it closes; Windows restarts nothing \u2014 the new version opens next time."
+      "hint": "Wavee downloads it as it closes; Windows restarts nothing — the new version opens next time."
     },
     "metered": {
       "title": "Download on metered connections",
@@ -2490,8 +2534,8 @@
       "built": "Built {date}",
       "lastChecked": "last checked {when}",
       "neverChecked": "not checked yet",
-      "display": "Wavee {version} \u201C{name}\u201D",
-      "displayBeta": "Wavee {version} \u201C{name}\u201D \u00B7 Beta {beta}",
+      "display": "Wavee {version} “{name}”",
+      "displayBeta": "Wavee {version} “{name}” · Beta {beta}",
       "displayBare": "Wavee {version}",
       "whatsNewIn": "What’s new in {name}",
       "openWhatsNew": "Open What's new",
@@ -2529,7 +2573,7 @@
       "notesBudget": "GitHub issue budget",
       "notesBudgetValue": "{spent} lookups this session · {remaining} requests left on this IP (−1 = unknown)",
       "repair": "Repair auto-update",
-      "repairHint": "Downloads the .appinstaller file through your browser. Open it once it has downloaded \u2014 Windows App Installer takes it from there, and installing from the feed is what re-registers the auto-update association."
+      "repairHint": "Downloads the .appinstaller file through your browser. Open it once it has downloaded — Windows App Installer takes it from there, and installing from the feed is what re-registers the auto-update association."
     }
   },
   "lyrics": {
@@ -2541,6 +2585,31 @@
       "raw": "Raw ({n})",
       "rawNone": "Raw (none)",
       "payloadsNote": "Payloads are only captured when a fan-out actually runs; cached answers have none."
+    },
+    "noLyrics": "No lyrics available",
+    "debug": {
+      "pill": "lyrics debug",
+      "title": "Lyrics search",
+      "close": "close ✕",
+      "noReport": "No search recorded for this track yet — it may be a local/fake track, or the fetch is still in flight. Close and reopen to refresh.",
+      "noSources": "(no sources ran)",
+      "noArtist": "(no artist)",
+      "winner": "★ winner"
     }
+  },
+  "tray": {
+    "openWavee": "Open Wavee",
+    "hideWavee": "Hide Wavee",
+    "quit": "Quit Wavee",
+    "hideIcon": "Hide icon",
+    "devices": "Devices…",
+    "saveToLiked": "Save to Liked Songs",
+    "nothingPlaying": "Nothing playing",
+    "signedOut": "Signed out",
+    "offline": "Offline",
+    "paused": "Paused",
+    "live": "LIVE",
+    "updateReady": "Update ready",
+    "onDevice": "on {device}"
   }
 }
