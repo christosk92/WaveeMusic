@@ -11,12 +11,18 @@
 //   SidebarLibraryFingerprintTests G-180 — the rebuild gate's content lane moves for a sidebar row, not for any row.
 //   SidebarBinderWiringTests       G-172/G-173/G-180 — the binder's gate, its recency wiring and InputVersion; G-176 —
 //                                  Sidebar.Shutdown lands the last edit.
+//   SidebarShortcutCountTests      W3-A2 — the library-shortcut count badge's pure half: route → relation, state → what
+//                                  the badge shows, and the stamp its live component gates its render on (PURE).
+//   SidebarPlanDiffTests           W3-A2 — the pane's publish diff: which rows a republish re-skins and whether the rail
+//                                  plan moved, with the entry compare BY VALUE (fresh-but-equal mosaic tiles are not a
+//                                  change) (PURE).
 //
 // The classes that touch `Entities`, `Shell.Parse` or the process-wide `Sidebar` service join EntitiesCollection (no
 // parallelism). The binder takes its two logs through `ISidebarRecencyLogs`, and the service its store through
 // `Sidebar.UseStore`, so nothing here reads the real shell stores or the real profile. No engine loop, no window, no
 // network.
 
+using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
 
@@ -453,6 +459,38 @@ public sealed class SidebarBinderWiringTests : IDisposable
     }
 
     [Fact]
+    public void A_scope_switch_re_points_the_binder_and_the_new_rootlist_lands()
+    {
+        TestScope.Fresh();
+        var mine = SidebarWiringStage.StagePlaylist("spotify:playlist:mine", "Mine");
+        var me = SidebarWiringStage.Me();
+        SidebarWiringStage.SetRootlist(me, mine);
+
+        var binder = new SidebarProjectionBinder(new FakeLogs());
+        binder.Start();
+        int rev = binder.Revision;
+
+        // The welcome effect's own move (G-179): a fresh scope, its rootlist not landed yet. `Sync()` reads
+        // `Entities.Current` live, so THIS half is not the defect — `PumpBinder`'s missing `ScopeEpoch` read is an
+        // engine signal-effect subscription bug the live checklist covers, not something this binder-level fact
+        // can reproduce.
+        Entities.Switch(CatalogScope.Fake(market: "GB"));
+        Assert.True(binder.Sync());
+        Assert.Equal(SidebarSourceState.Pending, ((ISidebarProjectionSnapshot)binder).TreeState);
+        Assert.Empty(binder.CurrentInput.PlaylistTree!);
+
+        var theirs = SidebarWiringStage.StagePlaylist("spotify:playlist:theirs", "Theirs");
+        var them = SidebarWiringStage.Me();
+        SidebarWiringStage.SetRootlist(them, theirs);
+
+        Assert.True(binder.Sync());
+        Assert.True(binder.Revision > rev);
+        Assert.Equal(SidebarSourceState.Ready, ((ISidebarProjectionSnapshot)binder).TreeState);
+        Assert.Equal("Theirs", binder.CurrentInput.PlaylistTree![0].Name);
+        Assert.False(binder.Sync());
+    }
+
+    [Fact]
     public void Shutdown_writes_the_last_edit_before_it_returns()
     {
         string path = Path.Combine(_dir, "WaveeMusic", "sidebar-layout.json");
@@ -478,4 +516,161 @@ public sealed class SidebarBinderWiringTests : IDisposable
             Sidebar.Boot();
         }
     }
+}
+
+// ── W3-A2: the library-shortcut count badge's pure half ─────────────────────────────────────────────────────────────
+
+public class SidebarShortcutCountTests
+{
+    [Fact]
+    public void The_four_counted_shortcuts_map_to_their_library_relation()
+    {
+        Assert.Equal(LibraryEdgeKind.SavedAlbums, Sidebar.ShortcutCount.KindOf("albums"));
+        Assert.Equal(LibraryEdgeKind.FollowedArtists, Sidebar.ShortcutCount.KindOf("artists"));
+        Assert.Equal(LibraryEdgeKind.Liked, Sidebar.ShortcutCount.KindOf("liked"));
+        Assert.Equal(LibraryEdgeKind.SavedShows, Sidebar.ShortcutCount.KindOf("podcasts"));
+    }
+
+    [Fact]
+    public void A_shortcut_without_a_library_relation_carries_no_count()
+    {
+        Assert.Null(Sidebar.ShortcutCount.KindOf("local"));
+        Assert.Null(Sidebar.ShortcutCount.KindOf("home"));
+        Assert.Null(Sidebar.ShortcutCount.KindOf(""));
+    }
+
+    [Fact]
+    public void An_unknown_relation_is_the_pending_plate_whatever_its_total_says()
+    {
+        Assert.Null(Sidebar.ShortcutCount.Shown(EdgeState.Unknown, 0));
+        Assert.Null(Sidebar.ShortcutCount.Shown(EdgeState.Unknown, 42));
+    }
+
+    [Fact]
+    public void A_paging_or_complete_relation_shows_its_server_total()
+    {
+        Assert.Equal(42, Sidebar.ShortcutCount.Shown(EdgeState.Partial, 42));
+        Assert.Equal(0, Sidebar.ShortcutCount.Shown(EdgeState.Complete, 0));
+        Assert.Equal(7, Sidebar.ShortcutCount.Shown(new Sidebar.ShortcutCount.Stamp(1, EdgeState.Complete, 7)));
+    }
+
+    [Fact]
+    public void The_stamp_is_equal_exactly_when_what_the_badge_paints_is_equal()
+    {
+        var a = new Sidebar.ShortcutCount.Stamp(3, EdgeState.Partial, 12);
+        // A relation publication that moved nothing the badge paints: the memo resolves EQUAL, the badge does not render.
+        Assert.Equal(a, new Sidebar.ShortcutCount.Stamp(3, EdgeState.Partial, 12));
+        Assert.NotEqual(a, new Sidebar.ShortcutCount.Stamp(3, EdgeState.Partial, 13));   // a like / a save landed
+        Assert.NotEqual(a, new Sidebar.ShortcutCount.Stamp(3, EdgeState.Complete, 12));  // the last page landed
+        Assert.NotEqual(a, new Sidebar.ShortcutCount.Stamp(4, EdgeState.Partial, 12));   // a scope switch re-points it
+    }
+
+    [Fact]
+    public void Each_counted_kind_has_its_own_stable_reconciler_key()
+    {
+        var kinds = new[]
+        {
+            LibraryEdgeKind.SavedAlbums, LibraryEdgeKind.FollowedArtists, LibraryEdgeKind.Liked, LibraryEdgeKind.SavedShows,
+        };
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var kind in kinds)
+        {
+            string key = Sidebar.ShortcutCount.KeyOf(kind);
+            Assert.True(keys.Add(key), $"{kind} shares a key with another kind");
+            Assert.Same(key, Sidebar.ShortcutCount.KeyOf(kind));   // a literal, never a per-render allocation
+        }
+    }
+}
+
+// ── W3-A2: the pane's publish diff ──────────────────────────────────────────────────────────────────────────────────
+
+public class SidebarPlanDiffTests
+{
+    static SidebarLibraryEntry Entry(string id, string name, IReadOnlyList<StringId>? tiles = null, int count = 0)
+        => new(id, SidebarEntryKind.Playlist, "spotify:playlist:" + id, name, "Me",
+               default, tiles, ChildCount: count, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+               SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.ByYou);
+
+    static SidebarRow Row(SidebarRowKind kind, int entryIndex, string key)
+        => new(kind, "sec", 0, entryIndex, 0, key);
+
+    static readonly SidebarRow[] TwoRows =
+    [
+        Row(SidebarRowKind.SectionHeader, -1, "sec"),
+        Row(SidebarRowKind.EntityRow, 0, "pl:a"),
+    ];
+
+    [Fact]
+    public void An_identical_republish_changes_no_row_and_leaves_the_rail_alone()
+    {
+        var entries = new[] { Entry("a", "A") };
+        Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, entries, TwoRows, entries, 0));
+        Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, entries, TwoRows, entries, 1));
+        Assert.False(Sidebar.PlanDiff.Changed(TwoRows, entries, TwoRows, entries));
+    }
+
+    [Fact]
+    public void Fresh_but_equal_mosaic_tiles_are_not_a_change()
+    {
+        // The projection materialises a folder's / a cover-less playlist's tile list fresh on every rebuild. The record's
+        // compiler equality compares that member by REFERENCE and would re-skin the row (and its chevron / pill) on
+        // every re-plan; the pane's diff compares it by VALUE.
+        var before = new[] { Entry("a", "A", new List<StringId> { new(1), new(2), new(3), new(4) }) };
+        var after = new[] { Entry("a", "A", new List<StringId> { new(1), new(2), new(3), new(4) }) };
+        Assert.False(before[0].Equals(after[0]));   // the trap this rule exists for
+        Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, before, TwoRows, after, 1));
+        Assert.False(Sidebar.PlanDiff.Changed(TwoRows, before, TwoRows, after));
+    }
+
+    [Fact]
+    public void A_different_tile_set_behind_the_same_row_is_a_change()
+    {
+        var before = new[] { Entry("a", "A", new List<StringId> { new(1), new(2) }) };
+        var after = new[] { Entry("a", "A", new List<StringId> { new(1), new(9) }) };
+        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, before, TwoRows, after, 1));
+    }
+
+    [Fact]
+    public void A_hydrated_entry_behind_an_unchanged_row_record_re_skins_that_row_only()
+    {
+        var before = new[] { Entry("a", "") };
+        var after = new[] { Entry("a", "A", count: 12) };
+        Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, before, TwoRows, after, 0));   // the header carries no entry
+        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, before, TwoRows, after, 1));
+        Assert.True(Sidebar.PlanDiff.Changed(TwoRows, before, TwoRows, after));
+    }
+
+    [Fact]
+    public void A_moved_row_record_is_a_change_even_over_the_same_entries()
+    {
+        var entries = new[] { Entry("a", "A"), Entry("b", "B") };
+        var after = new[] { TwoRows[0], Row(SidebarRowKind.EntityRow, 1, "pl:b") };
+        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, entries, after, entries, 1));
+    }
+
+    [Fact]
+    public void A_row_new_at_its_slot_and_a_count_change_are_both_changes()
+    {
+        var entries = new[] { Entry("a", "A"), Entry("b", "B") };
+        var grown = new[] { TwoRows[0], TwoRows[1], Row(SidebarRowKind.EntityRow, 1, "pl:b") };
+        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, entries, grown, entries, 2));
+        Assert.True(Sidebar.PlanDiff.Changed(TwoRows, entries, grown, entries));
+        Assert.True(Sidebar.PlanDiff.Changed(grown, entries, TwoRows, entries));   // shrinking moves it too
+    }
+
+    [Fact]
+    public void An_entry_index_valid_in_one_plan_and_not_the_other_is_a_change()
+    {
+        var some = new[] { Entry("a", "A") };
+        var none = Array.Empty<SidebarLibraryEntry>();
+        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, none, TwoRows, some, 1));
+        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, some, TwoRows, none, 1));
+        // Out of range on BOTH sides is a placeholder that stayed a placeholder.
+        Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, none, TwoRows, none, 1));
+    }
+
+    [Fact]
+    public void An_index_past_the_new_plan_is_never_a_change()
+        => Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, Array.Empty<SidebarLibraryEntry>(), TwoRows,
+                                                    Array.Empty<SidebarLibraryEntry>(), 5));
 }

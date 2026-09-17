@@ -978,6 +978,14 @@ public abstract class Table : Publishable
     /// seal — until a transport failure un-asks it (<c>Fetch.Failed</c>) or the scope is replaced (the tables are new).
     /// 4 B/row, the price of the whole seal (FootprintGateTests' arithmetic: +40,004 B at 10k rows).</summary>
     public Column<uint> Asked;
+    /// <summary>THE FIFTH MARK: the group IS filled (its columns hold values and every surface keeps rendering them) but a
+    /// wall-clock fact says those values belong to an ENDED edition — a daylist past its rollover, a chart past its
+    /// week. It is never a hole: <c>Known</c> stays set and a page never sees a skeleton. It only changes what the
+    /// planner counts as settled (<see cref="Settled"/>): a stale group is re-asked like a missing one, and the
+    /// authority gate treats it as unfilled so any wire answer may replace it. Set by <c>Entities.Invalidate</c>,
+    /// cleared by <see cref="Applied"/>, zeroed with the row. Never persisted: a restart re-derives it from the clock.
+    /// 4 B/row (FootprintGateTests: +40,004 B at 10k rows).</summary>
+    public Column<uint> Stale;
 
     /// <summary>THE row's identity, packed (see the class summary and <see cref="EntityId"/>). Read it freely — kind,
     /// provider and the gid are field loads. WRITE it only through <see cref="Alloc(EntityId)"/> / <see cref="Bind"/> /
@@ -1032,6 +1040,7 @@ public abstract class Table : Publishable
         Authority[slot] = (byte)Wavee.Authority.None;
         Inflight[slot] = 0;
         Asked[slot] = 0;
+        Stale[slot] = 0;
         FetchedAt[slot] = 0;
         Touched[slot] = Entities.Now;
         MarkDirty();
@@ -1062,6 +1071,7 @@ public abstract class Table : Publishable
             Authority[slot] = (byte)Wavee.Authority.None;
             Inflight[slot] = 0;
             Asked[slot] = 0;
+            Stale[slot] = 0;
             FetchedAt[slot] = 0;
             Touched[slot] = Entities.Now;
         }
@@ -1093,6 +1103,7 @@ public abstract class Table : Publishable
         Authority[slot] = (byte)Wavee.Authority.None;
         Inflight[slot] = 0;
         Asked[slot] = 0;
+        Stale[slot] = 0;
         Free.Push(slot);
         MarkDirty();
     }
@@ -1287,6 +1298,13 @@ public abstract class Table : Publishable
     /// it paints, and the one the planner asks before it fetches (P3).</summary>
     public bool Knows(int slot, uint groups) => (Known[slot] & groups) == groups;
 
+    /// <summary>Is any bit of <paramref name="groups"/> filled but marked <see cref="Stale"/> on this row?</summary>
+    public bool IsStale(int slot, uint groups) => (Stale[slot] & groups) != 0;
+
+    /// <summary>The groups the planner counts as done: filled AND current. What <c>Known</c> was to the planner before
+    /// the fifth mark; a page keeps reading <c>Known</c>, because a stale row still renders.</summary>
+    public uint Settled(int slot) => Known[slot] & ~Stale[slot];
+
     /// <summary>THE authority rule (D16), pure and testable: a write of <paramref name="group"/> at
     /// <paramref name="incoming"/> lands when it is at least as authoritative as whoever wrote that group — or when the
     /// group is not fully known yet, because filling a hole is never a downgrade.
@@ -1295,9 +1313,10 @@ public abstract class Table : Publishable
         => (known & group) != group || incoming >= existing;
 
     /// <summary>The same rule against a row's per-GROUP authority column. Call it before writing the group's columns;
-    /// call <see cref="Applied"/> after.</summary>
+    /// call <see cref="Applied"/> after. Gates on <see cref="Settled"/>, not <c>Known</c>: a stale group is a hole, so
+    /// any wire authority lands on it — a Thin re-answer may replace a Full one from the ended edition.</summary>
     public bool Accepts(int slot, uint group, Authority incoming, in Column<byte> groupAuthority)
-        => Accepts(incoming, (Wavee.Authority)groupAuthority.Span[slot], Known[slot], group);
+        => Accepts(incoming, (Wavee.Authority)groupAuthority.Span[slot], Settled(slot), group);
 
     /// <summary>Record that a group WAS written: mark its bits known, raise the group's authority, stamp freshness,
     /// clear the in-flight marker, bump the row's version and mark the table dirty. The two-call shape
@@ -1306,6 +1325,7 @@ public abstract class Table : Publishable
     public void Applied(int slot, uint group, Authority incoming, ref Column<byte> groupAuthority)
     {
         Known[slot] |= group;
+        Stale[slot] &= ~group;
         // Fully qualified: inside Table the FIELD `Authority` hides the type name in every expression position.
         if (incoming > (Wavee.Authority)groupAuthority[slot]) groupAuthority[slot] = (byte)incoming;
         if (incoming > (Wavee.Authority)Authority[slot]) Authority[slot] = (byte)incoming;
@@ -1354,8 +1374,13 @@ public abstract class Table : Publishable
         for (int slot = 1; slot < Count; slot++)
         {
             ref EntityId cell = ref Id[slot];
-            if (cell.Form == EntityForm.Text) Entities.Strings.Release(cell.TextId);
-            cell = default;
+            // A TEXT id owns an interned string and goes with it. A GID id owns nothing, and it stays: it is what
+            // `Playback.Rebind` reads to carry the deck from a retired scope into the new one (G-241), by identity.
+            if (cell.Form == EntityForm.Text)
+            {
+                Entities.Strings.Release(cell.TextId);
+                cell = default;
+            }
             ReleaseText(slot);
         }
         _byText.Clear();
@@ -1379,6 +1404,7 @@ public abstract class Table : Publishable
         Touched.EnsureCapacity(capacity);
         Inflight.EnsureCapacity(capacity);
         Asked.EnsureCapacity(capacity);
+        Stale.EnsureCapacity(capacity);
         Id.EnsureCapacity(capacity);
         // Load ≤ 0.75 → capacity * 4/3, rounded up to a power of two (the mask is the whole probe's arithmetic).
         int buckets = 32;
@@ -1488,6 +1514,7 @@ public sealed partial class Scope
         for (int i = 0; i < Tables.Length; i++) Tables[i].ReleaseAllText();
         for (int i = 0; i < Subjects.Length; i++) Subjects[i].ReleaseAllText();
         Edges.ReleaseText();
+        ReleaseConcertText();
     }
 }
 
@@ -1577,7 +1604,7 @@ public static class StagedRows
 {
     /// <summary>Open a staged row for <paramref name="id"/>: append it, stamp the authority and the groups it speaks
     /// for, and hand it back BY REFERENCE so the decoder fills the rest in place (P8).</summary>
-    public static ref T RowFor<T>(this StagedList<T> list, in StagedId id, Authority authority, uint known)
+    public static ref T RowFor<T>(this StagedList<T> list, scoped in StagedId id, Authority authority, uint known)
         where T : unmanaged, IStagedRow
     {
         ref T row = ref list.Add();

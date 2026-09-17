@@ -1,4 +1,13 @@
-// ── Entities/Episode.cs — CORE (owner A, wave 1; plan §2 · the file's full budget is 200) ────────────────────────────
+// ── Entities/Episode.cs ────────────────────────────────────────────────────────────────────────────────────────────
+// the episode columns, field groups, handle and commit (Wave 1) + `Episode.Rules` (Wave 5)
+//
+// Role: CORE
+// Owner: A (Wave 1: the data model) · M (Wave 5: `Episode.Rules`, stream C of WP-5.M)
+// Wave: 1 · 5
+// Budget: 200 lines (plan §2; ch 09 §9.5's honest estimate is the same 200 "incl. the new Episode.Rules"). The columns
+//   and the commit already took 215, so the rules put the file past +30 %; the partial they would move to is
+//   `Entities/Episode.Rules.cs` — named in the WP-5.M report, not created (the WP-5 file rule).
+// Spec: plan §2 · ch 09 §7, §8 (last row), §9.3-§9.4 · 0.2.9 `Features/Detail/EpisodeList.cs:40-101`
 //
 // THE EPISODE COLUMNS, FIELD GROUPS AND HANDLE. `Episode.Rules` — `Pct`, `InProgress`, `Played`, `Unplayed`, the
 // four-way status predicate, the Newest/Oldest order, the resume PICK and the load-more gate — is the one genuinely
@@ -210,5 +219,192 @@ public static partial class Entities
                 t.Applied(slot, (uint)EpisodeFields.Progress, auth, ref t.ProgressAuthority);
             }
         }
+    }
+}
+
+// ── persistence (Store.cs's per-kind seam) ───────────────────────────────────────────────────────────────────────────
+
+/// <summary>How an episode survives a restart. Persists all three groups <c>EpisodeTable</c> carries: identity, the
+/// about clamp, AND the resume position — <see cref="EpisodeFields.Progress"/> is the one cold field worth caching,
+/// since losing it on every relaunch would silently rewind a listener's place (its own <c>progress_auth</c> column,
+/// same as memory: a stale server position must never rewind what THIS device just played to, D16).
+/// <para>STORE THREAD (both halves) — see <see cref="ShowShape"/>'s note.</para></summary>
+public sealed class EpisodeShape : KindShape
+{
+    static readonly StoreColumn[] Cols =
+    [
+        new("title", StoreType.Text, StoreColumnFlags.Title),
+        new("image", StoreType.Text),
+        new("show_uri", StoreType.Text),
+        new("duration_ms", StoreType.Int),
+        new("published_at", StoreType.Int),
+        new("description", StoreType.Text),
+        new("progress_ms", StoreType.Int),
+        new("identity_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("about_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("progress_auth", StoreType.Int, StoreColumnFlags.Authority),
+    ];
+
+    const uint PersistedFields = (uint)(EpisodeFields.Identity | EpisodeFields.About | EpisodeFields.Progress);
+
+    public override EntityKind Kind => EntityKind.Episode;
+    public override string Table => "episode";
+    public override ReadOnlySpan<StoreColumn> Columns => Cols;
+
+    public override void Save(Staging s, RowWriter w)
+    {
+        var rows = s.EpisodesOrNull;
+        if (rows is null) return;
+        var span = rows.Span;
+        for (int i = 0; i < span.Length; i++)
+        {
+            ref readonly var row = ref span[i];
+            uint known = row.Known & PersistedFields;
+            bool identity = (known & (uint)EpisodeFields.Identity) != 0;
+            bool about = (known & (uint)EpisodeFields.About) != 0;
+            bool progress = (known & (uint)EpisodeFields.Progress) != 0;
+
+            if (identity)
+            {
+                w.Text(0, row.Title);
+                w.Text(1, row.Image);
+                w.Id(2, s, row.ShowUri);
+                w.Int(3, row.DurationMs);
+                w.Int(4, row.PublishedAt);
+                w.Int(7, (int)row.Authority);
+            }
+            else { w.Null(0); w.Null(1); w.Null(2); w.Null(3); w.Null(4); w.Null(7); }
+
+            if (about)
+            {
+                w.Text(5, row.Description);
+                w.Int(8, (int)row.Authority);
+            }
+            else { w.Null(5); w.Null(8); }
+
+            if (progress)
+            {
+                w.Int(6, row.ProgressMs);
+                w.Int(9, (int)row.Authority);
+            }
+            else { w.Null(6); w.Null(9); }
+
+            w.Emit(row.Id, known, Entities.Now, Entities.Now);
+        }
+    }
+
+    public override void Load(RowReader r, Staging into)
+    {
+        ref var row = ref into.Episodes.Add();
+        row.Id = r.Uri;
+        row.Title = r.Text(0);
+        row.Image = r.Text(1);
+        row.ShowUri = r.Text(2);
+        row.DurationMs = (int)r.Int(3);
+        row.PublishedAt = (int)r.Int(4);
+        row.Description = r.Text(5);
+        row.ProgressMs = (int)r.Int(6);
+        row.Known = r.Known & PersistedFields;
+        row.Authority = (Authority)Math.Max(r.Int(7), Math.Max(r.Int(8), r.Int(9)));
+    }
+}
+
+// ══ WAVE 5 (owner M, stream C): Episode.Rules ════════════════════════════════════════════════════════════════════════
+//
+// The one genuinely new pure class ch 09 §8 asks for, EXTRACTED from 0.2.9 `EpisodeList.cs` — where these five decisions
+// were private statics inside a Component and therefore untestable. The thresholds (`> 0.01`, `< 0.98`, `>= 0.98`) and
+// the `max(model, local)` cursor fold are 0.2.9's and load-bearing; the rule (3 DIP), the "In progress" caption and the
+// status filter are three presentations of ONE number, so all three read `Pct` and never three predicates (ch 09 §9.1).
+
+public readonly partial struct Episode
+{
+    public static class Rules
+    {
+        /// <summary>At or below this an episode is unplayed; above it the 3-DIP rule exists.</summary>
+        public const float InProgressFloor = 0.01f;
+        /// <summary>At or above this an episode is played.</summary>
+        public const float PlayedCeiling = 0.98f;
+
+        /// <summary>The four-way status filter, in the SelectorBar's order (0 All · 1 Unplayed · 2 In progress · 3 Played).</summary>
+        public enum Status : byte { All = 0, Unplayed = 1, InProgress = 2, Played = 3 }
+
+        /// <summary><c>clamp(progress / duration, 0, 1)</c>; 0 when the duration is not known (EpisodeList.cs:40).</summary>
+        public static float Pct(int progressMs, int durationMs)
+            => durationMs > 0 ? Math.Clamp(progressMs / (float)durationMs, 0f, 1f) : 0f;
+
+        /// <summary>A row's fraction. Progress UNKNOWN reads 0 — an unplayed card, never a half-drawn bar (ch 09 §7).</summary>
+        public static float PctOf(Episode e) => e.Knows(EpisodeFields.Progress) ? Pct(e.ProgressMs, e.DurationMs) : 0f;
+
+        public static bool InProgress(float pct) => pct > InProgressFloor && pct < PlayedCeiling;
+
+        public static bool Played(float pct) => pct >= PlayedCeiling;
+
+        /// <summary>Does the card draw its progress rule (EpisodeList.cs:230)?</summary>
+        public static bool HasRule(float pct) => pct > InProgressFloor;
+
+        /// <summary>The status filter's predicate (EpisodeList.cs:56).</summary>
+        public static bool Matches(Status status, float pct) => status switch
+        {
+            Status.Unplayed => pct <= InProgressFloor,
+            Status.InProgress => InProgress(pct),
+            Status.Played => Played(pct),
+            _ => true,
+        };
+
+        /// <summary>The "Listen next" pick: the most-progressed IN-PROGRESS episode over ALL episodes, whatever the
+        /// filter shows (EpisodeList.cs:78-81); ties keep the earlier (newer) one; -1 when none is in progress.</summary>
+        public static int ResumePick(ReadOnlySpan<float> pcts)
+        {
+            int resume = -1;
+            float best = 0f;
+            for (int i = 0; i < pcts.Length; i++)
+                if (InProgress(pcts[i]) && pcts[i] > best) { best = pcts[i]; resume = i; }
+            return resume;
+        }
+
+        /// <summary>The filtered, ordered view as ORIGINAL indices (so Play addresses the show context, not the view):
+        /// newest-first as the wire orders them, reversed for Oldest (EpisodeList.cs:52-59). Returns the count written.</summary>
+        public static int View(ReadOnlySpan<float> pcts, Status status, bool oldest, Span<int> into)
+        {
+            int n = 0;
+            for (int i = 0; i < pcts.Length && n < into.Length; i++)
+                if (Matches(status, pcts[i])) into[n++] = i;
+            if (oldest) into[..n].Reverse();
+            return n;
+        }
+
+        /// <summary>THE load-more gate — the paging CURSOR, never the resident count (EpisodeList.cs:65-72; ch 09 §9.1):
+        /// how far anybody has ASKED, the model's cursor or the page's own, against the total.</summary>
+        public static bool CanLoadMore(int edgeAsked, int localAsked, int total) => Math.Max(edgeAsked, localAsked) < total;
+
+        /// <summary>The pill as the page shows it: only a PARTIAL membership pages (a Complete list never does, whatever
+        /// the cursor column says), and then the cursor gate above decides.</summary>
+        public static bool CanLoadMore(EdgeState state, int edgeAsked, int localAsked, int total)
+            => state == EdgeState.Partial && CanLoadMore(edgeAsked, localAsked, total);
+
+        /// <summary>Is a load-more ask still out? It was asked (<paramref name="askedFrom"/> ≥ 0), the relation's version has
+        /// not moved since the ask, and the ask has not failed. A version move or a failure ends it.</summary>
+        public static bool Paging(int askedFrom, uint versionAtAsk, uint versionNow, bool failed)
+            => askedFrom >= 0 && versionNow == versionAtAsk && !failed;
+
+        /// <summary>The page's own half of the cursor after an ask settles: a page that ANSWERED (with rows or without)
+        /// moves it past the offset asked, so a withdrawn member cannot pin the pill; a failure leaves it so the next tap
+        /// retries (0.2.9's `_pagedTo`, EpisodeList.cs:107-123).</summary>
+        public static int LocalCursorAfter(int localAsked, int askedFrom, bool paging, bool failed)
+            => askedFrom >= 0 && !paging && !failed ? Math.Max(localAsked, askedFrom + 1) : localAsked;
+
+        /// <summary>Where the next page starts: the furthest of the model's cursor, the page's cursor and the resident
+        /// count.</summary>
+        public static int NextOffset(int edgeAsked, int localAsked, int resident)
+            => Math.Max(Math.Max(edgeAsked, localAsked), resident);
+
+        /// <summary>Whole minutes, 0.2.9's integer arithmetic (<c>DurationMs / 60000</c>); the view formats
+        /// <c>podcast.minutes</c> (ch 09 §9.4's loc fix).</summary>
+        public static int Minutes(int durationMs) => durationMs / 60_000;
+
+        /// <summary>The zero-episode arm (ch 09 §9.4 fix): the show's own empty copy only when no filter is applied and
+        /// the unfiltered set is genuinely empty; any other empty view is "No episodes match this filter".</summary>
+        public static bool IsEmptyShow(int total, int resident, Status status)
+            => status == Status.All && resident == 0 && total <= 0;
     }
 }

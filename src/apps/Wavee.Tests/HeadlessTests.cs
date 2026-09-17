@@ -55,6 +55,32 @@ static class HeadlessFixtures
         quit
         """;
 
+    /// <summary>ops/headless/library-sync.wh, verbatim (G-239: the headless smoke that a --script run now installs
+    /// Spotify.Library and Lyrics.Boot the same way App.cs does for the GUI).</summary>
+    public const string LibrarySync = """
+        # library-sync.wh - G-239 smoke: proves the headless host actually installs the library host and the lyrics stack
+        # (Spotify.Library.Install / Lyrics.Boot, wired in Diagnostics.Probe.cs's HeadlessHost.Run) instead of silently
+        # skipping them the way it did before this fix - a headless run that never syncs the library cannot confirm
+        # G-042 (sync)/G-043/G-049 (rootlist writes) or G-008 (lyrics) live at all.
+        #
+        # CAVEAT (read before trusting "it printed nothing, so nothing happened"): the .wh grammar (Diagnostics.Headless.cs)
+        # has no rootlist/pin/collection field - `wait`/`expect`/`status` only see playback and session state. This script
+        # cannot print counts itself. Run it with -EchoLog (Invoke-WaveeHeadless.ps1 already forwards -EchoLog to
+        # --echo-log): the library host's own Log.Info("library", ...) lines ("library sync asked: rootlist, pins, liked +
+        # albums, artists, shows, recents" on the first sync after Online; "reconnect resync skipped: ..." on a second run
+        # inside 30 s) now come back as {"kind":"echo","category":"library",...} JSON lines in the capture, which is the
+        # proof the sync fired - not a count. A `library` verb + JSON status line in Diagnostics.Headless.cs (CORE, owner
+        # X/F) is the follow-up that would let a script print the rootlist folder count, the pin count and the collection
+        # counts directly; out of this batch's file list (R4-5 gap register report names it).
+        #
+        # Usage: powershell -File ops\headless\Invoke-WaveeHeadless.ps1 library-sync.wh -EchoLog -Profile <dir>
+        wait online timeout 60000
+        sleep 20000
+        log library sync window elapsed
+        status
+        quit
+        """;
+
     public static H.StatusSnapshot Snap(long now = 0, string phase = "Idle", string track = "", int pos = 0, string session = "Online")
         => H.StatusSnapshot.Empty with { NowMs = now, Phase = phase, TrackUri = track, PositionMs = pos, SessionPhase = session };
 
@@ -812,6 +838,16 @@ public class HeadlessScriptTests
         script.Tick(H.StatusSnapshot.Empty);
         Assert.True(script.TryTakeResult(out H.StepResult r));
         Assert.Equal(3, r.Line);
+    }
+
+    [Fact]
+    public void LibrarySyncScript_Verbatim_Parses()
+    {
+        // G-239: ops/headless/library-sync.wh parses under the same grammar every other .wh script does - `wait
+        // online`, `sleep`, `log <text>`, `status`, `quit`, five steps, none of them a library/rootlist condition
+        // (the grammar has none; see the script's own header for why it can only prove the wiring did not fault).
+        H.Script script = HeadlessFixtures.Load(HeadlessFixtures.LibrarySync);
+        Assert.Equal(5, script.StepCount);
     }
 
     [Fact]

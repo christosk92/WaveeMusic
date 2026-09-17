@@ -25,11 +25,16 @@
 // `StringTable.cs:26`), so ~70 directory tiles times every scope this process ever opens is a floor that only rose.
 // Both columns go through <see cref="Table.SetText"/> and come back in <see cref="BrowseTable.ReleaseText"/>.
 //
-// What is NOT here: `BrowseTaxonomy`'s curated uri→band map, `BrowseDirectorySeeds`, `BrowsePageLayout`,
-// `BrowseLayout` and `BrowseMastheadMetrics` — ch 13 §8's rule set, owner P's, Wave 5, in this same file. Wave 1 owns
-// the columns and the identity they read; <see cref="BrowseGroup"/> is declared here because it is the taxonomy's
-// answer type and three other files name it.
+// WAVE 5 (owner P, stream P3) adds §5 in the named partial Browse.Rules.cs: ch 13 §8's pure rule set, ported VERBATIM from 0.2.9 —
+// `BrowseTaxonomy` (the curated uri→band map, `BandOrder`, `Grouped`), `ChartPages` / `ChartSections`,
+// `BrowseDirectorySeeds`, `BrowsePageLayout`, `BrowseMastheadMetrics`, `BrowseLayout` (the four column functions and
+// `StarGrid`) and `BrowseTiles.ToModel`. Only the INPUT types changed: 0.2.9's `BrowseCategory` / `BrowseSection` /
+// `BrowsePageModel` records are the small value facts below (`BrowseCategory`, `BrowseSectionFacts`,
+// `BrowsePageFacts`), which a page projects from the table rows it already reads — the rules never see a table.
+//
+// Role: CORE · Owner: B (wave 1) / P (wave 5 rules) · Wave: 1 + 5 · Budget: 500 lines (+ Browse.Rules.cs 400) · Spec: ch 13 §7, §8
 
+using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 
 namespace Wavee;
@@ -300,6 +305,9 @@ public static partial class Entities
     static partial void CommitBrowse(Staging s)
     {
         Browse.Commit(s);
+        // The search subjects ride this hook (Wave 5, P3): a search answer's genre tiles are browse NODES, so they must
+        // land after the nodes above and before anything reads them; the hit list itself is `CommitEdges`' own.
+        global::Wavee.Search.Commit(s);
 
         var runs = s.StagedBrowseRuns;
         if (runs is null || runs.Count == 0) return;
@@ -376,3 +384,5 @@ public readonly partial struct Browse
         }
     }
 }
+
+// §5 (ch 13 §8's pure rules) is the named partial Browse.Rules.cs.

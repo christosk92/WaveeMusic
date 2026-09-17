@@ -7,14 +7,20 @@
 // Budget: ~450 lines (UNVERIFIED)
 // Spec: ch 19 §9.5 (proposes the file, states no number)
 //
-// The runtime provisioning host is still owner R's Wave-6 work. What is here now is the SHELL half of `Setup.Bootstrap`
-// (pulled forward by gap batch B5): the disk witnesses of "this app has run before", read-only, and the one call the
-// composition root makes. The decisions are `Setup.Bootstrap` / `Setup.Gating` in `Setup.cs` (CORE).
+// The runtime provisioning HOST (a `Setup.RuntimeHost` over the local-playback runtime provisioner: catalog fetch,
+// download, verify, install) is still NOT here — it is blocked on decision D3 (the provisioner is fenced). With
+// `Setup.Runtime.Host` null the wizard's Local playback page renders its model-null arm and stays skippable. What IS
+// here is the SHELL half of `Setup.Bootstrap` (gap batch B5): the read-only disk witnesses of "this app has run
+// before" and the one call the composition root makes. The bootstrap decisions are `Setup.Bootstrap` / `Setup.Gating`
+// in `Setup.cs` (CORE) — as is the wizard's pure rules region (WP-6.R: `Layout`, `Commands`, `WizardRules`,
+// `SignInPresentation`, `Recolor`, `Cover`), moved there verbatim (batch R2).
 
 namespace Wavee;
 
 public static partial class Setup
 {
+    // ══ REGION 2 — THE INSTALL BOOTSTRAP'S DISK PROBE (gap batch B5, G-095) ═════════════════════════════════════════
+
     /// <summary>Arm (or suppress) the first-run wizard for this install. Call ONCE per launch from the composition root,
     /// after <c>Platform.Boot</c> (it needs the settings store and the profile path) and BEFORE <c>Store.Use</c> opens
     /// <c>library.db</c> or the shell writes its history — either would make every install look existing. Writes settings

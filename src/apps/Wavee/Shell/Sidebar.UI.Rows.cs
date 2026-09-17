@@ -558,40 +558,64 @@ public static partial class Sidebar
             return h & 0x7fffffff;
         }
 
-        /// <summary>The liked-collection composition. Subscribes to the liked relation and the track table, so a new like
-        /// or a landed cover re-composes it.</summary>
+        /// <summary>The liked-collection composition. Subscribes to the liked relation and the track table — inside a
+        /// value gate (W2-A2): the memo's value is the first four distinct liked cover ids, so the mosaic is
+        /// re-composed when a new like or a landed cover CHANGES those four, not on every publication of the track
+        /// table while a page's covers stream in.</summary>
         sealed class LikedArt : Component
         {
             readonly float _size, _radius;
+            readonly Func<LikedStamp> _stamp;
+            readonly string[] _tiles = new string[4];
 
-            public LikedArt(float size, float radius) { _size = size; _radius = radius; }
-
-            public override Element Render()
+            public LikedArt(float size, float radius)
             {
+                _size = size;
+                _radius = radius;
+                _stamp = Stamp;
+            }
+
+            /// <summary>Newest first; distinct covers only (four likes off one album are one cover, not a mosaic).
+            /// Identity by interned image id: equal text is one id, so this is the url comparison without resolving.</summary>
+            readonly record struct LikedStamp(uint Epoch, int Found, StringId A, StringId B, StringId C, StringId D);
+
+            LikedStamp Stamp()
+            {
+                uint epoch = Entities.ScopeEpoch.Value;          // a boot / scope switch is the wake before any table exists
                 var scope = Entities.Current;
-                if (scope is null) return Glyph(Icons.Heart, _size);
+                if (scope is null) return new LikedStamp(epoch, 0, default, default, default, default);
                 _ = scope.Edges.Liked.Changed.Value;
                 _ = scope.Tracks.Changed.Value;
 
                 var slots = User.Me.LikedTrackSlots;
-                string? a = null, b = null, c = null, d = null;
+                StringId a = default, b = default, c = default, d = default;
                 int found = 0;
-                // Newest first; distinct covers only (four likes off one album are one cover, not a mosaic).
                 for (int i = 0; i < slots.Length && found < 4 && i < 64; i++)
                 {
-                    string? url = Controls.ArtUrl(new Track(slots[i]).ImageId);
-                    if (url is null || url == a || url == b || url == c) continue;
+                    var id = new Track(slots[i]).ImageId;
+                    if (id.IsEmpty || id == a || id == b || id == c) continue;
                     switch (found++)
                     {
-                        case 0: a = url; break;
-                        case 1: b = url; break;
-                        case 2: c = url; break;
-                        default: d = url; break;
+                        case 0: a = id; break;
+                        case 1: b = id; break;
+                        case 2: c = id; break;
+                        default: d = id; break;
                     }
                 }
-                if (found == 4) return Controls.Mosaic(new[] { a!, b!, c!, d! }, _size, _size, _radius);
-                if (found > 0) return Controls.Artwork(a, _size, _size, _radius, decodePx: DecodeBucket(_size));
-                return Glyph(Icons.Heart, _size);
+                return new LikedStamp(epoch, found, a, b, c, d);
+            }
+
+            public override Element Render()
+            {
+                var s = UseComputed(_stamp).Value;
+                if (s.Found == 0) return Glyph(Icons.Heart, _size);
+                string? first = Controls.ArtUrl(s.A);
+                if (s.Found < 4 || first is null) return Controls.Artwork(first, _size, _size, _radius, decodePx: DecodeBucket(_size));
+                _tiles[0] = first;
+                _tiles[1] = Controls.ArtUrl(s.B) ?? first;
+                _tiles[2] = Controls.ArtUrl(s.C) ?? first;
+                _tiles[3] = Controls.ArtUrl(s.D) ?? first;
+                return Controls.Mosaic(_tiles, _size, _size, _radius);
             }
         }
     }
@@ -747,6 +771,80 @@ public static partial class Sidebar
         public static Element Pending() => new BoxEl
         {
             Width = PlateW, Height = PlateH, Shrink = 0f, Corners = Radii.ControlAll, Fill = Tok.FillSubtleSecondary,
+        };
+
+        /// <summary>A library shortcut's LIVE count as its own 11-DIP component (W3-A2): the relation's publish signal
+        /// is subscribed inside a <c>UseComputed</c> whose value is <see cref="ShortcutCount.Stamp"/> — scope epoch,
+        /// edge state, total — so a membership answer that left the number alone resolves the memo EQUAL and renders
+        /// nothing; only a moved count (a like, a save, a page landing) re-renders this badge, and never its row. Keyed by
+        /// kind: the route row it sits in is keyed by its route, so a slot recycling onto another shortcut remounts the
+        /// row and this with it — the kind captured in the factory can never go stale.</summary>
+        public static Element Live(LibraryEdgeKind kind)
+            => Embed.Comp(() => new CountHost(kind)) with { Key = ShortcutCount.KeyOf(kind) };
+
+        sealed class CountHost : Component
+        {
+            readonly LibraryEdgeKind _kind;
+            readonly Func<ShortcutCount.Stamp> _stamp;
+
+            public CountHost(LibraryEdgeKind kind)
+            {
+                _kind = kind;
+                _stamp = Stamp;
+            }
+
+            /// <summary>The gate's compute: the scope epoch FIRST (G-179 — the welcome switch re-points every table read
+            /// below), then the relation's publish counter (the wake), folded into what the badge paints.</summary>
+            ShortcutCount.Stamp Stamp()
+            {
+                uint epoch = Entities.ScopeEpoch.Value;
+                var relation = User.Relation(_kind);
+                _ = relation.Changed.Value;
+                var me = User.Me;
+                return new ShortcutCount.Stamp(epoch, me.State(_kind), relation.Total(me.Slot));
+            }
+
+            public override Element Render() => Badge(ShortcutCount.Shown(UseComputed(_stamp).Value));
+        }
+    }
+
+    /// <summary>The PURE half of the library-shortcut count badge (W3-A2): which relation a shortcut route counts, what
+    /// the badge shows for a relation state, and the stamp the live badge gates its render on. Public so the rules are
+    /// pinned by facts (<c>SidebarWiringTests</c>) without an engine.</summary>
+    public static class ShortcutCount
+    {
+        /// <summary>Exactly what the badge paints: an UNKNOWN state is the pending plate whatever the total says, any other
+        /// state is the total. The epoch is part of the value so a scope switch that lands on the same number still
+        /// re-points the memo at the new scope's signals (its read of <c>ScopeEpoch</c> is the wake; the equality is what
+        /// decides the render).</summary>
+        public readonly record struct Stamp(uint Epoch, EdgeState State, int Total);
+
+        /// <summary>The relation a shortcut route counts, or null for a route that carries no count (Local files, Home…).</summary>
+        public static LibraryEdgeKind? KindOf(string routeKey) => routeKey switch
+        {
+            "albums" => LibraryEdgeKind.SavedAlbums,
+            "artists" => LibraryEdgeKind.FollowedArtists,
+            "liked" => LibraryEdgeKind.Liked,
+            "podcasts" => LibraryEdgeKind.SavedShows,
+            _ => null,
+        };
+
+        /// <summary>The number the badge shows, or null for the pending plate: the server TOTAL while a relation pages in
+        /// (so the number never climbs), nothing while nobody has answered.</summary>
+        public static int? Shown(EdgeState state, int total) => state == EdgeState.Unknown ? null : total;
+
+        /// <inheritdoc cref="Shown(EdgeState, int)"/>
+        public static int? Shown(in Stamp stamp) => Shown(stamp.State, stamp.Total);
+
+        /// <summary>The live badge's reconciler key — one literal per kind, so a route row's trailing slot never allocates
+        /// a key string per render.</summary>
+        public static string KeyOf(LibraryEdgeKind kind) => kind switch
+        {
+            LibraryEdgeKind.SavedAlbums => "count:albums",
+            LibraryEdgeKind.FollowedArtists => "count:artists",
+            LibraryEdgeKind.Liked => "count:liked",
+            LibraryEdgeKind.SavedShows => "count:podcasts",
+            _ => "count:other",
         };
     }
 
@@ -1386,8 +1484,11 @@ public static partial class Sidebar
     // ══ 8. THE PANE'S TEXT, LOC AND GLYPH TABLES ═════════════════════════════════════════════════════════════════════
 
     /// <summary>The renderer's display rules: section titles, per-kind subtitles, the item join, icon fallbacks and the
-    /// "never render a blank row" degradations — split out so the row builders stay about LAYOUT.</summary>
-    internal static class PaneText
+    /// "never render a blank row" degradations — split out so the row builders stay about LAYOUT.
+    /// <para>Public, not internal: this assembly has no <c>InternalsVisibleTo</c> (see <c>Playlist.UI.cs</c>'s own
+    /// note on the same pattern), so <c>Wavee.Tests</c> can only pin <see cref="SubtitleOf"/>'s bug A1 contract — an
+    /// unknown COUNT renders no subtitle, never "0 songs" — by calling the real method.</para></summary>
+    public static class PaneText
     {
         /// <summary>The user's rename wins, then the template's key, then the kind's default (JumpBackIn follows its
         /// recents source).</summary>
@@ -1406,7 +1507,11 @@ public static partial class Sidebar
         /// publisher" · folder → "N items" · track → its artist · route → a concert's venue (its Creator).</summary>
         public static string? SubtitleOf(in SidebarLibraryEntry e) => e.Kind switch
         {
-            SidebarEntryKind.Playlist => Strings.Sidebar.SongCount(e.TrackCount),
+            // Bug A1: an unknown COUNT shows NO subtitle, never "0 songs" — a genuinely empty playlist (count
+            // landed, TrackCount == 0) is a real state and DOES say "0 songs". Gate on `CountKnown`, never on
+            // `IdentityKnown` (a route can land Identity while carrying no length at all, ListMetadataV2) and never
+            // on TrackCount itself, which cannot tell "not yet known" from "genuinely zero" apart.
+            SidebarEntryKind.Playlist => e.CountKnown ? Strings.Sidebar.SongCount(e.TrackCount) : null,
             // A LIBRARY album bills its first artist in FirstArtistName; a FEED album carries its one creator in Creator.
             SidebarEntryKind.Album => ArtistOf(in e) is { Length: > 0 } artist
                 ? Loc.Get(Strings.Sidebar.V3.Kind.Album) + " · " + artist
@@ -1415,7 +1520,11 @@ public static partial class Sidebar
             SidebarEntryKind.Show => e.Publisher.Length > 0
                 ? Loc.Get(Strings.Sidebar.V3.Kind.Show) + " · " + e.Publisher
                 : Loc.Get(Strings.Sidebar.V3.Kind.Show),
-            SidebarEntryKind.Folder => Strings.Sidebar.V3.ItemCount(e.ChildCount),
+            // Trap 5: an unknown item count (a Pending unlisted folder pin — the rootlist has never answered this
+            // session, SidebarProjection.ResolveFolderPinState) shows NO subtitle, never a confident "0 items". A
+            // folder WalkRootlist actually walked always has a real count by the time its row is emitted (patched
+            // at FolderEnd or the end-of-walk drain) and is always CountKnown.
+            SidebarEntryKind.Folder => e.CountKnown ? Strings.Sidebar.V3.ItemCount(e.ChildCount) : null,
             SidebarEntryKind.Track => e.Creator.Length > 0 ? e.Creator : null,
             SidebarEntryKind.AppRoute => e.Creator.Length > 0 ? e.Creator : null,
             _ => null,

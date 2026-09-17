@@ -128,6 +128,32 @@ public class EdgeDoorTests : IDisposable
     }
 
     [Fact]
+    public void An_edge_refused_before_the_session_authorised_is_re_planned_when_it_resumes()
+    {
+        // The row door's `Resume` covers parents too: a 401 on the rootlist at boot (asked before the session adopted
+        // its scope) is un-asked and recorded, and the Online transition asks it again — page and urgency kept.
+        Scope scope = SignedIn();
+        var provider = new DedupProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        var rootlist = scope.Edges.Rootlist;
+
+        Entities.EnsureEdge(FetchEdge.Rootlist, scope.MeSlot, priority: FetchPriority.Prefetch);
+        Fetch.Failed(provider.Seen[0].Ticket, 401, 0);
+        Assert.Equal(EdgeState.Failed, rootlist.Readiness(scope.MeSlot));
+        Assert.Single(provider.Seen);
+
+        Fetch.Resume();
+
+        Assert.Equal(2, provider.Seen.Count);
+        Assert.Equal(FetchSubject.Edge, provider.Seen[1].Subject);
+        Assert.Equal(FetchEdge.Rootlist, provider.Seen[1].Edge);
+        Assert.Equal(0, provider.Seen[1].Offset);
+        Assert.Equal(FetchPriority.Prefetch, provider.Seen[1].Priority);
+        Assert.Equal(EdgeState.Unknown, rootlist.Readiness(scope.MeSlot));  // asked again: loading, not failed
+        Assert.Equal(0, Fetch.Refused);
+    }
+
+    [Fact]
     public void A_retryable_failure_keeps_the_ask_and_waits_out_the_backoff()
     {
         Scope scope = SignedIn();

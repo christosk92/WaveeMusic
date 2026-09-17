@@ -14,6 +14,7 @@
 // Gap batch B5 added: the Premium gate (D12), the refusal verdicts (D24), the SignedOut effect (G-036/G-037), the
 // client-token refresh fold (G-035), `session.lastAccount` (G-031) and the sign-in request a resume-less login makes (G-030).
 
+using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
 
@@ -154,6 +155,29 @@ public class SessionStepTests
         // Offline, so a late answer from the closed epoch folds to nothing; a fresh Login starts again.
         Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.DealerOnline));
         Assert.Equal(Spotify.SessionEffects.ResolveHosts, Step(ref s, Spotify.SessionEventKind.Login, flag: true));
+    }
+
+    /// <summary>G-065: `--fake` presents as signed in through a PURE fact, not a login — no socket effect, no epoch
+    /// bump (nothing was ever in flight to abandon) and no credential-slot effect (the slot is never touched, so a
+    /// real credential on disk survives a `--fake` run untouched).</summary>
+    [Fact]
+    public void FakeOnline_presents_as_signed_in_with_no_effect_and_no_epoch_bump()
+    {
+        var s = default(Spotify.Session);
+        var e = new Spotify.SessionEvent(Spotify.SessionEventKind.FakeOnline,
+            Id: new StringId(1), Id2: new StringId(2), Id3: new StringId(3));
+        var fx = Spotify.Step(ref s, e);
+
+        Assert.Equal(Spotify.SessionEffects.None, fx);
+        Assert.Equal(Spotify.SessionPhase.Online, s.Phase);
+        Assert.True(s.IsOnline);
+        Assert.Equal(Spotify.SessionFault.None, s.Fault);
+        Assert.Equal(Spotify.Tier.Premium, s.Tier);          // the demo previews every gated surface (D12 does not apply)
+        Assert.True(s.HasCredential);                        // the auth fold (Shell.FoldAuth) must read this as signed in
+        Assert.Equal(0u, s.Epoch);                            // nothing was abandoned — this never opened a socket
+        Assert.Equal(new StringId(1), s.Username);
+        Assert.Equal(new StringId(2), s.Country);
+        Assert.Equal(new StringId(3), s.Product);
     }
 
     [Fact]
@@ -580,6 +604,21 @@ public class RequestFoldTests
     }
 
     [Fact]
+    public void The_radio_seed_route_keeps_the_seeds_colons_and_asks_for_json()
+    {
+        // G-251: the seed is our own `spotify:<kind>:<base62>` — the captured client sends the colons literally.
+        var r = Fold(Spotify.RequestKind.RadioSeed, "spotify:track:7idegBIikag5rTZP4WZihP");
+        Assert.Equal("/inspiredby-mix/v2/seed_to_playlist/spotify:track:7idegBIikag5rTZP4WZihP?response-format=json", r.Path);
+        Assert.Equal(Spotify.Verb.Get, r.Verb);
+        Assert.Equal(Spotify.ApiHost.Spclient, r.Host);
+        Assert.True(r.Headers.HasFlag(Spotify.HeaderSet.AcceptJson));
+        Assert.True(r.Headers.HasFlag(Spotify.HeaderSet.Bearer));
+        Assert.False(r.Headers.HasFlag(Spotify.HeaderSet.ContentJson));
+        Assert.Equal("/inspiredby-mix/v2/seed_to_playlist/spotify:artist:4Z8W4fKeB5YxbusRsdQVPb?response-format=json",
+            Fold(Spotify.RequestKind.RadioSeed, "spotify:artist:4Z8W4fKeB5YxbusRsdQVPb").Path);
+    }
+
+    [Fact]
     public void A_custom_request_is_taken_verbatim()
     {
         var session = default(Spotify.Session);
@@ -708,5 +747,17 @@ public class SessionCredentialTests : IDisposable
         Assert.Equal("someone", kept.Username);
         Assert.Equal(Spotify.SessionPhase.Offline, Spotify.Current.Phase);
         Assert.Equal(Spotify.SessionPhase.Offline, Spotify.Status.Value);
+    }
+}
+
+/// <summary>The AP channel's keep-alive arithmetic (Spotify.Session.cs §8): the read timeout must outlast at least two
+/// of the access point's pings, or an idle channel is torn down and the device flaps on Connect (2026-09-16).</summary>
+public class ApChannelRulesTests
+{
+    [Fact]
+    public void The_read_timeout_outlasts_two_missed_pings()
+    {
+        Assert.Equal(120_000, Spotify.ApPingIntervalMs);
+        Assert.True(Spotify.ApReadTimeoutMs >= 2 * Spotify.ApPingIntervalMs + 30_000, "timeout=" + Spotify.ApReadTimeoutMs);
     }
 }

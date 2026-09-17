@@ -55,6 +55,7 @@
 using System;
 using System.Collections.Generic;
 using FluentGpu.Foundation;
+using Google.Protobuf;
 using Wavee;
 using Xunit;
 
@@ -623,6 +624,20 @@ public class SidebarProjectionEdgeFacts
         return Entities.Show(EntityUri.Parse(uri));
     }
 
+    /// <summary>A track row carrying just what <c>Playlist.MosaicTiles</c> (Entities/Playlist.UI.cs) reads: its own
+    /// image and its album's slot (the dedupe key — two tracks off one album are one tile, never two). No album row is
+    /// staged; <c>AlbumUri</c> alone resolves a slot at commit (Entities/Track.cs:517), which is all the dedupe needs.</summary>
+    static Track StageTrack(Staging s, string uri, string albumUri, string? image)
+    {
+        ref var row = ref s.Tracks.Add();
+        row.Id = s.Text(uri);
+        row.AlbumUri = s.Text(albumUri);
+        if (image is not null) row.Image = s.Text(image);
+        row.Known = (uint)TrackFields.Identity;
+        row.Authority = Authority.Full;
+        return Entities.Track(EntityUri.Parse(uri));
+    }
+
     static void SetSavedAlbums(User me, params (Album Album, int AddedAt)[] saves)
     {
         var targets = new int[saves.Length];
@@ -677,12 +692,22 @@ public class SidebarProjectionEdgeFacts
     static (List<SidebarLibraryEntry> Rows, SidebarProjectionResult Result) Build(
         User me, SidebarEntryKindMask kinds, bool flatten = true, Func<string, bool>? expanded = null,
         IReadOnlyDictionary<string, long>? lastPlayed = null, SidebarFirstSeen? firstSeen = null,
-        SidebarRecency? recency = null)
+        SidebarRecency? recency = null, bool ensureIdentity = false)
     {
         var into = new List<SidebarLibraryEntry>();
         var r = SidebarProjection.Build(into, in me, kinds, firstSeen ?? new SidebarFirstSeen(() => 1_000_000L),
-            recency, includeFolderChildren: flatten, isFolderExpanded: expanded, lastPlayed: lastPlayed);
+            recency, includeFolderChildren: flatten, isFolderExpanded: expanded, lastPlayed: lastPlayed,
+            ensureIdentity: ensureIdentity);
         return (into, r);
+    }
+
+    /// <summary>A playlist row staged with NO field group known yet — <c>StagePlaylist</c> always marks Identity, so
+    /// Bug H's "has this row's identity landed" facts need a row that genuinely has not answered.</summary>
+    static Playlist StageColdPlaylist(Staging s, string uri)
+    {
+        ref var row = ref s.Playlists.Add();
+        row.Id = s.Text(uri);
+        return Entities.Playlist(EntityUri.Parse(uri));
     }
 
     static string[] Names(IReadOnlyList<SidebarLibraryEntry> l)
@@ -695,7 +720,7 @@ public class SidebarProjectionEdgeFacts
     // ── per-kind field derivation ────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Playlist_DerivesIdOwnerAndCount_AndItsCoverlessMosaicIsAGap()
+    public void Playlist_DerivesIdOwnerAndCount_AndItsOwnCoverAlwaysWinsOverAMosaic()
     {
         TestScope.Fresh();
         var s = Staging.Rent();
@@ -722,10 +747,114 @@ public class SidebarProjectionEdgeFacts
         Assert.True(e.IsOwner);
         Assert.Equal("pl:spotify:playlist:p1", e.RouteKey);
         Assert.Equal("spotify:image:cover1", Entities.Strings.Resolve(e.Cover));
-        // GAP (see Sidebar.cs's own comment above SidebarProjection): 0.2.9's cover-less 2x2 mosaic was built from
-        // the playlist's OWN track covers (PlaylistSummary.MosaicTiles); Entities has no equivalent, so a playlist
-        // row's MosaicTiles is unconditionally null now, cover or no cover.
+        // G-059 (fixed): a playlist with its OWN cover never pays for the track walk — MosaicTiles stays null and
+        // Cover.Art (Sidebar.UI.Rows.cs) draws e.Cover instead. See the CoverlessPlaylist_* facts below for the
+        // cover-less arm.
         Assert.Null(e.MosaicTiles);
+    }
+
+    // ── G-059: a cover-less playlist's own 2×2 mosaic ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void CoverlessPlaylist_MosaicIsTheFirstFourDistinctTrackCovers_InMembershipOrder()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:mix", "Roadtrip", null, 0, PlaylistCaps.None);   // no image
+        var t1 = StageTrack(s, "spotify:track:t1", "spotify:album:a1", "spotify:image:cover1");
+        var t2 = StageTrack(s, "spotify:track:t2", "spotify:album:a2", "spotify:image:cover2");
+        // Two tracks off the SAME album: one tile, not two (the detail page's own dedupe, Playlist.UI.cs:104).
+        var t2b = StageTrack(s, "spotify:track:t2b", "spotify:album:a2", "spotify:image:cover2b");
+        var t3 = StageTrack(s, "spotify:track:t3", "spotify:album:a3", "spotify:image:cover3");
+        var t4 = StageTrack(s, "spotify:track:t4", "spotify:album:a4", "spotify:image:cover4");
+        var t5 = StageTrack(s, "spotify:track:t5", "spotify:album:a5", "spotify:image:cover5");   // a 5th — never reached
+        TestScope.CommitAndPublish(s);
+        p.ApplyMembership([t1.Slot, t2.Slot, t2b.Slot, t3.Slot, t4.Slot, t5.Slot], default);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree);
+        var e = Assert.Single(rows);
+        Assert.True(e.Cover.IsEmpty);
+        Assert.NotNull(e.MosaicTiles);
+        var tiles = e.MosaicTiles!;
+        Assert.Equal(4, tiles.Count);
+        var urls = new string[tiles.Count];
+        for (int i = 0; i < tiles.Count; i++) urls[i] = Entities.Strings.Resolve(tiles[i]);
+        Assert.Equal(
+            new[] { "spotify:image:cover1", "spotify:image:cover2", "spotify:image:cover3", "spotify:image:cover4" },
+            urls);
+    }
+
+    [Fact]
+    public void CoverlessPlaylist_WithFewerThanFourCoveredTracks_KeepsThePartialMosaic()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:duo", "Duo", null, 0, PlaylistCaps.None);
+        var t1 = StageTrack(s, "spotify:track:d1", "spotify:album:d1", "spotify:image:duo1");
+        var t2 = StageTrack(s, "spotify:track:d2", "spotify:album:d2", "spotify:image:duo2");
+        TestScope.CommitAndPublish(s);
+        p.ApplyMembership([t1.Slot, t2.Slot], default);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree);
+        var row = Assert.Single(rows);
+        Assert.NotNull(row.MosaicTiles);
+        var tiles = row.MosaicTiles!;
+        // Cover.Art (Sidebar.UI.Rows.cs) takes tile 0 as a single cover below 4 — same partial shape the folder
+        // mosaic already produced, so this row lands on the exact same rendering branch.
+        Assert.Equal(2, tiles.Count);
+        Assert.Equal("spotify:image:duo1", Entities.Strings.Resolve(tiles[0]));
+    }
+
+    [Fact]
+    public void CoverlessPlaylist_WithTracksButNoCoversYet_MosaicStaysNull()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:blank", "Blank", null, 0, PlaylistCaps.None);
+        var t1 = StageTrack(s, "spotify:track:n1", "spotify:album:n1", image: null);
+        var t2 = StageTrack(s, "spotify:track:n2", "spotify:album:n2", image: null);
+        TestScope.CommitAndPublish(s);
+        p.ApplyMembership([t1.Slot, t2.Slot], default);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree);
+        // Fewer than one cover known ⇒ null, so the row falls back to the neutral placeholder tile rather than an
+        // empty mosaic array.
+        Assert.Null(Assert.Single(rows).MosaicTiles);
+    }
+
+    [Fact]
+    public void CoverlessPlaylist_TracksNotLoadedYet_MosaicStaysNullUntilTheyLand()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:pending", "Pending", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);   // the PlaylistTracks edge is untouched: EdgeState.Unknown
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        var (before, _) = Build(me, SidebarEntryKindMask.PlaylistTree);
+        // Not "no cover known" — "not asked yet": a premature null-tiles walk must not run, or it would settle on
+        // an empty mosaic before the tracks edge has even been fetched.
+        Assert.Null(Assert.Single(before).MosaicTiles);
+
+        var s2 = Staging.Rent();
+        var t1 = StageTrack(s2, "spotify:track:late1", "spotify:album:late1", "spotify:image:late1");
+        var t2 = StageTrack(s2, "spotify:track:late2", "spotify:album:late2", "spotify:image:late2");
+        TestScope.CommitAndPublish(s2);
+        p.ApplyMembership([t1.Slot, t2.Slot], default);
+
+        var (after, _) = Build(me, SidebarEntryKindMask.PlaylistTree);
+        Assert.NotNull(Assert.Single(after).MosaicTiles);
     }
 
     [Fact]
@@ -1087,10 +1216,10 @@ public class SidebarProjectionEdgeFacts
     }
 
     // ── SortStamp — an edge's AddedAt of 0 means "never dated": AddedAtMs stays 0 and the sort stamp falls back to
-    //    the local first-seen stamp; any other value converts through Store.ToUnix.
+    //    the local first-seen stamp; any other value is unix seconds, scaled to ms.
 
     [Fact]
-    public void SortStamp_ForASavedAlbum_ReflectsTheEdgesAddedAt_ViaStoreToUnix()
+    public void SortStamp_ForASavedAlbum_ReflectsTheEdgesAddedAt_InUnixSeconds()
     {
         TestScope.Fresh();
         var s = Staging.Rent();
@@ -1103,7 +1232,7 @@ public class SidebarProjectionEdgeFacts
 
         var (rows, _) = Build(me, SidebarEntryKindMask.Album);
         var e = Assert.Single(rows);
-        Assert.Equal(Store.ToUnix(12_345) * 1000L, e.AddedAtMs);
+        Assert.Equal(12_345L * 1000L, e.AddedAtMs);
         Assert.Equal(e.AddedAtMs, e.SortStamp);
     }
 
@@ -1122,6 +1251,748 @@ public class SidebarProjectionEdgeFacts
         Assert.Equal(0L, rows[0].AddedAtMs);
         Assert.Equal(1_000_000L, rows[0].SortStamp);       // the Build helper's first-seen clock
         Assert.Equal(1, r.NewFirstSeenStamps);
+    }
+
+    // ── Bug H: IdentityKnown + the `ensureIdentity` gate ────────────────────────────────────────────────────────────
+    //
+    // Pinned/library rows painted "0 songs" and a grey tile until the user opened the playlist's own page, because
+    // WalkRootlist read TrackCount/ImageId with no Entities.Ensure. These facts drive the REAL fix over REAL staged
+    // rows: `IdentityKnown` on the emitted entry (never inferred from TrackCount == 0 — a genuinely empty playlist
+    // must still say "0 songs"), and `ensureIdentity` — the ONLY caller-controlled bit that may fire the ask, so a
+    // structural full/tree walk (`includeFolderChildren:true`) never warms a whole rootlist's identity by accident.
+    // `Table.Touched` is the observable proof a fetch was actually queued (`Entities.Ensure` stamps it before
+    // planning the batch) — the same technique EdgeDoorTests/FetchTests use, without needing a registered provider:
+    // `Fetch.Pump()` silently skips undispatchable batches (Fetch.cs's `s_providers[...] is null` guard).
+
+    [Fact]
+    public void Playlist_WithLandedIdentity_IsStampedIdentityKnown()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:known", "Known", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+        Assert.True(Assert.Single(rows).IdentityKnown);
+    }
+
+    [Fact]
+    public void Playlist_WithUnknownIdentity_IsNotStampedIdentityKnown()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StageColdPlaylist(s, "spotify:playlist:cold");
+        TestScope.CommitAndPublish(s);
+        Assert.False(p.Knows(PlaylistFields.Identity));
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+        Assert.False(Assert.Single(rows).IdentityKnown);
+    }
+
+    // OBSERVABLE: `Asked`, not `Touched`. `Entities.Ensure` sets `Touched[slot] = Entities.Now` (Entities.cs:1913)
+    // and so does `Alloc` (:1036) — and `Now` does not advance inside a test, so a before/after compare on it is
+    // ALWAYS equal: the positive facts could never pass and the negative ones passed vacuously. `Fetch.cs:426`
+    // (`table.Asked[slot] |= groups`) is what a plan actually marks, and it starts at 0 on a cold row.
+    [Fact]
+    public void EnsureIdentity_True_AsksForAVisiblePlaylistsIdentity_WhenItHasNotLandedYet()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StageColdPlaylist(s, "spotify:playlist:cold");
+        TestScope.CommitAndPublish(s);
+        uint before = Entities.Current.Playlists.Asked[p.Slot];
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+
+        Assert.NotEqual(before, Entities.Current.Playlists.Asked[p.Slot]);
+    }
+
+    /// <summary>The structural full/tree passes (`Sidebar.Host.Rebuild`'s `build.All`/`build.Tree`) call `Build` with
+    /// `ensureIdentity` left at its default false — this is the fact that guards against ever flipping that default,
+    /// which would ask for a whole hundreds-deep rootlist's identity on every rebuild.</summary>
+    [Fact]
+    public void EnsureIdentity_DefaultsToFalse_AndAsksForNothing()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StageColdPlaylist(s, "spotify:playlist:cold");
+        TestScope.CommitAndPublish(s);
+        uint before = Entities.Current.Playlists.Asked[p.Slot];
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        Build(me, SidebarEntryKindMask.PlaylistTree);   // ensureIdentity not passed
+
+        Assert.Equal(before, Entities.Current.Playlists.Asked[p.Slot]);
+    }
+
+    /// <summary>A row hidden inside a COLLAPSED folder must never be asked for, even when `ensureIdentity` is true —
+    /// the one thing that keeps a large rootlist cheap. `flatten: false` + no `expanded` predicate reproduces the
+    /// real "published buffer" pass over a folder nobody opened.</summary>
+    [Fact]
+    public void EnsureIdentity_NeverAsksForARowInsideACollapsedFolder()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var inner = StageColdPlaylist(s, "spotify:playlist:hidden");
+        TestScope.CommitAndPublish(s);
+        uint before = Entities.Current.Playlists.Asked[inner.Slot];
+
+        var me = Me();
+        SetRootlist(me,
+            FolderStart(position: 1, depth: 0, name: "Closed"),
+            Item(inner, depth: 1),
+            FolderEnd(depth: 0));
+
+        // flatten:false + expanded:null ⇒ the folder is collapsed, exactly like the real buffer build when nobody
+        // opened it.
+        Build(me, SidebarEntryKindMask.PlaylistTree, flatten: false, expanded: null, ensureIdentity: true);
+
+        Assert.Equal(before, Entities.Current.Playlists.Asked[inner.Slot]);
+    }
+
+    [Fact]
+    public void EnsureIdentity_AsksForARowInsideAnExpandedFolder()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var inner = StageColdPlaylist(s, "spotify:playlist:open-child");
+        TestScope.CommitAndPublish(s);
+        uint before = Entities.Current.Playlists.Asked[inner.Slot];
+
+        var me = Me();
+        SetRootlist(me,
+            FolderStart(position: 1, depth: 0, name: "Open", hex: "aa"),
+            Item(inner, depth: 1),
+            FolderEnd(depth: 0));
+
+        Build(me, SidebarEntryKindMask.PlaylistTree, flatten: false, expanded: id => id == "aa", ensureIdentity: true);
+
+        Assert.NotEqual(before, Entities.Current.Playlists.Asked[inner.Slot]);
+    }
+
+    /// <summary>Bug H's membership half: a cover-less row's PlaylistTracks edge is ensured too, but only while it is
+    /// genuinely unknown — a fully-loaded membership that simply found no covers must never re-ask.</summary>
+    [Fact]
+    public void EnsureIdentity_AsksForACoverlessRowsMembership_OnlyWhileItIsUnknown()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:coverless", "Coverless", null, 0, PlaylistCaps.None);   // no image
+        TestScope.CommitAndPublish(s);
+        Assert.Equal(EdgeState.Unknown, p.MembershipState);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        Assert.False(Entities.Current.Edges.PlaylistTracks.WasAsked(p.Slot, 0));
+        Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+        // `WasAsked` (the planner's own dedupe ledger) is what actually flips on a plan — `State` stays Unknown
+        // until a real answer lands, which no test here waits for (no provider is registered).
+        Assert.True(Entities.Current.Edges.PlaylistTracks.WasAsked(p.Slot, 0));
+    }
+
+    /// <summary>Bug A1: a COVERED row is no longer exempt from the `PlaylistTracks` ask — the count needs the same
+    /// answer a cover-less row's mosaic does, and `StagePlaylist` never marks `PlaylistFields.TrackCount` known (it
+    /// stages Identity+Capabilities only, exactly the shape a real ListMetadataV2 answer leaves). This replaces the
+    /// old "never asked — it has its own cover" fact, whose premise (a cover implies nothing is owed) never held for
+    /// the count.</summary>
+    [Fact]
+    public void EnsureIdentity_AsksAnUncountedCoveredRowsTracks_ForTheCountAlone()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:covered", "Covered", null, 0, PlaylistCaps.None,
+            image: "spotify:image:cover");
+        TestScope.CommitAndPublish(s);
+        Assert.False(p.Knows(PlaylistFields.TrackCount));
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+        Assert.True(Entities.Current.Edges.PlaylistTracks.WasAsked(p.Slot, 0));   // asked anyway — for the count
+    }
+
+    /// <summary>The positive control for the fact above: a covered row whose count IS already known (the
+    /// `PlaylistFields.TrackCount` bit, bug A1's real signal) is never re-asked — `ShouldEnsureCount` and
+    /// `ShouldEnsureMembership` both refuse it.</summary>
+    [Fact]
+    public void EnsureIdentity_NeverAsksAFullyKnownCoveredRows_Tracks()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        ref var row = ref s.Playlists.Add();
+        row.Id = s.Text("spotify:playlist:covered-counted");
+        row.Title = s.Text("Covered Counted");
+        row.Image = s.Text("spotify:image:cover");
+        row.TrackCount = 7;
+        row.Known = (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities | PlaylistFields.TrackCount);
+        row.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+        var p = Entities.Playlist(EntityUri.Parse("spotify:playlist:covered-counted"));
+        Assert.True(p.Knows(PlaylistFields.TrackCount));
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+        Assert.False(Entities.Current.Edges.PlaylistTracks.WasAsked(p.Slot, 0));
+    }
+
+    // ── the mosaic warm: the leading member tracks' album + image, once membership has landed ────────────────────
+    //
+    // `Decode.PlaylistRevision` lands a membership as BARE uri-only track slots (Item(): field 1 = the uri, nothing
+    // else), so a cover-less playlist's tiles have nothing to read until each leading track's own row answers. The
+    // rail used to leave that to the playlist PAGE (`DemandRows`' TrackFields.Row ask) — an empty tile until the page
+    // had been opened once, every launch. These facts pin the projection's own bounded ask.
+
+    /// <summary>A cover-less visible row whose membership HAS landed asks the first <see cref="SidebarProjection.MosaicTrackPrefix"/>
+    /// member tracks for <see cref="SidebarProjection.MosaicTrackFields"/> — and nothing past that prefix. The
+    /// membership edge itself is NOT re-asked: it already answered.</summary>
+    [Fact]
+    public void EnsureIdentity_WarmsTheLeadingMemberTracksAlbumAndImage_OnceACoverlessRowsMembershipLanded()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:bare", "Bare", null, 0, PlaylistCaps.None);   // no image
+        TestScope.CommitAndPublish(s);
+        var members = BareTracks("spotify:track:bare", SidebarProjection.MosaicTrackPrefix + 2);
+        p.ApplyMembership(members, default);
+        Assert.Equal(EdgeState.Complete, p.MembershipState);
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+        Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+
+        var tracks = Entities.Current.Tracks;
+        uint want = (uint)SidebarProjection.MosaicTrackFields;
+        for (int i = 0; i < members.Length; i++)
+        {
+            bool inPrefix = i < SidebarProjection.MosaicTrackPrefix;
+            Assert.Equal(inPrefix ? want : 0u, tracks.Asked[members[i]] & want);
+        }
+        Assert.False(Entities.Current.Edges.PlaylistTracks.WasAsked(p.Slot, 0));
+    }
+
+    /// <summary>The two gates the warm shares with every other projection ask: a row with its own cover never pays for
+    /// the track walk, and a structural (non-visible) pass asks for nothing.</summary>
+    [Fact]
+    public void EnsureIdentity_NeverWarmsMosaicTracks_ForACoveredRow_OrFromAStructuralPass()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var covered = StagePlaylist(s, "spotify:playlist:covered-bare", "Covered", null, 0, PlaylistCaps.None,
+            image: "spotify:image:cover");
+        var coverless = StagePlaylist(s, "spotify:playlist:coverless-bare", "Coverless", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+        var coveredMembers = BareTracks("spotify:track:cb", 3);
+        var coverlessMembers = BareTracks("spotify:track:clb", 3);
+        covered.ApplyMembership(coveredMembers, default);
+        coverless.ApplyMembership(coverlessMembers, default);
+
+        var me = Me();
+        SetRootlist(me, Item(covered, depth: 0), Item(coverless, depth: 0));
+        var tracks = Entities.Current.Tracks;
+        uint want = (uint)SidebarProjection.MosaicTrackFields;
+
+        Build(me, SidebarEntryKindMask.PlaylistTree);   // ensureIdentity defaults to false: the structural passes
+        foreach (int t in coverlessMembers) Assert.Equal(0u, tracks.Asked[t] & want);
+
+        Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+        foreach (int t in coveredMembers) Assert.Equal(0u, tracks.Asked[t] & want);
+        foreach (int t in coverlessMembers) Assert.Equal(want, tracks.Asked[t] & want);
+    }
+
+    /// <summary>A full mosaic (four distinct covers already in hand) asks for nothing more — the bare tracks behind
+    /// it stay unasked — and, short of four, only the rows that do not yet know album+image are asked (a track that
+    /// answered, from disk or the wire, is never re-asked).</summary>
+    [Fact]
+    public void EnsureIdentity_MosaicWarm_SkipsKnownTracks_AndStopsOnceFourTilesAreInHand()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var full = StagePlaylist(s, "spotify:playlist:full-mosaic", "Full", null, 0, PlaylistCaps.None);
+        var half = StagePlaylist(s, "spotify:playlist:half-mosaic", "Half", null, 0, PlaylistCaps.None);
+        var fullKnown = new int[4];
+        for (int i = 0; i < 4; i++)
+            fullKnown[i] = StageTrack(s, "spotify:track:fk" + i, "spotify:album:fk" + i, "spotify:image:fk" + i).Slot;
+        int halfKnown = StageTrack(s, "spotify:track:hk", "spotify:album:hk", "spotify:image:hk").Slot;
+        TestScope.CommitAndPublish(s);
+        var fullBare = BareTracks("spotify:track:fb", 2);
+        var halfBare = BareTracks("spotify:track:hb", 2);
+        full.ApplyMembership([.. fullKnown, .. fullBare], default);
+        half.ApplyMembership([halfKnown, .. halfBare], default);
+
+        var me = Me();
+        SetRootlist(me, Item(full, depth: 0), Item(half, depth: 0));
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+        Assert.Equal(4, rows[0].MosaicTiles!.Count);
+        Assert.Single(rows[1].MosaicTiles!);
+
+        var tracks = Entities.Current.Tracks;
+        uint want = (uint)SidebarProjection.MosaicTrackFields;
+        foreach (int t in fullBare) Assert.Equal(0u, tracks.Asked[t] & want);      // four tiles: settled
+        Assert.Equal(0u, tracks.Asked[halfKnown] & want);                          // already knows both
+        foreach (int t in halfBare) Assert.Equal(want, tracks.Asked[t] & want);    // the ones the tiles still need
+    }
+
+    /// <summary>Bare uri-only track slots — the exact shape a `PlaylistRevision` membership answer leaves behind: a
+    /// slot allocated for the uri, no field group known, nothing asked.</summary>
+    static int[] BareTracks(string uriPrefix, int count)
+    {
+        var slots = new int[count];
+        for (int i = 0; i < count; i++)
+        {
+            var t = Entities.Track(EntityUri.Parse(uriPrefix + i));
+            Assert.False(t.Knows(SidebarProjection.MosaicTrackFields));
+            slots[i] = t.Slot;
+        }
+        return slots;
+    }
+
+    /// <summary>THE USER'S ACTUAL STATE (bug A1): `StagePlaylist` marks Identity+Capabilities known — exactly what a
+    /// ListMetadataV2 answer leaves — but never `PlaylistFields.TrackCount`, because that route carries no length.
+    /// The emitted row must carry `IdentityKnown: true` and `CountKnown: false`, never inferring the second from the
+    /// first.</summary>
+    [Fact]
+    public void Playlist_WithLandedIdentityButNoLength_IsNotStampedCountKnown()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:thin", "Thin", null, 43, PlaylistCaps.None,
+            image: "spotify:image:cover");
+        TestScope.CommitAndPublish(s);
+        Assert.True(p.Knows(PlaylistFields.Identity));
+        Assert.False(p.Knows(PlaylistFields.TrackCount));
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree);
+        var e = Assert.Single(rows);
+        Assert.True(e.IdentityKnown);
+        Assert.False(e.CountKnown);
+    }
+
+    /// <summary>The real decoders, not the `StagePlaylist` shortcut: a PlaylistRead-shaped answer
+    /// (`Spotify.Decode.PlaylistRevision`, the SelectedListContent shape a real `contents` fetch decodes) marks the
+    /// count known because it carries the wire's `length` field; a ListMetadataV2-shaped answer (ext kind 205,
+    /// `Spotify.Decode.ListMetadataV2`) never does, because that proto has no length field at all
+    /// (Protos/list_metadata_v2.proto). Staged through the same Staging/TestScope pipeline `DecodeTests.cs` uses.</summary>
+    [Fact]
+    public void ARealPlaylistReadAnswer_MarksTheCountKnown_AListMetadataV2AnswerNever_Does()
+    {
+        TestScope.Fresh();
+        string uri = "spotify:playlist:full-read";
+
+        var full = new Wavee.Protocol.Playlist.SelectedListContent
+        {
+            Length = 43,
+            Attributes = new Wavee.Protocol.Playlist.ListAttributes { Name = "Full Read" },
+            Contents = new Wavee.Protocol.Playlist.ListItems { Pos = 0, Truncated = false },
+        }.ToByteArray();
+        var s1 = Staging.Rent();
+        Spotify.Decode.PlaylistRevision(full, System.Text.Encoding.UTF8.GetBytes(uri), s1);
+        TestScope.CommitAndPublish(s1);
+
+        var p = Entities.Playlist(EntityUri.Parse(uri));
+        Assert.True(p.Knows(PlaylistFields.TrackCount));
+        Assert.Equal(43, p.TrackCount);
+
+        TestScope.Fresh();
+        string uri2 = "spotify:playlist:thin-meta";
+        var meta = new Wavee.Protocol.ExtendedMetadata.ListMetadataV2 { Name = "Thin Meta" };
+        var s2 = Staging.Rent();
+        Spotify.Decode.ListMetadataV2(meta.ToByteArray(), System.Text.Encoding.UTF8.GetBytes(uri2), s2);
+        TestScope.CommitAndPublish(s2);
+
+        var p2 = Entities.Playlist(EntityUri.Parse(uri2));
+        Assert.True(p2.Knows(PlaylistFields.Identity));
+        Assert.False(p2.Knows(PlaylistFields.TrackCount));
+    }
+
+    /// <summary>THE REGRESSION (library.db evidence, 2026-09-15): "Eurodance Mix" — a real 50-track, Spotify-made
+    /// mix with cover art — persisted with `track_count=0` and the `PlaylistFields.TrackCount` bit SET. The culprit:
+    /// its PAGE re-asked the same playlist through the revision-gated `/diff` route
+    /// (`Spotify.Api.Library.ReadList`), which — when the delta cannot be expressed against the held base —
+    /// answers with `changes_require_resync: true` AND a `contents` block anyway; `DiffVerdict` (Spotify.Api.Library.cs)
+    /// reads that block exactly like a full read's, so `Decode.PlaylistRevision` saw a REAL `length: 0` field and,
+    /// before this fix, treated any `sawLength` as trustworthy — overwriting the correct 50 the sidebar's earlier
+    /// FULL read had already landed. Reproduces the exact shape: a trustworthy 50 lands first (the sidebar's ask),
+    /// then a resync-flagged, zero-length "page re-ask" answer for the SAME playlist must not move it.</summary>
+    [Fact]
+    public void AResyncFlaggedDiffAnswer_NeverOverwritesAnEstablishedCount_TheEurodanceShape()
+    {
+        TestScope.Fresh();
+        string uri = "spotify:playlist:eurodance";
+
+        var trustworthy = new Wavee.Protocol.Playlist.SelectedListContent
+        {
+            Length = 50,
+            Attributes = new Wavee.Protocol.Playlist.ListAttributes { Name = "Eurodance Mix" },
+            Contents = new Wavee.Protocol.Playlist.ListItems { Pos = 0, Truncated = false },
+        }.ToByteArray();
+        var s1 = Staging.Rent();
+        Spotify.Decode.PlaylistRevision(trustworthy, System.Text.Encoding.UTF8.GetBytes(uri), s1);
+        TestScope.CommitAndPublish(s1);
+
+        var p = Entities.Playlist(EntityUri.Parse(uri));
+        Assert.True(p.Knows(PlaylistFields.TrackCount));
+        Assert.Equal(50, p.TrackCount);
+
+        // The page's own re-ask: revision-gated, resync-flagged, `length: 0` — the shape `ReadList` hands to
+        // `Decode.PlaylistRevision` unchanged when `DiffVerdict` reads a `Contents` verdict off a diff response.
+        var resyncFlagged = new Wavee.Protocol.Playlist.SelectedListContent
+        {
+            Length = 0,
+            ChangesRequireResync = true,
+            Contents = new Wavee.Protocol.Playlist.ListItems { Pos = 0, Truncated = false },
+        }.ToByteArray();
+        var s2 = Staging.Rent();
+        Spotify.Decode.PlaylistRevision(resyncFlagged, System.Text.Encoding.UTF8.GetBytes(uri), s2);
+        TestScope.CommitAndPublish(s2);
+
+        Assert.Equal(50, p.TrackCount);            // never zeroed
+        Assert.True(p.Knows(PlaylistFields.TrackCount));   // the bit the first answer set is never cleared either
+    }
+
+    /// <summary>The same resync-flagged shape reaching a COLD row (no prior trustworthy answer): the count must
+    /// stay genuinely unknown, never a confident zero.</summary>
+    [Fact]
+    public void AResyncFlaggedDiffAnswer_OnAColdRow_LeavesTheCountUnknown()
+    {
+        TestScope.Fresh();
+        string uri = "spotify:playlist:cold-resync";
+
+        var resyncFlagged = new Wavee.Protocol.Playlist.SelectedListContent
+        {
+            Length = 0,
+            ChangesRequireResync = true,
+            Contents = new Wavee.Protocol.Playlist.ListItems { Pos = 0, Truncated = false },
+        }.ToByteArray();
+        var s = Staging.Rent();
+        Spotify.Decode.PlaylistRevision(resyncFlagged, System.Text.Encoding.UTF8.GetBytes(uri), s);
+        TestScope.CommitAndPublish(s);
+
+        var p = Entities.Playlist(EntityUri.Parse(uri));
+        Assert.False(p.Knows(PlaylistFields.TrackCount));
+        Assert.Equal(0, p.TrackCount);
+    }
+
+    // The Load-time heal for a persisted corrupted zero (PlaylistShape.Load masking the TrackCount bit whenever the
+    // stored count is 0) needs a REAL Store round trip (sqlite file, WriteBehind/Read, StoreTests.cs's own fixture
+    // shape) to mean anything — see PlaylistPersistenceTests.cs.
+
+    /// <summary>E3/Bug A1: the visible-row ask is BATCHED — every cold row in one walk gets its `Asked` bit flipped
+    /// from the SAME `Build` call, off one span-form `Entities.Ensure`, not one `Fetch.Plan` per row.</summary>
+    [Fact]
+    public void EnsureIdentity_BatchesTheAskAcrossMultipleColdRows_InOneWalk()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p1 = StageColdPlaylist(s, "spotify:playlist:cold1");
+        var p2 = StageColdPlaylist(s, "spotify:playlist:cold2");
+        var p3 = StageColdPlaylist(s, "spotify:playlist:cold3");
+        TestScope.CommitAndPublish(s);
+        uint b1 = Entities.Current.Playlists.Asked[p1.Slot];
+        uint b2 = Entities.Current.Playlists.Asked[p2.Slot];
+        uint b3 = Entities.Current.Playlists.Asked[p3.Slot];
+
+        var me = Me();
+        SetRootlist(me, Item(p1, depth: 0), Item(p2, depth: 0), Item(p3, depth: 0));
+
+        Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+
+        Assert.NotEqual(b1, Entities.Current.Playlists.Asked[p1.Slot]);
+        Assert.NotEqual(b2, Entities.Current.Playlists.Asked[p2.Slot]);
+        Assert.NotEqual(b3, Entities.Current.Playlists.Asked[p3.Slot]);
+    }
+
+    /// <summary>The count half of the same batching claim: every un-counted row's `PlaylistTracks` edge is asked
+    /// from the same `Build` call.</summary>
+    [Fact]
+    public void EnsureIdentity_BatchesTheCountAskAcrossMultipleUncountedRows_InOneWalk()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p1 = StagePlaylist(s, "spotify:playlist:u1", "U1", null, 0, PlaylistCaps.None, image: "spotify:image:1");
+        var p2 = StagePlaylist(s, "spotify:playlist:u2", "U2", null, 0, PlaylistCaps.None, image: "spotify:image:2");
+        TestScope.CommitAndPublish(s);
+        Assert.False(Entities.Current.Edges.PlaylistTracks.WasAsked(p1.Slot, 0));
+        Assert.False(Entities.Current.Edges.PlaylistTracks.WasAsked(p2.Slot, 0));
+
+        var me = Me();
+        SetRootlist(me, Item(p1, depth: 0), Item(p2, depth: 0));
+
+        Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+
+        Assert.True(Entities.Current.Edges.PlaylistTracks.WasAsked(p1.Slot, 0));
+        Assert.True(Entities.Current.Edges.PlaylistTracks.WasAsked(p2.Slot, 0));
+    }
+
+    /// <summary>Bug A3: a folder whose `spotify:end-group:` marker never arrives (a truncated answer, or the page
+    /// ceiling was hit mid-folder) must not show a confident "0 items" — it gets the count of what the walk actually
+    /// saw before the stream ran out, drained at the end of the walk exactly as a real FolderEnd would have patched
+    /// it.</summary>
+    [Fact]
+    public void AnUnclosedFolder_GetsItsWalkedChildCount_NeverAConfidentZero()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p1 = StagePlaylist(s, "spotify:playlist:c1", "C1", null, 0, PlaylistCaps.None);
+        var p2 = StagePlaylist(s, "spotify:playlist:c2", "C2", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        // No FolderEnd — the wire stream stops mid-folder.
+        SetRootlist(me,
+            FolderStart(position: 1, depth: 0, name: "Truncated"),
+            Item(p1, depth: 1),
+            Item(p2, depth: 1));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree);
+        var folder = Assert.Single(rows, r => r.Kind == SidebarEntryKind.Folder);
+        Assert.Equal(2, folder.ChildCount);
+        // The drained count is the honest count of what this answer carried — not a placeholder — so it is KNOWN,
+        // the same as a folder closed by a real FolderEnd (see the fact below).
+        Assert.True(folder.CountKnown);
+    }
+
+    /// <summary>Trap 5 follow-up: every folder WalkRootlist actually closes (a real `spotify:end-group:` marker)
+    /// carries a real, known count by the time its row is emitted — never left at the construction-time placeholder
+    /// `CountKnown: false`.</summary>
+    [Fact]
+    public void AClosedFolder_HasItsChildCountKnown()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p1 = StagePlaylist(s, "spotify:playlist:cf1", "CF1", null, 0, PlaylistCaps.None);
+        TestScope.CommitAndPublish(s);
+
+        var me = Me();
+        SetRootlist(me,
+            FolderStart(position: 1, depth: 0, name: "Closed", hex: "bb"),
+            Item(p1, depth: 1),
+            FolderEnd(depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree, flatten: false, expanded: id => id == "bb");
+        var folder = Assert.Single(rows, r => r.Kind == SidebarEntryKind.Folder);
+        Assert.Equal(1, folder.ChildCount);
+        Assert.True(folder.CountKnown);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── ENSURE PREDICATES — the pure half of Bug H's "ask only for visible rows" rule ────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarProjectionEnsurePredicateFacts
+{
+    [Fact]
+    public void ShouldEnsureIdentity_OnlyWhenTheCallerSaysSo_AndIdentityIsStillUnknown()
+    {
+        Assert.True(SidebarProjection.ShouldEnsureIdentity(ensureIdentity: true, identityKnown: false));
+        Assert.False(SidebarProjection.ShouldEnsureIdentity(ensureIdentity: true, identityKnown: true));
+        Assert.False(SidebarProjection.ShouldEnsureIdentity(ensureIdentity: false, identityKnown: false));
+        Assert.False(SidebarProjection.ShouldEnsureIdentity(ensureIdentity: false, identityKnown: true));
+    }
+
+    [Fact]
+    public void ShouldEnsureMembership_OnlyForACoverlessRowWithUnknownMembership()
+    {
+        Assert.True(SidebarProjection.ShouldEnsureMembership(ensureIdentity: true, hasCover: false, EdgeState.Unknown));
+        Assert.False(SidebarProjection.ShouldEnsureMembership(ensureIdentity: true, hasCover: true, EdgeState.Unknown));
+        Assert.False(SidebarProjection.ShouldEnsureMembership(ensureIdentity: true, hasCover: false, EdgeState.Complete));
+        Assert.False(SidebarProjection.ShouldEnsureMembership(ensureIdentity: false, hasCover: false, EdgeState.Unknown));
+    }
+
+    /// <summary>Bug A1: unlike <see cref="SidebarProjection.ShouldEnsureMembership"/>, the count is asked
+    /// regardless of cover — a COVERED row's subtitle needs the real count exactly as much as a cover-less row's
+    /// mosaic needs membership.</summary>
+    [Fact]
+    public void ShouldEnsureCount_RegardlessOfCover_OnlyWhileTheCountIsUnknownAndVisible()
+    {
+        Assert.True(SidebarProjection.ShouldEnsureCount(ensureIdentity: true, countKnown: false, EdgeState.Unknown));
+        Assert.False(SidebarProjection.ShouldEnsureCount(ensureIdentity: true, countKnown: true, EdgeState.Unknown));
+        Assert.False(SidebarProjection.ShouldEnsureCount(ensureIdentity: true, countKnown: false, EdgeState.Complete));
+        Assert.False(SidebarProjection.ShouldEnsureCount(ensureIdentity: false, countKnown: false, EdgeState.Unknown));
+    }
+
+    /// <summary>The mosaic warm's gate is the complement of <see cref="SidebarProjection.ShouldEnsureMembership"/>
+    /// in time: only once membership has landed (Partial or Complete — there are no member slots before), only for a
+    /// visible cover-less row, and only while the mosaic is short of four tiles.</summary>
+    [Fact]
+    public void ShouldWarmMosaicTracks_OnlyForAVisibleCoverlessRow_WhoseMembershipLanded_AndMosaicIsShort()
+    {
+        Assert.True(SidebarProjection.ShouldWarmMosaicTracks(ensureIdentity: true, hasCover: false, EdgeState.Complete, tileCount: 0));
+        Assert.True(SidebarProjection.ShouldWarmMosaicTracks(ensureIdentity: true, hasCover: false, EdgeState.Partial, tileCount: 3));
+        Assert.False(SidebarProjection.ShouldWarmMosaicTracks(ensureIdentity: true, hasCover: false, EdgeState.Complete, tileCount: 4));
+        Assert.False(SidebarProjection.ShouldWarmMosaicTracks(ensureIdentity: true, hasCover: false, EdgeState.Unknown, tileCount: 0));
+        Assert.False(SidebarProjection.ShouldWarmMosaicTracks(ensureIdentity: true, hasCover: true, EdgeState.Complete, tileCount: 0));
+        Assert.False(SidebarProjection.ShouldWarmMosaicTracks(ensureIdentity: false, hasCover: false, EdgeState.Complete, tileCount: 0));
+    }
+
+    /// <summary>Trap 5: rootlist Unknown (never answered this session — a cold launch, every time, since the
+    /// rootlist is network-only) means PENDING for an unresolved folder pin, never the confident Missing verdict.
+    /// Complete+absent is the only combination that earns Missing; found always wins regardless of rootlist state.</summary>
+    [Fact]
+    public void ResolveFolderPinState_PendingWhileUnknown_MissingOnlyOnceAnsweredAndAbsent()
+    {
+        Assert.Equal(SidebarPinFolderState.Pending,
+            SidebarProjection.ResolveFolderPinState(EdgeState.Unknown, foundInProjection: false));
+        Assert.Equal(SidebarPinFolderState.Missing,
+            SidebarProjection.ResolveFolderPinState(EdgeState.Complete, foundInProjection: false));
+        Assert.Equal(SidebarPinFolderState.Normal,
+            SidebarProjection.ResolveFolderPinState(EdgeState.Complete, foundInProjection: true));
+        // Found always wins, even while the rootlist relation itself is mid-page (Partial) or (in principle) Unknown —
+        // "we already have it" is never overridden by "we don't otherwise know yet".
+        Assert.Equal(SidebarPinFolderState.Normal,
+            SidebarProjection.ResolveFolderPinState(EdgeState.Unknown, foundInProjection: true));
+        Assert.Equal(SidebarPinFolderState.Missing,
+            SidebarProjection.ResolveFolderPinState(EdgeState.Partial, foundInProjection: false));
+    }
+
+    /// <summary>Trap 5, the pin-band TITLE half: a PIN (any resolvable kind — album/artist/show, not just folder)
+    /// whose Identity has not landed must not show the raw id/uri fallback as its title. Scoped to pins alone —
+    /// a non-pinned row's fallback is untouched by this predicate regardless of `identityKnown`.</summary>
+    [Fact]
+    public void ShouldShowUriFallbackTitle_NeverForAPendingPin_AlwaysForANonPinnedRow()
+    {
+        Assert.False(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: true, identityKnown: false));   // pending
+        Assert.True(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: true, identityKnown: true));     // known → normal
+        Assert.True(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: false, identityKnown: false));   // not a pin at all
+        Assert.True(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: false, identityKnown: true));
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── SUBTITLE — Bug A1: SidebarPaneText.SubtitleOf never paints "0 songs" for an unknown COUNT (PURE) ─────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// These facts construct the user's ACTUAL reported state: a playlist whose Identity landed off the cheap
+// ListMetadataV2 route (title, cover — `IdentityKnown: true`) but whose TrackCount was never real, because that
+// route carries no length at all (Spotify.Decode.cs's ListMetadataV2, ext kind 205). The deleted
+// `KnownIdentity_WithZeroTracks_StillSaysZeroSongs` enshrined exactly this bug: its premise, "identity known ⇒
+// count known", is false — see the handoff's trap 3.
+public class SidebarPaneTextSubtitleFacts
+{
+    static SidebarLibraryEntry Playlist(int trackCount, bool identityKnown, bool countKnown) =>
+        new("pl:spotify:playlist:x", SidebarEntryKind.Playlist, "spotify:playlist:x", "X", "Owner",
+            default, null, ChildCount: trackCount, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { IdentityKnown = identityKnown, CountKnown = countKnown };
+
+    [Fact]
+    public void UnknownIdentityAndCount_YieldsNoSubtitle_NeverZeroSongs()
+    {
+        var e = Playlist(trackCount: 0, identityKnown: false, countKnown: false);
+        Assert.Null(Sidebar.PaneText.SubtitleOf(in e));
+    }
+
+    /// <summary>THE USER'S ACTUAL STATE (bug A1): a row that HAS a cover and DOES show a title — Identity landed
+    /// off ListMetadataV2 — but whose count never did, because that route carries no length. Before the fix, the
+    /// old `IdentityKnown`-gated `SubtitleOf` read this exact state as "known, zero" and painted a confident
+    /// "0 songs" on a 43-track playlist. The subtitle must be OMITTED, never a zero.</summary>
+    [Fact]
+    public void IdentityKnown_ButCountNotKnown_YieldsNoSubtitle_NeverZeroSongs()
+    {
+        var e = Playlist(trackCount: 0, identityKnown: true, countKnown: false);
+        Assert.Null(Sidebar.PaneText.SubtitleOf(in e));
+    }
+
+    /// <summary>The genuinely-empty case: the COUNT has landed (off a real PlaylistRead answer, bug A1's
+    /// `PlaylistFields.TrackCount` bit), and the playlist really does have zero tracks. This is a real state and
+    /// must still say "0 songs" — the whole reason `CountKnown` exists instead of inferring unknown-ness from
+    /// `TrackCount == 0`.</summary>
+    [Fact]
+    public void CountKnown_WithZeroTracks_StillSaysZeroSongs()
+    {
+        var e = Playlist(trackCount: 0, identityKnown: true, countKnown: true);
+        Assert.Equal(Strings.Sidebar.SongCount(0), Sidebar.PaneText.SubtitleOf(in e));
+    }
+
+    [Fact]
+    public void CountKnown_WithARealCount_SaysTheRealCount()
+    {
+        var e = Playlist(trackCount: 42, identityKnown: true, countKnown: true);
+        Assert.Equal(Strings.Sidebar.SongCount(42), Sidebar.PaneText.SubtitleOf(in e));
+    }
+
+    /// <summary>A row whose count is unknown but that HAPPENS to carry a nonzero TrackCount (e.g. a stale value
+    /// left over from a previous session) still shows nothing — the gate is the bit, never the number.</summary>
+    [Fact]
+    public void UnknownCount_IsNeverInferredFromANonZeroTrackCount()
+    {
+        var e = Playlist(trackCount: 50, identityKnown: true, countKnown: false);
+        Assert.Null(Sidebar.PaneText.SubtitleOf(in e));
+    }
+
+    // ── FOLDER — Trap 5: SidebarPane's FolderRow (Sidebar.UI.Slot.cs) now renders its subtitle through THIS SAME
+    //    pure decision (`Subtitle = section.Opts.Subtitles ? PaneText.SubtitleOf(in entry) : null`), so driving the
+    //    folder branch here — not by reading Sidebar.UI.Slot.cs's source — pins the real, live rendering decision.
+
+    static SidebarLibraryEntry Folder(int childCount, bool countKnown) =>
+        new("folder:abc", SidebarEntryKind.Folder, "", "My Folder", "",
+            default, null, ChildCount: childCount, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { CountKnown = countKnown };
+
+    /// <summary>The pending case (bug A follow-up, trap 5): a folder whose count is not known — a Pending unlisted
+    /// pin, before the rootlist has answered this session — shows no subtitle, never a confident "0 items".</summary>
+    [Fact]
+    public void UnknownFolderCount_YieldsNoSubtitle_NeverZeroItems()
+    {
+        var e = Folder(childCount: 0, countKnown: false);
+        Assert.Null(Sidebar.PaneText.SubtitleOf(in e));
+    }
+
+    [Fact]
+    public void KnownFolderCount_WithZeroItems_StillSaysZeroItems()
+    {
+        var e = Folder(childCount: 0, countKnown: true);
+        Assert.Equal(Strings.Sidebar.V3.ItemCount(0), Sidebar.PaneText.SubtitleOf(in e));
+    }
+
+    [Fact]
+    public void KnownFolderCount_WithARealCount_SaysTheRealCount()
+    {
+        var e = Folder(childCount: 4, countKnown: true);
+        Assert.Equal(Strings.Sidebar.V3.ItemCount(4), Sidebar.PaneText.SubtitleOf(in e));
+    }
+
+    /// <summary>End-to-end, through the real production seam: a Pending unlisted folder pin
+    /// (`SidebarBinderPipeline.ResolveUnlistedPin`, rootlist state Unknown) produces an entry whose subtitle —
+    /// via the SAME `PaneText.SubtitleOf` call `FolderRow` makes — is omitted, not "0 items".</summary>
+    [Fact]
+    public void APendingUnlistedFolderPin_RendersNoSubtitle()
+    {
+        var pin = new SidebarPin("folder:36405e1711f88d9c", SidebarEntryKind.Folder, "", "F", AddedAtMs: 1000);
+        var entry = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null, EdgeState.Unknown);
+
+        Assert.False(entry.Missing);
+        Assert.Null(Sidebar.PaneText.SubtitleOf(in entry));
+    }
+
+    /// <summary>The Missing case still carries no subtitle either (its row never reaches this decision in
+    /// production — `FolderRow` returns `MissingFolderRow` first — but the data itself must not lie if it ever did).</summary>
+    [Fact]
+    public void AMissingUnlistedFolderPin_AlsoCarriesNoKnownCount()
+    {
+        var pin = new SidebarPin("folder:36405e1711f88d9c", SidebarEntryKind.Folder, "", "F", AddedAtMs: 1000);
+        var entry = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null, EdgeState.Complete);
+
+        Assert.True(entry.Missing);
+        Assert.Null(Sidebar.PaneText.SubtitleOf(in entry));
     }
 }
 
@@ -1513,6 +2384,43 @@ public class SidebarBinderPipelineUnlistedPinFacts
         Assert.Equal(0, row.TrackCount);
     }
 
+    /// <summary>THE USER'S ACTUAL STATE (trap 5 follow-up): a pin the ylpin bridge minted with an empty cached
+    /// Name (the doc comment on `ResolveUnlistedPin` already names this: "the ylpin bridge mints every non-route
+    /// pin with Name = ''"), for a kind that has no hydration yet. The row must carry `IdentityKnown: false` — the
+    /// signal `ShouldShowUriFallbackTitle` reads to keep the renderer from falling back to a raw id/uri fragment —
+    /// never true just because the row exists.</summary>
+    [Fact]
+    public void AnUnnamedArtistPin_WithNoHydrationYet_IsNotStampedIdentityKnown()
+    {
+        var pin = new SidebarPin("artist:spotify:artist:3fMbdgg4jU18AjLCKBhRSm", SidebarEntryKind.Artist,
+            "spotify:artist:3fMbdgg4jU18AjLCKBhRSm", "", AddedAtMs: 1000);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null);
+
+        Assert.True(row.IsPinned);
+        Assert.Equal("", row.Name);
+        Assert.False(row.IdentityKnown);
+        Assert.False(SidebarProjection.ShouldShowUriFallbackTitle(row.IsPinned, row.IdentityKnown));
+    }
+
+    /// <summary>The positive control: once `ResolveLivePin` hydrates the SAME pin (Identity landed), the merged row
+    /// carries `IdentityKnown: true` and the renderer's uri fallback gate opens (though `Name` is real by then, so
+    /// the fallback is moot in practice — this pins the SIGNAL, not just the visible name).</summary>
+    [Fact]
+    public void AnUnnamedArtistPin_OnceHydrated_IsStampedIdentityKnown()
+    {
+        var pin = new SidebarPin("artist:spotify:artist:3fMbdgg4jU18AjLCKBhRSm", SidebarEntryKind.Artist,
+            "spotify:artist:3fMbdgg4jU18AjLCKBhRSm", "", AddedAtMs: 1000);
+        var hydrated = new SidebarLibraryEntry("", SidebarEntryKind.Artist, "", "Real Name", "", default, null,
+            ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: true, Flavor: SidebarPlaylistFlavor.None);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated);
+
+        Assert.True(row.IdentityKnown);
+        Assert.True(SidebarProjection.ShouldShowUriFallbackTitle(row.IsPinned, row.IdentityKnown));
+    }
+
     [Fact]
     public void OnceHydrated_ProjectsRealArtAndARealTrackCount()
     {
@@ -1559,6 +2467,36 @@ public class SidebarBinderPipelineUnlistedPinFacts
         Assert.Equal("36405e1711f88d9c", row.FolderId);
     }
 
+    /// <summary>Trap 5 follow-up: the rootlist is network-only, never persisted, so EVERY cold launch starts
+    /// <see cref="EdgeState.Unknown"/> — a pinned folder not yet found in the (not-yet-run) walk must render as
+    /// PENDING, never the confident "Not in your library on this device yet" text. The default (no
+    /// <c>rootlistState</c> passed) is what the OLD tests exercise and must stay Missing — this fact is the one
+    /// that pins the NEW, explicit-Unknown behaviour.</summary>
+    [Fact]
+    public void AFolderPin_WhileTheRootlistHasNeverAnswered_IsPendingNotMissing()
+    {
+        var pin = new SidebarPin("folder:36405e1711f88d9c", SidebarEntryKind.Folder, "", "F", AddedAtMs: 1000);
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null, EdgeState.Unknown);
+
+        Assert.True(row.IsPinned);
+        Assert.False(row.Missing);      // pending, not a confident negative
+        Assert.False(row.CountKnown);   // and no "0 items" either — the count is genuinely unknown too
+        Assert.Equal("36405e1711f88d9c", row.FolderId);
+    }
+
+    /// <summary>The positive control: once the rootlist HAS answered (Complete, or any non-Unknown state — a
+    /// Partial answer already says enough to trust an absence) and still does not carry the folder, Missing is the
+    /// honest, correct verdict.</summary>
+    [Fact]
+    public void AFolderPin_OnceTheRootlistHasAnswered_IsMissing()
+    {
+        var pin = new SidebarPin("folder:36405e1711f88d9c", SidebarEntryKind.Folder, "", "F", AddedAtMs: 1000);
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null, EdgeState.Complete);
+
+        Assert.True(row.Missing);
+        Assert.False(row.CountKnown);
+    }
+
     [Fact]
     public void APlaylistPin_IsNotMissing()
     {
@@ -1566,6 +2504,87 @@ public class SidebarBinderPipelineUnlistedPinFacts
             "Top Songs - South Korea", AddedAtMs: 1000);
         var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null);
         Assert.False(row.Missing);
+    }
+
+    [Fact]
+    public void OnceHydrated_TheEntityNamesAPinTheServerMintedNameless()
+    {
+        // The ylpin bridge mints every non-route pin with Name = "" — the entity is what names the row.
+        var pin = new SidebarPin("pl:spotify:playlist:korea", SidebarEntryKind.Playlist, "spotify:playlist:korea",
+            "", AddedAtMs: 1000);
+        var hydrated = new SidebarLibraryEntry("", SidebarEntryKind.Playlist, "", "Top Songs - South Korea", "Spotify",
+            default, null, ChildCount: 50, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated);
+
+        Assert.Equal("Top Songs - South Korea", row.Name);
+    }
+
+    [Fact]
+    public void TheHydrationOverlay_NeverBlanksACachedName()
+    {
+        var pin = new SidebarPin("pl:spotify:playlist:korea", SidebarEntryKind.Playlist, "spotify:playlist:korea",
+            "cached", AddedAtMs: 1000);
+        var hydrated = new SidebarLibraryEntry("", SidebarEntryKind.Playlist, "", "", "Spotify",
+            default, null, ChildCount: 50, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated);
+
+        Assert.Equal("cached", row.Name);
+    }
+
+    [Fact]
+    public void OnceHydrated_TheFirstArtistNameOverlays()
+    {
+        var pin = new SidebarPin("album:spotify:album:1", SidebarEntryKind.Album, "spotify:album:1", "Cupid",
+            AddedAtMs: 1000);
+        var hydrated = new SidebarLibraryEntry("", SidebarEntryKind.Album, "", "Cupid", "", default, null,
+            ChildCount: 10, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { FirstArtistName = "roti." };
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated);
+
+        Assert.Equal("roti.", row.FirstArtistName);
+    }
+
+    /// <summary>G-059: an unlisted pin's offline display cache never carries a mosaic (only its cover url, if any),
+    /// so a cover-less pinned playlist stayed a blank tile until the overlay actually forwarded ResolveLivePin's
+    /// fresh read — the field this fact would have caught missing from the `with` in ResolveUnlistedPin.</summary>
+    [Fact]
+    public void OnceHydrated_TheMosaicOverlays()
+    {
+        var pin = new SidebarPin("pl:spotify:playlist:korea", SidebarEntryKind.Playlist, "spotify:playlist:korea",
+            "Top Songs - South Korea", AddedAtMs: 1000);
+        var tiles = new List<StringId> { Entities.Strings.Intern("spotify:image:a"), Entities.Strings.Intern("spotify:image:b") };
+        var hydrated = new SidebarLibraryEntry("", SidebarEntryKind.Playlist, "", "", "Spotify", default, tiles,
+            ChildCount: 50, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated);
+
+        Assert.Same(tiles, row.MosaicTiles);
+    }
+
+    /// <summary>Bug A1: `CountKnown` is NOT hardcoded true the way `IdentityKnown` correctly is — `ResolveLivePin`
+    /// stamps the real <see cref="PlaylistFields.TrackCount"/> bit, and this overlay must forward it rather than
+    /// assume "hydrated ⇒ counted" the way the old code assumed "hydrated ⇒ identity known ⇒ counted".</summary>
+    [Fact]
+    public void OnceHydrated_ForwardsTheRealCountKnownBit_NeverHardcodedTrue()
+    {
+        var pin = new SidebarPin("pl:spotify:playlist:korea", SidebarEntryKind.Playlist, "spotify:playlist:korea",
+            "Top Songs - South Korea", AddedAtMs: 1000);
+        var hydratedButUncounted = new SidebarLibraryEntry("", SidebarEntryKind.Playlist, "", "", "Spotify",
+            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
+            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { IdentityKnown = true, CountKnown = false };
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydratedButUncounted);
+
+        Assert.True(row.IdentityKnown);
+        Assert.False(row.CountKnown);
     }
 }
 
@@ -1817,5 +2836,87 @@ public class SidebarBinderPipelineContributionFacts
         Assert.Equal(SidebarContributionAvailability.Missing, slices.AvailabilityOf("sec_unknown"));
         slices.Clear();
         Assert.Equal(0, slices.Count);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── FINGERPRINT (G-059) — the rebuild gate's content lane (SidebarLibraryFingerprint, Sidebar.cs) must wake a
+//    cover-less playlist's row when its MOSAIC-feeding edge lands, not just when the playlist's own row changes ─────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+[Collection(EntitiesCollection.Name)]
+public class SidebarLibraryFingerprintPlaylistTracksTests
+{
+    [Fact]
+    public void ACoverlessPlaylists_TracksLandingOnTheEdgeDirectly_MovesTheFingerprint()
+    {
+        TestScope.Fresh();
+        var p = SidebarWiringStage.StagePlaylist("spotify:playlist:coverless", "No Cover");
+        var me = SidebarWiringStage.Me();
+        SidebarWiringStage.SetRootlist(me, p);
+
+        long before = SidebarLibraryFingerprint.Of(in me, default);
+
+        // The REAL fetch path (Spotify.Api.Playlist.cs) writes the tracks edge DIRECTLY — it never calls
+        // Playlist.ApplyMembership/ApplyPage, so it never bumps the playlist row's own Table.Version. Only folding
+        // PlaylistTracks.Version(slot) in for a cover-less row (SidebarLibraryFingerprint.PlaylistRow) catches this;
+        // before the fix, `before` and the post-landing fold were EQUAL and the row never re-rendered its mosaic.
+        Entities.Current.Edges.PlaylistTracks.Replace(
+            p.Slot, ReadOnlySpan<int>.Empty, ReadOnlySpan<PlaylistTrackEdge>.Empty, EdgeState.Complete, 0);
+
+        Assert.NotEqual(before, SidebarLibraryFingerprint.Of(in me, default));
+    }
+
+    [Fact]
+    public void ACoveredPlaylists_TracksLandingOnTheEdgeDirectly_DoesNotMoveTheFingerprint()
+    {
+        // The fold only pays for the extra read on a row that actually NEEDS it (its mosaic never renders while the
+        // playlist has its own cover), so a covered playlist's tracks loading must not force a rebuild either.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        ref var row = ref s.Playlists.Add();
+        row.Id = s.Text("spotify:playlist:covered");
+        row.Title = s.Text("Has A Cover");
+        row.Image = s.Text("spotify:image:cover");
+        row.Caps = (byte)PlaylistCaps.CanView;
+        row.Known = (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities);
+        row.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+        var p = Entities.Playlist(EntityUri.Parse("spotify:playlist:covered"));
+        var me = SidebarWiringStage.Me();
+        SidebarWiringStage.SetRootlist(me, p);
+
+        long before = SidebarLibraryFingerprint.Of(in me, default);
+        Entities.Current.Edges.PlaylistTracks.Replace(
+            p.Slot, ReadOnlySpan<int>.Empty, ReadOnlySpan<PlaylistTrackEdge>.Empty, EdgeState.Complete, 0);
+
+        Assert.Equal(before, SidebarLibraryFingerprint.Of(in me, default));
+    }
+
+    /// <summary>Bug A2: the mosaic needs each member TRACK's own <c>AlbumSlot</c>/<c>ImageId</c>, which can land in a
+    /// LATER drain than the membership edge itself — the batched <c>TrackFields.Identity</c> ensure over bare
+    /// uri-only slots (WalkRootlist §5). The edge's own Version does not move for that (it already landed); only
+    /// folding the member TRACK ROWS' own versions into `PlaylistRow` catches a track's identity arriving after its
+    /// uri did.</summary>
+    [Fact]
+    public void ACoverlessPlaylists_AMemberTracksIdentityLandingLater_MovesTheFingerprint()
+    {
+        TestScope.Fresh();
+        var p = SidebarWiringStage.StagePlaylist("spotify:playlist:coverless2", "No Cover 2");
+        var me = SidebarWiringStage.Me();
+        SidebarWiringStage.SetRootlist(me, p);
+
+        // A bare, uri-only member track slot — exactly what the membership edge alone creates (the item decoder,
+        // Spotify.Decode.cs's PlaylistRevision, stages only the target uri: no title, no album, no image).
+        var track = Entities.Track(EntityUri.Parse("spotify:track:bare"));
+        Assert.False(track.Knows(TrackFields.Identity));
+        Entities.Current.Edges.PlaylistTracks.Replace(
+            p.Slot, new[] { track.Slot }, new PlaylistTrackEdge[1], EdgeState.Complete, 1);
+
+        long afterMembership = SidebarLibraryFingerprint.Of(in me, default);
+
+        // The track's OWN Identity lands later; the edge does not move for this — only the track row's Version does.
+        Entities.Current.Tracks.Bump(track.Slot, (uint)TrackFields.Identity);
+
+        Assert.NotEqual(afterMembership, SidebarLibraryFingerprint.Of(in me, default));
     }
 }

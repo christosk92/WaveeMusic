@@ -352,7 +352,19 @@ public sealed class EdgeTable<TEdge> : EdgeTableBase where TEdge : unmanaged
         int n = targets.Length;
         int end = offset + n;
         int length = _length[parent];
-        int needed = Math.Max(Math.Max(end, length), total);
+
+        // A TERMINAL page — one that reaches a STATED total — is authoritative about the list's real extent (D7): a
+        // shorter terminal answer than what is already stored means the rows past `end` are stale duplicates of a
+        // LONGER PREVIOUS answer for the same parent, not a later page that has not landed yet. `total == 0` ("nobody
+        // said") must never shrink — that would delete a legitimately landed later page on a multi-page list — so this
+        // guarded, terminal case is the only one allowed to drop anything.
+        bool terminal = total > 0 && end >= total;
+        bool shrinks = terminal && length > end;
+
+        // Re-derive the reserved extent from what the list will actually hold once this page lands, so a shrink does
+        // not over-reserve for rows that are about to be dropped (harmless either way, just wasteful).
+        int extent = shrinks ? end : Math.Max(end, length);
+        int needed = Math.Max(extent, total);
 
         DropFromIndex(parent);
         int start = Fit(parent, needed, keep: length);
@@ -366,13 +378,28 @@ public sealed class EdgeTable<TEdge> : EdgeTableBase where TEdge : unmanaged
         else _payload.Clear(start + offset, n);
         _pending.Clear(start + offset, n);
 
-        if (end > length) _length[parent] = end;
+        if (shrinks)
+        {
+            // Zero the truncated tail so a stale slot reads as "none" rather than a duplicate row from the longer
+            // previous answer (P3), and shrink the length to match. A generic table cannot release a payload's own
+            // interned strings (file header) — the rootlist arm (Edges.Staging.cs `ReleaseRootlistRows`) releases the
+            // truncated rows' text BEFORE this call lands, under the same terminal guard, so nothing here leaks.
+            _targets.Clear(start + end, length - end);
+            _payload.Clear(start + end, length - end);
+            _pending.Clear(start + end, length - end);
+            _length[parent] = end;
+        }
+        else if (end > length) _length[parent] = end;
 
         // A TOTAL THE SERVER DID NOT STATE CANNOT TERMINATE THE LIST (D7). `total` 0 means "nobody said how many there
         // are", and folding it into the present count — which is what `Math.Max(total, _length)` alone does — turns
         // every first page into a Complete list and stops the page asking for the rest. Only a STATED total, reached,
-        // settles a page; a stated one also SURVIVES a later page that omits it.
-        int stated = Math.Max(total, _total[parent]);
+        // settles a page; a stated one also SURVIVES a later page that omits it — UNLESS this page is itself terminal:
+        // a terminal page's own stated total is authoritative, and letting it stay `Math.Max`ed against a stale, larger
+        // `_total` would keep the state below reading Partial forever (the shrunk length can never reach it) and the
+        // page would re-ask in a loop that never settles. So the terminal case is the one place that breaks the
+        // `Math.Max` and lets `_total` take the stated value outright.
+        int stated = terminal ? total : Math.Max(total, _total[parent]);
         _total[parent] = stated;
         _state[parent] = (byte)(stated > 0 && _length[parent] >= stated ? EdgeState.Complete : EdgeState.Partial);
         AddToIndex(parent);
@@ -670,7 +697,7 @@ public readonly record struct PlaylistTrackEdge(
     StringId ItemId, int AddedAt, int AddedBy, byte ChartStatus, ushort ChartPos, ushort ChartPrev, byte Flags);
 
 /// <summary>A library membership: liked track, saved album, followed artist, saved show, pin. The library IS this edge
-/// (G6) — there is no <c>IsLiked</c> column anywhere (P3).</summary>
+/// (G6) — there is no <c>IsLiked</c> column anywhere (P3). <c>AddedAt</c> is UNIX seconds.</summary>
 public readonly record struct LibraryEdge(int AddedAt, byte Flags);
 
 /// <summary>A rootlist row: the sidebar's flat, ordered, foldered list of the user's playlists — the wire's own marker
@@ -873,6 +900,9 @@ public sealed partial class Edges
     {
         for (int p = 0; p < Rootlist.ParentCount; p++) ReleaseRootlistText(p);
         for (int p = 0; p < TrackCredits.ParentCount; p++) ReleaseCreditText(p);
+        ReleaseSearchText();
+        ReleaseArtistPayloadText();
+        for (int p = 0; p < PlaylistTuning.ParentCount; p++) ReleaseTuningText(p);
         for (int p = 0; p < _rootlistRevisionCount; p++) Entities.ReleaseText(ref _rootlistRevision[p]);
         _rootlistRevisionCount = 0;
         for (int p = 0; p < _recentsRevisionCount; p++) Entities.ReleaseText(ref _recentsRevision[p]);

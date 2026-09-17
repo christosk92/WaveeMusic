@@ -120,6 +120,7 @@ public static partial class Fetch
             FetchEdge.AlbumRecommendations => e.AlbumRecommendations,
             FetchEdge.AlbumMerch => e.AlbumMerch,
             FetchEdge.AlbumMoreBy => e.AlbumMoreBy,
+            FetchEdge.AlbumSimilar => e.AlbumSimilar,
             FetchEdge.ArtistPopular => e.ArtistPopular,
             FetchEdge.ArtistRelated => e.ArtistRelated,
             FetchEdge.ArtistReleases => e.ArtistReleases,
@@ -132,6 +133,10 @@ public static partial class Fetch
             FetchEdge.SearchResults => e.SearchResult,
             FetchEdge.BrowseCategories => e.BrowseDirectory,
             FetchEdge.BrowseSections => e.BrowseSections,
+            FetchEdge.ArtistAlbums => e.ArtistAlbums,
+            FetchEdge.ArtistSingles => e.ArtistSingles,
+            FetchEdge.ArtistCompilations => e.ArtistCompilations,
+            FetchEdge.ArtistConcerts => e.ArtistConcerts,
             _ => null,
         };
     }
@@ -142,8 +147,9 @@ public static partial class Fetch
         FetchEdge.Rootlist or FetchEdge.Liked or FetchEdge.SavedAlbums or FetchEdge.FollowedArtists
             or FetchEdge.SavedShows or FetchEdge.Pins or FetchEdge.Recents or FetchEdge.Friends => scope.Users,
         FetchEdge.PlaylistTracks => scope.Playlists,
-        FetchEdge.AlbumTracks or FetchEdge.AlbumRecommendations or FetchEdge.AlbumMerch or FetchEdge.AlbumMoreBy => scope.Albums,
-        FetchEdge.ArtistPopular or FetchEdge.ArtistRelated or FetchEdge.ArtistReleases => scope.Artists,
+        FetchEdge.AlbumTracks or FetchEdge.AlbumRecommendations or FetchEdge.AlbumMerch or FetchEdge.AlbumMoreBy or FetchEdge.AlbumSimilar => scope.Albums,
+        FetchEdge.ArtistPopular or FetchEdge.ArtistRelated or FetchEdge.ArtistReleases or FetchEdge.ArtistAlbums
+            or FetchEdge.ArtistSingles or FetchEdge.ArtistCompilations or FetchEdge.ArtistConcerts => scope.Artists,
         FetchEdge.ShowEpisodes => scope.Shows,
         FetchEdge.TrackCredits or FetchEdge.TrackVersions or FetchEdge.TrackWaveform => scope.Tracks,
         FetchEdge.HomeSections => scope.Homes,
@@ -172,4 +178,16 @@ public static partial class Entities
     /// pull-to-refresh. The rows already there keep rendering until the answer replaces them.</summary>
     public static void RefreshEdge(FetchEdge edge, int parent, FetchPriority priority = FetchPriority.Visible)
         => Fetch.PlanEdge(Current, edge, new ReadOnlySpan<int>(in parent), 0, priority, refresh: true);
+
+    /// <summary>A relation the parent HAS belongs to an ended edition: forget the ask and fetch the first page again
+    /// while the rows already there keep rendering — the edge twin of
+    /// <see cref="Invalidate(Table,ReadOnlySpan{int},uint,FetchPriority)"/>. A relation still
+    /// <see cref="EdgeState.Unknown"/> has nothing to invalidate and is left to its page's own
+    /// <see cref="EnsureEdge(FetchEdge,int,int,FetchPriority)"/>. Never <c>Clear</c>: that renders a skeleton.</summary>
+    public static void InvalidateEdge(FetchEdge edge, int parent, FetchPriority priority = FetchPriority.Prefetch)
+    {
+        EdgeTableBase? edges = Fetch.EdgeTableOf(Current, edge);
+        if (edges is null || edges.State(parent) == EdgeState.Unknown) return;
+        Fetch.PlanEdge(Current, edge, new ReadOnlySpan<int>(in parent), 0, priority, refresh: true);
+    }
 }

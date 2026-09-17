@@ -1,0 +1,25 @@
+{ "data": { "searchV2": { "topResultsV2": { "itemsV2": [
+  { "item": { "__typename": "SearchAutoCompleteEntity",
+    "data": { "text": "david guetta", "uri": "spotify:search:david+guetta" } } },
+  { "item": { "__typename": "TrackResponseWrapper", "data": {
+    "__typename": "Track",
+    "uri": "spotify:track:0TDLuuLlV54CkRRUOahJb4",
+    "name": "Titanium (feat. Sia)",
+    "contentRating": { "label": "NONE" },
+    "albumOfTrack": { "coverArt": { "sources": [
+      { "url": "https://i.scdn.co/image/cover", "width": 300, "height": 300 }
+    ] } },
+    "artists": { "items": [
+      { "profile": { "name": "David Guetta" }, "uri": "spotify:artist:1Cs0zKBU1kc0i8ypK3B9ai" },
+      { "profile": { "name": "Sia" }, "uri": "spotify:artist:5WUlDfRSoLAfcVSX1WnrxN" }
+    ] }
+  } } },
+  { "item": { "__typename": "ArtistResponseWrapper", "data": {
+    "__typename": "Artist",
+    "uri": "spotify:artist:1Cs0zKBU1kc0i8ypK3B9ai",
+    "profile": { "name": "David Guetta" },
+    "visuals": { "avatarImage": { "sources": [
+      { "url": "https://i.scdn.co/image/avatar", "width": 640, "height": 640 }
+    ] } }
+  } } }
+] } } } }

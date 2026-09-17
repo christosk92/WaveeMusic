@@ -806,13 +806,14 @@ public class FetchTests : IDisposable
     // TrackV4 never carries — was still `wanted & ~known`, so the next `Ensure(Row)` (the sidebar's per-rebuild Fill) re-
     // POSTed the same V4, forever. The planner now remembers which GROUPS it asked (`Table.Asked`) for the scope.
 
-    /// <summary>Commit what a TrackV4 answer commits for one row: Identity and Availability, at full authority.</summary>
-    static void AnswerIdentity(uint ticket, EntityId id)
+    /// <summary>Commit what a TrackV4 answer commits for one row: Identity and Availability, at full authority.
+    /// <paramref name="unfilled"/> is what the provider reports for a route that did not answer beside this one.</summary>
+    static void AnswerIdentity(uint ticket, EntityId id, uint unfilled = 0)
     {
         var s = Staging.Rent();
         ref var row = ref s.Tracks.RowFor(id, Authority.Full, (uint)(TrackFields.Identity | TrackFields.Availability));
         row.Title = s.Text("an answered title");
-        Fetch.Answer(ticket, s);
+        Fetch.Answer(ticket, s, unfilled);
     }
 
     [Fact]
@@ -892,6 +893,197 @@ public class FetchTests : IDisposable
         Assert.Equal(0u, next.Tracks.Asked[after[0]]);
         Fetch.Plan(next, next.Tracks, after, (uint)TrackFields.Row, FetchPriority.Visible);
 
+        Assert.Equal(2, provider.Seen.Count);
+    }
+
+    // ── the seal's one exception: a route that did not answer beside one that did (2026-09-16 chart defect) ────────
+    //
+    // A batch whose routes split — one 200, one 401 — used to be delivered as a plain answer, and the answer's seal
+    // kept the refused route's group ASKED for the life of the scope: an artist's Chart bit, and with it the chart's
+    // shimmer, forever. The provider now names the groups of the routes that failed (`unfilled`) and the answer
+    // un-asks those and only those.
+
+    [Fact]
+    public void An_answer_whose_route_failed_un_asks_that_group_only()
+    {
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        TrackTable t = scope.Tracks;
+        int[] slots = GidRows(t, 1, 808_080);
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        AnswerIdentity(provider.Seen[0].Ticket, t.Id[slots[0]], unfilled: (uint)TrackFields.PlayCount);
+
+        Assert.True(t.Knows(slots[0], (uint)TrackFields.Identity));
+        Assert.Equal(0u, t.Asked[slots[0]] & (uint)TrackFields.PlayCount);          // the refused route's group is free again
+        Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[0]] & (uint)TrackFields.Identity);   // the answered one stays asked
+        Assert.Equal(0u, t.Inflight[slots[0]]);
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Assert.Equal(2, provider.Seen.Count);                                           // the next mount really retries…
+        Assert.Equal((uint)TrackFields.PlayCount, provider.Seen[1].Wanted);              // …for that group alone
+    }
+
+    [Fact]
+    public void A_group_no_route_serves_stays_sealed_by_the_answer()
+    {
+        // `unfilled` is the groups of the routes that FAILED — a group nothing was ever sent for (the Api's
+        // `sealedGroups`) is not in it, and the answer seals it as before; and a group the answer DID fill is never
+        // un-asked, whatever the provider says about the route that also claimed it.
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        TrackTable t = scope.Tracks;
+        int[] slots = GidRows(t, 1, 909_090);
+        uint wanted = (uint)(TrackFields.Row | TrackFields.Audio);
+
+        Fetch.Plan(scope, t, slots, wanted, FetchPriority.Visible);
+        AnswerIdentity(provider.Seen[0].Ticket, t.Id[slots[0]], unfilled: (uint)(TrackFields.PlayCount | TrackFields.Identity));
+
+        Assert.Equal((uint)TrackFields.Audio, t.Asked[slots[0]] & (uint)TrackFields.Audio);       // nobody served it: sealed
+        Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[0]] & (uint)TrackFields.Identity); // filled: stays asked
+        Fetch.Plan(scope, t, slots, wanted, FetchPriority.Visible);
+        Assert.Equal(2, provider.Seen.Count);
+        Assert.Equal((uint)TrackFields.PlayCount, provider.Seen[1].Wanted);                       // only the refused group
+    }
+
+    [Fact]
+    public void An_answer_clears_inflight_for_rows_it_did_not_name()
+    {
+        // `Table.Applied` clears the in-flight mark for a row a group LANDED on; a row the answer skipped kept it for
+        // the life of the scope, so `Asked && Inflight == 0` — the surfaces' "asked, nothing coming" — never read true.
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        TrackTable t = scope.Tracks;
+        int[] slots = GidRows(t, 2, 111_222);
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Assert.Equal(Fetch.Stamp(scope.Epoch), t.Inflight[slots[1]]);
+        AnswerIdentity(provider.Seen[0].Ticket, t.Id[slots[0]]);                       // names the first row only
+
+        Assert.Equal(0u, t.Inflight[slots[0]]);
+        Assert.Equal(0u, t.Inflight[slots[1]]);                                         // settled, not stranded
+        Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[1]]);                    // and still sealed: no re-ask
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Assert.Single(provider.Seen);
+    }
+
+    // ── an auth refusal is re-planned when the session resumes ─────────────────────────────────────────────────────
+    //
+    // A 401/403 is terminal to the planner and un-asks the batch — right for a 400, but a refusal a boot-time or
+    // reconnecting session WILL answer once it authorises leaves every mounted page holding a skeleton nothing re-asks.
+    // `Failed` remembers what it un-asked and `Resume` (the session's Online transition) plans it again.
+
+    [Fact]
+    public void An_auth_refusal_is_re_planned_when_the_session_resumes()
+    {
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        TrackTable t = scope.Tracks;
+        int[] slots = GidRows(t, 2, 333_444);
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Prefetch);
+        Fetch.Failed(provider.Seen[0].Ticket, 401, 0);
+
+        Assert.Equal(0u, t.Asked[slots[0]]);                                            // un-asked, as any terminal failure
+        Assert.Equal(0u, t.Inflight[slots[1]]);
+        Assert.Single(provider.Seen);                                                   // nothing goes out while refused
+        Assert.Equal(2, Fetch.Refused);
+
+        Fetch.Resume();
+
+        Assert.Equal(2, provider.Seen.Count);                                           // planned again, as ONE request…
+        Assert.Equal(2, provider.Seen[1].Count);
+        Assert.Equal((uint)TrackFields.Identity, provider.Seen[1].Wanted);
+        Assert.Equal(FetchPriority.Prefetch, provider.Seen[1].Priority);                // …with the urgency it was asked at
+        Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[1]]);
+        Assert.Equal(0, Fetch.Refused);
+        Fetch.Resume();
+        Assert.Equal(2, provider.Seen.Count);                                           // once: the list is spent
+    }
+
+    [Fact]
+    public void A_refusal_that_is_not_an_auth_refusal_is_not_resumed()
+    {
+        // 404 is an answer the planner never sees here; 400/410 are terminal and un-asked, but the session coming
+        // online changes nothing about them — the next mount's Ensure is their retry.
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        TrackTable t = scope.Tracks;
+        int[] slots = GidRows(t, 1, 555_666);
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Fetch.Failed(provider.Seen[0].Ticket, 400, 0);
+        Assert.Equal(0, Fetch.Refused);
+        Fetch.Resume();
+        Assert.Single(provider.Seen);
+    }
+
+    [Fact]
+    public void A_refusal_from_a_replaced_scope_is_not_resumed()
+    {
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        int[] slots = GidRows(scope.Tracks, 1, 777_888);
+
+        Fetch.Plan(scope, scope.Tracks, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Fetch.Failed(provider.Seen[0].Ticket, 403, 0);
+        Assert.Equal(1, Fetch.Refused);
+
+        Entities.Switch(CatalogScope.Fake(locale: "nl-NL", market: "NL"));            // the slot indexes a table nobody holds
+        Fetch.Resume();
+
+        Assert.Single(provider.Seen);
+        Assert.Equal(0, Fetch.Pending);
+        Assert.Equal(0, Fetch.Refused);
+    }
+
+    [Fact]
+    public void A_refusal_whose_slot_was_recycled_is_not_resumed()
+    {
+        // The identity guard `SettleTicket` applies: a slot that moved on to another entity is not the refusal's to ask.
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        TrackTable t = scope.Tracks;
+        int[] slots = GidRows(t, 1, 999_000);
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Fetch.Failed(provider.Seen[0].Ticket, 401, 0);
+        t.Id[slots[0]] = default;                                                       // recycled: another row lives here now
+
+        Fetch.Resume();
+        Assert.Single(provider.Seen);
+    }
+
+    // ── Refresh: ask again what the scope sealed (the Retry vacancy's door) ─────────────────────────────────────────
+
+    [Fact]
+    public void Refresh_re_asks_a_group_the_scope_has_already_sealed()
+    {
+        Scope scope = Boot();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        TrackTable t = scope.Tracks;
+        int[] slots = GidRows(t, 1, 121_212);
+
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        AnswerIdentity(provider.Seen[0].Ticket, t.Id[slots[0]]);                        // PlayCount: asked, never filled
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Assert.Single(provider.Seen);                                                   // sealed for the scope…
+
+        Entities.Refresh(t, slots, (uint)TrackFields.PlayCount);                        // …until somebody means it
+
+        Assert.Equal(2, provider.Seen.Count);
+        Assert.Equal((uint)TrackFields.PlayCount, provider.Seen[1].Wanted);
+        Assert.Equal(Fetch.Stamp(scope.Epoch), t.Inflight[slots[0]]);
+
+        Entities.Refresh(t, slots, (uint)TrackFields.Identity);                         // known: nothing to fetch again
         Assert.Equal(2, provider.Seen.Count);
     }
 

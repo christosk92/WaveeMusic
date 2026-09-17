@@ -30,6 +30,7 @@
 // start/count/Truncate quartet, Entities/Edges.Staging.cs); `StagedList.RowFor`/`Settle` (the row prologue/epilogue).
 
 using System.Buffers.Binary;
+using System.Text.Json;
 
 namespace Wavee;
 
@@ -369,8 +370,9 @@ public static partial class Spotify
             => utf8.Length >= literal.Length && Is(utf8[..literal.Length], literal);
 
         /// <summary>A non-negative integer out of ASCII digits; -1 when the span is not one. The wire spells a chart
-        /// position, a group id and a timestamp as TEXT in places, and this is how they are read without a
-        /// transcode (P14).</summary>
+        /// position, a group id, a timestamp and a play count as TEXT in places, and this is how they are read without a
+        /// transcode (P14). Saturates at <see cref="long.MaxValue"/> rather than <c>int</c>: a play count passes 2^31
+        /// (a 2.7-billion-play chart row), and every caller that stores an <c>int</c> clamps its own column.</summary>
         internal static long Number(ReadOnlySpan<byte> utf8)
         {
             if (utf8.IsEmpty) return -1;
@@ -379,8 +381,8 @@ public static partial class Spotify
             {
                 int d = utf8[i] - '0';
                 if ((uint)d > 9) return -1;
+                if (value > (long.MaxValue - d) / 10) return long.MaxValue;
                 value = value * 10 + d;
-                if (value > int.MaxValue) return int.MaxValue;
             }
             return value;
         }
@@ -407,11 +409,14 @@ public static partial class Spotify
         }
 
         /// <summary>The album a track carries inside itself: enough for the row's "go to the container" lane and the
-        /// drawer's cover.</summary>
-        static StagedId ThinAlbum(ProtoReader album, Staging s, out ushort year)
+        /// drawer's cover. The cover is handed back to the caller too — 0.2.9 derived the track's own row image from
+        /// this same group (<c>ExtendedMetadataSource.cs:247-268</c>), and a decoder may not read it back off the
+        /// staged album row it just wrote (P8: no cross-row reads mid-decode).</summary>
+        static StagedId ThinAlbum(ProtoReader album, Staging s, out ushort year, out TextRef cover)
         {
             StagedId id = default;
-            TextRef title = default, cover = default;
+            TextRef title = default;
+            cover = default;
             year = 0;
             int at = 0;
             byte precision = 0;
@@ -465,11 +470,26 @@ public static partial class Spotify
         /// Isrc and Canonical (ch 04 §7's versions panel). The credit line is joined here, at decode, and interned
         /// ONCE at commit — `TrackTable.ArtistLine` exists precisely so a 200-row page does not join names per frame
         /// (ch 01 GAP 2) — and the per-artist click targets still come off the `TrackArtists` edge.</para></summary>
-        public static void TrackV4(ReadOnlySpan<byte> proto, Staging s)
+        /// <remarks>A payload with NO envelope around it (a direct decode, the test fixtures): the row is the payload's
+        /// own gid and nothing else is staged. The envelope dispatch calls the overload below with the asked uri.</remarks>
+        public static void TrackV4(ReadOnlySpan<byte> proto, Staging s) => TrackV4(proto, default, s);
+
+        /// <inheritdoc cref="TrackV4(ReadOnlySpan{byte},Staging)"/>
+        /// <param name="proto">The `metadata.Track` bytes.</param>
+        /// <param name="entityUri">The envelope's <c>entity_uri</c> — the identity the batch ASKED for. Spotify RELINKS:
+        /// a market-restricted id is answered with the canonical track's payload, whose own gid (field 1) is a different
+        /// row. Reading only the payload staged the canonical row and left the asked slot without one, so `Fetch.Answer`'s
+        /// 200-seal kept it Asked-but-unknown for the scope — a blank row with an enabled play. When the asked identity
+        /// differs from the payload's, a SECOND row is staged for it: the same Identity / Year / Availability facts, its
+        /// <see cref="StagedTrack.CanonicalUri"/> pointing at the payload's row (<see cref="TrackFields.Canonical"/>), and
+        /// its own <see cref="Relation.TrackArtists"/> run, so the asked row Knows what it claims. Empty = no envelope.</param>
+        /// <param name="s">The staging buffer.</param>
+        public static void TrackV4(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {
             var r = new ProtoReader(proto);
             ref var row = ref s.Tracks.RowFor(default, Authority.Full,
                 (uint)(TrackFields.Identity | TrackFields.Year | TrackFields.Availability));
+            int trackIndex = s.Tracks.Count - 1;               // re-take the ref by this below (AlbumV4's "re-read by INDEX")
 
             var artists = s.Run(Relation.TrackArtists);
             long earliestLive = 0;
@@ -483,8 +503,11 @@ public static partial class Spotify
                     case 1: row.Id = EntityId.ForGid(EntityKind.Track, r.Bytes()); break;
                     case 2: row.Title = s.AddText(r.Bytes()); break;
                     case 3:                                            // album (thin: uri, title, cover, date)
-                        row.AlbumUri = ThinAlbum(r.Message(), s, out ushort albumYear);
+                        // 0.2.9 derived the track image from the album cover group; `TrackFields.Identity` includes
+                        // `Image`, so a Full row that leaves it empty seals a blank forever (Fix 4).
+                        row.AlbumUri = ThinAlbum(r.Message(), s, out ushort albumYear, out TextRef albumCover);
                         if (row.Year == 0) row.Year = albumYear;
+                        if (row.Image.IsEmpty) row.Image = albumCover;
                         break;
                     case 4:                                            // artist
                         {
@@ -546,7 +569,50 @@ public static partial class Spotify
 
             var id = row.Id;
             if (!s.Tracks.Settle()) { artists.Discard(); return; }
+            int artistCount = artists.Count;                   // `End` resets the run; the alias below re-reads its slice
             artists.End(in id);
+
+            // RELINKING (see the `entityUri` remark). The asked identity is the envelope's; a direct decode has none.
+            // A text-form identity can never equal a gid row, so only a packed one is compared.
+            var asked = Identity(s, entityUri);
+            if (asked.IsEmpty || (asked.Text.IsEmpty && asked.Packed == id.Packed)) return;
+
+            // `RowFor` appends to `s.Tracks`, which CAN reallocate underneath: `row` is stale after it, so the canonical
+            // row is re-taken by INDEX — the same defensive shape as AlbumV4's cover hand-down.
+            ref var alias = ref s.Tracks.RowFor(asked, Authority.Full,
+                (uint)(TrackFields.Identity | TrackFields.Year | TrackFields.Availability | TrackFields.Canonical));
+            ref var canonical = ref s.Tracks[trackIndex];
+            alias.Title = canonical.Title;
+            alias.Image = canonical.Image;
+            alias.ArtistLine = canonical.ArtistLine;
+            alias.AlbumUri = canonical.AlbumUri;
+            alias.DurationMs = canonical.DurationMs;
+            alias.Flags = canonical.Flags;
+            alias.Year = canonical.Year;
+            alias.AvailableAt = canonical.AvailableAt;
+            alias.CanonicalUri = canonical.Id;
+            // The same audio entity backs both rows (the alias is the same recording under another id), so the alias
+            // carries the ladder key and the same "no original audio = no ladder, ever" seal (FLAC plan §5.2).
+            alias.OriginalAudio = canonical.OriginalAudio;
+            if (alias.OriginalAudio == UInt128.Zero) alias.Known |= (uint)TrackFields.Files;
+            if (!s.Tracks.Settle()) return;
+
+            // Identity includes Artists: a row that claims it with no edge is the Unknown-under-a-knowing-row split
+            // AlbumV4's `EndEvenIfEmpty` note describes. The canonical run was just recorded as the LAST run; its
+            // (compacted) slice is copied into a run of the alias's own. The target is copied to a local first: `Add`
+            // grows the edge array, and an `in` ref into the old array would dangle.
+            var edges = s.Edges;
+            if (artistCount > 0 && edges.RunCount > 0)
+            {
+                var source = edges.Runs[edges.RunCount - 1];
+                var aliasArtists = s.Run(Relation.TrackArtists);
+                for (int i = source.Start; i < source.Start + source.Length; i++)
+                {
+                    var target = edges.Span[i].Target;
+                    aliasArtists.Add(in target);
+                }
+                aliasArtists.End(in asked);
+            }
         }
 
         /// <summary>`metadata.Album` (kind 9) → the album's Identity, Release and Publishing groups, its artists, and
@@ -561,9 +627,11 @@ public static partial class Spotify
             var r = new ProtoReader(proto);
             ref var row = ref s.Albums.RowFor(default, Authority.Full,
                 (uint)(AlbumFields.Identity | AlbumFields.Release | AlbumFields.Publishing));
+            int albumIndex = s.Albums.Count - 1;               // re-take the ref by this below (P8's "re-read by INDEX")
 
             var artists = s.Run(Relation.AlbumArtists);
             var tracks = s.Run(Relation.AlbumTracks);
+            int firstDiscRow = s.Tracks.Count;
             bool copyright = false, courtesy = false;
 
             while (r.Next())
@@ -615,9 +683,33 @@ public static partial class Spotify
                 }
             }
 
+            // A count of 0 is "not known yet", never "no songs" — the `> 0 → Known` rule `ArtistStageRelease`
+            // (Spotify.Decode.Artist.cs) and the pathfinder's `Stage` already apply. `Identity` is staged symbolically
+            // up front and includes `TrackCount`, but the count itself only ever grows per decoded disc track, so an
+            // album message that carried no `disc` (a thin album embedded in another answer, a response variant
+            // without discs) used to settle as Known + 0 and the watch-video card printed "0 songs" beside a one-row
+            // tracklist. Withhold the bit instead: the planner's `Asked` mask still stops a re-ask, and the page's
+            // `PageRules.SongCount` falls back to the realised members.
+            if (row.TrackCount == 0) row.Known &= ~(uint)AlbumFields.TrackCount;
+
             var id = row.Id;
             if (!s.Albums.Settle()) { tracks.Discard(); artists.Discard(); return; }
-            artists.End(in id);
+
+            // The cover is field 17 and the discs field 11: a disc row is staged (into `s.Tracks`, which CAN grow and
+            // reallocate underneath) before the cover is read, so the album's image is handed down here, in place —
+            // the same derivation 0.2.9 made per track. Re-take the album row by INDEX rather than trust `row`: the
+            // same defensive shape as the rootlist re-read (Spotify.Decode.Library.cs), for whichever future edit
+            // grows `s.Albums` between the two.
+            ref var albumRow = ref s.Albums[albumIndex];
+            if (!albumRow.Image.IsEmpty)
+                for (int i = firstDiscRow; i < s.Tracks.Count; i++)
+                { ref var t = ref s.Tracks[i]; if (t.Image.IsEmpty) t.Image = albumRow.Image; }
+
+            // `EndEvenIfEmpty`, not `End`: the row now claims `AlbumFields.Artists` off this very answer (the bit is
+            // inside `Identity`, which AlbumV4 stages symbolically), so the edge must agree that the question was
+            // ANSWERED even when the server named nobody — `End` records nothing for an empty run and would leave
+            // the relation Unknown under a row that says it knows, the exact split the album-artists fix closes.
+            artists.EndEvenIfEmpty(in id);
             // The disc rows ARE the whole tracklist — Complete, not a page. An album answer that named no disc is an
             // album whose tracklist nobody asked for, and the relation must stay Unknown rather than claim to be
             // empty: "empty" and "not asked" render differently on every detail surface (ch 03 §7). `End` on a run
@@ -637,7 +729,11 @@ public static partial class Spotify
         static bool DiscTrack(ProtoReader track, Staging s, byte disc, ref EdgeRun tracks)
         {
             ref var edge = ref tracks.Add();
-            ref var row = ref s.Tracks.RowFor(default, Authority.Thin, (uint)TrackFields.Identity);
+            // Opened with NO group known: a region-substituted/linked disc entry can carry only `gid` (field 1) and
+            // no `name` (S5), and declaring Identity unconditionally here sealed such a row with an empty title and
+            // DurationMs 0 forever — `Album.Page.cs`'s `Ensure(… Identity …)` never re-asks a row that already
+            // Knows(Identity). Identity is granted below ONLY once a name was actually read.
+            ref var row = ref s.Tracks.RowFor(default, Authority.Thin, (uint)TrackFields.None);
             ushort number = 0;
             s.ClearCredit();
 
@@ -656,7 +752,10 @@ public static partial class Spotify
             }
 
             row.ArtistLine = s.TakeCredit();
+            if (!row.Title.IsEmpty) row.Known |= (uint)TrackFields.Identity;
             var id = row.Id;
+            // The edge and its ordinal stand even when the row stays thin (Known == None): the `#` lane must not
+            // shift, and the page's existing `Ensure` fetches `TrackV4` for a row that still doesn't Know(Identity).
             if (!s.Tracks.Settle()) { tracks.DropLast(); return false; }
             edge.Target = id;
             edge.B0 = disc;
@@ -709,6 +808,13 @@ public static partial class Spotify
                     default: r.Skip(); break;
                 }
             }
+
+            // `row.Known` was declared `Identity` (Name | Image) up front, before a single field was read — true for
+            // every artist that ships a portrait, which is the overwhelming case, but not a wire GUARANTEE the way
+            // `TrackV4`'s Image is (that decoder falls back to the album's own cover, ch 01 GAP; this one has no
+            // fallback at all). An answer that never carried field 17 must not seal `Image` known with nothing behind
+            // it — same rule as the billed-artist mention this route exists to supersede (`ThinArtist`, this file).
+            if (row.Image.IsEmpty) row.Known &= ~(uint)ArtistFields.Image;
 
             var artist = row.Id;
             if (!s.Artists.Settle())
@@ -796,8 +902,15 @@ public static partial class Spotify
         }
 
         /// <summary>`ListMetadataV2` (kind 205) → a playlist's Identity from the metadata service rather than from a
-        /// revision: name, description, cover, format. The identity is the ENVELOPE's, because this payload names no
-        /// entity of its own.</summary>
+        /// revision: name, description, cover, format, owner (G-048). The identity is the ENVELOPE's, because this
+        /// payload names no entity of its own.
+        ///
+        /// <para><c>source</c> (field 7) is the wire's OWNER USERNAME — 0.2.9 (<c>PlaylistMetadataProjectionTests</c>)
+        /// read it straight into the display name it painted because a username and an editorial account's display
+        /// name coincide ("spotify" → "Spotify"), but the bytes are the username, spelled exactly like every other
+        /// bare-username field this decoder resolves through <see cref="UserUri"/> (field 16 of
+        /// <c>SelectedListContent</c>, field 5 of a rootlist <c>MetaItem</c>) — 0.3 needs the resolvable identity, not
+        /// the label, so <see cref="LibraryCaps"/> can tell an owned row from a foreign one.</para></summary>
         public static void ListMetadataV2(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {
             var id = Identity(s, entityUri);
@@ -811,6 +924,7 @@ public static partial class Spotify
                 {
                     case 3: row.Title = s.AddText(r.Bytes()); break;
                     case 4: row.Description = s.AddText(r.Bytes()); break;
+                    case 7: row.OwnerUri = UserUri(s, r.Bytes()); break;   // source → owner username
                     case 21:                                           // Images { variant[] { format, url } }
                         {
                             var images = r.Message();
@@ -896,12 +1010,46 @@ public static partial class Spotify
                                 // serializes to zero bytes — `DescriptorProjector`'s finding 27), so the gate is the
                                 // status and the PRESENCE of the extension_data field, never the payload's length.
                                 if (answered && status is >= 200 and < 300) Extension((Ext)kind, uri, payload, s, asked);
+                                // A TERMINAL per-entity failure for the row shape is an answer too. The batch itself came
+                                // back 200, so `Fetch.Answer` seals the group as asked; with no staged row behind it the
+                                // track stayed an UNRULED blank in every list that carries it — a Liked Songs row with no
+                                // title, dimmed by nothing, whose play could only fail. Staged here as ruled unavailable
+                                // with no release instant, it becomes `Track.Unplayable` and every surface treats it so.
+                                // The same for a 2xx header that carries NO extension_data at all: the service had
+                                // nothing to say about this track, which for the row shape means it does not resolve.
+                                else if ((Ext)kind == Ext.TrackV4 && ExtendedMetadataRules.ResolvedAsUnavailable(status, answered))
+                                    UnavailableTrack(uri, s);
                                 break;
                             }
                         default: array.Skip(); break;
                     }
                 }
             }
+        }
+
+        /// <summary>The envelope's per-entity STATUS verdicts, pure so the decision can be pinned without a wire.</summary>
+        public static class ExtendedMetadataRules
+        {
+            /// <summary>A terminal per-entity failure: the catalog has ruled the entity absent for this account — not
+            /// found (404), forbidden (403), gone (410) or legally withheld (451). A 5xx or a 429 is THIS request being
+            /// unlucky and stays a hole for the retry; a 2xx is an answer with a body and never comes here.</summary>
+            public static bool TerminalEntry(int status) => status is 404 or 403 or 410 or 451;
+            /// <summary>A TrackV4 entity that resolves to "no such track for you": a terminal status, or a 2xx header with
+            /// no extension_data (the service answered the envelope and had nothing to attach to this uri).</summary>
+            public static bool ResolvedAsUnavailable(int status, bool answered)
+                => TerminalEntry(status) || (!answered && status is >= 200 and < 300);
+        }
+
+        /// <summary>A track the catalog ruled terminally absent (<see cref="ExtendedMetadataRules.TerminalEntry"/>): one
+        /// row at full authority speaking for Identity AND Availability, an empty title, the Unavailable flag and NO
+        /// release instant — exactly <c>Track.Unplayable</c>. The identity is the envelope's, the payload (if any) is not
+        /// read: a failed entity's body describes nothing. An envelope with no entity uri stages nothing (Settle drops it).</summary>
+        static void UnavailableTrack(ReadOnlySpan<byte> uri, Staging s)
+        {
+            ref var row = ref s.Tracks.RowFor(Identity(s, uri), Authority.Full,
+                (uint)(TrackFields.Identity | TrackFields.Availability));
+            row.Flags |= (uint)TrackFlags.Unavailable;
+            s.Tracks.Settle();
         }
 
         /// <summary>One extension payload for one entity uri — the dispatch every trait projector of 0.2.9 collapses
@@ -920,7 +1068,9 @@ public static partial class Spotify
                     // is why the fold below takes the track explicitly (FLAC plan §5.2).
                     if (asked is not null) AudioFiles(payload, new StagedId(asked.IdFor(entityUri)), s);
                     break;
-                case Ext.TrackV4: TrackV4(payload, s); break;
+                // The envelope's uri rides along: a RELINKED answer serves the canonical track's payload for a
+                // market-restricted id, and only the envelope knows which row was asked (see TrackV4's remark).
+                case Ext.TrackV4: TrackV4(payload, entityUri, s); break;
                 case Ext.AlbumV4: AlbumV4(payload, s); break;
                 case Ext.ArtistV4: ArtistV4(payload, s); break;
                 case Ext.ShowV4: ShowV4(payload, s); break;
@@ -1406,13 +1556,18 @@ public static partial class Spotify
 
             var items = s.Run(Relation.PlaylistTracks);
             int pos = 0, length = 0;
-            bool truncated = false, sawContents = false;
+            bool truncated = false, sawContents = false, sawLength = false, resyncRequired = false;
 
             while (r.Next())
             {
                 switch (r.Field)
                 {
-                    case 2: length = r.Int32(); break;             // SelectedListContent.length (the server's total)
+                    // `length` is `optional int32` (playlist4_external.proto:208) — the reader only visits field 2
+                    // when the wire actually SET it, zero included, so `sawLength` is the wire's own presence bit,
+                    // never inferred from the value (bug A1: a genuinely empty playlist's real `length: 0` must
+                    // still mark the count known). Whether it is TRUSTED at all is decided below, once every field
+                    // — including `changes_require_resync` — has been read.
+                    case 2: length = r.Int32(); sawLength = true; break;   // SelectedListContent.length (server total)
                     case 3: Attributes(r.Message(), s, ref row); break;
                     case 5:                                        // contents: ListItems { pos, truncated, items[] }
                         {
@@ -1435,11 +1590,33 @@ public static partial class Spotify
                         row.Caps = Capabilities(r.Message());
                         row.Known |= (uint)PlaylistFields.Capabilities;
                         break;
+                    // changes_require_resync (playlist4_external.proto:225): "the accepted delta cannot be expressed
+                    // as a diff against our base — do NOT advance the stored revision in place, refetch instead."
+                    // This answer rode the revision-gated `/diff` route (`Spotify.Api.Library.ReadList`) with a
+                    // `contents` block attached anyway — `DiffVerdict` reads it exactly like a full read's body — but
+                    // the server is explicitly saying it is not a trustworthy total. Regression evidence: a real
+                    // 50-track "Eurodance Mix" (cover art, HAS a good count from the sidebar's earlier FULL read)
+                    // came back from its PAGE's own revision-gated re-ask with `length: 0` and this bit set, and the
+                    // old (pre-fix) blind trust of any `sawLength` committed the zero over the real 50.
+                    case 20: resyncRequired = r.Bool(); break;
                     default: r.Skip(); break;
                 }
             }
 
-            if (length > 0) row.TrackCount = length;
+            // Bug A1 (and its regression): the COUNT-KNOWN bit lands here — the one decoder that actually saw a
+            // length — but NEVER off a resync-flagged answer (see field 20 above), and a `length: 0` is trusted as
+            // "genuinely empty" only when corroborated by a complete, from-the-start view (`pos == 0`, untruncated) —
+            // never inferred from a windowed/partial page that simply left the total unset or zeroed. A NONZERO
+            // length is trusted on its own past that gate — the existing large-playlist paging design already relies
+            // on the FIRST (possibly truncated) page reporting the true total up front (`items.Page(in id, pos,
+            // length)` below).
+            bool trustworthyLength = sawLength && !resyncRequired
+                && (length > 0 || (sawContents && pos == 0 && !truncated));
+            if (trustworthyLength) row.Known |= (uint)PlaylistFields.TrackCount;
+            // Gated the same way as the bit above — an untrustworthy NONZERO length (a resync-flagged answer) must
+            // not reach `row.TrackCount` at all, or Playlist.cs's commit would still write it via its OWN
+            // `row.TrackCount > 0` arm (S2) even with the Known bit correctly withheld.
+            if (trustworthyLength) row.TrackCount = length;
             // `truncated` is the server saying "there is more after this window", which is exactly `ReplacePage` at
             // `pos` with the whole-list total — the relation stays Partial until its own length reaches it (D7). An
             // untruncated answer starting at 0 is the whole list and settles Complete, EMPTY INCLUDED: "this playlist
@@ -1548,55 +1725,10 @@ public static partial class Spotify
              : Is(status, "NEW") ? (byte)4
              : (byte)0;
 
-        /// <summary>A `collection2v2.PageResponse` → one page of a library relation (ported from
-        /// `CollectionWireMapper`). The library IS edges (G6): the parent is the account's own row, the targets are
-        /// whatever the set holds, and a removal tombstone is simply left OUT of the page.</summary>
-        public static void CollectionPage(ReadOnlySpan<byte> proto, LibraryEdgeKind set, ReadOnlySpan<byte> meUri,
-                                          int offset, Staging s)
-        {
-            var parent = Identity(s, meUri);
-            if (parent.IsEmpty) return;
-            var r = new ProtoReader(proto);
-            var items = s.Run(set switch
-            {
-                LibraryEdgeKind.SavedAlbums => Relation.SavedAlbums,
-                LibraryEdgeKind.FollowedArtists => Relation.FollowedArtists,
-                LibraryEdgeKind.SavedShows => Relation.SavedShows,
-                _ => Relation.Liked,
-            });
-            bool more = false;
-
-            while (r.Next())
-            {
-                switch (r.Field)
-                {
-                    case 1:                                        // items[] { uri, added_at, is_removed }
-                        {
-                            var item = r.Message();
-                            ref var edge = ref items.Add();
-                            StagedId target = default;
-                            bool removed = false;
-                            while (item.Next())
-                            {
-                                if (item.Field == 1) target = Identity(s, item.Bytes());
-                                else if (item.Field == 2) edge.At = item.Int32();
-                                else if (item.Field == 3) removed = item.Bool();
-                                else item.Skip();
-                            }
-                            if (target.IsEmpty || removed) items.DropLast();
-                            else edge.Target = target;
-                            break;
-                        }
-                    case 2: more = !r.Bytes().IsEmpty; break;      // next_page_token
-                    default: r.Skip(); break;
-                }
-            }
-
-            // A page token means the server has more, and "more" is the only thing that keeps the relation Partial —
-            // a last page with no token settles the whole list Complete at its own end.
-            if (more || offset > 0) items.Page(in parent, offset, more ? 0 : offset + items.Count);
-            else items.EndEvenIfEmpty(in parent, items.Count);
-        }
+        // `Decode.LibrarySet` (Spotify.Decode.Entry.cs) is the one library-relation decoder the provider calls — it
+        // covers every page of a walk in one Complete rewrite, filters by item kind, and has a pins arm; the older
+        // one-page-at-a-time `CollectionPage` it replaced (which mapped Pins into Liked and filtered nothing) had no
+        // callers left and is gone (B2b).
 
         // ── 8. recents (ch 16 §7) ────────────────────────────────────────────────────────────────────────────────────
 
@@ -1865,5 +1997,52 @@ public sealed partial class Staging
         if (_recentsRowScratch is null || _recentsRowScratch.Length < items)
             _recentsRowScratch = new Spotify.Decode.RecentsRow[items < 256 ? 256 : items];
         return _recentsRowScratch;
+    }
+}
+
+// ── shared JSON image helpers (pathfinder covers, artist portraits/headers) ─────────────────────────────────────────
+
+public static partial class Spotify
+{
+    public static partial class Decode
+    {
+        /// <summary>An image node — <c>{sources:[…]}</c>, <c>{data:{sources}}</c>, <c>{items:[…]}</c> or a bare url
+        /// string — to its first url. <paramref name="hex"/> receives the first <c>extractedColors.*.hex</c> under the
+        /// node when it carries one; it is left as it was otherwise.</summary>
+        static TextRef ImageNode(ref Utf8JsonReader r, Staging s, ref TextRef hex)
+        {
+            if (r.TokenType == JsonTokenType.PropertyName && !r.Read()) return default;
+            if (r.TokenType == JsonTokenType.String) return s.AddJson(ref r);
+            if (r.TokenType is not (JsonTokenType.StartObject or JsonTokenType.StartArray)) { r.Skip(); return default; }
+            int depth = r.CurrentDepth;
+            TextRef url = default;
+            bool inColors = false;
+            while (r.Read() && !End(ref r, depth))
+            {
+                if (r.TokenType != JsonTokenType.PropertyName) continue;
+                if (r.ValueTextEquals("extractedColors"u8)) { inColors = true; continue; }
+                if (r.ValueTextEquals("hex"u8) && inColors) { r.Read(); if (hex.IsEmpty) hex = s.AddJson(ref r); continue; }
+                if (r.ValueTextEquals("url"u8)) { r.Read(); if (url.IsEmpty) url = s.AddJson(ref r); }
+            }
+            return url;
+        }
+
+        /// <summary><c>"#8898A8"</c> (or <c>"8898A8"</c>) → <c>0xFF8898A8</c>; 0 for anything else.</summary>
+        static uint HexColor(Staging s, TextRef hex)
+        {
+            if (hex.IsEmpty) return 0;
+            var t = s.Utf8(hex);
+            if (t.Length == 7 && t[0] == (byte)'#') t = t[1..];
+            if (t.Length != 6) return 0;
+            uint rgb = 0;
+            for (int i = 0; i < 6; i++)
+            {
+                int c = t[i], v = c is >= '0' and <= '9' ? c - '0' : c is >= 'a' and <= 'f' ? c - 'a' + 10
+                                : c is >= 'A' and <= 'F' ? c - 'A' + 10 : -1;
+                if (v < 0) return 0;
+                rgb = (rgb << 4) | (uint)v;
+            }
+            return 0xFF000000u | rgb;
+        }
     }
 }

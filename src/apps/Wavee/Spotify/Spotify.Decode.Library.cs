@@ -43,7 +43,16 @@ public static partial class Spotify
         /// Positions are the WIRE indexes (<c>contents.pos</c> + the item's index), markers included, because a rootlist
         /// write addresses the stream by exactly that index. A marker's depth is the folder's own (the start is stamped
         /// before the depth rises, the end after it falls — 0.2.9 <c>RootlistTreeBuilder</c>); an item that is not a
-        /// playlist is skipped but still counts a position.</summary>
+        /// playlist is skipped but still counts a position.
+        ///
+        /// <para>G-048: <c>meta_items</c> (field 4) rides alongside <c>items</c> (field 3) — the rootlist read now asks
+        /// <c>?decorate=…owner,capabilities,picture</c> for exactly this. Servers have been seen decorating it BOTH
+        /// ways: one <c>MetaItem</c> per WIRE item including markers (item-parallel), and one per REAL playlist item
+        /// only (playlist-parallel, a folder marker gets none). <c>playlistTargets</c> is therefore built
+        /// INDEX-PARALLEL with <c>contents.items</c> itself — a marker or non-playlist row still takes a (default)
+        /// slot — and <see cref="StageRootlistOwners"/> tries the item-parallel zip first, falls back to the
+        /// playlist-parallel one only when the counts actually say that is what arrived, and stages nothing at all
+        /// otherwise (S1: a wrong title is a bug, a missing decoration is not).</para></summary>
         public static void Rootlist(ReadOnlySpan<byte> selectedListContent, ReadOnlySpan<byte> meUri, Staging s)
         {
             var parent = Identity(s, meUri);
@@ -56,19 +65,32 @@ public static partial class Spotify
             var r = new ProtoReader(selectedListContent);
             TextRef revision = default;
             int depth = 0;
+            List<StagedId>? playlistTargets = null;
+            List<RootlistMeta>? metaItems = null;
             while (r.Next())
             {
                 if (r.Field == 1 && r.Wire == 2) { revision = Revision(s, r.Bytes()); continue; }
                 if (r.Field != 5 || r.Wire != 2) { r.Skip(); continue; }
-                var contents = r.Message();                         // ListItems { pos = 1, truncated = 2, items = 3 }
+                var contents = r.Message();                         // ListItems { pos = 1, truncated = 2, items = 3, meta_items = 4 }
                 int position = 0;
                 while (contents.Next())
                 {
                     if (contents.Field == 1 && contents.Wire == 0) { position = contents.Int32(); continue; }
-                    if (contents.Field != 3 || contents.Wire != 2) { contents.Skip(); continue; }
-                    RootlistItem(contents.Message(), s, position++, ref depth);
+                    if (contents.Field == 3 && contents.Wire == 2)
+                    {
+                        RootlistItem(contents.Message(), s, position++, ref depth, ref playlistTargets);
+                        continue;
+                    }
+                    if (contents.Field == 4 && contents.Wire == 2)
+                    {
+                        (metaItems ??= []).Add(ReadRootlistMeta(contents.Message(), s));
+                        continue;
+                    }
+                    contents.Skip();
                 }
             }
+
+            StageRootlistOwners(s, playlistTargets, metaItems);
 
             // Re-read by INDEX: the arena and the row list grew underneath the reference taken above.
             ref var closed = ref s.Rootlists[index];
@@ -76,7 +98,11 @@ public static partial class Spotify
             closed.Length = s.RootlistRows.Count - closed.Start;
         }
 
-        static void RootlistItem(ProtoReader item, Staging s, int position, ref int depth)
+        /// <summary>One <c>items</c> (field 3) entry: a folder marker or a playlist row. <paramref name="playlistTargets"/>
+        /// gets EXACTLY ONE entry per call — <c>default</c> for a marker or a non-playlist row, the staged identity for
+        /// a playlist — so it stays index-parallel with the wire's own <c>items</c> repeated field no matter which of
+        /// the three shapes this call turns out to be (S1). Do not add a return path here without adding its target.</summary>
+        static void RootlistItem(ProtoReader item, Staging s, int position, ref int depth, ref List<StagedId>? playlistTargets)
         {
             ReadOnlySpan<byte> uri = default;
             long timestamp = 0;
@@ -86,10 +112,12 @@ public static partial class Spotify
                 else if (item.Field == 2 && item.Wire == 2) timestamp = item.Message().Varint(2);   // ItemAttributes.timestamp
                 else item.Skip();
             }
-            if (uri.IsEmpty) return;
+            var targets = playlistTargets ??= [];
+            if (uri.IsEmpty) { targets.Add(default); return; }
 
             if (StartsWith(uri, StartGroup))
             {
+                targets.Add(default);
                 var rest = uri[StartGroup.Length..];
                 int colon = rest.IndexOf((byte)':');
                 var id = colon < 0 ? rest : rest[..colon];
@@ -106,6 +134,7 @@ public static partial class Spotify
             }
             if (StartsWith(uri, EndGroup))
             {
+                targets.Add(default);
                 var rest = uri[EndGroup.Length..];
                 int colon = rest.IndexOf((byte)':');
                 depth = Math.Max(0, depth - 1);
@@ -116,13 +145,127 @@ public static partial class Spotify
                 row.FolderId = s.AddText(colon < 0 ? rest : rest[..colon]);
                 return;
             }
-            if (EntityUri.KindOf(uri) != EntityKind.Playlist) return;
+            if (EntityUri.KindOf(uri) != EntityKind.Playlist) { targets.Add(default); return; }
             ref var entry = ref s.RootlistRows.Add();
             entry.Kind = RootlistKind.Item;
             entry.Position = WirePosition(position);
             entry.Depth = (byte)Math.Min(depth, MaxFolderDepth);
             entry.Target = Identity(s, uri);
             entry.AddedAt = Instant(timestamp);
+            targets.Add(entry.Target);
+        }
+
+        /// <summary>One rootlist <c>MetaItem</c> (G-048): <c>owner_username</c> (field 5), <c>length</c> (field 3, the
+        /// server's own track count) and the header text of its nested <c>ListAttributes</c> (field 2) — name,
+        /// description, cover. Revision/timestamp are not read here: a rootlist decoration is a SUMMARY, and
+        /// <c>PlaylistRevision</c>'s full read is what owns those.</summary>
+        readonly struct RootlistMeta(StagedId owner, TextRef name, TextRef description, TextRef image, int length)
+        {
+            public readonly StagedId Owner = owner;
+            public readonly TextRef Name = name, Description = description, Image = image;
+            /// <summary>MetaItem.length (field 3). -1 when the wire did not carry the field at all (S2) — a real
+            /// answer is never negative, so "unanswered" and "the server said zero" stay distinguishable, which
+            /// matters because 0 is a legitimate track count for a genuinely empty playlist.</summary>
+            public readonly int Length = length;
+        }
+
+        static RootlistMeta ReadRootlistMeta(ProtoReader item, Staging s)
+        {
+            StagedId owner = default;
+            TextRef name = default, description = default, rawPicture = default, sizedPicture = default;
+            int length = -1;
+            while (item.Next())
+            {
+                if (item.Field == 3 && item.Wire == 0) length = item.Int32();
+                else if (item.Field == 5 && item.Wire == 2) owner = UserUri(s, item.Bytes());
+                else if (item.Field == 2 && item.Wire == 2)
+                {
+                    var attributes = item.Message();
+                    while (attributes.Next())
+                    {
+                        if (attributes.Field == 1 && attributes.Wire == 2) name = s.AddText(attributes.Bytes());
+                        else if (attributes.Field == 2 && attributes.Wire == 2) description = s.AddText(attributes.Bytes());
+                        else if (attributes.Field == 3 && attributes.Wire == 2) rawPicture = Image(s, attributes.Bytes());
+                        else if (attributes.Field == 13 && attributes.Wire == 2)
+                        {
+                            // ListAttributes.picture_size: repeated PictureSize { target_name = 1, url = 2 }. Every
+                            // non-empty url overwrites the last (0.2.9 `PlaylistFetcher.CoverOf` walked it back to
+                            // front and took the first hit) — walking forward and always overwriting lands on the
+                            // same entry, the last one the wire carried, which is the largest.
+                            var size = attributes.Message();
+                            while (size.Next())
+                            {
+                                if (size.Field == 2 && size.Wire == 2)
+                                {
+                                    var url = s.AddText(size.Bytes());
+                                    if (!url.IsEmpty) sizedPicture = url;
+                                }
+                                else size.Skip();
+                            }
+                        }
+                        else attributes.Skip();
+                    }
+                }
+                else item.Skip();
+            }
+            // The pre-sized url first, the raw picture file id as fallback (0.2.9 `CoverOf`, same order).
+            return new RootlistMeta(owner, name, description, sizedPicture.IsEmpty ? rawPicture : sizedPicture, length);
+        }
+
+        /// <summary>Stage a Thin <see cref="PlaylistFields.Identity"/> header for every rootlist row <c>meta_items</c>
+        /// decorated in full (G-048, S1/S2).
+        ///
+        /// <para>ALIGNMENT. <paramref name="targets"/> is index-parallel with the wire's <c>items</c> (S1: one entry per
+        /// field-3 row, <c>default</c> for a marker or non-playlist row). Servers have been seen sending
+        /// <paramref name="metas"/> both ITEM-parallel (one per <c>items</c> entry, markers included) and
+        /// PLAYLIST-parallel (one per real playlist row only). Both are tried, in that order, by their counts alone —
+        /// never guessed — and if neither fits, nothing is staged: a wrong title zipped onto the wrong row is a bug,
+        /// a playlist that keeps showing its last known header for one more round trip is not.</para>
+        ///
+        /// <para>COMPLETENESS. A meta answers <see cref="PlaylistFields.Identity"/> — title, description, cover, owner
+        /// AND the server's own count — in one wire shape, and <see cref="PlaylistFields"/> has no narrower group for
+        /// "just the name" or "just the count". So a meta missing its NAME or its LENGTH (the <c>-1</c> sentinel — the
+        /// field was never on the wire, not merely zero) is staged as NOTHING rather than a partial Identity: declaring
+        /// Identity known from a thin, incomplete answer would mark the row settled and the real header prefetch
+        /// (<c>Spotify.Library.cs</c> <c>EnsureRootlistRows</c>, which asks <c>PlaylistFields.Row</c> MINUS what is
+        /// already known) would never ask again — 0 songs, forever (S2). The COVER is not part of that gate: a
+        /// cover-less playlist ("new list", no picture at all) is a legitimate answer, not a partial one, and holding
+        /// its count back for a picture that will never arrive is the same bug with different symptoms. An empty
+        /// <see cref="StagedPlaylist.Image"/> is committed as "no cover" (the mosaic renders instead), never as "don't
+        /// know" — <c>CommitPlaylists</c>' <c>if (!row.Image.IsEmpty)</c> guard means it can never blank a cover a
+        /// fuller read already set.</para></summary>
+        static void StageRootlistOwners(Staging s, List<StagedId>? targets, List<RootlistMeta>? metas)
+        {
+            if (targets is null || metas is null || metas.Count == 0) return;
+
+            if (targets.Count == metas.Count)
+            {
+                for (int i = 0; i < targets.Count; i++) StageOne(s, targets[i], metas[i]);
+                return;
+            }
+
+            int playlists = 0;
+            for (int i = 0; i < targets.Count; i++) if (!targets[i].IsEmpty) playlists++;
+            if (playlists != metas.Count) return;   // neither shape matches: stage nothing rather than guess.
+
+            int m = 0;
+            for (int i = 0; i < targets.Count; i++)
+            {
+                if (targets[i].IsEmpty) continue;
+                StageOne(s, targets[i], metas[m++]);
+            }
+
+            static void StageOne(Staging s, StagedId target, in RootlistMeta meta)
+            {
+                if (target.IsEmpty) return;
+                if (meta.Name.IsEmpty || meta.Length < 0) return;   // the cover is optional (S2): see COMPLETENESS above.
+                ref var row = ref s.Playlists.RowFor(target, Authority.Thin, (uint)PlaylistFields.Identity);
+                row.OwnerUri = meta.Owner;
+                row.Title = meta.Name;
+                row.Description = meta.Description;
+                row.Image = meta.Image;
+                row.TrackCount = meta.Length;
+            }
         }
 
         const string StartGroup = "spotify:start-group:";

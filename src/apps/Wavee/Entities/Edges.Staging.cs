@@ -43,6 +43,12 @@ public enum Relation : byte
     PlaylistTracks,
     Liked, SavedAlbums, FollowedArtists, SavedShows, Rootlist,
     HomeSection, SectionCards, SearchResult,
+    /// <summary>The ylpin set (G-062): parent = the account's user row, and the targets are CROSS-KIND — a playlist,
+    /// album, artist or show row, the Liked collection, or a rootlist folder — so each edge's kind rides its payload's
+    /// flag byte (<see cref="PinKind"/>). Appended last: the members above keep their numbers.</summary>
+    Pins,
+    /// <summary>§9.6 Q4: parent = album; each edge becomes a <see cref="MerchTable"/> row (Spotify.Decode.Album.cs).</summary>
+    AlbumMerch,
 }
 
 // ── 2. the staged edge and its run ───────────────────────────────────────────────────────────────────────────────────
@@ -53,9 +59,11 @@ public enum Relation : byte
 ///
 /// <para>The scalar fields are a UNION read only by the payload family the run's <see cref="Relation"/> names: an
 /// <c>AlbumTracks</c> run reads <c>B0</c>/<c>U0</c> as disc and number, a <c>PlaylistTracks</c> run reads
-/// <c>Text</c>/<c>At</c>/<c>Aux</c> plus the chart triple, a library run reads <c>At</c>, a <c>Rootlist</c> run reads
-/// <c>U0</c>/<c>B0</c>/<c>B1</c>/<c>Text</c>/<c>At</c>, and a <c>TrackTags</c> run reads only <c>Text</c>. One struct
-/// and not seven, because the commit's shape is identical for all of them and seven would be seven buffers.</para></summary>
+/// <c>Text</c>/<c>At</c>/<c>Aux</c> plus the chart triple, a library run reads <c>At</c> (a <c>Pins</c> run also reads
+/// <c>Target</c>'s own kind — its targets are cross-kind), a <c>Rootlist</c> run reads <c>U0</c>/<c>B0</c>/<c>B1</c>/
+/// <c>Text</c>/<c>At</c> and takes <c>Aux</c>'s TEXT as the folder's bare group id (<see cref="RootlistEdge.FolderId"/>,
+/// D10), and a <c>TrackTags</c> run reads only <c>Text</c>. One struct and not seven, because the commit's shape is
+/// identical for all of them and seven would be seven buffers.</para></summary>
 public struct StagedEdge
 {
     /// <summary>The child. The commit resolves it to a slot, ALLOCATING an empty row when it has never been seen —
@@ -116,12 +124,13 @@ public sealed class StagedEdgeList : StagedList
     /// <c>for (k &lt; n)</c> walks with no second cursor and no per-arm emptiness rule.
     /// <para>An edge with no target but with TEXT survives: that is the "the payload IS the row" shape
     /// (<c>TrackTags</c>, Edges.cs), where the targets are unused by construction.</para></summary>
-    public int Compact(int start, int count)
+    public int Compact(int start, int count, bool keepAux = false)
     {
         if (start < 0 || count <= 0 || start + count > Count) return count < 0 ? 0 : count;
         int write = start;
         for (int read = start; read < start + count; read++)
-            if (!_edges[read].Target.IsEmpty || !_edges[read].Text.IsEmpty) _edges[write++] = _edges[read];
+            if (!_edges[read].Target.IsEmpty || !_edges[read].Text.IsEmpty || (keepAux && !_edges[read].Aux.IsEmpty))
+                _edges[write++] = _edges[read];
         int kept = write - start;
         if (start + count == Count) Count = write;                 // the run is at the tail: give the slack back
         return kept;
@@ -132,8 +141,12 @@ public sealed class StagedEdgeList : StagedList
     /// <para>Compact's rule is "the wire NAMED a child and then failed to IDENTIFY it", and it reads that off the target
     /// and the text. A payload-only relation has neither by construction — a <see cref="FormatEdge"/> rung is two
     /// numbers and nothing else — so running the squeeze over one would throw the whole ladder away and record an empty
-    /// run, silently. <see cref="Relation.TrackTags"/> only escapes because its payload happens to BE text.</para></summary>
-    public int Kept(Relation relation, int start, int count) => PayloadOnly(relation) ? count : Compact(start, count);
+    /// run, silently. <see cref="Relation.TrackTags"/> only escapes because its payload happens to BE text.</para>
+    /// <para>A <see cref="Relation.Rootlist"/> marker names no child either: a folder's END marker has no target and no
+    /// name, and its identity is the group id it carries in <c>Aux</c> — so for that relation an edge with an <c>Aux</c> is
+    /// identified too (G-062), or every end marker would be squeezed out of the stream.</para></summary>
+    public int Kept(Relation relation, int start, int count)
+        => PayloadOnly(relation) ? count : Compact(start, count, keepAux: relation == Relation.Rootlist);
 
     /// <summary>Relations whose EDGE IS THE PAYLOAD (Edges.cs): the children are not rows, the run carries no targets
     /// at all, and their commit arms write <see cref="Table.None"/> into every target slot.</summary>
@@ -378,9 +391,28 @@ public static partial class Entities
             {
                 case Relation.AlbumTracks:
                     {
-                        int n = Resolve(s, page, Current.Tracks);
-                        for (int j = 0; j < n; j++) s_edgeAlbumTrack[j] = new AlbumTrackEdge(page[j].B0, page[j].U0);
-                        Land(Current.Edges.AlbumTracks, parent, n, s_edgeAlbumTrack, in run);
+                        // Defensive kind filter (G-231 follow-up): a mis-ordered `tracksV2`/`artists` decode can leave
+                        // artist identities pushed above the tracks mark on the same pending run (GetAlbum), which
+                        // would otherwise land here as empty Track rows. SKIP IN PLACE rather than compact: `j` is the
+                        // ordinal, and for `tracksV2` the ordinal IS the track number when the edge's own disc/number
+                        // are 0 — dropping entry `j` would shift every entry after it one slot toward `offset`,
+                        // silently overwriting the wrong tracks and renumbering the rest of the album (unlike
+                        // TrackTags/TrackFormats below, which are payload-only and have no ordinal to protect). A
+                        // non-Track entry lands as `Table.None` / `default`, which `ReplacePage`'s own zero-fill
+                        // already reads as "none / un-arrived" (Edges.cs).
+                        for (int j = 0; j < page.Length; j++)
+                        {
+                            ref readonly var e = ref page[j];
+                            if (e.Target.Kind(s) != EntityKind.Track)
+                            {
+                                s_edgeTargets[j] = Table.None;
+                                s_edgeAlbumTrack[j] = default;
+                                continue;
+                            }
+                            s_edgeTargets[j] = s.Slot(Current.Tracks, in e.Target);
+                            s_edgeAlbumTrack[j] = new AlbumTrackEdge(e.B0, e.U0);
+                        }
+                        Land(Current.Edges.AlbumTracks, parent, page.Length, s_edgeAlbumTrack, in run);
                         break;
                     }
                 case Relation.PlaylistTracks:
@@ -395,6 +427,7 @@ public static partial class Entities
                                 s.Intern(e.Text), e.At, s.Slot(Current.Users, in e.Aux), e.B1, e.U0, e.U1, e.B0);
                         }
                         Land(Current.Edges.PlaylistTracks, parent, n, s_edgePlaylistTrack, in run);
+                        new global::Wavee.Playlist(parent).Refold();
                         break;
                     }
                 case Relation.TrackTags:
@@ -439,13 +472,37 @@ public static partial class Entities
                     }
                 case Relation.Rootlist:
                     {
+                        // The generic arm of the marker stream (the protobuf rootlist and libraryV3 land through
+                        // `CommitRootlist`; this serves a decoder that stages the stream as plain runs). Both strings are
+                        // OWNED by the edge (Edges.cs header, G-062): AddRef the incoming FIRST, then give back the rows
+                        // this run overwrites, then land — so a folder that kept its name keeps its id, and a replaced
+                        // folder name is no longer permanent.
                         int n = Resolve(s, page, Current.Playlists);
                         for (int j = 0; j < n; j++)
                         {
                             ref readonly var e = ref page[j];
-                            s_edgeRootlist[j] = new RootlistEdge(e.U0, e.B0, e.B1, s.Intern(e.Text), e.At);
+                            s_edgeRootlist[j] = new RootlistEdge(e.U0, e.B0, e.B1, Retained(s.Intern(e.Text)), e.At,
+                                                                 Retained(s.Intern(e.Aux.Text)));
                         }
+                        ReleaseRootlistRows(parent, run.Offset, n, run.Total);
                         Land(Current.Edges.Rootlist, parent, n, s_edgeRootlist, in run);
+                        break;
+                    }
+                case Relation.Pins:
+                    {
+                        // CROSS-KIND (G-062): each target resolves in its OWN table, and the kind rides the payload's
+                        // flag byte. The two non-row pins land too — Liked targets None, a folder targets its interned
+                        // group id's value (User.cs, PinKind) — and a shape the sidebar cannot represent (a track, an
+                        // episode, a prerelease, an unknown scheme) is dropped here, so it can never become a local pin.
+                        int n = 0;
+                        for (int j = 0; j < page.Length; j++)
+                        {
+                            var kind = PinTargetOf(s, in page[j].Target, out int target);
+                            if (kind == PinKind.Unknown) continue;
+                            s_edgeTargets[n] = target;
+                            s_edgeLibrary[n++] = new LibraryEdge(page[j].At, (byte)kind);
+                        }
+                        Land(Current.Edges.Pins, parent, n, s_edgeLibrary, in run);
                         break;
                     }
                 case Relation.ArtistReleases:
@@ -468,13 +525,32 @@ public static partial class Entities
                         for (int j = 0; j < page.Length; j++)
                         {
                             var kind = page[j].Target.Kind(s);
-                            var table = TableFor(kind);
+                            var table = kind == EntityKind.Collection ? Current.Playlists : TableFor(kind);
                             if (table is null) continue;
                             s_edgeTargets[n] = s.Slot(table, in page[j].Target);
                             s_edgeKind[n++] = new KindEdge(kind);
                         }
                         Land(run.Relation == Relation.SectionCards ? Current.Edges.SectionCards : Current.Edges.SearchResult,
                              parent, n, s_edgeKind, in run);
+                        break;
+                    }
+                case Relation.AlbumMerch:
+                    {
+                        // Merch is not an entity: one MerchTable row per edge. Union read: Text = name, Target's text =
+                        // image, Aux's text = shop url, (At, U0) = the price's TextRef.
+                        var merch = Current.Edges.Merch;
+                        int first = merch.AllocRun(page.Length);
+                        for (int j = 0; j < page.Length; j++)
+                        {
+                            ref readonly var e = ref page[j];
+                            ref var row = ref merch.Row[first + j];
+                            row.Name = s.Intern(e.Text);
+                            row.Price = s.Intern(new TextRef(e.At, e.U0));
+                            row.ImageId = s.Intern(e.Target.Text);
+                            row.ShopUrl = s.Intern(e.Aux.Text);
+                            s_edgeTargets[j] = first + j;
+                        }
+                        Land(Current.Edges.AlbumMerch, parent, page.Length, s_edgeNone, in run);
                         break;
                     }
                 default:
@@ -487,6 +563,54 @@ public static partial class Entities
                     }
             }
         }
+    }
+
+    /// <summary>Give back the folder strings of the rootlist rows a run is about to overwrite: the whole list for a
+    /// rewrite, only <c>[offset, offset + n)</c> for a page (the rows outside the page stay, and so does their text) —
+    /// UNLESS this page is terminal (<paramref name="total"/> stated and reached), in which case <c>ReplacePage</c>
+    /// (Edges.cs) shrinks the list past the page's own extent when the previous answer was longer, and the truncated
+    /// tail's owned <c>FolderName</c>/<c>FolderId</c> would otherwise leak their interner refcount — so release out to
+    /// the OLD list's end too, under the same terminal guard `ReplacePage` uses.</summary>
+    static void ReleaseRootlistRows(int parent, int offset, int n, int total)
+    {
+        if (offset < 0) { Current.Edges.ReleaseRootlistText(parent); return; }
+        var rows = Current.Edges.Rootlist.Payload(parent);
+        int pageEnd = offset + n;
+        bool terminal = total > 0 && pageEnd >= total;
+        int end = terminal ? rows.Length : Math.Min(rows.Length, pageEnd);
+        for (int i = offset; i < end; i++)
+        {
+            Strings.Release(rows[i].FolderName);
+            Strings.Release(rows[i].FolderId);
+        }
+    }
+
+    /// <summary>One staged pin's target and kind (<see cref="PinKind"/>). A catalogue row resolves in its own table
+    /// (allocating an empty row, like every edge child); the Liked collection targets <see cref="Table.None"/>; a
+    /// <c>spotify:folder:&lt;hex&gt;</c> targets the value of its interned group id (permanent — see <see cref="PinKind"/>).
+    /// <see cref="PinKind.Unknown"/> for anything the sidebar cannot pin, which the commit drops.</summary>
+    static PinKind PinTargetOf(Staging s, in StagedId id, out int target)
+    {
+        target = Table.None;
+        if (id.IsEmpty) return PinKind.Unknown;
+        var entityKind = id.Kind(s);
+        var pinKind = global::Wavee.User.PinKindFor(entityKind);
+        if (pinKind != PinKind.Unknown)
+        {
+            // A prerelease parses as an ALBUM row, but it is not a pin the sidebar can show (SidebarPinSyncTests'
+            // preservation invariant): a foreign client's prerelease pin stays on the server, untouched.
+            bool prerelease = id.Packed.IsEmpty ? EntityUri.IsPrerelease(s.Utf8(id.Text)) : id.Packed.IsPrerelease;
+            if (prerelease) return PinKind.Unknown;
+            target = s.Slot(TableFor(entityKind), in id);
+            return target == Table.None ? PinKind.Unknown : pinKind;
+        }
+        if (!id.Packed.IsEmpty) return PinKind.Unknown;          // a packed id of a kind no pin represents
+        var utf8 = s.Utf8(id.Text);
+        if (entityKind == EntityKind.Collection && global::Wavee.User.IsLikedPinUri(utf8)) return PinKind.Liked;
+        var folder = global::Wavee.User.FolderIdOf(utf8);
+        if (folder.IsEmpty) return PinKind.Unknown;
+        target = Intern(folder).Value;
+        return PinKind.Folder;
     }
 
     /// <summary>Resolve a run's children to slots. <paramref name="fixedTable"/> <c>null</c> means "take each
@@ -514,13 +638,13 @@ public static partial class Entities
         Relation.TrackArtists or Relation.TrackTags or Relation.TrackFormats
             or Relation.TrackRelatedArtists => Current.Tracks,
         Relation.AlbumTracks or Relation.AlbumArtists or Relation.AlbumVersions or Relation.AlbumMoreBy
-            or Relation.AlbumFeaturedOn or Relation.AlbumSimilar => Current.Albums,
+            or Relation.AlbumFeaturedOn or Relation.AlbumSimilar or Relation.AlbumMerch => Current.Albums,
         Relation.ArtistPopular or Relation.ArtistRelated or Relation.ArtistReleases or Relation.ArtistAppearsOn
             or Relation.ArtistAlbums or Relation.ArtistSingles or Relation.ArtistCompilations => Current.Artists,
         Relation.ShowEpisodes => Current.Shows,
         Relation.PlaylistTracks => Current.Playlists,
         Relation.Liked or Relation.SavedAlbums or Relation.FollowedArtists or Relation.SavedShows
-            or Relation.Rootlist => Current.Users,
+            or Relation.Rootlist or Relation.Pins => Current.Users,
         Relation.HomeSection => Current.Homes,
         Relation.SectionCards => Current.Sections,
         Relation.SearchResult => Current.Searches,

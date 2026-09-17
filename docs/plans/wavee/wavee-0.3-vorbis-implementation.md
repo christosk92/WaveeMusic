@@ -1895,7 +1895,8 @@ that order.
    on replay and no storage-resolve or key is needed to READ it (the bytes are still encrypted; the key is still
    fetched for decryption — as go-librespot, `cache.go:1-8`).
 
-**The fetcher** (F, `Spotify.Audio.Fetcher`): one named thread `Wavee.AudioFetch` (P10: named, one), a bounded
+**The fetcher** (F, `Spotify.Audio.Fetcher`): one consumer task on the pool (P10: one consumer, strict sequence —
+no dedicated OS thread), a bounded
 queue of `RangeRequest { long Start, End; uint Epoch; bool Probe }` (C8: capacity 8, a new probe replaces a queued
 probe), at most **2 ranges in flight per file** (the sequential fill + one probe/tail) and **4 per host**
 (`MaxConnectionsPerServer = 4` stays; HTTP/2 multiplexes them on one connection when the CDN offers it —

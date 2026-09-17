@@ -22,6 +22,301 @@ namespace Wavee;
 
 public static partial class Setup
 {
+    // ══ REGION — THE SETUP WIZARD'S PURE RULES (WP-6.R) ═══════════════════════════════════════════════════════════
+    //
+    // Moved verbatim from `Setup.Host.cs` (batch R2), where it was parked because that file was not originally in
+    // WP-6.R's file list. Engine-free except `ColorF`, the value the recolour rule is ABOUT (`Design.Palette`, CORE,
+    // uses it the same way). Ported from 0.2.9 `Features/Setup/SetupLayout.cs`, `App/SetupCommands.cs`,
+    // `App/SetupSignInPresentation.cs` and `Features/Setup/WaveeLottieRecolor.cs`; pinned by
+    // `Wavee.Tests/SetupWizardTests.cs`. B5's `WizardPage` / `WizardEntry` / `Gating` / `SignInFacet` / `SignInRules`
+    // (below, in the sign-in/gating/bootstrap region) are reused, never re-minted.
+
+    /// <summary>What the shell BEHIND the wizard plate paints (the <c>Setup.Covering</c> reader). <see cref="Dim"/> = the
+    /// ordinary modal smoke; <see cref="None"/> = no plate. <see cref="Live"/> is unreachable today (no page is a live
+    /// preview of the shell) and kept so the shell's scrim reader can name it.</summary>
+    public enum Cover : byte { None, Dim, Live }
+
+    /// <summary>Every wizard number: the Rise reference plate 762×490 (min 320×184), ONE 770-DIP icon breakpoint with no
+    /// hysteresis, an 80-tall footer whose 210-wide progress column collapses with the icon column (ch 28 §2, §3.1).</summary>
+    public static class Layout
+    {
+        public const float PlateWidth = 762f, PlateHeight = 490f, PlatePadding = 24f;
+        public const float MinPlateWidth = 320f, MinPlateHeight = 184f, ViewportMargin = 32f;
+        public const float IconColumnWidth = 192f, IconColumnGap = 24f, IconBreakpoint = 770f;
+        public const float HeaderTopPull = 4f, HeaderBottomGap = 4f, BackSpacerWidth = 42f;
+        public const float BodySpacing = 20f, BodyInnerSpacing = 12f, ScrollGutter = 24f;
+        public const float FooterHeight = 80f, FooterPadding = 24f, FooterColumnGap = 6f;
+        public const float ProgressColumnWidth = 210f, ProgressColumnRightPad = 48f, ProgressStackGap = 6f, ProgressWidth = 162f;
+        public const float BackButtonSize = 30f, BackGlyphSize = 12f;
+        public const float HeaderLineHeight = 36f, SeparatorHeight = 1f;
+        public const float QrSize = 80f, BodyLineHeight = 20f, CardMinHeight = 68f, CardPadding = 16f, LinkRowHeight = 32f;
+
+        /// <summary>The hero's zoom over its authored fit — Wavee's one deliberate deviation from a literal Rise readout.</summary>
+        public const float HeroZoom = 1.2f;
+
+        /// <summary>A v4 (33-module) pairing symbol asked for at <see cref="QrSize"/> PAINTS at 82; the budget charges the
+        /// paint, not the ask.</summary>
+        public static readonly float QrPlateBudget = QrPlate.PlateFor(QrSize, 33);
+
+        public static float Width(float viewportW) => Math.Clamp(PlateWidth, MinPlateWidth, MathF.Max(MinPlateWidth, viewportW - 2f * ViewportMargin));
+        public static float Height(float viewportH) => Math.Clamp(PlateHeight, MinPlateHeight, MathF.Max(MinPlateHeight, viewportH - 2f * ViewportMargin));
+
+        /// <summary>The one breakpoint, on the WINDOW width (not the plate's).</summary>
+        public static bool ShowsIcon(float viewportW) => viewportW >= IconBreakpoint;
+
+        public static float ProgressColumnFor(bool large) => large ? ProgressColumnWidth : 0f;
+
+        /// <summary>The two stretch buttons' width once the padding, the progress column and both gaps come out.</summary>
+        public static float FooterButtonWidth(float plateW, bool large) =>
+            (plateW - 2f * FooterPadding - ProgressColumnFor(large) - 2f * FooterColumnGap) / 2f;
+
+        public static Cover CoverFor(bool shellBehind) => shellBehind ? Cover.Dim : Cover.None;
+
+        /// <summary>The page body's lane: the plate less the footer, the separator, the 24 padding top+bottom and the
+        /// one-line title with its 0,-4,0,4 margin (325 at the reference plate).</summary>
+        public static float BodyLaneHeight(float plateH) =>
+            plateH - FooterHeight - SeparatorHeight - 2f * PlatePadding - (HeaderLineHeight - HeaderTopPull + HeaderBottomGap);
+
+        /// <summary>The sign-in Idle body for a lead of <paramref name="leadLines"/> lines: lead · browser card · scan card
+        /// (the painted QR + 16 padding) · the one-row premium line, 20 apart (314 for two lines). It does NOT model the
+        /// SettingsCard wrap bands (W3b) — the persistent scrollbar covers those.</summary>
+        public static float SignInIdleBodyHeight(int leadLines) =>
+            leadLines * BodyLineHeight + BodySpacing
+            + CardMinHeight + BodySpacing
+            + (QrPlateBudget + 2f * CardPadding) + BodySpacing
+            + LinkRowHeight;
+
+        /// <summary>A body card's width at a viewport (W3b): the plate less its padding, less the icon column and its gap
+        /// when shown — what `SettingsCard`'s two thresholds (content wrap 476, icon drop 286) are measured against.</summary>
+        public static float CardWidth(float viewportW) =>
+            Width(viewportW) - 2f * PlatePadding - (ShowsIcon(viewportW) ? IconColumnWidth + IconColumnGap : 0f);
+
+        /// <summary>The 42-DIP back spacer beside the title: only with no icon column, on a page that shows Back.</summary>
+        public static bool BackSpacerApplies(WizardPage page, bool iconShown) => !iconShown && Gating.ShowsBack(page);
+
+        /// <summary>The Lottie scene each page plays (<c>assets/lottie/&lt;name&gt;.json</c>).</summary>
+        public static string HeroAsset(WizardPage page) => page switch
+        {
+            WizardPage.Terms => "eula",
+            WizardPage.SignIn => "connect",
+            _ => "patch",
+        };
+    }
+
+    /// <summary>The Local playback page's footer facets, folded from the eight runtime phases.</summary>
+    public enum RuntimeFacet : byte { Offer, Catalog, Versions, Downloading, Verifying, Untrusted, Ready, Failed }
+
+    /// <summary>The primary button's treatment: Accent on every row today; Standard is honoured by the footer.</summary>
+    public enum ButtonKind : byte { Accent, Standard }
+
+    /// <summary>What the footer table reads: the page and the two sub-states.</summary>
+    public readonly record struct WizardCtx(WizardPage Page, SignInFacet SignIn, RuntimeFacet Runtime);
+
+    /// <summary>The footer's whole answer: loc KEYS (never text); null = no such button; a disabled button is a key with
+    /// its flag false. <see cref="BlocksDismiss"/> is ported and read by nothing (ch 28 §6.1).</summary>
+    public readonly record struct CommandRow(string? PrimaryKey, string? SecondaryKey, ButtonKind PrimaryKind,
+                                             bool PrimaryEnabled, bool SecondaryEnabled, bool BlocksDismiss, bool ShowBack);
+
+    /// <summary>The wizard's label table and the per-page folds its footer and pages switch on.</summary>
+    public static class Commands
+    {
+        public static CommandRow Resolve(in WizardCtx ctx)
+        {
+            CommandRow row = ctx.Page switch
+            {
+                WizardPage.Terms => new CommandRow(Strings.Setup.Accept, Strings.Setup.Decline, ButtonKind.Accent, true, true, false, false),
+                WizardPage.SignIn => SignInRow(ctx.SignIn),
+                _ => LocalPlaybackRow(ctx.Runtime),
+            };
+            return row with { ShowBack = Gating.ShowsBack(ctx.Page) };
+        }
+
+        /// <summary><see cref="Resolve"/>, with the Local playback primary offered DISABLED when there is no provisioning
+        /// model (no host installed — D3): nothing to download through, while "Not now" still finishes the wizard.</summary>
+        public static CommandRow ResolveFor(in WizardCtx ctx, bool runtimeActive)
+        {
+            CommandRow row = Resolve(in ctx);
+            return ctx.Page == WizardPage.LocalPlayback && !runtimeActive ? row with { PrimaryEnabled = false } : row;
+        }
+
+        static CommandRow SignInRow(SignInFacet facet) => facet switch
+        {
+            SignInFacet.Busy => new CommandRow(Strings.Auth.SigningIn, Strings.Auth.Cancel, ButtonKind.Accent, false, true, false, false),
+            SignInFacet.Done => new CommandRow(Strings.Setup.SignIn.YesContinue, Strings.Setup.SignIn.NotMe, ButtonKind.Accent, true, true, false, false),
+            SignInFacet.Failed => new CommandRow(Strings.Auth.TryAgain, Strings.Auth.Close, ButtonKind.Accent, true, true, false, false),
+            SignInFacet.Expired => new CommandRow(Strings.Auth.GetNewCode, Strings.Auth.Close, ButtonKind.Accent, true, true, false, false),
+            SignInFacet.Premium => new CommandRow(Strings.Auth.Upgrade, Strings.Auth.UseAnotherAccount, ButtonKind.Accent, true, true, false, false),
+            _ => new CommandRow(Strings.Auth.LogIn, Strings.Auth.Close, ButtonKind.Accent, true, true, false, false),
+        };
+
+        static CommandRow LocalPlaybackRow(RuntimeFacet facet) => facet switch
+        {
+            RuntimeFacet.Catalog => new CommandRow(Strings.Playback.Runtime.Checking, Strings.Auth.Cancel, ButtonKind.Accent, false, true, true, false),
+            RuntimeFacet.Versions => new CommandRow(Strings.Playback.Runtime.Install, Strings.Playback.Runtime.Back, ButtonKind.Accent, true, true, false, false),
+            RuntimeFacet.Downloading => new CommandRow(Strings.Playback.Runtime.Downloading, Strings.Auth.Cancel, ButtonKind.Accent, false, true, true, false),
+            RuntimeFacet.Verifying => new CommandRow(Strings.Playback.Runtime.Verifying, null, ButtonKind.Accent, false, false, true, false),
+            RuntimeFacet.Untrusted => new CommandRow(Strings.Playback.Runtime.LoadAnyway, Strings.Playback.Runtime.Back, ButtonKind.Accent, true, true, false, false),
+            RuntimeFacet.Ready => new CommandRow(Strings.Setup.OpenWavee, null, ButtonKind.Accent, true, false, false, false),
+            RuntimeFacet.Failed => new CommandRow(Strings.Playback.Runtime.TryAgain, Strings.Playback.Runtime.NotNow, ButtonKind.Accent, true, true, false, false),
+            _ => new CommandRow(Strings.Playback.Runtime.DownloadSetup, Strings.Playback.Runtime.NotNow, ButtonKind.Accent, true, true, false, false),
+        };
+
+        /// <summary>The runtime model's phase → the footer facet (Advanced is the version picker, "Versions").</summary>
+        public static RuntimeFacet FacetFor(RuntimePhase phase) => phase switch
+        {
+            RuntimePhase.FetchingCatalog => RuntimeFacet.Catalog,
+            RuntimePhase.Downloading => RuntimeFacet.Downloading,
+            RuntimePhase.Verifying => RuntimeFacet.Verifying,
+            RuntimePhase.Untrusted => RuntimeFacet.Untrusted,
+            RuntimePhase.Ready => RuntimeFacet.Ready,
+            RuntimePhase.Failed => RuntimeFacet.Failed,
+            RuntimePhase.Advanced => RuntimeFacet.Versions,
+            _ => RuntimeFacet.Offer,
+        };
+
+        /// <summary>The Sign in page mints its pairing code while it is the ACTIVE page and no code is live, asked for,
+        /// lapsed or failed — so neither a reactive re-render nor a parked page starts a second request.</summary>
+        public static bool NeedsPairingChallenge(WizardPage activePage, SignInFacet facet, in Spotify.SignInState st)
+            => activePage == WizardPage.SignIn && facet != SignInFacet.Done && SignInRules.NeedsPairingCode(in st);
+
+        /// <summary>The Local playback page header per phase; null = no provisioning model.</summary>
+        public static string RuntimeHeaderKey(RuntimePhase? phase) => phase switch
+        {
+            RuntimePhase.Untrusted => Strings.Playback.Runtime.SignatureInvalid,
+            RuntimePhase.Ready => Strings.Playback.Runtime.Ready,
+            RuntimePhase.Advanced => Strings.Playback.Runtime.ChooseVersion,
+            _ => Strings.Setup.LocalPlayback.Header,
+        };
+
+        public static string RuntimeLeadKey(RuntimePhase? phase)
+            => phase == RuntimePhase.Ready ? Strings.Setup.LocalPlayback.ReadyLead : Strings.Setup.LocalPlayback.Lead;
+
+        /// <summary>The Busy ladder's rungs: Connecting to Spotify · Preparing your library · Starting audio · Almost there.</summary>
+        public const int LoginSteps = 4;
+
+        /// <summary>The current rung in 0.3 session terms: before a token is handed over the ladder waits on its first rung;
+        /// after it the session's phase walks it (Online = every rung done).</summary>
+        public static int LoginStep(bool handed, Spotify.SessionPhase phase) => !handed ? 0 : phase switch
+        {
+            Spotify.SessionPhase.Handshaking => 1,
+            Spotify.SessionPhase.Authenticating => 2,
+            Spotify.SessionPhase.Minting => 3,
+            Spotify.SessionPhase.Online => LoginSteps,
+            _ => 0,
+        };
+
+        public static string LoginStepKey(int step) => step switch
+        {
+            1 => Strings.Auth.StepMetadata,
+            2 => Strings.Auth.StepAudio,
+            3 => Strings.Auth.StepProfile,
+            _ => Strings.Auth.StepConnecting,
+        };
+
+        /// <summary>The Busy InfoBar's message (0.2.9's RequestingCode/LoggedOut split): "Getting your code…" while nothing is
+        /// out yet (the listener is still opening), "Waiting for you to authorize…" otherwise.</summary>
+        public static string BusyMessageKey(in Spotify.SignInState st)
+            => !st.Handed && st.Browser == Spotify.SignInStage.Starting ? Strings.Auth.GettingCode : Strings.Auth.WaitingApproval;
+    }
+
+    /// <summary>When and how the wizard opens, and who owns sign-in meanwhile.</summary>
+    public static class WizardRules
+    {
+        /// <summary>Armed, or a completed install's accepted terms fell behind this build (a grandfathered 0 never counts).</summary>
+        public static bool ShouldOpen(bool pending, bool completed, int accepted)
+            => pending || (Gating.NeedsTermsRearm(completed, accepted, Gating.TermsVersion) && !Gating.GrandfathersTerms(completed, accepted));
+
+        /// <summary>A never-completed install is a first run; a completed one re-accepts the terms while signed in, and
+        /// re-authenticates (straight to Sign in) when not.</summary>
+        public static WizardEntry EntryFor(bool completed, bool signedIn)
+            => !completed ? WizardEntry.FirstRun : signedIn ? WizardEntry.TermsRearm : WizardEntry.Reauth;
+
+        public static WizardPage StartPage(WizardEntry entry) => entry == WizardEntry.Reauth ? WizardPage.SignIn : WizardPage.Terms;
+
+        /// <summary>One post for a first run / re-auth (the plate appears WITH the window — no empty-window flash); two for a
+        /// terms re-arm, so it rises over an already-painted shell.</summary>
+        public static int OpenPosts(WizardEntry entry) => entry == WizardEntry.TermsRearm ? 2 : 1;
+
+        /// <summary>The wizard owns sign-in while its plate is up, and while it is armed but not yet shown this launch; once
+        /// shown and closed the sign-in door takes it back (a later sign-out must still get a surface).</summary>
+        public static bool OwnsSignIn(bool pending, bool open, bool shownThisLaunch) => open || (pending && !shownThisLaunch);
+
+        /// <summary>Escape (a USER dismissal) may close the plate only on an idle terms re-arm; a programmatic close always
+        /// goes through and never reaches this.</summary>
+        public static bool EscapeClosesPlate(bool nestedOpen, WizardEntry entry, bool busy) => !nestedOpen && Gating.CanDismiss(entry, busy);
+
+        public static Design.NavTransitionKind DirectionFor(WizardPage from, WizardPage to)
+            => to == from ? Design.NavTransitionKind.Neutral : to > from ? Design.NavTransitionKind.Forward : Design.NavTransitionKind.Back;
+
+        /// <summary>A terms re-arm swaps only the header; the agreement is the same.</summary>
+        public static string TermsHeaderKey(WizardEntry entry)
+            => entry == WizardEntry.TermsRearm ? Strings.Setup.Terms.UpdatedTitle : Strings.Setup.Terms.Header;
+    }
+
+    /// <summary>An account's id and the display name some source carries for it.</summary>
+    public readonly record struct AccountName(string Id, string DisplayName);
+
+    public static class SignInPresentation
+    {
+        /// <summary>Idle and the three retry-in-place facets keep the two option cards; Busy and Done replace them.</summary>
+        public static bool ShowsIdleCards(SignInFacet facet)
+            => facet is SignInFacet.Idle or SignInFacet.Failed or SignInFacet.Expired or SignInFacet.Premium;
+
+        /// <summary>The "raw Spotify id" fix: the live name wins when it is a real name (not the id standing in for one),
+        /// the snapshot's otherwise; null when neither differs from its id (the caller falls back to the id).</summary>
+        public static string? DisplayNameFor(AccountName? live, AccountName? snapshot)
+        {
+            if (live is { } l && l.DisplayName.Length > 0 && !string.Equals(l.DisplayName, l.Id, StringComparison.Ordinal)) return l.DisplayName;
+            if (snapshot is { } s && s.DisplayName.Length > 0 && !string.Equals(s.DisplayName, s.Id, StringComparison.Ordinal)) return s.DisplayName;
+            return null;
+        }
+
+        /// <summary>A pairing code as a screen reader must hear it: one character at a time, hyphens dropped
+        /// ("WZY5-Q6TX" → "W Z Y 5 Q 6 T X").</summary>
+        public static string SpellCode(string code)
+        {
+            var sb = new System.Text.StringBuilder(code.Length * 2);
+            foreach (char c in code)
+            {
+                if (c is '-' or ' ') continue;
+                if (sb.Length > 0) sb.Append(' ');
+                sb.Append(c);
+            }
+            return sb.ToString();
+        }
+    }
+
+    /// <summary>The Lottie hero recolour: exact #0078D4 → the accent, exact #002B67 → the deep accent, the H 195–285° /
+    /// S ≥ .35 blue-violet band hue-rotated by the accent's own delta, everything else as authored. Alpha is always the
+    /// shape's own. The hero applies it once per mount (a theme change does not repaint a mounted hero — 0.2.9's rule).</summary>
+    public static class Recolor
+    {
+        static readonly FluentGpu.Foundation.ColorF SourceAccent = FluentGpu.Foundation.ColorF.FromRgba(0x00, 0x78, 0xD4);
+        static readonly FluentGpu.Foundation.ColorF SourceDeep = FluentGpu.Foundation.ColorF.FromRgba(0x00, 0x2B, 0x67);
+        static readonly float SourceAccentHue = Design.Palette.ToHsl(SourceAccent).H;
+
+        const float HueBandMin = 195f, HueBandMax = 285f, HueBandMinSaturation = 0.35f;
+
+        /// <summary>Generous enough for a byte/255 round trip, tight enough that the band's nearest neighbour (#2741AB) never
+        /// qualifies as exact.</summary>
+        const float ExactTolerance = 1f / 64f;
+
+        public static FluentGpu.Foundation.ColorF Apply(FluentGpu.Foundation.ColorF c, FluentGpu.Foundation.ColorF accent,
+                                                         FluentGpu.Foundation.ColorF accentDeep)
+        {
+            if (IsClose(c, SourceAccent)) return accent with { A = c.A };
+            if (IsClose(c, SourceDeep)) return accentDeep with { A = c.A };
+            var (h, s, l) = Design.Palette.ToHsl(c);
+            if (s < HueBandMinSaturation || h < HueBandMin || h > HueBandMax) return c;
+            return Design.Palette.FromHsl(h + (Design.Palette.ToHsl(accent).H - SourceAccentHue), s, l, c.A);
+        }
+
+        static bool IsClose(FluentGpu.Foundation.ColorF a, FluentGpu.Foundation.ColorF b) =>
+            MathF.Abs(a.R - b.R) <= ExactTolerance && MathF.Abs(a.G - b.G) <= ExactTolerance && MathF.Abs(a.B - b.B) <= ExactTolerance;
+    }
+
+    // ══ END REGION (moved from Setup.Host.cs, batch R2) ════════════════════════════════════════════════════════════
+
     // ══ REGION — THE RUNTIME PROVISIONING CARD'S PURE RULES (owner I, Wave 4, A18) ══════════════════════════════════
     //
     // Everything the card DECIDES — what the banner says, whether it shows, which body arm and which footer a phase
@@ -135,6 +430,18 @@ public static partial class Setup
         public static string OrDash(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
 
         /// <summary>Dismissal (Escape, programmatic) is blocked while the card is working.</summary>
+        /// <summary>A provisioning outcome as the banner's issue. Ready and never-attempted say nothing; a wrong-arch
+        /// runtime and a catalog with nothing for this build are named; a pack that failed its hash or signature gate is
+        /// unsupported; everything else is a missing runtime.</summary>
+        public static RuntimeIssue IssueFor(ProvisioningOutcome outcome) => outcome switch
+        {
+            ProvisioningOutcome.Ready or ProvisioningOutcome.NeverAttempted => RuntimeIssue.None,
+            ProvisioningOutcome.ArchUnsupported => RuntimeIssue.WrongArch,
+            ProvisioningOutcome.NoSupportedPack => RuntimeIssue.NoPack,
+            ProvisioningOutcome.HashMismatch or ProvisioningOutcome.SignatureInvalid => RuntimeIssue.Unsupported,
+            _ => RuntimeIssue.Missing,
+        };
+
         public static bool IsBusy(RuntimePhase phase)
             => phase is RuntimePhase.FetchingCatalog or RuntimePhase.Downloading or RuntimePhase.Verifying;
 

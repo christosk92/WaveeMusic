@@ -121,7 +121,7 @@ public class PathfinderDecodeTests
         var first = Entities.Section("spotify:section:0JQ5DAIiKWzVFULQfUm85Y".AsSpan());
         Assert.Equal(64, first.Total);
         Assert.Equal(10, first.Raw);
-        Assert.Equal(10, first.Cards);
+        Assert.Equal(9, first.Cards);   // the UnknownType wrapper is counted as unsupported (WP-5.P)
         Assert.Equal(10, first.NextOffset);
         Assert.True(first.HasMore);
     }
@@ -442,6 +442,52 @@ public class PathfinderDecodeTests
         Assert.True(Spotify.Decode.HomeSection("""{"data":{"homeSections":{"sections":[]}}}"""u8, 0, nothing).IsEmpty);
         Assert.True(Spotify.Decode.HomeSection("""{"data":{}}"""u8, 0, nothing).IsEmpty);
         Staging.Return(nothing);
+    }
+
+    // ── track hits carry the album cover and a nameless hit stays re-askable (S3/S4) ───────────────────────────────────
+
+    [Fact]
+    public void A_pathfinder_track_hit_takes_its_album_cover()
+    {
+        // S3: `NodeProperty`'s `albumOfTrack` branch staged the ALBUM's `coverArt`, but the track node itself never
+        // picked it up — every pathfinder-sourced track (search hits, top tracks, album paging) landed with no art.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.Export("""
+        { "data": { "searchV2": { "tracksV2": { "items": [
+          { "item": { "data": {
+            "uri": "spotify:track:0TDLuuLlV54CkRRUOahJb4",
+            "name": "Titanium",
+            "albumOfTrack": { "uri": "spotify:album:1I80HwIDdWXtmA3Fqsbqnl", "coverArt": { "sources": [
+              { "url": "https://i.scdn.co/image/cover" }
+            ] } }
+          } } }
+        ] } } } }
+        """u8, s, "wavee:search:00:takes-cover"u8);
+        TestScope.CommitAndPublish(s);
+
+        var track = TrackOf("spotify:track:0TDLuuLlV54CkRRUOahJb4");
+        Assert.True(track.Knows(TrackFields.Identity));
+        Assert.Equal("https://i.scdn.co/image/cover", Entities.Strings.Resolve(track.ImageId));
+    }
+
+    [Fact]
+    public void A_nameless_pathfinder_track_hit_does_not_seal_its_identity()
+    {
+        // S4: a hit with a uri but no `name` (a region-substituted or deleted catalogue row) must not seal Identity —
+        // `Stage`'s Track arm declared it unconditionally, sealing a blank title forever ("2 · 479M plays").
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.Export("""
+        { "data": { "searchV2": { "tracksV2": { "items": [
+          { "item": { "data": { "uri": "spotify:track:2plbrEY59IikOBgBGLjaoe" } } }
+        ] } } } }
+        """u8, s, "wavee:search:00:nameless"u8);
+        TestScope.CommitAndPublish(s);
+
+        var track = TrackOf("spotify:track:2plbrEY59IikOBgBGLjaoe");
+        Assert.True(track.IsValid);                              // a real edge target, not dropped
+        Assert.False(track.Knows(TrackFields.Identity));         // and re-askable, not sealed blank
     }
 
     // ── gander (G-045) ──────────────────────────────────────────────────────────────────────────────────────────────

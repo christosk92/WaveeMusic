@@ -115,7 +115,8 @@ public class ShellHistoryStoreTests : IDisposable
     public void Dispose()
     {
         Shell.History.Store.Clear();
-        try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
+        // Clear deletes the file on the pool: a delete still pending there answers access-denied, not an IOException.
+        try { Directory.Delete(_dir, recursive: true); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         GC.SuppressFinalize(this);
     }
 

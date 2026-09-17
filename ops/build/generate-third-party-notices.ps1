@@ -39,7 +39,10 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not $Root) { $Root = Join-Path $scriptDir '..\..' }
 $Root = (Resolve-Path $Root).Path
-if (-not $EngineRoot) { $EngineRoot = Join-Path $Root '..\fluent-gpu' }
+Import-Module (Join-Path $scriptDir 'Wavee.Build.psm1') -Force -DisableNameChecking
+# Resolve like Directory.Build.props does (decision D1 / G-022 / G-237): -EngineRoot wins, then this worktree's
+# EngineRoot.local.props pin, then the sibling checkout - never blind to a pinned build.
+if (-not $EngineRoot) { $EngineRoot = Resolve-EngineRoot -RepoRoot $Root -Override $env:EngineRoot }
 if (-not (Test-Path $EngineRoot)) { throw "Engine checkout not found at $EngineRoot (clone christosk92/fluent-gpu beside this repo, or pass -EngineRoot)." }
 $EngineRoot = (Resolve-Path $EngineRoot).Path
 $extraFile = Join-Path $scriptDir 'notices-extra.json'

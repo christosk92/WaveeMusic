@@ -400,6 +400,16 @@ public static partial class Palette
             && Entities.Now - Images.Ts[slot] <= HitTtlSeconds;
     }
 
+    /// <summary>Does this cover already carry a fresh NEGATIVE (the server has no colours for it)? A PURE probe, like
+    /// <see cref="HasFreshDark"/>: it never enqueues, so a caller checking "has this already been asked about" cannot
+    /// itself turn into a request.</summary>
+    public static bool HasFreshNegative(string url)
+    {
+        if (!Images.TryGetSlot(KeyOf(url.AsSpan()), out int slot)) return false;
+        uint known = Images.Known[slot];
+        return (known & (uint)PaletteBits.Negative) != 0 && Entities.Now - Images.Ts[slot] <= MissTtlSeconds;
+    }
+
     /// <summary>The per-image change signal (see <see cref="PaletteTable.Watch"/>). Allocates the row if the image is
     /// new, so a page can watch a cover it has not painted yet and still be woken when the grading lands.</summary>
     public static IReadSignal<uint> Watch(ReadOnlySpan<char> url) => Images.Watch(Images.Slot(KeyOf(url)));
@@ -507,6 +517,7 @@ public static partial class Palette
                           | (uint)PaletteBits.Dark;
         Images.Ts[slot] = Entities.Now;
         Answered(slot);                                            // this IS the answer: unqueue and release the id
+        MarkPersist(slot);
         Images.Bump(slot);
     }
 
@@ -527,6 +538,7 @@ public static partial class Palette
         Images.Known[slot] = known;                                // clears Queued and Negative: this IS the answer
         Images.Ts[slot] = Entities.Now;
         Answered(slot);
+        MarkPersist(slot);
         Images.Bump(slot);
     }
 
@@ -543,7 +555,86 @@ public static partial class Palette
         Images.Known[slot] = (uint)PaletteBits.Negative;
         Images.Ts[slot] = Entities.Now;
         Answered(slot);
+        MarkPersist(slot);
         Images.Bump(slot);
+    }
+
+    // ── persistence (Store.Palette.cs is the other half) ────────────────────────────────────────────────────────────
+
+    /// <summary>Slots written since the last drain. A <c>List</c>, not a set: two marks for one slot before a flush
+    /// just cost one redundant (idempotent) upsert, which is cheaper than deduping on every write.</summary>
+    static readonly List<int> s_dirtySlots = new();
+
+    /// <summary>How many slots are waiting for their next disk flush — the store's own flush loop reads this to decide
+    /// whether to re-arm after a batch.</summary>
+    public static int DirtyCount => s_dirtySlots.Count;
+
+    static void MarkPersist(int slot)
+    {
+        if (slot <= 0) return;
+        s_dirtySlots.Add(slot);
+        PalettePersistArm();
+    }
+
+    /// <summary>Implemented by <c>Store.Palette.cs</c> as <c>Store.ArmPaletteFlush()</c>. Erased with no store file
+    /// (<c>--fake</c>, every unit test that never calls <c>Store.Use</c>), so a dirty mark here costs nothing more
+    /// than the list entry.</summary>
+    static partial void PalettePersistArm();
+
+    /// <summary>One dirty row, snapshot for the crossing to the store thread: the key resolved to text (UI thread
+    /// only — the store thread may never touch the interner), the bits worth persisting, and the two schemes.
+    /// <paramref name="TsUnix"/> is unix seconds (Store.cs's clock is the conversion).</summary>
+    public readonly record struct PaletteRowSnapshot(string Key, uint Known, long TsUnix, Scheme Dark, Scheme Light);
+
+    /// <summary>Take up to <paramref name="dst"/>.Length dirty rows, resolving each one's key text here (UI thread).
+    /// Drained entries are removed from the dirty list; any left over (a batch bigger than <paramref name="dst"/>)
+    /// stay dirty for the next drain.</summary>
+    public static int DrainDirty(Span<PaletteRowSnapshot> dst)
+    {
+        int n = 0, taken = 0;
+        while (taken < s_dirtySlots.Count && n < dst.Length)
+        {
+            int slot = s_dirtySlots[taken++];
+            if (slot <= 0 || slot >= Images.Count) continue;
+            string key = Entities.Strings.Resolve(Images.Key[slot]);
+            if (key.Length == 0) continue;
+            dst[n++] = new PaletteRowSnapshot(key, Images.Known[slot], Store.ToUnix(Images.Ts[slot]),
+                                               Images.Dark[slot], Images.Light[slot]);
+        }
+        if (taken >= s_dirtySlots.Count) s_dirtySlots.Clear();
+        else s_dirtySlots.RemoveRange(0, taken);
+        return n;
+    }
+
+    /// <summary>Rows the store loaded off disk at boot, applied to the live table. UI thread (posted back from the
+    /// store thread's warm read).
+    ///
+    /// <para>A row is skipped when the live table already holds a FRESHER answer than the one on disk — a grading
+    /// that landed from the network between boot and this restore must win, never be overwritten by yesterday's
+    /// file.</para></summary>
+    public static void Restore(List<PaletteRowSnapshot> rows)
+    {
+        bool any = false;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.Key.Length == 0) continue;
+            int slot = Images.Slot(row.Key.AsSpan());
+            int rowTsApp = Store.ToApp(row.TsUnix);
+
+            uint liveKnown = Images.Known[slot];
+            if ((liveKnown & (uint)PaletteBits.Answered) != 0 && Images.Ts[slot] >= rowTsApp) continue;
+
+            Images.Dark[slot] = row.Dark;
+            Images.Light[slot] = row.Light;
+            // Keep a live Queued bit — a render-path miss may already have asked for this cover before the warm
+            // read landed, and the answer for that ask is still in flight.
+            Images.Known[slot] = PalettePersistence.RestoreMask(row.Known) | (liveKnown & (uint)PaletteBits.Queued);
+            Images.Ts[slot] = rowTsApp;
+            Images.Bump(slot);
+            any = true;
+        }
+        if (any) Entities.Publish();
     }
 
     /// <summary>A batch attempt FAILED (the request threw, or the connection dropped). Free the rows so the next render

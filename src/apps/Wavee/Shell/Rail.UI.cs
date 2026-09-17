@@ -259,6 +259,7 @@ public static partial class Rail
                     () => Prefs.Lyrics.SetSecondaryLine(Prefs.Lyrics.Next(secondary, available)),
                     active: (available & Prefs.Lyrics.BitFor(secondary)) != 0));
             kids.Add(HeaderButton(Icons.FullScreen, Loc.Get(Strings.Player.ExpandLyrics), static () => Shell.Ui.ImmersiveLyrics.Value = true));
+            kids.Add(Diagnostics.LyricsInspector.Button());
             kids.Add(CloseButton());
             return HeaderBox(kids.ToArray());
         }
@@ -310,6 +311,7 @@ public static partial class Rail
     internal static Track NowTrack()
     {
         var r = Playback.Current.Value;
+        _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
         _ = Entities.Current.Tracks.Changed.Value;
         return r.Kind == EntityKind.Track ? new Track(r.Slot) : default;
     }
@@ -318,6 +320,7 @@ public static partial class Rail
     static string? NowArtUrl()
     {
         var r = Playback.Current.Value;
+        _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
         _ = Entities.Current.Tracks.Changed.Value;
         return r.Kind == EntityKind.Track ? Controls.ArtUrl(new Track(r.Slot).ImageId) : null;
     }
@@ -459,6 +462,7 @@ public static partial class Rail
                 return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
                                         title: Loc.Get(Strings.Player.NothingPlaying), subtitle: "");
 
+            _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
             _ = Entities.Current.Artists.Changed.Value;
             _ = Entities.Current.Albums.Changed.Value;
             _ = Entities.Current.Edges.ArtistCities.Changed.Value;
@@ -720,12 +724,12 @@ public static partial class Rail
 
     // ── "Next up" rows (the NPV section and the Video body share them) ───────────────────────────────────────────────
 
-    /// <summary>The user queue + the context continuation, at most five, as compact rail rows. False when there are
-    /// none. The caller must already subscribe <c>Edges.Queue.Changed</c>.</summary>
+    /// <summary>The user queue + the context continuation, at most five, as the shared rail art cards. False when there
+    /// are none. The caller must already subscribe <c>Edges.Queue.Changed</c>.</summary>
     static bool UpNextRows(out Element[] rows)
     {
         if (!Queue.UpNext(out int start, out int length)) { rows = []; return false; }
-        bool art = !Prefs.Appearance.TrackArtworkHidden() && Prefs.Appearance.TrackRowStyle() == 0;
+        bool art = !Prefs.Appearance.TrackArtworkHidden();
         int n = Math.Min(5, length), count = 0;
         var buf = new Element[n];
         var items = Queue.Rows;
@@ -733,36 +737,34 @@ public static partial class Rail
         {
             var r = Queue.RefAt(i);
             if (r.Kind != EntityKind.Track || r.IsNone) continue;
-            buf[count++] = RailRow(new Track(r.Slot), i, items[i].ItemId, art);
+            buf[count++] = UpNextCard(new Track(r.Slot), i, items[i].ItemId, art);
         }
         rows = count == n ? buf : buf.AsSpan(0, count).ToArray();
         return count > 0;
     }
 
-    /// <summary>A compact read-only rail row: art 40 · title · artists, in an r4 wrapper with the subtle hover plate. The
-    /// key carries the artwork flag, so a settings flip REMOUNTS rather than re-binds.</summary>
-    static Element RailRow(Track t, int queueIndex, ulong itemId, bool art)
+    /// <summary>One "Next up" row: THE shared art-forward cell (<c>Track.ArtCard</c>, Rail kind — G-214; 0.2.9's NPV and
+    /// video panels used <c>TrackRow.ArtCard</c> with these same options) in an r4 wrapper with the subtle hover plate. The
+    /// wrapper's key carries the queue item and the artwork flag, so a settings flip REMOUNTS rather than re-binds. Play
+    /// jumps to the row inside the live queue, resolving its index when clicked: the card keeps its options across a
+    /// queue shift (a props record compares no delegate), so a captured index would go stale.</summary>
+    static Element UpNextCard(Track t, int queueIndex, ulong itemId, bool art)
     {
-        string title = t.Knows(TrackFields.Title) ? t.Title : "";
-        var kids = new List<Element>(2);
-        if (art) kids.Add(Controls.Artwork(Controls.ArtUrl(t.ImageId), Design.Size.ArtThumb, Design.Size.ArtThumb, Radii.Control));
-        kids.Add(new BoxEl
+        Action play = () =>
         {
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Gap = 2f,
-            Children =
-            [
-                Design.Type.TrackTitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                Design.Type.TrackMeta(Entities.Strings.Resolve(t.ArtistLineId)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-            ],
-        });
+            int index = itemId != 0 ? Queue.IndexOfItem(itemId) : queueIndex;
+            if (index < 0 || index >= Queue.Count) return;
+            Playback.PlayNow(Queue.RefAt(index), Playback.ContextUri.Peek(), Queue.CursorOf(index));
+        };
         return new BoxEl
         {
             Key = (itemId != 0 ? "vrp:i" + itemId : "vrp:e" + queueIndex) + (art ? ":art" : ":noart"),
-            Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, MinHeight = 48f, Padding = new Edges4(Spacing.XS, Spacing.XS, Spacing.S, Spacing.XS),
-            Corners = Radii.ControlAll, HoverFill = Tok.FillSubtleSecondary, FocusVisualMargin = Design.FocusInsetRow,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-            OnClick = () => Playback.PlayNow(Queue.RefAt(queueIndex), Playback.ContextUri.Peek(), Queue.CursorOf(queueIndex)),
-            Children = kids.ToArray(),
+            Direction = 1, Corners = Radii.ControlAll, HoverFill = Tok.FillSubtleSecondary,
+            Children =
+            [
+                Track.ArtCard(t, new Track.ArtCardOptions(Kind: Track.ArtCardKind.Rail, Art: Design.Size.ArtThumb,
+                    ShowDuration: false, ShowExplicit: false, ShowVideo: true, OnPlay: play)),
+            ],
         };
     }
 
@@ -773,6 +775,7 @@ public static partial class Rail
         public override Element Render()
         {
             var track = NowTrack();
+            _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
             _ = Entities.Current.Edges.Queue.Changed.Value;
             _ = Entities.Current.Albums.Changed.Value;
             var content = new List<Element>(8);
@@ -800,16 +803,26 @@ public static partial class Rail
 
     /// <summary>The card's poster composition minus the spinner — the answer is already known. On-media INK, not
     /// <c>TextOnAccentPrimary</c> (which is black in dark theme).</summary>
+    /// <para>The 16:9 sits on a PLAIN column box and the layers on a ZStack inside it (G-256): a ZStack's measure ignores
+    /// <c>AspectRatio</c> and reports its tallest layer — here the square cover — so the placeholder rendered square.</para>
     static Element NoVideoPlaceholder(Track track) => new BoxEl
     {
-        Shrink = 0f, AspectRatio = 16f / 9f, ZStack = true, ClipToBounds = true, Corners = Radii.CardAll, Fill = Tok.MediaLetterbox,
+        Shrink = 0f, AspectRatio = 16f / 9f, Direction = 1, ClipToBounds = true, Corners = Radii.CardAll, Fill = Tok.MediaLetterbox,
         Children =
         [
-            new BoxEl { Grow = 1f, Opacity = 0.4f, ClipToBounds = true, Children = [Controls.ArtworkFill(Controls.ArtUrl(track.ImageId), 0f)] },
             new BoxEl
             {
-                Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Padding = Edges4.All(Spacing.S),
-                Children = [new TextEl(Loc.Get(Strings.Player.NoVideoForThisSong)) { Size = 12f, Weight = 600, Color = Tok.OnMediaPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+                // Basis 0: the layers' own measure never becomes the height; the ratio's height is handed out by Grow.
+                ZStack = true, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
+                Children =
+                [
+                    new BoxEl { Grow = 1f, Opacity = 0.4f, ClipToBounds = true, Children = [Controls.ArtworkFill(Controls.ArtUrl(track.ImageId), 0f)] },
+                    new BoxEl
+                    {
+                        Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Padding = Edges4.All(Spacing.S),
+                        Children = [new TextEl(Loc.Get(Strings.Player.NoVideoForThisSong)) { Size = 12f, Weight = 600, Color = Tok.OnMediaPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+                    },
+                ],
             },
         ],
     };
@@ -829,6 +842,7 @@ public static partial class Rail
             _ = tick.Value;
             var state = Friends.State.Value;
             var table = Entities.Current.Edges.Friends;
+            _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
             _ = table.Changed.Value;
             _ = Entities.Current.Users.Changed.Value;
             _ = Entities.Current.Tracks.Changed.Value;

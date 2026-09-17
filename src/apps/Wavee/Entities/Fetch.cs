@@ -19,21 +19,36 @@
 //     UI thread through `Answer` / `Failed`. WHICH routes a provider sends for a batch is `FetchRoutes` (the named
 //     partial `Fetch.Routes.cs`), and the relation half of the door is `Fetch.Edges.cs`.
 //
-// THE FOUR MARKS, and what each one means — they are the whole state machine, and there is no other:
+// THE FIVE MARKS, and what each one means — they are the whole state machine, and there is no other:
 //   `Asked[slot] & group`      somebody asked for this GROUP of this row in this scope (G-040). Set when a plan marks
 //                              the row; it SURVIVES the answer — a group asked and not answered is the "exhausted"
 //                              seal 0.2.9's ledger needed a second cache to hold, and it is what stops a TrackV4 answer
 //                              (which fills Identity and not PlayCount) from being re-POSTed by the next `Ensure(Row)`.
-//                              A TERMINAL transport failure un-asks the batch's groups (a 503 is not an answer); the
-//                              scope being replaced drops every mark with its tables.
-//   `Inflight[slot] == stamp`  a request for this row is out right now. `Table.Applied` clears it when a group lands;
-//                              the store's trim reads it as "pinned". It no longer gates the dedupe — `Asked` does.
+//                              A TERMINAL transport failure un-asks the batch's groups (a 503 is not an answer); so does
+//                              an ANSWER for the groups of a route that did not answer beside one that did (`Answer`'s
+//                              `unfilled`: a 401 on the top-tracks REST next to a 200 overview un-asks Chart, and Chart
+//                              only); `Refresh` un-asks on demand (a Retry); the scope being replaced drops every mark
+//                              with its tables. An auth refusal (401/403, `Queue.SeedRetryOn`) is un-asked AND remembered
+//                              (`s_refused`), so the next Online transition re-plans it (`Resume`) without a remount.
+//   `Inflight[slot] == stamp`  a request for this row is out right now. `Table.Applied` clears it when a group lands, and
+//                              a batch settling (`Answer` or `Failed`) clears it for every row it carried — an answer
+//                              that did not name a row is still that row's answer, and `Asked && Inflight == 0` is how a
+//                              surface reads "asked, nothing coming" (Search.Page.cs, Artist.UI.Chart.cs). The store's
+//                              trim reads it as "pinned". It does not gate the dedupe — `Asked` does.
 //   `FetchedAt[slot] != 0`     somebody has answered about this row before — including the disk answering "I do not
 //                              have it" (Store.ReadCore stamps the whole batch). It is what makes the disk leg run
 //                              ONCE per row per session instead of once per page mount.
 //   `Known[slot] & group`      the group is filled. Nothing else is a hydration level, and there are no others.
+//   `Stale[slot] & group`      the group is filled AND belongs to an ended edition: a daylist past its rollover, a chart
+//                              past its week. The columns keep their values and every surface keeps rendering them —
+//                              a stale row is never a skeleton — but the planner reads `Settled = Known & ~Stale` where
+//                              it used to read `Known`, so the group is re-asked like a missing one and `Table.Accepts`
+//                              lets any wire authority replace it. `Entities.Invalidate` sets it (and un-asks, so the
+//                              seal does not hold the old edition in place); `Table.Applied` clears it when the answer
+//                              lands. It is the ROLLOVER TWIN of `Refresh`: Refresh re-asks what is NOT known, Invalidate
+//                              re-asks what IS. Never persisted — a restart re-derives it from the clock.
 //
-// A BUCKET IS (provider, subject, kind, need, priority). `need` is the per-row `wanted & ~known & ~asked` — not the
+// A BUCKET IS (provider, subject, kind, need, priority). `need` is the per-row `wanted & ~settled & ~asked` — not the
 // page's `wanted` — so a row whose Identity is already in flight and whose PlayCount is not asks for PlayCount alone,
 // and a partial answer never re-asks what it already answered. Rows of one `Ensure` nearly always share one need.
 //
@@ -56,6 +71,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using FluentGpu.Foundation;
+using FluentGpu.Signals;
 
 namespace Wavee;
 
@@ -188,6 +204,12 @@ public abstract class FetchProvider
 /// <c>Entities.EnsureEdge</c> (relations, <c>Fetch.Edges.cs</c>); there is no single-uri entry point to reach for (P4).</summary>
 public static partial class Fetch
 {
+    /// <summary>Bumps once per batch that SETTLED — answered or failed. A commit publishes the tables it wrote, but a
+    /// batch that fails, or that answers without naming a row, only clears that row's <c>Inflight</c>/<c>Asked</c>
+    /// marks and publishes nothing; a surface whose verdict reads those marks (the track table's reveal gate,
+    /// <c>TableRules.RowUnsettled</c>) re-reads here so "asked, nothing coming" reaches it. UI THREAD.</summary>
+    public static readonly Signal<uint> Settled = new(0);
+
     /// <summary>THE per-request entity ceiling — one extended-metadata POST. 0.2.9 carried seven copies of this 300
     /// (adornments, play counts, video detect, expansion, the closure, the paged hydrate, show episodes); here a page
     /// demands its whole model and the QUERY layer batches, so the number lives once, in the layer that batches.</summary>
@@ -257,9 +279,9 @@ public static partial class Fetch
         return Math.Min(60, 1 << shift);
     }
 
-    /// <summary>A row's NEED: the groups of <paramref name="wanted"/> it does not know and nobody has asked for yet
-    /// this scope. The one expression the whole dedupe is (G-040).</summary>
-    public static uint NeedOf(Table table, int slot, uint wanted) => wanted & ~table.Known[slot] & ~table.Asked[slot];
+    /// <summary>A row's NEED: the groups of <paramref name="wanted"/> it does not have SETTLED (known and not stale) and
+    /// nobody has asked for yet this scope. The one expression the whole dedupe is (G-040).</summary>
+    public static uint NeedOf(Table table, int slot, uint wanted) => wanted & ~table.Settled(slot) & ~table.Asked[slot];
 
     /// <summary>THE filter, pure over columns and allocation-free: which of <paramref name="slots"/> still NEED any bit
     /// of <paramref name="wanted"/> (<see cref="NeedOf"/>). Writes them into <paramref name="dst"/> and returns how many.
@@ -337,7 +359,74 @@ public static partial class Fetch
     static int s_inFlight;
     static uint s_scopeEpoch;
 
-    static int s_planned, s_deduped, s_toDisk, s_toNetwork, s_answered, s_failed, s_retried, s_abandoned;
+    // ── the in-flight ROUTE index (request de-dupe across a row bucket and an edge bucket, see file header) ───────────
+    //
+    // A ROW ask and an EDGE ask are always two different buckets — different shape keys, no way to merge them without
+    // changing the bucket contract — but the TRANSPORT `FetchRoutes` sends them on can be the very same wire call
+    // (an album's row asks Metadata(AlbumV4) and `AlbumTracks` at offset 0 asks the very same route). The planner
+    // cannot see that at PLAN time (routes are a SEND-time question, decided from what the batch actually carries), so
+    // the dedupe lives here, in the runner, keyed by what the wire would carry rather than by what asked for it.
+    //
+    //   SEND (a ROW batch): index[(routeKey, parentId)] = ticket, for every route `FetchRoutes.For` selects — one row
+    //     batch can justify several routes at once (an artist's `All` ask is both ArtistOverview and the top-tracks
+    //     REST), and any of them might be what an edge would have asked for.
+    //   SEND (an EDGE batch): before the wire batch is built, drop any parent whose (the edge's OWN route, parent) is
+    //     already in the index — the request is already out, on a batch this runner is holding. The dropped parent is
+    //     NOT lost: it is recorded against the blocking ticket (`s_pendingEdges`) and the bucket forgets it (`Drop`).
+    //   SETTLE (the blocking ticket, answer OR failure): the index entries this ticket owns are removed (the wire slot
+    //     is free again) and every parent recorded against it is re-examined — if the row's answer did not happen to
+    //     stage the relation (`EdgeTableBase.State` is still `Unknown`), the parent goes back into its edge bucket and
+    //     the next `Pump` really sends it. A row that FAILS clears the same way, retryable or not: the blocked ask must
+    //     never wait on a backoff that was never its own.
+    //
+    // Two dictionaries, both written only from `Send`/`Answer`/`Failed` (never from `Plan`/`Queue`, the CORE hot path)
+    // and both cleared on a scope switch and a boot — the same "written once per Send, cleared on Recycle" shape the
+    // rest of the runner's bookkeeping already has.
+    static readonly Dictionary<(RouteKey, EntityId), uint> s_routeIndex = new(64);
+    static readonly Dictionary<uint, List<PendingEdge>> s_pendingEdges = new(8);
+
+    /// <summary>The cheap half of a route: which transport, and which of ITS routes — an extension kind, a pathfinder
+    /// op or a spclient route, by <see cref="RouteTransport"/>. Two value ints, so the index's key costs nothing to
+    /// hash or compare, and it needs no provider field: <see cref="EntityId"/> (the other half of the index key)
+    /// already carries the provider, and two different providers never share one entity id.</summary>
+    readonly record struct RouteKey(RouteTransport Transport, int Id)
+    {
+        public static RouteKey Of(in FetchRoute route) => new(route.Transport, route.Transport switch
+        {
+            RouteTransport.Metadata => route.Extension,
+            RouteTransport.Pathfinder => (int)route.Op,
+            RouteTransport.Spclient => (int)route.Rest,
+            _ => 0,
+        });
+    }
+
+    /// <summary>One edge ask a row's in-flight transport pre-empted: everything <see cref="SettleTicket"/> needs to put
+    /// it back in its bucket, if the row's own answer did not happen to stage it. <see cref="Epoch"/> is the scope this
+    /// was recorded under (C7) — a switch drops the whole index, but a settle that races a switch must not resurrect a
+    /// parent that indexes the OLD table set.</summary>
+    readonly record struct PendingEdge(Table Table, EntityProvider Provider, FetchEdge Edge, int Offset,
+                                        FetchPriority Priority, int Slot, EntityId Id, uint Epoch);
+
+    // ── the refused asks (re-plan on reconnect) ─────────────────────────────────────────────────────────────────────
+    //
+    // A 401/403 is terminal to the planner (`Retryable` says a 4xx is the server's answer), so the batch is un-asked and
+    // abandoned — correct for a 400, wrong for a refusal that a boot-time or reconnecting session WILL answer once it
+    // authorises (`Queue.SeedRetryOn` is the same verdict for the seed's context resolve). Nothing re-asks on its own: a
+    // reconnect switches no scope, publishes no table, and every page that had already mounted keeps its skeleton. So
+    // the terminal arm of `Failed` records what it un-asked here, and the session's Online transition (`Spotify.Library`'s
+    // `SyncNow`) calls `Resume`, which re-plans whatever still names the same row in the same scope. Bounded: the oldest
+    // entry goes when the list is full — the next mount's `Ensure` still retries an un-asked row, so a dropped entry is
+    // a delay, never a loss.
+    static readonly List<RefusedAsk> s_refused = new(16);
+    const int MaxRefused = 1024;
+
+    /// <summary>One row (or one edge parent) an auth refusal un-asked, and everything <see cref="Resume"/> needs to plan
+    /// it again: the groups for a row (<see cref="Edge"/> is <see cref="FetchEdge.None"/>), the relation and page for a
+    /// parent. <see cref="Epoch"/> is the scope it was recorded under (C7).</summary>
+    readonly record struct RefusedAsk(Table Table, int Slot, EntityId Id, uint Groups, FetchEdge Edge, int Offset,
+                                       FetchPriority Priority, uint Epoch);
+
+    static int s_planned, s_deduped, s_toDisk, s_toNetwork, s_answered, s_failed, s_retried, s_abandoned, s_resumed;
 
     /// <summary>What the planner has done this session. Always on (CLAUDE.md: no env-var switches) and read by the
     /// diagnostics page; <see cref="Deduped"/> against <see cref="Planned"/> is the number that says whether the
@@ -350,6 +439,10 @@ public static partial class Fetch
     public static int FailedCount => s_failed;
     public static int Retried => s_retried;
     public static int Abandoned => s_abandoned;
+    /// <summary>Rows and parents an auth refusal un-asked that <see cref="Resume"/> has planned again.</summary>
+    public static int Resumed => s_resumed;
+    /// <summary>Rows and parents an auth refusal un-asked that are waiting for the next Online transition.</summary>
+    public static int Refused => s_refused.Count;
     /// <summary>Requests out right now (≤ <see cref="MaxInFlight"/>) and rows still waiting for one.</summary>
     public static int InFlight => s_inFlight;
     public static int Pending
@@ -371,6 +464,9 @@ public static partial class Fetch
         s_buckets.Clear();
         s_order.Clear();
         s_active.Clear();
+        s_routeIndex.Clear();
+        s_pendingEdges.Clear();
+        s_refused.Clear();
         s_inFlight = 0;
         // Boot may run before `Entities.Boot` has a scope (a test calling Reset): read defensively.
         Scope? current = Entities.Current;
@@ -385,7 +481,7 @@ public static partial class Fetch
     {
         Boot();
         Array.Clear(s_providers);
-        s_planned = s_deduped = s_toDisk = s_toNetwork = s_answered = s_failed = s_retried = s_abandoned = 0;
+        s_planned = s_deduped = s_toDisk = s_toNetwork = s_answered = s_failed = s_retried = s_abandoned = s_resumed = 0;
     }
 
     // ── the planner ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -472,6 +568,7 @@ public static partial class Fetch
         if (wanted == 0 || slots.IsEmpty) return;
         if (!ReferenceEquals(scope, Entities.Current)) return;   // C7: the disk answered into a replaced set
 
+        uint stamp = Stamp(scope.Epoch);
         int[] scratch = ArrayPool<int>.Shared.Rent(slots.Length);
         uint[] needs = ArrayPool<uint>.Shared.Rent(slots.Length);
         try
@@ -482,10 +579,14 @@ public static partial class Fetch
                 int slot = slots[i];
                 if (slot <= Table.None || slot >= table.Count) continue;
                 // Only the groups this plan asked (and the disk did not fill): a group another plan asked is its own.
-                uint groups = wanted & ~table.Known[slot] & table.Asked[slot];
+                uint groups = wanted & ~table.Settled(slot) & table.Asked[slot];
                 if (groups == 0) continue;                  // the disk had it; `Applied` already cleared the in-flight mark
                 scratch[n] = slot;
                 needs[n++] = groups;
+                // The disk's partial hit (`Applied`) cleared the in-flight mark while the network leg is only now going
+                // out: re-stamp it, or a surface reading `Asked && Inflight == 0` as "nothing coming" (Search.Page.cs,
+                // the artist chart) would call a warm page's live round trip a failure.
+                table.Inflight[slot] = stamp;
             }
             if (n == 0) return;
             Queue(scope, table, scratch.AsSpan(0, n), needs.AsSpan(0, n), priority);
@@ -628,6 +729,9 @@ public static partial class Fetch
         s_scopeEpoch = scope.Epoch;
         s_buckets.Clear();
         s_order.Clear();
+        s_routeIndex.Clear();
+        s_pendingEdges.Clear();
+        s_refused.Clear();            // every entry indexes the OLD table set; the new scope has no marks to resume
         for (int i = 0; i < s_providers.Length; i++) s_providers[i]?.Abandon(scope.Epoch);
         // In-flight batches are NOT cancelled here: their answers are dropped by `Staging.Epoch` at the commit (C7),
         // and forgetting the tickets would leak the slots in `s_active`.
@@ -679,28 +783,39 @@ public static partial class Fetch
     static void Send(Demand d)
     {
         int take = Math.Min(MaxUrisPerRequest, d.Count);
-        FetchBatch batch = s_pool.Count > 0 ? s_pool.Pop() : new FetchBatch();
-        if (batch.Ids.Length < take)
+
+        // THE EDGE HALF OF THE DEDUPE: a parent whose route is already out on an in-flight ROW batch is dropped from
+        // THIS send — recorded against that batch's ticket (`RecordPending`) rather than lost — so the wire never
+        // carries the same request twice. Nothing to do for a row bucket: it is what the index is built FROM.
+        int send = d.Subject == FetchSubject.Edge && s_routeIndex.Count > 0 ? DropBlocked(d, take) : take;
+        if (send == 0)
         {
-            batch.Ids = new EntityId[take];
-            batch.Text = new string?[take];
-            batch.Slots = new int[take];
-            batch.Revisions = new string?[take];
+            d.Drop(take);                 // every parent in this window is somebody else's in-flight request right now
+            return;
         }
-        Array.Copy(d.Ids, batch.Ids, take);
-        Array.Copy(d.Slots, batch.Slots, take);
+
+        FetchBatch batch = s_pool.Count > 0 ? s_pool.Pop() : new FetchBatch();
+        if (batch.Ids.Length < send)
+        {
+            batch.Ids = new EntityId[send];
+            batch.Text = new string?[send];
+            batch.Slots = new int[send];
+            batch.Revisions = new string?[send];
+        }
+        Array.Copy(d.Ids, batch.Ids, send);
+        Array.Copy(d.Slots, batch.Slots, send);
         // The text half is resolved HERE because Send runs on the UI thread and the provider's does not (C1): an id
         // may only be resolved while it is alive, and the batch outlives that guarantee. A gid row has no text at all,
         // which is nearly every row of a catalog batch — so this loop touches the interner for almost none of them.
-        for (int i = 0; i < take; i++)
+        for (int i = 0; i < send; i++)
         {
             EntityId id = batch.Ids[i];
             batch.Text[i] = id.Form == EntityForm.Text ? Entities.Strings.Resolve(id.TextId) : null;
         }
         batch.Extension = 0;
-        if (IsAudioFiles(d.Subject, d.Kind, d.Wanted)) FillAudioUris(batch, (TrackTable)d.Table, take);
-        if (d.Subject == FetchSubject.Edge) FillRevisions(batch, d.Edge, take);
-        batch.Count = take;
+        if (IsAudioFiles(d.Subject, d.Kind, d.Wanted)) FillAudioUris(batch, (TrackTable)d.Table, send);
+        if (d.Subject == FetchSubject.Edge) FillRevisions(batch, d.Edge, send);
+        batch.Count = send;
         batch.Provider = d.Provider;
         batch.Kind = d.Kind;
         batch.Subject = d.Subject;
@@ -711,10 +826,11 @@ public static partial class Fetch
         batch.Epoch = s_scopeEpoch;
         batch.Attempt = d.Attempt;
         batch.Ticket = ++s_ticket;
-        d.Drop(take);
+        d.Drop(take);                      // the whole window: `send` went out, the rest is recorded in `s_pendingEdges`
 
         s_active[batch.Ticket] = batch;
         s_inFlight++;
+        IndexRoute(batch);
         FetchProvider provider = s_providers[(byte)d.Provider]!;
         try { provider.Start(batch); }
         catch (Exception)
@@ -722,6 +838,102 @@ public static partial class Fetch
             // A transport that throws synchronously has not taken the batch: settle it here or the slots stay in
             // flight for the life of the scope.
             Failed(batch.Ticket, 0, 0);
+        }
+    }
+
+    /// <summary>Partition an EDGE demand's next-to-send window: a parent whose (the edge's route, parent) pair is
+    /// already in <see cref="s_routeIndex"/> — an in-flight ROW batch is already asking this exact transport for it —
+    /// is moved to the END of <paramref name="take"/> and recorded (<see cref="RecordPending"/>) instead of sent.
+    /// Returns how many of the window's front entries are still sendable; the caller sends those and drops the whole
+    /// window regardless (the tail is not lost — it is in <see cref="s_pendingEdges"/>).
+    /// <para>A relation this build has no route for never reaches <see cref="Send"/> (<see cref="PlanEdge"/> already
+    /// refused it), so <see cref="FetchRoutes.ForEdge"/> here always answers a real transport.</para></summary>
+    static int DropBlocked(Demand d, int take)
+    {
+        FetchRoute route = FetchRoutes.ForEdge(d.Edge, d.Offset);
+        if (route.Transport == RouteTransport.None) return take;
+        RouteKey key = RouteKey.Of(route);
+        int n = take;
+        int i = 0;
+        while (i < n)
+        {
+            if (s_routeIndex.TryGetValue((key, d.Ids[i]), out uint ticket) && s_active.ContainsKey(ticket))
+            {
+                RecordPending(ticket, d, i);
+                n--;
+                (d.Slots[i], d.Slots[n]) = (d.Slots[n], d.Slots[i]);
+                (d.Ids[i], d.Ids[n]) = (d.Ids[n], d.Ids[i]);
+                continue;                  // re-check whatever just moved into position i
+            }
+            i++;
+        }
+        return n;
+    }
+
+    /// <summary>Remember a parent this send dropped, against the ROW ticket that is blocking it — everything
+    /// <see cref="SettleTicket"/> needs to put it back in its bucket. A small, rare allocation (one dropped ask per
+    /// blocked parent, not one per <see cref="Send"/>): the collision this whole index exists for is a handful of page
+    /// opens, never the 300-row hot path.</summary>
+    static void RecordPending(uint ticket, Demand d, int i)
+    {
+        if (!s_pendingEdges.TryGetValue(ticket, out List<PendingEdge>? list))
+            s_pendingEdges[ticket] = list = new List<PendingEdge>(4);
+        list.Add(new PendingEdge(d.Table, d.Provider, d.Edge, d.Offset, d.Priority, d.Slots[i], d.Ids[i], s_scopeEpoch));
+    }
+
+    /// <summary>Index a just-sent ROW batch's transports (<see cref="FetchRoutes.For"/>) so an edge bucket about to
+    /// send can find them (<see cref="DropBlocked"/>). A no-op for an edge batch — it never blocks another edge, only a
+    /// row batch is ever the BLOCKER — and for a batch whose need nothing routes.</summary>
+    static void IndexRoute(FetchBatch batch)
+    {
+        if (batch.Subject == FetchSubject.Edge) return;
+        Span<FetchRoute> routes = stackalloc FetchRoute[FetchRoutes.MaxRoutes];
+        int count = FetchRoutes.For(batch, routes, out _);
+        for (int r = 0; r < count; r++)
+        {
+            RouteKey key = RouteKey.Of(routes[r]);
+            for (int i = 0; i < batch.Count; i++) s_routeIndex[(key, batch.Ids[i])] = batch.Ticket;
+        }
+    }
+
+    /// <summary>The other half of <see cref="IndexRoute"/>: free the wire slots a settling ROW batch held, so a parent
+    /// blocked on it is no longer blocked. Removes only entries THIS ticket owns — a slot another, newer batch has
+    /// since claimed for the same (route, parent) is never this one's to clear.</summary>
+    static void ClearRouteIndex(FetchBatch batch)
+    {
+        if (batch.Subject == FetchSubject.Edge || s_routeIndex.Count == 0) return;
+        Span<FetchRoute> routes = stackalloc FetchRoute[FetchRoutes.MaxRoutes];
+        int count = FetchRoutes.For(batch, routes, out _);
+        for (int r = 0; r < count; r++)
+        {
+            RouteKey key = RouteKey.Of(routes[r]);
+            for (int i = 0; i < batch.Count; i++)
+            {
+                var k = (key, batch.Ids[i]);
+                if (s_routeIndex.TryGetValue(k, out uint t) && t == batch.Ticket) s_routeIndex.Remove(k);
+            }
+        }
+    }
+
+    /// <summary>THE RE-PLAN PATH: a ROW ticket just settled (answered or failed, either way — see the file header), so
+    /// every edge ask it had pre-empted is re-examined. One that the row's own answer happened to stage
+    /// (<see cref="EdgeTableBase.State"/> is no longer <see cref="EdgeState.Unknown"/>) needed nothing more and stays
+    /// dropped for good; one that is STILL Unknown goes back into its bucket, so the next <see cref="Pump"/> — the one
+    /// at the end of <see cref="Answer"/>/<see cref="Failed"/> — really sends it. A parent recycled since (its identity
+    /// moved on) or a pending entry from a scope this settle outlived (C7) is silently forgotten: nobody is showing a
+    /// skeleton for either any more.</summary>
+    static void SettleTicket(uint ticket)
+    {
+        if (!s_pendingEdges.Remove(ticket, out List<PendingEdge>? list)) return;
+        for (int i = 0; i < list.Count; i++)
+        {
+            PendingEdge p = list[i];
+            if (p.Epoch != s_scopeEpoch) continue;
+            if (p.Slot <= Table.None || p.Slot >= p.Table.Count || p.Table.Id[p.Slot] != p.Id) continue;
+            EdgeTableBase? edges = EdgeTableOf(Entities.Current, p.Edge);
+            if (edges is null || edges.State(p.Slot) != EdgeState.Unknown) continue;
+            Bucket(p.Table, FetchSubject.Edge, p.Provider, 0, p.Edge, p.Offset, p.Priority).Add(p.Slot, p.Id);
+            s_toNetwork++;
         }
     }
 
@@ -753,8 +965,15 @@ public static partial class Fetch
     /// pool. Groups the answer did not fill stay ASKED, and that is deliberate — it is the "we asked and this is the
     /// answer for now" seal that stops a thin track re-resolving on every cluster update (0.2.9's exhausted ledger rung,
     /// expressed as the bit that is already there). An EDGE batch that landed nothing records the parents as answered
-    /// with no route, so a surface stops showing a skeleton for a list nobody will ever send (<c>Fetch.Edges.cs</c>).</para></summary>
-    public static void Answer(uint ticket, Staging? staging)
+    /// with no route, so a surface stops showing a skeleton for a list nobody will ever send (<c>Fetch.Edges.cs</c>).</para>
+    ///
+    /// <para><paramref name="unfilled"/> is the ONE exception to the seal: the groups of a route that did NOT answer
+    /// beside one that did (<c>Spotify.Api.FetchOutcome.Unfilled</c> — a 401 on the top-tracks REST next to a 200
+    /// overview). Those are un-asked for every row of the batch that does not know them, so the next mount or a Retry
+    /// really asks again; a group no route serves is never in it and stays sealed. The batch's in-flight mark is cleared
+    /// for every row it carried either way: an answer that did not name a row is still the answer that row was waiting
+    /// on, and <c>Asked &amp;&amp; Inflight == 0</c> is how a surface tells "asked, nothing coming" from "loading".</para></summary>
+    public static void Answer(uint ticket, Staging? staging, uint unfilled = 0)
     {
         Sync();
         if (!s_active.Remove(ticket, out FetchBatch? batch))
@@ -773,9 +992,19 @@ public static partial class Fetch
             Entities.Commit(staging);                                  // drops the batch whole if the scope moved (C7)
             if (!Store.WriteBehind(staging)) Staging.Return(staging);  // write-behind takes ownership when it accepts
         }
-        if (batch.Subject == FetchSubject.Edge && batch.Epoch == s_scopeEpoch) EdgesAnswered(batch);
+        if (batch.Epoch == s_scopeEpoch)
+        {
+            if (batch.Subject == FetchSubject.Edge) EdgesAnswered(batch);
+            else if (TableOf(Entities.Current, batch) is { } table) Unask(batch, table, unfilled & batch.Wanted);
+        }
+
+        // Free this batch's wire slots and re-plan whatever they were blocking (see the file header) — AFTER the
+        // commit above, so a row answer that staged the relation as a side effect is not re-asked for it.
+        ClearRouteIndex(batch);
+        SettleTicket(ticket);
 
         Recycle(batch);
+        Settled.Value = Settled.Peek() + 1;
         Pump();
     }
 
@@ -810,19 +1039,33 @@ public static partial class Fetch
             if (table is not null)
             {
                 if (batch.Subject == FetchSubject.Edge) EdgesFailed(batch, table, status);
-                else Unask(batch, table);
+                else Unask(batch, table, batch.Wanted);
+                // An authentication refusal is the one terminal failure the session itself will answer: remember what
+                // was un-asked so the next Online transition re-plans it (`Resume`) — the page has already mounted
+                // and nothing else will ask again.
+                if (global::Wavee.Queue.SeedRetryOn(status) == global::Wavee.Queue.SeedRetryDecision.RetryOnline)
+                    Refuse(batch, table);
             }
             s_abandoned++;
         }
 
+        // The blocked ask must never wait on a backoff that was never its own (retryable or not): the wire slot this
+        // ticket held is free the moment it settles, so whatever it pre-empted gets its turn now.
+        ClearRouteIndex(batch);
+        SettleTicket(ticket);
+
         Recycle(batch);
+        Settled.Value = Settled.Peek() + 1;
         Pump();
     }
 
-    /// <summary>Un-ask a terminally failed row batch: the in-flight mark goes, and so do the batch's groups — the marks
-    /// are what suppress the next request, and a failure must not suppress it. A slot recycled since the plan (its
-    /// identity moved on) is not this batch's to touch.</summary>
-    static void Unask(FetchBatch batch, Table table)
+    /// <summary>Settle a row batch's marks: the in-flight mark goes for every row it carried, and so do the
+    /// <paramref name="groups"/> a row does not know — the whole batch's groups for a terminal failure (the marks are
+    /// what suppress the next request, and a failure must not suppress it), the groups of the routes that did not
+    /// answer for an answer (<see cref="Answer"/>'s <c>unfilled</c>), nothing for a clean one. A group the row DOES know
+    /// stays asked whatever the caller says: a route that failed for a group another route filled changes nothing. A
+    /// slot recycled since the plan (its identity moved on) is not this batch's to touch.</summary>
+    static void Unask(FetchBatch batch, Table table, uint groups)
     {
         uint stamp = Stamp(batch.Epoch);
         for (int i = 0; i < batch.Count; i++)
@@ -830,8 +1073,111 @@ public static partial class Fetch
             int slot = batch.Slots[i];
             if (slot <= Table.None || slot >= table.Count || table.Id[slot] != batch.Ids[i]) continue;
             if (table.Inflight[slot] == stamp) table.Inflight[slot] = 0;
-            table.Asked[slot] &= ~batch.Wanted;
+            uint unask = groups & ~table.Settled(slot);
+            if (unask != 0) table.Asked[slot] &= ~unask;
         }
+    }
+
+    /// <summary>Remember a terminally refused batch for <see cref="Resume"/>: one entry per row (or parent) that still
+    /// names the identity the batch asked for. Bounded by <see cref="MaxRefused"/>, oldest out.</summary>
+    static void Refuse(FetchBatch batch, Table table)
+    {
+        for (int i = 0; i < batch.Count; i++)
+        {
+            int slot = batch.Slots[i];
+            if (slot <= Table.None || slot >= table.Count || table.Id[slot] != batch.Ids[i]) continue;
+            if (s_refused.Count >= MaxRefused) s_refused.RemoveAt(0);
+            s_refused.Add(new RefusedAsk(table, slot, batch.Ids[i], batch.Wanted, batch.Edge, batch.Offset, batch.Priority, batch.Epoch));
+        }
+    }
+
+    /// <summary>The session is Online again: plan every ask an auth refusal un-asked, then forget them. UI THREAD, from
+    /// <c>Spotify.Library.SyncNow</c>'s Online path. An entry from a replaced scope, or whose slot has since been
+    /// recycled to another identity, is dropped — the same guards <see cref="SettleTicket"/> applies to a pending edge.
+    /// Entries recorded from one batch are contiguous and share a shape, so they go back through <see cref="Plan"/> /
+    /// <see cref="PlanEdge"/> a run at a time — one bucket, one request, not one request per row.</summary>
+    public static void Resume()
+    {
+        Sync();
+        if (s_refused.Count == 0) return;
+        Scope scope = Entities.Current;
+        int count = s_refused.Count;
+        RefusedAsk[] pending = ArrayPool<RefusedAsk>.Shared.Rent(count);
+        int[] slots = ArrayPool<int>.Shared.Rent(count);
+        s_refused.CopyTo(pending);
+        s_refused.Clear();                 // a plan below that fails synchronously may record again; it must not loop here
+        try
+        {
+            int i = 0;
+            while (i < count)
+            {
+                RefusedAsk head = pending[i];
+                int n = 0;
+                int j = i;
+                for (; j < count; j++)
+                {
+                    RefusedAsk p = pending[j];
+                    if (!ReferenceEquals(p.Table, head.Table) || p.Groups != head.Groups || p.Edge != head.Edge
+                        || p.Offset != head.Offset || p.Priority != head.Priority || p.Epoch != head.Epoch) break;
+                    if (p.Epoch != s_scopeEpoch) continue;
+                    if (p.Slot <= Table.None || p.Slot >= p.Table.Count || p.Table.Id[p.Slot] != p.Id) continue;
+                    slots[n++] = p.Slot;
+                }
+                i = j;
+                if (n == 0) continue;
+                s_resumed += n;
+                if (head.Edge != FetchEdge.None) PlanEdge(scope, head.Edge, slots.AsSpan(0, n), head.Offset, head.Priority);
+                else Plan(scope, head.Table, slots.AsSpan(0, n), head.Groups, head.Priority);
+            }
+        }
+        finally
+        {
+            ArrayPool<RefusedAsk>.Shared.Return(pending, clearArray: true);   // holds table references
+            ArrayPool<int>.Shared.Return(slots);
+        }
+    }
+
+    /// <summary>Ask these groups AGAIN, whatever the scope has sealed — the row twin of <see cref="PlanEdge"/>'s
+    /// <c>refresh</c>, and what a Retry vacancy wants: the <c>Asked</c> bits go, then <see cref="Plan"/> asks for
+    /// whatever is still not settled. A group the row knows is not re-fetched (the rows there keep rendering);
+    /// a group whose request is out right now is asked a second time, which is what "refresh" means. Its rollover
+    /// twin is <see cref="Invalidate"/>, which re-asks what IS known.</summary>
+    public static void Refresh(Scope scope, Table table, ReadOnlySpan<int> slots, uint groups, FetchPriority priority)
+    {
+        if (groups == 0 || slots.IsEmpty) return;
+        DropStaleScope(scope);
+        for (int i = 0; i < slots.Length; i++)
+        {
+            int slot = slots[i];
+            if (slot <= Table.None || slot >= table.Count) continue;
+            table.Asked[slot] &= ~groups;
+        }
+        Plan(scope, table, slots, groups, priority);
+    }
+
+    /// <summary>Mark these KNOWN groups as belonging to an ended edition and ask for them again (the fifth mark): the
+    /// rows keep rendering their values while the new edition is on the wire. The rollover twin of
+    /// <see cref="Refresh"/>: Refresh re-asks what is NOT known, this re-asks what IS. Per slot: <c>Stale |= groups &amp;
+    /// Known</c>, the <c>Asked</c> bits go (the seal must not hold the old edition in place), the version bumps so a
+    /// bound row re-reads; then <see cref="Plan"/>, which finds the groups unsettled. Without a route or a provider the
+    /// rows simply stay stale-and-rendering, which is the point. UI thread (C1).</summary>
+    public static void Invalidate(Scope scope, Table table, ReadOnlySpan<int> slots, uint groups, FetchPriority priority)
+    {
+        if (groups == 0 || slots.IsEmpty) return;
+        DropStaleScope(scope);
+        bool any = false;
+        for (int i = 0; i < slots.Length; i++)
+        {
+            int slot = slots[i];
+            if (slot <= Table.None || slot >= table.Count) continue;
+            table.Stale[slot] |= groups & table.Known[slot];
+            table.Asked[slot] &= ~groups;
+            table.Version[slot]++;
+            any = true;
+        }
+        if (!any) return;
+        table.MarkDirty();
+        Plan(scope, table, slots, groups, priority);
     }
 
     /// <summary>The table a batch's rows index in the CURRENT scope — by subject, since four tables share a kind; for an
@@ -854,10 +1200,28 @@ public static partial class Fetch
         Edges edges = Entities.Current.Edges;
         for (int i = 0; i < take; i++)
         {
+            if (edge == FetchEdge.AlbumSimilar)
+            {
+                // Seeded by a TRACK while the relation hangs off the ALBUM; the provider cannot read tables (WP-5.M).
+                batch.Revisions[i] = global::Wavee.Album.SimilarSeedUri(batch.Slots[i]);
+                continue;
+            }
+            // The five persisted library relations carry their collection-v2 SYNC TOKEN rather than a revision from a
+            // table: the token is durable across launches (a `meta` row, deliberately not a column — a new column
+            // changes the DDL fingerprint and that DELETES the whole library.db once), so it comes out of the store's
+            // warmed in-memory map. `MetaGet` is a plain dictionary lookup, never sqlite, so it is safe on this
+            // thread. A null answer is the default-safe branch: the provider then walks the set in full.
+            if (FetchRoutes.LibrarySetOf(edge, out LibraryEdgeKind librarySet))
+            {
+                batch.Revisions[i] = Store.MetaGet(Spotify.Api.CollectionMetaKey(Entities.Current.Key.Account, librarySet));
+                continue;
+            }
             StringId revision = edge switch
             {
                 FetchEdge.Rootlist => edges.RootlistRevision(batch.Slots[i]),
                 FetchEdge.Recents => edges.RecentsRevision(batch.Slots[i]),
+                FetchEdge.PlaylistTracks when edges.PlaylistTracks.State(batch.Slots[i]) == EdgeState.Complete
+                    => new global::Wavee.Playlist(batch.Slots[i]).RevisionId,
                 _ => StringId.Empty,
             };
             batch.Revisions[i] = revision.IsEmpty ? null : Entities.Strings.Resolve(revision);
@@ -887,4 +1251,25 @@ public static partial class Entities
 
     static partial void PlanFetch(Table table, ReadOnlySpan<int> slots, uint wanted, FetchPriority priority)
         => Fetch.Plan(Current, table, slots, wanted, priority);
+
+    /// <summary>Ask these groups AGAIN, whatever was asked before — the row twin of <see cref="RefreshEdge"/>, and what a
+    /// Retry vacancy calls: a group the scope sealed (asked, never filled) is un-asked and planned; a group the rows
+    /// already know is left alone. The typed <c>Ensure</c> sugar has no refresh twin on purpose — a refresh is a
+    /// deliberate, rare act (a Retry, a reconnect), never a page mount's.</summary>
+    public static void Refresh(Table table, ReadOnlySpan<int> slots, uint wanted, FetchPriority priority = FetchPriority.Visible)
+        => Fetch.Refresh(Current, table, slots, wanted, priority);
+
+    /// <summary>These rows' KNOWN groups belong to an ended edition: mark them stale and ask again, while the rows keep
+    /// rendering what they have (<see cref="Fetch.Invalidate"/>). The rollover twin of <see cref="Refresh"/> — Refresh
+    /// re-asks what is not known, this re-asks what is. Called from a wall-clock fact (a daylist's rollover, a chart's
+    /// week), never from a page mount.</summary>
+    public static void Invalidate(Table table, ReadOnlySpan<int> slots, uint groups, FetchPriority priority = FetchPriority.Visible)
+        => Fetch.Invalidate(Current, table, slots, groups, priority);
+
+    /// <inheritdoc cref="Invalidate(Table,ReadOnlySpan{int},uint,FetchPriority)"/>
+    public static void Invalidate(Playlist row, PlaylistFields groups, FetchPriority priority = FetchPriority.Visible)
+    {
+        int slot = row.Slot;
+        Fetch.Invalidate(Current, Current.Playlists, new ReadOnlySpan<int>(in slot), (uint)groups, priority);
+    }
 }

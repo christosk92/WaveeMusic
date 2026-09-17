@@ -144,7 +144,7 @@ public static partial class Playback
         public static class Smtc
         {
             static SystemMediaControls? s_smtc;
-            static EntityId s_lastId;
+            static CardKey s_lastKey = new(default, false, -1);
             static MediaPlaybackStatus s_lastStatus = (MediaPlaybackStatus)(-1);
             static bool s_lastCanNext, s_lastCanPrev, s_haveEnablement;
             static SmtcTimelineCoalescer s_timeline;
@@ -187,23 +187,18 @@ public static partial class Playback
                 s_durationMs = s.DurationMs;
                 s_isLive = s.Live.IsLive;
 
-                // metadata — only on an identity change (W2: a pause re-pushes NOTHING but the status)
-                EntityId id = s.CurrentId;
-                if (!id.Equals(s_lastId))
+                // metadata — only when the CARD would change (W2: a pause re-pushes NOTHING but the status). The key is
+                // (identity, is its metadata known, its art), so a row whose metadata lands AFTER it started — a
+                // Connect transfer, a cold catalog — is pushed again instead of keeping an empty card (G-084).
+                CardKey key = CardKeyFor(in s);
+                if (key != s_lastKey)
                 {
-                    s_lastId = id;
-                    s_liveCleared = false;
+                    if (!key.Id.Equals(s_lastKey.Id)) s_liveCleared = false;
+                    s_lastKey = key;
                     try
                     {
                         if (!s.HasCurrent) smtc.ClearDisplay();
-                        else
-                        {
-                            var t = new Track(s.Current.Slot);
-                            string title = t.Knows(TrackFields.Identity) ? t.Title : "";
-                            string artist = FirstArtist(t);            // the FIRST artist only, never a joined list
-                            string? album = t.AlbumSlot > 0 ? NullIfEmpty(t.Album.Title) : null;
-                            smtc.UpdateDisplay(title, artist, album, NullIfEmpty(ArtUrl(t.ImageId)));
-                        }
+                        else PushDisplay(smtc, in s);
                     }
                     catch (Exception ex) { Log.Warn("playback", "smtc display failed", ex); }
                 }
@@ -227,6 +222,52 @@ public static partial class Playback
                     s_lastCanPrev = canPrev;
                     try { smtc.SetEnabledButtons(play: true, pause: true, next: canNext, previous: canPrev); }
                     catch (Exception ex) { Log.Warn("playback", "smtc buttons failed", ex); }
+                }
+            }
+
+            /// <summary>The card's text and art, by the row's KIND (G-083): a track shows its first artist and album; an
+            /// episode — or a podcast row carried as a track, whose album slot is its SHOW — shows the show in the artist
+            /// line and no album. 0.3 read the Track table for every row, so an episode's card was another row's text.</summary>
+            static void PushDisplay(SystemMediaControls smtc, in State s)
+            {
+                EntityRef row = s.Current;
+                EntityKind kind = row.IsNone || Entities.Current is null ? EntityKind.Unknown
+                    : row.Kind == EntityKind.Track && !ValidTrack(row.Slot) ? EntityKind.Unknown
+                    : row.Kind == EntityKind.Episode && !new Episode(row.Slot).IsValid ? EntityKind.Unknown
+                    : row.Kind;
+                bool podcastTrack = kind == EntityKind.Track && new Track(row.Slot).IsPodcast;
+                switch (CardShapeFor(kind, podcastTrack))
+                {
+                    case CardShape.Track:
+                    {
+                        var t = new Track(row.Slot);
+                        string title = t.Knows(TrackFields.Identity) ? t.Title : "";
+                        string artist = FirstArtist(t);                // the FIRST artist only, never a joined list
+                        string? album = t.AlbumSlot > 0 ? NullIfEmpty(t.Album.Title) : null;
+                        smtc.UpdateDisplay(title, artist, album, NullIfEmpty(ArtUrl(t.ImageId)));
+                        return;
+                    }
+                    case CardShape.Episode when row.Kind == EntityKind.Episode:
+                    {
+                        var e = new Episode(row.Slot);
+                        string title = e.Knows(EpisodeFields.Title) ? e.Title : "";
+                        string show = e.ShowSlot > 0 && new Show(e.ShowSlot).IsValid ? new Show(e.ShowSlot).Title : "";
+                        smtc.UpdateDisplay(title, show, null, NullIfEmpty(ArtUrl(e.ImageId)));
+                        return;
+                    }
+                    case CardShape.Episode:
+                    {
+                        var t = new Track(row.Slot);
+                        string title = t.Knows(TrackFields.Identity) ? t.Title : "";
+                        string show = t.AlbumSlot > 0 && new Show(t.AlbumSlot).IsValid ? new Show(t.AlbumSlot).Title : "";
+                        smtc.UpdateDisplay(title, show, null, NullIfEmpty(ArtUrl(t.ImageId)));
+                        return;
+                    }
+                    default:
+                        // A row with no slot yet (a foreign device's track before its fetch): the status still shows,
+                        // and the key re-pushes the text when the row lands.
+                        smtc.UpdateDisplay("", "", null, null);
+                        return;
                 }
             }
 
@@ -332,6 +373,45 @@ public static partial class Playback
         /// mid-bar for a six-hour broadcast.</summary>
         public static bool ZeroTimelineOnce(long durationMs, bool isLive, bool alreadyCleared)
             => durationMs <= 0 && isLive && !alreadyCleared;
+
+        /// <summary>Which card layout a row gets (G-083).</summary>
+        public enum CardShape : byte { Empty, Track, Episode }
+
+        /// <summary>The card layout for a row's table kind: a track is a track unless it is a podcast row carried as a
+        /// track (its album slot is a SHOW); an episode is an episode; anything without a table row is empty text.</summary>
+        public static CardShape CardShapeFor(EntityKind kind, bool podcastTrack) => kind switch
+        {
+            EntityKind.Track => podcastTrack ? CardShape.Episode : CardShape.Track,
+            EntityKind.Episode => CardShape.Episode,
+            _ => CardShape.Empty,
+        };
+
+        /// <summary>When the SMTC card must be pushed again (G-084): a new identity, the same identity's metadata becoming
+        /// known, or its art changing. A pause or a position tick changes none of the three.</summary>
+        /// <param name="Id">The row's identity.</param>
+        /// <param name="Knows">Its identity group has landed.</param>
+        /// <param name="Image">Its art's interned id (0 = none).</param>
+        public readonly record struct CardKey(EntityId Id, bool Knows, int Image);
+
+        /// <summary>The key a state's card has, read off the row's own table (UI thread).</summary>
+        public static CardKey CardKeyFor(in State s)
+        {
+            EntityRef row = s.Current;
+            if (row.IsNone || Entities.Current is null) return new CardKey(s.CurrentId, false, 0);
+            if (row.Kind == EntityKind.Track && ValidTrack(row.Slot))
+            {
+                var t = new Track(row.Slot);
+                return new CardKey(s.CurrentId, t.Knows(TrackFields.Identity), t.ImageId.Value);
+            }
+            if (row.Kind == EntityKind.Episode && new Episode(row.Slot).IsValid)
+            {
+                var e = new Episode(row.Slot);
+                return new CardKey(s.CurrentId, e.Knows(EpisodeFields.Identity), e.ImageId.Value);
+            }
+            return new CardKey(s.CurrentId, false, 0);
+        }
+
+        static bool ValidTrack(int slot) => Entities.Current is not null && new Track(slot).IsValid;
 
         /// <summary>The taskbar button. Three states and no more: playing carries the determinate green fill and NO
         /// glyph (the fill IS the playing cue, so a play glyph on top of it is redundant), paused carries the yellow
@@ -533,10 +613,24 @@ public static partial class Playback
             static long s_lastRebuildMs;
             static EntityId s_lastId;
 
+            static string? s_aumid;
+
             /// <summary>The AUMID the toast layer registered, or null for the process default. The shell keys a custom
             /// destination list BY AUMID: a mismatch writes the list for an identity the taskbar button does not have
-            /// and it SILENTLY never appears. Owner I's `Notify.Host.cs` sets this at boot.</summary>
-            public static string? Aumid { get; set; }
+            /// and it SILENTLY never appears. Owner I's `Notify.Host.cs` sets this at boot — which can be AFTER the
+            /// list was first published under the process default, so a change republishes it (G-087).</summary>
+            public static string? Aumid
+            {
+                get => s_aumid;
+                set
+                {
+                    if (string.Equals(s_aumid, value, StringComparison.Ordinal)) return;
+                    s_aumid = value;
+                    if (!s_on) return;
+                    s_lastRebuildMs = long.MinValue;
+                    Rebuild();
+                }
+            }
 
             /// <summary>The play log's recent contexts, newest first, context-collapsed (owner A's
             /// `Entities/Store.cs`, Wave 1). LATE-BOUND on purpose: the jump list ships in Wave 3 with the category
@@ -722,24 +816,27 @@ public static partial class Playback
 
         // ── 6. power and idle ────────────────────────────────────────────────────────────────────────────────────────
 
+        /// <summary>The power request playback holds (G-085): nothing unless WE are the ones making sound, the system
+        /// awake for audio, and the DISPLAY awake too while the video host plays — 0.2.9's bug was gating the display
+        /// on FULLSCREEN, which let the screen sleep during docked video.</summary>
+        public enum AwakeKind : byte { None, System, Display }
+
+        /// <summary>Decided from the STATE being published, never from a signal a drain behind it (0.3 read
+        /// <c>Playback.VideoActive</c>, which is written after the sinks run and was one drain stale).</summary>
+        public static AwakeKind AwakeFor(Phase phase, bool routesLocal, PlayableKind kind)
+            => phase != Phase.Playing || !routesLocal ? AwakeKind.None
+             : kind == PlayableKind.Video ? AwakeKind.Display
+             : AwakeKind.System;
+
         /// <summary>The playback half of the power policy. Two facts and no more: the machine must not sleep while we
-        /// are the ones making sound, and a suspend parks playback HERE rather than letting a sleeping laptop forward
-        /// a pause to somebody's speaker.</summary>
+        /// are the ones making sound, and a suspend parks LOCAL playback through the reducer — which never forwards it
+        /// to a foreign owner, so a sleeping laptop cannot pause somebody's speaker (D13).</summary>
         public static class PowerPolicy
         {
             static IDisposable? s_awake, s_subscription;
             static bool s_displayHeld;
             static readonly Action s_onSuspend = OnSuspendUi;
             static readonly Action s_onResume = OnResumeUi;
-
-            /// <summary>Overridable in a test; by default it reads the host's own `Playback.VideoActive`. VIDEO needs
-            /// the DISPLAY awake, audio only needs the system awake — 0.2.9's bug here was gating on FULLSCREEN, which
-            /// let the screen sleep during docked video.</summary>
-            public static Func<bool> VideoActive { get; set; } = static () => Playback.VideoActive.Peek();
-
-            /// <summary>Set by the host: may we pause locally on suspend? False when a foreign Connect device owns
-            /// playback — a sleeping laptop must never pause the user's phone.</summary>
-            public static Func<bool>? CanPauseOnSuspend { get; set; }
 
             internal static void Activate()
             {
@@ -763,9 +860,9 @@ public static partial class Playback
 
             internal static void OnStateChanged(in State s)
             {
-                bool playing = s.Phase == Phase.Playing && s.RoutesLocal;
-                if (!playing) { Drop(); return; }
-                bool wantsDisplay = VideoActive();
+                AwakeKind want = AwakeFor(s.Phase, s.RoutesLocal, s.Kind);
+                if (want == AwakeKind.None) { Drop(); return; }
+                bool wantsDisplay = want == AwakeKind.Display;
                 if (s_awake is not null && wantsDisplay == s_displayHeld) return;   // re-acquire only on a real change
                 Drop();
                 try
@@ -791,17 +888,19 @@ public static partial class Playback
 
             static void OnSuspendUi()
             {
+                // NOT `Input.Pause`: that verb FORWARDS to a foreign owner. The suspend input pauses local playback and
+                // nothing else (D13, G-081).
                 Log.Info("playback", "power: suspending");
                 Drop();
-                if (CanPauseOnSuspend?.Invoke() ?? true) Post(Input.Pause(FrameNowMs()));
+                ReportSuspend();
             }
 
             static void OnResumeUi()
             {
                 // A suspended machine loses its server-side device registration even though the socket still looks
-                // alive. One Tick is all this file owes the reducer; the re-announce is `Spotify.Connect`'s.
+                // alive: the wake input re-announces this device as a new connection (D13, G-082).
                 Log.Info("playback", "power: resumed");
-                Post(Input.Tick(FrameNowMs()));
+                ReportWake();
             }
         }
 

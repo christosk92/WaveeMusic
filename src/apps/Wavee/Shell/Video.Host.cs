@@ -37,6 +37,9 @@
 //
 // Rules: UI thread only (C1). Nothing here allocates per frame — the effects are mount-wired and re-run on a signal
 // edge, never on a tick.
+//
+// Named partials: `Video.Overrides.cs` (the local-attachment roster) and `Video.Host.Wiring.cs` (gap batch B7: the
+// composition call, the placement → playback post, the boundary fold, the host observer leaf).
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -51,7 +54,7 @@ public static partial class Video
 
     /// <summary>The app's one movable video surface, as live state. Every affordance READS <see cref="Resolved"/> and
     /// every gesture goes through one of the verbs below — never a second flag, never a direct signal write.</summary>
-    public static class State
+    public static partial class State
     {
         /// <summary>The always-on log category. No env switch, ever.</summary>
         public const string LogCategory = "video";
@@ -83,7 +86,8 @@ public static partial class Video
         /// pop-out's fullscreen bit is re-decided by the RULE (never by a clearing edge), and the derived transport
         /// owner is republished. The always-on line records every TERM of the decision, because "the rail kept it"
         /// looks identical whether the page never claimed it, claimed it with the wrong id, or was correctly
-        /// outranked — and that ambiguity cost a full debugging cycle.</summary>
+        /// outranked — and that ambiguity cost a full debugging cycle. It is also the ONE place the reducer hears about
+        /// video (G-141, `PlacementPost`) and the one place the preferred home is persisted (G-150).</summary>
         public static void Commit(in PlacementState next)
         {
             var before = Surface.Peek();
@@ -92,6 +96,8 @@ public static partial class Video
             DetachedFullscreen.Value = DetachedFullscreenRule.After(DetachedFullscreen.Peek(), resolved);
             Transport.Value = PlacementCore.TransportOwnerFor(resolved);
             if (before.Equals(next)) return;
+            if (PlacementPost.ShouldPost(in before, in next, HostCapability.Peek(), out bool wanted)) Playback.SetVideoPlacement(wanted);
+            if (next.Preferred != before.Preferred) PersistPreferred(next.Preferred);
             Log.Event(WaveeLogLevel.Debug, LogCategory, "placement",
                 "video placement " + PlacementCore.Resolve(before) + " -> " + resolved,
                 fields:

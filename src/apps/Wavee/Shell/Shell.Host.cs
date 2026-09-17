@@ -7,6 +7,7 @@
 // Wave: 4
 // Budget: 1000 lines
 // Spec: plan 800 + ch 16 + ch 29
+// Named partial: `Shell.Host.Deck.cs` (gap batch B3b) — the play log and the session document's deck meet playback
 //
 // THE COMPOSITION ROOT'S SECOND HALF. `Platform.Boot()` already opened the settings store, the log, the credential
 // slot and the locale — everything that must exist BEFORE there is a window. This file owns everything from the window
@@ -29,9 +30,11 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using FluentGpu;
+using FluentGpu.Controls;     // ToolTip.CloseOpen — a parked page's bubble must not outlive the route
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Hosting;      // FrameStats — the one-shot `boot.firstframe` mark's FrameCompleted payload
 using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Activation;
 using FluentGpu.WindowsApi.Packaging;
@@ -106,6 +109,18 @@ public static partial class Shell
     /// build without it runs on the engine's own palette rather than not running.</summary>
     public static Action<ThemeKind>? SeedPalette;
 
+    /// <summary>Boot's last timing mark: <c>boot.firstframe</c>, the first frame the engine actually rendered — the
+    /// number that answers "how long did the user stare at nothing". Subscribed once, right before <c>Run</c>; logs
+    /// and unsubscribes on its own first invocation so it never fires again for the rest of the process.</summary>
+    static Action<FrameStats>? s_firstFrameMark;
+
+    static void OnFirstFrameRendered(FrameStats _)
+    {
+        FluentApp.FrameCompleted -= s_firstFrameMark;
+        s_firstFrameMark = null;
+        Log.Event(WaveeLogLevel.Info, "app", "boot.firstframe", "", null, Log.SinceStartMs);
+    }
+
     // ══ 2. RUN — the window and the engine loop ═════════════════════════════════════════════════════════════════════
 
     /// <summary>Everything from the window outwards. NEVER RETURNS until exit.
@@ -168,9 +183,16 @@ public static partial class Shell
         PlayLog.Load();
         RestoreNav();
         Tips.Load();
+        Log.Event(WaveeLogLevel.Info, "app", "boot.documents", "", null, Log.SinceStartMs);
+        // The play log and the deck document meet playback, then the launch restore — before the first frame, after the
+        // session document is loaded (G-078, G-079; Shell.Host.Deck.cs).
+        AttachPlayback();
 
         try
         {
+            Log.Event(WaveeLogLevel.Info, "app", "boot.window", "", null, Log.SinceStartMs);
+            s_firstFrameMark = OnFirstFrameRendered;
+            FluentApp.FrameCompleted += s_firstFrameMark;
             FluentAppHarness.Run(
                 static () => new RootHost(),
                 new AppOptions
@@ -214,6 +236,8 @@ public static partial class Shell
             // The icon FIRST (tray plan §7.6). It normally left already, on the UI thread, with the close that ended the
             // loop; this is the belt for a loop that ended any other way.
             Tray.Host.Shutdown();
+            // The deck's last word goes into the session document BEFORE its flush writes it (G-078).
+            CaptureDeckForExit();
             // The shell's unmount cleanup never runs on shutdown (the host does not unmount the tree), so a pending
             // debounced save would be LOST. These three are the only documents that can be mid-debounce.
             Session.Flush();
@@ -222,6 +246,8 @@ public static partial class Shell
             Notify.HostShutdown();
             Playback.Os.Shutdown();
             s_fetchWake?.Dispose();
+            s_audioWarm?.Dispose();
+            s_memoryPoll?.Dispose();   // RECURRING (unlike the one-shots above): must stop, not just have already fired
             gate?.Dispose();
         }
     }
@@ -269,8 +295,12 @@ public static partial class Shell
     public static void InstallMarshallers()
     {
         if (Interlocked.Exchange(ref s_marshallersInstalled, 1) != 0) return;
-        Action<Action> post = static a =>
+        Action<Action> post = static action =>
         {
+            // END OF THE DRAIN: a posted action commits into the tables, and a table's `Changed` signal fires only in
+            // `Entities.Publish` — so every posted action is followed by it, early posts included, or a surface bound to
+            // a table waits for an unrelated frame. The headless host publishes on its own tick and never runs this.
+            Action a = PublishAfter.Wrap(action);
             if (s_uiPost is { } live) { live(a); return; }
             s_earlyPosts.Enqueue(a);
             // The root may have attached between the check and the enqueue: drain through it so nothing strands.
@@ -280,23 +310,134 @@ public static partial class Shell
         Spotify.Post = post;
         Store.Post = post;
         Wavee.Palette.Post = post;
+        Lyrics.Store.ToUi = post;         // the lyrics document store's UI-thread hop (G-008)
         s_marshal = post;
         Sidebar.Activate(post);          // the sidebar store's write completions and the binder's publishes land on the UI thread
+        Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe
 
         // THE frame tick. `Fetch.Pump()` is how an expired backoff re-sends with nothing else happening, and
         // `Palette.Tick()` is how the grading debounce fires; both are two comparisons when idle. It rides the host's
         // per-RENDERED-frame relay, so an idle window (no frames) ticks nothing — a deadline that lands while idle is
         // served on the next frame, which both layers document as a delay, never a loss. The lambda is static: zero
-        // allocation per frame.
-        FluentApp.FrameCompleted += static _ =>
+        // allocation per frame. The payload is the engine's `FrameStats` (`Action<FrameStats>`), read here for ONE bit:
+        // `ScrollActive` — did this frame drive a scroll, or sit inside the engine's 120 ms post-scroll hold.
+        FluentApp.FrameCompleted += static stats =>
         {
             // The planner's clock (app seconds) FIRST: nothing else in the GUI moves `Entities.Now`, so without this a
             // fetch backoff never expires in the app (the headless host's tick does the same, Diagnostics.Probe.cs).
             Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             Fetch.Pump();
+            // The scroll bit, and its FALLING edge: the palette pump does not re-arm itself while a scroll is live
+            // (PublishCadence.PalettePumpAllowed), so the rows it left queued are picked up here, once, when the
+            // scroll ends. Read before the publish so the edge frame publishes as a non-scroll frame.
+            bool wasScrolling = ScrollActive;
+            ScrollActive = stats.ScrollActive;
+            if (wasScrolling && !stats.ScrollActive) Wavee.Palette.ResumeIfPending();
+            // A write made by a UI event handler (not a posted action) is published here, on the frame it rendered —
+            // on the cadence: every frame when no scroll is live, every 4th frame / 50 ms while one is (W2-A1). The
+            // tables already hold the data; only the `Changed` fan-out waits.
+            PublishOnCadence();
+            Lyrics.Requests.AfterPublish();
             Wavee.Palette.Tick();
+            Store.FlushPalette();
             ArmFetchWake();
         };
+    }
+
+    // ── the publish cadence (W2-A1) ─────────────────────────────────────────────────────────────────────────────────
+    //
+    // Both publish sites — the frame tick above and the posted-answer wrapper below — go through `PublishOnCadence`,
+    // so during a fling neither a rendered frame nor a landing answer fans the `Changed` counters out more often than
+    // `PublishCadence` allows. The frame counter and the stamp measure from the last opportunity TAKEN (dirty or not;
+    // `Entities.Publish` early-outs on an empty dirty set, so a no-op reset costs one compare), which keeps the beat
+    // steady instead of bursting the moment something lands.
+
+    /// <summary>Did the most recent rendered frame drive a scroll (or sit inside the engine's post-scroll hold)? Written
+    /// only by the frame tick, on the UI thread; read by the palette pump's self re-arm gate. False until the first frame.
+    /// </summary>
+    public static bool ScrollActive { get; private set; }
+
+    static int s_framesSinceLast;
+    static long s_lastPublishTicks;
+    static System.Threading.Timer? s_publishWake;
+    static bool s_publishWakeArmed;
+
+    /// <summary>Publish now if the cadence allows, otherwise count the frame and let the dirty set wait. UI THREAD.
+    /// <para>A deferral arms <see cref="s_publishWake"/> for <see cref="PublishCadence.ScrollMaxLagMs"/>: `ScrollActive`
+    /// is true for the engine's 120 ms hold AFTER the last scroll frame, and if no further frame renders inside that
+    /// hold (nothing else is dirty — the deferred set cannot wake the loop, because waking it is exactly what the publish
+    /// does) the set would otherwise strand until the next unrelated frame. The wake posts through the UI poster, whose
+    /// wrapper runs this same method with the lag bound now met.</para></summary>
+    static void PublishOnCadence()
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        float msSinceLast = (float)System.Diagnostics.Stopwatch.GetElapsedTime(s_lastPublishTicks, now).TotalMilliseconds;
+        if (!PublishCadence.ShouldPublish(ScrollActive, s_framesSinceLast, msSinceLast))
+        {
+            s_framesSinceLast++;
+            if (Entities.PendingPublications > 0) ArmPublishWake();
+            return;
+        }
+        s_framesSinceLast = 0;
+        s_lastPublishTicks = now;
+        Entities.Publish();
+    }
+
+    static void ArmPublishWake()
+    {
+        if (s_publishWakeArmed) return;
+        s_publishWakeArmed = true;
+        s_publishWake ??= new System.Threading.Timer(static _ => s_marshal?.Invoke(OnPublishWake), null, Timeout.Infinite, Timeout.Infinite);
+        s_publishWake.Change((int)PublishCadence.ScrollMaxLagMs, Timeout.Infinite);
+    }
+
+    /// <summary>The wake's UI-thread arm. Empty on purpose: it arrives through the poster, whose <see cref="PublishAfter"/>
+    /// wrapper runs <see cref="PublishOnCadence"/> after it — at least <see cref="PublishCadence.ScrollMaxLagMs"/> after
+    /// the deferral that armed it, so the lag bound is met and the set publishes even if `ScrollActive` is stale.</summary>
+    static void OnPublishWake() => s_publishWakeArmed = false;
+
+    /// <summary>Start the updater with the installed UI poster, so its snapshots reach <c>Notify.Update</c> on the UI
+    /// thread. The composition root calls it AFTER <c>Diagnostics.Install</c>, which assigns the metered probe the updater
+    /// reads at start — which is why it is not part of <see cref="InstallMarshallers"/>. Idempotent (the host's own latch);
+    /// a no-op before the marshallers exist.</summary>
+    public static void StartUpdater()
+    {
+        if (s_marshal is { } post) Update.Host.Start(post);
+    }
+
+    /// <summary>One posted action followed by a publish ON THE CADENCE (<see cref="PublishOnCadence"/>): immediate when no
+    /// scroll is live, exactly as before; during a scroll the answer commits into the tables and the `Changed` fan-out
+    /// waits for the frame tick's next allowed publish, so a fling does not fan out once per landing answer (W2-A1).
+    /// POOLED: a wrapper and its bound delegate are made once and reused, so a post allocates nothing after warm-up; a
+    /// burst deeper than the pool allocates its overflow and keeps up to <see cref="PoolCap"/> of it.</summary>
+    sealed class PublishAfter
+    {
+        const int PoolCap = 64;
+        static readonly Stack<PublishAfter> s_pool = new(PoolCap);
+
+        Action? _inner;
+        readonly Action _run;
+
+        PublishAfter() => _run = Run;
+
+        public static Action Wrap(Action inner)
+        {
+            PublishAfter? wrapper = null;
+            lock (s_pool) { if (s_pool.Count > 0) wrapper = s_pool.Pop(); }
+            wrapper ??= new PublishAfter();
+            wrapper._inner = inner;
+            return wrapper._run;
+        }
+
+        void Run()
+        {
+            Action? inner = _inner;
+            _inner = null;
+            lock (s_pool) { if (s_pool.Count < PoolCap) s_pool.Push(this); }
+            inner?.Invoke();
+            PublishOnCadence();
+            Lyrics.Requests.AfterPublish();   // G-252: a parked lyrics resolve completes on the publication that names its row
+        }
     }
 
     /// <summary>The one idle wake (decision D23): a one-shot timer armed to the earliest fetch backoff deadline, which
@@ -326,11 +467,83 @@ public static partial class Shell
     {
         if (s_uiPost is not null) return;
         s_uiPost = post;
+        Platform.UiThreadId = Environment.CurrentManagedThreadId;   // the settings facade's DEBUG off-thread write check (G-077)
         DrainEarlyPosts(post);
         // The toast platform's UI half: activations and deep links from toasts arrive through the same intake as a second
         // launch (G-009). The window exists by the root's first render.
         Notify.HostInstall(post, static link => ApplyDeepLink(link));
+        ArmAudioWarm();
+        ArmMemoryGovernor();
     }
+
+    /// <summary>How long after the root's first render the audio backend is built (<c>Playback.Audio.Warm</c>): past the
+    /// startup burst (the first frames, the launch restore, the session's first replies), and early enough that the first
+    /// play does not pay for the endpoint probe.</summary>
+    public const int AudioWarmDelayMs = 3_000;
+
+    static System.Threading.Timer? s_audioWarm;
+
+    /// <summary>The one-shot warm (named, P10): a timer armed once at attach that posts <c>Playback.Audio.Warm</c> through
+    /// the UI poster. Warm is idempotent, so a play that already built the backend makes it a no-op.</summary>
+    static void ArmAudioWarm()
+    {
+        if (s_audioWarm is not null) return;
+        s_audioWarm = new System.Threading.Timer(static _ => s_marshal?.Invoke(static () => Playback.Audio.Warm()),
+            null, AudioWarmDelayMs, Timeout.Infinite);
+    }
+
+    /// <summary>The memory governor's poll interval (Platform/Residency.cs's <c>Residency.Poll</c>). 30s, matching
+    /// 0.2.10's — frequent enough that a moderate-pressure spell sheds prefetched art within one listening session,
+    /// rare enough that the private-bytes read (one <see cref="System.Diagnostics.Process"/> handle) never shows up
+    /// in a profile. No environment-variable switch (house rule): the poll is always on.</summary>
+    public const int MemoryPollIntervalMs = 30_000;
+
+    static System.Threading.Timer? s_memoryPoll;
+
+    /// <summary>Arm the governor's RECURRING poll (unlike <see cref="ArmAudioWarm"/> / <see cref="ArmJumpList"/>,
+    /// which fire once): every tick posts <c>Residency.Poll</c> through the UI marshaller, never runs inline on the
+    /// timer's own thread pool thread — <c>Store.TrimMemory</c> asserts <c>ReferenceEquals(scope, Entities.Current)</c>,
+    /// which only holds on the UI thread (C1), and <c>ShellPins.Refresh</c> reads UI-thread-affine state besides.</summary>
+    static void ArmMemoryGovernor()
+    {
+        if (s_memoryPoll is not null) return;
+        s_memoryPoll = new System.Threading.Timer(static _ => s_marshal?.Invoke(static () => Residency.Poll()),
+            null, MemoryPollIntervalMs, MemoryPollIntervalMs);
+    }
+
+    /// <summary>The nav stack's route subjects — <see cref="Nav.Current"/>, every entry of <c>Back</c> and every entry
+    /// of <c>Forward</c> — for the memory governor's entity-store pin set (<c>Platform/Residency.Pins.cs</c>'s
+    /// <c>ShellPins.Refresh</c>). UI thread only, like every other read of <see cref="s_nav"/>; appends into
+    /// <paramref name="into"/> rather than allocating, so a caller can reuse one buffer across polls.</summary>
+    internal static void CollectNavSubjects(List<EntityId> into)
+    {
+        if (s_nav.Current.Subject.IsValid) into.Add(s_nav.Current.Subject.Id);
+        for (int i = 0; i < s_nav.Back.Count; i++)
+            if (s_nav.Back[i].Subject.IsValid) into.Add(s_nav.Back[i].Subject.Id);
+        for (int i = 0; i < s_nav.Forward.Count; i++)
+            if (s_nav.Forward[i].Subject.IsValid) into.Add(s_nav.Forward[i].Subject.Id);
+    }
+
+    static System.Threading.Timer? s_jumpList;
+
+    /// <summary>The taskbar jump list's one-shot attach, armed once from <c>RestoreNav</c>. Same shape as
+    /// <see cref="ArmAudioWarm"/>: a timer that POSTS through the UI marshaller, so the work leaves the launch thread
+    /// (time-to-window is what the boot marks measure) but still lands on the UI/STA thread the shell COM transaction
+    /// and the two document stores both require. `Attach` earns exactly one rebuild, and `Rebuild` already catches and
+    /// logs its own COM failures.</summary>
+    static void ArmJumpList()
+    {
+        if (s_jumpList is not null) return;
+        s_jumpList = new System.Threading.Timer(static _ => s_marshal?.Invoke(static () => Playback.Os.JumpList.Attach(
+                recentContexts: static max => PlayLog.RecentContexts(max),
+                recentSurfaces: static max => History.RecentSurfaces(History.Store.Entries, max))),
+            null, JumpListDelayMs, Timeout.Infinite);
+    }
+
+    /// <summary>How long the jump-list attach waits before posting. Longer than the audio warm: the taskbar menu is
+    /// not reachable until the user has the window, and a COM transaction competing with the first frames is the one
+    /// thing this deferral exists to avoid.</summary>
+    const int JumpListDelayMs = 2_000;
 
     static void DrainEarlyPosts(Action<Action> post)
     {
@@ -517,6 +730,7 @@ public static partial class Shell
         Motion.Value = motion;                    // BEFORE the route, in the same flush
         Origins.Write(normalized, origin);        // every Go writes; null OVERWRITES — latest arrival wins
         Current.Value = normalized;
+        RouteCommitted();
         CanBack.Value = s_nav.CanBack;
         CanForward.Value = false;
         History.Store.Add(normalized);            // the navigation log
@@ -525,11 +739,19 @@ public static partial class Shell
         Session.CaptureNav();
     }
 
+    /// <summary>What every route commit does besides moving the signals: close an open tooltip. Pages are KeepAlive
+    /// destinations (<c>Flow.KeepAlive</c>, <see cref="KeepAliveSlots"/> parked pages), so the old page is PARKED, not
+    /// unmounted — its ToolTip owner stays mounted and, under a still pointer, geometrically "hovered": no leave edge,
+    /// the safe-zone poll keeps it, and the bubble outlives the page it described until the 5 s dwell (recording
+    /// 2026-09-16: a discography drawer's "Go to album" tip parked over the album page it had just opened).</summary>
+    static void RouteCommitted() => ToolTip.CloseOpen();
+
     public static void GoBack()
     {
         if (!BackStep(ref s_nav)) return;
         Motion.Value = NavTransitionKind.Back;
         Current.Value = s_nav.Current;
+        RouteCommitted();
         CanBack.Value = s_nav.CanBack;
         CanForward.Value = s_nav.CanForward;
         History.Store.Add(s_nav.Current);
@@ -543,6 +765,7 @@ public static partial class Shell
         if (!ForwardStep(ref s_nav)) return;
         Motion.Value = NavTransitionKind.Forward;
         Current.Value = s_nav.Current;
+        RouteCommitted();
         CanBack.Value = s_nav.CanBack;
         CanForward.Value = s_nav.CanForward;
         History.Store.Add(s_nav.Current);
@@ -634,12 +857,13 @@ public static partial class Shell
         var route = Tabs.RestorePinned(in snapshot);
         s_savedPinnedRevision = Tabs.PinnedRevision;
 
-        if (Session.TryApplyNav(s_nav, out var active, out int tabId))
+        if (Session.TryApplyNav(s_nav, out var active, out int pinnedIndex))
         {
-            if (tabId >= 0) Tabs.TrySelect(tabId);
+            Tabs.TrySelectPinned(pinnedIndex);
             route = active;
         }
         route = route with { Tab = Tabs.ActiveId };
+        Tabs.RestoreActiveRoute(route);   // G-258: the active tab shows the restored route, not its pinned default
         s_nav.Current = route;
         Current.Value = route;
         CanBack.Value = s_nav.CanBack;
@@ -648,11 +872,14 @@ public static partial class Shell
         TabsVersion.Value++;
         SyncOmnibar(route);
 
-        // The taskbar's jump list attaches LATE by design (it shipped in Wave 3 with the category empty): the log only
-        // exists now. Each attach earns exactly one rebuild.
-        Playback.Os.JumpList.Attach(
-            recentContexts: static max => PlayLog.RecentContexts(max),
-            recentSurfaces: static max => History.RecentSurfaces(History.Store.Entries, max));
+        // The taskbar's jump list attaches LATE by design, and nothing on screen depends on it — so it must not sit on
+        // the launch thread ahead of the window. It is deferred through the SAME one-shot-timer-then-UI-post shape as
+        // `ArmAudioWarm`, NOT onto a thread pool: `EngineJumpList`'s own contract says `SetCategory`/`Clear` run on the
+        // UI (STA) thread, and while its `EnsureSta` merely TOLERATES `RPC_E_CHANGED_MODE` rather than throwing, a
+        // pool thread is MTA — so the STA request is refused and the COM transaction fails quietly instead of loudly.
+        // The callbacks also read `History.Store.Entries` and the play log, which the UI thread owns, so a pool thread
+        // would race them as well. Off the boot path, still on the right thread.
+        ArmJumpList();
     }
 
     // ══ 5. THE ROOT ════════════════════════════════════════════════════════════════════════════════════════════════
@@ -672,6 +899,17 @@ public static partial class Shell
             // gets its icon. It re-runs on the auth fold, the culture epoch and a seam attach — reads that subscribe the
             // effect, never this render. A no-op unless Shell.Run armed the tray.
             UseSignalEffect(static () => Tray.Host.Watch());
+            // The palette's filler (G-055): point at the real grader only while the session is actually ONLINE, and
+            // never under `--fake` (whose Online phase is a seeded account with no network behind it — B0b). Reads
+            // `Spotify.Status`, so a sign-out or a reconnect flips the filler back and forth with the session, not
+            // once at boot.
+            UseSignalEffect(static () =>
+                Wavee.Palette.Filler = Spotify.Status.Value == Spotify.SessionPhase.Online && !Platform.Args.Fake
+                    ? Spotify.Api.GradeCovers
+                    : null);
+            // The ambient power poll (G-086): component-hosted rather than a raw Timer, so it auto-pauses while the
+            // window is parked/minimized/suspended instead of waking on a thread-pool clock nobody is watching.
+            UseInterval(Platform.TickAmbientPower, Platform.AmbientPower.PollMs);
             return RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
         }
     }
@@ -818,6 +1056,8 @@ public static partial class Shell
         public int Version { get; set; } = Session.CurrentVersion;
         public SessionNavDto? Nav { get; set; }
         public SessionShellDto? Shell { get; set; }
+        /// <summary>The deck to put back at launch (G-078). Absent = nothing to restore.</summary>
+        public SessionDeckDto? Deck { get; set; }
     }
 
     /// <summary>Browser-style nav: the active route, both stacks (oldest first), and the active tab id.</summary>
@@ -826,7 +1066,7 @@ public static partial class Shell
         public SessionRouteDto? Active { get; set; }
         public SessionRouteDto[]? Back { get; set; }
         public SessionRouteDto[]? Forward { get; set; }
-        public int ActiveTabId { get; set; } = -1;
+        public int ActivePinnedIndex { get; set; } = -1;
     }
 
     /// <summary>Restorable shell chrome. The rail WIDTH is a durable preference; this is the session-only
@@ -835,6 +1075,34 @@ public static partial class Shell
     {
         public bool RailOpen { get; set; }
         public int RailMode { get; set; }
+    }
+
+    /// <summary>The persisted deck (G-078, G-217): identities as uri TEXT and plain numbers, never a slot — slots do not
+    /// survive a process. <see cref="SessionDeck"/> maps it to and from <c>Playback.RestorePoint</c> (Shell.Host.Deck.cs).</summary>
+    public sealed class SessionDeckDto
+    {
+        public string? Track { get; set; }
+        public string? Context { get; set; }
+        public int CursorIndex { get; set; } = -1;
+        public int PositionMs { get; set; }
+        public int DurationMs { get; set; }
+        public bool Shuffle { get; set; }
+        /// <summary><c>Spotify.Decode.RepeatMode</c>'s ordinal.</summary>
+        public int Repeat { get; set; }
+        /// <summary>The queue's rows in reading order (history · now-playing · user queue · next up), capped
+        /// (<see cref="SessionDeck.MaxRows"/>). ADDITIVE: a document without them restores through the context seed as
+        /// before. When present, <see cref="CursorIndex"/> indexes THESE rows, not the live queue that produced them.</summary>
+        public SessionQueueRowDto[]? Rows { get; set; }
+    }
+
+    /// <summary>One persisted queue row: the uri text plus <c>QueueEdge</c>'s three numbers — <c>QueueBucket</c>'s and
+    /// <c>QueueProvider</c>'s ordinals and Spotify's 64-bit queue item id.</summary>
+    public sealed class SessionQueueRowDto
+    {
+        public string? Uri { get; set; }
+        public int Bucket { get; set; }
+        public int Provider { get; set; }
+        public ulong ItemId { get; set; }
     }
 
     /// <summary>The opaque route key + its display arg, plus the JOURNEY parent crumb. Old snapshots omit the origin
@@ -894,10 +1162,10 @@ public static partial class Shell
 
         /// <summary>Apply the persisted nav onto the live stacks. Returns false when there is no usable active route
         /// (the caller keeps the pinned-workspace default).</summary>
-        internal static bool TryApplyNav(Nav nav, out Route active, out int tabId)
+        internal static bool TryApplyNav(Nav nav, out Route active, out int pinnedIndex)
         {
             active = new Route(RouteKind.Home);
-            tabId = -1;
+            pinnedIndex = -1;
             SessionNavDto? dtoNav;
             lock (s_gate) dtoNav = s_doc.Nav;
             if (dtoNav?.Active is not { } a || string.IsNullOrWhiteSpace(a.Name)) return false;
@@ -908,7 +1176,7 @@ public static partial class Shell
             AppendCapped(dtoNav.Forward, nav.Forward);
             active = Parse(a.Name, a.Arg ?? "");
             RestoreOrigin(active, a);
-            tabId = dtoNav.ActiveTabId;
+            pinnedIndex = dtoNav.ActivePinnedIndex;
             return true;
         }
 
@@ -941,7 +1209,7 @@ public static partial class Shell
                 Active = Dto(s_nav.Current),
                 Back = Snapshot(s_nav.Back),
                 Forward = Snapshot(s_nav.Forward),
-                ActiveTabId = Tabs.ActiveId,
+                ActivePinnedIndex = Tabs.ActivePinnedIndex,
             };
             lock (s_gate) s_doc.Nav = nav;
             Interlocked.Exchange(ref s_dirty, 1);
@@ -964,6 +1232,24 @@ public static partial class Shell
 
         /// <summary>The shell section as last loaded/written — no second disk read.</summary>
         public static SessionShellDto? ShellSection { get { lock (s_gate) return s_doc.Shell; } }
+
+        /// <summary>Persist the deck (G-078). Null CLEARS the section: an empty deck, a foreign owner's row and a signed-out
+        /// account are not this device's session to restore. EQUALITY-GATED, so a snapshot that changed nothing costs no
+        /// write; the document's own debounce coalesces the rest.</summary>
+        public static void CaptureDeck(SessionDeckDto? deck)
+        {
+            if (s_writesBlocked) return;
+            lock (s_gate)
+            {
+                if (SessionDeck.Same(s_doc.Deck, deck)) return;
+                s_doc.Deck = deck;
+            }
+            Interlocked.Exchange(ref s_dirty, 1);
+            ScheduleSave();
+        }
+
+        /// <summary>The deck section as last loaded/written — what the launch restore reads.</summary>
+        public static SessionDeckDto? DeckSection { get { lock (s_gate) return s_doc.Deck; } }
 
         static SessionRouteDto Dto(in Route r)
         {

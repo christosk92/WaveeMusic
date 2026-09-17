@@ -3,43 +3,41 @@
 //
 // Role: SHELL
 // Owner: H
-// Wave: 3
+// Wave: 3 (gap batch B7)
 // Budget: 1100 lines
-// Spec: plan
+// Spec: plan; docs/plans/wavee/wavee-0.3-video-engine-implementation.md §3.1.5, §3.2.3, §3.4, §6.2 H1-H6
+//
+// Named partial: `Playback.Video.Source.cs` — what plays (the resolver tiers, the manifest memo, the v9 parse, the
+// licence relay). The pure video arithmetic is `Playback.Video.Rules.cs` (owner V).
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// WHAT THIS FILE IS. The decode half of video: resolve a playable into a `VideoSource`, open ONE long-lived
-// `MediaPlayer` on it, keep it alive across a source switch, report position / duration / liveness / faults back as
-// posted `Input`s, and publish the (player, generation) binding the UI mounts. A13 (2026-09-12): every video SURFACE
-// — the docked cap, the in-window PiP, the pop-out window, the app's own fullscreen presentation, the placement
-// ladder, the override manager — is owner K's `Shell/Video.{cs,UI.cs,Host.cs}` in Wave 4. There is not one `Element`
-// in this file and there must never be one.
+// WHAT THIS FILE IS. The decode half of video: open ONE long-lived `MediaPlayer` on a resolved `VideoSource`, keep it
+// alive across a source switch, report position / duration / liveness / faults back as posted `Input`s, and publish
+// the (player, generation) binding, the switch phase and the first-frame epoch the UI mounts and reads. A13
+// (2026-09-12): every video SURFACE is owner K's `Shell/Video.{cs,UI.cs,Host.cs}`. There is not one `Element` in this
+// file and there must never be one.
 //
-// THE SEAM, WHOLE, IN THREE LINES (ch 24 §7 + the 0.2.9 decode/UI contract):
+// THE SEAM, WHOLE (ch 24 §7 + the video plan §3.4):
 //   1. `Video.Player` is a `Signal<Binding>` of (player, generation). The UI keys its `MediaPlayerElement` on the
-//      GENERATION, never on the source, so a video→video skip keeps the element mounted and the engine cross-fades
-//      the last frame to the new source's first frame. The instance changes only on a first load, a rebuild, or a
-//      teardown.
-//   2. SOMETHING MUST PUMP. An MF session only advances — and only publishes duration and `NaturalSize` — while a
-//      mounted element calls `IMediaPlayer.PumpVideo`. This host builds and reports; it never pumps. Exactly one
-//      mounted surface may pump a given player (`OneSurfacePerPlayerGuard`).
-//   3. Nothing else. No HWND, no swapchain, no monitor, no placement state. `IDetachedVideoWindow` is the engine's
-//      hook and owner K's `Shell/Video.Host.cs` is its only caller (§7 below is the one-line seam that lets the
-//      Wave-3 build compile and the Wave-4 owner attach).
+//      GENERATION, never on the source, so a video→video skip keeps the element mounted.
+//   2. SOMETHING MUST PUMP. A session only advances — and only publishes duration and `NaturalSize` — while a mounted
+//      element calls `IMediaPlayer.PumpVideo`. This host builds and reports; it never pumps.
+//   3. `Video.Phase` / `Video.FirstFrame` / `Video.Buffered` are written on the UI thread by `Observe`, which the
+//      surfaces' host observer runs whenever the bound player published — the poster/spinner discriminator comes from
+//      the session's EVENTS, never from a timer guess.
 //
-// WHY THE PUMP IS SERIALIZED AND EPOCHED (0.2.9's `VideoLoadPump`, kept). The native PlayReady/CENC session is a
-// PROCESS-GLOBAL singleton with a session-less ABI — `FgPlayReadyRunEx` / `FgPlayReadyStop` / `FgPlayReadyPlay` take
-// no session handle — so a predecessor's Stop lands on whatever session holds the latch and silently shuts down a
-// freshly-started successor. The observed failure: `RunEx` returned success, the snapshot settled on native state 4
-// (`Stopped` → `PlaybackState.Idle`), a state the tick switch has no case for, and the managed side wedged at
-// Opening while the native log showed the video licensed and playing. One worker, one coalescing slot, one epoch.
+// THE ENGINE THIS CODES AGAINST (the combined engine, `ba24aac6d`). Every protected source is a session on the process
+// PlayReady runtime (a warm engine, one CDM, a KID-keyed licence cache). `OpenAsync(source, MediaOpenOptions)` carries
+// the START POSITION into the native open, so a song→video switch at 1:23 never presents 0:00 and there is no carried
+// seek to issue afterwards; transport verbs are acknowledged by events, so there is no Play re-assert. The protected
+// backend is PROCESS-LIFETIME here (not per player): a prefetch prepares a session on it and the next open of the same
+// init url takes that session — a rebuilt player must not orphan what was prepared.
 //
-// Rules: threads and async are allowed (SHELL), but nothing here writes a table, and every result goes back as a
-// posted `Input` carrying the epoch it was started for (C1/C4). No unbounded queue: the pending slot holds exactly
-// one request and the latest wins (C8).
+// WHY THE PUMP IS STILL SERIALIZED AND EPOCHED. One worker, one coalescing slot, one epoch: a load that arrives while
+// another is in flight REPLACES it (latest wins, C8), and every result goes back as a posted `Input` carrying the epoch
+// it was started for (C1/C4). The runtime no longer needs it for correctness; the reducer's epochs still do.
 
 using System.Collections.Concurrent;
-using System.Text.Json;
 using System.Threading;
 
 using FluentGpu.Foundation;
@@ -48,7 +46,6 @@ using FluentGpu.Media.Adaptive;
 using FluentGpu.Media.Windows;
 using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Media.PlayReady;
-using TrackKind = FluentGpu.Media.TrackKind;
 
 namespace Wavee;
 
@@ -59,13 +56,15 @@ public static partial class Playback
     {
         // ── 0. the values the seam carries ──────────────────────────────────────────────────────────────────────────
 
-        /// <summary>A resolved, playable video: either a clear URL, a local file, or a PlayReady DASH descriptor plus
-        /// the licence relay that answers its challenges. NOT a column and never entity state (ch 24 DATA GAP 1): it
-        /// carries a live delegate and a parsed descriptor, so it is session state on this host. The per-PLAYABLE
-        /// facts worth caching — <see cref="NaturalWidth"/>, <see cref="NaturalHeight"/>, <see cref="IsLive"/> — are
-        /// mirrored into `TrackTable` by owner A so a re-watch sizes the card correctly BEFORE the round trip.</summary>
+        /// <summary>A resolved, playable video: a clear URL, a local file, or a PlayReady DASH descriptor plus the licence
+        /// relay that answers its challenges. NOT a column and never entity state (ch 24 DATA GAP 1): it carries a live
+        /// delegate and a parsed descriptor, so it is session state on this host.</summary>
         /// <param name="Key">The content identity: the manifest id, the clear url, or `local:video:&lt;path&gt;`. The
         /// switch policy compares THIS, never the track slot — a relinked counterpart is the same video.</param>
+        /// <param name="PlayableUri">The playable this source was resolved FOR (a local attachment's quarantine pair, the
+        /// log's `track=`). Empty for a source nobody resolved.</param>
+        /// <param name="OverrideSourceKey">A local attachment's recorded source key — the other half of the quarantine
+        /// pair (<c>Video.Overrides.Quarantined</c>).</param>
         public sealed record VideoSource(
             string Key,
             string? ClearUrl = null,
@@ -75,7 +74,9 @@ public static partial class Playback
             string? LicenseServerUri = null,
             int NaturalWidth = 0,
             int NaturalHeight = 0,
-            bool IsLive = false)
+            bool IsLive = false,
+            string PlayableUri = "",
+            string? OverrideSourceKey = null)
         {
             public bool IsDrm => DrmDescriptor is not null && LicenseRelay is not null;
 
@@ -91,7 +92,7 @@ public static partial class Playback
         }
 
         /// <summary>What the UI mounts. <see cref="Generation"/> is the element `Key`: it bumps ONLY when the player
-        /// instance changes, so a source switch never remounts and never tears down the MF pump.</summary>
+        /// instance changes, so a source switch never remounts and never tears down the pump.</summary>
         public readonly record struct Binding(MediaPlayer? Player, long Generation);
 
         /// <summary>The player binding the four surfaces bind to. Written on the UI thread only (C1).</summary>
@@ -100,6 +101,18 @@ public static partial class Playback
         /// <summary>The resolved source. A null source NEVER unmounts the stage (`ShouldMountPlayerStage` reads the
         /// PLAYER, not this) — it is the poster/loading discriminator and the aspect seed.</summary>
         public static readonly Signal<VideoSource?> Source = new(null);
+
+        /// <summary>Where the switch is (§3.4): `Idle · Resolving · Licensing · Buffering · Attaching · Presenting ·
+        /// Playing · Failed`. UI thread only; mirrored from the session's events by <see cref="Observe"/>.</summary>
+        public static readonly Signal<SwitchPhase> Phase = new(SwitchPhase.Idle);
+
+        /// <summary>Bumps once per source the moment its first frame is presentable — a surface drops its poster on a
+        /// change of this value, never on a state guess.</summary>
+        public static readonly Signal<long> FirstFrame = new(0L);
+
+        /// <summary>Bumps whenever the live session's buffered ranges or keyframe table grew; read the ranges with
+        /// <see cref="CopyBuffered"/> (the seek bar's loaded band — what MSE's `buffered` gives a web scrubber).</summary>
+        public static readonly Signal<int> Buffered = new(0);
 
         // ── 1. the pure decisions (unit-testable, engine-free) ──────────────────────────────────────────────────────
 
@@ -116,12 +129,11 @@ public static partial class Playback
             Rebuild,
         }
 
-        /// <summary>The three facts the switch decision needs. A record struct so a test is one line.</summary>
+        /// <summary>The facts the switch decision needs. A record struct so a test is one line.</summary>
         public readonly record struct SwitchInput(bool HasPlayer, bool Faulted, string LiveKey, string RequestKey, long StartAtMs);
 
-        /// <summary>Ported from 0.2.9's `VideoSwitchPolicy`. The ordering is the whole content: a faulted player can
-        /// never be switched in place (the native singleton would refuse), and "same key, same position" must not
-        /// re-open — a docked→fullscreen placement move re-asks for the video that is already playing.</summary>
+        /// <summary>Ported from 0.2.9's `VideoSwitchPolicy`. A faulted player is never switched in place, and "same key,
+        /// same position" never re-opens — a docked→fullscreen placement move re-asks for the video already playing.</summary>
         public static SwitchAction Plan(in SwitchInput i)
         {
             if (!i.HasPlayer || i.Faulted) return SwitchAction.Rebuild;
@@ -129,13 +141,12 @@ public static partial class Playback
             return i.StartAtMs > 0 ? SwitchAction.SeekOnly : SwitchAction.None;
         }
 
-        /// <summary>The net under both engine watchdogs. It catches the one failure they cannot see: a session that
-        /// settled on <c>PlaybackState.Idle</c> — the engine's session watchdog needs a published Opening/Buffering
-        /// and the native one needs state ≤ 1. Allocation-free POD, evaluated on the host's existing 200 ms ticker.</summary>
+        /// <summary>The net under the engine's own start deadline. It catches the one failure that cannot be seen from
+        /// inside the session: an open that never produced a session at all. Allocation-free POD on the 200 ms ticker.</summary>
         public struct StartWatchdog
         {
-            /// <summary>Deliberately ABOVE the engine's own budgets (30 s licence + 45 s CANPLAY + 12 s surface), so
-            /// the engine's richer typed DRM error wins whenever it can diagnose the failure itself.</summary>
+            /// <summary>Above the engine session's own CANPLAY deadline, so the engine's richer typed error wins whenever
+            /// it can diagnose the failure itself.</summary>
             public const int DefaultTimeoutMs = 25_000;
 
             int _timeoutMs;
@@ -152,10 +163,8 @@ public static partial class Playback
 
             public void Disarm() { _armed = false; _fired = false; }
 
-            /// <summary>True exactly once, and only once, per load. Real progress disarms it; a DELIBERATE pause
-            /// re-bases the budget instead of ageing it — the failure this exists to catch is a lost fire-and-forget
-            /// `PlayAsync`, which leaves the engine's own play-request FALSE, so ageing on the engine's flag made the
-            /// budget never expire.</summary>
+            /// <summary>True exactly once per load. Real progress disarms it; a DELIBERATE pause re-bases the budget
+            /// instead of ageing it.</summary>
             public bool ShouldFault(long nowMs, bool playIntent, bool progressed)
             {
                 if (!_armed || _fired) return false;
@@ -167,6 +176,85 @@ public static partial class Playback
             }
         }
 
+        /// <summary>The host's own small decisions, pure (`VideoHostRulesTests`).</summary>
+        public static class HostRules
+        {
+            /// <summary>A carried position within this of the end is pulled back…</summary>
+            public const long StartClampGuardMs = 250;
+            /// <summary>…to this far before the end, so a restore never opens on the credits.</summary>
+            public const long StartClampBackoffMs = 2_000;
+
+            /// <summary>Where an open lands for a carried <paramref name="fromMs"/> against a known duration (0 = unknown).
+            /// Applied BEFORE the open now that the open carries its start position.</summary>
+            public static long StartAt(long fromMs, long durationMs)
+            {
+                long t = fromMs < 0 ? 0 : fromMs;
+                if (durationMs > 0 && t > durationMs - StartClampGuardMs) t = Math.Max(0, durationMs - StartClampBackoffMs);
+                return t;
+            }
+
+            /// <summary>The engine's protected phase, one-to-one onto the app's (the engine's enum mirrors
+            /// <see cref="SwitchPhase"/> name for name; this is the one place that says so).</summary>
+            public static SwitchPhase PhaseOf(ProtectedVideoPhase p) => p switch
+            {
+                ProtectedVideoPhase.Resolving => SwitchPhase.Resolving,
+                ProtectedVideoPhase.Licensing => SwitchPhase.Licensing,
+                ProtectedVideoPhase.Buffering => SwitchPhase.Buffering,
+                ProtectedVideoPhase.Attaching => SwitchPhase.Attaching,
+                ProtectedVideoPhase.Presenting => SwitchPhase.Presenting,
+                ProtectedVideoPhase.Playing => SwitchPhase.Playing,
+                ProtectedVideoPhase.Failed => SwitchPhase.Failed,
+                _ => SwitchPhase.Idle,
+            };
+
+            /// <summary>A clear (or local) source has no event-derived phase: its transport state and whether a frame
+            /// size exists are what it has.</summary>
+            public static SwitchPhase PhaseOfClear(PlaybackState state, bool framePresented) => state switch
+            {
+                PlaybackState.Failed => SwitchPhase.Failed,
+                PlaybackState.Idle => SwitchPhase.Idle,
+                PlaybackState.Playing => framePresented ? SwitchPhase.Playing : SwitchPhase.Attaching,
+                PlaybackState.Paused or PlaybackState.Ready or PlaybackState.Ended
+                    => framePresented ? SwitchPhase.Presenting : SwitchPhase.Attaching,
+                _ => framePresented ? SwitchPhase.Presenting : SwitchPhase.Buffering,
+            };
+
+            /// <summary>One engine seek call, or none.</summary>
+            /// <param name="Engine">False for <see cref="SeekVerb.Ride"/>: playback reaches the target on its own.</param>
+            /// <param name="TargetMs">Where the call seeks: the target on a commit, the keyframe shown on a preview.</param>
+            /// <param name="Accurate">Decode to the exact PTS (a commit) or present the keyframe (a preview).</param>
+            /// <param name="KeyframeHintMs">The planner's keyframe, passed down so native does not repeat the search; -1 =
+            /// native decides.</param>
+            public readonly record struct SeekCall(bool Engine, long TargetMs, bool Accurate, long KeyframeHintMs);
+
+            /// <summary>A plan → the call. A preview never decodes to an exact PTS and shows the keyframe it planned; when
+            /// the segment grid is unknown a Fetch's "segment start" is not a real position, so the raw target goes down
+            /// with no hint.</summary>
+            public static SeekCall SeekCallFor(in SeekPlan plan, long targetMs, SeekIntent intent, long segmentLengthMs)
+            {
+                bool grid = segmentLengthMs > 0;
+                if (plan.Verb == SeekVerb.Ride) return new SeekCall(false, targetMs, true, -1);
+                if (intent == SeekIntent.Preview)
+                {
+                    if (plan.Verb == SeekVerb.Fetch && !grid) return new SeekCall(true, targetMs, false, -1);
+                    return plan.KeyframeMs >= 0
+                        ? new SeekCall(true, plan.KeyframeMs, false, plan.KeyframeMs)
+                        : new SeekCall(true, targetMs, false, -1);
+                }
+                long hint = plan.Verb == SeekVerb.Instant || (plan.Verb == SeekVerb.Fetch && grid) ? plan.KeyframeMs : -1;
+                return new SeekCall(true, targetMs, true, hint);
+            }
+
+            /// <summary>The ABR height ceiling: the user's pin (0 = auto) and the metered cap (0 or `int.MaxValue` = none),
+            /// the lower of the two.</summary>
+            public static int QualityCap(int pinnedHeight, int meteredCap)
+            {
+                int pin = pinnedHeight > 0 ? pinnedHeight : int.MaxValue;
+                int metered = meteredCap > 0 ? meteredCap : int.MaxValue;
+                return pin < metered ? pin : metered;
+            }
+        }
+
         // ── 2. host state ───────────────────────────────────────────────────────────────────────────────────────────
 
         const int TickMs = 200;                  // the ONE named video timer (P10); position, liveness, the watchdog
@@ -174,9 +262,6 @@ public static partial class Playback
         const int TeardownTimeoutMs = 5_000;
         const long DurationRelayEpsilonMs = 250; // MF revises a DASH duration after LOADEDMETADATA; relay the moves
         const long LiveRelayEpsilonMs = 250;
-        const long StartClampGuardMs = 250;      // a carried position within this of the end is clamped back…
-        const long StartClampBackoffMs = 2_000;  // …to here, so a restore never lands on the credits
-        const int PlayReassertBudget = 8;        // 8 × 200 ms ≈ 1.6 s of "Ready but not play-requested"
         const long GoLiveToleranceMs = 2_000;    // a committed seek this close to the edge is a GoLive, not a seek
 
         static readonly object s_gate = new();
@@ -185,36 +270,51 @@ public static partial class Playback
         static MediaPlayer? s_player;
         static long s_generation;
         static AdaptiveBitrateController? s_abr;
-        static Func<LicenseRequest, ValueTask<LicenseResponse>>? s_activeRelay;
+        static ProtectedMediaBackend? s_backend;
         static Timer? s_ticker;
         static bool s_disposed;
 
         // per-load state (all under s_gate)
         static string s_key = "";
+        static VideoSource? s_live;              // the source the live load opened (fault attribution)
         static uint s_epoch;                     // the reducer's LoadEpoch this load belongs to
-        static long s_startAtMs;
-        static bool s_startSeekPending, s_playIntent, s_progressed, s_errorReported, s_firstFrameFired;
+        static bool s_playIntent, s_intentPaused, s_progressed, s_errorReported, s_firstFrameFired;
         static long s_reportedDurMs;
         static LiveWindow s_reportedLive;
         static bool s_liveReported;
-        static int s_playReassertsLeft;
         static StartWatchdog s_watchdog = new();
         static PlaybackState s_lastState = PlaybackState.Idle;
         static double s_volume = 1.0;
         static bool s_muted;
+        static long s_switchAtMs;                // FrameNowMs at switch.begin — first.frame's sinceSwitchMs
 
         // the pump
-        static (VideoSource Source, long StartAtMs, uint Epoch)? s_pending;
+        readonly record struct LoadRequest(VideoSource Source, long StartAtMs, uint Epoch);
+        static LoadRequest? s_pending;
         static bool s_pendingClear, s_running;
         static long s_pumpEpoch;
         static Task s_worker = Task.CompletedTask;
 
-        // ── 3. the host API the reducer's Execute calls ─────────────────────────────────────────────────────────────
+        /// <summary>The process-lifetime protected backend. Built on first use; its prepared-session table must outlive a
+        /// player rebuild, or a prefetch is thrown away by the very switch it was for.</summary>
+        static ProtectedMediaBackend Backend
+        {
+            get { lock (s_gate) return s_backend ??= new ProtectedMediaBackend(License.ByKeyId, descriptor: null); }
+        }
+
+        // ── 3. the host API ─────────────────────────────────────────────────────────────────────────────────────────
 
         static bool s_warmed;
 
-        /// <summary>Warm the native PlayReady CDM. Called on FIRST USE, not at `Playback.Boot`: loading the CDM costs
-        /// real milliseconds and a session that never watches a video must not pay them. Idempotent, and a missing
+        /// <summary>Composition (`Video.Install`): route the engine's always-on <c>[video]</c> / <c>[video.native]</c>
+        /// lines into the app's one log — the §4.3 gate reads them from the same file as the app's own lines.</summary>
+        public static void InstallLog() => ProtectedVideoRuntime.LogSink = static line => Log.Info("video", line);
+
+        /// <summary>A local attachment failed to open: the shell quarantines the (playable uri, source key) pair for the
+        /// session and says so. Installed by `Video.Install`; invoked on the UI thread.</summary>
+        public static Action<string, string>? OnOverrideFailed { get; set; }
+
+        /// <summary>Preload the native PlayReady component on FIRST USE, not at `Playback.Boot`. Idempotent; a missing
         /// DLL degrades to a typed DRM error rather than a `DllNotFoundException` in the frame loop.</summary>
         public static void Boot()
         {
@@ -224,23 +324,26 @@ public static partial class Playback
             catch (Exception ex) { Log.Warn("video", "playready warmup failed", ex); }
         }
 
-        /// <summary>Play <paramref name="source"/> from <paramref name="fromMs"/>, for reducer epoch
-        /// <paramref name="epoch"/>. Returns immediately: the physical work is one coalesced request on the pump, and
-        /// a request that arrives while another is in flight REPLACES it (latest wins).</summary>
-        public static void Load(VideoSource source, uint epoch, int fromMs = 0)
+        /// <summary>Play <paramref name="source"/> from <paramref name="fromMs"/>, for reducer epoch <paramref name="epoch"/>.
+        /// UI thread. Returns immediately: the physical work is one coalesced request on the pump, and a request that
+        /// arrives while another is in flight REPLACES it. <paramref name="paused"/> opens paused at the position; a
+        /// <see cref="Pause"/> or <see cref="Play"/> issued before the open lands is honoured by it.</summary>
+        public static void Load(VideoSource source, uint epoch, int fromMs = 0, bool paused = false)
         {
             Boot();
             lock (s_gate)
             {
                 s_pumpEpoch++;
-                s_pending = (source, Math.Max(0, fromMs), epoch);
+                s_pending = new LoadRequest(source, Math.Max(0, fromMs), epoch);
                 s_pendingClear = false;
+                s_intentPaused = paused;
                 EnsureWorker();
             }
+            if (Phase.Peek() is SwitchPhase.Idle or SwitchPhase.Failed or SwitchPhase.Playing or SwitchPhase.Presenting)
+                Phase.SetIfChanged(SwitchPhase.Buffering);
         }
 
-        /// <summary>Stop and release. A clear INVALIDATES and overtakes a queued load — the native singleton cannot be
-        /// stopped and started concurrently.</summary>
+        /// <summary>Stop and release. A clear INVALIDATES and overtakes a queued load.</summary>
         public static void Stop()
         {
             lock (s_gate)
@@ -252,39 +355,110 @@ public static partial class Playback
             }
         }
 
+        /// <summary>Play. The intent is recorded FIRST, so a load still on the pump opens playing.</summary>
         public static void Play()
         {
             MediaPlayer? p;
-            lock (s_gate) { s_playIntent = true; p = s_player; }
+            lock (s_gate) { s_playIntent = true; s_intentPaused = false; p = s_player; }
             if (p is null) return;
             try { _ = p.PlayAsync(); } catch (Exception ex) { Log.Warn("video", "play failed", ex); }
             StartTicker();
         }
 
+        /// <summary>Pause. The intent drops FIRST, so a deliberate pause never ages toward a watchdog fault and a load
+        /// still on the pump opens paused.</summary>
         public static void Pause()
         {
             MediaPlayer? p;
-            // The intent flag drops FIRST, so a deliberate pause never ages toward a watchdog fault.
-            lock (s_gate) { s_playIntent = false; p = s_player; }
+            lock (s_gate) { s_playIntent = false; s_intentPaused = true; p = s_player; }
             if (p is null) return;
             try { _ = p.PauseAsync(); } catch (Exception ex) { Log.Warn("video", "pause failed", ex); }
             StopTicker();
         }
 
-        /// <summary>Seek, in the engine's two modes. A COMMITTED (accurate) seek at or past the live edge becomes
-        /// `GoLiveAsync` instead — a DVR window's right end is not a position, and seeking to it lands behind the edge
-        /// and stays there. A scrub PREVIEW (keyframe) is excluded from that rule on purpose.</summary>
+        /// <summary>The video half of the audio cut (§3.1.4): one exact seek to <paramref name="atMs"/> inside the prepared
+        /// window, then play. UI thread.</summary>
+        public static void Go(long atMs)
+        {
+            Seek(atMs, accurate: true);
+            Play();
+        }
+
+        // the seek index: two fixed buffers, refilled only when the session's index epoch moved (never per frame, P8)
+        static readonly long[] s_keyframes = new long[1024];
+        static readonly long[] s_bufferedPairs = new long[128];
+        static int s_keyframeCount, s_bufferedPairCount;
+        static IProtectedVideoPlayer? s_indexOwner;
+        static int s_indexEpochRead = -1;
+
+        // the seek in flight, for `[video] seek.done` (UI thread)
+        static long s_seekTargetMs = -1, s_seekIssuedAtMs;
+        static bool s_seekFetched;
+
+        /// <summary>Seek. UI thread. A COMMITTED (<paramref name="accurate"/>) seek at or past a live edge becomes
+        /// `GoLiveAsync`. A protected source is planned against the session's keyframe table and buffered ranges
+        /// (`SeekPlanner`): a scrub PREVIEW shows the closest buffered keyframe and never fetches while the pointer is
+        /// down; a commit decodes to the target, or rides when playback is about to reach it anyway.</summary>
         public static void Seek(long ms, bool accurate = true)
         {
             MediaPlayer? p;
-            lock (s_gate) { p = s_player; }
+            VideoSource? live;
+            lock (s_gate) { p = s_player; live = s_live; }
             if (p is null) return;
+            long target = Math.Max(0, ms);
             try
             {
-                if (accurate && IsAtOrPastLiveEdge(p, ms)) { _ = p.GoLiveAsync(); return; }
-                _ = p.SeekAsync(TimeSpan.FromMilliseconds(Math.Max(0, ms)), accurate ? SeekMode.Accurate : SeekMode.Keyframe);
+                if (accurate && IsAtOrPastLiveEdge(p, target)) { _ = p.GoLiveAsync(); return; }
+                if (p.Session is not ProtectedMediaSession ps)
+                {
+                    _ = p.SeekAsync(TimeSpan.FromMilliseconds(target), accurate ? SeekMode.Accurate : SeekMode.Keyframe);
+                    return;
+                }
+
+                RefillIndex(ps.Player);
+                long segLen = live?.DrmDescriptor?.SegmentLengthMs ?? 0;
+                SeekIntent intent = accurate ? SeekIntent.Commit : SeekIntent.Preview;
+                var index = new SeekIndex(
+                    new ReadOnlySpan<long>(s_keyframes, 0, s_keyframeCount),
+                    new ReadOnlySpan<long>(s_bufferedPairs, 0, s_bufferedPairCount * 2),
+                    segLen, (long)p.Duration.Peek().TotalMilliseconds, (long)p.Position.Peek().TotalMilliseconds, p.IsPlaying.Peek());
+                SeekPlan plan = SeekPlanner.Plan(in index, target, intent);
+                LogLine(new VideoLog.SeekPlanned(target, intent, plan.Verb, plan.KeyframeMs, plan.SegmentIndex, plan.DecodeToTargetMs));
+
+                HostRules.SeekCall call = HostRules.SeekCallFor(in plan, target, intent, segLen);
+                if (!call.Engine)
+                {
+                    LogLine(new VideoLog.SeekDone(target, target, 0, false));
+                    return;
+                }
+                s_seekTargetMs = call.TargetMs;
+                s_seekIssuedAtMs = FrameNowMs();
+                s_seekFetched = plan.Verb == SeekVerb.Fetch;
+                _ = ps.SeekAsync(TimeSpan.FromMilliseconds(call.TargetMs), call.Accurate ? SeekMode.Accurate : SeekMode.Keyframe,
+                    call.KeyframeHintMs);
             }
             catch (Exception ex) { Log.Warn("video", "seek failed", ex); }
+        }
+
+        /// <summary>The live session's buffered ranges as ascending (start, end) ms pairs into <paramref name="pairs"/>;
+        /// returns the pair count. UI thread; re-reads the session only when its index epoch moved.</summary>
+        public static int CopyBuffered(Span<long> pairs)
+        {
+            if (Player.Peek().Player?.Session is not ProtectedMediaSession ps) return 0;
+            RefillIndex(ps.Player);
+            int n = Math.Min(s_bufferedPairCount, pairs.Length / 2);
+            new ReadOnlySpan<long>(s_bufferedPairs, 0, n * 2).CopyTo(pairs);
+            return n;
+        }
+
+        static void RefillIndex(IProtectedVideoPlayer player)
+        {
+            int epoch = player.IndexEpoch;
+            if (ReferenceEquals(player, s_indexOwner) && epoch == s_indexEpochRead) return;
+            s_indexOwner = player;
+            s_indexEpochRead = epoch;
+            s_keyframeCount = Math.Min(player.GetKeyframes(s_keyframes), s_keyframes.Length);
+            s_bufferedPairCount = Math.Min(player.GetBuffered(s_bufferedPairs), s_bufferedPairs.Length / 2);
         }
 
         public static void SetVolume(float volume)
@@ -301,13 +475,13 @@ public static partial class Playback
             try { p?.SetMuted(muted); } catch { /* fail-soft */ }
         }
 
-        /// <summary>Pin a video height, or 0 for auto. Persisted by owner R's Settings tab; applied to the ABR
-        /// controller AND to the engine's own quality selection so a manual pin survives a switch.</summary>
+        /// <summary>Pin a video height, or 0 for auto (the Settings tab writes the key, then calls this). Applied to the
+        /// ABR ceiling — under the metered cap — AND to the engine's own quality selection, so a pin survives a switch.</summary>
         public static void SetPreferredHeight(int height)
         {
+            ApplyQualityCaps(height);
             MediaPlayer? p;
             lock (s_gate) { p = s_player; }
-            if (s_abr is { } abr) abr.MaxHeight = height > 0 ? height : int.MaxValue;
             if (p is null) return;
             try
             {
@@ -322,7 +496,111 @@ public static partial class Playback
             catch (Exception ex) { Log.Warn("video", "quality pin failed", ex); }
         }
 
-        /// <summary>Shut down for good. Drains the pump so the native singleton is not stopped mid-open.</summary>
+        /// <summary>Re-apply the ABR ceiling from the stored pin and the live metered cap (G-148). Any thread — the host
+        /// observer calls it when the network cost or the metered setting moves.</summary>
+        public static void ApplyQualityCaps() => ApplyQualityCaps(Platform.Settings.Get(Platform.Keys.VideoQuality));
+
+        static void ApplyQualityCaps(int pinnedHeight)
+        {
+            int cap = HostRules.QualityCap(pinnedHeight, Platform.Network.EffectiveVideoMaxHeight());
+            MediaPlayer? p;
+            AdaptiveBitrateController? abr;
+            lock (s_gate) { p = s_player; abr = s_abr; }
+            if (abr is not null) abr.MaxHeight = cap;
+            try { p?.SetAdaptiveMaxHeight(cap); } catch { /* fail-soft */ }
+        }
+
+        // ── prefetch (plan §3.1.5, G-146) ───────────────────────────────────────────────────────────────────────────
+
+        static EntityId s_prefetchId;
+        static PrefetchLevel s_prefetchLevel;
+        static IPreparedItem? s_prepared;
+        static string s_preparedKey = "";
+
+        /// <summary>The level already reached for <paramref name="id"/> — the schedule's <c>Already</c>. UI thread.</summary>
+        public static PrefetchLevel PrefetchedLevel(EntityId id) => id.Equals(s_prefetchId) ? s_prefetchLevel : PrefetchLevel.None;
+
+        /// <summary>Bring <paramref name="id"/>'s video to <paramref name="level"/> before anyone asks for it (UI thread;
+        /// the work runs on an api thread): Manifest = the memoised resolve; ManifestAndLicense = + the licence at
+        /// manifest time; Full = + the init and the segments at <paramref name="atMs"/> in a prepared session the next open
+        /// of the same source takes. The caller decides the level (<see cref="PrefetchSchedule.Decide"/>).</summary>
+        public static void Prefetch(EntityId id, string manifestId, PrefetchLevel level, PrefetchReason why, int atMs)
+        {
+            if (level == PrefetchLevel.None || id.IsEmpty) return;
+            if (id.Equals(s_prefetchId) && s_prefetchLevel >= level) return;
+            s_prefetchId = id;
+            s_prefetchLevel = level;
+            LogLine(new VideoLog.PrefetchPlanned(Tail(id.Text), level, why, Platform.Network.IsMetered));
+            string gid = manifestId;
+            int at = Math.Max(0, atMs);
+            if (!Spotify.Api.Run(() => PrefetchWork(id, gid, level, at)))
+                s_prefetchLevel = PrefetchLevel.None;
+        }
+
+        static void PrefetchWork(EntityId id, string manifestId, PrefetchLevel level, int atMs)
+        {
+            VideoSource? source;
+            try { source = ResolveCore(id, manifestId, CancellationToken.None, forPlayback: false); }
+            catch (Exception ex) { Log.Warn("video", "prefetch resolve failed", ex); return; }
+            if (source is not { IsDrm: true } || level == PrefetchLevel.Manifest) return;
+
+            StartLicense(source);
+            if (level == PrefetchLevel.Full) _ = PrepareQuietlyAsync(source, atMs);
+        }
+
+        /// <summary>The licence at MANIFEST time (PlayReady's proactive acquisition): by the moment the user asks for the
+        /// video the key is usable and the switch costs no round trip. Idempotent in the runtime's KID cache.</summary>
+        static void StartLicense(VideoSource source)
+        {
+            DashSourceDescriptor d = source.DrmDescriptor!;
+            var request = new ProtectedVideoRequest
+            {
+                Pssh = d.Pssh,
+                DefaultKid = d.DefaultKid,
+                LicenseRelay = source.LicenseRelay,
+                Drm = new DrmConfig(DrmSystem.PlayReady, source.LicenseServerUri) { SourceDescriptor = d },
+            };
+            try
+            {
+                LicenseCacheState state = ProtectedMediaBackend.StartLicense(ProtectedVideoRuntime.Shared, request);
+                Log.Info("video", $"[video] license.start key={Tail(source.Key)} state={state}");
+            }
+            catch (Exception ex) { Log.Warn("video", "licence start failed", ex); }
+        }
+
+        static async Task PrepareQuietlyAsync(VideoSource source, int atMs)
+        {
+            try
+            {
+                IPreparedItem item = await Backend.PrepareAtAsync(BuildMediaSource(source), TimeSpan.FromMilliseconds(atMs)).ConfigureAwait(false);
+                IPreparedItem? superseded;
+                lock (s_gate)
+                {
+                    superseded = ReferenceEquals(s_prepared, item) ? null : s_prepared;
+                    s_prepared = item;
+                    s_preparedKey = source.Key;
+                }
+                // An item the open already took disposes as a no-op; one nobody opened frees its store and its runtime ref.
+                if (superseded is not null) await superseded.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex) { Log.Warn("video", "prefetch prepare failed", ex); }
+        }
+
+        /// <summary>Drop a prepared session that is not for <paramref name="keepKey"/> (a load of something else, a shutdown).</summary>
+        static void ReleasePrepared(string? keepKey)
+        {
+            IPreparedItem? item;
+            lock (s_gate)
+            {
+                item = s_prepared;
+                if (item is null || (keepKey is not null && string.Equals(s_preparedKey, keepKey, StringComparison.Ordinal))) return;
+                s_prepared = null;
+                s_preparedKey = "";
+            }
+            _ = item.DisposeAsync();
+        }
+
+        /// <summary>Shut down for good. Drains the pump so a session is not torn down mid-open.</summary>
         public static void Shutdown()
         {
             s_disposed = true;
@@ -331,6 +609,7 @@ public static partial class Playback
             StopTicker();
             try { s_ticker?.Dispose(); } catch { }
             s_ticker = null;
+            ReleasePrepared(keepKey: null);
             DrainDisposals();
         }
 
@@ -347,7 +626,7 @@ public static partial class Playback
         {
             while (true)
             {
-                (VideoSource Source, long StartAtMs, uint Epoch)? next;
+                LoadRequest? next;
                 bool clear;
                 long epoch;
                 lock (s_gate)
@@ -360,11 +639,11 @@ public static partial class Playback
                     if (next is null && !clear) { s_running = false; return; }
                 }
 
-                // Both arms are wrapped: a throwing load can never kill the worker, and it must never be silent
-                // either — the reducer gets a typed fault for the epoch it asked about.
+                // Both arms are wrapped: a throwing load can never kill the worker, and it must never be silent either —
+                // the reducer gets a typed fault for the epoch it asked about.
                 try
                 {
-                    if (clear) await TeardownAsync(epoch).ConfigureAwait(false);
+                    if (clear) await TeardownAsync().ConfigureAwait(false);
                     else await ApplyAsync(next!.Value, epoch).ConfigureAwait(false);
                 }
                 catch (Exception ex)
@@ -377,35 +656,46 @@ public static partial class Playback
 
         static bool IsStale(long epoch) { lock (s_gate) return s_pumpEpoch != epoch; }
 
-        static async Task ApplyAsync((VideoSource Source, long StartAtMs, uint Epoch) req, long epoch)
+        static async Task ApplyAsync(LoadRequest req, long epoch)
         {
             MediaPlayer? live;
             string liveKey;
             bool faulted;
             lock (s_gate) { live = s_player; liveKey = s_key; faulted = s_errorReported; }
 
+            req = req with { StartAtMs = HostRules.StartAt(req.StartAtMs, req.Source.DrmDescriptor?.DurationMs ?? 0) };
             SwitchAction plan = Plan(new SwitchInput(live is not null, faulted, liveKey, req.Source.Key, req.StartAtMs));
-            Log.Info("video", $"load plan={plan} key={Tail(req.Source.Key)} from={req.StartAtMs} epoch={req.Epoch}");
+            Interlocked.Exchange(ref s_switchAtMs, FrameNowMs());
+            LogLine(new VideoLog.SwitchBegin(Tail(req.Source.Key), req.StartAtMs, plan, PrefetchedFull(req.Source.Key), req.Epoch));
+            ReleasePrepared(keepKey: req.Source.Key);
 
             switch (plan)
             {
                 case SwitchAction.None:
                     return;
                 case SwitchAction.SeekOnly:
-                    Seek(req.StartAtMs);
+                {
+                    long at = req.StartAtMs;
+                    ToUi(() => Seek(at));                // the seek index is the UI thread's
                     return;
+                }
                 case SwitchAction.Switch:
                     await SwitchInPlaceAsync(req, epoch, live!).ConfigureAwait(false);
                     return;
                 default:
-                    await TeardownAsync(epoch).ConfigureAwait(false);
+                    await TeardownAsync().ConfigureAwait(false);
                     if (IsStale(epoch)) return;
                     await BuildAndOpenAsync(req, epoch).ConfigureAwait(false);
                     return;
             }
         }
 
-        static async Task BuildAndOpenAsync((VideoSource Source, long StartAtMs, uint Epoch) req, long epoch)
+        static bool PrefetchedFull(string key)
+        {
+            lock (s_gate) return s_prepared is not null && string.Equals(s_preparedKey, key, StringComparison.Ordinal);
+        }
+
+        static async Task BuildAndOpenAsync(LoadRequest req, long epoch)
         {
             MediaPlayer built = BuildPlayer();
             try { built.SetVolume(s_volume); built.SetMuted(s_muted); } catch { }
@@ -418,51 +708,50 @@ public static partial class Playback
                 s_player = built;
                 generation = ++s_generation;
             }
-            ResetPerLoad(req);
+            MediaOpenOptions options = ResetPerLoad(req);
             PublishBinding(built, generation);
-            ToUi(() => Source.Value = req.Source);
-            SetPreferredHeight(Platform.Settings.Get(Platform.Keys.VideoQuality));
+            VideoSource published = req.Source;
+            ToUi(() => Source.Value = published);
 
-            MediaSource source = BuildMediaSource(req.Source);
             PostSignal(req.Epoch, AudioSignal.Buffering);
-            StartTicker();                         // BEFORE the open: a DRM open that never completes must still tick
+            StartTicker();                         // BEFORE the open: an open that never completes must still tick
+            long startedAt = FrameNowMs();
             try
             {
-                await built.OpenAsync(source).AsTask().WaitAsync(TimeSpan.FromMilliseconds(OpenTimeoutMs)).ConfigureAwait(false);
+                await built.OpenAsync(BuildMediaSource(req.Source), options).AsTask()
+                    .WaitAsync(TimeSpan.FromMilliseconds(OpenTimeoutMs)).ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
-                // Hand over to the watchdog rather than faulting here: a slow PlayReady licence round trip is normal
-                // and the open frequently returns long after the native session is actually playing.
                 Log.Warn("video", "open timed out — the start watchdog owns it now");
                 return;
             }
             if (IsStale(epoch)) return;
             if (built.Error.Peek() is { } err) { ReportFault(req.Epoch, MapError(err), err.Message); return; }
-
-            // Fire-and-forget: PlayAsync on the protected path can take seconds, and awaiting it here would hold the
-            // pump against the next skip.
-            _ = PlayQuietlyAsync(built);
+            Log.Info("video", $"[video] open.ok key={Tail(req.Source.Key)} epoch={req.Epoch} openMs={FrameNowMs() - startedAt} rebuild=true");
+            ReleasePrepared(keepKey: null);        // the open took it (the dispose is then a no-op) or never will
+            SettleIntent(built);
         }
 
-        /// <summary>A different video on a HEALTHY player: re-open the same instance. No `PlayerChanged`, so the
-        /// mounted element is never remounted and the engine cross-fades the last frame to the new first frame. On a
-        /// timeout the watchdog takes it; on any other failure this degrades ONCE to a full rebuild.</summary>
-        static async Task SwitchInPlaceAsync((VideoSource Source, long StartAtMs, uint Epoch) req, long epoch, MediaPlayer live)
+        /// <summary>A different video on a HEALTHY player: re-open the same instance. No `PlayerChanged`, so the mounted
+        /// element is never remounted. On a timeout the watchdog takes it; on any other failure this degrades ONCE to a
+        /// full rebuild.</summary>
+        static async Task SwitchInPlaceAsync(LoadRequest req, long epoch, MediaPlayer live)
         {
-            RetractLiveWindow(req.Epoch);          // must precede ResetPerLoad: it reads the OLD key
-            ResetPerLoad(req);
-            ToUi(() => Source.Value = req.Source);
-            SetPreferredHeight(Platform.Settings.Get(Platform.Keys.VideoQuality));
-            MediaSource source = BuildMediaSource(req.Source);
+            RetractLiveWindow();                  // must precede ResetPerLoad: it retracts the OLD window
+            MediaOpenOptions options = ResetPerLoad(req);
+            VideoSource published = req.Source;
+            ToUi(() => Source.Value = published);
             PostSignal(req.Epoch, AudioSignal.Buffering);
             StartTicker();
             long startedAt = FrameNowMs();
             try
             {
-                await live.OpenAsync(source).AsTask().WaitAsync(TimeSpan.FromMilliseconds(OpenTimeoutMs)).ConfigureAwait(false);
-                Log.Info("video", $"switch ok key={Tail(req.Source.Key)} switchMs={FrameNowMs() - startedAt}");
-                if (!IsStale(epoch)) _ = PlayQuietlyAsync(live);
+                await live.OpenAsync(BuildMediaSource(req.Source), options).AsTask()
+                    .WaitAsync(TimeSpan.FromMilliseconds(OpenTimeoutMs)).ConfigureAwait(false);
+                Log.Info("video", $"[video] open.ok key={Tail(req.Source.Key)} epoch={req.Epoch} openMs={FrameNowMs() - startedAt} rebuild=false");
+                ReleasePrepared(keepKey: null);    // the open took it (the dispose is then a no-op) or never will
+                if (!IsStale(epoch)) SettleIntent(live);
             }
             catch (TimeoutException)
             {
@@ -471,19 +760,28 @@ public static partial class Playback
             catch (Exception ex)
             {
                 Log.Warn("video", "switch failed — degrading to a rebuild", ex);
-                await TeardownAsync(epoch).ConfigureAwait(false);
+                await TeardownAsync().ConfigureAwait(false);
                 if (!IsStale(epoch)) await BuildAndOpenAsync(req, epoch).ConfigureAwait(false);
             }
         }
 
-        static async Task PlayQuietlyAsync(MediaPlayer p)
+        /// <summary>After the open: the intent the reducer last stated wins — a Pause that arrived during the open leaves
+        /// it paused; otherwise play (idempotent on a session that opened playing).</summary>
+        static void SettleIntent(MediaPlayer p)
         {
-            try { await p.PlayAsync().ConfigureAwait(false); } catch (Exception ex) { Log.Warn("video", "initial play failed", ex); }
+            bool play;
+            lock (s_gate) play = s_playIntent;
+            try
+            {
+                if (play) _ = p.PlayAsync();
+                else _ = p.PauseAsync();
+            }
+            catch (Exception ex) { Log.Warn("video", "initial transport failed", ex); }
         }
 
-        /// <summary>Tear the session down. `PublishBinding(null)` runs BEFORE the dispose: the pumping surface must
-        /// unbind first, or the successor is never pumped and the next video sits at Opening forever.</summary>
-        static async Task TeardownAsync(long epoch)
+        /// <summary>Tear the session down. `PublishBinding(null)` runs BEFORE the dispose: the pumping surface must unbind
+        /// first, or the successor is never pumped.</summary>
+        static async Task TeardownAsync()
         {
             MediaPlayer? old;
             lock (s_gate)
@@ -491,7 +789,7 @@ public static partial class Playback
                 old = s_player;
                 s_player = null;
                 s_key = "";
-                s_startSeekPending = false;
+                s_live = null;
                 s_playIntent = false;
                 s_progressed = false;
                 s_errorReported = false;
@@ -501,16 +799,21 @@ public static partial class Playback
                 s_watchdog.Disarm();
             }
             StopTicker();
-            RetractLiveWindow(s_epoch);
-            ToUi(() => Source.Value = null);
+            RetractLiveWindow();
+            ToUi(s_clearSource);
             if (old is null) return;
 
             try { old.Stop(); } catch { }
             PublishBinding(null, ++s_generation);
             await DisposeBoundedAsync(old).ConfigureAwait(false);
             DrainDisposals();
-            _ = epoch;
         }
+
+        static readonly Action s_clearSource = static () =>
+        {
+            Source.Value = null;
+            Phase.SetIfChanged(SwitchPhase.Idle);
+        };
 
         static async Task DisposeBoundedAsync(MediaPlayer p)
         {
@@ -524,15 +827,18 @@ public static partial class Playback
             while (s_toDispose.TryDequeue(out MediaPlayer? p)) _ = DisposeBoundedAsync(p);
         }
 
-        static void ResetPerLoad((VideoSource Source, long StartAtMs, uint Epoch) req)
+        /// <summary>Reset the per-load state and build the open's options: the position the open lands at, whether it
+        /// opens paused (the reducer's LATEST word — a Pause issued after the Load counts), and this source's own relay.</summary>
+        static MediaOpenOptions ResetPerLoad(LoadRequest req)
         {
+            bool paused;
             lock (s_gate)
             {
                 s_key = req.Source.Key;
+                s_live = req.Source;
                 s_epoch = req.Epoch;
-                s_startAtMs = req.StartAtMs;
-                s_startSeekPending = req.StartAtMs > 0;
-                s_playIntent = true;
+                paused = s_intentPaused;
+                s_playIntent = !paused;
                 s_progressed = false;
                 s_errorReported = false;
                 s_firstFrameFired = false;
@@ -540,37 +846,33 @@ public static partial class Playback
                 s_reportedLive = default;
                 s_liveReported = false;
                 s_lastState = PlaybackState.Idle;
-                s_playReassertsLeft = PlayReassertBudget;
-                s_activeRelay = req.Source.LicenseRelay;
                 s_watchdog.Arm(FrameNowMs());
             }
+            ApplyQualityCaps();
+            return new MediaOpenOptions
+            {
+                StartPosition = TimeSpan.FromMilliseconds(req.StartAtMs),
+                StartPaused = paused,
+                LicenseRelay = req.Source.LicenseRelay,
+            };
         }
 
         // ── 5. building the player and the source ───────────────────────────────────────────────────────────────────
 
-        /// <summary>ONE long-lived player for clear, local and every DRM source. The relay and the descriptor are
-        /// PER-LOAD (read through <see cref="RelayForward"/> and carried on `DrmConfig.SourceDescriptor`), never baked
-        /// into the backend — a backend built around one track's relay cannot serve the next one.</summary>
+        /// <summary>ONE long-lived player for clear, local and every DRM source, over the process-lifetime protected
+        /// backend. The descriptor rides the source (`DrmConfig.SourceDescriptor`) and the relay rides the open
+        /// (`MediaOpenOptions.LicenseRelay`); the builder's relay is only the KID-routed fallback (G-145: no per-load
+        /// relay slot any more).</summary>
         static MediaPlayer BuildPlayer()
         {
-            // The pin is the user's own ceiling; the METERED cap is owner S's `NetworkPolicy` fold in Wave 6 and
-            // lands on the same property through `SetPreferredHeight`.
-            int pinned = Platform.Settings.Get(Platform.Keys.VideoQuality);
-            s_abr = new AdaptiveBitrateController { MaxHeight = pinned > 0 ? pinned : int.MaxValue };
+            int cap = HostRules.QualityCap(Platform.Settings.Get(Platform.Keys.VideoQuality), Platform.Network.EffectiveVideoMaxHeight());
+            var abr = new AdaptiveBitrateController { MaxHeight = cap };
+            lock (s_gate) s_abr = abr;
             return MediaPlayer.Build()
-                .WithBackend(MediaKind.MfVideoOrFile, new MfMediaPlayer(new ProtectedMediaBackend(defaultRelay: null, descriptor: null)))
-                .WithAbr(s_abr)
-                .WithDrm(RelayForward)
+                .WithBackend(MediaKind.MfVideoOrFile, new MfMediaPlayer(Backend))
+                .WithAbr(abr)
+                .WithDrm(License.ByKeyId)
                 .Build();
-        }
-
-        static ValueTask<LicenseResponse> RelayForward(LicenseRequest request)
-        {
-            Func<LicenseRequest, ValueTask<LicenseResponse>>? relay;
-            lock (s_gate) relay = s_activeRelay;
-            if (relay is null)
-                throw new InvalidOperationException("video: a DRM challenge arrived with no active licence relay for the current load");
-            return relay(request);
         }
 
         static MediaSource BuildMediaSource(VideoSource src)
@@ -600,7 +902,8 @@ public static partial class Playback
         {
             MediaPlayer? p;
             uint epoch;
-            lock (s_gate) { p = s_player; epoch = s_epoch; }
+            bool intent;
+            lock (s_gate) { p = s_player; epoch = s_epoch; intent = s_playIntent; }
             if (p is null || s_disposed) { StopTicker(); return; }
 
             PlaybackState state = p.State.Peek();
@@ -614,8 +917,7 @@ public static partial class Playback
                 return;
             }
 
-            // (b) liveness, from the engine's timeline and NEVER from a finite duration (MF reports a sliding DVR
-            // window as a finite number — the defect that rendered a six-hour broadcast as `0:03 / -3:22`).
+            // (b) liveness, from the engine's timeline and NEVER from a finite duration.
             TimelineInfo tl = p.Timeline.Peek();
             var window = new LiveWindow(tl.IsLive,
                 (long)tl.SeekableStart.TotalMilliseconds, (long)tl.SeekableEnd.TotalMilliseconds,
@@ -624,40 +926,30 @@ public static partial class Playback
             {
                 s_reportedLive = window;
                 s_liveReported = true;
-                Post(Input.LiveReport(in window));
+                ReportLiveWindow(in window);
             }
 
-            // (c) duration. Suppressed entirely while live, and RE-relayed whenever it moves: MF's first publish at
-            // LOADEDMETADATA is commonly 0 for DASH and is revised afterwards.
+            // (c) duration. Suppressed while live, and RE-relayed whenever it moves.
             if (!window.IsLive && durMs > 0 && Math.Abs(durMs - s_reportedDurMs) > DurationRelayEpsilonMs)
             {
                 s_reportedDurMs = durMs;
                 Post(Input.Duration((int)Math.Min(durMs, int.MaxValue), epoch));
             }
 
-            // (d) the carried start position, applied at the first moment the session can honour a seek. The open
-            // returns in ~30 ms on PlayReady while the native session is still spinning up, and a seek issued there
-            // is silently dropped.
-            if (s_startSeekPending && IsSeekReady(state, durMs))
-            {
-                long target = s_startAtMs;
-                if (durMs > 0 && target > durMs - StartClampGuardMs) target = Math.Max(0, durMs - StartClampBackoffMs);
-                s_startSeekPending = false;
-                Seek(target);
-            }
-
-            // (e) the watchdog. `progressed` is deliberately generous: anything that proves the session is alive.
+            // (d) the watchdog. `progressed` is deliberately generous: anything that proves the session is alive — a
+            // paused open presenting its first frame included.
             bool progressed = s_progressed || s_errorReported || pos > 0
-                || state is PlaybackState.Playing or PlaybackState.Ended or PlaybackState.Failed;
+                || state is PlaybackState.Playing or PlaybackState.Paused or PlaybackState.Ended or PlaybackState.Failed;
             if (progressed) s_progressed = true;
-            if (s_watchdog.ShouldFault(FrameNowMs(), s_playIntent, progressed))
+            if (s_watchdog.ShouldFault(FrameNowMs(), intent, progressed))
             {
                 Log.Warn("video", $"start watchdog fired after {s_watchdog.TimeoutMs}ms — state={state} pos={pos} key={Tail(s_key)}");
                 ReportFault(epoch, Fault.DrmRequired, "the video session never started playing (no progress within the start budget)");
                 return;
             }
 
-            // (f) the state fold. Every arm is edge-triggered on `_lastState` except the position tick.
+            // (e) the state fold, edge-triggered on the last state except the position tick. Playing is an EVENT the
+            // session publishes — nothing here re-asserts Play.
             switch (state)
             {
                 case PlaybackState.Playing:
@@ -668,15 +960,7 @@ public static partial class Playback
 
                 case PlaybackState.Ready:
                 case PlaybackState.Paused:
-                    // A Ready/Paused session with live play intent and no play request is a LOST fire-and-forget
-                    // PlayAsync. Re-assert, bounded — an unbounded re-assert fights a user's own pause.
-                    if (s_playIntent && !p.IsPlayRequested.Peek() && s_playReassertsLeft > 0)
-                    {
-                        s_playReassertsLeft--;
-                        try { _ = p.PlayAsync(); } catch { }
-                        PostSignal(epoch, AudioSignal.Buffering, pos);
-                    }
-                    else if (s_lastState != state) PostSignal(epoch, AudioSignal.Paused, pos);
+                    if (s_lastState != state) PostSignal(epoch, AudioSignal.Paused, pos);
                     break;
 
                 case PlaybackState.Opening:
@@ -710,18 +994,14 @@ public static partial class Playback
 
         /// <summary>Publish one empty live window when the session dies, so the bar's DVR rail does not keep the dead
         /// stream's edge.</summary>
-        static void RetractLiveWindow(uint epoch)
+        static void RetractLiveWindow()
         {
             if (!s_liveReported) return;
             s_liveReported = false;
             s_reportedLive = default;
             LiveWindow none = LiveWindow.None;
-            Post(Input.LiveReport(in none));
-            _ = epoch;
+            ReportLiveWindow(in none);
         }
-
-        static bool IsSeekReady(PlaybackState state, long durMs)
-            => durMs > 0 || state is PlaybackState.Ready or PlaybackState.Playing or PlaybackState.Paused;
 
         static bool IsAtOrPastLiveEdge(MediaPlayer p, long ms)
         {
@@ -734,12 +1014,27 @@ public static partial class Playback
         static void PostSignal(uint epoch, AudioSignal signal, long posMs = 0)
             => Post(Input.Audio(signal, epoch, FrameNowMs(), posMs));
 
+        /// <summary>One typed fault per load. A dead DRM source is forgotten by the memo (its signed urls may be what
+        /// died), and a dead LOCAL attachment is quarantined by the shell so the reducer's one retry resolves past it.</summary>
         static void ReportFault(uint epoch, Fault kind, string message)
         {
-            if (s_errorReported) return;
-            s_errorReported = true;
+            VideoSource? live;
+            string key;
+            lock (s_gate)
+            {
+                if (s_errorReported) return;
+                s_errorReported = true;
+                live = s_live;
+                key = s_key;
+            }
             StopTicker();
-            Log.Warn("video", $"fault={kind} key={Tail(s_key)} — {message}");
+            Log.Warn("video", $"[video] fault={kind} key={Tail(key)} — {message}");
+            if (live is { IsDrm: true }) ManifestMemo.Invalidate(live.Key);
+            if (live is { FilePath: not null, PlayableUri.Length: > 0 } local && OnOverrideFailed is { } quarantine)
+            {
+                string uri = local.PlayableUri, sourceKey = local.OverrideSourceKey ?? "";
+                ToUi(() => quarantine(uri, sourceKey));
+            }
             Post(Input.Audio(AudioSignal.Failed, epoch, FrameNowMs(), (long)kind));
         }
 
@@ -752,386 +1047,95 @@ public static partial class Playback
             _ => Fault.Unknown,
         };
 
-        /// <summary>The last 24 characters of a key. A module playable is 60+ characters of base64 that differs from
-        /// its neighbours only in the tail, so a full log line is unreadable and a prefix is useless.</summary>
+        /// <summary>The last 24 characters of a key. A module playable is 60+ characters of base64 that differs from its
+        /// neighbours only in the tail, so a full log line is unreadable and a prefix is useless.</summary>
         static string Tail(string key) => key.Length <= 24 ? key : key[^24..];
 
-        // ── 7. the detached-window seam (owner K attaches in Wave 4) ────────────────────────────────────────────────
+        // ── 7. the UI-thread observation: phase, first frame, buffered, seek landed ─────────────────────────────────
 
-        /// <summary>How a pop-out window is opened. The engine owns `IDetachedVideoWindow` and `InputHooks`; owner K's
-        /// `Shell/Video.Host.cs` is its ONLY caller and sets this so `Playback.Video` never names a window type. It is
-        /// here rather than there purely so the Wave-3 build has the seam and the Wave-4 owner has somewhere to
-        /// attach: this file never invokes it.</summary>
+        static IMediaSession? s_observedSession;
+        static long s_observedFirstFrame;
+        static int s_observedIndexEpoch = -1;
+
+        /// <summary>UI THREAD. Read the bound player's session once and mirror what its last pump learnt: the phase, the
+        /// first-frame epoch (with the gate's <c>first.frame … sinceSwitchMs</c> line), the index epoch and a landed seek.
+        /// Run by the surfaces' host observer whenever the player published a state, position, size or buffering change
+        /// — so it is one host frame behind the engine, never a timer behind it. No allocation on the steady path; every
+        /// write is value-gated.</summary>
+        public static void Observe()
+        {
+            MediaPlayer? p = Player.Peek().Player;
+            if (p is null)
+            {
+                if (Phase.Peek() is not (SwitchPhase.Resolving or SwitchPhase.Buffering)) Phase.SetIfChanged(SwitchPhase.Idle);
+                return;
+            }
+            IMediaSession? session = p.Session;
+            if (!ReferenceEquals(session, s_observedSession))
+            {
+                s_observedSession = session;
+                s_observedFirstFrame = 0;
+                s_observedIndexEpoch = -1;
+            }
+            if (session is null) { Phase.SetIfChanged(SwitchPhase.Attaching); return; }
+
+            long firstFrame;
+            if (session is ProtectedMediaSession ps)
+            {
+                IProtectedVideoPlayer pv = ps.Player;
+                Phase.SetIfChanged(HostRules.PhaseOf(pv.Phase));
+                firstFrame = pv.FirstFrameEpoch;
+                int index = pv.IndexEpoch;
+                if (index != s_observedIndexEpoch)
+                {
+                    s_observedIndexEpoch = index;
+                    Buffered.Value = Buffered.Peek() + 1;
+                }
+                if (s_seekTargetMs >= 0 && !pv.IsSeeking && pv.LastSeekLandedMs >= 0)
+                {
+                    LogLine(new VideoLog.SeekDone(s_seekTargetMs, pv.LastSeekLandedMs, FrameNowMs() - s_seekIssuedAtMs, s_seekFetched));
+                    s_seekTargetMs = -1;
+                }
+            }
+            else
+            {
+                bool framed = !p.NaturalSize.Peek().IsEmpty;
+                Phase.SetIfChanged(HostRules.PhaseOfClear(p.State.Peek(), framed));
+                firstFrame = framed ? 1 : 0;
+            }
+
+            if (firstFrame == 0 || firstFrame == s_observedFirstFrame) return;
+            s_observedFirstFrame = firstFrame;
+            FirstFrame.Value = FirstFrame.Peek() + 1;
+            SizeI natural = p.NaturalSize.Peek();
+            LogLine(new VideoLog.FirstFrame(Tail(s_key), s_epoch, FrameNowMs() - Interlocked.Read(ref s_switchAtMs), -1,
+                (long)p.Position.Peek().TotalMilliseconds, natural.Width, natural.Height));
+        }
+
+        // the always-on lines, formatted by `VideoLog` (one shape for the host and the gate) into a per-thread buffer
+        [ThreadStatic] static char[]? t_line;
+
+        static void LogLine(in VideoLog.SwitchBegin l) => Emit(VideoLog.Format(in l, Line()));
+        static void LogLine(in VideoLog.FirstFrame l) => Emit(VideoLog.Format(in l, Line()));
+        static void LogLine(in VideoLog.SeekPlanned l) => Emit(VideoLog.Format(in l, Line()));
+        static void LogLine(in VideoLog.SeekDone l) => Emit(VideoLog.Format(in l, Line()));
+        static void LogLine(in VideoLog.PrefetchPlanned l) => Emit(VideoLog.Format(in l, Line()));
+
+        static char[] Line() => t_line ??= new char[VideoLog.MaxLineChars];
+
+        static void Emit(int length)
+        {
+            if (length > 0 && t_line is { } buffer) Log.Info("video", new string(buffer, 0, length));
+        }
+
+        // ── 8. the detached-window seam (owner K attaches) ──────────────────────────────────────────────────────────
+
+        /// <summary>How a pop-out window is opened. The engine owns `IDetachedVideoWindow`; owner K's `Shell/Video.Host.cs`
+        /// is its ONLY caller and sets this so `Playback.Video` never names a window type.</summary>
         public static Func<bool>? CanOpenDetachedWindow { get; set; }
 
-        /// <summary>True when a second window could host the picture. The player bar's placement menu disables the
-        /// rung with its reason rather than hiding it, so this must answer even before a host attaches.</summary>
+        /// <summary>True when a second window could host the picture. The placement menu disables the rung with its reason
+        /// rather than hiding it, so this must answer even before a host attaches.</summary>
         public static bool DetachedAvailable => CanOpenDetachedWindow?.Invoke() ?? false;
-
-        // ── 8. the manifest resolve (Spotify music video → a PlayReady DASH descriptor) ─────────────────────────────
-
-        /// <summary>Spotify's v9 video manifest: the fetch, the parse, the rung pick, and the DASH descriptor the
-        /// native PlayReady path consumes. No MPD is synthesised — Spotify's manifest carries the templates directly
-        /// and the segments are addressed by ABSOLUTE TIME, which is why the descriptor's stride is the segment length
-        /// in seconds rather than 1.</summary>
-        public static class Manifest
-        {
-            /// <summary>The route. `supports_drm` is not optional: the clear variant is not served to a desktop
-            /// client and asking for it answers 404.</summary>
-            public static string Route(string manifestId)
-                => "/manifests/v9/json/sources/" + manifestId + "/options/supports_drm";
-
-            /// <summary>Fetch + parse + build. Blocks on the network: called on the pump, never on the UI thread.
-            /// Returns null for every failure — a missing manifest is "this track has no video", not an error.</summary>
-            public static VideoSource? Resolve(string manifestId, CancellationToken ct)
-            {
-                string route = Route(manifestId);
-                Spotify.Api.Result result;
-                try
-                {
-                    var args = new Spotify.RequestArgs
-                    {
-                        Path = route,
-                        Host = Spotify.ApiHost.Spclient,
-                        Verb = Spotify.Verb.Get,
-                        // Origin/Referer are the CORS fence the gateway checks on this route; Bearer + client token
-                        // are stamped by the runner from the session.
-                        Headers = Spotify.HeaderSet.Bearer | Spotify.HeaderSet.ClientToken | Spotify.HeaderSet.Identity
-                                | Spotify.HeaderSet.AcceptJson | Spotify.HeaderSet.Origin,
-                    };
-                    result = Spotify.Api.Send(Spotify.RequestKind.Custom, in args, ct);
-                }
-                catch (Exception ex) { Log.Warn("video", "manifest fetch failed", ex); return null; }
-
-                if (!result.Ok || result.Body.Length == 0)
-                {
-                    Log.Info("video", $"manifest {Tail(manifestId)} refused: HTTP {result.Status}");
-                    return null;
-                }
-
-                Parsed? parsed = Parse(result.Bytes);
-                if (parsed is not { } m) return null;
-                DashSourceDescriptor? descriptor = ToDescriptor(in m);
-                if (descriptor is null) return null;
-                var relay = License.Relay(m.LicenseEndpoint);
-                return VideoSource.PlayReady(manifestId, descriptor, relay, m.LicenseEndpoint)
-                    with { NaturalWidth = m.NaturalWidth, NaturalHeight = m.NaturalHeight };
-            }
-
-            /// <summary>One compatible video or audio rung.</summary>
-            public readonly record struct Rung(string Id, string Codec, int Width, int Height, int Bitrate, string? KeyId);
-
-            /// <summary>What the parse yields: the addressing templates, the PlayReady init data, and the two rung
-            /// lists (H.264 only, and AAC only — Opus is advertised under the same PlayReady index and the protected
-            /// MF pipeline cannot decode it).</summary>
-            public readonly record struct Parsed(
-                string BaseUrl, string InitTemplate, string SegmentTemplate,
-                int SegmentLengthSeconds, long DurationMs,
-                byte[] Pssh, string? LicenseEndpoint, string? DefaultKid,
-                Rung[] Video, Rung Audio, bool HasAudio,
-                int NaturalWidth, int NaturalHeight);
-
-            /// <summary>Parse the v9 JSON. Both shapes are handled: templates at the root beside `contents[0]`, or
-            /// everything nested under `sources[0]`.</summary>
-            public static Parsed? Parse(ReadOnlySpan<byte> json)
-            {
-                try
-                {
-                    using var doc = JsonDocument.Parse(json.ToArray());
-                    JsonElement root = doc.RootElement;
-                    JsonElement content = root;
-                    if (root.TryGetProperty("contents", out JsonElement contents) && contents.GetArrayLength() > 0)
-                        content = contents[0];
-                    else if (root.TryGetProperty("sources", out JsonElement sources) && sources.GetArrayLength() > 0)
-                        content = sources[0];
-
-                    string baseUrl = FirstString(content, root, "base_urls");
-                    string initTpl = Str(content, "initialization_template") ?? Str(root, "initialization_template") ?? "";
-                    string segTpl = Str(content, "segment_template") ?? Str(root, "segment_template") ?? "";
-                    if (initTpl.Length == 0 || segTpl.Length == 0) return null;
-
-                    int segLen = Int(content, "segment_length") ?? Int(root, "segment_length") ?? 4;
-                    if (segLen <= 0) segLen = 4;
-                    long durMs = Long(content, "duration") ?? Long(root, "duration") ?? 0;
-                    if (durMs <= 0 && Long(content, "end_time_millis") is { } end && Long(content, "start_time_millis") is { } start)
-                        durMs = end - start;
-
-                    // The PlayReady encryption info's INDEX is what gates rung selection: a profile is compatible only
-                    // when it carries that index.
-                    int prIndex = -1;
-                    byte[] pssh = [];
-                    string? license = null;
-                    if (Arr(content, "encryption_infos") is { } infos)
-                    {
-                        for (int i = 0; i < infos.GetArrayLength(); i++)
-                        {
-                            JsonElement info = infos[i];
-                            string system = Str(info, "key_system") ?? "";
-                            if (!system.Equals("playready", StringComparison.OrdinalIgnoreCase)) continue;
-                            prIndex = i;
-                            if (Str(info, "encryption_data") is { Length: > 0 } b64)
-                            {
-                                try { pssh = Convert.FromBase64String(b64); } catch { pssh = []; }
-                            }
-                            license = Str(info, "license_server_endpoint");
-                            break;
-                        }
-                    }
-                    if (prIndex < 0) return null;      // no PlayReady rung ⇒ nothing this pipeline can play
-
-                    var video = new List<Rung>(8);
-                    Rung audio = default;
-                    bool hasAudio = false;
-                    string? defaultKid = null;
-                    if (Arr(content, "profiles") is { } profiles)
-                    {
-                        for (int i = 0; i < profiles.GetArrayLength(); i++)
-                        {
-                            JsonElement pr = profiles[i];
-                            if ((Str(pr, "file_type") ?? "") is not "mp4") continue;
-                            if (!CarriesIndex(pr, prIndex)) continue;
-                            string id = Str(pr, "id") ?? "";
-                            if (id.Length == 0) continue;
-                            int bitrate = Int(pr, "max_bitrate") ?? Int(pr, "bandwidth_estimate")
-                                ?? Int(pr, "video_bitrate") ?? Int(pr, "audio_bitrate") ?? 0;
-                            string? kid = Str(pr, "key_id");
-
-                            string vcodec = Str(pr, "video_codec") ?? "";
-                            if (vcodec.Length > 0)
-                            {
-                                if (!IsH264(vcodec)) continue;       // H.264 only: the protected path decodes nothing else
-                                int w = Int(pr, "video_width") ?? Int(pr, "width") ?? 0;
-                                int h = Int(pr, "video_height") ?? Int(pr, "height") ?? 0;
-                                video.Add(new Rung(id, vcodec, w, h, bitrate, kid));
-                                defaultKid ??= kid;
-                                continue;
-                            }
-                            string acodec = Str(pr, "audio_codec") ?? "";
-                            if (acodec.Length == 0 || !IsAac(acodec)) continue;
-                            if (!hasAudio || bitrate > audio.Bitrate) { audio = new Rung(id, acodec, 0, 0, bitrate, kid); hasAudio = true; }
-                        }
-                    }
-                    if (video.Count == 0) return null;
-
-                    Rung[] rungs = [.. video];
-                    Array.Sort(rungs, static (a, b) => a.Height != b.Height ? a.Height - b.Height : a.Bitrate - b.Bitrate);
-                    Rung top = rungs[^1];
-
-                    return new Parsed(baseUrl, initTpl, segTpl, segLen, durMs, pssh, license, defaultKid,
-                        rungs, audio, hasAudio, top.Width, top.Height);
-                }
-                catch (Exception ex) { Log.Warn("video", "manifest parse failed", ex); return null; }
-            }
-
-            /// <summary>Build the native descriptor. Returns null when the addressing cannot be resolved — the caller
-            /// then reports "no video" rather than handing the native side a half-built open.</summary>
-            public static DashSourceDescriptor? ToDescriptor(in Parsed m)
-            {
-                Rung top = m.Video[^1];
-                // The conservative INITIAL pick is ≤ 480p: a music video that opens at 1080p on a cold connection
-                // buffers visibly, and the ABR controller climbs within seconds. Every compatible rung stays in the
-                // catalog so it can.
-                Rung initial = m.Video[0];
-                for (int i = 0; i < m.Video.Length; i++)
-                {
-                    if (m.Video[i].Height is > 0 and <= 480) initial = m.Video[i];
-                }
-
-                Addressing? va = Address(m, initial.Id);
-                if (va is not { } v) return null;
-                Addressing? aa = m.HasAudio ? Address(m, m.Audio.Id) : null;
-
-                int segmentCount = m.SegmentLengthSeconds > 0 && m.DurationMs > 0
-                    ? (int)Math.Ceiling(m.DurationMs / 1000.0 / m.SegmentLengthSeconds)
-                    : 0;
-                if (segmentCount <= 0) return null;
-
-                var reps = new ProtectedRepresentationDescriptor[m.Video.Length];
-                int kept = 0;
-                for (int i = 0; i < m.Video.Length; i++)
-                {
-                    Rung r = m.Video[i];
-                    if (Address(m, r.Id) is not { } a) continue;
-                    reps[kept++] = new ProtectedRepresentationDescriptor
-                    {
-                        Id = r.Id,
-                        Quality = new QualityVariant(r.Id, r.Bitrate, new SizeI(r.Width, r.Height), 0,
-                            new MediaContentType(Container.Mp4, CodecId.H264, CodecId.None), Label: r.Height + "p"),
-                        InitUrl = a.Init,
-                        SegmentBaseUrl = a.Base,
-                        SegmentPrefix = a.Prefix,
-                        SegmentSuffix = a.Suffix,
-                        StartNumber = 0,
-                        SegmentCount = segmentCount,
-                        SegmentStride = m.SegmentLengthSeconds,
-                        DefaultKid = r.KeyId,
-                    };
-                }
-                if (kept == 0) return null;
-                Array.Resize(ref reps, kept);
-
-                var tracks = new List<ProtectedTrackDescriptor>(2)
-                {
-                    new()
-                    {
-                        Id = 1, Kind = TrackKind.Video, Label = top.Height + "p",
-                        IsDefault = true, Representations = reps,
-                    },
-                };
-                if (aa is { } a2)
-                {
-                    tracks.Add(new ProtectedTrackDescriptor
-                    {
-                        Id = 2, Kind = TrackKind.Audio, Label = "audio", Role = TrackRole.Main, IsDefault = true,
-                        Representations = new[]
-                        {
-                            new ProtectedRepresentationDescriptor
-                            {
-                                Id = m.Audio.Id,
-                                Quality = new QualityVariant(m.Audio.Id, m.Audio.Bitrate, new SizeI(0, 0), 0,
-                                    new MediaContentType(Container.Mp4, CodecId.None, CodecId.Aac)),
-                                InitUrl = a2.Init, SegmentBaseUrl = a2.Base,
-                                SegmentPrefix = a2.Prefix, SegmentSuffix = a2.Suffix,
-                                StartNumber = 0, SegmentCount = segmentCount, SegmentStride = m.SegmentLengthSeconds,
-                                DefaultKid = m.Audio.KeyId,
-                            },
-                        },
-                    });
-                }
-
-                return new DashSourceDescriptor
-                {
-                    Catalog = new ProtectedAdaptiveCatalog { Tracks = tracks },
-                    InitUrl = v.Init,
-                    SegmentBaseUrl = v.Base,
-                    SegmentPrefix = v.Prefix,
-                    SegmentSuffix = v.Suffix,
-                    StartNumber = 0,
-                    SegmentCount = segmentCount,
-                    // Spotify names segments by ABSOLUTE TIME: segment i = start + i × (segment length in seconds).
-                    SegmentStride = m.SegmentLengthSeconds,
-                    Pssh = m.Pssh,
-                    DefaultKid = m.DefaultKid,
-                    RepresentationId = initial.Id,
-                    Codecs = initial.Codec,
-                    AudioInitUrl = aa?.Init,
-                    AudioSegmentBaseUrl = aa?.Base,
-                    AudioSegmentPrefix = aa?.Prefix,
-                    AudioSegmentSuffix = aa?.Suffix,
-                    AudioCodecs = m.HasAudio ? m.Audio.Codec : null,
-                };
-            }
-
-            /// <summary>The four URL parts the native demuxer walks.</summary>
-            public readonly record struct Addressing(string Init, string Base, string Prefix, string Suffix);
-
-            /// <summary>Substitute the profile id and the file type, then split the media template at the literal
-            /// `{{segment_timestamp}}` token — at the LAST '/' before it, so the base stays a directory and the signed
-            /// query parameters survive byte for byte.</summary>
-            public static Addressing? Address(in Parsed m, string profileId)
-            {
-                const string Token = "{{segment_timestamp}}";
-                string init = Fill(m.BaseUrl, m.InitTemplate, profileId);
-                string media = Fill(m.BaseUrl, m.SegmentTemplate, profileId);
-                int at = media.IndexOf(Token, StringComparison.Ordinal);
-                if (at < 0) return null;
-                int slash = media.LastIndexOf('/', at);
-                if (slash < 0) return null;
-                return new Addressing(init, media[..(slash + 1)], media[(slash + 1)..at], media[(at + Token.Length)..]);
-            }
-
-            static string Fill(string baseUrl, string template, string profileId)
-            {
-                string s = template.Replace("{{profile_id}}", profileId, StringComparison.Ordinal)
-                                   .Replace("{{file_type}}", "mp4", StringComparison.Ordinal);
-                if (s.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return s;
-                if (baseUrl.Length == 0) return s;
-                return baseUrl.EndsWith('/') || s.StartsWith('/') ? baseUrl + s : baseUrl + "/" + s;
-            }
-
-            static bool IsH264(string codec)
-                => codec.StartsWith("avc1", StringComparison.OrdinalIgnoreCase)
-                || codec.StartsWith("avc3", StringComparison.OrdinalIgnoreCase)
-                || codec.Contains("h264", StringComparison.OrdinalIgnoreCase);
-
-            static bool IsAac(string codec)
-                => codec.StartsWith("mp4a", StringComparison.OrdinalIgnoreCase)
-                || codec.StartsWith("aac", StringComparison.OrdinalIgnoreCase);
-
-            static bool CarriesIndex(JsonElement profile, int index)
-            {
-                if (Arr(profile, "encryption_indices") is { } arr)
-                {
-                    for (int i = 0; i < arr.GetArrayLength(); i++)
-                        if (arr[i].TryGetInt32(out int v) && v == index) return true;
-                    return false;
-                }
-                return Int(profile, "encryption_index") is { } single ? single == index : true;
-            }
-
-            static string FirstString(JsonElement a, JsonElement b, string name)
-            {
-                if (Arr(a, name) is { } arr && arr.GetArrayLength() > 0) return arr[0].GetString() ?? "";
-                if (Arr(b, name) is { } arr2 && arr2.GetArrayLength() > 0) return arr2[0].GetString() ?? "";
-                return "";
-            }
-
-            static JsonElement? Arr(JsonElement e, string name)
-                => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out JsonElement v)
-                   && v.ValueKind == JsonValueKind.Array ? v : null;
-
-            static string? Str(JsonElement e, string name)
-                => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out JsonElement v)
-                   && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-
-            static int? Int(JsonElement e, string name)
-                => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out JsonElement v)
-                   && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : null;
-
-            static long? Long(JsonElement e, string name)
-                => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out JsonElement v)
-                   && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out long n) ? n : null;
-        }
-
-        /// <summary>The PlayReady licence relay. The native CDM raises an opaque SOAP challenge; this POSTs it to the
-        /// manifest's own endpoint over the authenticated session and hands the bytes back. The content key never
-        /// crosses into managed code.</summary>
-        public static class License
-        {
-            const string DefaultRoute = "/playready-license";
-
-            public static Func<LicenseRequest, ValueTask<LicenseResponse>> Relay(string? endpoint)
-            {
-                string route = Normalize(endpoint);
-                return request => new ValueTask<LicenseResponse>(Acquire(route, request));
-            }
-
-            static LicenseResponse Acquire(string route, LicenseRequest request)
-            {
-                byte[] challenge = request.Challenge.ToArray();
-                var args = new Spotify.RequestArgs
-                {
-                    Path = route,
-                    Host = Spotify.ApiHost.Spclient,
-                    Verb = Spotify.Verb.Post,
-                    Body = challenge,
-                    Headers = Spotify.HeaderSet.Bearer | Spotify.HeaderSet.ClientToken | Spotify.HeaderSet.Identity
-                            | Spotify.HeaderSet.Origin,
-                };
-                Spotify.Api.Result result = Spotify.Api.Send(Spotify.RequestKind.Custom, in args, CancellationToken.None);
-                if (!result.Ok || result.Body.Length == 0)
-                    throw new InvalidOperationException($"Spotify PlayReady licence POST to {route} failed (HTTP {result.Status}).");
-                return new LicenseResponse(result.Body);
-            }
-
-            /// <summary>The manifest gives an absolute URL or a path; `Spotify.Api` speaks paths on a named host.</summary>
-            static string Normalize(string? endpoint)
-            {
-                if (endpoint is not { Length: > 0 }) return DefaultRoute;
-                if (!endpoint.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                    return endpoint.StartsWith('/') ? endpoint : "/" + endpoint;
-                return Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri) ? uri.PathAndQuery : DefaultRoute;
-            }
-        }
     }
 }

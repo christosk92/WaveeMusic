@@ -100,6 +100,7 @@ public static partial class Shell
                 s.OpenExternal ??= url => hooks.OpenUri?.Invoke(url);
                 s.Post ??= post;
                 OnPlayLink ??= PlayLinkDirect;
+                Track.DrawerOverlay = overlay;
                 OnReportRequested ??= arg => ReportDialogOpener?.Invoke(overlay, arg);
                 return (Action?)(() =>
                 {
@@ -119,6 +120,12 @@ public static partial class Shell
                     Embed.Comp(() => new UpdateToastWatcher()),
                     Embed.Comp(() => new RuntimeToastWatcher()),
                     Setup.SignInDoor(),                               // opens the sign-in surface on request or on a fresh SignInRequired (B5)
+                    // Mount order is load-bearing (ch 28 §9.3.8): the crash prompt (Feedback.Chrome) sets
+                    // ReleaseNotes.CrashNoticeThisLaunch before the after-update plate (ReleaseNotes.AfterUpdateChrome)
+                    // reads it — so the wizard chrome, THEN the report chrome, THEN the after-update chrome.
+                    Setup.WizardChrome(),
+                    Feedback.Chrome(),
+                    ReleaseNotes.AfterUpdateChrome(),
                 ],
             };
         }
@@ -368,6 +375,7 @@ public static partial class Shell
             var notifyHandle = UseRef<OverlayHandle?>(null);     // a SECOND handle: the panel re-anchored here never fights the menu's
 
             var layout = ChromeLayout.Value;                      // subscribe: the name column + the fold rows follow the ladder
+            _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
             _ = Entities.Current.Users.Changed.Value;             // subscribe: the account's identity lands
             var identity = ReadIdentity();
             float nameCap = Actions.ProfileRules.NameCap(Layout.ChromeProfileNameW);

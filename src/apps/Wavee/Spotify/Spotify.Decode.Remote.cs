@@ -440,6 +440,39 @@ public static partial class Spotify
             }
         }
 
+        // ── the radio seed (G-251) ───────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The <c>/inspiredby-mix/v2/seed_to_playlist</c> answer → the radio playlist's uri, or null when the seed
+        /// has none (0.2.9 <c>LiveContextResolver.ResolveRadioSeedAsync</c>):
+        /// <c>{ "total": 1, "mediaItems": [ { "uri": "spotify:playlist:…" } ] }</c> answers <c>mediaItems[0].uri</c>; an
+        /// empty <c>mediaItems</c>, a non-playlist uri, and a body that is not JSON all answer null. One string per user
+        /// action, on the api thread; a forward-only pass, no document.</summary>
+        public static string? RadioPlaylistUri(ReadOnlySpan<byte> json)
+        {
+            try
+            {
+                var r = new Utf8JsonReader(json);
+                if (!r.Read() || r.TokenType != JsonTokenType.StartObject) return null;
+                for (int root = r.CurrentDepth; Next(ref r, root);)
+                {
+                    if (!r.ValueTextEquals("mediaItems"u8)) { SkipValue(ref r); continue; }
+                    if (!EnterArray(ref r)) return null;
+                    for (int list = r.CurrentDepth; Element(ref r, list);)
+                        for (int item = r.CurrentDepth; Next(ref r, item);)
+                        {
+                            if (!r.ValueTextEquals("uri"u8)) { SkipValue(ref r); continue; }
+                            r.Read();
+                            if (r.TokenType != JsonTokenType.String) continue;
+                            string? uri = r.GetString();
+                            if (uri is not null && uri.StartsWith("spotify:playlist:", StringComparison.Ordinal)) return uri;
+                        }
+                    return null;
+                }
+                return null;
+            }
+            catch (JsonException) { return null; }
+        }
+
         /// <summary>The JSON string the reader is on, into the buffer's arena (unescaped), or empty.</summary>
         static TextRef Text(ref Utf8JsonReader r, ClusterBuffer into)
         {

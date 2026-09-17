@@ -40,6 +40,7 @@
 //   · `Wavee.Palette` (the TABLE — the per-image graded schemes, the TTL, `Watch`, `Ensure`) is shadowed by
 //     `Design.Palette` (the ARGB MATHS). Nothing in `Design.Palette` touches a table, a fetch or a readiness bit (A5).
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -763,6 +764,21 @@ public static partial class Design
         public static ColorF ChromeFromPayload(uint argb)
             => argb == 0 ? Tok.AccentDefault : Lift(ToColor(argb));
 
+        /// <summary>Dark-theme wash from a raw wire colour: the payload's hue sunk to the brightness of the neutral
+        /// scheme's dark background role, so a first paint before the grading lands sits where the graded
+        /// <see cref="BackgroundDark"/> will. 0 (no payload) is the neutral dark base itself.</summary>
+        public static ColorF DarkFromPayload(uint argb)
+        {
+            ColorF ground = BackgroundDark(Neutral);
+            if (argb == 0) return ground;
+            ColorF c = ToColor(argb);
+            float target = MathF.Max(ground.R, MathF.Max(ground.G, ground.B));
+            float max = MathF.Max(c.R, MathF.Max(c.G, c.B));
+            if (max <= 0.001f) return ground;
+            float k = target / max;
+            return new ColorF(c.R * k, c.G * k, c.B * k, c.A);
+        }
+
         /// <summary>THE page's chrome accent — the one derivation every accent-filled control on a media surface uses:
         /// the cover's most-saturated graded role (<see cref="Accent(in Scheme)"/>), brightness-lifted then
         /// saturation-floored. Greyscale/near-monochrome art has no hue to amplify, so it falls back to the system
@@ -869,9 +885,12 @@ public static partial class Design
         /// from (the caller then paints NOTHING and the page keeps its neutral surface — a miss is a designed state, not
         /// a skeleton).</summary>
         public static ColorF? PageTone(Scheme? scheme, ThemeKind theme)
+            => scheme is { } s ? PageToneFromHue(Accent(s), theme) : null;
+
+        /// <summary>Page ground from a raw hue (payload <c>extractedColors</c>, a coverless mosaic's hex) using the same
+        /// lightness/saturation clamp as a graded cover.</summary>
+        public static ColorF? PageToneFromHue(ColorF dominant, ThemeKind theme)
         {
-            if (scheme is not { } s) return null;
-            var dominant = Accent(s);                        // the cover's HUE role (see Accent for why not TextBrightAccent)
             var (_, hsvSat, _) = dominant.ToHsv();
             if (hsvSat < PageToneChromaFloor)
                 return theme == ThemeKind.Dark ? PageToneNeutralDark : PageToneNeutralLight;
@@ -1079,11 +1098,38 @@ public static partial class Design
     ///
     /// <para>The bind is PAINT-ONLY: the thunk reads the per-key watch signal, so a landed grading marks PaintDirty on
     /// exactly this tile — never a component re-render, never the global epoch fan-out.</para></summary>
-    public static Prop<ColorF> WatchedPlaceholder(string? url, bool? light = null) => Prop.Of(() =>
+    public static Prop<ColorF> WatchedPlaceholder(string? url, bool? light = null)
     {
-        if (url is { Length: > 0 } u) _ = Wavee.Palette.Watch(u).Value;
-        return light is { } l ? PlaceholderFor(url, l) : PlaceholderFor(url);
-    });
+        if (light is { } l)
+            return Prop.Of(() =>
+            {
+                if (url is { Length: > 0 } u) _ = Wavee.Palette.Watch(u).Value;
+                return PlaceholderFor(url, l);
+            });
+
+        // The theme-following arm (every call site today) is CACHED per url: the thunk is a pure function of its url
+        // (the theme is read at evaluation), so one instance serves every slot showing that cover, and the per-render
+        // callers — a shimmer tile, a fill-grid cell, a 50k-row list's thumbs — allocate no closure. Sharing a bound
+        // `Prop` across elements is the engine's own idiom (`Ui.SecondaryTextBrush`). Bounded by a wholesale reset at
+        // the cap: entries are tiny and rebuilt on demand, and a reset only costs the next render one closure per url.
+        string key = url ?? "";
+        lock (s_watchedPlaceholders)
+        {
+            if (s_watchedPlaceholders.TryGetValue(key, out var cached)) return cached;
+            if (s_watchedPlaceholders.Count >= WatchedPlaceholderCap) s_watchedPlaceholders.Clear();
+            var prop = Prop.Of(() =>
+            {
+                if (key.Length > 0) _ = Wavee.Palette.Watch(key).Value;
+                return PlaceholderFor(key);
+            });
+            s_watchedPlaceholders[key] = prop;
+            return prop;
+        }
+    }
+
+    /// <inheritdoc cref="WatchedPlaceholder"/>
+    const int WatchedPlaceholderCap = 4096;
+    static readonly Dictionary<string, Prop<ColorF>> s_watchedPlaceholders = new(StringComparer.Ordinal);
 
     // ══ 8. THE TYPE RAMP ═════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -1553,6 +1599,33 @@ public static partial class Design
     /// activate.</summary>
     public enum NavTransitionKind : byte { Forward, Back, Neutral }
 
+    /// <summary>WinUI surface class: top-level (sidebar / Home / Library), a content detail, or a module page that
+    /// may host composited video.</summary>
+    public enum NavSurface : byte { TopLevel, Detail, Module }
+
+    /// <summary>The spatial relation of a keep-alive swap — WinUI Entrance / DrillIn / sibling slide, plus Neutral's
+    /// fade. Connected (cover-fly) is deliberately not a member this round.</summary>
+    public enum NavRelation : byte { Entrance, DrillIn, Sibling, Fade }
+
+    /// <summary>The five page-motion PERSONALITIES a user can choose in Settings ▸ Appearance ▸ Page motion. Every
+    /// member but <see cref="None"/> SEQUENCES the outgoing and incoming legs — the exit finishes before the enter
+    /// starts — so two full-bleed pages are never both legible at once. That is the defect this enum exists to fix:
+    /// two legs both starting at t=0 read as two full-bleed pages simultaneously visible for ~130ms (summed opacity
+    /// peaking at 1.83), then the outgoing page popping out. Only the GEOMETRY differs per style; the CLOCK
+    /// (<see cref="Nav.ExitDurationMs"/> / <see cref="Nav.EnterDelayMs"/> / <see cref="Nav.EnterDurationMs"/>) is
+    /// shared by every sequenced style — Material's fade-through, verified clean.
+    /// <para><see cref="Fluent"/>: a plain cross-fade, no geometry, on every relation. <see cref="Spatial"/> (the
+    /// DEFAULT): Entrance fades, DrillIn is a semantic zoom, Sibling slides the INCOMING page only. <see cref="WinUi"/>:
+    /// WinUI's own page-refresh Entrance (a 140-DIP rise, the outgoing side only fades), the same zoom as Spatial for
+    /// DrillIn, and a Sibling where both pages move by different amounts. <see cref="Classic"/>: the 0.2.x
+    /// fade-through, an 8-DIP badge-twitch translate, uniform across every relation. <see cref="None"/>: an instant
+    /// cut — no motion at all.</para></summary>
+    public enum PageMotionStyle : byte { Fluent, Spatial, WinUi, Classic, None }
+
+    /// <summary>How many styles the enum defines — the count <c>Prefs.Appearance.PageMotionStyle</c> clamps against
+    /// (the same "clamp at the reader" contract as <c>LikedCoverRules.StyleCount</c>).</summary>
+    public const int PageMotionStyleCount = 5;
+
     /// <summary>The IDENTITY of a keep-alive page slot: which browser tab, which route, which argument. The nav
     /// DIRECTION is deliberately NOT part of it — direction decides how a swap animates, not which page is cached.
     /// Folding it in made a motion-only write on the already-active key look like an activation change, which re-seeded
@@ -1561,10 +1634,10 @@ public static partial class Design
     /// `Shell.cs`'s route type. Owner I builds one of these from a route at the call site.</para></summary>
     public readonly record struct PageSlot(int TabId, string Route, string? Arg);
 
-    /// <summary>The page-swap policy of the content card: slot identity and the recipe a direction maps to. Pure — no
+    /// <summary>The page-swap policy of the content card: slot identity and the recipe a relation maps to. Pure — no
     /// pages, no controls, no GPU — so it is pinned by tests.
     /// <para>The route → VIDEO-SAFE classification stays in the shell (it knows module routes); this section only
-    /// supplies the two recipe families.</para></summary>
+    /// supplies the recipe families.</para></summary>
     public static class Nav
     {
         /// <summary>Every destination page gets its own slot inside the active tab, so ALL forward/back navigation uses
@@ -1575,46 +1648,133 @@ public static partial class Design
         public static string SlotKey(in PageSlot s)
             => s.TabId + "\u001F" + s.Route + "\u001F" + (s.Arg ?? "");
 
-        /// <summary>The recipe for a page swap, WITH its Exit half. Both halves are load-bearing: the reconciler only
-        /// overlaps the outgoing page (ZStacked on the boundary, hit-test invisible, parked once its tracks settle) when
-        /// <c>Exit.Active</c> is true — with a stripped Exit the outgoing page is detached in the same frame and the
-        /// card flashes EMPTY before the incoming page arrives.
-        /// <para>FADE-THROUGH, not a symmetric slide: exit fades IN PLACE over 120 ms on a fast-out ease so it is ~94%
-        /// gone when enter starts at 90 ms — two full-bleed pages never mix at readable opacity (an ACCELERATE curve
-        /// would hold the old page near 1 until the end, which is exactly the superimposed-text frame). Enter slides
-        /// <see cref="Expressive.DistBase"/>: a long slide covers half its travel in the first presented frame after a
-        /// heavy mount.</para></summary>
-        public static LayoutTransition RecipeFor(NavTransitionKind motion) => motion switch
+        /// <summary>Classify a swap by the two surfaces and whether they are the same kind / identity. Neutral is always
+        /// a fade. Same-kind different identity (artist→artist, search query→query) is a sibling slide. Anything that
+        /// touches a detail surface is DrillIn. Otherwise Entrance (sidebar / top-level refresh).</summary>
+        public static NavRelation RelationOf(NavSurface from, NavSurface to, bool sameKind, bool sameIdentity,
+                                            NavTransitionKind motion)
         {
-            NavTransitionKind.Back => PageFadeThroughBack,
-            NavTransitionKind.Neutral => MotionRecipes.PageFade,
-            _ => PageFadeThroughForward,
+            if (motion == NavTransitionKind.Neutral) return NavRelation.Fade;
+            if (sameKind && !sameIdentity) return NavRelation.Sibling;
+            if (from == NavSurface.Detail || to == NavSurface.Detail) return NavRelation.DrillIn;
+            return NavRelation.Entrance;
+        }
+
+        // ── PAGE-MOTION STYLE: the sequenced clock + per-style geometry (the fix) ───────────────────────────────────
+
+        /// <summary>The style Settings ▸ Appearance ▸ Page motion defaults to when nothing is persisted yet.</summary>
+        public const PageMotionStyle DefaultStyle = PageMotionStyle.Spatial;
+
+        /// <summary>The exit leg's duration for every SEQUENCED style (everything but <see cref="PageMotionStyle.None"/>)
+        /// — Material's fade-through, verified to have zero overlap.</summary>
+        public const float ExitDurationMs = 90f;
+        /// <summary>The enter leg's start delay. Equal to <see cref="ExitDurationMs"/> EXACTLY — never less, or the two
+        /// legs are briefly both on screen, which is the regression this file exists to fix (two full-bleed pages
+        /// summing to 1.83 opacity for ~130ms when both legs started at t=0).</summary>
+        public const float EnterDelayMs = ExitDurationMs;
+        /// <summary>The enter leg's own duration. <see cref="ExitDurationMs"/> + this = 300ms total.</summary>
+        public const float EnterDurationMs = 210f;
+
+        /// <summary>The masthead band shares this window with the page swap (ch 18 §4's "one gesture" comment) so a
+        /// drill-in reads as one motion — it IS the page's real exit window, not an independent constant that can
+        /// drift from it.</summary>
+        public const float FadeThroughExitMs = ExitDurationMs;
+
+        /// <summary>WinUi's Entrance rise — its own page-refresh travel, distinct from Spatial's (which does not rise
+        /// at all) and from a badge twitch (<see cref="Expressive.DistBase"/>).</summary>
+        public const float WinUiEntranceDy = 140f;
+        /// <summary>Spatial's Sibling travel (the incoming page only) — shared with the video-safe pair so a module
+        /// page does not twitch <see cref="Expressive.DistBase"/> DIP when it must slide instead of cross-fade.</summary>
+        public const float SiblingDx = 80f;
+        /// <summary>WinUi's Sibling: the incoming page travels further than the outgoing one recedes.</summary>
+        public const float WinUiSiblingInDx = 200f, WinUiSiblingOutDx = 150f;
+        /// <summary>Classic's uniform badge-twitch travel — the 0.2.x fade-through, verbatim.</summary>
+        public const float ClassicDx = Expressive.DistBase;
+        /// <summary>Spatial's and WinUi's DrillIn scale terminals — a semantic zoom, not an eight-DIP fade.</summary>
+        public const float DrillScaleIn = 0.94f, DrillScaleOut = 1.04f;
+
+        static TransitionDynamics SeqEnter => TransitionDynamics.Tween(EnterDurationMs, Easing.FluentDecelerate);
+        static TransitionDynamics SeqExit => TransitionDynamics.Tween(ExitDurationMs, Easing.FluentAccelerate);
+
+        /// <summary>A plain sequenced cross-fade: Fluent's whole vocabulary, and Spatial's Entrance.</summary>
+        static LayoutTransition SeqFade() => new(
+            TransitionChannels.Opacity, SeqEnter,
+            Enter: new EnterExit(Opacity: 0f, Active: true),
+            Exit: new EnterExit(Opacity: 0f, Active: true),
+            ExitDynamics: SeqExit, DelayMs: EnterDelayMs, ExitDelayMs: 0f);
+
+        /// <summary>A sequenced translate + fade — the enter and exit legs each on their own vector (a magnitude of 0
+        /// on either leg means that side only fades, e.g. Spatial's Sibling exit / WinUi's Entrance exit).</summary>
+        static LayoutTransition SeqTranslate(float enterDx, float enterDy, float exitDx, float exitDy) => new(
+            TransitionChannels.Position | TransitionChannels.Opacity, SeqEnter,
+            Enter: new EnterExit(Dx: enterDx, Dy: enterDy, Opacity: 0f, Active: true),
+            Exit: new EnterExit(Dx: exitDx, Dy: exitDy, Opacity: 0f, Active: true),
+            ExitDynamics: SeqExit, DelayMs: EnterDelayMs, ExitDelayMs: 0f);
+
+        /// <summary>A sequenced semantic zoom: scale + fade, no translate.</summary>
+        static LayoutTransition SeqScale(float enterScale, float exitScale) => new(
+            TransitionChannels.Opacity, SeqEnter,
+            Enter: new EnterExit(Sx: enterScale, Sy: enterScale, Opacity: 0f, Active: true),
+            Exit: new EnterExit(Sx: exitScale, Sy: exitScale, Opacity: 0f, Active: true),
+            ExitDynamics: SeqExit, DelayMs: EnterDelayMs, ExitDelayMs: 0f);
+
+        /// <summary>The instant cut <see cref="PageMotionStyle.None"/> hands back for every relation: the same shape as
+        /// <see cref="MotionRecipes.PageFade"/> — so <c>Exit.Active</c> stays true and the card never flashes empty —
+        /// at a duration too short to read as motion at all.</summary>
+        static readonly LayoutTransition NoneCut = MotionRecipes.PageFade with
+        {
+            Dynamics = TransitionDynamics.Tween(1f, Easing.Linear),
+            ExitDynamics = TransitionDynamics.Tween(1f, Easing.Linear),
         };
 
-        /// <summary>The exit window. The masthead band's own fade shares it, so the two halves of a drill-in read as one
-        /// gesture.</summary>
-        public const float FadeThroughExitMs = 120f;
-        const float FadeThroughEnterDelayMs = 90f;
+        /// <summary>The recipe for a page swap, WITH its Exit half, at the <see cref="DefaultStyle"/>. Both halves are
+        /// load-bearing: the reconciler only overlaps the outgoing page (ZStacked on the boundary, hit-test invisible,
+        /// parked once its tracks settle) when <c>Exit.Active</c> is true — with a stripped Exit the outgoing page is
+        /// detached in the same frame and the card flashes EMPTY before the incoming page arrives.
+        /// <para>The one-argument overload is Entrance (the setup wizard, a first paint). The content host passes the
+        /// classified <see cref="NavRelation"/>; <c>Shell.RecipeFor</c> passes the persisted style.</para></summary>
+        public static LayoutTransition RecipeFor(NavTransitionKind motion)
+            => RecipeFor(motion, motion == NavTransitionKind.Neutral ? NavRelation.Fade : NavRelation.Entrance);
 
-        /// <inheritdoc cref="RecipeFor"/>
-        public static LayoutTransition PageFadeThroughForward => new(
-            TransitionChannels.Position | TransitionChannels.Opacity,
-            TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-            Enter: new EnterExit(Dx: Expressive.DistBase, Opacity: 0f, Active: true),
-            Exit: new EnterExit(Dx: 0f, Opacity: 0f, Active: true),
-            ExitDynamics: TransitionDynamics.Tween(FadeThroughExitMs, Easing.EaseOut),
-            DelayMs: FadeThroughEnterDelayMs,
-            ExitDelayMs: 0f);
+        /// <inheritdoc cref="RecipeFor(NavTransitionKind)"/>
+        public static LayoutTransition RecipeFor(NavTransitionKind motion, NavRelation relation)
+            => RecipeFor(DefaultStyle, motion, relation);
 
-        /// <inheritdoc cref="RecipeFor"/>
-        public static LayoutTransition PageFadeThroughBack => new(
-            TransitionChannels.Position | TransitionChannels.Opacity,
-            TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-            Enter: new EnterExit(Dx: -Expressive.DistBase, Opacity: 0f, Active: true),
-            Exit: new EnterExit(Dx: 0f, Opacity: 0f, Active: true),
-            ExitDynamics: TransitionDynamics.Tween(FadeThroughExitMs, Easing.EaseOut),
-            DelayMs: FadeThroughEnterDelayMs,
-            ExitDelayMs: 0f);
+        /// <summary>The PURE recipe lookup: style × direction × relation → <see cref="LayoutTransition"/>. No pages, no
+        /// controls, no GPU — <c>DesignNavMotionTests</c> pins it one style at a time.
+        /// <para>CRITICAL: every sequenced branch below passes <c>ExitDelayMs: 0f</c> EXPLICITLY. It is <c>float?</c>
+        /// and null means "inherit <c>DelayMs</c>" — omitting it would push the exit out by <see cref="EnterDelayMs"/>
+        /// too and flash the content card empty for that whole window (the bug a naive port reintroduces).</para></summary>
+        public static LayoutTransition RecipeFor(PageMotionStyle style, NavTransitionKind motion, NavRelation relation)
+        {
+            if (motion == NavTransitionKind.Neutral || relation == NavRelation.Fade)
+                return MotionRecipes.PageFade;
+            if (style == PageMotionStyle.None)
+                return NoneCut;
+            bool back = motion == NavTransitionKind.Back;
+            return style switch
+            {
+                PageMotionStyle.Fluent => SeqFade(),
+                PageMotionStyle.Spatial => relation switch
+                {
+                    NavRelation.DrillIn => back ? SeqScale(DrillScaleOut, DrillScaleIn) : SeqScale(DrillScaleIn, DrillScaleOut),
+                    // Incoming only: the outgoing page fades IN PLACE (Exit.Dx stays 0) rather than sliding away with it.
+                    NavRelation.Sibling => back ? SeqTranslate(-SiblingDx, 0f, 0f, 0f) : SeqTranslate(SiblingDx, 0f, 0f, 0f),
+                    _ => SeqFade(),
+                },
+                PageMotionStyle.WinUi => relation switch
+                {
+                    NavRelation.DrillIn => back ? SeqScale(DrillScaleOut, DrillScaleIn) : SeqScale(DrillScaleIn, DrillScaleOut),
+                    NavRelation.Sibling => back
+                        ? SeqTranslate(-WinUiSiblingInDx, 0f, WinUiSiblingOutDx, 0f)
+                        : SeqTranslate(WinUiSiblingInDx, 0f, -WinUiSiblingOutDx, 0f),
+                    // Incoming rises; the outgoing page only fades (no Dy) — WinUI's own page-refresh Entrance.
+                    _ => back ? SeqTranslate(0f, -WinUiEntranceDy, 0f, 0f) : SeqTranslate(0f, WinUiEntranceDy, 0f, 0f),
+                },
+                // The 0.2.x fade-through, verbatim, uniform across every relation.
+                _ => back ? SeqTranslate(-ClassicDx, 0f, ClassicDx, 0f) : SeqTranslate(ClassicDx, 0f, -ClassicDx, 0f),
+            };
+        }
 
         // ── the VIDEO-SAFE pair ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -1630,12 +1790,12 @@ public static partial class Design
         ///
         /// <para>A TRANSLATE is the one ancestor motion a hole rides correctly: it composes on the absolute rect the
         /// punch already reads from, so nobody has to animate the hole for the hole to move. Hence a symmetric slide,
-        /// with the same dynamics on both halves and <c>Exit.Active</c> still TRUE.</para>
+        /// with the same dynamics on both halves and <c>Exit.Active</c> still TRUE. Travel matches
+        /// <see cref="SiblingDx"/> so a module page does not twitch 8 DIP.</para>
         ///
         /// <para><b>The honest degradation:</b> a module-page swap SLIDES instead of cross-fading, so two full-bleed
-        /// pages share the card at full opacity for the length of the travel — which is the double exposure
-        /// fade-through was introduced to shrink, and still the better trade against a video that disappears
-        /// mid-navigation.</para></summary>
+        /// pages share the card at full opacity for the length of the travel — which is the double exposure a fade
+        /// would shrink, and still the better trade against a video that disappears mid-navigation.</para></summary>
         /// <returns>The slide for Forward/Back; <b>null</b> for <see cref="NavTransitionKind.Neutral"/> — an honest CUT.
         /// Neutral's only recipe is opacity and nothing else, so there is no video-safe form of it to hand back, and a
         /// hard cut is what "no motion this page can survive" looks like.</returns>
@@ -1646,25 +1806,27 @@ public static partial class Design
             _ => PageSlideSafeForward,
         };
 
+        /// <summary>Both halves must finish together (they are one physical hole moving), so this is the ONE dynamics
+        /// value for both <c>Dynamics</c> and <c>ExitDynamics</c> below — <see cref="MotionTok.StandardEnter"/> and
+        /// <see cref="MotionTok.StandardExit"/> used to disagree (300ms vs 200ms), which is inconsistent with the "same
+        /// dynamics on both halves" this recipe's own doc claims.</summary>
+        static TransitionDynamics VideoSafeDynamics => TransitionDynamics.Tween(EnterDurationMs, Easing.FluentDecelerate);
+
         /// <inheritdoc cref="RecipeForVideoSafe"/>
         public static LayoutTransition PageSlideSafeForward => new(
             TransitionChannels.Position,
-            TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-            Enter: new EnterExit(Dx: Expressive.DistBase, Active: true),
-            Exit: new EnterExit(Dx: -Expressive.DistBase, Active: true),
-            ExitDynamics: TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-            DelayMs: 0f,
-            ExitDelayMs: 0f);
+            VideoSafeDynamics,
+            Enter: new EnterExit(Dx: SiblingDx, Active: true),
+            Exit: new EnterExit(Dx: -SiblingDx, Active: true),
+            ExitDynamics: VideoSafeDynamics);
 
         /// <inheritdoc cref="RecipeForVideoSafe"/>
         public static LayoutTransition PageSlideSafeBack => new(
             TransitionChannels.Position,
-            TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-            Enter: new EnterExit(Dx: -Expressive.DistBase, Active: true),
-            Exit: new EnterExit(Dx: Expressive.DistBase, Active: true),
-            ExitDynamics: TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-            DelayMs: 0f,
-            ExitDelayMs: 0f);
+            VideoSafeDynamics,
+            Enter: new EnterExit(Dx: -SiblingDx, Active: true),
+            Exit: new EnterExit(Dx: SiblingDx, Active: true),
+            ExitDynamics: VideoSafeDynamics);
     }
 
     // ══ 11. THE DETAIL REVEAL RAMP ═══════════════════════════════════════════════════════════════════════════════════
@@ -1686,12 +1848,18 @@ public static partial class Design
         public const int Done = int.MaxValue;
 
         /// <summary>The next reveal count, given the current count and the visible row count. Returns
-        /// <see cref="Done"/> once a chunk reaches or exceeds the realized band.</summary>
+        /// <see cref="Done"/> once a chunk reaches or exceeds the realized band.
+        /// <para>TOTAL over every input (G-259). <see cref="Done"/> stays <see cref="Done"/>: a step that lands after the
+        /// ramp finished must never add a chunk to the sentinel — <c>int.MaxValue + 12</c> wrapped to −2147483637 and
+        /// blanked every row of a short list. The sum is taken in <see cref="long"/>, and a negative count (nothing
+        /// revealed) saturates to 0, so any start reaches <see cref="Done"/> within <c>Cap / Chunk</c> steps and the
+        /// result is never negative.</para></summary>
         public static int Next(int reveal, int visible)
         {
+            if (reveal == Done) return Done;
             int target = Math.Min(visible, Cap);
-            int next = reveal + Chunk;
-            return next >= target ? Done : next;
+            long next = (long)Math.Max(reveal, 0) + Chunk;
+            return next >= target ? Done : (int)next;   // next < target ≤ Cap, so the narrowing is exact
         }
 
         /// <summary>Is the row at this display position a REAL row yet (vs a shimmer placeholder)? True once the ramp
@@ -1727,6 +1895,15 @@ public static partial class Design
             int bucketed = (int)(MathF.Ceiling(px / BucketPx) * BucketPx);
             return Math.Clamp(bucketed, BucketPx, Ceiling);
         }
+
+        /// <summary>Rounds an already-device-pixel edge UP to the same <see cref="BucketPx"/> grid <see cref="For"/>
+        /// bakes into its own ambient-scale read (A2, G-259 follow-up) — for a caller that already has its final decode
+        /// edge (Controls.cs's <c>Artwork</c> unscaled branch, which takes the laid-out DIP size literally) and only needs
+        /// the cache KEY to land on the same handful of stable sizes a scaled decode would, so a one-pixel layout jitter
+        /// stops minting a fresh (source, W, H) cache entry, a fresh fetch and a fresh GPU texture. Pure integer math —
+        /// safe on the render path. A non-positive <paramref name="px"/> floors to one bucket rather than 0, so a
+        /// degenerate zero-sized layout never reads as "the same size" as a real one.</summary>
+        public static int Bucket(int px) => px <= 0 ? BucketPx : ((px + BucketPx - 1) / BucketPx) * BucketPx;
     }
 
     // ══ 13. THE SHARED-ELEMENT (HERO) KEY CONVENTION — DORMANT ═══════════════════════════════════════════════════════
@@ -2004,7 +2181,7 @@ public sealed class CoverPageTonePlane : Component
     /// CALLER (owner M's detail vertical layout) rather than imported here — this file must not depend on the detail
     /// frame's arithmetic (A1).</summary>
     public sealed record Props(string? Url, string? FallbackUrl, bool Disabled, float BackdropBand, float PageHeight,
-                               bool HeroOnly);
+                               bool HeroOnly, uint PayloadAccent = 0);
 
     /// <summary>How much of the tone plane covers the Mica stack beneath it. The dial between "the page reads as the
     /// record's colour" and "the page is part of a Mica window", and the answer is firmly the SECOND: the standing
@@ -2062,7 +2239,12 @@ public sealed class CoverPageTonePlane : Component
     /// <summary>Cover grading → the page's ground. Cheap: two table probes and the clamp; no subscription (the caller
     /// owns that), so it is safe on the paint path.</summary>
     static ColorF? Resolve(Props p)
-        => Design.Palette.PageTone(Design.SchemeFor(p.Url) ?? Design.SchemeFor(p.FallbackUrl), Tok.Theme);
+    {
+        var fromArt = Design.Palette.PageTone(Design.SchemeFor(p.Url) ?? Design.SchemeFor(p.FallbackUrl), Tok.Theme);
+        if (fromArt is not null) return fromArt;
+        if (p.PayloadAccent == 0) return null;
+        return Design.Palette.PageToneFromHue(Design.Palette.ToColor(p.PayloadAccent), Tok.Theme);
+    }
 
     /// <summary>Hero-only mode: the tone paints ONLY the hero band and fades to nothing below it. Under the
     /// translucent-plane model this is a tone BAND, not a ground-overpaint: below the fade the page is simply the
@@ -2094,7 +2276,11 @@ public sealed class CoverPageTonePlane : Component
 public sealed class CoverArtistBlendWash : Component
 {
     /// <inheritdoc cref="CoverArtistBlendWash"/>
-    public sealed record Props(string? Url, float Height, float Boundary, bool Disabled);
+    public sealed record Props(string? Url, float Height, float Boundary, bool Disabled, uint PayloadAccent = 0);
+
+    static readonly Func<uint, ColorF> s_lift = static a => Design.Palette.Lift(Design.Palette.ToColor(a));
+    static readonly Func<uint, ColorF> s_sink = static a => Design.Palette.DarkFromPayload(a);
+    bool _mounted;
 
     public override Element Render()
     {
@@ -2104,20 +2290,38 @@ public sealed class CoverArtistBlendWash : Component
         if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
         var pagePal = Design.SchemeFor(p.Url);
         bool light = Tok.Theme == ThemeKind.Light;
-        // LIGHT falls back to the APP accent when the hero is ungraded; DARK falls back to the neutral scheme's grey.
-        // Recorded rather than harmonised: the two are different answers on purpose, because a grey wash in light would
-        // read as a dirty page and an invented accent wash in dark would read as a colour the record does not have.
-        ColorF wash = light
-            ? (pagePal is { } wp ? Design.Palette.Lift(Design.Palette.Accent(wp)) : Tok.AccentDefault)
-            : Design.Palette.BackgroundDark(pagePal ?? Design.Palette.Neutral);
-        return new BoxEl
+        // Both arms follow the ladder (graded → payload → neutral). LIGHT lifts the hue toward the accent; DARK sinks
+        // it to the dark background role, so the first frame already carries the record's hue at the brightness the
+        // grading will settle on instead of a grey that brightens a beat later.
+        bool definite = string.IsNullOrEmpty(p.Url) || !Palette.CanGrade(p.Url);
+        AccentLadder.Result result = light
+            ? AccentLadder.Resolve(new(pagePal is { } wp ? Design.Palette.Lift(Design.Palette.Accent(wp)) : null, p.PayloadAccent, definite),
+                                   null, Tok.AccentDefault, s_lift)
+            : AccentLadder.Resolve(new(pagePal is { } dp ? Design.Palette.BackgroundDark(dp) : null, p.PayloadAccent, definite),
+                                   null, Design.Palette.BackgroundDark(Design.Palette.Neutral), s_sink);
+        ColorF wash = result.Color;
+        AccentLadder.Rung rung = result.Rung;
+        GradientSpec gradient = GradientDown(
+            new GradientStop(0f, wash with { A = light ? 0.20f : 0.30f }),
+            new GradientStop(p.Boundary, wash with { A = light ? 0.06f : 0.08f }),
+            new GradientStop(1f, wash with { A = 0f }));
+        // Keyed swap, not a bound Fill: the recorder writes a Gradient directly (Reconciler.cs SetGradient), so
+        // BrushTransitionMs cannot cross-fade it. Re-keying on the rung + colour makes a grading arrival mount a fresh
+        // node that fades in over the old one instead of snapping. The key lives on a CHILD, not this component's
+        // returned root — ReconcileSingleChild treats a component-root key as inert (Reconciler.cs), so only a real
+        // Children-list slot honours it.
+        // The fade is for a RE-KEY (a grading landing over the first tone), never for the first paint: the hero
+        // must not brighten in over its first frames.
+        Element tone = new BoxEl
         {
-            Height = p.Height, HitTestVisible = false,
-            Gradient = GradientDown(
-                new GradientStop(0f, wash with { A = light ? 0.20f : 0.30f }),
-                new GradientStop(p.Boundary, wash with { A = light ? 0.06f : 0.08f }),
-                new GradientStop(1f, wash with { A = 0f })),
+            Key = "artist-wash-tone:" + (byte)rung + ":" + wash.GetHashCode().ToString("X8"),
+            HitTestVisible = false, Gradient = gradient,
+            Enter = _mounted ? new EnterExit(Opacity: 0f, Active: true) : null,
+            Exit = new EnterExit(Opacity: 0f, Active: true),
+            Transition = MotionTok.ControlNormal,
         };
+        _mounted = true;
+        return new BoxEl { ZStack = true, Height = p.Height, HitTestVisible = false, Children = [tone] };
     }
 }
 
@@ -2125,21 +2329,34 @@ public sealed class CoverArtistBlendWash : Component
 public sealed class CoverKeyedVeil : Component
 {
     /// <inheritdoc cref="CoverKeyedVeil"/>
-    public sealed record Props(string? Url, bool Vertical, float Width, float Height);
+    public sealed record Props(string? Url, bool Vertical, float Width, float Height, uint PayloadAccent = 0);
+
+    static readonly Func<uint, ColorF> s_lift = static a => Design.Palette.Lift(Design.Palette.ToColor(a));
+    bool _mounted;
 
     public override Element Render()
     {
         var p = UseProps<Props>();
         if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
         var pagePal = Design.SchemeFor(p.Url);
-        var chromePal = Design.ChromeSchemeFor(p.Url);
-        ColorF accent = chromePal is { } pal ? Design.Palette.ChromeAccent(pal) : Tok.AccentDefault;
-        ColorF washAccent = pagePal is { } wp ? Design.Palette.Lift(Design.Palette.Accent(wp)) : accent;
-        return new BoxEl
+        // The page palette's own lifted accent is the graded rung; the payload (header) accent and the neutral
+        // FillLayerDefault (ArtistHeroVeil then lerps into the layer colour itself = no tint) fill the rest of the
+        // ladder — the old chrome-scheme fallback is gone, subsumed by the shared ladder.
+        ColorF? graded = pagePal is { } wp ? Design.Palette.Lift(Design.Palette.Accent(wp)) : null;
+        bool definite = string.IsNullOrEmpty(p.Url) || !Palette.CanGrade(p.Url);
+        var result = AccentLadder.Resolve(new(graded, p.PayloadAccent, definite), null, Tok.FillLayerDefault, s_lift);
+        // Keyed swap: see CoverArtistBlendWash — a Gradient can't cross-fade through BrushTransitionMs, and a
+        // component-root Key is inert (ReconcileSingleChild), so the keyed node is a CHILD.
+        Element veil = new BoxEl
         {
-            Width = p.Width, Height = p.Height, HitTestVisible = false,
-            Gradient = Controls.ArtistHeroVeil(washAccent, p.Vertical),
+            Key = "artist-veil-tone:" + (byte)result.Rung + ":" + result.Color.GetHashCode().ToString("X8"),
+            HitTestVisible = false, Gradient = Controls.ArtistHeroVeil(result.Color, p.Vertical),
+            Enter = _mounted ? new EnterExit(Opacity: 0f, Active: true) : null,   // fade only a re-key, never the first paint
+            Exit = new EnterExit(Opacity: 0f, Active: true),
+            Transition = MotionTok.ControlNormal,
         };
+        _mounted = true;
+        return new BoxEl { Width = p.Width, Height = p.Height, ZStack = true, HitTestVisible = false, Children = [veil] };
     }
 }
 
@@ -2152,7 +2369,7 @@ public sealed class CoverShellTintBinder : Component
 {
     /// <inheritdoc cref="CoverShellTintBinder"/>
     public sealed record Props(string? Url, string? FallbackUrl, bool Ready, bool Disabled, bool Apply, object Owner,
-                               Signal<ShellMaterialState>? Slot);
+                               Signal<ShellMaterialState>? Slot, uint PayloadAccent = 0);
 
     /// <summary>The two tint arms. LIGHT lifts the cover's TEXT role to a 5% whisper; DARK takes the tinted background
     /// role at 14%. Two different ROLES, not one role at two alphas — a lifted background role in light is a pastel
@@ -2172,11 +2389,21 @@ public sealed class CoverShellTintBinder : Component
         // no tint) — as opposed to simply not having a grading YET, which is transient and HOLDS the current colour
         // rather than dipping to neutral and back.
         bool definite = p.Disabled || !p.Apply;
-        ColorF? known = !definite && artPalette is { } artScheme
-            ? Tok.Theme == ThemeKind.Light
-                ? Design.Palette.Lift(Design.Palette.ToColor(artScheme.TextBase)) with { A = TintAlphaLight }
-                : Design.Palette.TintedDark(artScheme) with { A = TintAlphaDark }
-            : null;
+        ColorF? known = null;
+        if (!definite)
+        {
+            if (artPalette is { } artScheme)
+            {
+                known = Tok.Theme == ThemeKind.Light
+                    ? Design.Palette.Lift(Design.Palette.ToColor(artScheme.TextBase)) with { A = TintAlphaLight }
+                    : Design.Palette.TintedDark(artScheme) with { A = TintAlphaDark };
+            }
+            else if (p.PayloadAccent != 0)
+            {
+                var lifted = Design.Palette.Lift(Design.Palette.ToColor(p.PayloadAccent));
+                known = lifted with { A = Tok.Theme == ThemeKind.Light ? TintAlphaLight : TintAlphaDark };
+            }
+        }
 
         // "Have I EVER published": the first publish is the mount's claim (neither activation callback fires at mount);
         // a reactivation claims through onActivated explicitly.
@@ -2192,7 +2419,7 @@ public sealed class CoverShellTintBinder : Component
             Publish(isClaim: !claimedOnce.Value);
             claimedOnce.Value = true;
         }, DepKey.From(HashCode.Combine(p.Url, known.HasValue, known.GetValueOrDefault(), Tok.Theme,
-                                        p.Ready, p.Disabled, p.Apply)));
+                                        p.Ready, p.Disabled, p.Apply, p.PayloadAccent)));
         // Reactivation (KeepAlive Back/forward) is ALWAYS a claim, regardless of claimedOnce — the whole point is to
         // retake the slot from whatever deactivated in between, even if that never cleared it either.
         UseActivation(onActivated: () => Publish(isClaim: true));

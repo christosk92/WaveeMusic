@@ -411,12 +411,16 @@ public static partial class Sidebar
         // ── drag peek + the two create destinations ────────────────────────────────────────────────────────────────
 
         /// <summary>The rail's spring-load band: a pure WAYPOINT (accepts nothing), armed only for a payload that could
-        /// actually land somewhere in the sidebar — motion that promises a destination it lacks is the bug class.</summary>
-        DropTargetSpec RailPeekDropSpec() => Drop.Target<DragPayload>(Drag.Resource,
+        /// actually land somewhere in the sidebar — motion that promises a destination it lacks is the bug class. Built
+        /// ONCE (W3-A2): its delegates read only <c>this</c>, so the pane's render hands the compact layer the same spec
+        /// every time instead of a fresh spec + two closures per render.</summary>
+        DropTargetSpec RailPeekDropSpec() => _railPeekDrop ??= Drop.Target<DragPayload>(Drag.Resource,
             accepts: static _ => false,
             springLoadOnly: true,
             springLoadMs: DragPeekMs,
             onSpringLoad: (p, _) => { if (p.CanCopyTracks || p.CanPin) SetDragPeek(true); });
+
+        DropTargetSpec? _railPeekDrop;
 
         /// <summary>THE HEADER "+" AS A DROP DESTINATION: a rootlist payload ⇒ a new top-level folder holding it; a track
         /// set that is not a rootlist item ⇒ a new playlist from it; anything else is transparent. Every answer is

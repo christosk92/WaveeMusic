@@ -332,4 +332,43 @@ public class AlbumTests
         Assert.True(t.Label[slot].IsEmpty);
         Assert.True(t.PreReleaseUri[slot].IsEmpty);
     }
+
+    // ── Wave 5 (owner M): the rules read these columns ──────────────────────────────────────────────────────────────
+
+    /// <summary>The release instant the upcoming ladder reads is the ISO column when the wire gave one (0.2.9's input
+    /// was that string) and the parsed column otherwise — so a year-only ISO never becomes a January countdown, while a
+    /// protobuf answer with no text still counts down.</summary>
+    [Fact]
+    public void The_upcoming_instant_reads_the_iso_column_first_and_the_parsed_column_without_one()
+    {
+        TestScope.Fresh();
+        const long now = 1_700_000_000;
+        var s = Staging.Rent();
+        ref var yearOnly = ref s.Albums.RowFor(s.Text("spotify:album:yearonly"), Authority.Full, (uint)AlbumFields.Release);
+        yearOnly.ReleaseDateIso = s.Text("2033");
+        yearOnly.ReleaseAt = 1_988_150_400;                           // what a decoder that parsed the year would write
+        ref var proto = ref s.Albums.RowFor(s.Text("spotify:album:proto"), Authority.Full, (uint)AlbumFields.Release);
+        proto.ReleaseAt = 1_800_000_000;                              // no ISO text: the protobuf shape
+        TestScope.CommitAndPublish(s);
+
+        Assert.Equal(0, Album.Upcoming.Of(Entities.Album(EntityUri.Parse("spotify:album:yearonly")), now));
+        Assert.Equal(1_800_000_000, Album.Upcoming.Of(Entities.Album(EntityUri.Parse("spotify:album:proto")), now));
+    }
+
+    /// <summary>The kind-138 gate: a flagged prerelease always asks; an ordinary released album never does.</summary>
+    [Fact]
+    public void NeedsLink_is_the_flag_or_anything_upcoming()
+    {
+        TestScope.Fresh();
+        const long now = 1_700_000_000;
+        var s = Staging.Rent();
+        ref var flagged = ref s.Albums.RowFor(s.Text("spotify:album:flagged"), Authority.Full, (uint)AlbumFields.Availability);
+        flagged.Flags = (uint)AlbumFlags.PreRelease;
+        ref var plain = ref s.Albums.RowFor(s.Text("spotify:album:plain"), Authority.Full, (uint)AlbumFields.Release);
+        plain.ReleaseDateIso = s.Text("2001-03-12");
+        TestScope.CommitAndPublish(s);
+
+        Assert.True(Album.Upcoming.NeedsLink(Entities.Album(EntityUri.Parse("spotify:album:flagged")), now));
+        Assert.False(Album.Upcoming.NeedsLink(Entities.Album(EntityUri.Parse("spotify:album:plain")), now));
+    }
 }

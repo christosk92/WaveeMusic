@@ -33,7 +33,15 @@
 //  4. CIRCULAR CARDS DO NOT CLIP THE OVERLAY LAYER — the FAB sits inside the cover's RECTANGLE but outside the avatar
 //     circle, so the clip is conditional on the shape.
 //  5. `Grow = 1` on the shell is what makes a measured shelf stretch every card to the TALLEST card's height: uniform
-//     panels, exact, with no reserved worst case.
+//     panels, exact, with no reserved worst case. A grid whose ROW is taller than its card (the discography grid folds
+//     its 20-DIP row gap into the row height) must therefore pin the card with `CardData.Height`, which also zeroes
+//     Grow/Shrink — Height alone is only the flex BASIS, and a growing card paints its hover plate into the gap.
+//  6. THE GRID CARD'S COVER CHROME MOUNTS LAZILY. The now-playing overlay (a host + a ToolTip around the FAB) and the
+//     corner "…" (another ToolTip) cost ~1 ms and ~68 KB per card to mount, and 19 of them made the artist page's
+//     navigation frame. They exist only while the card is HOT (pointer inside, or keyboard focus reached it) or while
+//     it RELATES to playback (the equalizer pill) — `CardChromeRules.Mounted`. The FAB fades in over ControlFaster
+//     anyway, so a first-hover frame without it is not visible: the engine seeds the FAB's reveal on mount through its
+//     ToolTip wrapper (hover-scope transparent), so the first hot render already fades it in rather than starting cold.
 
 using System.Collections.Generic;
 using System.Text;
@@ -138,19 +146,25 @@ public static partial class Controls
         };
     }
 
-    /// <summary>The top-right "…" on a card's artwork: the scrim-plated 30-circle, revealed on hover. With no handler it
-    /// re-enters the context funnel and opens the card's ATTACHED menu, anchored at the button.</summary>
-    public static Element MoreCorner(Action? onClick = null) => new BoxEl
+    /// <summary>The top-right "…" on a card's artwork: the scrim-plated 30-circle, revealed on hover. It carries no
+    /// handler of its own: it re-enters the context funnel and opens the card's ATTACHED menu, anchored at the button.
+    /// <para>The tooltip is the DEFERRED form (<see cref="ToolTip.WrapStable"/>) over <see cref="s_moreCornerFab"/>: the
+    /// FAB has no per-card data at all, so one static factory serves every card in the process and a card host that
+    /// re-renders re-pushes a reference-equal factory plus the same string — the ToolTip core never re-renders for
+    /// it.</para></summary>
+    public static Element MoreCorner() => new BoxEl
     {
         ZStack = true, Grow = 1f, HitTestPassThrough = true,
         AlignItems = FlexAlign.Start, Justify = FlexJustify.End,
         Padding = Edges4.All(Spacing.S),
-        Children =
-        [
-            Named(CoverActionFab(Icons.More, onClick, requestsContext: onClick is null) with
-                { Opacity = 0f, HoverOpacity = 1f }, Loc.Get(Strings.Common.More)).Skeletonized(false),
-        ],
+        Children = [ToolTip.WrapStable(s_moreCornerFab, Loc.Get(Strings.Common.More)).Skeletonized(false)],
     };
+
+    /// <summary>MOUNT-STABLE by construction (a static readonly field — one delegate instance for the whole process), which
+    /// is what <see cref="ToolTip.WrapStable"/> requires. Runs inside the ToolTip's own render; reads no signal, so a
+    /// mounted "…" tooltip re-renders only when its text (the culture) changes.</summary>
+    static readonly Func<Element> s_moreCornerFab = static ()
+        => CoverActionFab(Icons.More, null, requestsContext: true) with { Opacity = 0f, HoverOpacity = 1f };
 
     /// <summary>A small neutral capsule beside a row's text — the kind tag ("Podcast", "Audiobook"). On a card SURFACE,
     /// not on media: the subtle fill and tertiary ink, never the on-media scrim ladder.</summary>
@@ -165,10 +179,15 @@ public static partial class Controls
 
     /// <summary>The card's play affordance and — only when the card RELATES to playback — its equalizer pill.
     ///
-    /// <para><b>The FAB mounts EAGERLY.</b> It was once mount-gated on the hover signal, and two failure modes followed:
-    /// a card paged in under a STATIONARY pointer never armed at all, and an exit edge that fired before release
-    /// unmounted the very node being clicked. One hover-faded box plus a glyph per card is the price of a control that
-    /// always works.</para>
+    /// <para><b>The FAB mounts EAGERLY inside this overlay</b>, and the shelf card and the media row mount the overlay
+    /// eagerly too: an early hover-gated FAB failed twice — a card paged in under a STATIONARY pointer never armed, and
+    /// an exit edge fired before release unmounted the node being clicked. The GRID card (<see cref="GridCardHost"/>)
+    /// gates the whole cover chrome on the card being hot instead, which the engine has since made safe a different way:
+    /// enter/exit are delivered on the card's SUBTREE edges (<c>InputDispatcher.UpdateHoverWithin</c>), so a press on the
+    /// FAB is never an exit from the card; a reveal mounting into an ALREADY-hovered card is seeded on mount through the
+    /// transparent tooltip wrapper, so it does not need a hover edge to fade in. The dispatcher does NOT synthesize
+    /// hover for content appearing under a stationary pointer — a card paged in under a still cursor arms on the next
+    /// real move, same as before.</para>
     ///
     /// <para><b>ONE SHAPE ON BOTH LEGS</b> — <c>[equalizer slot, FAB]</c>, with an empty box standing in — so the
     /// reconciler keeps the FAB's node while the equalizer mounts and unmounts beside it. A press in flight must never
@@ -182,22 +201,57 @@ public static partial class Controls
         => Embed.Comp(new OverlayProps(uri, onPlay, fab, centred, playName ?? Loc.Get(Strings.Detail.Play)),
                       static () => new NowPlayingOverlayHost());
 
-    sealed record OverlayProps(string Uri, Action? OnPlay, float Fab, bool Centred, string PlayName);
-
-    sealed class NowPlayingOverlayHost : Component
+    /// <summary>The overlay's re-pushed props. Equality is DATA-ONLY: <see cref="OnPlay"/> counts by PRESENCE, never by
+    /// identity (the <c>Track.TableProfile</c> / <c>GridProps</c> idiom) — a parent rebuilds its closures on every render,
+    /// and comparing them by reference re-rendered every overlay on the page 13× a frame. The live handler still reaches
+    /// the FAB: the host routes clicks through a trampoline that reads the NEWEST pushed props at invocation time.
+    /// <para>Public only so the equality rule can be pinned by a fact (no <c>InternalsVisibleTo</c>).</para></summary>
+    public sealed record OverlayProps(string Uri, Action? OnPlay, float Fab, bool Centred, string PlayName)
     {
+        public bool Equals(OverlayProps? other)
+            => other is not null && (ReferenceEquals(this, other)
+               || (Uri == other.Uri && (OnPlay is null) == (other.OnPlay is null) && Fab.Equals(other.Fab)
+                   && Centred == other.Centred && PlayName == other.PlayName));
+
+        public override int GetHashCode() => HashCode.Combine(Uri, OnPlay is not null, Fab, Centred, PlayName);
+    }
+
+    /// <summary>An <see cref="IPropsHost"/>: EVERY re-push lands in <see cref="_latest"/> (so a delegate is never stale
+    /// when invoked), while renders gate on <see cref="_props"/>, a signal whose default comparer is the record's
+    /// data-only <c>Equals</c> — a fresh-but-equal re-push writes nothing and renders nothing.</summary>
+    sealed class NowPlayingOverlayHost : Component, IPropsHost
+    {
+        OverlayProps? _latest;
+        readonly Signal<OverlayProps?> _props = new(null);
+        // Trampolines and factories are built ONCE per host: reference-stable across renders, reading `_latest` /
+        // `_props` at invocation time.
+        readonly Action _onPlay;
+        readonly Func<Element> _playFab;
+
+        public NowPlayingOverlayHost()
+        {
+            _onPlay = () => _latest?.OnPlay?.Invoke();
+            _playFab = BuildPlayFab;
+        }
+
+        public void ApplyProps(object props)
+        {
+            _latest = (OverlayProps)props;
+            _props.Value = _latest;
+        }
+
         public override Element Render()
         {
-            var p = UsePropsOrDefault<OverlayProps>();
+            var p = _props.Value;
             if (p is null) return new BoxEl();
             var pb = NowPlaying;
 
-            // COARSE first. `HasActiveContext` is one bool for the whole app; `RelatesTo`/`Owns` are per-card and only
-            // asked when something is actually playing.
+            // COARSE first. `HasActiveContext` is one bool for the whole app; `RelatesTo` is per-card and only asked when
+            // something is actually playing. `Owns`/`IsPlaying` are NOT read here any more: only the FAB depends on
+            // them, and the FAB is built inside its ToolTip's render (below), so a play/pause flip re-renders that one
+            // node and leaves this host — which only decides the equalizer slot — alone.
             bool anything = pb is not null && pb.HasActiveContext.Value;
             bool relates = anything && pb!.RelatesTo(p.Uri);
-            bool owns = relates && pb!.Owns(p.Uri);
-            bool playingHere = owns && pb!.IsPlaying.Value;
 
             Element eq = relates
                 ? new BoxEl
@@ -211,11 +265,10 @@ public static partial class Controls
                 // equalizer appears beside it.
                 : new BoxEl();
 
-            Element play = Named(PlayFab(p.OnPlay ?? NoOp, glyph: playingHere ? Icons.Pause : Icons.Play, size: p.Fab) with
-            {
-                Opacity = playingHere ? 1f : 0f, HoverOpacity = 1f,
-                HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.SmoothOut,
-            }, p.PlayName).Skeletonized(false);   // a hover-only affordance is not skeleton content
+            // The DEFERRED tooltip form: `_playFab` is a field (mount-stable), so this re-push is one ReferenceEquals plus
+            // a string compare, and the ToolTip core re-renders only when the play NAME changes — or when a signal the
+            // factory reads does. A hover-only affordance is not skeleton content.
+            Element play = ToolTip.WrapStable(_playFab, p.PlayName).Skeletonized(false);
 
             return new BoxEl
             {
@@ -228,12 +281,41 @@ public static partial class Controls
                 Children = [eq, play],
             };
         }
+
+        /// <summary>The FAB, built INSIDE the ToolTip's render. Every read here subscribes the TOOLTIP: <see cref="_props"/>
+        /// (so a rebind to another uri or FAB size rebuilds the glyph with no re-push at all) and the playback signals (so
+        /// play/pause re-skins exactly this node). The click goes through <see cref="_onPlay"/>, never a captured
+        /// delegate, so a data-equal re-push with a fresh handler is honoured on the next click.</summary>
+        Element BuildPlayFab()
+        {
+            var p = _props.Value;
+            if (p is null) return new BoxEl();
+            var pb = NowPlaying;
+            bool anything = pb is not null && pb.HasActiveContext.Value;
+            bool owns = anything && pb!.RelatesTo(p.Uri) && pb!.Owns(p.Uri);
+            bool playingHere = owns && pb!.IsPlaying.Value;
+            return PlayFab(_onPlay, glyph: playingHere ? Icons.Pause : Icons.Play, size: p.Fab) with
+            {
+                Opacity = playingHere ? 1f : 0f, HoverOpacity = 1f,
+                HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.SmoothOut,
+            };
+        }
     }
 
     // ══ 4. THE THREE CARD SKINS ══════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Everything a card renders, filled in by an entity ADAPTER. A record, because a virtualized parent
-    /// re-pushes it per bind and a frozen constructor field would keep pointing at the slot's FIRST row.</summary>
+    /// re-pushes it per bind and a frozen constructor field would keep pointing at the slot's FIRST row.
+    ///
+    /// <para><b>Equality is DATA-ONLY.</b> The adapters build <see cref="OnClick"/>, <see cref="OnPlay"/> and
+    /// <see cref="Drag"/>'s payload factory as fresh closures on every parent render, so the compiler's record equality
+    /// (reference on delegates) never held and every <see cref="ShelfCard"/> host re-rendered 13× a frame. Here a delegate
+    /// counts by PRESENCE only (<see cref="OnClick"/> is non-nullable, so it does not count at all) and a
+    /// <see cref="DragSource"/> by its data (<c>Kind</c>, <c>Style</c>); the host invokes the NEWEST pushed delegates
+    /// through trampolines, so a data-equal re-push with fresh handlers is still honoured. The two <see cref="Element"/>
+    /// slots compare by record VALUE — <see cref="Subtitle"/> is a <c>TextEl</c> over a string and a shared static brush,
+    /// so a rebuilt-but-identical subtitle is equal, while a real text change is not; an element that genuinely differs
+    /// (or carries a per-render closure) simply re-renders as before, which is the safe direction.</para></summary>
     public sealed record CardData(
         string Uri,
         string Title,
@@ -245,7 +327,49 @@ public static partial class Controls
         DragSource? Drag = null,
         bool ShowMenu = true,
         int TitleLines = 1,
-        Element? CoverOverride = null);
+        Element? CoverOverride = null)
+    {
+        // ── The GRID card's shell controls (init-only, defaulted, so the positional adapters keep compiling) ────────
+        // These exist because `GridCard` returns a component, not the shell BoxEl: a caller that used to post-process the
+        // shell (a fixed height, the "selected" skin, an attached context menu) states its intent here and the host
+        // applies it to the OUTERMOST node, where it must sit.
+
+        /// <summary>A pinned shell height. NaN (the default) leaves the shell growing to its cell; a number pins it AND
+        /// zeroes Grow/Shrink — Height alone is only the flex basis, and a growing card stretches its hover plate into a
+        /// row that is taller than the card (the discography grid's folded row gap: file header, rule 5).</summary>
+        public float Height { get; init; } = float.NaN;
+
+        /// <summary>The OPENED / chosen card: the 2-DIP <see cref="SelectedAccent"/> border over the brighter card fill,
+        /// so the card answers "where did it open" beside its drawer.</summary>
+        public bool Selected { get; init; }
+
+        /// <summary>The accent the selected border paints, read INSIDE the host's render — a palette landing repaints
+        /// the one selected card and no other. Counts by presence in equality (a fresh thunk is behaviour, not data).</summary>
+        public Func<ColorF>? SelectedAccent { get; init; }
+
+        /// <summary>The card's context menu factory. The host attaches it to the shell through the overlay service in
+        /// context (skipped under the null overlay, exactly as the cells did by hand). Counts by presence.</summary>
+        public Func<ContextMenuModel?>? Menu { get; init; }
+
+        public bool Equals(CardData? other)
+            => other is not null && (ReferenceEquals(this, other)
+               || (Uri == other.Uri && Title == other.Title && CoverUrl == other.CoverUrl
+                   && Circular == other.Circular && ShowMenu == other.ShowMenu && TitleLines == other.TitleLines
+                   && (OnPlay is null) == (other.OnPlay is null)
+                   && Drag?.Kind == other.Drag?.Kind && Equals(Drag?.Style, other.Drag?.Style)
+                   // `float.Equals`, not `==`: NaN (the "unpinned" default) must equal NaN.
+                   && Height.Equals(other.Height) && Selected == other.Selected
+                   && (SelectedAccent is null) == (other.SelectedAccent is null) && (Menu is null) == (other.Menu is null)
+                   && Equals(Subtitle, other.Subtitle) && Equals(CoverOverride, other.CoverOverride)));
+
+        // The hash stays cheap and consistent with Equals: it walks no Element tree (presence stands in for the two
+        // element slots) — equal records still hash equal, unequal ones merely may collide.
+        public override int GetHashCode()
+            => HashCode.Combine(Uri, Title, CoverUrl, Circular, ShowMenu, TitleLines, Height,
+                                (OnPlay is not null ? 1 : 0) | (Drag is not null ? 2 : 0) | (Subtitle is not null ? 4 : 0)
+                                | (CoverOverride is not null ? 8 : 0) | (Selected ? 16 : 0)
+                                | (SelectedAccent is not null ? 32 : 0) | (Menu is not null ? 64 : 0));
+    }
 
     /// <summary>THE virtualized shelf's cross extent: <c>cardW + 72</c> — 6 gutter + 20 plate padding + the square
     /// cover + 8 gap + 20 title + 2 + 32 subtitle.
@@ -270,18 +394,51 @@ public static partial class Controls
     public static Element ShelfCard(CardData d, float cardW)
         => Embed.Comp(new ShelfCardProps(d, cardW), static () => new ShelfCardHost());
 
-    sealed record ShelfCardProps(CardData Data, float CardW);
-
-    sealed class ShelfCardHost : Component
+    /// <summary>The shelf card's re-pushed props: the card's DATA (<see cref="CardData"/>'s data-only equality) and its
+    /// width. Public only so the equality rule can be pinned by a fact.</summary>
+    public sealed record ShelfCardProps(CardData Data, float CardW)
     {
+        public bool Equals(ShelfCardProps? other)
+            => other is not null && (ReferenceEquals(this, other) || (CardW.Equals(other.CardW) && Data.Equals(other.Data)));
+
+        public override int GetHashCode() => HashCode.Combine(Data, CardW);
+    }
+
+    /// <summary>An <see cref="IPropsHost"/> (the <c>PagedShelfCore</c> / <c>Detail.FrameHost</c> pattern): every re-push
+    /// lands in <see cref="_latest"/>, renders gate on the data-equal <see cref="_props"/> signal, and every delegate the
+    /// tree carries is a per-host TRAMPOLINE into <see cref="_latest"/> — including the one handed down to the
+    /// now-playing overlay, so the chain parent → card → overlay never freezes a closure at any link.</summary>
+    sealed class ShelfCardHost : Component, IPropsHost
+    {
+        ShelfCardProps? _latest;
+        readonly Signal<ShelfCardProps?> _props = new(null);
+        readonly Action _onClick, _onPlay;
+        readonly Func<object?> _dragPayload;
+
+        public ShelfCardHost()
+        {
+            _onClick = () => _latest?.Data.OnClick();
+            _onPlay = () => _latest?.Data.OnPlay?.Invoke();
+            _dragPayload = () => _latest?.Data.Drag?.PayloadFactory();
+        }
+
+        public void ApplyProps(object props)
+        {
+            _latest = (ShelfCardProps)props;
+            _props.Value = _latest;
+        }
+
         public override Element Render()
         {
-            var p = UsePropsOrDefault<ShelfCardProps>();
+            var p = _props.Value;
             if (p is null) return new BoxEl();
             var d = p.Data;
             float inner = p.CardW - 2f * Spacing.S;
             Element art = d.CoverOverride
                 ?? Artwork(d.CoverUrl, inner, inner, d.Circular ? inner / 2f : Radii.Card, decodePx: ShelfDecodePx);
+            // The drag source keeps the adapter's DATA (Kind, Style) and swaps in the trampoline payload factory; it is
+            // rebuilt only when this host renders, i.e. when the card's data actually changed.
+            DragSource? drag = d.Drag is { } ds ? new DragSource(ds.Kind, _dragPayload) { Style = ds.Style } : null;
 
             return new BoxEl
             {
@@ -297,11 +454,13 @@ public static partial class Controls
                         Children =
                         [
                             CardCover(art, inner, d.Circular,
-                                      overlay: NowPlayingOverlay(d.Uri, d.OnPlay, 44f, centred: true),
+                                      // Presence is the adapter's (a card with no play affordance stays that way); the
+                                      // handler itself is the trampoline.
+                                      overlay: NowPlayingOverlay(d.Uri, d.OnPlay is null ? null : _onPlay, 44f, centred: true),
                                       corner: d.ShowMenu ? MoreCorner() : null),
                             Labels(d, inner),
                         ],
-                    }, d.OnClick, d.Drag),
+                    }, _onClick, drag),
                 ],
             };
         }
@@ -312,27 +471,155 @@ public static partial class Controls
     public const int ShelfDecodePx = 256;
 
     /// <summary>The GRID card: the width-agnostic twin of the shelf card, for a fluid grid cell whose exact width is not
-    /// known at template time.</summary>
+    /// known at template time. A COMPONENT (<see cref="GridCardHost"/>), because its cover chrome mounts lazily (file
+    /// header, rule 6) and that needs per-card hover state; the shell controls a caller used to apply to the returned
+    /// BoxEl now travel in <see cref="CardData"/> (<c>Height</c>, <c>Selected</c>, <c>Menu</c>). A caller that needs a
+    /// reconciler KEY on the card puts it on the returned element (<c>GridCard(d) with { Key = … }</c>).</summary>
     public static Element GridCard(CardData d)
-        => CardShell(new BoxEl
+        => Embed.Comp(new GridCardProps(d), static () => new GridCardHost());
+
+    /// <summary>The grid card's re-pushed props: just the card's DATA, so the compiler's record equality IS
+    /// <see cref="CardData"/>'s data-only equality — a host that keeps one instance per (slot, version) re-pushes the same
+    /// reference and the comparison short-circuits before it touches a field.</summary>
+    public sealed record GridCardProps(CardData Data);
+
+    /// <summary>The ONE pure decision behind the lazy cover chrome: the overlay and the corner "…" exist while the card is
+    /// HOT (pointer inside its subtree, or keyboard focus reached it) or while it RELATES to playback (the equalizer pill
+    /// has to show on a card nobody is pointing at). Pinned by a fact; the host only feeds it.</summary>
+    public static class CardChromeRules
+    {
+        public static bool Mounted(bool hot, bool relates) => hot || relates;
+
+        /// <summary>Hot = pointer inside the card's subtree, OR keyboard focus reached it.</summary>
+        public static bool Hot(bool pointerIn, bool focusIn) => pointerIn || focusIn;
+
+        /// <summary>Focus-in latches on a genuine focus gain, and — on a loss — holds while focus is still somewhere
+        /// inside the shell (a Tab landing on the card's own FAB reads as a loss at the shell, not an exit).</summary>
+        public static bool FocusIn(bool got, bool stillInside) => got || stillInside;
+    }
+
+    /// <summary>The grid card's host — the <see cref="ShelfCardHost"/> pattern (an <see cref="IPropsHost"/>: re-pushes
+    /// land in <see cref="_latest"/>, renders gate on the data-equal <see cref="_props"/> signal, every delegate in the
+    /// tree is a per-host trampoline) plus the hot/cold decision, folded from TWO inputs — <see cref="_pointerIn"/> and
+    /// <see cref="_focusIn"/> — into <see cref="_hot"/> by <see cref="CardChromeRules.Hot"/>:
+    /// <list type="bullet">
+    /// <item><c>OnHoverMove</c> → <see cref="_pointerIn"/> = true. The dispatcher delivers it on the card's SUBTREE-enter
+    /// edge (<c>InputDispatcher.UpdateHoverWithin</c>) — WinUI PointerEntered is subtree-scoped. It does NOT synthesize
+    /// hover for content appearing under a stationary pointer: a card paged in under a still cursor arms on the next
+    /// real move, not on mount — a lazy-mounted reveal that needs to show up already hot is seeded on mount through the
+    /// transparent tooltip wrapper instead (file header, rule 6), not through this bit.</item>
+    /// <item><c>OnPointerExit</c> → <see cref="_pointerIn"/> = false. Subtree-scoped as well: moving onto the FAB or the
+    /// "…" is NOT an exit, so the node being pressed is never unmounted under the press.</item>
+    /// <item><c>OnFocusChanged</c> → <see cref="_focusIn"/> via <see cref="CardChromeRules.FocusIn"/>. A genuine gain
+    /// always latches it true. A loss cools it UNLESS focus is still somewhere inside the shell — the FAB and the "…"
+    /// are focus stops INSIDE the card, the engine has no focus-within notion, and a Tab from the shell onto its own FAB
+    /// reads as a loss there; <see cref="FocusInsideShell"/> checks the CURRENT focused node against the shell's subtree
+    /// before believing the loss. Pointer and focus are independent bits: losing focus while the pointer is still inside
+    /// does not cool the card, and moving the pointer off a keyboard-focused card does not either.</item>
+    /// </list>
+    /// The fold writes <see cref="_hot"/> through the signal's equality gate, so a pointer sweeping across a hot card
+    /// schedules nothing.</summary>
+    sealed class GridCardHost : Component, IPropsHost
+    {
+        GridCardProps? _latest;
+        readonly Signal<GridCardProps?> _props = new(null);
+        readonly Signal<bool> _hot = new(false);
+        bool _pointerIn, _focusIn;
+        NodeHandle _shell;
+        InputHooks? _hooks;
+        readonly Action _onClick, _onPlay, _exit;
+        readonly Action<Point2> _enter;
+        readonly Action<bool> _focus;
+        readonly Action<NodeHandle> _realized;
+        readonly Func<object?> _dragPayload;
+        readonly Func<ContextMenuModel?> _menu;
+
+        public GridCardHost()
         {
-            Direction = 1, Gap = Spacing.S, Grow = 1f,
-            Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
-            Children =
-            [
-                new BoxEl
-                {
-                    ZStack = true, ClipToBounds = !d.Circular,
-                    Children = d.ShowMenu
-                        ? [d.CoverOverride ?? ArtworkFill(d.CoverUrl, d.Circular ? Radii.Full : Radii.Card),
-                           NowPlayingOverlay(d.Uri, d.OnPlay, 44f, centred: true),
-                           MoreCorner()]
-                        : [d.CoverOverride ?? ArtworkFill(d.CoverUrl, d.Circular ? Radii.Full : Radii.Card),
-                           NowPlayingOverlay(d.Uri, d.OnPlay, 44f, centred: true)],
-                },
-                Labels(d, float.NaN),
-            ],
-        }, d.OnClick, d.Drag);
+            _onClick = () => _latest?.Data.OnClick();
+            _onPlay = () => _latest?.Data.OnPlay?.Invoke();
+            _dragPayload = () => _latest?.Data.Drag?.PayloadFactory();
+            _menu = () => _latest?.Data.Menu?.Invoke();
+            _realized = h => _shell = h;
+            _enter = _ => { _pointerIn = true; Fold(); };
+            _exit = () => { _pointerIn = false; Fold(); };
+            _focus = got =>
+            {
+                _focusIn = CardChromeRules.FocusIn(got, stillInside: !got && FocusInsideShell());
+                Fold();
+            };
+        }
+
+        void Fold() => _hot.Value = CardChromeRules.Hot(_pointerIn, _focusIn);
+
+        // Walks the CURRENT focused node up to the shell on the live scene — a Tab onto the card's own FAB reads as a
+        // focus LOSS at the shell (the engine has no focus-within notion), and this is what tells that loss apart from
+        // focus actually leaving the card.
+        bool FocusInsideShell()
+        {
+            var scene = Context.Scene;
+            if (scene is null || _shell.IsNull || _hooks?.GetFocus is null) return false;
+            var focused = _hooks.GetFocus.Invoke();
+            if (focused.IsNull || !scene.IsLive(focused)) return false;
+            for (var n = focused; !n.IsNull; n = scene.Parent(n))
+                if (n == _shell) return true;
+            return false;
+        }
+
+        public void ApplyProps(object props)
+        {
+            _latest = (GridCardProps)props;
+            _props.Value = _latest;
+        }
+
+        public override Element Render()
+        {
+            // The context reads come BEFORE the early return so the hook order never depends on the props being seeded.
+            var overlay = UseContext(Overlay.Service);
+            _hooks = UseContext(InputHooks.Current);
+            var p = _props.Value;
+            if (p is null) return new BoxEl();
+            var d = p.Data;
+
+            // HOT first, then the relation COARSE-first (the NowPlayingOverlayHost discipline): a hot card never asks
+            // `RelatesTo`, so it does not join the hot identity fan-out; an idle card reads one app-wide bool and stops.
+            bool hot = _hot.Value;
+            bool relates = false;
+            if (!hot && NowPlaying is { } pb && pb.HasActiveContext.Value) relates = pb.RelatesTo(d.Uri);
+            bool chrome = CardChromeRules.Mounted(hot, relates);
+
+            Element art = d.CoverOverride ?? ArtworkFill(d.CoverUrl, d.Circular ? Radii.Full : Radii.Card);
+            Element[] cover = !chrome ? [art]
+                : d.ShowMenu ? [art, NowPlayingOverlay(d.Uri, d.OnPlay is null ? null : _onPlay, 44f, centred: true), MoreCorner()]
+                : [art, NowPlayingOverlay(d.Uri, d.OnPlay is null ? null : _onPlay, 44f, centred: true)];
+            // The adapter's DATA (Kind, Style) with the trampoline payload factory — rebuilt only when this host renders.
+            DragSource? drag = d.Drag is { } ds ? new DragSource(ds.Kind, _dragPayload) { Style = ds.Style } : null;
+
+            // `CardPhysics` returns the SAME BoxEl it is given, so the shell is the card's outermost hit-testable node and
+            // the hover/exit/focus handlers belong exactly here — the subtree edges the dispatcher delivers them on are
+            // this node's.
+            BoxEl shell = CardShell(new BoxEl
+            {
+                Direction = 1, Gap = Spacing.S, Grow = 1f,
+                Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
+                Children =
+                [
+                    new BoxEl { ZStack = true, ClipToBounds = !d.Circular, Children = cover },
+                    Labels(d, float.NaN),
+                ],
+            }, _onClick, drag) with { OnHoverMove = _enter, OnPointerExit = _exit, OnFocusChanged = _focus, OnRealized = _realized };
+
+            // A PINNED height zeroes Grow/Shrink with it: Height is only the flex basis, and the shell's Grow = 1 would
+            // otherwise stretch the hover plate into a row taller than the card (file header, rule 5).
+            if (!float.IsNaN(d.Height)) shell = shell with { Height = d.Height, Grow = 0f, Shrink = 0f };
+            // The opened card wears the accent border + the brighter fill. The accent is read HERE, in this host's
+            // render, so a palette landing repaints the one selected card and no other; the NEWEST pushed thunk is
+            // honoured through `_latest`, like every other delegate.
+            if (d.Selected && _latest?.Data.SelectedAccent is { } accent)
+                shell = shell with { BorderColor = accent(), BorderWidth = 2f, Fill = Tok.FillCardDefault };
+            return d.Menu is null || IsNullOverlay(overlay) ? shell : ContextMenu.Attach(shell, overlay, _menu);
+        }
+    }
 
     // The label block. The title is capped at the caller's line budget and the subtitle at TWO with an explicit width,
     // and the highlight arm gets the SAME budget as the plain title — so a filter narrowing a grid does not reflow a
@@ -410,32 +697,45 @@ public static partial class Controls
     /// image epoch — without that, one image's status change re-renders every loaded cover in the grid.</para>
     ///
     /// <para>WEAK GPU: the placeholder is held FLAT even while loading. A per-frame opacity loop keeps the render loop
-    /// hot, and on a weak/UMA part that is exactly what starves the decode uploads it is waiting for.</para></summary>
+    /// hot, and on a weak/UMA part that is exactly what starves the decode uploads it is waiting for.</para>
+    ///
+    /// <para>The url and the decode target are RE-PUSHED PROPS (<see cref="ShimmerProps"/>), not constructor fields: a
+    /// recycled virtual row that rebinds to another cover UPDATES this component in place instead of remounting it (hook
+    /// cells, effects and the keyframe track survive; <see cref="Shimmer"/> keys it by decode size only). The settle
+    /// latch is therefore keyed to WHAT it settled for — a rebind re-arms the breathe for the new cover exactly as the
+    /// old per-url remount did.</para></summary>
     public sealed class CoverShimmer : Component
     {
         static readonly Keyframe[] Breathe = [new(0f, 1f), new(0.5f, 0.5f), new(1f, 1f)];
         static readonly Keyframe[] Flat = [new(0f, 1f), new(1f, 1f)];
 
-        readonly string? _url;
-        readonly int _decodeW, _decodeH;
-        readonly float _w, _h, _corners;
-
-        public CoverShimmer(string? url, int decodeW, int decodeH, float w, float h, float corners)
-        { _url = url; _decodeW = decodeW; _decodeH = decodeH; _w = w; _h = h; _corners = corners; }
+        // the settle latch, and the (url, decode target) it settled for
+        bool _settled;
+        string? _settledUrl;
+        int _settledW, _settledH;
+        // the placeholder bind, memoized per url: `Prop.Of` is a closure allocation, and this component used to pay it
+        // on every render
+        string? _placeholderFor;
+        Prop<ColorF> _placeholder;
 
         public override Element Render()
         {
-            var settled = UseRef(false);
+            var p = UseProps<ShimmerProps>();
+            if (_settledUrl != p.Url || _settledW != p.DecodeW || _settledH != p.DecodeH)
+            {
+                _settledUrl = p.Url; _settledW = p.DecodeW; _settledH = p.DecodeH;
+                _settled = false;
+            }
             bool loading = false;
-            if (!settled.Value && _url is { Length: > 0 } url)
+            if (!_settled)
             {
                 // Share the displayed image's decode handle (same source + decode target) so this reads the SAME load
                 // state and forks no second decode. The image hook consumes no hook cell, so the conditional call is
                 // safe.
-                var binding = UseImage(url, _decodeW, _decodeH);
+                var binding = UseImage(p.Url, p.DecodeW, p.DecodeH);
                 var state = binding.State;
-                if (state == ImageState.Ready) settled.Value = true;
-                else if (state == ImageState.Failed && binding.Failure != ImageFailureKind.Canceled) settled.Value = true;
+                if (state == ImageState.Ready) _settled = true;
+                else if (state == ImageState.Failed && binding.Failure != ImageFailureKind.Canceled) _settled = true;
                 else loading = state is ImageState.None or ImageState.Pending;
             }
             // Deliberately NOT gated on reduced motion: this is a LOADING INDICATOR, not a flourish, and it stops on
@@ -443,16 +743,21 @@ public static partial class Controls
             bool shimmer = loading && !GpuProfile.IsWeak;
             UseKeyframes(AnimChannel.Opacity, shimmer ? Breathe : Flat, shimmer ? 1000f : 1f, shimmer,
                          DepKey.From(shimmer));
+            if (_placeholderFor != p.Url) { _placeholderFor = p.Url; _placeholder = Design.WatchedPlaceholder(p.Url); }
             return new BoxEl
             {
-                Width = _w, Height = _h, Corners = CornerRadius4.All(_corners),
+                Width = p.Width, Height = p.Height, Corners = CornerRadius4.All(p.Corners),
                 // Tint is PAINT-ONLY: the fill bind reads the per-key watch signal, so a landed grading marks
                 // PaintDirty on exactly this tile — never a re-render, and never the global epoch fan-out that used to
                 // re-render every still-loading cover in the grid at once.
-                Fill = Design.WatchedPlaceholder(_url),
+                Fill = _placeholder,
             };
         }
     }
+
+    /// <summary><see cref="CoverShimmer"/>'s re-pushed props. All value fields plus one string, so the compiler's record
+    /// equality is exactly the data gate wanted: a rebind to the same cover at the same size coalesces.</summary>
+    sealed record ShimmerProps(string Url, int DecodeW, int DecodeH, float Width, float Height, float Corners);
 
     // ══ 6. CHIPS ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -528,7 +833,10 @@ public static partial class Controls
     ///
     /// <para>Value swaps CROSS-FADE IN PLACE inside a clipped box whose size is the tile's, so a swap can never change
     /// measurement — and the value box is keyed on the VALUE, so a per-second countdown re-enters the numeral instead of
-    /// remounting the tile.</para></summary>
+    /// remounting the tile. EXCEPT <paramref name="wrapValue"/>: a wrapping value's line count CAN change mid-swap (the
+    /// Released tile going "4" → "October 4, 2023"), and cross-fading two different-height runs bleeds the outgoing one
+    /// through the incoming one's gaps for the swap's duration — so a wrapping tile keeps a STABLE key and mutates the
+    /// `TextEl` in place instead.</para></summary>
     public static Element StatTile(string key, string value, string caption, bool wrapValue = false,
                                    Element? trailing = null)
     {
@@ -538,12 +846,19 @@ public static partial class Controls
             MaxLines = wrapValue ? 2 : 1, Trim = TextTrim.CharacterEllipsis,
             Wrap = wrapValue ? TextWrap.Wrap : TextWrap.NoWrap,
         };
+        // A wrapping value (the Released tile: "4" → "October 4, 2023" can grow from one line to two) must not
+        // cross-fade: TextSwap overlays the outgoing run UNDER the incoming one for its 150ms, and a swap that also
+        // changes line count bleeds the old text through the new one's gaps. Wrapping tiles get a STABLE key so the
+        // TextEl mutates in place instead of remounting; non-wrapping tiles (Songs, Length, the countdowns) keep the
+        // keyed cross-fade — their measurement never changes mid-swap.
         Element valueBox = new BoxEl
         {
             // ZStack on the box itself, not through a helper: the value box must carry MinWidth, and an unconstrained
             // stack measures to the WIDER of the outgoing/incoming runs mid-swap.
             ZStack = true, MinWidth = 0f,
-            Children = [new BoxEl { Key = "v:" + value, Animate = MotionRecipes.TextSwap, Children = [valueRun] }],
+            Children = wrapValue
+                ? [new BoxEl { Key = "v", Children = [valueRun] }]
+                : [new BoxEl { Key = "v:" + value, Animate = MotionRecipes.TextSwap, Children = [valueRun] }],
         };
         Element captionRun = new TextEl(caption)
             { Size = 11f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
@@ -879,27 +1194,21 @@ public static partial class Controls
         return end > v ? tag[v..end] : null;
     }
 
-    // Decode the common HTML entities in s[start,end) into buf, leaving unknown ones literal.
+    // Decode the HTML entities in s[start,end) into buf, leaving unknown ones literal. HtmlEntities is the ONE decoder
+    // (ArtistText.StripHtml / Lead use the same table), so the about panel and the hero's lead spell the same characters.
     static void DecodeEntities(string s, int start, int end, StringBuilder buf)
     {
-        int i = start;
-        while (i < end)
+        for (int i = start; i < end;)
         {
             char c = s[i];
             if (c == '&')
             {
-                int sc = s.IndexOf(';', i);
-                if (sc > i && sc < end && sc - i <= 9)
+                int cp = HtmlEntities.Decode(s.AsSpan(i, end - i), out int consumed);   // bounded to this text run
+                if (cp >= 0)
                 {
-                    string ent = s.Substring(i + 1, sc - i - 1);
-                    string? rep = ent switch
-                    {
-                        "amp" => "&", "lt" => "<", "gt" => ">", "quot" => "\"", "apos" or "#39" => "'", "nbsp" => " ",
-                        _ when ent.Length > 1 && ent[0] == '#' && int.TryParse(ent.AsSpan(1), out int cp)
-                               && cp > 0 && cp < 0xD800 => char.ConvertFromUtf32(cp),
-                        _ => null,
-                    };
-                    if (rep is not null) { buf.Append(rep); i = sc + 1; continue; }
+                    HtmlEntities.AppendCodePoint(buf, cp);
+                    i += consumed;
+                    continue;
                 }
             }
             buf.Append(c);

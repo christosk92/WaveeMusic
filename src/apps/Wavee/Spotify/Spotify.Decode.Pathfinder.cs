@@ -208,11 +208,20 @@ public static partial class Spotify
             public StagedId Uri, AlbumUri, ShowUri, OwnerUri;
             public TextRef Name, Image, Description, ArtistLine;
             public TextRef DateIso, Format, Label, Copyright, Courtesy, ShareUrl;
+            /// <summary><c>coverArt.extractedColors.colorRaw.hex</c> as the wire spelled it; the Album arm parses it.</summary>
+            public TextRef CoverHex;
             public int DurationMs, TrackCount, ReleaseAt;
             public uint PlayCount, Accent;
             public ushort Year;
             public byte Precision, AlbumKind, Caps;
             public bool Explicit, Ruled, Unavailable;
+            /// <summary>Whether <see cref="CloseArtists"/> actually closed a run for THIS node (not merely
+            /// attempted — a node with no `artists` field in the JSON pushed nothing, so the call was a no-op and
+            /// this stays false). Read by <see cref="Stage"/>'s Album arm to decide <see cref="AlbumFields.Artists"/>:
+            /// the album variant of bug C needs the bit set ONLY by a decode that actually produced
+            /// <c>Edges.AlbumArtists</c>, never inferred from "this node looks like a full album" the way the old
+            /// TrackCount-gated <c>known</c> computation did.</summary>
+            public bool ArtistsClosed;
         }
 
         /// <summary>Decode one entity node — a `Track`, `Album`, `Artist`, `Playlist`, `Show`, `Episode` or any of the
@@ -225,7 +234,7 @@ public static partial class Spotify
 
             if (n.ArtistLine.IsEmpty) n.ArtistLine = s.TakeCredit(credit);
             else s.TakeCredit(credit);
-            CloseArtists(s, in n, mark);
+            n.ArtistsClosed |= CloseArtists(s, in n, mark);
         }
 
         /// <summary>One property of an entity node. Split out of <see cref="EntityNode"/> because the list walker
@@ -249,10 +258,17 @@ public static partial class Spotify
             else if (r.ValueTextEquals("format"u8)) { r.Read(); n.Format = s.AddJson(ref r); }
             else if (r.ValueTextEquals("label"u8)) { r.Read(); n.Label = s.AddJson(ref r); }
             else if (r.ValueTextEquals("playcount"u8)) { r.Read(); long p = Num(ref r); if (p > 0) n.PlayCount = (uint)Math.Min(p, uint.MaxValue); }
-            else if (r.ValueTextEquals("coverArt"u8) || r.ValueTextEquals("avatarImage"u8) || r.ValueTextEquals("images"u8)
+            // The cover also carries the provider's extracted colour; the other image fields never do.
+            else if (r.ValueTextEquals("coverArt"u8))
+            { r.Read(); var url = ImageNode(ref r, s, ref n.CoverHex); if (n.Image.IsEmpty) n.Image = url; }
+            else if (r.ValueTextEquals("avatarImage"u8) || r.ValueTextEquals("images"u8)
                   || r.ValueTextEquals("image"u8) || r.ValueTextEquals("headerImage"u8))
             { r.Read(); var url = FirstUrl(ref r, s); if (n.Image.IsEmpty) n.Image = url; }
-            else if (r.ValueTextEquals("albumOfTrack"u8) || r.ValueTextEquals("albumOfEpisode"u8)) { r.Read(); n.AlbumUri = ChildNode(ref r, s); }
+            // The album's own cover is the track/episode's fallback art (S3): a pathfinder track hit carries no
+            // `image`/`coverArt` of its own — only its album does — so the child's cover is captured while it is
+            // still in hand and handed to the node under the same first-writer-wins rule as `coverArt` above.
+            else if (r.ValueTextEquals("albumOfTrack"u8) || r.ValueTextEquals("albumOfEpisode"u8))
+            { r.Read(); n.AlbumUri = ChildNode(ref r, s, out var albumCover); if (n.Image.IsEmpty) n.Image = albumCover; }
             else if (r.ValueTextEquals("podcastV2"u8) || r.ValueTextEquals("show"u8)) { r.Read(); n.ShowUri = ChildNode(ref r, s); }
             else if (r.ValueTextEquals("ownerV2"u8) || r.ValueTextEquals("owner"u8)) { r.Read(); n.OwnerUri = ChildNode(ref r, s); }
             else if (r.ValueTextEquals("artists"u8)) Artists(ref r, s, credit);
@@ -387,21 +403,30 @@ public static partial class Spotify
         }
 
         /// <summary>Close a node's own artist run, if it pushed one. An album's artists and a track's are different
-        /// relations and the node cannot know which it is until its uri lands — which is why they sit on the stack.</summary>
-        static void CloseArtists(Staging s, in Node n, int mark)
+        /// relations and the node cannot know which it is until its uri lands — which is why they sit on the stack.
+        /// Returns whether a run was actually closed (there was something pending AND a uri to close it against) —
+        /// callers OR this into <see cref="Node.ArtistsClosed"/>, which is what <see cref="Stage"/>'s Album arm
+        /// gates <see cref="AlbumFields.Artists"/> on (bug C, album variant).</summary>
+        static bool CloseArtists(Staging s, in Node n, int mark)
         {
-            if (s.Edges.Pending(mark) == 0) return;
-            if (n.Uri.IsEmpty) { s.Edges.Pop(mark); return; }
+            if (s.Edges.Pending(mark) == 0) return false;
+            if (n.Uri.IsEmpty) { s.Edges.Pop(mark); return false; }
             s.Edges.Close(n.Uri.Kind(s) == EntityKind.Album ? Relation.AlbumArtists : Relation.TrackArtists,
                           in n.Uri, mark);
+            return true;
         }
 
         /// <summary>A nested node staged in its own right: a track's album, an episode's show, a playlist's owner.
         /// Always <see cref="Authority.Thin"/> — it is a mention, not a fetch.</summary>
-        static StagedId ChildNode(ref Utf8JsonReader r, Staging s)
+        static StagedId ChildNode(ref Utf8JsonReader r, Staging s) => ChildNode(ref r, s, out _);
+
+        /// <summary>The same, also handing back the child's own <see cref="Node.Image"/> before it is folded into the
+        /// staged row — the only way a caller can still see it once <see cref="Stage"/> has copied it away (S3).</summary>
+        static StagedId ChildNode(ref Utf8JsonReader r, Staging s, out TextRef image)
         {
             var child = default(Node);
             EntityNode(ref r, s, ref child);
+            image = child.Image;
             return Stage(s, in child, Authority.Thin);
         }
 
@@ -419,7 +444,11 @@ public static partial class Spotify
                 if (r.TokenType == JsonTokenType.StartObject && url.IsEmpty) continue;
                 if (r.TokenType != JsonTokenType.PropertyName) continue;
                 if (r.ValueTextEquals("url"u8)) { r.Read(); if (url.IsEmpty) url = s.AddJson(ref r); }
-                else if (r.ValueTextEquals("sources"u8) || r.ValueTextEquals("items"u8) || r.ValueTextEquals("image"u8))
+                // `avatarImage` is the container the artist `visuals` node wraps its portrait in
+                // (`visuals: { avatarImage: { sources: [...] }, gallery: ... }`); without it the helper skipped the
+                // whole portrait and the artistUnion decoder claimed an Image it never read.
+                else if (r.ValueTextEquals("sources"u8) || r.ValueTextEquals("items"u8) || r.ValueTextEquals("image"u8)
+                         || r.ValueTextEquals("avatarImage"u8))
                 { r.Read(); var inner = FirstUrl(ref r, s); if (url.IsEmpty) url = inner; }
                 else r.Skip();
             }
@@ -436,7 +465,11 @@ public static partial class Spotify
             {
                 case EntityKind.Track:
                     {
-                        uint known = (uint)TrackFields.Identity;
+                        // A nameless hit (S4) must not seal Identity: the row still lands — it is a real edge target,
+                        // and its cold groups (PlayCount, Availability) may still be known — but a page that asks
+                        // `Ensure(… Identity …)` on it must be answered again rather than reading a permanent blank
+                        // title. Mirrors the Artist arm's Image-driven degrade below, keyed on Name instead.
+                        uint known = n.Name.IsEmpty ? 0 : (uint)TrackFields.Identity;
                         if (n.PlayCount > 0) known |= (uint)TrackFields.PlayCount;
                         // Only a RULED row speaks for availability: an unruled one must never be dimmed by omission.
                         if (n.Ruled) known |= (uint)TrackFields.Availability;
@@ -458,12 +491,20 @@ public static partial class Spotify
                         if (!n.DateIso.IsEmpty) known |= (uint)AlbumFields.Release;
                         // The panel is whole or not at all (ch 05 §7): one of the three arriving is the group.
                         if (!n.Label.IsEmpty || !n.Copyright.IsEmpty || !n.Courtesy.IsEmpty) known |= (uint)AlbumFields.Publishing;
+                        // Bug C, album variant: NEVER infer "billed artists known" from a full-looking card the way
+                        // Title/Image/Year/Kind are inferred from presence — gate on whether `CloseArtists` actually
+                        // closed `Relation.AlbumArtists` for THIS node (`n.ArtistsClosed`, set by every caller above:
+                        // `EntityNode`, `Collect`, `GetAlbum`). A thin mention whose JSON carried no `artists` must
+                        // not seal the bit — that is exactly what let a cached/thin album's credit line go blank
+                        // forever before this fix.
+                        if (n.ArtistsClosed) known |= (uint)AlbumFields.Artists;
                         ref var row = ref s.Albums.RowFor(n.Uri, authority, known);
                         row.Title = n.Name;
                         row.Image = n.Image;
                         row.Year = n.Year;
                         row.TrackCount = n.TrackCount;
                         row.Kind = n.AlbumKind;
+                        row.Accent = HexColor(s, n.CoverHex);
                         row.ReleaseDateIso = n.DateIso;
                         row.ReleaseAt = n.ReleaseAt;
                         row.DatePrecision = n.Precision;
@@ -581,8 +622,8 @@ public static partial class Spotify
                 // come off it before this element's edge goes on — otherwise the list's members are not contiguous.
                 if (s.Edges.Pending(mark) > 0)
                 {
-                    if (node.Uri.IsEmpty) s.Edges.Pop(mark);
-                    else CloseArtists(s, in node, mark);
+                    if (node.Uri.IsEmpty) { if (!wrapper) s.Edges.Pop(mark); }   // a wrapper's pending edges are its nested list (G-231)
+                    else node.ArtistsClosed |= CloseArtists(s, in node, mark);
                 }
 
                 var uri = Stage(s, in node, Authority.Thin);
@@ -593,21 +634,36 @@ public static partial class Spotify
 
         // ── 11. the unions ───────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>`getAlbum` → the album at <see cref="Authority.Full"/>, its artists, its publishing block and one
-        /// page of its tracklist. Ported from `SpotifyExportMapper.AlbumFromUnion`.</summary>
-        public static void GetAlbum(ref Utf8JsonReader r, Staging s)
+        /// <summary>`getAlbum` → the album at <see cref="Authority.Full"/>, its artists, its publishing block and —
+        /// when <paramref name="landTracks"/> — one page of its tracklist. `AlbumAnswer`'s offset-0 arm passes
+        /// `false`: a "more by" prefetch and the album page's own first tracklist share this SAME persisted query,
+        /// but the tracklist there is already owned by `AlbumV4` (`Fetch.Routes.cs`), and a "more by" answer must not
+        /// overwrite it. Even when suppressed, the track edges already pushed onto the pending stack are unwound
+        /// with `Pop` rather than left to bleed into the next run. Ported from `SpotifyExportMapper.AlbumFromUnion`.</summary>
+        public static void GetAlbum(ref Utf8JsonReader r, Staging s, bool landTracks = true)
         {
             var album = default(Node);
             int credit = s.CreditMark, mark = s.Edges.PendingMark;
-            int tracks = -1, total = 0;
+            int tracks = -1, tracksEnd = -1, total = 0;
+            // A leading artist run (pushed before `uri` arrived) cannot be closed on the spot — closing needs to know
+            // Album vs Track, which needs the uri. It is left PENDING rather than discarded, and closed later, once
+            // the uri is known, by DESCENDING mark (the same idiom `AlbumRelations` uses for more-by/versions):
+            // whatever sits ABOVE it on the stack — the tracks, and any trailing artist run — closes first.
+            bool deferredLeadingArtists = false;
 
             for (int d = Fields(ref r); Next(ref r, d);)
             {
                 if (r.ValueTextEquals("tracksV2"u8) || r.ValueTextEquals("tracks"u8))
                 {
                     // The tracklist's members go on the stack AFTER whatever the artists put there, so the artist
-                    // run is closed first and the two never share a slice.
-                    CloseArtists(s, in album, mark);
+                    // run is closed first and the two never share a slice — PROVIDED the uri is already known (only
+                    // a known uri says which relation an artist run closes as). Field order is server-controlled (a
+                    // persisted GraphQL query): if `artists` arrived before `tracksV2` but `uri` has not arrived yet,
+                    // the run stays pending (`deferredLeadingArtists`) instead of being discarded. The trailing
+                    // check below (after the outer loop) is what closes a run that shows up AFTER the tracklist;
+                    // the deferred-leading close near the bottom is what closes one that showed up BEFORE it.
+                    if (album.Uri.IsEmpty) deferredLeadingArtists = s.Edges.Pending(mark) > 0;
+                    else album.ArtistsClosed |= CloseArtists(s, in album, mark);
                     tracks = s.Edges.PendingMark;
                     for (int p = Fields(ref r); Next(ref r, p);)
                     {
@@ -615,19 +671,45 @@ public static partial class Spotify
                         else if (r.ValueTextEquals("items"u8)) Collect(ref r, s);
                         else SkipValue(ref r);
                     }
+                    tracksEnd = s.Edges.PendingMark;   // everything pushed past here belongs to a LATER property
                 }
                 else NodeProperty(ref r, s, ref album, credit);
             }
 
             if (album.ArtistLine.IsEmpty) album.ArtistLine = s.TakeCredit(credit);
             else s.TakeCredit(credit);
-            if (tracks < 0) CloseArtists(s, in album, mark);
+            if (tracks < 0) album.ArtistsClosed |= CloseArtists(s, in album, mark);
+            // `artists` arriving AFTER `tracksV2` pushed its run on top of the tracks, on the same stack. Only the
+            // top of the stack can be closed (Edges.Staging.cs), so close that trailing run as AlbumArtists now —
+            // `album.Uri` is set by this point whenever the `uri` field was present anywhere in the object — before
+            // the tracks below fold or pop whatever is left.
+            else if (s.Edges.Pending(tracksEnd) > 0) album.ArtistsClosed |= CloseArtists(s, in album, tracksEnd);
 
             var uri = Stage(s, in album, Authority.Full);
             if (uri.IsEmpty) { s.Edges.Pop(mark); return; }
-            // The page's ordinal IS the track number here: `tracksV2` states none, and the ordinal is what the album
-            // table paints in its `#` lane. The edge's disc/number stay 0, which the row reads as "use the ordinal".
-            if (tracks >= 0) s.Edges.ClosePage(Relation.AlbumTracks, in uri, tracks, offset: 0, total);
+            // `Stage` already ran and computed `known` off `album.ArtistsClosed` as it stood above — for the
+            // ordinary paths (no `tracksV2`, or artists before/after it with `uri` already known) that is correct,
+            // because the close happened before this point. The DEFERRED-leading case is the one path whose close
+            // cannot happen until after the tracks below are flushed (stack order), i.e. AFTER `Stage` already
+            // staged the row — so it cannot flow through `known`. Re-take the row by INDEX, the same defensive
+            // pattern `AlbumV4` uses (`Spotify.Decode.cs`) for its own post-loop cover derivation: nothing else
+            // stages into `s.Albums` between here and there.
+            int albumIndex = s.Albums.Count - 1;
+            if (tracks >= 0)
+            {
+                // The page's ordinal IS the track number here: `tracksV2` states none, and the ordinal is what the
+                // album table paints in its `#` lane. The edge's disc/number stay 0, which the row reads as "use the
+                // ordinal". A "more by" prefetch (`landTracks: false`) must not overwrite the tracklist AlbumV4
+                // already landed — its track edges are unwound with `Pop`, exactly like an unstaged node's run,
+                // rather than closed into a page.
+                if (landTracks) s.Edges.ClosePage(Relation.AlbumTracks, in uri, tracks, offset: 0, total);
+                else s.Edges.Pop(tracks);
+
+                // The deferred leading run is now the LOWEST mark still pending: everything above it (the tracks,
+                // and any trailing artist run) was just flushed or popped down to `tracks`, so it is safe to close.
+                if (deferredLeadingArtists && CloseArtists(s, in album, mark))
+                { ref var albumRow = ref s.Albums[albumIndex]; albumRow.Known |= (uint)AlbumFields.Artists; }
+            }
         }
 
         /// <summary>`getTrack` → the track at <see cref="Authority.Full"/>, with its album and its artists.</summary>
@@ -663,6 +745,13 @@ public static partial class Spotify
                 else if (r.ValueTextEquals("relatedContent"u8)) Related(ref r, s, ref related);
                 else SkipValue(ref r);
             }
+
+            // `Known` was declared `Identity` (Name | Image) before `visuals` was even read; an answer with no
+            // portrait must not seal `Image` known with an empty column behind it (the chip-rail class of bug,
+            // 2026-09-15 — same fix as `Spotify.Decode.cs`'s `ArtistV4`). This decoder is superseded by
+            // `Spotify.Decode.Artist.cs`'s `ArtistUnion` (Artist.Rules.cs calls it "legacy") and has no live route,
+            // but a dormant producer that still over-claims is a landmine for whoever revives it.
+            if (row.Image.IsEmpty) row.Known &= ~(uint)ArtistFields.Image;
 
             var uri = row.Id;
             if (uri.IsEmpty) return;
@@ -794,7 +883,7 @@ public static partial class Spotify
 
                 if (node.ArtistLine.IsEmpty) node.ArtistLine = s.TakeCredit(credit);
                 else s.TakeCredit(credit);
-                if (s.Edges.Pending(mark) > 0) CloseArtists(s, in node, mark);
+                if (s.Edges.Pending(mark) > 0) node.ArtistsClosed |= CloseArtists(s, in node, mark);
 
                 var uri = Stage(s, in node, Authority.Thin);
                 if (uri.IsEmpty) return;
@@ -976,7 +1065,8 @@ public static partial class Spotify
             static byte KindOf(ref Utf8JsonReader r)
                 => Says(ref r, "HomeSpotlightSectionData") ? (byte)SectionKind.HomeSpotlight
                  : Says(ref r, "HomeRecentlyPlayedSectionData") ? (byte)SectionKind.HomeRecentlyPlayed
-                 : Says(ref r, "HomeShortsSectionData") ? (byte)SectionKind.HomeBaseline
+                 : Says(ref r, "HomeFeedBaselineSectionData") ? (byte)SectionKind.HomeBaseline
+                 : Says(ref r, "HomeShortsSectionData") ? (byte)SectionKind.HomeShorts
                  : (byte)SectionKind.HomeGeneric;
         }
 
@@ -1008,8 +1098,11 @@ public static partial class Spotify
         /// <summary>THE offline entry point: one captured pathfinder answer — `assets/spotify/*.json`, and equally a
         /// payload the live session has just received — decoded into a <see cref="Staging"/> by dispatching on the
         /// root key under `data` (ported from `SpotifyExport`, ch 31 §9.5). One function and not seven because the
-        /// answers differ only in that key, and a fixture path that diverges from the live one proves nothing.</summary>
-        public static void Export(ReadOnlySpan<byte> json, Staging s, ReadOnlySpan<byte> subjectUri = default)
+        /// answers differ only in that key, and a fixture path that diverges from the live one proves nothing.
+        /// <paramref name="landTracks"/> reaches only the `albumUnion` arm — every other fold ignores it — and
+        /// defaults to `true` so every caller but `AlbumAnswer`'s more-by arm (`Spotify.Decode.Album.cs`) is
+        /// unaffected.</summary>
+        public static void Export(ReadOnlySpan<byte> json, Staging s, ReadOnlySpan<byte> subjectUri = default, bool landTracks = true)
         {
             s.ClearCredit();                                   // the joiner is a stack; start every answer at its floor
             var r = new Utf8JsonReader(json);
@@ -1020,10 +1113,10 @@ public static partial class Spotify
                 if (!r.ValueTextEquals("data"u8)) { SkipValue(ref r); continue; }
                 for (int data = Fields(ref r); Next(ref r, data);)
                 {
-                    if (r.ValueTextEquals("home"u8)) { r.Read(); Home(ref r, s); }
+                    if (r.ValueTextEquals("home"u8)) { r.Read(); HomeFeed(ref r, subjectUri, s); }
                     else if (r.ValueTextEquals("playlistV2"u8)) { r.Read(); PlaylistV2(ref r, s); }
                     else if (r.ValueTextEquals("artistUnion"u8)) { r.Read(); ArtistOverview(ref r, s); }
-                    else if (r.ValueTextEquals("albumUnion"u8)) { r.Read(); GetAlbum(ref r, s); }
+                    else if (r.ValueTextEquals("albumUnion"u8)) { r.Read(); GetAlbum(ref r, s, landTracks); }
                     else if (r.ValueTextEquals("trackUnion"u8)) { r.Read(); GetTrack(ref r, s); }
                     else if (r.ValueTextEquals("searchV2"u8)) { r.Read(); Search(ref r, subjectUri, s); }
                     else if (r.ValueTextEquals("me"u8))

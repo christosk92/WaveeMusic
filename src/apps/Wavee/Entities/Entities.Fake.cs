@@ -35,6 +35,7 @@
 //     surfaces have evidence once they exist).
 //   • 16 bundled covers, interned once.
 //   • AlbumTracks / PlaylistTracks memberships, so the album and playlist detail frames have rows to scroll.
+//   • The default queue (owner Q, Wave 5): 1 now playing + 3 queued + 5 next up + 3 autoplay (`SeedQueue`).
 // NOT in this cut (ch 31 §7.1's SEED-SURFACES rows: home, search, browse, concerts, recents, lyrics, video, the
 // clock-anchored countdown/chart/tour fixtures of §7.3, `Sample`'s full W13 index set beyond what the customizer
 // asks for today). `Clock.SeedEpoch` (Platform.cs) is still the one time input; nothing here reads a second clock.
@@ -131,6 +132,14 @@ public static partial class Entities
         }
 
         SeedMemberships();
+        SeedQueue();
+
+        // SEED-SURFACES (ch 31 §7.1): each Wave 5 page owner seeds its own surfaces in its own named partial, through the
+        // same Staging + Commit path, before the one publication below. A partial nobody has written compiles away.
+        SeedAlbumSurfaces(now0);      // owner M: Entities.Fake.Album.cs (album, show, episode, prerelease)
+        SeedArtistSurfaces(now0);     // owner N: Entities.Fake.Artist.cs (artist, discography, concerts)
+        SeedLibrarySurfaces(now0);    // owner O: Entities.Fake.Library.cs (playlist, local, user, liked facts)
+        SeedHomeSurfaces(now0);       // owner P: Entities.Fake.Home.cs (home, search, browse, recents)
 
         // ONE publication (ch 31 §7.5 step 5 / §1.2): every table this seed touched bumps its Changed signal exactly
         // once, here — never per row and never per relation.
@@ -143,6 +152,11 @@ public static partial class Entities
     /// this bare string for that lookup to ever find it — the same convention a real login's username takes.
     /// <c>Platform.cs</c>'s <c>--fake</c> arm must set <c>CatalogScope.Account</c> to this same literal (reported).</summary>
     public const string FakeAccount = "wavee-listener";
+
+    static partial void SeedAlbumSurfaces(long now0);
+    static partial void SeedArtistSurfaces(long now0);
+    static partial void SeedLibrarySurfaces(long now0);
+    static partial void SeedHomeSurfaces(long now0);
 
     static string UserUri(int i) => i switch
     {
@@ -392,6 +406,38 @@ public static partial class Entities
             payload[n] = new RootlistEdge((ushort)n, (byte)depth, (byte)RootlistKind.FolderEnd, StringId.Empty, 0);
             n++;
         }
+    }
+
+    // ── the default queue (ch 31 §3.1 "default queue", §7.1 row 56; 0.2.9 FakeData.DefaultQueue, owner Q) ────────────
+
+    /// <summary>Rows in the default queue: one on the deck, three the user queued, five from the context, three autoplay.</summary>
+    public const int QueueSeedRows = 12;
+
+    /// <summary>The first item id the seed stamps. A LITERAL, not a mint: every value here is a pure function of its
+    /// fixture index (ch 31 §7.2 rule A), and the queue's local mint carries the top bit, so the two never meet.</summary>
+    public const ulong QueueSeedFirstItemId = 0xFA4E_0001UL;
+
+    /// <summary>The default queue (1 + 3 + 8, the last three autoplay), written through the queue's own whole-list write —
+    /// the same <c>Queue.Replace</c> a context load lands through — so the rail's queue panel, the stage pane, the NPV
+    /// "Next up" and the sidebar's queue feed render a loaded state before anything plays. The rows are tracks the seed
+    /// already committed; a later context load replaces them.</summary>
+    static void SeedQueue()
+    {
+        Span<EntityRef> refs = stackalloc EntityRef[QueueSeedRows];
+        Span<QueueEdge> rows = stackalloc QueueEdge[QueueSeedRows];
+        for (int i = 0; i < QueueSeedRows; i++)
+        {
+            refs[i] = new EntityRef(EntityKind.Track, ResolveSeedSlot(EntityKind.Track, TrackUri(20 + i * 7)));
+            (QueueBucket bucket, QueueProvider provider) = i switch
+            {
+                0 => (QueueBucket.NowPlaying, QueueProvider.Context),
+                <= 3 => (QueueBucket.UserQueue, QueueProvider.Queue),
+                <= 8 => (QueueBucket.NextUp, QueueProvider.Context),
+                _ => (QueueBucket.NextUp, QueueProvider.Autoplay),
+            };
+            rows[i] = new QueueEdge(QueueSeedFirstItemId + (ulong)i, (byte)provider, (byte)bucket);
+        }
+        Queue.Replace(refs, rows);
     }
 
     static byte[] Utf8(string s) => System.Text.Encoding.UTF8.GetBytes(s);

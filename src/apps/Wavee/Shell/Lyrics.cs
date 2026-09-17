@@ -1408,6 +1408,28 @@ public static partial class Lyrics
         public string PrimaryArtist => Artists.Count > 0 ? Artists[0] : "";
     }
 
+    /// <summary>THE ENTITY → <see cref="Request"/> MAPPING (G-008), pure: no store thread, no waiting, no network — the
+    /// host (`Shell.Host.cs`'s `Boot`-time <c>resolveRequest</c>) hops to the UI thread, ensures
+    /// <see cref="TrackFields.Identity"/> and calls this once the row knows it. Null means "not ready" (the row is
+    /// invalid or the identity group has not landed), which the host reads as "keep waiting" — never a lyrics
+    /// miss.</summary>
+    public static Request? RequestFrom(Track track, string trackId)
+    {
+        if (!track.IsValid || string.IsNullOrEmpty(trackId) || !track.Knows(TrackFields.Identity)) return null;
+
+        ReadOnlySpan<int> artistSlots = track.ArtistSlots;
+        var artists = new string[artistSlots.Length];
+        for (int i = 0; i < artistSlots.Length; i++) artists[i] = new Artist(artistSlots[i]).Name;
+
+        // Only the title is painted below — gating on the whole Identity group (Artists included) would hold this
+        // line back on a thin album until an unrelated AlbumV4 hop lands (bug C's album variant, Album.cs).
+        string album = track.Album.IsValid && track.Album.Knows(AlbumFields.Title) ? track.Album.Title : "";
+        string? isrc = track.Knows(TrackFields.Isrc) && !track.IsrcId.IsEmpty
+            ? Entities.Strings.Resolve(track.IsrcId) : null;
+
+        return new Request(trackId, track.Uri.Text, track.Title, artists, album, track.DurationMs, isrc);
+    }
+
     /// <summary>How a candidate was matched to the request — feeds the reranker's confidence (an identity/ISRC match
     /// is trusted more than a fuzzy metadata search).</summary>
     public enum MatchBasis { Identity, Isrc, MetadataSearch, LocalFile, Consensus }

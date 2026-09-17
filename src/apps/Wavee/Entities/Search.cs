@@ -38,9 +38,14 @@
 // every query the user ever typed for the life of the process. The identity string is released by
 // <see cref="Table.FreeSlot"/>, the query column by <see cref="SearchTable.ReleaseText"/>.
 //
-// What is NOT here: `OmnibarSuggestQuery` + `SuggestState`, `SearchChipSkeletonPolicy`'s call sites, `GhostFor`,
-// `FacetsFrom`, the fallback interleave and `ColsFor` — ch 13 §8's rule set, owner P's, Wave 5, in this same file.
-// Wave 1 owns the columns they read.
+// WAVE 5 (owner P, stream P3) adds §5-§7 in the named partial Search.Rules.cs: the genre / related / hit-flag relations and their staged path (a
+// search answer stages them in `Staging` and `Search.Commit` lands them from `Entities.CommitBrowse`'s hook), and ch 13
+// §8's pure rule set — `FacetsFrom` / `FacetCount`, the fallback interleave, `ColsFor` with its hysteresis, the playlist
+// rail's items, the genre route, the shimmer shape and the per-facet empty sentence. `OmnibarSuggestQuery`, `GhostFor`
+// and the suggestion row model are owner I's `Shell.Omnibar` (already ported); `SearchChipSkeletonPolicy` IS
+// <see cref="Search.ShowChipSkeleton"/>.
+//
+// Role: CORE · Owner: B (wave 1) / P (wave 5 rules) · Wave: 1 + 5 · Budget: 450 lines (+ Search.Rules.cs 500) · Spec: ch 13 §7, §8
 
 using System.Buffers;
 using FluentGpu.Foundation;
@@ -99,6 +104,8 @@ public sealed class SearchTable : Table
     public Column<byte> ChipRanks;
 
     public Column<byte> IdentityAuthority;
+    /// <summary><see cref="SearchRowFlags"/> — how this row's hit list was assembled (Wave 5).</summary>
+    public Column<byte> RowFlags;
 
     /// <summary>A search subject is not a catalog entity: nothing addresses it, the store never warms it, and its
     /// <see cref="Table.Id"/> is the TEXT form of <c>wavee:search:&lt;facet&gt;:&lt;query&gt;</c>.</summary>
@@ -128,6 +135,7 @@ public sealed class SearchTable : Table
         ChipTotals.EnsureCapacity(capacity * FacetCount);
         ChipRanks.EnsureCapacity(capacity * FacetCount);
         IdentityAuthority.EnsureCapacity(capacity);
+        RowFlags.EnsureCapacity(capacity);
     }
 }
 
@@ -242,6 +250,14 @@ public readonly partial struct Search(int slot) : IEquatable<Search>
     /// shows only while nothing has EVER supplied a chip source and a fetch is pending. A later facet-switch fetch
     /// must not re-trigger it, which is what the first half prevents.</summary>
     public static bool ShowChipSkeleton(bool hasChipSource, bool pending) => !hasChipSource && pending;
+
+    /// <summary>The page's chip-row gate: the skeleton stays up while <see cref="ShowChipSkeleton"/> says so OR until the
+    /// facet body has answered once for this query. The chips and the ranked results land in ONE commit, but the body
+    /// reveals through a region effect plus the staggered row reveal while a bare <c>Knows(Chips)</c> swap paints the
+    /// tabs the same frame — so the tabs landed a beat before any result. <paramref name="firstBodyAnswered"/> latches
+    /// per query: a later dedicated-facet fetch (a tab switch) never brings the skeleton back.</summary>
+    public static bool ChipRowSkeletal(bool hasChipSource, bool chipsPending, bool firstBodyAnswered)
+        => ShowChipSkeleton(hasChipSource, chipsPending) || !firstBodyAnswered;
 
     // ── results ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -366,3 +382,5 @@ public static partial class Entities
         Ensure(Current.Searches, new ReadOnlySpan<int>(in slot), (uint)wanted, priority);
     }
 }
+
+// §5-§7 (the Wave 5 relations, their staged commit and ch 13 §8's pure rules) are the named partial Search.Rules.cs.

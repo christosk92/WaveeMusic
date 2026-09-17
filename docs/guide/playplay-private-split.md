@@ -12,13 +12,25 @@ public GitHub record.
 
 ## How it links back in
 
-The build is absence-tolerant. The presence of `src/apps/Wavee.PlayPlay/Client/InProcessPlayPlayKeyDeriver.cs` flips the
-`WAVEE_PLAYPLAY_LOCAL` MSBuild symbol (not the sibling csproj alone — a partial junction must not enable code paths
-that reference types which never compile); the package's `**/*.cs` + `Protos/playplay.proto` then source-link
-into the `Wavee` assembly (`src/apps/Wavee/Wavee.csproj`), and the test project links `Tests/`. With the
-package absent, the app compiles against the public seam only: `IPlayPlayKeyDeriver`/`NullPlayPlayKeyDeriver`,
-`IPlayPlayProvisioner`/`NullPlayPlayProvisioner`, and the pure DTOs/status enums under
-`SpotifyLive/Audio` + `Backend/Audio/Contracts`.
+The build is absence-tolerant. The presence of `src/apps/Wavee.PlayPlay/Client/PlayPlayHost.cs` flips the
+`WAVEE_PLAYPLAY_LOCAL` MSBuild symbol (not the sibling csproj alone — a partial junction, or a 0.2.x package that has no
+`PlayPlayHost`, must not enable a call to a type that never compiles); the package's `**/*.cs` + `Protos/playplay.proto`
+then source-link into the `Wavee` assembly (`src/apps/Wavee/Wavee.csproj`), and `Wavee.Tests` links `Tests/` behind the
+same gate. The 0.3 package lives on the private repo's `feat/0.3` branch; 0.2.x keeps building from `main`.
+
+**The seam (Wavee 0.3).** The composition root makes ONE call, `PlayPlayHost.Install()`, under `#if WAVEE_PLAYPLAY_LOCAL`
+and outside `--fake` (`App.cs`). It fills four public seams, and the public tree names nothing else of the package:
+
+| Seam | File | What the package puts there |
+|---|---|---|
+| `Spotify.Audio.KeyDeriver` | `Spotify/Spotify.Audio.cs` | the key for a file the AP refused (license request + derivation); null while no runtime is bound, so the app says "unavailable on this build" honestly |
+| `Spotify.Audio.BodyDecryptorFor` | `Spotify/Spotify.Audio.cs` | a native body decryptor a derivation can leave for its file; the body decrypts through it instead of AES-CTR |
+| `Setup.Runtime.Host` (+ `Setup.Runtime.Status`) | `Screens/Setup.UI.Runtime.cs` | the setup card's catalog, download/install, folder registration, remove and refresh verbs, and the published runtime facts |
+| `Diagnostics.RuntimeReportSource` | `Screens/Diagnostics.cs` | the locate/verify report, computed off the UI thread |
+
+The license route presents the runtime build's client identity through `Spotify.Api.PostAsClient`. With the package
+absent every seam stays null: the AP-keyed formats play, the setup card says "Local audio is not active.", and a
+Lossless setting plays the Ogg 320 rung.
 
 Use the (gitignored) helper to junction the private package in/out:
 
@@ -34,8 +46,8 @@ Default state is **unlinked/absent** — the clean state agents and CI see.
 
 `git worktree add` (and any Claude scratchpad checkout) materializes **tracked files only**. The
 `src/apps/Wavee.PlayPlay` junction is gitignored, so it does not come along, `WAVEE_PLAYPLAY_LOCAL`
-stays undefined, and the app falls back to `NullPlayPlayProvisioner` — which is exactly the
-"local playback needs a one-time setup" dialog people hit and misread as a missing runtime download.
+stays undefined, and the setup seams stay empty — which is exactly the "Local audio is not active" state people hit
+and misread as a missing runtime download.
 
 The fix is one command, run **from that worktree's own root**:
 
@@ -50,9 +62,9 @@ Two things that are easy to get wrong:
   script's own `$PSScriptRoot`, so running the main checkout's copy by absolute path links the MAIN
   checkout, not the worktree you are standing in. Copy `link-playplay.ps1` into the new root (it is
   gitignored, so it is never inherited) and run it there.
-- **No re-download is needed.** The provisioned runtime lives in the per-user canonical store at
-  `%LOCALAPPDATA%\Wavee\playplay\runtimes\<appVersion>\<arch>\` — outside every checkout, so every
-  worktree on the machine already shares it. `<appVersion>` is the *pack's own* `appVersion` pin —
+- **No re-download is needed.** The provisioned runtime lives in the profile's store at
+  `<profile>\playplay\runtimes\<appVersion>\<arch>\` — `%LOCALAPPDATA%\Wavee\playplay\runtimes\…` for the default
+  profile, outside every checkout, so every worktree on the machine already shares it (a `--profile` run has its own). `<appVersion>` is the *pack's own* `appVersion` pin —
   Spotify's numeric app version (`129300667` = 1.2.93.667) — **not** Wavee's `<InformationalVersion>`,
   so bumping the Wavee version does not invalidate it. The junction is the only per-checkout gap.
 

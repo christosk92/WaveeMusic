@@ -13,7 +13,8 @@
 //     This file implements it as a DEBOUNCE ARM and nothing more: a grid realize produces dozens of misses in one frame
 //     and they must coalesce into ONE request. The actual send rides the shell's frame tick, exactly like
 //     `Fetch.Pump()` — P10: timers are named, few, and owned by the shell, and the palette is not allowed a second
-//     clock of its own.
+//     clock of its own. A landed batch re-arms the pump for the rows behind it ONLY when no scroll is live
+//     (`PublishCadence.PalettePumpAllowed`); the shell re-arms it on the scroll-end edge via `ResumeIfPending` (W2-A1).
 //
 //  2. THE FILLER. `getDynamicColorsByUris` grades ANY cover image and returns the same five roles extension kind 179
 //     carries, but for BOTH themes plus two contrast tiers, so the app does no client-side contrast math. The decode is
@@ -131,8 +132,25 @@ public static partial class Palette
         }
         // An answer unqueues rows, which usually leaves more waiting behind it. Re-arm rather than wait for the next
         // render-path miss: a 200-cover grid is four batches, and nothing else would start the second one.
+        //
+        // NOT while a scroll is live (W2-A1). A fling misses dozens of covers per frame, so re-arming here made every
+        // landed batch queue the next one AND publish — the pump was itself a per-frame publisher, and every `Changed`
+        // subscriber re-rendered on every scroll frame. The rows stay queued (a render-path miss still arms the
+        // debounce, and a batch in flight still lands); the shell's frame tick calls `ResumeIfPending` on the scroll-end
+        // edge. The writes above sit dirty until that tick's next allowed publication, which is the same cadence the
+        // UI-thread poster applies after this callback anyway. With no shell (a test, a probe) `Shell.ScrollActive` is
+        // never set and both arms run as before.
+        if (!PublishCadence.PalettePumpAllowed(Shell.ScrollActive)) return;
         if (Pending > 0) PalettePump();
         Entities.Publish();
+    }
+
+    /// <summary>The scroll-end edge: the shell's frame tick calls this once when `ScrollActive` falls. Re-arms the
+    /// debounce for the rows <see cref="Apply"/> declined to re-arm during the scroll; nothing to do when the queue is
+    /// empty or a batch is already in flight (its landing re-arms, now that the gate is open).</summary>
+    public static void ResumeIfPending()
+    {
+        if (Pending > 0 && !s_inFlight) PalettePump();
     }
 
     /// <summary>No transport installed: empty the queue rather than let it sit at <see cref="MaxQueue"/> forever, which
@@ -247,42 +265,44 @@ public static partial class Palette
     /// <summary>THE detail page's ground: one flat, translucent art-derived plane behind both hero arms.
     /// <para>Mount it as a page-root SIBLING of the scrolling page, never as a child of it.</para></summary>
     public static Element PageTonePlane(string? url, string? fallbackUrl, bool disabled,
-                                        float backdropBand, float pageHeight, bool heroOnly, string key)
-        => Embed.Comp(new CoverPageTonePlane.Props(url, fallbackUrl, disabled, backdropBand, pageHeight, heroOnly),
+                                        float backdropBand, float pageHeight, bool heroOnly, string key,
+                                        uint payloadAccent = 0)
+        => Embed.Comp(new CoverPageTonePlane.Props(url, fallbackUrl, disabled, backdropBand, pageHeight, heroOnly, payloadAccent),
                       static () => new CoverPageTonePlane()) with { Key = key };
 
     /// <summary>The artist page's blend wash. <paramref name="height"/> / <paramref name="boundary"/> come from the
-    /// caller's own hero layout.</summary>
-    public static Element ArtistBlendWash(string? url, float height, float boundary, bool disabled, string key)
-        => Embed.Comp(new CoverArtistBlendWash.Props(url, height, boundary, disabled),
+    /// caller's own hero layout. <paramref name="payloadAccent"/> is the header row's raw accent (the ladder's payload
+    /// rung) — 0 when the caller has none.</summary>
+    public static Element ArtistBlendWash(string? url, float height, float boundary, bool disabled, string key,
+                                           uint payloadAccent = 0)
+        => Embed.Comp(new CoverArtistBlendWash.Props(url, height, boundary, disabled, payloadAccent),
                       static () => new CoverArtistBlendWash()) with { Key = key };
 
-    /// <summary>The full-bleed artist hero veil over photography.</summary>
-    public static Element ArtistHeroVeil(string? url, bool vertical, float width, float height, string key)
-        => Embed.Comp(new CoverKeyedVeil.Props(url, vertical, width, height),
+    /// <summary>The full-bleed artist hero veil over photography. <paramref name="payloadAccent"/> is the header row's
+    /// raw accent (the ladder's payload rung) — 0 when the caller has none.</summary>
+    public static Element ArtistHeroVeil(string? url, bool vertical, float width, float height, string key,
+                                          uint payloadAccent = 0)
+        => Embed.Comp(new CoverKeyedVeil.Props(url, vertical, width, height, payloadAccent),
                       static () => new CoverKeyedVeil()) with { Key = key };
 
     /// <summary>Publishes the page-scoped shell-material tint when THIS cover is graded — with no page re-render. Every
     /// detail page must mount one, or the window chrome stays neutral while the page is coloured, which is the single
     /// loudest visual regression available here.</summary>
     public static Element ShellTint(string? url, bool ready, bool disabled, bool apply, object owner,
-                                    Signal<ShellMaterialState>? slot, string key, string? fallbackUrl = null)
-        => Embed.Comp(new CoverShellTintBinder.Props(url, fallbackUrl, ready, disabled, apply, owner, slot),
+                                    Signal<ShellMaterialState>? slot, string key, string? fallbackUrl = null,
+                                    uint payloadAccent = 0)
+        => Embed.Comp(new CoverShellTintBinder.Props(url, fallbackUrl, ready, disabled, apply, owner, slot, payloadAccent),
                       static () => new CoverShellTintBinder()) with { Key = key };
 }
 
 // ── WHAT IS NOT HERE, AND WHY ─────────────────────────────────────────────────────────────────────────────────────────
 //
-// · THE PERSISTED QUERY. `Spotify.Api.Queries` (owner F, Wave 2) has no `getDynamicColorsByUris` entry, so there is no
-//   in-tree transport to point <see cref="Palette.Filler"/> at yet. Ch 00 DATA GAPS names it ("`Spotify.Api` needs a
-//   `GetDynamicColorsByUris(uris)` function"); this file is written against the SEAM so nothing here has to change when
-//   the hash lands — the composition root assigns one delegate. Until then the plane is kind-179-only: dark gradings
-//   arrive on the batches the app already makes, every LIGHT-theme read misses, and the light page keeps the neutral
-//   tile. That is a designed state (ch 00 §4.1's "graded, but wrong half"), not a crash.
+// · THE PERSISTED QUERY. `Spotify.Api.Queries.DynamicColors` (`getDynamicColorsByUris`) is the in-tree transport;
+//   `Shell.Host.cs` installs it as <see cref="Palette.Filler"/> (`Spotify.Api.GradeCovers`) once the session is online,
+//   so both themes now grade from the same batch — the plane is no longer kind-179-only.
 //
 // · PERSISTENCE. 0.2.9 wrote `<LocalCache>/cover-colors.json` with a 1 500 ms flush debounce and a `Prewarm()` off the
-//   thread at startup. `Entities/Palette.cs` records the 0.3 decision instead — a `palette` table in the SQLite store
-//   rather than a second JSON file — and that table is `Entities/Store.cs`'s (owner C, Wave 1), which does not carry it
-//   today. Recorded as a gap rather than implemented here: a second, file-based cache beside the store is exactly the
-//   duplication the decision removes, and the TTLs the CORE file already enforces are what make the cold path merely
-//   slower rather than wrong.
+//   thread at startup. 0.3 instead uses a `palette` table in the SQLite store (`Entities/Store.Palette.cs`,
+//   `Entities/PalettePersistence.cs`): dirty slots are write-behind flushed on the shell's frame tick beside the pump,
+//   and `WarmPaletteCore` restores fresh rows on boot before the first page renders. No second file-based cache — the
+//   store IS the persistence now, exactly as the 0.3 decision records.

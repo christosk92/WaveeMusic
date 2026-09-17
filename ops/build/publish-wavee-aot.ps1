@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Publish Wavee as a NativeAOT single-file native exe.
 
@@ -31,6 +31,10 @@ param(
   [string]$Configuration = 'Release',
   [switch]$Symbols,
   [switch]$Diag,
+  # Compile for THIS machine's CPU (ILC --instruction-set native): every AdvSimd/dotprod/LSE extension the box has is
+  # used, at the price of a binary that only runs on CPUs with the same features. For a local install, never for the
+  # store/feed publish.
+  [switch]$Fast,
   # Build the public-only variant (no PlayPlay sources), the same switch pack-wavee-msix.ps1 takes.
   [switch]$PublicOnly
 )
@@ -53,11 +57,8 @@ $exe    = Join-Path $outDir 'Wavee.exe'
 
 function Step($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 
-# ILC needs link.exe via vswhere on PATH.
-$vsInstaller = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer'
-if ((Test-Path "$vsInstaller\vswhere.exe") -and ($env:PATH -notlike "*$vsInstaller*")) {
-  $env:PATH = "$vsInstaller;$env:PATH"
-}
+# ILC's findvcvarsall.bat misses an installed ARM64 link.exe when MSBuild pipes stdout; load vcvars ourselves.
+Import-MsvcEnvironment -Arch $Arch
 
 # Keep MSBuild/VBCSCompiler temp under the repo (short path, no roaming-profile locks).
 $tmp = Join-Path $root '.tmp-msbuild'
@@ -75,7 +76,7 @@ $g = Invoke-Native 'git' @('-C', $root, 'rev-parse', '--short=7', 'HEAD') -Allow
 if ($g.ExitCode -eq 0 -and $g.Output.Count -gt 0) { $commit = "$($g.Output[0])".Trim() }
 $buildDate = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 
-Step "Publishing Wavee NativeAOT ($rid, $Configuration, OptimizationPreference=Speed$(if ($Symbols) { ', NativeDebugSymbols' })$(if ($Diag) { ', FLUENTGPU_DIAG' })$(if ($PublicOnly) { ', public-only' }))"
+Step "Publishing Wavee NativeAOT ($rid, $Configuration, OptimizationPreference=Speed$(if ($Fast) { ', IlcInstructionSet=native' })$(if ($Symbols) { ', NativeDebugSymbols' })$(if ($Diag) { ', FLUENTGPU_DIAG' })$(if ($PublicOnly) { ', public-only' }))"
 $pubArgs = @(
   $csproj, '-c', $Configuration, '-r', $rid,
   '/p:NuGetAudit=false', '/p:OptimizationPreference=Speed',
@@ -83,6 +84,7 @@ $pubArgs = @(
   '/p:WaveeChannel=dev',
   "/p:WaveeCommit=$commit",
   "/p:WaveeBuildDate=$buildDate",
+  '/p:IlcUseEnvironmentalTools=true',
   '-o', $outDir, '--nologo'
 )
 if ($Symbols) {
@@ -90,6 +92,9 @@ if ($Symbols) {
 }
 if ($Diag) {
   $pubArgs += '/p:FluentGpuDiag=true'
+}
+if ($Fast) {
+  $pubArgs += '/p:IlcInstructionSet=native'
 }
 if ($PublicOnly) {
   $pubArgs += '-p:WaveeSkipPrivateSources=true'
@@ -107,7 +112,10 @@ if (-not (Test-Path $exe)) { throw "Expected output not found: $exe" }
 
 # Third-party notices next to Wavee.exe: Settings > About reads THIRD-PARTY-NOTICES.txt from AppContext.BaseDirectory,
 # so a loose publish gets the same file the MSIX layout does (pack-wavee-msix.ps1 makes the identical call).
-& (Join-Path $PSScriptRoot 'generate-third-party-notices.ps1') -OutFile (Join-Path $outDir 'THIRD-PARTY-NOTICES.txt')
+# -EngineRoot resolved like the build itself (G-237): -Override, then this worktree's EngineRoot.local.props pin,
+# then the sibling checkout - never blind to a pin the way a bare `..\fluent-gpu` default would be.
+& (Join-Path $PSScriptRoot 'generate-third-party-notices.ps1') -OutFile (Join-Path $outDir 'THIRD-PARTY-NOTICES.txt') `
+  -EngineRoot (Resolve-EngineRoot -RepoRoot $root -Override $env:EngineRoot)
 
 $info = Get-Item $exe
 Write-Host ""

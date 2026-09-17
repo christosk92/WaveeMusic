@@ -443,4 +443,28 @@ public class ClusterDecodeTests
         Assert.Equal(new[] { recent[0].Text, recent[1].Text }, parsed.RecentTrackUri.ToArray());
         Assert.False(parsed.IsVideo);
     }
+
+    // ── the radio seed (G-251): inspiredby-mix's seed_to_playlist answer ─────────────────────────────────────────────
+
+    [Fact]
+    public void A_radio_seed_answer_names_its_first_playlist()
+    {
+        Assert.Equal("spotify:playlist:37i9dQZF1E8OX5RkYXtx51",
+            Spotify.Decode.RadioPlaylistUri("""{"total":1,"mediaItems":[{"uri":"spotify:playlist:37i9dQZF1E8OX5RkYXtx51"}]}"""u8));
+        // Extra fields before and inside the items are skipped; the FIRST playlist wins.
+        Assert.Equal("spotify:playlist:first",
+            Spotify.Decode.RadioPlaylistUri("""{"seed":{"uri":"spotify:track:x"},"total":2,"mediaItems":[{"name":"Radio","uri":"spotify:playlist:first","x":[1,2]},{"uri":"spotify:playlist:second"}]}"""u8));
+    }
+
+    [Fact]
+    public void A_radio_seed_with_no_playlist_or_a_body_that_is_not_json_answers_null()
+    {
+        Assert.Null(Spotify.Decode.RadioPlaylistUri("""{"total":0,"mediaItems":[]}"""u8));
+        Assert.Null(Spotify.Decode.RadioPlaylistUri("""{"total":1}"""u8));
+        Assert.Null(Spotify.Decode.RadioPlaylistUri("""{"total":1,"mediaItems":[{"uri":"spotify:station:track:x"}]}"""u8));   // not a playlist
+        Assert.Null(Spotify.Decode.RadioPlaylistUri("""[{"uri":"spotify:playlist:x"}]"""u8));                                  // not an object
+        Assert.Null(Spotify.Decode.RadioPlaylistUri("<html>not found</html>"u8));
+        Assert.Null(Spotify.Decode.RadioPlaylistUri("""{"total":1,"mediaItems":[{"uri":"spotify:playlist:"""u8));            // cut short
+        Assert.Null(Spotify.Decode.RadioPlaylistUri(default));
+    }
 }

@@ -100,8 +100,9 @@ public static partial class Video
 
     // MOUNT POINT (stage B contract)
     /// <summary>The shell's top-Z video layer: the in-window mini player (a pass-through layer where only the card takes
-    /// input) and the pop-out window's lifecycle owner (`Video.Host.cs`'s controller leaf, mounted exactly once here).
-    /// It also installs the pop-out's content and title factories.</summary>
+    /// input), the pop-out window's lifecycle owner (`Video.Host.cs`'s controller leaf) and the host observer
+    /// (`Video.Host.Wiring.cs`: the session mirror, the availability fold, the badge-lit prefetch) — each mounted exactly
+    /// once here. It also installs the pop-out's content and title factories.</summary>
     public static Element PipLayer()
     {
         PopOut.ContentFactory ??= static () => new PopOutRoot();
@@ -113,6 +114,7 @@ public static partial class Video
             [
                 Embed.Comp(static () => new PipSurface()),
                 Embed.Comp(static () => new PopOut { Settings = Platform.Settings }),
+                Embed.Comp(static () => new HostObserver()),
             ],
         };
     }
@@ -169,9 +171,9 @@ public static partial class Video
 
     // ══ 1. SHARED PIECES ═════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>What the stages' transport verbs do. Play/pause/commit are the SESSION transport's; a scrub preview is a
-    /// coarse seek planned through the host's planner (the host exposes no keyframe index yet, so the planner is fed an
-    /// empty one and <see cref="Scrub.PreviewTargetMs"/> keeps the raw target).</summary>
+    /// <summary>What the stages' transport verbs do. Play/pause/commit are the SESSION transport's; a scrub preview goes to
+    /// the host's <c>Playback.Video.Seek(accurate: false)</c>, which plans it against the live session's keyframe table
+    /// and buffered ranges — the closest buffered keyframe, and no fetch while the pointer is down (G-153).</summary>
     static readonly Action s_play = static () => Playback.Resume();
     static readonly Action s_pause = static () => Playback.Pause();
     static readonly Action<TimeSpan, SeekMode> s_seek = static (target, mode) => SeekFromTransport(target, mode);
@@ -186,10 +188,7 @@ public static partial class Video
             Playback.SeekTo((int)Math.Min(ms, int.MaxValue));
             return;
         }
-        var index = new Playback.Video.SeekIndex(ReadOnlySpan<long>.Empty, ReadOnlySpan<long>.Empty, 0L,
-            Playback.DurationMs.Peek(), Playback.PositionMs.Peek(), Playback.IsPlaying.Peek());
-        var plan = Playback.Video.SeekPlanner.Plan(in index, ms, Playback.Video.SeekIntent.Preview);
-        Playback.Video.Seek(Scrub.PreviewTargetMs(in plan, ms, 0L), accurate: Scrub.PreviewAccurate);
+        Playback.Video.Seek(ms, accurate: Scrub.PreviewAccurate);
     }
 
     // ── the aspect policy, as the element's controlled signals (seeded from and written back to `Video.Prefs`) ─────────
@@ -237,8 +236,14 @@ public static partial class Video
         return cur.Kind == EntityKind.Track && !cur.IsNone ? new Track(cur.Slot) : null;
     }
 
-    /// <summary>The current track's title, "" when unknown. Subscribes.</summary>
-    static string CurrentTitle() => CurrentTrack() is { } t ? t.Title : "";
+    /// <summary>The current track's title, "" when unknown. Subscribes — to the row AND to the tracks table's
+    /// publication, so a title that lands after the pop-out opened or fullscreen mounted re-titles it (G-153).</summary>
+    static string CurrentTitle()
+    {
+        if (CurrentTrack() is not { } t || Entities.Current is not { } scope) return "";
+        _ = scope.Tracks.Changed.Value;
+        return t.IsValid && t.Knows(TrackFields.Title) ? t.Title : "";
+    }
 
     /// <summary>The current track's cover url, or null. Subscribes.</summary>
     static string? CurrentArtUrl() => CurrentTrack() is { } t ? Controls.ArtUrl(t.ImageId) : null;
@@ -392,13 +397,15 @@ public static partial class Video
             UseSignalEffect(() => _activeGate.Value = (windowVisible is null || windowVisible.Value) && !Shell.Ui.ImmersiveLyrics.Value);
             UseSignalEffect(static () => { _ = Prefs.Epoch.Value; SyncAspect(); });
 
-            // The Cap follows the CONTENT's aspect at the rail's width (16:9 until reported; the manifest's dims seed it
-            // at mount so the decoder's later report is a CONFIRM). A splitter drag pins it — for THIS source only.
+            // The Cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before any
+            // resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
+            // (`NaturalSeed`; 16:9 when nothing is known). A splitter drag pins it — for THIS source only.
             UseSignalEffect(() =>
             {
                 var src = Playback.Video.Source.Value;
                 string sourceKey = src?.Key ?? "";
-                var natural = Playback.Video.Player.Value.Player?.NaturalSize.Value ?? default;
+                var decoded = Playback.Video.Player.Value.Player?.NaturalSize.Value ?? default;
+                var catalogue = CurrentCatalogueSize();
                 float railW = Shell.Ui.RailWidth.Value;
                 if (face != DockedFace.Cap) return;
                 if (!string.Equals(sourceKey, _fittedFor, StringComparison.Ordinal))
@@ -406,10 +413,9 @@ public static partial class Video
                     _fittedFor = sourceKey;
                     if (Shell.Ui.DockedVideoHeightPinned.Peek()) Shell.Ui.DockedVideoHeightPinned.Value = false;
                 }
-                string dimSource;
-                if (natural.Width > 0 && natural.Height > 0) dimSource = "decoder";
-                else if (src is { NaturalWidth: > 0, NaturalHeight: > 0 }) { natural = new SizeI(src.NaturalWidth, src.NaturalHeight); dimSource = "manifest"; }
-                else dimSource = "none";
+                string dimSource = NaturalSeed.Name(NaturalSeed.Pick(decoded.Width, decoded.Height, src?.NaturalWidth ?? 0,
+                    src?.NaturalHeight ?? 0, catalogue.W, catalogue.H, out int naturalW, out int naturalH));
+                var natural = new SizeI(naturalW, naturalH);
                 bool pinned = Shell.Ui.DockedVideoHeightPinned.Peek();
                 float height = pinned ? Shell.Ui.DockedVideoHeight.Peek() : Shell.FitDockedVideoHeight(railW, natural.Width, natural.Height);
                 if (!pinned) Shell.Ui.DockedVideoHeight.Value = height;
@@ -604,18 +610,18 @@ public static partial class Video
                 State.ReportLive(SurfacePlacement.Floating, false);
             }, DepKey.Empty);
 
-            // The HEIGHT follows the content's own aspect (the manifest's dims until the decoder reports), capped by the
-            // free window height; a deliberate size opts out until the content's shape changes.
+            // The HEIGHT follows the content's own aspect (the catalogue's kind-99 size, then the manifest's dims, then the
+            // decoder's — `NaturalSeed`, G-058), capped by the free window height; a deliberate size opts out until the
+            // content's shape changes.
             UseSignalEffect(() =>
             {
-                var natural = Playback.Video.Player.Value.Player?.NaturalSize.Value ?? default;
-                if (natural.Width <= 0 || natural.Height <= 0)
-                {
-                    var src = Playback.Video.Source.Value;
-                    if (src is { NaturalWidth: > 0, NaturalHeight: > 0 }) natural = new SizeI(src.NaturalWidth, src.NaturalHeight);
-                }
+                var decoded = Playback.Video.Player.Value.Player?.NaturalSize.Value ?? default;
+                var src = Playback.Video.Source.Value;
+                var catalogue = CurrentCatalogueSize();
+                NaturalSeed.Pick(decoded.Width, decoded.Height, src?.NaturalWidth ?? 0, src?.NaturalHeight ?? 0,
+                    catalogue.W, catalogue.H, out int naturalW, out int naturalH);
                 float w = _w.Value;
-                float ratio = natural.Width > 0 && natural.Height > 0 ? (float)natural.Height / natural.Width : Pip.FallbackRatio;
+                float ratio = naturalW > 0 && naturalH > 0 ? (float)naturalH / naturalW : Pip.FallbackRatio;
                 if (!PipGesture.ShouldRefit(_sized, _fitRatio, ratio)) { if (_fitRatio <= 0f) _fitRatio = ratio; return; }
                 _fitRatio = ratio;
                 _h.Value = Pip.FitHeight(w, ratio, vp.Value.Height);

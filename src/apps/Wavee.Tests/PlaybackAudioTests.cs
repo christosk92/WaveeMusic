@@ -207,20 +207,17 @@ public class PlaybackVolumeTaperTests
 
 public class PlaybackAudioSniffTests
 {
-    [Fact]
-    public void A_spotify_flac_body_has_no_container_header()
-        // FLAC plan §1.1 item 1: the bytes are a plain `fLaC` stream. Passing the 167-byte skip would hand the
-        // decoder a stream that starts inside STREAMINFO and fail every lossless open.
-        => Assert.Equal(0, Playback.Audio.SkipFor(Spotify.Audio.Format.Flac24, ReadOnlySpan<byte>.Empty));
-
-    [Fact]
-    public void An_ogg_body_whose_magic_is_not_at_zero_carries_the_spotify_header()
-        => Assert.Equal(Spotify.Audio.Ctr.HeaderBytes,
-            Playback.Audio.SkipFor(Spotify.Audio.Format.OggVorbis320, ReadOnlySpan<byte>.Empty));
-
-    [Fact]
-    public void A_body_whose_magic_is_already_at_zero_is_not_skipped()
-        => Assert.Equal(0, Playback.Audio.SkipFor(Spotify.Audio.Format.OggVorbis320, "OggS"u8));
+    [Theory]
+    [InlineData(EntityProvider.Spotify, Playback.Audio.SourceRoute.Spotify)]
+    [InlineData(EntityProvider.WaveePodcast, Playback.Audio.SourceRoute.Podcast)]
+    [InlineData(EntityProvider.Local, Playback.Audio.SourceRoute.Local)]
+    [InlineData(EntityProvider.Module, Playback.Audio.SourceRoute.Module)]
+    [InlineData(EntityProvider.Fake, Playback.Audio.SourceRoute.Silent)]
+    [InlineData(EntityProvider.UserPlaylist, Playback.Audio.SourceRoute.None)]
+    [InlineData(EntityProvider.None, Playback.Audio.SourceRoute.None)]
+    public void Every_provider_routes_to_its_own_source(EntityProvider provider, Playback.Audio.SourceRoute expected)
+        // G-109: a `wavee:episode:` fell into the Spotify track ladder, asked TRACK_V4 for it and failed as Restricted.
+        => Assert.Equal(expected, Playback.Audio.RouteOf(provider));
 
     [Theory]
     [InlineData("OggS", Spotify.Audio.Format.OggVorbis320)]
@@ -238,7 +235,7 @@ public class PlaybackAudioSniffTests
     {
         // Both start with the same 11-bit sync; only the LAYER field separates them, and layer 00 is AAC.
         Assert.Equal(Spotify.Audio.Format.Mp3, Playback.Audio.SniffFormat([0xFF, 0xFB, 0x90, 0x00]));
-        Assert.Equal(Spotify.Audio.Format.Unknown, Playback.Audio.SniffFormat([0xFF, 0xF1, 0x50, 0x80]));
+        Assert.Equal(Spotify.Audio.Format.Aac, Playback.Audio.SniffFormat([0xFF, 0xF1, 0x50, 0x80]));
     }
 
     [Fact]
@@ -332,19 +329,101 @@ public class PlaybackByteSourceTests
     }
 
     [Fact]
-    public void The_container_skip_is_invisible_above_the_seam()
+    public void A_module_body_is_read_from_its_own_byte_zero()
     {
-        // A Spotify Ogg body starts 167 bytes in; the decoder must see its own byte 0 at logical 0.
+        // A module hands container-relative bytes. The 167-byte skip this seam used to sniff for skipped the first 167
+        // bytes of every module MP3, whose magic is not `OggS` or `fLaC`.
         var body = new byte[8];
         for (int i = 0; i < body.Length; i++) body[i] = (byte)i;
         var src = new Playback.Audio.Prefetching(new SlowStream(body, misses: 0), seekable: true);
-        src.SetSkip(4);
         Assert.True(src.TryOpen(new DataSpec { Position = 0, Length = -1 }));
-        Assert.Equal(4L, src.Length);
+        Assert.Equal(8L, src.Length);
         Span<byte> buf = stackalloc byte[4];
         Assert.Equal(4, src.Read(buf));
-        Assert.Equal(new byte[] { 4, 5, 6, 7 }, buf.ToArray());
+        Assert.Equal(new byte[] { 0, 1, 2, 3 }, buf.ToArray());
     }
+
+    /// <summary>A growing stream: 0 until a wall-clock moment, then bytes — a module body that stalled for a while.</summary>
+    sealed class LateStream(byte[] body, long availableAtTicks) : Stream
+    {
+        int _position;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+
+        public override int Read(Span<byte> buffer)
+        {
+            if (Environment.TickCount64 < availableAtTicks || _position >= body.Length) return 0;
+            int n = Math.Min(buffer.Length, body.Length - _position);
+            body.AsSpan(_position, n).CopyTo(buffer);
+            _position += n;
+            return n;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void Flush() { }
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public void A_body_silent_past_the_fast_path_is_still_waited_for()
+    {
+        // G-103: at the fast path's deadline the read answered 0 — permanent EOF to the codec — and a slow module or radio
+        // body was truncated. Past it the read keeps waiting (coarser) until the whole budget.
+        var late = new LateStream([9, 8, 7], Environment.TickCount64 + 300);
+        var src = new Playback.Audio.Prefetching(late, seekable: false, fastWaitMs: 50, totalWaitMs: 5_000);
+        Assert.True(src.TryOpen(new DataSpec { Position = 0, Length = -1 }));
+        Span<byte> buf = stackalloc byte[3];
+        Assert.Equal(3, src.Read(buf));
+        Assert.Equal(new byte[] { 9, 8, 7 }, buf.ToArray());
+
+        var never = new Playback.Audio.Prefetching(new LateStream([1], long.MaxValue), seekable: false, fastWaitMs: 20, totalWaitMs: 150);
+        Assert.Equal(0, never.Read(buf));                               // only a body silent for the whole budget reads as ended
+    }
+}
+
+public class PlaybackPumpRulesTests
+{
+    [Fact]
+    public void The_engine_never_adds_its_own_normalization_on_top_of_the_decoders()
+    {
+        // G-104 / D6: `NormMode.Track` over a voice with no ReplayGain tags is +4 dB at the −14 LUFS reference — on every
+        // voice, on top of the decoders' own gain.
+        Assert.Equal(NormMode.Off, Playback.Audio.EngineNormalization);
+        Assert.Equal(1f, ReplayGain.ScalarLinear(default, Playback.Audio.EngineNormalization, -14f));
+        Assert.True(ReplayGain.ScalarLinear(default, NormMode.Track, -14f) > 1.5f);   // what every track used to get
+    }
+
+    [Fact]
+    public void Ten_loads_leave_nine_cancelled_and_one_live()
+    {
+        // G-117: a superseded load stops being worth its round trips the moment the next one starts.
+        var loads = new Playback.Audio.Supersede();
+        var tokens = new CancellationToken[10];
+        for (int i = 0; i < tokens.Length; i++) tokens[i] = loads.Next();
+
+        int cancelled = 0;
+        foreach (CancellationToken t in tokens) if (t.IsCancellationRequested) cancelled++;
+        Assert.Equal(9, cancelled);
+        Assert.False(tokens[^1].IsCancellationRequested);
+
+        loads.Cancel();                                                 // a Stop: nothing live
+        Assert.True(tokens[^1].IsCancellationRequested);
+    }
+
+    [Theory]
+    [InlineData(1_000L, 0L, 441_000L, 44_100, 442_000L)]              // opened at clock 1,000: the end is 441,000 frames later
+    [InlineData(500_000L, 5_000L, 441_000L, 44_100, 500_000L + 441_000L - 220_500L)]   // anchored by a seek to 5 s
+    [InlineData(10L, 20_000L, 441_000L, 44_100, 10L)]                 // an anchor past the end: never in the past of the anchor
+    public void A_join_from_the_exact_length_is_the_anchor_clock_plus_the_frames_still_to_play(long clock, long playheadMs,
+        long exactFrames, int rate, long expected)
+        // G-113: rule 4, with the voice's decoded length instead of the catalogue duration.
+        => Assert.Equal(expected, Playback.Audio.JoinFrameExact(clock, playheadMs, exactFrames, rate));
 }
 
 public class PlaybackIcyTests

@@ -431,6 +431,116 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
             MemoryMarshal.AsBytes(expected.AsSpan((int)(target * 2), after.Length))));
     }
 
+    // ── 6. gap batch B4: a starve waits, the late tail, the late gain, the pooled working set ───────────────────────────
+
+    [Fact]
+    public void A_starved_read_is_asked_again_and_the_track_still_plays_bit_exact_to_its_end()
+    {
+        // D5, G-102: a wait that runs out used to come back from the adapter as the end of the track.
+        byte[] file = VorbisFixture.Bytes("pink-320.ogg");
+        VorbisFixture.Decoded linear = VorbisFixture.DecodeAll(file);
+        Assert.True(Vorbis.TryParseIdentification(VorbisFixture.Headers(file, new Ogg.Reader()).Ident, out Vorbis.Identification id));
+        var source = new RandomAccessFake(file, linear.LastGranule) { Starves = 3 };
+        var decoder = new Playback.Audio.VorbisAudioDecoder(0f, linear.Frames * 1000 / id.SampleRate);
+        Assert.True(decoder.TryOpen(source, new MixFormat(id.SampleRate, 2), out _));
+
+        source.Starves = 25;                                             // starve mid-track, repeatedly
+        float[] all = Drain(decoder, linear.Frames + 8_192);
+
+        Assert.Equal(0, source.Starves);
+        Assert.Equal(linear.Pcm.Length, all.Length);
+        Assert.True(MemoryMarshal.AsBytes(all.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(linear.Pcm.AsSpan())));
+    }
+
+    [Fact]
+    public void A_tail_that_lands_after_the_open_still_gives_the_pump_the_exact_length()
+    {
+        // G-113: the engine fixes a voice's length when it is built; the pump asks the adapter for the late one instead of
+        // joining on the catalogue duration.
+        byte[] file = VorbisFixture.Bytes("vbr-q8.ogg");
+        VorbisFixture.Decoded linear = VorbisFixture.DecodeAll(file);
+        Assert.True(Vorbis.TryParseIdentification(VorbisFixture.Headers(file, new Ogg.Reader()).Ident, out Vorbis.Identification id));
+        var source = new RandomAccessFake(file, tail: -1);
+        var decoder = new Playback.Audio.VorbisAudioDecoder(0f, linear.Frames * 1000 / id.SampleRate);
+        Assert.True(decoder.TryOpen(source, new MixFormat(id.SampleRate, 2), out _));
+        Assert.Equal(GaplessInfo.None, decoder.Gapless);
+        Assert.Equal(-1L, decoder.LateExactFrames(id.SampleRate));
+
+        // What the engine would have been told had the tail been known at open.
+        var reference = new Playback.Audio.VorbisAudioDecoder(0f, linear.Frames * 1000 / id.SampleRate);
+        Assert.True(reference.TryOpen(new RandomAccessFake(file, linear.LastGranule), new MixFormat(id.SampleRate, 2), out _));
+        Assert.True(reference.Gapless.TailKnown);
+
+        source.Tail = linear.LastGranule;
+        Assert.Equal(reference.Gapless.ExactFrames, decoder.LateExactFrames(id.SampleRate));
+        Assert.Equal(Clock.ToMix(reference.Gapless.ExactFrames, id.SampleRate, 48_000), decoder.LateExactFrames(48_000));
+    }
+
+    /// <summary>The random-access fake plus a normalization figure, as a Spotify body that learned its gain off chunk 0.</summary>
+    sealed class NormalizedFake(RandomAccessFake inner, float gainDb) : IMediaByteSource, Playback.Audio.IRandomAccessBytes,
+        Playback.Audio.INormalizationSource
+    {
+        public float GainDb => gainDb;
+        public float Peak => 0f;
+        public long? Length => inner.Length;
+        public SourceCaps Caps => inner.Caps;
+        public uint Epoch => inner.Epoch;
+        public long TailGranule => inner.TailGranule;
+        public bool TryOpen(in DataSpec spec) => inner.TryOpen(spec);
+        public int Read(Span<byte> dst) => inner.Read(dst);
+        public long Seek(long offset) => inner.Seek(offset);
+        public void Cancel() => inner.Cancel();
+        public void Close() => inner.Close();
+        public int ReadAt(long offset, Span<byte> dst, uint epoch) => inner.ReadAt(offset, dst, epoch);
+        public void Retarget(long probeOffset, int probeBytes, uint epoch) => inner.Retarget(probeOffset, probeBytes, epoch);
+        public void ResumeFrom(long offset) => inner.ResumeFrom(offset);
+    }
+
+    [Fact]
+    public void The_source_s_gain_wins_over_the_one_the_adapter_was_built_with()
+    {
+        // G-107: the adapter is built before a byte lands; a body that opened with no header at hand knows its gain only
+        // once chunk 0 is in, which is before the header packets are parsed.
+        byte[] file = VorbisFixture.Bytes("pink-320.ogg");
+        VorbisFixture.Decoded linear = VorbisFixture.DecodeAll(file);
+        Assert.True(Vorbis.TryParseIdentification(VorbisFixture.Headers(file, new Ogg.Reader()).Ident, out Vorbis.Identification id));
+        var mix = new MixFormat(id.SampleRate, 2);
+        long durationMs = linear.Frames * 1000 / id.SampleRate;
+
+        var built = new Playback.Audio.VorbisAudioDecoder(-6f, durationMs);
+        Assert.True(built.TryOpen(new RandomAccessFake(file, linear.LastGranule), mix, out _));
+        var learned = new Playback.Audio.VorbisAudioDecoder(0f, durationMs);
+        Assert.True(learned.TryOpen(new NormalizedFake(new RandomAccessFake(file, linear.LastGranule), -6f), mix, out _));
+
+        float[] a = Drain(built, 20_000), b = Drain(learned, 20_000);
+        Assert.Equal(a.Length, b.Length);
+        Assert.True(MemoryMarshal.AsBytes(a.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(b.AsSpan())));
+    }
+
+    [Fact]
+    public void A_disposed_vorbis_adapter_answers_nothing_and_the_next_one_plays_bit_exact_on_its_working_set()
+    {
+        // G-134: the working set goes back to the pool at Dispose and the next track decodes on it.
+        byte[] file = VorbisFixture.Bytes("sine-440.ogg");
+        VorbisFixture.Decoded linear = VorbisFixture.DecodeAll(file);
+        Assert.True(Vorbis.TryParseIdentification(VorbisFixture.Headers(file, new Ogg.Reader()).Ident, out Vorbis.Identification id));
+        var mix = new MixFormat(id.SampleRate, 2);
+        long durationMs = linear.Frames * 1000 / id.SampleRate;
+
+        var first = new Playback.Audio.VorbisAudioDecoder(0f, durationMs);
+        Assert.True(first.TryOpen(new RandomAccessFake(file, linear.LastGranule), mix, out _));
+        Assert.True(Drain(first, 4_096).Length > 0);
+        first.Dispose();
+        Assert.Equal(0, first.Read(new float[512]));
+        Assert.Equal(-1L, first.Seek(0));
+
+        var second = new Playback.Audio.VorbisAudioDecoder(0f, durationMs);
+        Assert.True(second.TryOpen(new RandomAccessFake(file, linear.LastGranule), mix, out _));
+        float[] all = Drain(second, linear.Frames + 8_192);
+        Assert.True(MemoryMarshal.AsBytes(all.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(linear.Pcm.AsSpan())));
+        second.Dispose();
+    }
+
     /// <summary>Read until <paramref name="blocks"/> all-silent blocks came out, asserting no read ever answers ≤ 0 (what
     /// the engine would latch as the end). Returns 1 when the silent blocks arrived, 0 when the bound ran out first.</summary>
     static int SilentBlocksUntilNoEof(IAudioDecoder decoder, int blocks)
@@ -494,8 +604,12 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
         /// <summary>A seek's interrupt, as the ring answers it: every read says <c>InterruptedRead</c> until the adapter's
         /// own <see cref="Retarget"/> arrives and ends it.</summary>
         public bool Interrupt;
+        /// <summary>A starving link: this many reads answer <c>StarvedRead</c> before bytes flow again.</summary>
+        public int Starves;
+        /// <summary>The tail granule — settable, because the stream layer learns it after the decoder opened.</summary>
+        public long Tail { get; set; } = tail;
         public uint Epoch { get; private set; }
-        public long TailGranule => tail;
+        public long TailGranule => Tail;
         public long? Length => data.Length;
         public SourceCaps Caps => new() { Seekable = true, KnownLength = true, ExpensiveSeek = false };
 
@@ -521,6 +635,7 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
         {
             if (epoch != Epoch) return -1;
             if (Interrupt) return Playback.Audio.InterruptedRead;
+            if (Starves > 0) { Starves--; return Playback.Audio.StarvedRead; }
             if (offset >= data.Length || dst.Length == 0) return 0;
             int toSlotEdge = (int)(Slot - offset % Slot);
             int n = (int)Math.Min(Math.Min(dst.Length, toSlotEdge), data.Length - offset);
@@ -638,25 +753,29 @@ public sealed class RingSourceTests
         public int Count { get { lock (_gate) return _ranges.Count; } }
         public (long Start, long End)[] Ranges { get { lock (_gate) return [.. _ranges]; } }
 
-        public Spotify.Audio.IRangeReply? Open(string url, long start, long end, CancellationToken ct)
+        public ValueTask<Spotify.Audio.IRangeReply?> OpenAsync(string url, long start, long end, CancellationToken ct)
         {
             lock (_gate) _ranges.Add((start, end + 1));
-            return start >= data.Length ? null : new Reply(data, start, Math.Min(end + 1, data.Length));
+            return new ValueTask<Spotify.Audio.IRangeReply?>(
+                start >= data.Length ? null : new Reply(data, start, Math.Min(end + 1, data.Length)));
         }
 
         sealed class Reply(byte[] file, long start, long stop) : Spotify.Audio.IRangeReply
         {
             long _at = start;
+            readonly long _from = start;
 
             public long TotalLength => file.Length;
 
-            public int Read(Span<byte> dst)
+            public long Start => _from;
+
+            public ValueTask<int> ReadAsync(Memory<byte> dst, CancellationToken ct)
             {
                 int n = (int)Math.Min(dst.Length, stop - _at);
-                if (n <= 0) return 0;
-                file.AsSpan((int)_at, n).CopyTo(dst);
+                if (n <= 0) return new ValueTask<int>(0);
+                file.AsSpan((int)_at, n).CopyTo(dst.Span);
                 _at += n;
-                return n;
+                return new ValueTask<int>(n);
             }
 
             public void Dispose() { }

@@ -1132,7 +1132,9 @@ public static partial class Deck
                             Direction = 0, AlignItems = FlexAlign.Center,
                             Children =
                             [
-                                new TextEl(artist.Length > 0 ? artist + " · " : "") { Size = lineSize, Color = grey, MaxLines = 1, Trim = TextTrim.Clip },
+                                // Shrink (G-256): the artist gives way, never the clock's fixed slot — a long name used to
+                                // push the elapsed time past the block's clip.
+                                new TextEl(artist.Length > 0 ? artist + " · " : "") { Size = lineSize, Color = grey, MaxLines = 1, Trim = TextTrim.Clip, Shrink = 1f },
                                 new BoxEl
                                 {
                                     Width = 0.10f * s, Shrink = 0f,

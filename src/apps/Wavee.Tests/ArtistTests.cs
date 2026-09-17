@@ -5,6 +5,7 @@
 // GAP 18), and a re-answered pick reuses its sparse row instead of growing the slab.
 
 using FluentGpu.Foundation;
+using FluentGpu.Localization;
 using Wavee;
 using Xunit;
 
@@ -289,5 +290,372 @@ public class ArtistTests
         Assert.Equal(settled, Entities.Strings.MapCount);
         var artist = Entities.Artist(EntityUri.Parse(uri));
         Assert.Equal("pick overwrite note 4 20260912", Entities.Strings.Resolve(artist.Pick.Comment));
+    }
+
+    // ── Wave 5 (N-B): "none" is an answer, a derived banner survives the overview, payload relations own their text ──
+
+    static Artist ArtistOf(string uri) => Entities.Artist(EntityUri.Parse(uri));
+
+    [Fact]
+    public void An_answer_that_names_no_pick_releases_the_previous_pick_row()
+    {
+        TestScope.Fresh();
+        const string uri = "spotify:artist:pick-withdrawn";
+        var s = Staging.Rent();
+        ref var row = ref s.Artists.Add();
+        row.Id = s.Text(uri);
+        row.PickTitle = s.Text("pick withdrawn title 20260914");
+        row.PickItemUri = s.Text("pick withdrawn item 20260914");
+        row.Known = (uint)ArtistFields.Pick;
+        row.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+        var artist = ArtistOf(uri);
+        Assert.True(artist.HasPick);
+        int withPick = Entities.Strings.MapCount;
+
+        var none = Staging.Rent();
+        ref var bare = ref none.Artists.Add();
+        bare.Id = none.Text(uri);
+        bare.Known = (uint)ArtistFields.Pick;                       // the answer spoke for the pick and carried none
+        bare.Authority = Authority.Full;
+        TestScope.CommitAndPublish(none);
+
+        Assert.False(artist.HasPick);                                // it used to allocate an empty side row, and lie
+        Assert.True(artist.Knows(ArtistFields.Pick));
+        Assert.True(artist.Pick.Title.IsEmpty);
+        Assert.Equal(withPick - 2, Entities.Strings.MapCount);       // the title and the item uri handed back
+    }
+
+    [Fact]
+    public void An_answer_with_nothing_upcoming_clears_the_side_row_and_the_bit()
+    {
+        TestScope.Fresh();
+        const string uri = "spotify:artist:upcoming-gone";
+        var s = Staging.Rent();
+        ref var row = ref s.Artists.Add();
+        row.Id = s.Text(uri);
+        row.UpcomingUri = s.Text("spotify:album:upcoming-gone");
+        row.UpcomingName = s.Text("Soon");
+        row.UpcomingReleaseAt = 1_900_000_000;
+        row.Flags = (uint)ArtistFlags.Upcoming;
+        row.Known = (uint)ArtistFields.PreRelease;
+        row.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+        var artist = ArtistOf(uri);
+        Assert.True(artist.HasPreRelease);
+        Assert.True(artist.HasUpcoming);
+
+        var none = Staging.Rent();
+        ref var bare = ref none.Artists.Add();
+        bare.Id = none.Text(uri);
+        bare.Known = (uint)ArtistFields.PreRelease;
+        bare.Authority = Authority.Full;
+        TestScope.CommitAndPublish(none);
+
+        Assert.False(artist.HasPreRelease);
+        Assert.False(artist.HasUpcoming);
+        Assert.True(artist.PreRelease.Name.IsEmpty);
+    }
+
+    [Fact]
+    public void An_overview_answer_does_not_blank_the_banner_the_concert_list_derived()
+    {
+        TestScope.Fresh();
+        const string uri = "spotify:artist:banner-kept";
+        var s = Staging.Rent();
+        ref var derived = ref s.Artists.Add();
+        derived.Id = s.Text(uri);
+        derived.Name = s.Text("Banner");
+        derived.TourEyebrow = s.Text("On tour now");
+        derived.TourHeadline = s.Text("Banner — on tour");
+        derived.TourSubline = s.Text("Next: Jun 25");
+        derived.Flags = (uint)ArtistFlags.TourLive;
+        derived.Known = (uint)(ArtistFields.Identity | ArtistFields.Tour);
+        derived.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+
+        var overview = Staging.Rent();
+        ref var row = ref overview.Artists.Add();
+        row.Id = overview.Text(uri);
+        row.Known = (uint)ArtistFields.Tour;                         // speaks for the group, carries no banner text
+        row.Authority = Authority.Full;
+        TestScope.CommitAndPublish(overview);
+
+        var artist = ArtistOf(uri);
+        Assert.Equal("On tour now", Entities.Strings.Resolve(artist.TourEyebrowId));
+        Assert.True(artist.IsTourLive);
+        Assert.True(artist.Knows(ArtistFields.Tour));
+    }
+
+    [Fact]
+    public void The_palette_keys_on_the_header_and_falls_back_to_the_avatar()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        ref var avatarOnly = ref s.Artists.Add();
+        avatarOnly.Id = s.Text("spotify:artist:palette-avatar");
+        avatarOnly.Name = s.Text("Avatar only");
+        avatarOnly.Image = s.Text("https://cdn/palette-avatar");
+        avatarOnly.Known = (uint)(ArtistFields.Identity | ArtistFields.Header);
+        avatarOnly.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+
+        var more = Staging.Rent();
+        ref var wide = ref more.Artists.Add();
+        wide.Id = more.Text("spotify:artist:palette-header");
+        wide.Name = more.Text("With header");
+        wide.Image = more.Text("https://cdn/palette-avatar-2");
+        wide.Header = more.Text("https://cdn/palette-header");
+        wide.Known = (uint)(ArtistFields.Identity | ArtistFields.Header);
+        wide.Authority = Authority.Full;
+        TestScope.CommitAndPublish(more);
+
+        var a = ArtistOf("spotify:artist:palette-avatar");
+        var b = ArtistOf("spotify:artist:palette-header");
+        Assert.Equal("https://cdn/palette-avatar", Entities.Strings.Resolve(a.PaletteImageId));
+        Assert.Equal("https://cdn/palette-header", Entities.Strings.Resolve(b.PaletteImageId));
+    }
+
+    [Fact]
+    public void Payload_runs_of_one_answer_concatenate_and_an_empty_one_lands_complete()
+    {
+        // The overview carries THREE playlist lists (profile, featuring, discovered on): a later run must never erase an
+        // earlier one, and a playlist on two lists lands once, with the first list's subtitle.
+        TestScope.Fresh();
+        const string uri = "spotify:artist:payload";
+        var s = Staging.Rent();
+        var artist = new StagedId(s.Text(uri));
+
+        var profile = s.RunArtistExtra(ArtistExtraKind.Playlists);
+        ref var p1 = ref profile.Add();
+        p1.Target = s.Text("spotify:playlist:payload-1");
+        p1.T0 = s.Text("Owner One");
+        profile.End(in artist);
+
+        var featuring = s.RunArtistExtra(ArtistExtraKind.Playlists);
+        ref var p2 = ref featuring.Add();
+        p2.Target = s.Text("spotify:playlist:payload-2");
+        p2.T0 = s.Text("Owner Two");
+        ref var again = ref featuring.Add();
+        again.Target = s.Text("spotify:playlist:payload-1");
+        again.T0 = s.Text("Owner Again");
+        featuring.End(in artist);
+
+        s.RunArtistExtra(ArtistExtraKind.Gallery).End(in artist);   // answered: no gallery
+        TestScope.CommitAndPublish(s);
+
+        var a = ArtistOf(uri);
+        var e = Entities.Current.Edges;
+        Assert.Equal(2, a.PlaylistSlots.Length);
+        Assert.Equal("Owner One", Entities.Strings.Resolve(a.PlaylistSubtitleIds[0]));
+        Assert.Equal("Owner Two", Entities.Strings.Resolve(a.PlaylistSubtitleIds[1]));
+        Assert.Equal(EdgeState.Complete, e.ArtistGallery.State(a.Slot));
+        Assert.True(a.GallerySlots.IsEmpty);
+        Assert.False(ArtistReadiness.ShelfPresent(ArtistReadiness.Shelf(e.ArtistGallery, a.Slot), a.GallerySlots.Length));
+        Assert.Equal(EdgeState.Unknown, e.ArtistLinks.State(a.Slot));   // never answered is not "none"
+    }
+
+    [Fact]
+    public void Re_answering_the_payload_relations_hands_back_the_text_they_replaced()
+    {
+        TestScope.Fresh();
+        const string uri = "spotify:artist:payload-text";
+        int settled = 0;
+        for (int i = 0; i <= 3; i++)
+        {
+            var s = Staging.Rent();
+            var artist = new StagedId(s.Text(uri));
+            var cities = s.RunArtistExtra(ArtistExtraKind.Cities);
+            ref var c = ref cities.Add();
+            c.T0 = s.Text("payload city " + i + " 20260914");
+            c.T1 = s.Text("GR");
+            c.U0 = (uint)(1000 + i);
+            cities.End(in artist);
+
+            var links = s.RunArtistExtra(ArtistExtraKind.Links);
+            ref var l = ref links.Add();
+            l.T0 = s.Text("Instagram");
+            l.T1 = s.Text("https://instagram.com/payload-" + i);
+            l.B0 = (byte)ArtistCatalog.LinkKind.Instagram;
+            links.End(in artist);
+
+            var merch = s.RunArtistExtra(ArtistExtraKind.Merch);
+            ref var m = ref merch.Add();
+            m.T0 = s.Text("payload tee " + i + " 20260914");
+            m.T1 = s.Text("$30");
+            merch.End(in artist);
+
+            var videos = s.RunArtistExtra(ArtistExtraKind.Videos);
+            ref var v = ref videos.Add();
+            v.Target = s.Text("spotify:track:payload-video");
+            v.T0 = s.Text("https://cdn/payload-thumb-" + i);
+            v.I0 = 200_000;
+            videos.End(in artist);
+
+            TestScope.CommitAndPublish(s);
+            if (i == 0) settled = Entities.Strings.MapCount;
+        }
+
+        Assert.Equal(settled, Entities.Strings.MapCount);
+        var a = ArtistOf(uri);
+        Assert.Equal("payload city 3 20260914", Entities.Strings.Resolve(a.TopCities[0].City));
+        Assert.Equal(1003u, a.TopCities[0].Listeners);
+        Assert.Equal("https://instagram.com/payload-3", Entities.Strings.Resolve(a.Links[0].Url));
+        Assert.Equal("payload tee 3 20260914", Entities.Strings.Resolve(Album.MerchAt(Assert.Single(a.MerchSlots.ToArray())).Name));
+        Assert.Equal("https://cdn/payload-thumb-3", Entities.Strings.Resolve(a.VideoPayload[0].Thumb));
+    }
+
+    [Fact]
+    public void The_tour_banner_is_derived_from_the_concert_list_against_the_clock_it_is_given()
+    {
+        TestScope.Fresh();
+        const string uri = "spotify:artist:touring";
+        const long now = 1_782_000_000_000L;
+        var s = Staging.Rent();
+        var artist = new StagedId(s.Text(uri));
+        ref var named = ref s.Artists.RowFor(artist, Authority.Full, (uint)ArtistFields.Identity);
+        named.Name = s.Text("Touring");
+        var run = s.ConcertRun(ConcertLink.ArtistConcerts);
+        for (int i = 0; i < 4; i++)
+        {
+            var id = new StagedId(s.Text("spotify:concert:touring" + i));
+            ref var c = ref s.Concerts.RowFor(id, Authority.Full, (uint)ConcertFields.Identity);
+            c.Title = s.Text("Show " + i);
+            c.Venue = s.Text("Venue " + i);
+            c.City = s.Text("City " + i);
+            c.Date = now + (4 - i) * 86_400_000L;                    // the LAST one staged is the nearest: one day out
+            run.Add(in id);
+        }
+        run.End(in artist);
+        TestScope.CommitAndPublish(s);
+
+        var a = ArtistOf(uri);
+        Artist.DeriveTour(a.Slot, now);
+        Assert.Equal(Loc.Get(ArtistTour.EyebrowKey(TourArm.OnTourNow)), Entities.Strings.Resolve(a.TourEyebrowId));
+        Assert.True(a.IsTourLive);
+        Assert.True(a.Knows(ArtistFields.Tour));
+        Assert.False(a.TourSublineId.IsEmpty);
+
+        Artist.DeriveTour(a.Slot, now - 30L * 86_400_000L);          // a month earlier: the same four dates are a tour ahead
+        Assert.Equal(Loc.Get(ArtistTour.EyebrowKey(TourArm.UpcomingTour)), Entities.Strings.Resolve(a.TourEyebrowId));
+        Assert.False(a.IsTourLive);
+
+        var quiet = Staging.Rent();
+        quiet.ConcertRun(ConcertLink.ArtistConcerts).End(new StagedId(quiet.Text(uri)));
+        TestScope.CommitAndPublish(quiet);                           // the concert commit re-derives: no dates, no banner
+        Assert.True(a.TourEyebrowId.IsEmpty);
+        Assert.False(a.IsTourLive);
+    }
+}
+
+public class ArtistTextTests
+{
+    [Theory]
+    [InlineData("<p>Maroon 5 is a band from Los Angeles. They formed in 1994.</p>", "Maroon 5 is a band from Los Angeles.")]
+    [InlineData("Mr. Brightside is a song. It charted.", "Mr. Brightside is a song. It charted.")]   // first ". " at 2: no cut
+    [InlineData("A short bio.", "A short bio.")]
+    [InlineData("<b></b>", "")]
+    [InlineData("   ", "")]
+    [InlineData(null, "")]
+    public void FirstSentence_is_the_verbatim_port(string? html, string expected)
+        => Assert.Equal(expected, ArtistText.FirstSentence(html));
+
+    [Fact]
+    public void StripHtml_drops_tags_and_line_breaks_then_trims()
+        => Assert.Equal("Line oneLine two", ArtistText.StripHtml("  <p>Line one</p>\r\n<p>Line two</p>  "));
+
+    [Theory]
+    [InlineData("<p>Maroon 5 is a band from Los Angeles. They formed in 1994.</p>")]
+    [InlineData("Mr. Brightside is a song. It charted.")]
+    [InlineData("A short bio.")]
+    [InlineData("Björk Guðmundsdóttir is an Icelandic singer. She began young.")]
+    public void Lead_over_utf8_cuts_where_the_string_rule_does(string html)
+    {
+        byte[] utf8 = System.Text.Encoding.UTF8.GetBytes(html);
+        var into = new byte[utf8.Length];
+        int n = ArtistText.Lead(utf8, into);
+        Assert.Equal(ArtistText.FirstSentence(html), System.Text.Encoding.UTF8.GetString(into, 0, n));
+    }
+
+    /// <summary>0.3 gap A3: the wire spells quotes as <c>&amp;#34;</c> and apostrophes as <c>&amp;#8217;</c>; the string
+    /// rule and its UTF-8 twin decode the same set (one <c>HtmlEntities</c> table), and the cut lands on the decoded text.</summary>
+    [Fact]
+    public void StripHtml_and_Lead_decode_the_same_entities()
+    {
+        const string html = "<p>Nirvana &#34;Nevermind&#34; wasn&#8217;t small. It sold.</p>";
+        const string first = "Nirvana \"Nevermind\" wasn’t small.";
+
+        Assert.Equal("Nirvana \"Nevermind\" wasn’t small. It sold.", ArtistText.StripHtml(html));
+        Assert.Equal(first, ArtistText.FirstSentence(html));                       // ". " at character 32 > MinSentenceIndex
+
+        byte[] utf8 = System.Text.Encoding.UTF8.GetBytes(html);
+        var into = new byte[utf8.Length];                                           // sized to the html: decoding never grows it
+        int n = ArtistText.Lead(utf8, into);
+        Assert.Equal(first, System.Text.Encoding.UTF8.GetString(into, 0, n));
+    }
+
+    [Fact]
+    public void Lead_decodes_the_entities_a_biography_carries()
+    {
+        byte[] utf8 = "Tom &amp; Jerry &quot;live&quot; &#39;23 &lt;3"u8.ToArray();
+        var into = new byte[utf8.Length];
+        int n = ArtistText.Lead(utf8, into);
+        Assert.Equal("Tom & Jerry \"live\" '23 <3", System.Text.Encoding.UTF8.GetString(into, 0, n));
+    }
+}
+
+public class ArtistTourTests
+{
+    const long Day = 86_400_000L;
+    const long Now = 1_782_000_000_000L;
+
+    [Theory]
+    [InlineData(0, 1, TourArm.None)]
+    [InlineData(1, 1, TourArm.UpcomingShow)]
+    [InlineData(1, 60, TourArm.UpcomingShow)]
+    [InlineData(2, 60, TourArm.UpcomingDates)]
+    [InlineData(3, 1, TourArm.UpcomingDates)]
+    [InlineData(4, 3, TourArm.OnTourNow)]
+    [InlineData(4, 7, TourArm.OnTourNow)]
+    [InlineData(4, 8, TourArm.UpcomingTour)]
+    [InlineData(12, 30, TourArm.UpcomingTour)]
+    public void The_ladder_is_FakeData_TourBannerFor(int count, int nextInDays, TourArm expected)
+        => Assert.Equal(expected, ArtistTour.ArmFor(count, Now + nextInDays * Day, Now));
+
+    [Fact]
+    public void Soon_is_within_seven_days_and_not_already_past()
+    {
+        Assert.True(ArtistTour.IsSoon(Now, Now));
+        Assert.True(ArtistTour.IsSoon(Now + 7 * Day, Now));
+        Assert.False(ArtistTour.IsSoon(Now + 7 * Day + 1, Now));
+        Assert.False(ArtistTour.IsSoon(Now - 1, Now));
+    }
+
+    [Fact]
+    public void The_next_date_is_the_earliest_and_the_first_on_a_tie()
+    {
+        Assert.Equal(-1, ArtistTour.NextIndex([]));
+        Assert.Equal(2, ArtistTour.NextIndex([Now + 3 * Day, Now + 2 * Day, Now + Day, Now + Day]));
+    }
+
+    [Fact]
+    public void Every_arm_has_its_own_key_and_none_has_none()
+    {
+        Assert.Equal("", ArtistTour.EyebrowKey(TourArm.None));
+        var keys = new HashSet<string>
+        {
+            ArtistTour.EyebrowKey(TourArm.UpcomingShow), ArtistTour.EyebrowKey(TourArm.UpcomingDates),
+            ArtistTour.EyebrowKey(TourArm.OnTourNow), ArtistTour.EyebrowKey(TourArm.UpcomingTour),
+        };
+        Assert.Equal(4, keys.Count);
+    }
+
+    [Fact]
+    public void The_date_label_reads_the_providers_local_clock()
+    {
+        // 23:30 UTC on 24 June is already 25 June at +02:00.
+        long instant = new DateTimeOffset(2026, 6, 24, 23, 30, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
+        Assert.Equal("Jun 25", ArtistTour.DateLabel(instant, 120, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal("Jun 24", ArtistTour.DateLabel(instant, 0, System.Globalization.CultureInfo.InvariantCulture));
     }
 }

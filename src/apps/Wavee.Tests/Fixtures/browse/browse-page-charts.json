@@ -1,0 +1,14 @@
+{"data":{"browse":{"uri":"spotify:page:0JQ5DAudkNjCgYMM0TZXDw",
+  "header":{"title":{"transformedLabel":"Charts"},"color":{"hex":"#8D67AB"}},
+  "sections":{"totalCount":2,"items":[
+    {"uri":"spotify:section:0JQ5DAzQHECxDlYNI6xD1g",
+     "data":{"__typename":"BrowseGenericSectionData","title":{"transformedLabel":"Featured Charts"}},
+     "sectionItems":{"totalCount":1,"items":[
+       {"content":{"data":{"__typename":"Playlist","uri":"spotify:playlist:37i9dQZEVXbMDoHDwVN2tF","name":"Top 50 - Global"}}}
+     ]}},
+    {"uri":"spotify:section:0JQ5DAzQHECxDlYNI6xD1H",
+     "data":{"__typename":"BrowseGenericSectionData","title":{"transformedLabel":"Not A Chart (case differs)"}},
+     "sectionItems":{"totalCount":1,"items":[
+       {"content":{"data":{"__typename":"Playlist","uri":"spotify:playlist:37i9dQZF1DXcBWIGoYBM5M","name":"Today's Top Hits"}}}
+     ]}}
+  ]}}}}

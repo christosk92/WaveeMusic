@@ -6,9 +6,14 @@
 // JSON capture of a shape this decoder no longer reads (the dealer's cluster payload is base64 protobuf).
 //
 // No socket is opened. `Spotify.Reply` no-ops without a dealer websocket and `Spotify.Post` defaults to running its
-// action inline, which is what makes `OnDealer` a synchronous, assertable function in a unit test.
+// action inline, which is what makes `OnDealer` a synchronous, assertable function in a unit test. With no dealer
+// connection id the glue arms no put-state timer (gap batch R4-1), so a fact that reaches the reducer sends nothing.
+//
+// The dealer facts join the entities collection: a play / transfer / queue body goes straight to the playback host's
+// process-static intake, and the host's drain must not run beside another collection's.
 
 using System.Text;
+using System.Text.Json;
 using Google.Protobuf;
 using Wavee;
 using Xunit;
@@ -16,6 +21,7 @@ using Pb = Wavee.Protocol.Player;
 
 namespace Wavee.Tests;
 
+[Collection(EntitiesCollection.Name)]
 public class SpotifyConnectDealerTests
 {
     static byte[] ClusterFrame(string activeDeviceId, string contextUri, long serverTimestampMs, bool playing)
@@ -164,6 +170,103 @@ public class SpotifyConnectDealerTests
         Assert.Equal(0, Spotify.Connect.Pending);
         Assert.False(Spotify.Connect.TryDequeue(out _));
     }
+
+    /// <summary>G-074: set_options reaches the reducer as the verbs it already folds — one item per option, each carrying
+    /// the controller's message id — and never as a bare set_options the reducer would ignore.</summary>
+    [Fact]
+    public void A_set_options_frame_becomes_the_option_verbs_the_reducer_already_folds()
+    {
+        Drain();
+        Spotify.Connect.OnDealer(RequestFrame(
+            "{\"message_id\":42,\"sent_by_device_id\":\"phone\",\"command\":{\"endpoint\":\"set_options\"," +
+            "\"shuffling_context\":true,\"repeating_context\":true}}"));
+
+        Assert.True(Spotify.Connect.TryDequeue(out Spotify.Connect.Item shuffle));
+        Assert.True(Spotify.Connect.TryDequeue(out Spotify.Connect.Item repeat));
+        Assert.False(Spotify.Connect.TryDequeue(out _));
+
+        Assert.Equal(Spotify.Decode.RemoteCmd.SetShufflingContext, shuffle.Command.Kind);
+        Assert.True(shuffle.Command.BoolArg);
+        Assert.Equal(Spotify.Decode.RemoteCmd.SetRepeatingContext, repeat.Command.Kind);
+        Assert.True(repeat.Command.BoolArg);
+        Assert.Equal(42, repeat.Command.MessageId);
+    }
+
+    /// <summary>G-074 / G-250: a set_queue body is handed to the playback host's intake — decoded into a pooled buffer and
+    /// folded in arrival order — and NO command item is enqueued beside it (a second copy would claim twice). The host
+    /// folding it is visible on the reducer: the claim, and the PUT's attribution to the sender.</summary>
+    [Fact]
+    public void A_set_queue_frame_enqueues_nothing_and_reaches_the_host_intake()
+    {
+        Drain();
+        Playback.ToUi = static a => a();
+        Playback.ResetForTests();
+        try
+        {
+            Spotify.Connect.OnDealer(RequestFrame(
+                "{\"message_id\":77,\"sent_by_device_id\":\"phone\",\"command\":{\"endpoint\":\"set_queue\",\"queue_revision\":5," +
+                "\"next_tracks\":[{\"uri\":\"spotify:track:4uLU6hMCjMI75M1A2tKUQC\",\"uid\":\"q2\",\"provider\":\"queue\"}]}}"));
+
+            Assert.False(Spotify.Connect.TryDequeue(out _));             // no command item
+            Playback.State s = Playback.Snap();
+            Assert.Equal(77u, s.LastCommandMessageId);                   // the host's intake folded the command…
+            Assert.Equal(Playback.DeviceHash("phone"), s.LastCommandSender);
+            Assert.Equal(Playback.Owner.Us, s.Owner);                    // …and its claim, in the same drain
+            Assert.Equal(0, Playback.PendingIntakes);
+        }
+        finally { Playback.ResetForTests(); }
+    }
+}
+
+/// <summary>What a rejected put, a re-announce and a sign-out do (gap batch R4-1, G-247 / G-036). Pure rules; the sends
+/// themselves need a live session.</summary>
+public class SpotifyConnectPutRulesTests
+{
+    [Theory]
+    [InlineData(Spotify.Connect.PutReason.BecameInactive, 422, Spotify.Connect.PutRejection.SoftAck)]
+    [InlineData(Spotify.Connect.PutReason.BecameInactive, 500, Spotify.Connect.PutRejection.Rejected)]
+    [InlineData(Spotify.Connect.PutReason.PlayerStateChanged, 422, Spotify.Connect.PutRejection.Reannounce)]
+    [InlineData(Spotify.Connect.PutReason.VolumeChanged, 422, Spotify.Connect.PutRejection.Reannounce)]
+    [InlineData(Spotify.Connect.PutReason.PlayerStateChanged, 503, Spotify.Connect.PutRejection.Reannounce)]
+    [InlineData(Spotify.Connect.PutReason.NewDevice, 422, Spotify.Connect.PutRejection.Rejected)]
+    public void A_rejected_state_or_volume_put_re_announces_and_an_inactive_422_is_a_soft_ack(Spotify.Connect.PutReason reason,
+        int status, Spotify.Connect.PutRejection expected)
+        => Assert.Equal(expected, Spotify.Connect.RejectionOf(reason, status));
+
+    [Theory]
+    [InlineData(40_000L, long.MinValue / 2, true)]      // never re-announced
+    [InlineData(40_000L, 10_000L, true)]                // 30 s on
+    [InlineData(39_999L, 10_000L, false)]               // inside the window: a hard-down service is not a hot loop
+    public void A_re_announce_goes_at_most_once_every_thirty_seconds(long now, long last, bool due)
+        => Assert.Equal(due, Spotify.Connect.ReannounceDue(now, last));
+
+    [Theory]
+    [InlineData(true, true, true, Spotify.Connect.RetireRoute.InactiveFirst)]
+    [InlineData(false, true, true, Spotify.Connect.RetireRoute.SignOutNow)]   // no connection: nothing could carry it
+    [InlineData(true, false, true, Spotify.Connect.RetireRoute.SignOutNow)]   // no player host
+    [InlineData(true, true, false, Spotify.Connect.RetireRoute.SignOutNow)]   // playback was not ours
+    public void A_sign_out_sends_its_inactive_put_first_only_when_playback_is_ours(bool connection, bool player, bool owns,
+        Spotify.Connect.RetireRoute expected)
+        => Assert.Equal(expected, Spotify.Connect.RetireRouteOf(connection, player, owns));
+}
+
+/// <summary>Where an acked REQUEST goes (gap batch B3b). The load route is the one that must never ALSO enqueue a
+/// command item: the playback host folds the claim from the load slot, and a second copy would claim twice.</summary>
+public class SpotifyConnectRouteTests
+{
+    [Theory]
+    [InlineData(Spotify.Decode.RemoteCmd.Unknown, Spotify.Connect.CommandRoute.Drop)]
+    [InlineData(Spotify.Decode.RemoteCmd.Play, Spotify.Connect.CommandRoute.Load)]
+    [InlineData(Spotify.Decode.RemoteCmd.Transfer, Spotify.Connect.CommandRoute.Load)]
+    [InlineData(Spotify.Decode.RemoteCmd.SetOptions, Spotify.Connect.CommandRoute.Options)]
+    [InlineData(Spotify.Decode.RemoteCmd.SetQueue, Spotify.Connect.CommandRoute.QueueBody)]
+    [InlineData(Spotify.Decode.RemoteCmd.UpdateContext, Spotify.Connect.CommandRoute.QueueBody)]
+    [InlineData(Spotify.Decode.RemoteCmd.Pause, Spotify.Connect.CommandRoute.Mailbox)]
+    [InlineData(Spotify.Decode.RemoteCmd.SkipNext, Spotify.Connect.CommandRoute.Mailbox)]
+    [InlineData(Spotify.Decode.RemoteCmd.SetShufflingContext, Spotify.Connect.CommandRoute.Mailbox)]
+    [InlineData(Spotify.Decode.RemoteCmd.AddToQueue, Spotify.Connect.CommandRoute.Mailbox)]
+    public void Each_verb_has_one_route(Spotify.Decode.RemoteCmd kind, Spotify.Connect.CommandRoute route)
+        => Assert.Equal(route, Spotify.Connect.RouteOf(kind));
 }
 
 public class SpotifyConnectOutboundTests
@@ -215,6 +318,140 @@ public class SpotifyConnectOutboundTests
     [Fact]
     public void The_publish_debounce_is_the_one_named_window_this_file_owns()
         => Assert.Equal(50, Spotify.Connect.PublishDebounceMs);
+
+    // ── the queue forwards (G-248), against 0.2.9's OutboundEnvelopeTests ───────────────────────────────────────────
+
+    static JsonDocument Json(Action<System.Buffers.ArrayBufferWriter<byte>> write)
+    {
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        write(buffer);
+        return JsonDocument.Parse(buffer.WrittenMemory);
+    }
+
+    [Fact]
+    public void Play_is_the_desktop_envelope_with_the_context_and_a_skip_to()
+    {
+        using var doc = Json(b => Spotify.Connect.PlayBody(b, "spotify:playlist:abc", "spotify:track:xyz", true, "us", "cmd1", "intent1", 7));
+        var root = doc.RootElement;
+        Assert.Equal("wlan", root.GetProperty("connection_type").GetString());
+        Assert.Equal("intent1", root.GetProperty("intent_id").GetString());
+        var cmd = root.GetProperty("command");
+        Assert.Equal("play", cmd.GetProperty("endpoint").GetString());
+        var ctx = cmd.GetProperty("context");
+        Assert.Equal("spotify:playlist:abc", ctx.GetProperty("uri").GetString());
+        Assert.Equal("spotify:playlist:abc", ctx.GetProperty("entity_uri").GetString());
+        Assert.Equal("context://spotify:playlist:abc", ctx.GetProperty("url").GetString());
+        Assert.False(ctx.TryGetProperty("pages", out _));                 // URI-only: the owner resolves it
+        Assert.Equal("playlist", cmd.GetProperty("play_origin").GetProperty("feature_identifier").GetString());
+        var prep = cmd.GetProperty("prepare_play_options");
+        Assert.False(prep.GetProperty("always_play_something").GetBoolean());
+        Assert.Equal("spotify:track:xyz", prep.GetProperty("skip_to").GetProperty("track_uri").GetString());
+        Assert.Equal("premium", prep.GetProperty("license").GetString());
+        Assert.True(prep.GetProperty("player_options_override").GetProperty("shuffling_context").GetBoolean());
+        var play = cmd.GetProperty("play_options");
+        Assert.Equal("interactive", play.GetProperty("reason").GetString());
+        Assert.Equal("replace", play.GetProperty("operation").GetString());
+        Assert.Equal("immediately", play.GetProperty("trigger").GetString());
+        Assert.Equal("us", cmd.GetProperty("logging_params").GetProperty("device_identifier").GetString());
+    }
+
+    [Fact]
+    public void Play_from_the_head_has_no_skip_to_and_names_the_surface_of_the_context()
+    {
+        using var doc = Json(b => Spotify.Connect.PlayBody(b, "spotify:album:abc", null, false, "us", "c", "i", 7));
+        var cmd = doc.RootElement.GetProperty("command");
+        Assert.False(cmd.GetProperty("prepare_play_options").TryGetProperty("skip_to", out _));
+        Assert.Equal("album", cmd.GetProperty("play_origin").GetProperty("feature_identifier").GetString());
+        Assert.Equal("your_library", Spotify.Connect.PlayFeatureOf("spotify:user:me:collection"));
+        Assert.Equal("track", Spotify.Connect.PlayFeatureOf("spotify:track:x"));
+        Assert.Equal("harmony", Spotify.Connect.PlayFeatureOf("spotify:station:track:x"));
+    }
+
+    [Fact]
+    public void Add_to_queue_is_the_desktop_envelope_with_a_single_track()
+    {
+        using var doc = Json(b => Spotify.Connect.AddToQueueBody(b, "spotify:track:x", "us", "cmd1", "intent1", "", 7));
+        var root = doc.RootElement;
+        Assert.Equal("wlan", root.GetProperty("connection_type").GetString());
+        Assert.Equal("intent1", root.GetProperty("intent_id").GetString());
+
+        var cmd = root.GetProperty("command");
+        Assert.Equal("add_to_queue", cmd.GetProperty("endpoint").GetString());
+        Assert.False(cmd.TryGetProperty("uri", out _));                 // NOT the legacy flat command.uri
+        var track = cmd.GetProperty("track");
+        Assert.Equal("spotify:track:x", track.GetProperty("uri").GetString());
+        Assert.Equal("", track.GetProperty("uid").GetString());         // present even when empty
+        Assert.Empty(track.GetProperty("metadata").EnumerateObject());  // explicit {}
+
+        var options = cmd.GetProperty("options");
+        Assert.False(options.GetProperty("override_restrictions").GetBoolean());
+        Assert.False(options.GetProperty("only_for_local_device").GetBoolean());
+        Assert.False(options.GetProperty("system_initiated").GetBoolean());
+
+        var log = cmd.GetProperty("logging_params");
+        Assert.Equal("us", log.GetProperty("device_identifier").GetString());
+        Assert.Equal("cmd1", log.GetProperty("command_id").GetString());
+        Assert.Equal(7L, log.GetProperty("command_initiated_time").GetInt64());
+        Assert.Equal(7L, log.GetProperty("command_received_time").GetInt64());
+        Assert.Empty(log.GetProperty("interaction_ids").EnumerateArray());
+    }
+
+    [Fact]
+    public void Set_queue_is_the_full_snapshot_envelope_with_its_revision_a_bare_number()
+    {
+        Spotify.Connect.QueueWireRow[] next =
+        [
+            new("spotify:track:n1", "q1", Queued: true),
+            new("spotify:track:n2", "", Queued: true),
+            new("spotify:track:cx", "5bd5aabfe4434940c96f", Queued: false),
+        ];
+        using var doc = Json(b => Spotify.Connect.SetQueueBody(b, 10_355_548_321_371_651_421UL, [], next, "us", "c", "i", "iact-9", 5));
+        var cmd = doc.RootElement.GetProperty("command");
+
+        Assert.Equal("set_queue", cmd.GetProperty("endpoint").GetString());
+        Assert.Equal(JsonValueKind.Number, cmd.GetProperty("queue_revision").ValueKind);
+        Assert.Equal(10_355_548_321_371_651_421UL, cmd.GetProperty("queue_revision").GetUInt64());
+        Assert.Empty(cmd.GetProperty("prev_tracks").EnumerateArray());
+
+        var rows = cmd.GetProperty("next_tracks");
+        Assert.Equal(3, rows.GetArrayLength());
+        Assert.Equal("queue", rows[0].GetProperty("provider").GetString());
+        Assert.Equal(JsonValueKind.String, rows[0].GetProperty("metadata").GetProperty("is_queued").ValueKind);
+        Assert.Equal("true", rows[0].GetProperty("metadata").GetProperty("is_queued").GetString());
+        Assert.Equal("", rows[1].GetProperty("uid").GetString());
+        Assert.Equal("context", rows[2].GetProperty("provider").GetString());
+        Assert.False(rows[2].GetProperty("metadata").TryGetProperty("is_queued", out _));
+        foreach (var row in rows.EnumerateArray())
+        {
+            Assert.Empty(row.GetProperty("removed").EnumerateArray());
+            Assert.Empty(row.GetProperty("blocked").EnumerateArray());
+            Assert.Equal(22, row.GetProperty("restrictions").EnumerateObject().Count());
+        }
+        Assert.Equal("iact-9", cmd.GetProperty("logging_params").GetProperty("interaction_ids")[0].GetString());
+        Assert.Equal("wlan", doc.RootElement.GetProperty("connection_type").GetString());
+    }
+
+    [Fact]
+    public void Play_next_lands_at_the_head_of_the_owners_queued_rows_and_an_append_behind_them()
+    {
+        Spotify.Connect.QueueWireRow[] owner =
+        [
+            new("spotify:track:q1", "q1", Queued: true),
+            new("spotify:track:q2", "q2", Queued: true),
+            new("spotify:track:c1", "c1", Queued: false),
+        ];
+        Spotify.Connect.QueueWireRow[] added = [new("spotify:track:new", "", Queued: false)];
+
+        var next = Spotify.Connect.SpliceQueued(owner, added, slot: 0);
+        Assert.Equal(new[] { "spotify:track:new", "spotify:track:q1", "spotify:track:q2", "spotify:track:c1" }, next.Select(r => r.Uri).ToArray());
+        Assert.True(next[0].Queued);                                    // an added row is a queued row
+
+        var append = Spotify.Connect.SpliceQueued(owner, added, slot: int.MaxValue);
+        Assert.Equal(new[] { "spotify:track:q1", "spotify:track:q2", "spotify:track:new", "spotify:track:c1" }, append.Select(r => r.Uri).ToArray());
+
+        var empty = Spotify.Connect.SpliceQueued([], added, slot: int.MaxValue);
+        Assert.Equal("spotify:track:new", Assert.Single(empty).Uri);
+    }
 }
 
 /// <summary>The hello PUT (headless plan §1.6 item 5): the session's `AnnounceDevice` effect asks `Connect.Hello`, which

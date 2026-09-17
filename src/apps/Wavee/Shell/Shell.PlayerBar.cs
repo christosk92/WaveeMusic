@@ -42,12 +42,38 @@ public static partial class Shell
     /// <summary>What the primary transport button does when clicked.</summary>
     public enum PrimaryVerb : byte { None, TogglePlay, Retry }
 
+    /// <summary>What a single click on a LIST row does (<c>Track.Invoke</c>): start that row, or toggle the deck.</summary>
+    public enum RowAction : byte { Start, Toggle }
+
     /// <summary>One row of the "⋯" overflow, in BUILD order — which IS the menu order (ch 20 W17).</summary>
     public enum OverflowCommand : byte { Previous, Next, Shuffle, Repeat, Lyrics, Queue, NowPlaying, Video, Mute }
 
     /// <summary>What the centre rail IS right now — decided by the source's own timeline, never by whether a duration
     /// happened to be reported (a sliding DVR window reported as a 3-minute "track" is the defect this ends).</summary>
     public enum SeekRailMode : byte { Track, Dvr, Line }
+
+    /// <summary>The right cluster's SLOTS, in bit order — which IS the row order. A slot's PRESENCE is a function of the
+    /// tier (<see cref="PlayerBarRules.RightSlots"/>) with ONE exception — the video split, which exists iff the
+    /// current track has a video (user decision 2026-09-16: a 52-DIP hole beside lyrics was worse than the row easing
+    /// once when a video track lands). Playback STATE only lights a slot's FACE (<see cref="PlayerBarRules.SlotFaceVisible"/>).
+    /// That split is still the fix for the bar reflowing on track start: the heart, lyrics and overflow used to ARRIVE
+    /// with <c>active</c>, each arrival stealing width from the centre while every cluster animated its bounds. A track
+    /// starting WITHOUT a video therefore still moves nothing; the centre's seek bar has exactly two widths per tier.</summary>
+    [Flags]
+    public enum RightSlot : ushort
+    {
+        None = 0,
+        Shuffle = 1 << 0,
+        Repeat = 1 << 1,
+        Volume = 1 << 2,
+        VolumeSlider = 1 << 3,
+        Lyrics = 1 << 4,
+        Video = 1 << 5,
+        Queue = 1 << 6,
+        Devices = 1 << 7,
+        Expand = 1 << 8,
+        More = 1 << 9,
+    }
 
     /// <summary>The folded answer the bar renders from.</summary>
     public readonly record struct PlayerBarFacts(PlayerState State, bool CanTransport, bool PrevEnabled, bool NextEnabled,
@@ -98,14 +124,26 @@ public static partial class Shell
         {
             var state = StateOf(hasCurrent, error, phase, recovery);
             bool canTransport = state == PlayerState.Active || buffering || state == PlayerState.Reconnecting;
+            // Previous/Next stay ARMED under a fault: the reducer's `Advance` has no error guard and heals the fault
+            // through `PutOnDeck`, so skipping off a dead row is the user's way OUT of it — otherwise the only verb on
+            // offer is Retry against the same row. (The reducer's own `State.CanSkipNext` folds `CanTransport`, which is
+            // false while errored: that is the transport VERBS' contract, not the bar's, and it deliberately stays so.)
+            bool canSkip = canTransport || state == PlayerState.Error;
             var primary = state switch
             {
                 PlayerState.Error => PrimaryVerb.Retry,
                 PlayerState.NoTrack or PlayerState.Loading => PrimaryVerb.None,
                 _ => PrimaryVerb.TogglePlay,
             };
-            return new PlayerBarFacts(state, canTransport, canTransport && canSkipPrev, canTransport && canSkipNext, primary);
+            return new PlayerBarFacts(state, canTransport, canSkip && canSkipPrev, canSkip && canSkipNext, primary);
         }
+
+        /// <summary>What a click on a list row does: the deck row toggles pause/resume, any other row STARTS. The one
+        /// exception is the deck row under a fault — the reducer's Resume returns while <c>Error != None</c>, so a toggle
+        /// there is a click that does nothing; the row is started afresh instead, which runs through <c>PutOnDeck</c> and
+        /// clears the fault (the same heal <see cref="PrimaryVerb.Retry"/> performs).</summary>
+        public static RowAction RowVerb(bool isDeckRow, Playback.Fault error)
+            => isDeckRow && error == Playback.Fault.None ? RowAction.Toggle : RowAction.Start;
 
         /// <summary>The title sentence. A playable whose title has not landed reads "Loading…" — the bar NEVER renders
         /// a uri (ch 20 §7).</summary>
@@ -137,9 +175,81 @@ public static partial class Shell
         public static bool OwnsTransport(Video.TransportOwner owner)
             => owner is Video.TransportOwner.GlobalBar or Video.TransportOwner.PopOut or Video.TransportOwner.Docked;
 
-        /// <summary>The video split button's slot is RESERVED whenever a video could exist, so an async <c>hasVideo</c>
-        /// never reflows the row (§0 item 12).</summary>
-        public static bool VideoSlotReserved(in PlayerBarLayout layout, bool active) => active && layout.ShowQueue;
+        /// <summary>The video split button's slot exists on the queue tier AND only while the current track has a video:
+        /// with no video the cluster RECLAIMS the 52 DIP rather than carrying an unlit hole beside lyrics (user decision
+        /// 2026-09-16, narrowing the earlier tier-only rule). <paramref name="hasVideo"/> is the ONE state input to the
+        /// right cluster's width; <c>active</c> is still not one (§0 item 12) — a track starting without a video widens
+        /// nothing. Whether the face is lit is separate: <see cref="SlotFaceVisible"/>.</summary>
+        public static bool VideoSlotReserved(in PlayerBarLayout layout, bool hasVideo) => layout.ShowQueue && hasVideo;
+
+        /// <summary>The "⋯" slot is reserved wherever the IDLE bar already has rows in its menu — the tier-only rows
+        /// (shuffle/repeat, queue, now-playing). Every state-dependent row (lyrics, video, mute) only ever ADDS to a menu
+        /// that is already non-empty at that tier, so playback can never make the slot appear or vanish.</summary>
+        public static bool OverflowSlotReserved(in PlayerBarLayout layout)
+        {
+            Span<OverflowCommand> scratch = stackalloc OverflowCommand[MaxOverflow];
+            return Overflow(layout, ownsTransport: false, active: false, hasVideo: false, scratch) > 0;
+        }
+
+        /// <summary>Which slots the right cluster HAS, in row order. The tier decides every slot but the video split,
+        /// whose presence <paramref name="hasVideo"/> decides (<see cref="VideoSlotReserved"/>); <see cref="PlayerState"/>
+        /// is deliberately NOT an input.</summary>
+        public static RightSlot RightSlots(in PlayerBarLayout layout, bool hasVideo)
+        {
+            var slots = RightSlot.None;
+            if (layout.ShowShuffleRepeat) slots |= RightSlot.Shuffle | RightSlot.Repeat;
+            if (layout.ShowVolumeButton) slots |= RightSlot.Volume;
+            if (layout.ShowVolumeSlider) slots |= RightSlot.VolumeSlider;
+            if (layout.ShowLyrics) slots |= RightSlot.Lyrics;
+            if (VideoSlotReserved(layout, hasVideo)) slots |= RightSlot.Video;
+            if (layout.ShowQueue) slots |= RightSlot.Queue;
+            if (layout.ShowDevices) slots |= RightSlot.Devices;
+            if (layout.ShowExpand) slots |= RightSlot.Expand;
+            if (OverflowSlotReserved(layout)) slots |= RightSlot.More;
+            return slots;
+        }
+
+        /// <summary>One slot's fixed width: the volume rail, the split video button (glyph + chevron), else the button
+        /// box. Exactly ONE bit must be set.</summary>
+        public static float SlotWidth(RightSlot slot, in PlayerBarLayout layout) => slot switch
+        {
+            RightSlot.VolumeSlider => PlayerBarLayout.VolumeSliderW,
+            RightSlot.Video => layout.ButtonBox + PlayerBarLayout.SplitChevronW,
+            _ => layout.ButtonBox,
+        };
+
+        /// <summary>The right cluster's width — the slot sum plus the gaps between them. A function of the tier and
+        /// <paramref name="hasVideo"/> ONLY, so the centre's seek bar has exactly TWO widths per tier (with / without
+        /// the video split) and the wider one is <see cref="PlayerBarLayout.RightWMax"/>.</summary>
+        public static float RightWidth(in PlayerBarLayout layout, bool hasVideo)
+        {
+            var slots = RightSlots(layout, hasVideo);
+            float w = 0f;
+            int n = 0;
+            for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
+            {
+                var slot = (RightSlot)bit;
+                if ((slots & slot) == 0) continue;
+                w += SlotWidth(slot, layout);
+                n++;
+            }
+            return n == 0 ? 0f : w + layout.RightGap * (n - 1);
+        }
+
+        /// <summary>Does a present slot show its face? Lyrics need a playable; the video split — which only EXISTS with
+        /// a video (<see cref="VideoSlotReserved"/>) — additionally needs an Active playable. Every other slot is always
+        /// lit.</summary>
+        public static bool SlotFaceVisible(RightSlot slot, PlayerState state, bool hasVideo) => slot switch
+        {
+            RightSlot.Lyrics => state == PlayerState.Active,
+            RightSlot.Video => state == PlayerState.Active && hasVideo,
+            _ => true,
+        };
+
+        /// <summary>The heart's slot is the tier's (<see cref="PlayerBarLayout.ShowLikeSlot"/>); its face needs a
+        /// playable to like.</summary>
+        public static bool LikeFaceVisible(in PlayerBarLayout layout, PlayerState state)
+            => layout.ShowLikeSlot && state == PlayerState.Active;
 
         /// <summary>Below Medium an ACTIVE bar carries Mute/Unmute in the overflow; an idle one has no volume
         /// affordance at all.</summary>
@@ -157,8 +267,8 @@ public static partial class Shell
             if (!layout.ShowLyrics && active) dest[n++] = OverflowCommand.Lyrics;
             if (!layout.ShowQueue) dest[n++] = OverflowCommand.Queue;
             if (!layout.ShowExpand) dest[n++] = OverflowCommand.NowPlaying;
-            // Unlike the inline slot this row is NOT reserved: no video, no row.
-            if (!VideoSlotReserved(layout, active) && active && hasVideo) dest[n++] = OverflowCommand.Video;
+            // A tier WITHOUT the inline split carries the verb here instead — and like the slot: no video, no row.
+            if (!layout.ShowQueue && active && hasVideo) dest[n++] = OverflowCommand.Video;
             if (VolumeInOverflow(layout, active)) dest[n++] = OverflowCommand.Mute;
             return n;
         }

@@ -1,6 +1,6 @@
 # Wavee 0.3 — headless Wavee, investigation and implementation plan
 
-Status: DRAFT for approval, 2026-09-13. Worktree `C:\WAVEE\wavee-0.3`, branch `feat/0.3-structure`. Companion to
+Status: APPROVED 2026-09-13 — Christos answered §8 Q1-Q7 (recorded in §8's answer table; Q8, the issue number, stays with the orchestrator). The CORE split G-016 asked for landed as `Diagnostics.Headless.Json.cs` (Wave 6, owner S). Originally a DRAFT for approval, 2026-09-13. Worktree `C:\WAVEE\wavee-0.3`, branch `feat/0.3-structure`. Companion to
 `wavee-0.3-implementation.md` (the plan; §2 file map, §5 waves, §8 gates), `wavee-0.3-vorbis-implementation.md`
 (§5.4 requests per scenario, §7.3 the gate the numbers pin), `wavee-0.3-flac-implementation.md` (§8.3 the lossless
 smoke line) and the tray plan being written in parallel (`wavee-0.3-tray-implementation.md`; §6 below is the
@@ -1169,7 +1169,7 @@ quit
 set crossfade 0
 play spotify:album:<A_GAPLESS> 
 wait playing timeout 20000
-seek -12s                                       # relative to the END is not a form; the SHELL resolves `end-12s` — §8 Q7
+seek end-12s                                    # §8 Q7 (answered): resolved against DurationMs at post time
 wait next timeout 30000
 expect gapless.exact>=1
 expect xruns==0
@@ -1197,6 +1197,46 @@ wait position>=3:00 timeout 5000
 expect cdn.requests==0
 quit
 ```
+
+### 4.1a `parse-only.wh` — the offline gate (no session, no network, no device)
+
+The one script that runs anywhere, first, before any signed-in profile is involved: §7's verification step 3. It
+exercises the boot, the grammar (text AND the JSON form), the settings overlay, the snapshot, the `stats` writer and
+the verdict — and nothing that needs Spotify. It is run with `--no-login` (the wrapper's `-NoLogin`) and a scratch
+`--profile`, so it also proves the isolation rules: no `%LOCALAPPDATA%\Wavee` is created, and — since the Wave 6
+settings-isolation fix (`Platform.SettingsBackingFor`) — a `--profile` run reads that folder's `settings.json` and never
+touches HKCU, while every `set`/`quality` write stays in the overlay (§2.8 rule 1).
+
+```
+# parse-only.wh - offline: run with -NoLogin (--no-login). Boot, the grammar, the verdict; no session, no network,
+# no audio device.
+status
+stats mark
+quality normal
+set crossfade 0
+set normalization on
+{"cmd":"log","args":["parse-only: the JSON form"],"id":1}
+expect offline
+expect idle && !buffering && position==0
+expect cdn.requests==0 && xruns==0
+sleep 200
+stats
+log parse-only: done
+quit
+```
+
+| What it proves | The line that shows it |
+|---|---|
+| the arm parses and boots without a session | `{"kind":"boot",…,"store":false}` then no `session` event but `Offline` |
+| the text grammar, the rung names, `set` | `step` ok for `quality normal`, `set crossfade 0`, `set normalization on` |
+| the JSON form and its id | the `log` step (id 1) |
+| conditions over a snapshot nobody is driving | `expect offline`, `expect idle && !buffering && position==0` |
+| the counter deltas | `expect cdn.requests==0 && xruns==0`, the `stats` line all zeros |
+| the runner, `sleep`, `quit`, the exit table | `{"kind":"verdict","ok":true,…,"code":0,"meaning":"ok"}`, exit code 0 |
+
+Gate: exit 0; exactly one `boot` and one `verdict` line; `%LOCALAPPDATA%\Wavee` absent afterwards when it was absent
+before (the E2E harness's folder assertion, `local-update-e2e.ps1:1574-1580`); HKCU `Software\Wavee\Wavee\Settings`
+unchanged. Run it after every change to `Diagnostics.Headless*.cs` or `Diagnostics.Probe.cs`, before any live script.
 
 ### 4.2 `ops/headless/Invoke-WaveeHeadless.ps1`
 
@@ -1338,7 +1378,23 @@ issue number (§8 Q8).
 
 ---
 
-## 8. Open questions — only Christos can answer
+## 8. Open questions — ANSWERED 2026-09-13 (Q1-Q7)
+
+**Decisions (Christos, 2026-09-13). These override anything above that disagrees.**
+
+| # | Decision |
+|---|---|
+| 1 | The headless smoke is a **wave gate plus a manual rehearsal step** (`docs/guide/releasing-wavee.md`'s list), **not** a `wavee-release.ps1` gate: it needs a signed-in profile, network and audio. `-DryRun` does not launch the app. |
+| 2 | Headless stays **resume-only**: no stored credential exits **67** (`ExitCode.NoCredential`) with the `no-credential` fault and its hint. No console device-code or PKCE flow in the headless arm; sign-in stays Setup's (owner R). |
+| 3 | A headless exit **closes the session without clearing the credential** through `SessionEventKind.Disconnect` (D's file, landed), and `ProtectedLocalStore` still refuses a credential removal as the second guard. `Logout` is never called by the host. |
+| 4 | The silent endpoint is **paced in Wavee** (`Playback.Audio`'s paced buffered endpoint, owner H/B4), not an engine `HeadlessAudioEndpoint(realtime)` mode. |
+| 5 | **The plain `HeadlessLoop`** (one `BlockingCollection` writer + the one named 100 ms tick), not the engine's headless `AppHost`. |
+| 6 | **The pinned engine**: Wavee builds against `C:\WAVEEluent-gpu-base` @ `eba1285b2` (decision D1, `EngineRoot.local.props`), and every engine citation in this plan is against it. |
+| 7 | **`end-10s` is a position form**: `seek end-<duration>` resolves against `DurationMs` at post time, and a script waits for the duration first (`wait playing && position>=1s`). The gapless and prefetch scripts use it. |
+| 8 | Open — the issue number stays with the orchestrator (nothing is filed by this plan). |
+
+The original questions, for the record:
+
 
 1. **Is the headless smoke a release gate?** It needs a signed-in profile, network and 30 s of audio, so this plan
    keeps it a *wave* gate + a manual rehearsal step, not a `wavee-release.ps1` gate. Do you want `-DryRun` to run

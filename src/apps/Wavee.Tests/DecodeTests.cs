@@ -132,6 +132,89 @@ public class DecodeTests
         Assert.Equal("GBKPL2500123", Entities.Strings.Resolve(track.IsrcId));
         Assert.True(track.Knows(TrackFields.Canonical));
         Assert.Equal(TrackOf(60).Slot, track.Canonical.Slot);
+
+        // A DIRECT decode (no envelope) stages exactly one row: the payload's own gid. The canonical target is a bare
+        // reference the commit allocated — it knows nothing — and a row that knows its own title displays ITSELF, so
+        // the versions-panel pointer never redirects a titled row's facts.
+        Assert.False(TrackOf(60).Knows(TrackFields.Identity));
+        Assert.Equal(track.Slot, track.ForDisplay.Slot);
+    }
+
+    /// <summary>RELINKING. Spotify answers a market-restricted id with the CANONICAL track's payload, whose own gid is a
+    /// different row. Reading only the payload staged the canonical row and left the ASKED slot without one; the batch
+    /// was a 200, `Fetch.Answer` sealed the group as asked, and the liked row stayed a blank with an enabled play. The
+    /// envelope's uri now stages a second row for the asked identity: the same Identity / Year / Availability facts, its
+    /// own artists edge, and <c>Canonical</c> pointing at the payload's row.</summary>
+    [Fact]
+    public void A_relinked_envelope_entry_stages_the_asked_identity_as_an_alias_of_the_canonical_row()
+    {
+        TestScope.Fresh();
+        var response = new Xm.BatchedExtensionResponse
+        {
+            ExtendedMetadata =
+            {
+                // Asked for 170, answered with the payload whose gid is 10.
+                Entry(Xm.ExtensionKind.TrackV4, UriOf(EntityKind.Track, 170), TrackV4Bytes(), status: 200),
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.ExtendedMetadata(response, s);
+        TestScope.CommitAndPublish(s);
+
+        var canonical = TrackOf(10);
+        var asked = TrackOf(170);
+        Assert.True(canonical.Knows(TrackFields.Identity));
+        Assert.True(asked.Knows(TrackFields.Identity));
+        Assert.True(asked.Knows(TrackFields.Availability));
+        Assert.True(asked.IsPlayable);
+
+        Assert.Equal(canonical.Title, asked.Title);
+        Assert.Equal("Cold Brew Chapters", asked.Title);
+        Assert.Equal(canonical.DurationMs, asked.DurationMs);
+        Assert.Equal(canonical.IsExplicit, asked.IsExplicit);
+        Assert.Equal(canonical.Album.Slot, asked.Album.Slot);
+        Assert.Equal(Entities.Strings.Resolve(canonical.ImageId), Entities.Strings.Resolve(asked.ImageId));
+        Assert.Equal(Entities.Strings.Resolve(canonical.ArtistLineId), Entities.Strings.Resolve(asked.ArtistLineId));
+
+        // The alias points at the payload's row; the payload's row keeps its OWN canonical pointer (field 36 → 60).
+        Assert.True(asked.Knows(TrackFields.Canonical));
+        Assert.Equal(canonical.Slot, asked.Canonical.Slot);
+        Assert.Equal(TrackOf(60).Slot, canonical.Canonical.Slot);
+
+        // Identity includes Artists: the alias carries its own TrackArtists run, so the per-artist click targets
+        // resolve off the asked row too (never an Unknown edge under a row that says it knows).
+        Assert.Equal(canonical.ArtistSlots.Length, asked.ArtistSlots.Length);
+        Assert.Equal(2, asked.ArtistSlots.Length);
+        Assert.Equal(ArtistOf(40).Slot, asked.ArtistSlots[0]);
+
+        // Both rows know their titles, so each displays itself; neither is `Unnamed`.
+        Assert.Equal(asked.Slot, asked.ForDisplay.Slot);
+        Assert.False(Detail.NoticeRules.Unnamed(asked));
+    }
+
+    /// <summary>The envelope uri and the payload gid AGREE for an ordinary answer: no alias row is staged, and the row
+    /// knows only the canonical pointer the payload itself carried.</summary>
+    [Fact]
+    public void An_envelope_entry_whose_uri_matches_the_payload_stages_no_alias()
+    {
+        TestScope.Fresh();
+        int before = Entities.Current.Tracks.Count;
+        var response = new Xm.BatchedExtensionResponse
+        {
+            ExtendedMetadata = { Entry(Xm.ExtensionKind.TrackV4, UriOf(EntityKind.Track, 10), TrackV4Bytes(), status: 200) },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.ExtendedMetadata(response, s);
+        TestScope.CommitAndPublish(s);
+
+        var track = TrackOf(10);
+        Assert.True(track.Knows(TrackFields.Identity));
+        Assert.Equal(TrackOf(60).Slot, track.Canonical.Slot);
+        // The rows this answer allocated: 10 itself, its canonical target 60, and the album/artist rows live in
+        // OTHER tables — so the track table grew by exactly the payload's two identities.
+        Assert.Equal(before + 2, Entities.Current.Tracks.Count);
     }
 
     [Fact]
@@ -154,6 +237,70 @@ public class DecodeTests
         Spotify.Decode.TrackV4(TrackV4Bytes(), plain);
         TestScope.CommitAndPublish(plain);
         Assert.True(TrackOf(10).IsPlayable);
+    }
+
+    [Fact]
+    public void TrackV4_carries_its_album_cover_as_the_row_image()
+    {
+        // Fix 4: `TrackFields.Identity` includes `Image`, but TrackV4 only ever read the album's cover onto the
+        // ALBUM row (`ThinAlbum`) and never handed it down — a Full row that leaves it empty seals a blank forever.
+        // 0.2.9 derived the track's own row image from this same cover group.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.TrackV4(TrackV4Bytes(), s);
+        TestScope.CommitAndPublish(s);
+
+        var track = TrackOf(10);
+        Assert.True(track.Knows(TrackFields.Image));
+        Assert.Equal("https://i.scdn.co/image/" + Convert.ToHexStringLower(Gid(30)), Entities.Strings.Resolve(track.ImageId));
+    }
+
+    [Fact]
+    public void A_full_answer_without_a_cover_keeps_the_image_a_playlist_item_set()
+    {
+        // Edit B: nothing legitimately removes an image. A playlist item's thin identity row can carry a real cover
+        // (`Spotify.Decode.Playlist.cs`) that a later TRACK_V4 answer never repeats — that answer must not blank it.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        ref var thin = ref s.Tracks.RowFor(StagedTrackId(10), Authority.Thin, (uint)TrackFields.Identity);
+        thin.Title = s.Text("Placeholder");
+        thin.Image = s.Text("https://i.scdn.co/image/thin");
+        TestScope.CommitAndPublish(s);
+
+        var bare = new Md.Track
+        {
+            Gid = Bs(Gid(10)),
+            Name = "Bare",
+            Album = new Md.Album { Gid = Bs(Gid(20)), Name = "Bare" },       // no CoverGroup
+        }.ToByteArray();
+        var full = Staging.Rent();
+        Spotify.Decode.TrackV4(bare, full);
+        TestScope.CommitAndPublish(full);
+
+        var track = TrackOf(10);
+        Assert.Equal("Bare", track.Title);
+        Assert.Equal("https://i.scdn.co/image/thin", Entities.Strings.Resolve(track.ImageId));
+    }
+
+    [Fact]
+    public void A_thin_answer_without_a_title_keeps_the_title_a_full_answer_set()
+    {
+        // S5's backstop (item 3): the Title write in `CommitTracks`'s Identity arm must never blank a title with an
+        // empty one, the same rule the Image write right below it already followed (Fix 4). A Thin write is already
+        // refused outright by D16's authority gate once a Full one has spoken — this pins the OUTCOME regardless of
+        // which of the two guards is the one standing between a thin answer and a wiped row.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.TrackV4(TrackV4Bytes(), s);
+        TestScope.CommitAndPublish(s);
+        Assert.Equal("Cold Brew Chapters", TrackOf(10).Title);
+
+        var thin = Staging.Rent();
+        ref var row = ref thin.Tracks.RowFor(StagedTrackId(10), Authority.Thin, (uint)TrackFields.Identity);
+        row.Image = thin.Text("https://i.scdn.co/image/thin");    // Title left default/empty on purpose
+        TestScope.CommitAndPublish(thin);
+
+        Assert.Equal("Cold Brew Chapters", TrackOf(10).Title);
     }
 
     // ── AlbumV4 (ch 05 §7) ──────────────────────────────────────────────────────────────────────────────────────────
@@ -211,6 +358,22 @@ public class DecodeTests
     }
 
     [Fact]
+    public void AlbumV4_disc_rows_carry_the_album_cover()
+    {
+        // Fix 4: the cover is field 17 and the discs field 11, so every disc row (`DiscTrack`) is staged THIN,
+        // cover-less, before the cover is read — 0.2.9 handed its album's cover down to each track the same way.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.AlbumV4(AlbumV4Bytes(), s);
+        TestScope.CommitAndPublish(s);
+
+        string cover = "https://i.scdn.co/image/" + Convert.ToHexStringLower(Gid(30));
+        Assert.Equal(cover, Entities.Strings.Resolve(TrackOf(70).ImageId));
+        Assert.Equal(cover, Entities.Strings.Resolve(TrackOf(80).ImageId));
+        Assert.Equal(cover, Entities.Strings.Resolve(TrackOf(90).ImageId));
+    }
+
+    [Fact]
     public void AlbumV4_fills_identity_release_and_the_publishing_panel()
     {
         TestScope.Fresh();
@@ -241,6 +404,55 @@ public class DecodeTests
         TestScope.CommitAndPublish(s);
 
         Assert.Equal(EdgeState.Unknown, Entities.Current.Edges.AlbumTracks.State(AlbumOf(21).Slot));
+    }
+
+    [Fact]
+    public void A_disc_track_with_only_a_gid_stays_re_askable()
+    {
+        // S5: a region-substituted/linked disc entry can carry only `gid` (field 1) and no `name` (field 2).
+        // `DiscTrack` used to declare `TrackFields.Identity` unconditionally, sealing an empty title and
+        // DurationMs 0 forever — `Album.Page.cs`'s `Ensure(… Identity | Video …)` never re-asks a row that already
+        // Knows(Identity). The edge and its ordinal must still stand: the `#` lane must not shift for the tracks
+        // around it, and the existing page ensure is what fetches `TrackV4` for the thin one.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.AlbumV4(new Md.Album
+        {
+            Gid = Bs(Gid(21)),
+            Name = "Thin Disc",
+            Disc =
+            {
+                new Md.Disc
+                {
+                    Number = 1,
+                    Track =
+                    {
+                        new Md.Track { Gid = Bs(Gid(70)), Name = "One", Number = 1, Duration = 1000 },
+                        new Md.Track { Gid = Bs(Gid(71)), Number = 2 },   // gid + number only, no name
+                        new Md.Track { Gid = Bs(Gid(72)), Name = "Three", Number = 3, Duration = 3000 },
+                    },
+                },
+            },
+        }.ToByteArray(), s);
+        TestScope.CommitAndPublish(s);
+
+        var album = AlbumOf(21);
+        var edges = Entities.Current.Edges.AlbumTracks;
+        Assert.Equal(EdgeState.Complete, edges.State(album.Slot));
+        Assert.Equal(3, edges.Count(album.Slot));                     // the thin row is still a member, not dropped
+
+        var targets = edges.Targets(album.Slot);
+        var payload = edges.Payload(album.Slot);
+        Assert.Equal(TrackOf(70).Slot, targets[0]);
+        Assert.Equal(TrackOf(71).Slot, targets[1]);
+        Assert.Equal(TrackOf(72).Slot, targets[2]);
+        Assert.Equal(new AlbumTrackEdge(1, 2), payload[1]);            // its ordinal did not shift
+
+        var thin = TrackOf(71);
+        Assert.True(thin.IsValid);
+        Assert.False(thin.Knows(TrackFields.Identity));                // re-askable, not sealed with a blank title
+        Assert.True(TrackOf(70).Knows(TrackFields.Identity));
+        Assert.True(TrackOf(72).Knows(TrackFields.Identity));
     }
 
     // ── ArtistV4 / ShowV4 / EpisodeV4 ───────────────────────────────────────────────────────────────────────────────
@@ -806,17 +1018,36 @@ public class DecodeTests
 
     // ── the envelope ────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>One envelope entry: a kind, the entity uri, its payload and the per-entity status.</summary>
+    static Xm.EntityExtensionDataArray Entry(Xm.ExtensionKind kind, string uri, byte[] payload, int status) => new()
+    {
+        ExtensionKind = kind,
+        ExtensionData =
+        {
+            new Xm.EntityExtensionData
+            {
+                Header = new Xm.EntityExtensionDataHeader { StatusCode = status },
+                EntityUri = uri,
+                ExtensionData = new Google.Protobuf.WellKnownTypes.Any
+                {
+                    TypeUrl = "type.googleapis.com/spotify.metadata." + kind,
+                    Value = ByteString.CopyFrom(payload),
+                },
+            },
+        },
+    };
+
     [Fact]
-    public void The_extended_metadata_envelope_fans_out_by_kind_and_drops_a_failed_entity()
+    public void The_extended_metadata_envelope_fans_out_by_kind_and_a_terminal_track_entry_becomes_a_ruled_unavailable_row()
     {
         TestScope.Fresh();
         var response = new Xm.BatchedExtensionResponse
         {
             ExtendedMetadata =
             {
-                Array(Xm.ExtensionKind.TrackV4, UriOf(EntityKind.Track, 10), TrackV4Bytes(), status: 200),
-                Array(Xm.ExtensionKind.TrackV4, UriOf(EntityKind.Track, 150), TrackV4Bytes(), status: 404),
-                Array(Xm.ExtensionKind.AlbumV4, UriOf(EntityKind.Album, 20), AlbumV4Bytes(), status: 200),
+                Entry(Xm.ExtensionKind.TrackV4, UriOf(EntityKind.Track, 10), TrackV4Bytes(), status: 200),
+                Entry(Xm.ExtensionKind.TrackV4, UriOf(EntityKind.Track, 150), TrackV4Bytes(), status: 404),
+                Entry(Xm.ExtensionKind.AlbumV4, UriOf(EntityKind.Album, 20), AlbumV4Bytes(), status: 200),
             },
         }.ToByteArray();
 
@@ -824,28 +1055,73 @@ public class DecodeTests
         Spotify.Decode.ExtendedMetadata(response, s);
         TestScope.CommitAndPublish(s);
 
+        // The 2xx entries are unchanged: the payloads land at full authority.
         Assert.True(TrackOf(10).Knows(TrackFields.Identity));
+        Assert.True(TrackOf(10).IsPlayable);
+        Assert.Equal("Cold Brew Chapters", Entities.Strings.Resolve(TrackOf(10).TitleId));
         Assert.True(AlbumOf(20).Knows(AlbumFields.Identity));
         Assert.Equal(3, Entities.Current.Edges.AlbumTracks.Count(AlbumOf(20).Slot));
-        Assert.False(TrackOf(150).Knows(TrackFields.Identity));
 
-        static Xm.EntityExtensionDataArray Array(Xm.ExtensionKind kind, string uri, byte[] payload, int status) => new()
+        // The 404 entry used to be dropped on the floor: the batch was a 200, `Fetch.Answer` sealed the group as asked,
+        // and the track stayed an UNRULED blank — a Liked Songs row with no title whose play could only fail. Now the
+        // envelope's uri becomes a row that Knows Identity AND Availability, ruled unavailable with no instant (the
+        // payload is NOT read — a failed entity's body describes nothing), i.e. exactly `Track.Unplayable`.
+        var dead = TrackOf(150);
+        Assert.True(dead.Knows(TrackFields.Identity));
+        Assert.True(dead.Knows(TrackFields.Availability));
+        Assert.False(dead.IsPlayable);
+        Assert.Equal(0, dead.AvailableAt);
+        Assert.Equal("", Entities.Strings.Resolve(dead.TitleId));
+        Assert.True(dead.Unplayable());
+    }
+
+    [Theory]
+    [InlineData(404, true)]
+    [InlineData(403, true)]
+    [InlineData(410, true)]
+    [InlineData(451, true)]
+    [InlineData(200, false)]
+    [InlineData(204, false)]
+    [InlineData(400, false)]
+    [InlineData(429, false)]
+    [InlineData(500, false)]
+    [InlineData(503, false)]
+    public void A_terminal_entry_is_exactly_the_four_catalog_verdicts(int status, bool terminal)
+        => Assert.Equal(terminal, Spotify.Decode.ExtendedMetadataRules.TerminalEntry(status));
+
+    [Theory]
+    [InlineData(200, false, true)]    // a 2xx header with no extension_data: the service had nothing for this uri
+    [InlineData(200, true, false)]    // a 2xx WITH a payload is a real answer, never unavailable
+    [InlineData(404, true, true)]     // a terminal status rules the row whatever the payload field says
+    [InlineData(404, false, true)]
+    [InlineData(503, false, false)]   // a transient failure leaves the hole for the retry
+    public void A_track_entity_resolves_as_unavailable_on_a_terminal_status_or_an_empty_2xx(int status, bool answered, bool unavailable)
+        => Assert.Equal(unavailable, Spotify.Decode.ExtendedMetadataRules.ResolvedAsUnavailable(status, answered));
+
+    [Fact]
+    public void A_transient_track_failure_and_a_terminal_non_track_entry_stay_holes()
+    {
+        // Only the ROW shape (TrackV4) is ruled by a terminal status: a 5xx is this request being unlucky and the retry
+        // must find the hole it left, and no other kind is given a synthetic row (an album 404 has no "unavailable"
+        // verdict to carry — a Thin row would seal Identity with nothing behind it).
+        TestScope.Fresh();
+        var response = new Xm.BatchedExtensionResponse
         {
-            ExtensionKind = kind,
-            ExtensionData =
+            ExtendedMetadata =
             {
-                new Xm.EntityExtensionData
-                {
-                    Header = new Xm.EntityExtensionDataHeader { StatusCode = status },
-                    EntityUri = uri,
-                    ExtensionData = new Google.Protobuf.WellKnownTypes.Any
-                    {
-                        TypeUrl = "type.googleapis.com/spotify.metadata." + kind,
-                        Value = ByteString.CopyFrom(payload),
-                    },
-                },
+                Entry(Xm.ExtensionKind.TrackV4, UriOf(EntityKind.Track, 160), TrackV4Bytes(), status: 503),
+                Entry(Xm.ExtensionKind.AlbumV4, UriOf(EntityKind.Album, 40), AlbumV4Bytes(), status: 404),
             },
-        };
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.ExtendedMetadata(response, s);
+        TestScope.CommitAndPublish(s);
+
+        Assert.False(TrackOf(160).Knows(TrackFields.Identity));
+        Assert.False(TrackOf(160).Knows(TrackFields.Availability));
+        Assert.True(TrackOf(160).IsPlayable);                       // unruled, so playable (ch 04 DATA GAPS)
+        Assert.False(AlbumOf(40).Knows(AlbumFields.Identity));
     }
 
     // ── the manifest id and the video's shape (G-056, G-057, G-058) ─────────────────────────────────────────────────
@@ -1195,6 +1471,417 @@ public class DecodeTests
         var name = Spotify.Decode.FolderName(s, Encoding.UTF8.GetBytes(escaped));
         Assert.Equal(expected, Encoding.UTF8.GetString(s.Utf8(name)));
         Staging.Return(s);
+    }
+
+    // ── rootlist meta_items: owner + header, decode half (G-048) ───────────────────────────────────────────────────────
+
+    /// <summary>A complete <c>MetaItem</c> (name + length + a cover) for one rootlist row (S2: less than all three is
+    /// not a header, it is a wrong guess, so the tests build exactly what the decoder is meant to accept).</summary>
+    static Pl.MetaItem CompleteMeta(string owner, string name, int length, byte pictureSeed)
+        => new()
+        {
+            OwnerUsername = owner,
+            Length = length,
+            Attributes = new Pl.ListAttributes { Name = name, Picture = Bs(Gid(pictureSeed)) },
+        };
+
+    /// <summary>`meta_items` rides alongside `items`, one <c>MetaItem</c> per REAL playlist row (a folder marker gets
+    /// none): the owner, the header text, the server's own count and the cover land as a Thin
+    /// <c>PlaylistFields.Identity</c> (S1: playlist-parallel alignment), so `LibraryCaps.StageOwned`
+    /// (Spotify.Encode.cs, B2) has an owner to compare against the signed-in account and the sidebar shows a real
+    /// count and cover without waiting on the header prefetch (S2).</summary>
+    [Fact]
+    public void Rootlist_meta_items_stage_the_owner_and_header_of_each_real_row()
+    {
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        var proto = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items =
+                {
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 1) },
+                    new Pl.Item { Uri = "spotify:start-group:" + GroupId + ":Folder" },   // no MetaItem: not a playlist
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 2) },
+                    new Pl.Item { Uri = "spotify:end-group:" + GroupId },
+                },
+                MetaItems =
+                {
+                    CompleteMeta("christos", "Mine", 12, 101),
+                    CompleteMeta("someone-else", "Theirs", 34, 102),
+                },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.Rootlist(proto, me, s);
+        TestScope.CommitAndPublish(s);
+
+        var mine = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(1)));
+        var theirs = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(2)));
+        Assert.True(mine.Knows(PlaylistFields.Identity));
+        Assert.Equal("Mine", Entities.Strings.Resolve(mine.TitleId));
+        Assert.Equal("spotify:user:christos", mine.Owner.Uri.Text);
+        Assert.Equal(12, mine.TrackCount);
+        Assert.Equal("https://i.scdn.co/image/" + Convert.ToHexStringLower(Gid(101)), Entities.Strings.Resolve(mine.ImageId));
+        Assert.Equal("Theirs", Entities.Strings.Resolve(theirs.TitleId));
+        Assert.Equal("spotify:user:someone-else", theirs.Owner.Uri.Text);
+        Assert.Equal(34, theirs.TrackCount);
+    }
+
+    /// <summary>A full playlist read (Authority.Full) always wins over the rootlist's Thin decoration — D16's
+    /// <c>Accepts</c> — so the summary that arrives later cannot clobber a header the drawer already fetched, even
+    /// when that summary is itself complete enough to have staged Identity on its own.</summary>
+    [Fact]
+    public void A_full_playlist_read_is_never_downgraded_by_a_later_rootlist_meta_item()
+    {
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        var uri = UriOf(EntityKind.Playlist, 1);
+
+        var full = new Pl.SelectedListContent
+        {
+            Attributes = new Pl.ListAttributes { Name = "Full Title" },
+            Contents = new Pl.ListItems { Pos = 0, Truncated = false },
+            OwnerUsername = "christos",
+        }.ToByteArray();
+        var s1 = Staging.Rent();
+        Spotify.Decode.PlaylistRevision(full, Encoding.UTF8.GetBytes(uri), s1);
+        TestScope.CommitAndPublish(s1);
+
+        var rootlist = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items = { new Pl.Item { Uri = uri } },
+                MetaItems = { CompleteMeta("someone-else", "Stale", 99, 201) },
+            },
+        }.ToByteArray();
+        var s2 = Staging.Rent();
+        Spotify.Decode.Rootlist(rootlist, me, s2);
+        TestScope.CommitAndPublish(s2);
+
+        var playlist = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(1)));
+        Assert.Equal("Full Title", Entities.Strings.Resolve(playlist.TitleId));
+        Assert.Equal("spotify:user:christos", playlist.Owner.Uri.Text);
+    }
+
+    // ── S1: meta_items alignment (item-parallel vs playlist-parallel vs neither) ───────────────────────────────────────
+
+    /// <summary>Five wire rows — playlist, folder-start, playlist, folder-end, playlist — with FIVE metas, one per
+    /// wire row (item-parallel: a server that decorates markers too). Each playlist must land its OWN name: before
+    /// S1 the zip only ever advanced `playlistTargets` past real playlist rows, so the second and third playlist here
+    /// would have worn the first and second playlist's names.</summary>
+    [Fact]
+    public void Rootlist_meta_items_zip_item_parallel_when_the_wire_decorates_every_row()
+    {
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        var proto = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items =
+                {
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 1) },
+                    new Pl.Item { Uri = "spotify:start-group:" + GroupId + ":Folder" },
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 2) },
+                    new Pl.Item { Uri = "spotify:end-group:" + GroupId },
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 3) },
+                },
+                MetaItems =
+                {
+                    CompleteMeta("christos", "First", 1, 1),
+                    new Pl.MetaItem(),                              // the folder-start's slot: blank, ignored (empty target)
+                    CompleteMeta("christos", "Second", 2, 2),
+                    new Pl.MetaItem(),                              // the folder-end's slot
+                    CompleteMeta("christos", "Third", 3, 3),
+                },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.Rootlist(proto, me, s);
+        TestScope.CommitAndPublish(s);
+
+        var p1 = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(1)));
+        var p2 = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(2)));
+        var p3 = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(3)));
+        Assert.Equal("First", Entities.Strings.Resolve(p1.TitleId));
+        Assert.Equal(1, p1.TrackCount);
+        Assert.Equal("Second", Entities.Strings.Resolve(p2.TitleId));
+        Assert.Equal(2, p2.TrackCount);
+        Assert.Equal("Third", Entities.Strings.Resolve(p3.TitleId));
+        Assert.Equal(3, p3.TrackCount);
+    }
+
+    /// <summary>The same five-row stream, but with THREE metas — one per real playlist row only (playlist-parallel: a
+    /// server that never decorates markers, matching 0.2.9's own client). Every playlist still lands its own name.</summary>
+    [Fact]
+    public void Rootlist_meta_items_zip_playlist_parallel_when_the_wire_decorates_only_real_rows()
+    {
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        var proto = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items =
+                {
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 1) },
+                    new Pl.Item { Uri = "spotify:start-group:" + GroupId + ":Folder" },
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 2) },
+                    new Pl.Item { Uri = "spotify:end-group:" + GroupId },
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 3) },
+                },
+                MetaItems =
+                {
+                    CompleteMeta("christos", "First", 1, 1),
+                    CompleteMeta("christos", "Second", 2, 2),
+                    CompleteMeta("christos", "Third", 3, 3),
+                },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.Rootlist(proto, me, s);
+        TestScope.CommitAndPublish(s);
+
+        var p1 = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(1)));
+        var p2 = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(2)));
+        var p3 = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(3)));
+        Assert.Equal("First", Entities.Strings.Resolve(p1.TitleId));
+        Assert.Equal("Second", Entities.Strings.Resolve(p2.TitleId));
+        Assert.Equal("Third", Entities.Strings.Resolve(p3.TitleId));
+    }
+
+    /// <summary>Four metas fit NEITHER the item-parallel count (5) nor the playlist-parallel one (3): the decoder must
+    /// not guess an alignment — a wrong title zipped onto the wrong row is worse than no decoration at all — so no
+    /// playlist here learns Identity from this answer.</summary>
+    [Fact]
+    public void Rootlist_meta_items_stage_nothing_when_the_count_matches_neither_alignment()
+    {
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        var proto = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items =
+                {
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 1) },
+                    new Pl.Item { Uri = "spotify:start-group:" + GroupId + ":Folder" },
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 2) },
+                    new Pl.Item { Uri = "spotify:end-group:" + GroupId },
+                    new Pl.Item { Uri = UriOf(EntityKind.Playlist, 3) },
+                },
+                MetaItems =
+                {
+                    CompleteMeta("christos", "First", 1, 1),
+                    CompleteMeta("christos", "Second", 2, 2),
+                    CompleteMeta("christos", "Third", 3, 3),
+                    CompleteMeta("christos", "Fourth", 4, 4),
+                },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.Rootlist(proto, me, s);
+        TestScope.CommitAndPublish(s);
+
+        Assert.False(Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(1))).Knows(PlaylistFields.Identity));
+        Assert.False(Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(2))).Knows(PlaylistFields.Identity));
+        Assert.False(Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(3))).Knows(PlaylistFields.Identity));
+    }
+
+    // ── S2: the header is name + length (a cover is nice to have, never required) or it is left for the real fetch ──
+
+    /// <summary>A meta with a name and a cover but NO length (`MetaItem.length`, field 3, absent): <c>PlaylistFields</c>
+    /// has no group narrower than <c>Identity</c> for "just the title", so staging it thin would mark the row settled
+    /// and `EnsureRootlistRows`'s real header prefetch (`PlaylistFields.Row` minus known) would never ask again — the
+    /// row must stay unknown instead.</summary>
+    [Fact]
+    public void Rootlist_meta_without_a_track_count_stages_no_identity_claim()
+    {
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        var proto = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items = { new Pl.Item { Uri = UriOf(EntityKind.Playlist, 1) } },
+                MetaItems =
+                {
+                    new Pl.MetaItem
+                    {
+                        OwnerUsername = "christos",
+                        Attributes = new Pl.ListAttributes { Name = "No Count", Picture = Bs(Gid(1)) },
+                        // Length deliberately unset.
+                    },
+                },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.Rootlist(proto, me, s);
+        TestScope.CommitAndPublish(s);
+
+        Assert.False(Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(1))).Knows(PlaylistFields.Identity));
+    }
+
+    /// <summary>A meta with a name and a length but NO cover at all — no `picture`, no `picture_size` — is a genuinely
+    /// cover-less playlist ("new list", never given a photo), not a partial answer: unlike the name/length gate above,
+    /// the COVER is not required for Identity. The row must still land its real count (seen live: a 323-song owned
+    /// playlist stuck reading "0 songs" in the sidebar until visited, because the old rule waited on a picture that was
+    /// never coming) and its <see cref="Playlist.ImageId"/> stays empty — a real "no cover" the mosaic renders, not an
+    /// unknown one `CommitPlaylists`' guard would refuse to blank later.</summary>
+    [Fact]
+    public void Rootlist_meta_without_a_picture_still_stages_name_and_count()
+    {
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        var proto = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items = { new Pl.Item { Uri = UriOf(EntityKind.Playlist, 1) } },
+                MetaItems =
+                {
+                    new Pl.MetaItem
+                    {
+                        OwnerUsername = "christos",
+                        Length = 323,
+                        Attributes = new Pl.ListAttributes { Name = "new list" },   // no Picture, no PictureSize
+                    },
+                },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.Rootlist(proto, me, s);
+        TestScope.CommitAndPublish(s);
+
+        var playlist = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(1)));
+        Assert.True(playlist.Knows(PlaylistFields.Identity));
+        Assert.Equal("new list", Entities.Strings.Resolve(playlist.TitleId));
+        Assert.Equal(323, playlist.TrackCount);
+        Assert.True(playlist.ImageId.IsEmpty);
+    }
+
+    /// <summary>`ListAttributes.picture_size` (field 13, repeated) is the pre-sized cover the desktop client prefers;
+    /// the LAST non-empty entry is the largest (0.2.9 `PlaylistFetcher.CoverOf`), and it wins over the raw `picture`
+    /// file id even when both are present.</summary>
+    [Fact]
+    public void Rootlist_meta_prefers_the_last_picture_size_url_over_the_raw_picture_id()
+    {
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        var proto = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items = { new Pl.Item { Uri = UriOf(EntityKind.Playlist, 1) } },
+                MetaItems =
+                {
+                    new Pl.MetaItem
+                    {
+                        OwnerUsername = "christos",
+                        Length = 7,
+                        Attributes = new Pl.ListAttributes
+                        {
+                            Name = "Sized",
+                            Picture = Bs(Gid(9)),                                           // the raw fallback
+                            PictureSize =
+                            {
+                                new Pl.PictureSize { TargetName = "small", Url = "https://i.scdn.co/image/small-url" },
+                                new Pl.PictureSize { TargetName = "large", Url = "https://i.scdn.co/image/large-url" },
+                            },
+                        },
+                    },
+                },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.Rootlist(proto, me, s);
+        TestScope.CommitAndPublish(s);
+
+        var playlist = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(1)));
+        Assert.Equal("https://i.scdn.co/image/large-url", Entities.Strings.Resolve(playlist.ImageId));
+    }
+
+    /// <summary>A thin rootlist answer whose own count is 0 must not zero out a count a fuller answer already
+    /// established — 0 is what an unset <c>StagedPlaylist.TrackCount</c> reads as too, so the commit cannot tell
+    /// "the server said zero" from "this answer says nothing" without the guard (S2, mirrors the Track.cs Fix-4
+    /// cover guard).</summary>
+    [Fact]
+    public void A_thin_rootlist_trackcount_of_zero_never_overwrites_a_fuller_answers_count()
+    {
+        TestScope.Fresh();
+        var me = Encoding.UTF8.GetBytes("spotify:user:christos");
+        var full = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items = { new Pl.Item { Uri = UriOf(EntityKind.Playlist, 1) } },
+                MetaItems = { CompleteMeta("christos", "Real Count", 42, 1) },
+            },
+        }.ToByteArray();
+        var s1 = Staging.Rent();
+        Spotify.Decode.Rootlist(full, me, s1);
+        TestScope.CommitAndPublish(s1);
+
+        var thin = new Pl.SelectedListContent
+        {
+            Contents = new Pl.ListItems
+            {
+                Pos = 0,
+                Truncated = false,
+                Items = { new Pl.Item { Uri = UriOf(EntityKind.Playlist, 1) } },
+                MetaItems = { CompleteMeta("christos", "Real Count", 0, 1) },   // the wire's own zero, this time
+            },
+        }.ToByteArray();
+        var s2 = Staging.Rent();
+        Spotify.Decode.Rootlist(thin, me, s2);
+        TestScope.CommitAndPublish(s2);
+
+        var playlist = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(1)));
+        Assert.Equal(42, playlist.TrackCount);   // never zeroed
+    }
+
+    /// <summary>`ListMetadataV2`'s <c>source</c> (field 7) is the owner's bare username, resolved the same way every
+    /// other bare-username field on this wire is (G-048).</summary>
+    [Fact]
+    public void ListMetadataV2_source_resolves_to_the_owner()
+    {
+        TestScope.Fresh();
+        var meta = new Xm.ListMetadataV2 { Name = "Today's Top Hits", Source = "spotify" };
+        var s = Staging.Rent();
+        Spotify.Decode.ListMetadataV2(meta.ToByteArray(), Encoding.UTF8.GetBytes(UriOf(EntityKind.Playlist, 9)), s);
+        TestScope.CommitAndPublish(s);
+
+        var playlist = Entities.Playlist(EntityId.ForGid(EntityKind.Playlist, Gid(9)));
+        Assert.Equal("Today's Top Hits", Entities.Strings.Resolve(playlist.TitleId));
+        Assert.Equal("spotify:user:spotify", playlist.Owner.Uri.Text);
     }
 
     // ── recents: the wire token is the label (G-060) ────────────────────────────────────────────────────────────────

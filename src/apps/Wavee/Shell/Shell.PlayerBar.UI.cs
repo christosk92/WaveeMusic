@@ -92,8 +92,12 @@ public static partial class Shell
     static readonly LayoutTransition BarMoveMotion = new(
         TransitionChannels.Bounds, TransitionDynamics.Tween(Design.Motion.Fast, Easing.FluentPopOpen), SizeMode.Reveal);
 
-    /// <summary>A command entering/leaving the row: fade + width 0 → natural, so neighbours SLIDE over (Reflow is not
-    /// resize-gated, so it animates during a pointer resize too). 250 in, 167 out.</summary>
+    /// <summary>A line entering/leaving a column: fade + size 0 → natural, so neighbours SLIDE over (Reflow is not
+    /// resize-gated, so it animates during a pointer resize too). 250 in, 167 out. ONLY the remote-device line and the
+    /// two time labels carry it: every command slot is fixed by the tier and lights its face instead
+    /// (<see cref="Slot(string, float, float, bool, Element)"/>), so nothing in the row enters or leaves with playback
+    /// STATE. The one exception is the video split, which exists iff the current track has a video and rides the
+    /// right box's <see cref="BarMoveMotion"/> when it comes or goes (user decision 2026-09-16).</summary>
     static readonly LayoutTransition BarItemMotion = new(
         TransitionChannels.Bounds | TransitionChannels.Opacity,
         TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut),
@@ -102,9 +106,11 @@ public static partial class Shell
         Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut));
 
-    const float BarMarqueeCycleMs = 10_000f, BarMarqueeEndPauseMs = 2_500f, BarMarqueeSpeed = 18f;
-    const float SplitChevronW = 20f, SplitChevronGlyph = 10f;
-    const float VolumeRailLength = 96f;
+    /// <summary>The now-playing marquee's cadence: one slow pass every 14 s, a 3 s rest at each end and a 2 s hold on
+    /// the start before the first pass — slower than the 10 s / 2.5 s hover cadence it replaces, because this one runs
+    /// unattended.</summary>
+    const float BarMarqueeCycleMs = 14_000f, BarMarqueeEndPauseMs = 3_000f, BarMarqueeStartDelayMs = 2_000f, BarMarqueeSpeed = 18f;
+    const float SplitChevronGlyph = 10f;
 
     /// <summary>The app-local critical ink for an errored title (≈ #ED6B73, ch 00 §12.2 magic number).</summary>
     static readonly ColorF BarCriticalInk = new(0.93f, 0.42f, 0.45f, 1f);
@@ -157,8 +163,7 @@ public static partial class Shell
         public override Element Render()
         {
             // ── hooks first, stable order ──
-            var titleHover = UseSignal(false);          // hover the meta column → BOTH lines scroll together
-            var titleLinkHover = UseSignal(false);
+            var titleLinkHover = UseSignal(false);      // the title's link ink (the marquees scroll unattended)
             var likeNode = UseRef<NodeHandle>(default);
             var likePrevious = UseRef((0, false));
             var videoAnchor = UseRef<NodeHandle>(default);
@@ -179,7 +184,7 @@ public static partial class Shell
             bool buffering = Playback.Buffering.Value;
             var recovery = Playback.Recovery.Value;
             var facts = PlayerBarRules.Fold(hasCurrent, Playback.Error.Value, phase, buffering, recovery,
-                Playback.CanSkipPrev.Value, Playback.CanSkipNext.Value);
+                Playback.PrevAllowedByContext.Value, Playback.NextAllowedByContext.Value);
             bool active = facts.Active;
             bool playing = Playback.IsPlaying.Value;
             bool shuffle = Playback.Shuffle.Value;
@@ -193,7 +198,7 @@ public static partial class Shell
             bool hasVideo = isTrack && track.IsValid && track.HasVideo;
             string? playingUri = BarPlayingUri(current);
             bool liked = playingUri is not null && Controls.Library is { } library && library.IsSaved(playingUri);
-            bool showLike = L.ShowLikeSlot && active;
+            bool likeLit = PlayerBarRules.LikeFaceVisible(L, facts.State);
 
             // The heart pops on the SAME playable's save edge only — played on the captured node, because a keyed
             // remount of a focusable button would reset its hover/focus mid-toggle.
@@ -202,7 +207,7 @@ public static partial class Shell
             {
                 var (previousSlot, previouslyLiked) = likePrevious.Value;
                 likePrevious.Value = (playingSlot, liked);
-                if (PlayerBarRules.LikePops(previousSlot, previouslyLiked, playingSlot, liked) && showLike
+                if (PlayerBarRules.LikePops(previousSlot, previouslyLiked, playingSlot, liked) && likeLit
                     && !likeNode.Value.IsNull && Context.Anim is { } anim)
                     anim.IconSwapIn(likeNode.Value);   // the kit recipe honours reduced motion itself
             }, DepKey.From(playingSlot, liked ? 1 : 0));
@@ -226,9 +231,13 @@ public static partial class Shell
                 {
                     FontSize = 14f, Weight = 700, Foreground = titleInk,
                     Speed = BarMarqueeSpeed, CycleMs = BarMarqueeCycleMs, EndPauseMs = BarMarqueeEndPauseMs,
-                    // Hover, NOT PauseOnHover — the opposite mode, and the shipped-and-fixed 27-second idle scroll (S2 #12).
-                    Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Hover,
-                }, scrollWhen: titleHover)
+                    StartDelayMs = BarMarqueeStartDelayMs,
+                    // ALWAYS, at the slower cadence: a title exists to be read without aiming a pointer at it, and the
+                    // hover gate left a long title permanently cut off for anyone who never hovered. The 0.2.9 worry
+                    // (a 27-second idle scroll parked mid-word, S2 #12) is gone — the engine now glides the text home
+                    // on deactivation instead of freezing it wherever it was. `titleLinkHover` still drives the link ink.
+                    Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always,
+                })
                 : new BoxEl
                 {
                     ClipToBounds = true, MinWidth = 0f,
@@ -247,11 +256,7 @@ public static partial class Shell
                 {
                     Cursor = CursorId.Hand, OnClick = static () => BarGo(BarTitleRoute()),
                     Role = AutomationRole.Hyperlink, Focusable = true,
-                    OnHoverMove = _ =>
-                    {
-                        if (!titleLinkHover.Peek()) titleLinkHover.Value = true;
-                        if (!titleHover.Peek()) titleHover.Value = true;
-                    },
+                    OnHoverMove = _ => { if (!titleLinkHover.Peek()) titleLinkHover.Value = true; },
                     OnPointerExit = () => { if (titleLinkHover.Peek()) titleLinkHover.Value = false; },
                 };
 
@@ -268,8 +273,9 @@ public static partial class Shell
                     ? Marquee.Content(static () => new BarArtistsLine(compact: false), new Marquee.Style
                     {
                         Speed = BarMarqueeSpeed, CycleMs = BarMarqueeCycleMs, EndPauseMs = BarMarqueeEndPauseMs,
-                        Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Hover,
-                    }, scrollWhen: titleHover) with { Key = "np-artists" }
+                        StartDelayMs = BarMarqueeStartDelayMs,
+                        Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always,
+                    }) with { Key = "np-artists" }
                     : new BoxEl
                     {
                         Key = "np-artists", ClipToBounds = true, MinWidth = 0f,
@@ -281,30 +287,25 @@ public static partial class Shell
                 Key = "meta", Animate = BarMoveMotion,
                 Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Shrink = 1f,
                 Gap = 2f, Justify = FlexJustify.Center, ClipToBounds = true,
-                OnHoverMove = _ => { if (!titleHover.Peek()) titleHover.Value = true; },
-                OnPointerExit = () => { if (titleHover.Peek()) titleHover.Value = false; },
                 Children = metaKids.ToArray(),
             };
 
             bool artNav = !BarArtRoute().IsNone;
-            var leftKids = new List<Element>(3)
+            var art = new BoxEl
             {
-                new BoxEl
-                {
-                    Key = "art", Width = L.ArtSize, Height = L.ArtSize, Shrink = 0f, Animate = BarItemMotion,
-                    Cursor = artNav ? CursorId.Hand : null,
-                    OnClick = artNav ? static () => BarGo(BarArtRoute()) : null,
-                    Role = artNav ? AutomationRole.Hyperlink : AutomationRole.None,
-                    Focusable = artNav,
-                    Children = [Controls.Artwork(BarArtUrl(current), L.ArtSize, L.ArtSize, 6f, scale: artScale)],
-                },
-                metaCol,
+                Key = "art", Width = L.ArtSize, Height = L.ArtSize, Shrink = 0f,
+                Cursor = artNav ? CursorId.Hand : null,
+                OnClick = artNav ? static () => BarGo(BarArtRoute()) : null,
+                Role = artNav ? AutomationRole.Hyperlink : AutomationRole.None,
+                Focusable = artNav,
+                Children = [Controls.Artwork(BarArtUrl(current), L.ArtSize, L.ArtSize, 6f, scale: artScale)],
             };
-            if (showLike)
-                leftKids.Add(BarButton(liked ? Icons.HeartFill : Icons.Heart, static () => BarToggleLike(), true, liked,
+            // The heart's SLOT is the tier's; an idle bar shows no face in it (and the face cannot be hit or focused).
+            var likeSlot = Slot("like", box, box, likeLit,
+                BarButton(liked ? Icons.HeartFill : Icons.Heart, static () => BarToggleLike(), likeLit, liked,
                         box, glyph, onRealized: h => likeNode.Value = h)
                     // The cluster is a drag handle; a press on the heart must not lift the track.
-                    with { Key = "like", Shrink = 0f, Animate = BarItemMotion, BlocksDragArm = true });
+                    with { BlocksDragArm = true });
 
             var left = new BoxEl
             {
@@ -313,7 +314,7 @@ public static partial class Shell
                 // The factory PEEKS at promotion time: the mounted cluster outlives every track change. An idle bar is
                 // not a drag handle at all.
                 Draggable = isTrack ? Drag.Source(static () => BarDragPayload()) : null,
-                Children = leftKids.ToArray(),
+                Children = L.ShowLikeSlot ? [art, metaCol, likeSlot] : [art, metaCol],
             };
             // Right-click / Menu key / long-press: the track menu over the now-playing target, with its header. ONE seam
             // feeds this cluster AND the immersive stage (`Stage.NowPlayingMenu`, installed by the track menu's owner);
@@ -324,7 +325,7 @@ public static partial class Shell
             var transportKids = new List<Element>(3);
             if (ownsTransport && L.ShowPrevNext)
                 transportKids.Add(BarButton(Icons.Previous, static () => Playback.Previous(), facts.PrevEnabled, false, box, glyph)
-                    with { Key = "prev", Animate = BarItemMotion });
+                    with { Key = "prev" });
             if (ownsTransport)
                 transportKids.Add(BarPrimaryButton(
                         facts.State == PlayerState.Error ? Icons.Play : playing ? Icons.Pause : Icons.Play,
@@ -332,7 +333,7 @@ public static partial class Shell
                     with { Key = "primary", Animate = BarMoveMotion });
             if (ownsTransport && L.ShowPrevNext)
                 transportKids.Add(BarButton(Icons.Next, static () => Playback.Next(), facts.NextEnabled, false, box, glyph)
-                    with { Key = "next", Animate = BarItemMotion });
+                    with { Key = "next" });
 
             // Stable keys keep BarSeekRail's identity (scrub state, cached width) across the 760-DIP label breakpoint.
             var seekKids = new List<Element>(3);
@@ -341,7 +342,7 @@ public static partial class Shell
             if (ownsTransport)
                 seekKids.Add(new BoxEl
                 {
-                    Key = "seek", Grow = 1f, Shrink = 1f, MinWidth = 0f, Animate = BarMoveMotion,
+                    Key = "seek", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Animate = BarMoveMotion,
                     Children = [SeekBar()],
                 });
             if (ownsTransport && L.ShowTimesRemaining)
@@ -367,99 +368,111 @@ public static partial class Shell
                     },
                     new BoxEl
                     {
-                        Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, AlignItems = FlexAlign.Center,
+                        Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
                         Gap = L.SeekGap, Animate = BarMoveMotion, Children = seekKids.ToArray(),
                     },
                 ],
             };
 
             // ── RIGHT — shuffle/repeat · volume · lyrics · video · queue · devices · expand · ⋯ ──────────────────────
-            var rightKids = new List<Element>(10);
-            if (L.ShowShuffleRepeat)
+            // Every slot the TIER has is in the row at its fixed width (PlayerBarRules.RightSlots, in bit order) EXCEPT the
+            // video split, which exists iff the current track has a video — the cluster reclaims its 52 DIP otherwise
+            // rather than carrying an unlit hole (user decision 2026-09-16). Playback state only lights a face
+            // (PlayerBarRules.SlotFaceVisible). The cluster's width is therefore one of exactly TWO values per tier
+            // (with / without the split; the wider is L.RightWMax), a track starting WITHOUT a video moves nothing in the
+            // centre, and a video track landing eases the row once via BarMoveMotion on `right`.
+            void OpenVideoMenu()
             {
-                rightKids.Add(BarButton(Icons.Shuffle, static () => ToggleShuffle(), facts.CanTransport, shuffle, box, glyph)
-                    with { Key = "shuffle", Animate = BarItemMotion });
-                rightKids.Add(BarButton(PlayerBarRules.RepeatGlyph(repeat), static () => CycleRepeat(), facts.CanTransport,
-                        repeat != RepeatMode.Off, box, glyph)
-                    with { Key = "repeat", Animate = BarItemMotion });
+                if (videoMenu.Value is { IsOpen: true } open) { open.Close(); return; }
+                var items = Video.PlacementMenu(includeFullscreen: true);
+                videoMenu.Value = overlay.Open(
+                    () => videoAnchor.Value,
+                    () => MenuFlyout.Create(items, () => videoMenu.Value?.Close()),
+                    FlyoutPlacement.TopEdgeAlignedLeft,
+                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+                videoMenu.Value.ClosedAction = () => videoMenu.Value = null;
             }
-            if (L.ShowVolumeButton)
-            {
-                bool popup = !L.ShowVolumeSlider;
-                rightKids.Add(new BoxEl
-                {
-                    Key = "volume", Animate = BarItemMotion,
-                    Children =
-                    [
-                        Embed.Comp(() => new BarVolumeButton(popup, box, glyph))
-                            with { Key = (popup ? "volume-popup-" : "volume-inline-") + box + "-" + glyph },
-                    ],
-                });
-            }
-            if (L.ShowVolumeSlider)
-                rightKids.Add(new BoxEl
-                {
-                    Key = "volume-slider", Animate = BarItemMotion,
-                    // The STOCK slider style — a 22-DIP ring, not 0.2.9's old 12-DIP grab; thickness clears the ring.
-                    Children = [Slider.Create(s_barVolume, static v => Playback.SetVolume(v), s_volumeOptions,
-                        length: VolumeRailLength, thickness: Slider.DefaultStyle.ThumbRingDiameter)],
-                });
-            if (L.ShowLyrics && active)
-                rightKids.Add(BarButton(WaveeIcons.Lyrics, static () => Ui.Toggle(RailMode.Lyrics), true,
-                        railOpen && railMode == RailMode.Lyrics, box, glyph, font: WaveeIcons.Font)
-                    with { Key = "lyrics", Animate = BarItemMotion });
-            if (PlayerBarRules.VideoSlotReserved(L, active))
-            {
-                void OpenVideoMenu()
-                {
-                    if (videoMenu.Value is { IsOpen: true } open) { open.Close(); return; }
-                    var items = Video.PlacementMenu(includeFullscreen: true);
-                    videoMenu.Value = overlay.Open(
-                        () => videoAnchor.Value,
-                        () => MenuFlyout.Create(items, () => videoMenu.Value?.Close()),
-                        FlyoutPlacement.TopEdgeAlignedLeft,
-                        new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
-                    videoMenu.Value.ClosedAction = () => videoMenu.Value = null;
-                }
 
-                // The slot's WIDTH is unconditional; its FACE fades in when the async hasVideo resolves — zero reflow.
-                rightKids.Add(new BoxEl
-                {
-                    Key = "video", Direction = 0, AlignItems = FlexAlign.Center, Animate = BarItemMotion,
-                    Opacity = hasVideo ? 1f : 0f, HitTestVisible = hasVideo,
-                    OnRealized = h => videoAnchor.Value = h,
-                    OnContextRequested = _ => OpenVideoMenu(),
-                    Children =
-                    [
-                        ToolTip.Wrap(
-                            BarButton(Icons.Movie, static () => Video.State.TogglePrimary(BarHasVideoPeek()), hasVideo, videoLive, box, glyph),
-                            Loc.Get(videoLive ? Strings.Player.SwitchToAudio : Strings.Player.SwitchToVideo)),
-                        // A disclosure never lights. Narrow but FULL-HEIGHT, so the two glyphs share one centre line.
-                        ToolTip.Wrap(
-                            BarButton(Icons.ChevronDownSmall, OpenVideoMenu, hasVideo, false, SplitChevronW, SplitChevronGlyph, boxHeight: box),
-                            Loc.Get(Strings.Player.VideoOptions)),
-                    ],
-                });
-            }
-            if (L.ShowQueue)
-                rightKids.Add(BarButton(Icons.Queue, static () => Ui.Toggle(RailMode.Queue), true,
-                        railOpen && railMode == RailMode.Queue, box, glyph)
-                    with { Key = "queue", Animate = BarItemMotion });
-            if (L.ShowDevices)
-                rightKids.Add(Embed.Comp(() => new BarDevicesButton(box, glyph)) with { Key = "devices" });
-            if (L.ShowExpand)
-                rightKids.Add(BarButton(Icons.ChevronUp, static () => Ui.Toggle(RailMode.NowPlaying), true,
-                        railOpen && railMode == RailMode.NowPlaying, box, glyph)
-                    with { Key = "expand", Animate = BarItemMotion });
-
+            // Materialised here (a Span cannot cross into the local function below); the "⋯" face is keyed over it.
             Span<OverflowCommand> overflow = stackalloc OverflowCommand[PlayerBarRules.MaxOverflow];
             int overflowCount = PlayerBarRules.Overflow(L, ownsTransport, active, hasVideo, overflow);
-            if (overflowCount > 0)
-                rightKids.Add(BarMoreButton(overflow[..overflowCount].ToArray(), box, glyph));
+            OverflowCommand[] overflowCommands = overflow[..overflowCount].ToArray();
+
+            Element RightSlotOf(RightSlot slot)
+            {
+                float w = PlayerBarRules.SlotWidth(slot, in L);
+                bool lit = PlayerBarRules.SlotFaceVisible(slot, facts.State, hasVideo);
+                switch (slot)
+                {
+                    case RightSlot.Shuffle:
+                        return Slot("shuffle", w, box, lit,
+                            BarButton(Icons.Shuffle, static () => ToggleShuffle(), facts.CanTransport, shuffle, box, glyph));
+                    case RightSlot.Repeat:
+                        return Slot("repeat", w, box, lit,
+                            BarButton(PlayerBarRules.RepeatGlyph(repeat), static () => CycleRepeat(), facts.CanTransport,
+                                repeat != RepeatMode.Off, box, glyph));
+                    case RightSlot.Volume:
+                    {
+                        bool popup = !L.ShowVolumeSlider;
+                        return Slot("volume", w, box, lit,
+                            Embed.Comp(() => new BarVolumeButton(popup, box, glyph))
+                                with { Key = (popup ? "volume-popup-" : "volume-inline-") + box + "-" + glyph });
+                    }
+                    case RightSlot.VolumeSlider:
+                        // The STOCK slider style — a 22-DIP ring, not 0.2.9's old 12-DIP grab; thickness clears the ring.
+                        return Slot("volume-slider", w, box, lit,
+                            Slider.Create(s_barVolume, static v => Playback.SetVolume(v), s_volumeOptions,
+                                length: PlayerBarLayout.VolumeSliderW, thickness: Slider.DefaultStyle.ThumbRingDiameter));
+                    case RightSlot.Lyrics:
+                        return Slot("lyrics", w, box, lit,
+                            BarButton(WaveeIcons.Lyrics, static () => Ui.Toggle(RailMode.Lyrics), lit,
+                                railOpen && railMode == RailMode.Lyrics, box, glyph, font: WaveeIcons.Font));
+                    case RightSlot.Video:
+                        // Only built while hasVideo holds (the slot is in `slots` iff the track has a video); the face
+                        // additionally needs an Active playable, so it stays dark through Loading/Reconnecting/Error.
+                        return Slot("video", w, box, lit, new BoxEl
+                        {
+                            Direction = 0, AlignItems = FlexAlign.Center,
+                            OnRealized = h => videoAnchor.Value = h,
+                            OnContextRequested = _ => OpenVideoMenu(),
+                            Children =
+                            [
+                                ToolTip.Wrap(
+                                    BarButton(Icons.Movie, static () => Video.State.TogglePrimary(BarHasVideoPeek()), lit, videoLive, box, glyph),
+                                    Loc.Get(videoLive ? Strings.Player.SwitchToAudio : Strings.Player.SwitchToVideo)),
+                                // A disclosure never lights. Narrow but FULL-HEIGHT, so the two glyphs share one centre line.
+                                ToolTip.Wrap(
+                                    BarButton(Icons.ChevronDownSmall, OpenVideoMenu, lit, false, PlayerBarLayout.SplitChevronW, SplitChevronGlyph, boxHeight: box),
+                                    Loc.Get(Strings.Player.VideoOptions)),
+                            ],
+                        });
+                    case RightSlot.Queue:
+                        return Slot("queue", w, box, lit,
+                            BarButton(Icons.Queue, static () => Ui.Toggle(RailMode.Queue), true,
+                                railOpen && railMode == RailMode.Queue, box, glyph));
+                    case RightSlot.Devices:
+                        return Slot("devices", w, box, lit, Embed.Comp(() => new BarDevicesButton(box, glyph)));
+                    case RightSlot.Expand:
+                        return Slot("expand", w, box, lit,
+                            BarButton(Icons.ChevronUp, static () => Ui.Toggle(RailMode.NowPlaying), true,
+                                railOpen && railMode == RailMode.NowPlaying, box, glyph));
+                    default:
+                        // Reserved only where the idle menu is already non-empty, so the command set is never empty here.
+                        return Slot("more", w, box, lit, BarMoreButton(overflowCommands, box, glyph));
+                }
+            }
+
+            var slots = PlayerBarRules.RightSlots(in L, hasVideo);
+            var rightKids = new List<Element>(10);
+            for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
+            {
+                var slot = (RightSlot)bit;
+                if ((slots & slot) != 0) rightKids.Add(RightSlotOf(slot));
+            }
 
             var right = new BoxEl
             {
-                Key = "right", Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                Key = "right", Width = PlayerBarRules.RightWidth(in L, hasVideo), Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
                 Gap = L.RightGap, Animate = BarMoveMotion, Children = rightKids.ToArray(),
             };
 
@@ -486,7 +499,8 @@ public static partial class Shell
                     {
                         Key = "player-row", Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = L.RowGap,
                         Padding = new Edges4(L.RowPad, 0f, L.RowPad, 0f), Animate = BarMoveMotion,
-                        Children = rightKids.Count > 0 ? new Element[] { left, centre, right } : new Element[] { left, centre },
+                        // ALWAYS three clusters: the row's shape is the tier's, never the state's.
+                        Children = [left, centre, right],
                     },
                 ],
             };
@@ -503,6 +517,7 @@ public static partial class Shell
         if (r.IsNone) return (EntityKind.Unknown, 0, 0u);
         var table = Entities.TableFor(r.Kind);
         if (table is null) return (r.Kind, r.Slot, 0u);
+        _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
         _ = table.Changed.Value;
         return (r.Kind, r.Slot, (uint)r.Slot < (uint)table.Count ? table.Version[r.Slot] : 0u);
     }
@@ -541,12 +556,14 @@ public static partial class Shell
         {
             case EntityKind.Track:
             {
+                _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
                 _ = Entities.Current.Tracks.Changed.Value;
                 var t = new Track(r.Slot);
                 return t.IsValid && t.Knows(TrackFields.Title) ? t.Title : "";
             }
             case EntityKind.Episode:
             {
+                _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
                 _ = Entities.Current.Episodes.Changed.Value;
                 var e = new Episode(r.Slot);
                 return e.IsValid && e.Knows(EpisodeFields.Title) ? e.Title : "";
@@ -739,11 +756,13 @@ public static partial class Shell
             if (r.IsNone) return 0L;
             if (r.Kind == EntityKind.Episode)
             {
+                _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
                 _ = Entities.Current.Episodes.Changed.Value;
                 _ = Entities.Current.Shows.Changed.Value;
                 var e = new Episode(r.Slot);
                 return e.IsValid ? ((long)r.Slot << 32) ^ e.Version ^ (e.Show.IsValid ? (long)e.Show.Version << 16 : 0L) : 0L;
             }
+            _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
             _ = Entities.Current.Tracks.Changed.Value;
             _ = Entities.Current.Artists.Changed.Value;
             var t = new Track(r.Slot);
@@ -859,6 +878,27 @@ public static partial class Shell
         };
     }
 
+    /// <summary>A RESERVED slot in the bar's row: a fixed <paramref name="w"/>×<paramref name="h"/> box the tier owns,
+    /// whose <paramref name="face"/> is either lit (opaque, hit-testable) or dark (transparent, inert) — cross-faded over
+    /// the control token, never entered/exited, so a face lighting up moves NOTHING around it. The face's own
+    /// <c>IsEnabled</c> should follow <paramref name="lit"/> too, so a dark face is not a focus stop.</summary>
+    static BoxEl Slot(string key, float w, float h, bool lit, Element face) => new()
+    {
+        Key = key, Width = w, Height = h, Shrink = 0f,
+        Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Opacity = lit ? 1f : 0f, HitTestVisible = lit,
+        // Opacity-only layout transition: a face lights or dims over the control-normal beat with NO bounds channel,
+        // so the slot's rect (and every neighbour's) never moves. Element.Transition alone would snap here — the
+        // reconciler routes it only through Enter/Exit synthesis, not a live static Opacity change.
+        Animate = BarFaceMotion,
+        Children = [face],
+    };
+
+    /// <summary>The face fade of a reserved slot (<see cref="Slot(string, float, float, bool, Element)"/>): opacity only,
+    /// never Bounds/Reflow, so lighting a button cannot reflow the row.</summary>
+    static readonly LayoutTransition BarFaceMotion = new(
+        TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut), SizeMode.Auto);
+
     /// <summary>The primary play/pause: NO plate (the XML doc of 0.2.9 said "a filled accent circle"; the code painted
     /// none, and code wins) — primary ink, pressed secondary, scale-only hover/press.</summary>
     static BoxEl BarPrimaryButton(string glyphText, PrimaryVerb verb, float box, float glyphSize)
@@ -884,17 +924,15 @@ public static partial class Shell
 
     // ── the "⋯" overflow ────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The overflow button, remounted by a Key over its COMMAND SET. Rows are built at open time from live
-    /// reads, so a latched toggle's check mark is fresh on every open without the key having to encode it.</summary>
+    /// <summary>The overflow button's FACE, remounted by a Key over its COMMAND SET (the slot around it is the tier's —
+    /// <see cref="Slot(string, float, float, bool, Element)"/> — so a command set changing with playback swaps the face in
+    /// place). Rows are built at open
+    /// time from live reads, so a latched toggle's check mark is fresh on every open without the key having to encode it.</summary>
     static Element BarMoreButton(OverflowCommand[] commands, float box, float glyphSize)
     {
         int key = commands.Length;
         for (int i = 0; i < commands.Length; i++) key = key * 11 + (int)commands[i] + 1;
-        return new BoxEl
-        {
-            Key = "more", Width = box, Height = box, Animate = BarItemMotion,
-            Children = [Embed.Comp(() => new BarMoreMenu(commands, box, glyphSize)) with { Key = "more#" + key }],
-        };
+        return Embed.Comp(() => new BarMoreMenu(commands, box, glyphSize)) with { Key = "more#" + key };
     }
 
     sealed class BarMoreMenu(OverflowCommand[] commands, float box, float glyphSize) : Component
@@ -938,7 +976,7 @@ public static partial class Shell
         static MenuFlyoutItem OverflowItem(OverflowCommand command)
         {
             var facts = PlayerBarRules.Fold(!Playback.CurrentId.Peek().IsEmpty, Playback.Error.Peek(), Playback.PhaseSignal.Peek(),
-                Playback.Buffering.Peek(), Playback.Recovery.Peek(), Playback.CanSkipPrev.Peek(), Playback.CanSkipNext.Peek());
+                Playback.Buffering.Peek(), Playback.Recovery.Peek(), Playback.PrevAllowedByContext.Peek(), Playback.NextAllowedByContext.Peek());
             bool railOpen = Ui.RailOpen.Peek();
             var mode = Ui.Mode.Peek();
             switch (command)
@@ -1275,12 +1313,15 @@ public static partial class Shell
             float rest = enabled ? s.InnerRestScale : s.InnerDisabledScale;
             var stack = new BoxEl
             {
-                ZStack = true, Grow = 1f, Height = HitHeight, AlignItems = FlexAlign.Center, HitTestVisible = false,
+                // Shrink + MinWidth 0 on every layer: the engine's flex items do not shrink by default, and a ZStack can
+                // measure its available width as its own size, so without them the rail keeps that width and paints under the
+                // right cluster to the window edge.
+                ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = HitHeight, AlignItems = FlexAlign.Center, HitTestVisible = false,
                 Children =
                 [
                     new BoxEl
                     {
-                        Height = s.TrackHeight, Grow = 1f, AlignSelf = FlexAlign.Center,
+                        Height = s.TrackHeight, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignSelf = FlexAlign.Center,
                         Fill = enabled ? s.RailFill : s.RailFillDisabled,
                         Corners = CornerRadius4.All(s.TrackCornerRadius), ClipToBounds = true, ZStack = true,
                         HitTestVisible = false, Children = railKids,
@@ -1317,7 +1358,7 @@ public static partial class Shell
             // Click-anywhere + drag scrub; OnClick is the drag-END commit edge. No tooltip on this rail (W14).
             return new BoxEl
             {
-                Grow = 1f, Height = HitHeight, Direction = 0, AlignItems = FlexAlign.Center,
+                Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = HitHeight, Direction = 0, AlignItems = FlexAlign.Center,
                 Role = AutomationRole.Slider, IsEnabled = enabled,
                 Cursor = enabled ? CursorId.Hand : null,
                 OnBoundsChanged = _onBounds,
@@ -1416,15 +1457,17 @@ public static partial class Shell
             bool breathe = playing && windowActive && !Design.Reduced;   // reduced motion is a VALUE, never a hook branch
             UseKeyframes(AnimChannel.Opacity, breathe ? Breathe : Flat, breathe ? 3000f : 1f, breathe, DepKey.From(breathe));
 
+            // Shrink on both, like BarSeekRail (G-254): a grown line keeps its last arranged width across a narrowing
+            // resize unless it may shrink, and pushes the right cluster off the bar.
             return new BoxEl
             {
-                Grow = 1f, Height = 32f, Direction = 0, AlignItems = FlexAlign.Center,
+                Grow = 1f, Shrink = 1f, Height = 32f, Direction = 0, AlignItems = FlexAlign.Center,
                 HitTestVisible = false, Role = AutomationRole.None,
                 Children =
                 [
                     new BoxEl
                     {
-                        Grow = 1f, MinWidth = 0f, Height = 2f, Corners = CornerRadius4.All(1f),
+                        Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = 2f, Corners = CornerRadius4.All(1f),
                         Fill = Tok.AccentDefault, HitTestVisible = false,
                     },
                 ],

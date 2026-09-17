@@ -8,6 +8,239 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [Unreleased]
+
+Scroll feel and the recording defects of 2026-09-16. The scroll work is engine-side (wheel plan, input pacing,
+notch scale, header routing) and measured with a screen-capture probe before and after; the investigation and
+the design are in `docs/plans/wavee/scroll-feel-and-recording-defects-2026-09-16-implementation.md`.
+
+### Added
+
+- **`Entities.Invalidate` / `InvalidateEdge` — the planner's fifth mark, `Stale`.** A known group can now be declared
+  out of date without blanking it: the row keeps rendering, the planner re-asks through the ordinary demand path, the
+  next answer at any authority lands, and the mark clears itself. (#n)
+- **`frame.slack` and a `slackFrames=` count in `scroll.trace`.** When the loop did not run for more than 12 ms while a
+  scroll was live, the frame line now says whether the gap was a GC pause, the wake model sleeping or pre-emption, so a
+  hole mid-drag names itself instead of showing up as an unattributed `dtMax`. (#n)
+- **`scroll.trace` separates a resting finger, clamp pins and structural rebases from real stalls.** A drag contact that
+  is down but not moving for three frames or more is reported as `holdFrames=` instead of zero-motion stalls; a frame
+  that pinned a body at a clamp carries a `p` marker and is counted in `pins=`; a frame that rebased a body (an anchor
+  shift or a clamp rebase, which is not motion) carries `s`, is counted in `structural=`, and is left out of the stall,
+  dip and jitter figures. Neither a held nor a structural frame can trigger `present-hitch` or `stalled-frames`. (#n)
+- **A per-frame scroll trace in the always-on log.** Every wheel/drag burst now ends with a `scroll.trace` line: the
+  kernel's per-frame displacement, the wheel notches applied, the refreshes that passed with no frame WHILE the list was
+  moving, zero-motion frames, velocity dips, late frames and the step-jitter median, plus the shift sequence itself and
+  a one-word verdict. The screen-capture probe that diagnosed the stepping needed synthetic input; this needs only a
+  hand scroll. `ops/tools/scroll-reference.html` prints the same figures for Chromium on the same machine, so the
+  browser's scroll and ours compare as numbers. The `scroll.frames` line also names which planner input made the
+  sidebar re-plan during the burst (`sidebarReplans= railBumps= causes=`).
+
+### Fixed
+
+- **The daylist stuck at 00:00:00 and kept showing the previous edition.** Both countdowns disarmed at zero and nothing
+  re-asked Spotify for the new window, so the hero card and the playlist page carried the old title, description, cover
+  and tracks until a relaunch — and after a relaunch the persisted header outranked the fresh feed's. The rollover is
+  now a scheduled data event: 30 s after the window ends the daylist row, its tracks and its home band are marked stale
+  and re-fetched (retrying at 60 s, 2 min and 5 min while Spotify still serves the old edition, and again on wake from
+  sleep or window activation), the digits read "Updating your daylist…" until the new window lands and then restart on
+  it, a later edition outranks whoever wrote the earlier one, and the countdown re-anchors to the wall clock every 15 s
+  so a sleep no longer desyncs it. Opening the daylist page also no longer erases the hero's masthead. (#n)
+- **Your own playlists showed an empty tile in the side rail until their page had been opened once.** A playlist with
+  no cover of its own renders a 2×2 mosaic of its first four album covers, but the sidebar only ever fetched the
+  membership — which lands bare track uris, no album art — and left the tracks themselves to the playlist page, so the
+  rail (and a pinned cover-less playlist) stayed dark after every launch. The sidebar now asks for the first eight
+  member tracks' album and image itself, at prefetch priority in one batched request per rebuild, only for visible
+  cover-less rows whose mosaic is still short; tracks that ever answered fill from the on-disk cache without a request,
+  so a relaunch paints the mosaic as soon as the membership lands. Editorial playlists with a real cover are
+  unaffected. (#n)
+- **`dotnet build Wavee.slnx -c Release` shipped the Debug engine in the app's output.** MSBuild unsets the configuration
+  for project references that live outside the solution, so the engine built as Debug and its assemblies were copied into
+  `bin\Release`; that engine runs a full-scene parity audit every frame (two thirds of all CPU, about 500 MB/s of
+  allocation) and made every JIT run look pathologically slow. References now keep the parent configuration, and the
+  startup log names the engine flavor (`engine=release|diag`). (#n)
+- **Long lists cold-mounted rows in the middle of a fling.** The virtualized window was sized exactly to the frame's
+  desired range, so every direction change, deceleration or budget-limited frame tore down the receding rows and
+  mounted fresh ones on the leading side a few frames later (8–12 cold mounts in one frame on a 200-row playlist). The
+  slot pool now keeps its high-water mark — surplus slots park detached and are taken back before anything mounts — and
+  the realized range is retained on the receding side while the list is moving, so a fling recycles rows and mounts
+  none. (#n)
+- **Track table rows rebuilt their whole element tree on every recycle.** The virtualized row read its presentation
+  inside the component's render, so each recycle during a fling re-rendered ~40 element records (40–65 KB per row; up
+  to 40 MB and two gen2 collections in one fling on a long playlist). The row grid is now a bound template built once
+  per slot, with every per-item value a bound property over the row's presentation, and the spinner, equalizer,
+  marquee and withheld branches real mounts; a recycle allocates nothing. The tempo figure and the release date join
+  the row's format caches. (#n)
+- **A cold playlist open showed empty rows between the shimmer and the tracks, and the detail rail snapped in.** The
+  track table's skeleton released the moment the tracklist edge answered with row ids, before the rows' own fetch had
+  landed, so the real grid mounted over 1,494 rows with no data (zebra plates, blank titles, `—` durations) for a beat
+  and the reveal ramp ran over them. The table's reveal gate now also waits until the first page of rows knows its face
+  (title, album, duration, explicit mark, art — the credit line rides its own edge and fills in place, so a warm open
+  still reveals at once), a row past that band keeps its placeholder until its own data lands, and a batch that settles
+  without a row (`Fetch.Settled`) releases the gate instead of hanging it. The two-column detail rail was a dark square
+  and one meta bar that snapped to content: it is now one skeleton boundary shaped like the loaded rail (cover, owner or
+  eyebrow row, two title lines, meta, the Play cluster, the blurb) that cross-dissolves once when the header answers —
+  album, playlist, show and Liked share it, and the hero band pends on the same header flag. (#n)
+- **A fast touchpad swipe could throw the app out of its frame loop, and swipes overshot by an order of magnitude.**
+  Packets stamped out of order made the precise-stream resampler clamp with min > max (an unhandled exception in
+  `Tick`), and packets stamped sub-millisecond apart made its slope read tens of thousands of DIP/s, so 8 DIP packets
+  drew as 180–980 DIP frames and every coast started at the velocity cap. Stamps are folded monotone, the resampler
+  interpolates between bracketing samples only and never moves a frame more than the packets it received, and the
+  release velocity comes from the raw packet totals. (#n)
+- **A coast lost a step whenever a frame repeated its clock stamp.** The host handed the kernel dt = 0 for a frame whose
+  frame stamp had not advanced although the wall clock had; the step is now credited from the wall clock in whole
+  refresh intervals. `scroll.trace` names any remaining zero coast frame by cause (`zero=dt/skip/pin/other`) and marks
+  repaired frames with `r`. (#n)
+- **A fling lost a frame of travel whenever the list grew under it.** When a coast reached the end of what was laid
+  out so far, the frame it hit the clamp was pinned while its velocity still decayed, and the next frame resumed one
+  step slower without ever re-applying the pinned distance — a visible hitch on artist and album pages as their sections
+  measured in. The pinned travel is now applied the moment layout gives it room. (#n)
+- **Every fling ended with a second of sub-pixel crawl.** The exponential coast ran down to 13 DIP/s, moving 20 DIP over
+  the last half second in steps too small to read as motion. Below 60 DIP/s the coast now hands off to a short landing
+  that walks a fixed horizon in equal steps at the hand-off speed and stops exactly, about 75 ms later. (#n)
+- **Leaving a page mid-fling kept the whole app in "scrolling" mode.** A page parked by navigation while its list was
+  still coasting never settled, so live motion stayed on for as long as the page stayed parked (41 s in one recording):
+  the frame budget throttled virtual lists on every frame, publishing dropped to every fourth frame and the cover
+  colours stopped grading. A parked body settles at once and is excluded from the live-motion summary. (#n)
+- **The end of every touchpad swipe hiccuped.** The precise-stream drag went quiet for one to six frames before the
+  coast began, so the list stopped dead and then resumed at speed. The stream now releases into the coast on the first
+  frame without a sample, extrapolating up to 16 ms, and a late packet resumes the drag instead of re-grabbing. (#n)
+- **Touchpad packets bunched into a dead frame and a double frame.** Precise-stream packets were applied 1:1 as they
+  arrived; they are now resampled against the frame clock the way wheel notches already were, so 60 Hz packets at
+  120 Hz frames give even shifts. (#n)
+- **Pages crept for a dozen frames after opening.** The programmatic scroll restore chased its target asymptotically in
+  sub-pixel steps; it now lands exactly, with the same displacement floor and distance snap the wheel glide has. (#n)
+- **`scroll.trace` blamed the idle gap before a burst on its second frame.** Missed vblanks are read one frame after the
+  present they belong to, so every burst's second frame carried the pre-burst idle as "held while moving" and was graded
+  a present hitch. The delta is attributed to the frame it measured and the pre-burst one is dropped. (#n)
+- **Playing another track from the same album or playlist re-asked autoplay and appended fifty rows each time.** The
+  queue rebuild kept only the user's queued rows; the autoplay tail is now kept too when the landing context is the one
+  already on the deck, along with its next page. (#n)
+- **The queue panel showed grey bars and no "Playing from" after a restart.** The restored rows' titles were asked for in
+  the boot catalog scope and lost at sign-in, the panel's refresh key collided across the scope switch, and the context
+  itself was never fetched. Every re-laid row is asked again when the deck is rebound, the panel keys on the scope, and
+  the context entity is fetched for its name. (#n)
+- **Autoplay suggestions appeared only after a skip, and never for a restored session.** A restored deck now reports its
+  context complete; an autoplay ask made offline is retried when the session comes online instead of being marked
+  exhausted; and suggestions — like a context's next page — are asked when about three quarters of the current run has
+  played (or three rows remain), following the autoplay answer's own next page instead of re-asking with the same seeds.
+  (#n)
+- **The next track was not warmed for a restored session.** Prefetch (head file, CDN mirrors, key) now runs for a parked
+  deck and two rows ahead, and is re-issued once the session is online. (#n)
+- **Artist and album pages flashed the app accent before their own colour.** Play, links, the pivot underline, hearts and
+  the queue's Shuffle/Repeat/Autoplay chips painted blue for a few frames and then flipped to the cover's colour. Cover
+  colours are now kept in the local store (warm on relaunch), the album row carries Spotify's extracted cover colour like
+  the artist header already did, and every accent surface holds the previous page's colour until its own is known,
+  cross-fading when the grading lands. (#n)
+- **The artist hero popped in at full brightness under a blue veil.** The photograph now fades up, and the veil and wash
+  take the artist's own header colour on the first frame — neutral when there is none — instead of the app accent. (#n)
+- **The album page's right column jumped when its sections landed.** The placeholder is sized once from what the row
+  already knows (a single reserves no rows block) and is never re-keyed by a later answer, the remaining difference eases
+  instead of snapping, the About card no longer stretches to fill a short page's spare height and then shrinks as
+  "More by" fills in, and the watch-video card and "Fans also like" are decided together with the tracklist rather than
+  a beat later. (#n)
+- **Playing a track in Wavee while another device had playback did nothing.** The click forwarded a bare `play`
+  (a resume) to the owner. It now sends the desktop `play` command naming the context and the row, from a row click
+  and from a page's Play button alike, so the phone starts what you chose. Every accepted put-state whose echo does
+  not name Wavee as the active device now logs a warning, so a lost Connect state can be traced.
+- **The queue vanished on restart.** The session document now carries the queue rows themselves (up to 200), not just
+  the current track and its context, so a restart puts the whole queue back — including autoplay rows and anything
+  queued by hand — and asks the catalog for their titles.
+- **Spotify Connect lost Wavee as the active device every couple of minutes.** The access-point socket's read
+  timeout (90 s) was shorter than Spotify's keep-alive ping (120 s), so an idle channel timed out on schedule: the
+  session dropped, re-logged in, reconnected the dealer and re-registered the device — hundreds of times a day — and
+  every other client saw Wavee leave. The timeout now outlasts two pings; the server-clock probe that always answered
+  401 now carries the session's tokens.
+- **The Queue panel's now-playing title is a link again.** It opens the page the track plays from, or the track's
+  album when the context has no page of its own.
+- **Song and artist radio started immediately.** 0.2.9 behaviour restored: the seed resolves to its radio playlist,
+  which becomes the new context while the current track finishes; a radio that leads with the playing track skips that
+  duplicate; the "Radio started / Open playlist" and "Couldn't start radio" toasts are back.
+- **The player bar kept an empty hole where the video button would be.** The video split slot now exists only while
+  the current track has a video; volume, lyrics and the rest reclaim its width otherwise, and the bar eases between
+  the two widths instead of leaving a gap.
+- **Discography cards painted their hover plate and selection outline 20 DIP past the meta line.** The card grew into
+  the grid's row gap; it is pinned to its own height.
+- **An expanded discography drawer showed a grey stub pill under its rows.** The floating selection bar was mounted
+  around an empty command lane at zero selected; it now follows the live selection count.
+- **A single's "Watch the official video" card read "0 songs".** An album answer without disc rows claimed the track
+  count as known, and the header commit overwrote a count an earlier answer knew; both ends now treat 0 as unknown.
+- **A tooltip outlived the page it described.** Pages are kept alive across navigation, so a tooltip opened from a row
+  that navigated away under a still pointer stayed open; every route commit now closes the open tooltip.
+- **Grid cards mounted their hover chrome eagerly, and no card revealed its play button on hover.** The play FAB, its
+  tooltip and the corner menu (three components per card) mounted on every card of a page; on the artist page that was
+  18 ms and 1.3 MB of the navigation frame. They now mount when the card is hovered, focused or relates to what is
+  playing — and they actually appear: the engine's hover reveal stopped at the tooltip wrapper around the FAB, so shelf
+  cards lit the button only when the pointer landed on it and discography cards never did. The tooltip wrapper is now
+  transparent to the hover scope, a button mounting into an already-hovered card fades in at once, and a card the
+  keyboard visited cools again when focus leaves it. (#n)
+- **`nav.frames` reported idle refreshes as missed vblanks.** The counter counts every refresh between two presents, so a
+  page the user was reading logged "missed=301"; the navigation rollup keeps only the figures that count frames that
+  ran long, and the scroll rollup keeps the cadence counter where the loop is continuously live.
+- **Wheel scrolling stepped and pulsed instead of gliding.** Every notch restarted a critically damped chase from
+  zero velocity, so at a steady detent cadence the list slowed to ~2 px a frame and re-accelerated on each click.
+  The wheel now plans each notch from the live velocity and the click cadence (Chromium-style velocity continuity,
+  Firefox-style cadence regime), lands with a displacement floor instead of a sub-pixel creep, and travels three
+  rows per notch on lists that declare a row height.
+- **The frame right after a wheel click was late.** Wheel packets broke the display-paced wait mid-refresh and the
+  glide ran the list realize unbudgeted. Wheel messages now wait for the compositor tick like pointer motion, and
+  a wheel glide arms the same frame budget a fling gets.
+- **Touchpad and high-resolution wheel streams moved a fraction of the distance and updated at 60 Hz.** The
+  hi-res path scaled by a one-machine calibration constant; it now carries notch units and shares the notch scale.
+- **The wheel did nothing over a track list's column header.** Headers route the wheel to their list as a glide.
+- **Search painted its facet tabs a beat before the results.** The tab row now holds its skeleton until the query's
+  first body has answered and enters with the same rise-and-fade, so both arrive on the same frame.
+- **The player bar's transport jumped and the seek bar breathed when a track started.** Every right-cluster slot is
+  now reserved by the tier and only its face fades with playback state; the right cluster is a fixed block.
+- **Leaving the now-playing title mid-scroll left it cut off.** The marquee glides back to its start on
+  deactivation instead of parking, and the bar's title scrolls on its own at a slower cadence.
+- **Artist biographies showed `&#34;` and `&#8217;` as text.** One HTML-entity decoder now handles numeric, hex and
+  the named set for the bio lead, the About card and rich text alike.
+- **The verified check on the album's About-the-artist card sat at the far right.** The name shrinks to its text
+  with the check directly after it.
+- **Emoji rendered as grey silhouettes.** Colour fonts are translated into their layer runs and drawn through the
+  glyph atlas tinted with their palette colours.
+- **The search box showed a grey completion while it was not focused.** The inline ghost now shows only while the
+  editor has focus and clears on blur.
+- **The tab's label changed before its page did.** The label follows the page and switches after the outgoing
+  page's exit leg.
+- **Album track lists dropped their shimmer for two rows and then filled in.** The list stays in shimmer until its
+  first page is in (twelve rows, or all of a shorter list).
+- **The album's About and Featured-on sections appeared one after the other.** The band waits for both, or 400 ms,
+  before its one swap, and asks for them at the tracklist's priority.
+- **Scrolling stuttered while covers were downloading.** Every rendered frame published entity changes, and with
+  covers and palettes streaming in something was always dirty, so track rows, cards, tooltips and section hosts
+  re-rendered on every scroll frame. Publications are now paced to every fourth frame while a scroll is live, the
+  cover-palette pump pauses during scrolls, album hosts and the discography grid gate on the values they paint, and
+  card and overlay props compare by data instead of delegate identity.
+- **Cover uploads hitched the frame.** A landed cover was copied again on the UI thread into a large-object buffer
+  and uploaded through a freshly created GPU heap inside the present turn. The decode buffer now travels to the GPU
+  queue without a copy, upload heaps are pooled and budgeted per turn, the image pump keeps a slice of every frame,
+  off-screen rows request covers at overscan priority, and the disk image cache trims as designed.
+- **An artist's Top tracks could shimmer forever after a network hiccup.** A batch where one route answered and
+  another was refused was delivered as a success, sealing the refused fields for the whole session, and the band
+  had no failed branch to fall into. Refused groups are now re-askable, an auth refusal is re-planned when the
+  session comes back online, the band shows its Retry vacancy when the ask concluded without an answer, and Retry
+  re-asks everything the band needs.
+- **A liked track Spotify no longer resolves rendered as an empty, playable row.** A per-entity 404 in a batched
+  metadata answer was dropped silently. Such tracks are now ruled unavailable: dimmed, "Unavailable" in the duration
+  column, no play affordance, and hidden by the playable-only filter.
+- **A failed load left the player stuck until another song was played.** Resume refused while an error was set, a
+  click on the same row only toggled, and the bar disabled skipping. Clicking the dead row now retries it, and
+  Previous / Next stay armed in the error state so you can skip past it.
+- **The sidebar, the playlist page, its facts cards and the lyrics rows re-rendered on every entity publication.**
+  Each now gates on the values it paints; tooltips inside them use stable factories; lyrics rows retarget their
+  opacity spring without a render.
+- **Cover downloads churned the shared array pool.** Response buffers are sized from Content-Length and rented from
+  a dedicated pool that decoded buffers return to.
+- **A relinked liked track showed as blank and could not play.** Spotify serves some old track ids under a newer
+  canonical id; the batched answer was filed under the canonical id only, so the liked row never got its metadata,
+  and at play time the old id's market-restricted file was chosen and its licence refused. The requested id is now
+  aliased to the canonical row (title, art, artists, duration follow it), and the file picker honours the market
+  restriction and plays an allowed alternative.
+- **Playback stopped at a dead row.** Next / Previous and the natural advance now skip unplayable rows, a terminal
+  load failure during an automatic advance skips to the next playable row (at most three in a row), and the queue
+  labels such rows "Unavailable" instead of showing loading bars.
+
 ## [0.2.10] - 2026-09-12
 
 Idle GPU and memory on the Snapdragon. Wavee sat at 50-68 % GPU and 520 MB-1 GB of working set with nothing on

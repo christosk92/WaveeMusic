@@ -162,6 +162,17 @@ public class StoreTests : IDisposable
         return "spotify:track:" + new string(buf);
     }
 
+    /// <inheritdoc cref="GidUri(int)"/>
+    /// <param name="token">The kind's own uri token (plan §4.1: <c>track</c>, <c>album</c>, <c>artist</c>,
+    /// <c>playlist</c>, <c>show</c>, <c>episode</c> — the six <see cref="EntityId.IsGidKind"/> kinds. <c>user</c> and
+    /// <c>concert</c> are NOT gid kinds — this spelling for either parses back as the TEXT form, on purpose.)</param>
+    static string GidUri(string token, int seed)
+    {
+        Span<char> buf = stackalloc char[Base62.GidChars];
+        Base62.Encode(new UInt128((ulong)seed * 0x9E37_79B9_7F4A_7C15UL + 17, (ulong)seed * 0xC2B2_AE3D_27D4_EB4FUL + 5), buf);
+        return "spotify:" + token + ":" + new string(buf);
+    }
+
     /// <summary>Sixteen bytes that look like a gid off the wire.</summary>
     static byte[] Gid(int seed)
     {
@@ -607,5 +618,695 @@ public class StoreTests : IDisposable
         Assert.True(stats.Reads > before.Reads);
         Assert.True(stats.ReadRows > before.ReadRows);
         Assert.Equal(before.Faults, stats.Faults);
+    }
+
+    // ── small key/value persistence (meta) ──────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_meta_value_set_is_immediately_visible_to_MetaGet()
+    {
+        Boot();
+        Store.MetaSet("library.sync-token", "abc123");
+
+        Assert.Equal("abc123", Store.MetaGet("library.sync-token"));
+    }
+
+    [Fact]
+    public void A_meta_key_that_was_never_set_answers_null_cleanly()
+    {
+        Boot();
+
+        Assert.Null(Store.MetaGet("no-such-key-20260915"));
+    }
+
+    // ── the kind shapes (G-007: the "kind owners write their shapes" half) ─────────────────────────────────────────
+
+    /// <summary>Step 1's prerequisite, exercised end to end through <c>TrackShape</c>'s <c>album_uri</c> column: the
+    /// store thread must bind a cross-reference identity whichever form the decoder staged it in — the packed
+    /// <see cref="EntityId"/> a gid decoder holds, or the arena <see cref="TextRef"/> a text decoder holds — without
+    /// ever touching the interner.</summary>
+    [Fact]
+    public void RowWriter_Id_binds_a_cross_reference_column_in_either_staged_form()
+    {
+        Store.Register(new TrackShape());
+        Scope scope = Boot();
+        TrackTable tracks = scope.Tracks;
+        AlbumTable albums = scope.Albums;
+
+        string albumGidUri = GidUri("album", 1);
+        int albumGidSlot = albums.Slot(albumGidUri.AsSpan());
+        EntityId albumGidId = albums.Id[albumGidSlot];
+        Assert.Equal(EntityForm.Gid, albumGidId.Form);
+
+        string trackUriA = GidUri("track", 2);
+        int trackSlotA = tracks.Slot(trackUriA.AsSpan());
+        EntityId trackIdA = tracks.Id[trackSlotA];
+
+        Staging s1 = Staging.Rent();
+        ref var rowA = ref s1.Tracks.Add();
+        rowA.Id = trackIdA;
+        rowA.Title = s1.AddText("Gid Album Track"u8);
+        rowA.AlbumUri = albumGidId;                       // packed — a decoder holding raw gid bytes off the wire
+        rowA.DurationMs = 1000;
+        rowA.Known = (uint)TrackFields.Identity;
+        rowA.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        Assert.True(Store.Read(scope, tracks, new[] { trackSlotA }, (uint)TrackFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal(albumGidSlot, tracks.Album[trackSlotA]);
+
+        const string albumTextUri = "wavee:local:album:cross-ref-text-20260915";
+        int albumTextSlot = albums.Slot(albumTextUri.AsSpan());
+        EntityId albumTextId = albums.Id[albumTextSlot];
+        Assert.Equal(EntityForm.Text, albumTextId.Form);
+
+        string trackUriB = GidUri("track", 3);
+        int trackSlotB = tracks.Slot(trackUriB.AsSpan());
+        EntityId trackIdB = tracks.Id[trackSlotB];
+
+        Staging s2 = Staging.Rent();
+        ref var rowB = ref s2.Tracks.Add();
+        rowB.Id = trackIdB;
+        rowB.Title = s2.AddText("Text Album Track"u8);
+        rowB.AlbumUri = s2.AddText(Encoding.UTF8.GetBytes(albumTextUri));   // arena — a decoder holding a uri string
+        rowB.DurationMs = 2000;
+        rowB.Known = (uint)TrackFields.Identity;
+        rowB.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s2));
+        Store.Flush();
+
+        Assert.True(Store.Read(scope, tracks, new[] { trackSlotB }, (uint)TrackFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal(albumTextSlot, tracks.Album[trackSlotB]);
+    }
+
+    [Fact]
+    public void Show_ddl_gid_round_trip_and_thin_never_blanks_identity()
+    {
+        Store.Register(new ShowShape());
+        Scope scope = Boot();
+        ShowTable shows = scope.Shows;
+
+        string ddl = Store.Ddl();
+        Assert.Contains("CREATE TABLE IF NOT EXISTS show(", ddl);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS ix_show_title ON show(scope_id, title COLLATE NOCASE);", ddl);
+
+        string uri = GidUri("show", 1);
+        int slot = shows.Slot(uri.AsSpan());
+        EntityId id = shows.Id[slot];
+        Assert.Equal(EntityForm.Gid, id.Form);
+
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Shows.Add();
+        row1.Id = id;
+        row1.Title = s1.AddText("Alpha"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.Publisher = s1.AddText("Pub Co"u8);
+        row1.Description = s1.AddText("First about"u8);
+        row1.Known = (uint)(ShowFields.Identity | ShowFields.About);
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        Assert.True(Store.Read(scope, shows, new[] { slot }, (uint)ShowFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha", Entities.Strings.Resolve(shows.Title[slot]));
+        Assert.Equal("First about", Entities.Strings.Resolve(shows.Description[slot]));
+
+        // A thin About-only re-answer must not blank the title. Force a genuinely COLD re-read (a fresh, Known=0
+        // slot) so the assertion is about what the FILE holds, not about memory's own authority protection.
+        Staging s2 = Staging.Rent();
+        ref var row2 = ref s2.Shows.Add();
+        row2.Id = id;
+        row2.Description = s2.AddText("Second about"u8);
+        row2.Known = (uint)ShowFields.About;
+        row2.Authority = Authority.Thin;
+        Assert.True(Store.WriteBehind(s2));
+        Store.Flush();
+
+        shows.FreeSlot(slot);
+        int slot2 = shows.Slot(uri.AsSpan());
+        Assert.True(Store.Read(scope, shows, new[] { slot2 }, (uint)ShowFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha", Entities.Strings.Resolve(shows.Title[slot2]));
+        Assert.Equal("Second about", Entities.Strings.Resolve(shows.Description[slot2]));
+    }
+
+    [Fact]
+    public void User_ddl_and_text_form_round_trip_with_an_independent_social_authority()
+    {
+        Store.Register(new UserShape());
+        Scope scope = Boot();
+        UserTable users = scope.Users;
+
+        string ddl = Store.Ddl();
+        Assert.Contains("CREATE TABLE IF NOT EXISTS user(", ddl);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS ix_user_title ON user(scope_id, name COLLATE NOCASE);", ddl);
+
+        const string uri = "spotify:user:store-user-round-trip-20260915";
+        int slot = users.Slot(uri.AsSpan());
+        EntityId id = users.Id[slot];
+        Assert.Equal(EntityForm.Text, id.Form);      // a username is never a gid (User.cs's own header)
+
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Users.Add();
+        // TEXT-FORM identity must be staged as ARENA TEXT, not as a packed EntityId. A text-form EntityId's
+        // payload is an index into the PROCESS-LOCAL interner, and the store thread may never touch the
+        // interner — so `RowWriter.Emit(in StagedId)` can only take the packed branch for a GID, and a
+        // text-form id handed to it is counted by `Store.BadKey` and DROPPED. A real decoder always has the
+        // uri's UTF-8 bytes in hand and stages `s.AddText(...)`, which is what this now does.
+        row1.Id = s1.AddText(System.Text.Encoding.UTF8.GetBytes(uri));
+        row1.Name = s1.AddText("Alpha"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.Followers = 10;
+        row1.Following = 5;
+        row1.Known = (uint)(UserFields.Identity | UserFields.Social);
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        Assert.True(Store.Read(scope, users, new[] { slot }, (uint)UserFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha", Entities.Strings.Resolve(users.Name[slot]));
+        Assert.Equal(10, users.Followers[slot]);
+        Assert.Equal(id, EntityId.Parse(uri.AsSpan()));
+        Assert.Equal(slot, users.Slot(uri.AsSpan()));
+
+        // A thin, Social-only answer must not blank the name.
+        Staging s2 = Staging.Rent();
+        ref var row2 = ref s2.Users.Add();
+        row2.Id = s2.AddText(System.Text.Encoding.UTF8.GetBytes(uri));
+        row2.Followers = 20;
+        row2.Following = 6;
+        row2.Known = (uint)UserFields.Social;
+        row2.Authority = Authority.Thin;
+        Assert.True(Store.WriteBehind(s2));
+        Store.Flush();
+
+        users.FreeSlot(slot);
+        int slot2 = users.Slot(uri.AsSpan());
+        Assert.True(Store.Read(scope, users, new[] { slot2 }, (uint)UserFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha", Entities.Strings.Resolve(users.Name[slot2]));
+        Assert.Equal(20, users.Followers[slot2]);
+    }
+
+    [Fact]
+    public void Episode_ddl_gid_round_trip_and_progress_authority_is_independent()
+    {
+        Store.Register(new EpisodeShape());
+        Scope scope = Boot();
+        EpisodeTable episodes = scope.Episodes;
+        ShowTable shows = scope.Shows;
+
+        string ddl = Store.Ddl();
+        Assert.Contains("CREATE TABLE IF NOT EXISTS episode(", ddl);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS ix_episode_title ON episode(scope_id, title COLLATE NOCASE);", ddl);
+
+        string showUri = GidUri("show", 4);
+        int showSlot = shows.Slot(showUri.AsSpan());
+        EntityId showId = shows.Id[showSlot];
+
+        string uri = GidUri("episode", 5);
+        int slot = episodes.Slot(uri.AsSpan());
+        EntityId id = episodes.Id[slot];
+        Assert.Equal(EntityForm.Gid, id.Form);
+
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Episodes.Add();
+        row1.Id = id;
+        row1.Title = s1.AddText("Episode One"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.ShowUri = showId;
+        row1.DurationMs = 60_000;
+        row1.PublishedAt = 100;
+        row1.ProgressMs = 1_000;
+        row1.Known = (uint)(EpisodeFields.Identity | EpisodeFields.Progress);
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        Assert.True(Store.Read(scope, episodes, new[] { slot }, (uint)EpisodeFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Episode One", Entities.Strings.Resolve(episodes.Title[slot]));
+        Assert.Equal(showSlot, episodes.Show[slot]);
+        Assert.Equal(1_000, episodes.ProgressMs[slot]);
+
+        // Progress rides its OWN authority column precisely so a stale server position can never rewind what this
+        // device just played to — a thin Progress-only re-answer must not blank the title either way.
+        Staging s2 = Staging.Rent();
+        ref var row2 = ref s2.Episodes.Add();
+        row2.Id = id;
+        row2.ProgressMs = 30_000;
+        row2.Known = (uint)EpisodeFields.Progress;
+        row2.Authority = Authority.Thin;
+        Assert.True(Store.WriteBehind(s2));
+        Store.Flush();
+
+        episodes.FreeSlot(slot);
+        int slot2 = episodes.Slot(uri.AsSpan());
+        Assert.True(Store.Read(scope, episodes, new[] { slot2 }, (uint)EpisodeFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Episode One", Entities.Strings.Resolve(episodes.Title[slot2]));
+        Assert.Equal(30_000, episodes.ProgressMs[slot2]);
+    }
+
+    [Fact]
+    public void Track_ddl_and_a_thin_playcount_only_answer_never_blanks_identity()
+    {
+        Store.Register(new TrackShape());
+        Scope scope = Boot();
+        TrackTable tracks = scope.Tracks;
+
+        string ddl = Store.Ddl();
+        Assert.Contains("CREATE TABLE IF NOT EXISTS track(", ddl);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS ix_track_title ON track(scope_id, title COLLATE NOCASE);", ddl);
+
+        string uri = GidUri("track", 6);
+        int slot = tracks.Slot(uri.AsSpan());
+        EntityId id = tracks.Id[slot];
+        Assert.Equal(EntityForm.Gid, id.Form);
+
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Tracks.Add();
+        row1.Id = id;
+        row1.Title = s1.AddText("Alpha"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.DurationMs = 191_000;
+        row1.Isrc = s1.AddText("ISRC1"u8);
+        row1.PlayCount = 3;
+        row1.Known = (uint)(TrackFields.Identity | TrackFields.PlayCount | TrackFields.Isrc);
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        Assert.True(Store.Read(scope, tracks, new[] { slot }, (uint)TrackFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha", Entities.Strings.Resolve(tracks.Title[slot]));
+        Assert.Equal(191_000, tracks.DurationMs[slot]);
+        Assert.Equal(3u, tracks.PlayCount[slot]);
+
+        // A thin PlayCount-only re-answer (a kind-185 batch) must not blank the title or the Isrc group.
+        Staging s2 = Staging.Rent();
+        ref var row2 = ref s2.Tracks.Add();
+        row2.Id = id;
+        row2.PlayCount = 99;
+        row2.Known = (uint)TrackFields.PlayCount;
+        row2.Authority = Authority.Thin;
+        Assert.True(Store.WriteBehind(s2));
+        Store.Flush();
+
+        tracks.FreeSlot(slot);
+        int slot2 = tracks.Slot(uri.AsSpan());
+        Assert.True(Store.Read(scope, tracks, new[] { slot2 }, (uint)TrackFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha", Entities.Strings.Resolve(tracks.Title[slot2]));
+        Assert.Equal(99u, tracks.PlayCount[slot2]);
+        Assert.Equal("ISRC1", Entities.Strings.Resolve(tracks.Isrc[slot2]));
+    }
+
+    /// <summary>BUG C (2026-09-15, the persistence regression). A `TrackShape.Load` that restored the `Artists` bit
+    /// inside `Identity` told the planner "never ask again" for a credit line and its click-target edge
+    /// (`Edges.TrackArtists`) that this shape has no column or edge storage for — the row's "Artist · Album" line
+    /// went blank forever on the SECOND launch, a cache hit showing LESS than a cache miss. The fix masks `Artists`
+    /// out of what `Save` writes and `Load` restores (`TrackShape.PersistedIdentity`) so a cached track still
+    /// re-asks TrackV4 exactly once after a restart. Title (a real column) must survive the very same disk answer
+    /// that Artists (no column) must not.</summary>
+    [Fact]
+    public void Track_disk_load_never_restores_Artists_known_though_Title_survives()
+    {
+        Store.Register(new TrackShape());
+        Scope scope = Boot();
+        TrackTable tracks = scope.Tracks;
+
+        string uri = GidUri("track", 11);
+        int slot = tracks.Slot(uri.AsSpan());
+        EntityId id = tracks.Id[slot];
+        Assert.Equal(EntityForm.Gid, id.Form);
+
+        // The live TrackV4 answer: one wire shape, all six Identity bits at once — Artists included, exactly as
+        // ch 01 §7 describes it ("a TrackV4, a search hit and a playlist item all fill exactly it").
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Tracks.Add();
+        row1.Id = id;
+        row1.Title = s1.AddText("Alpha"u8);
+        row1.ArtistLine = s1.AddText("Alpha Artist"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.DurationMs = 191_000;
+        row1.Known = (uint)TrackFields.Identity;
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        // Forget the in-memory row entirely and ask the disk for it back — the exact round trip the bug lives in.
+        tracks.FreeSlot(slot);
+        int slot2 = tracks.Slot(uri.AsSpan());
+        Assert.True(Store.Read(scope, tracks, new[] { slot2 }, (uint)TrackFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+
+        var loaded = new Track(slot2);
+        Assert.True(loaded.Knows(TrackFields.Title));
+        Assert.Equal("Alpha", loaded.Title);                     // the shape DOES persist Title …
+        Assert.False(loaded.Knows(TrackFields.Artists));         // … but must never claim Artists: no column, no edge
+    }
+
+    /// <summary>The companion guard next to the mask above (Track.cs's commit, the handoff's ":512"): even with
+    /// `Artists` never claimed known from disk, a disk-loaded batch's `ArtistLine` TEXT is unconditionally empty —
+    /// the shape has no <c>artist_line</c> column at all — so the commit must not use that emptiness to actively
+    /// BLANK a credit line a live answer already interned this session, the same way it already refused to blank
+    /// Title or Image.</summary>
+    [Fact]
+    public void Track_disk_load_with_no_credit_line_never_blanks_a_live_ArtistLine()
+    {
+        Store.Register(new TrackShape());
+        Scope scope = Boot();
+        TrackTable tracks = scope.Tracks;
+
+        string uri = GidUri("track", 12);
+        int slot = tracks.Slot(uri.AsSpan());
+        EntityId id = tracks.Id[slot];
+
+        // Persist a bare row to disk first — no credit line, because the shape has no column for one.
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Tracks.Add();
+        row1.Id = id;
+        row1.Title = s1.AddText("Alpha"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.DurationMs = 191_000;
+        row1.Known = (uint)TrackFields.Identity;
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        // The LIVE answer lands this session (a fresh TrackV4) and interns a real credit line on the row.
+        Staging s2 = Staging.Rent();
+        ref var row2 = ref s2.Tracks.Add();
+        row2.Id = id;
+        row2.Title = s2.AddText("Alpha"u8);
+        row2.ArtistLine = s2.AddText("Real Artist"u8);
+        row2.Image = s2.AddText("img"u8);
+        row2.DurationMs = 191_000;
+        row2.Known = (uint)TrackFields.Identity;
+        row2.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s2);
+        Assert.Equal("Real Artist", Entities.Strings.Resolve(tracks.ArtistLine[slot]));
+
+        // The disk answer for the SAME row lands on top of the live one (a race the store may win or lose) and
+        // must not blank the credit line the live answer already set.
+        Assert.True(Store.Read(scope, tracks, new[] { slot }, (uint)TrackFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+
+        Assert.Equal("Real Artist", Entities.Strings.Resolve(tracks.ArtistLine[slot]));
+        Assert.Equal("Alpha", Entities.Strings.Resolve(tracks.Title[slot]));
+    }
+
+    /// <summary>BUG C, the ALBUM variant (2026-09-15). Same shape as the track fact above: `AlbumV4` is the sole
+    /// route registered for `AlbumFields.Identity` and it also closes `Relation.AlbumArtists` as a side effect —
+    /// a relation nothing here persists. Before the fix, `AlbumShape.Load` restored the whole `Identity` group
+    /// (Artists included) off a live answer that had genuinely closed the run, and `Fetch.NeedOf` never asked
+    /// `AlbumV4` again: a cached album's billed-artist line went blank forever. The fix masks `Artists` out of
+    /// `AlbumShape.PersistedFields` (`AlbumShape.PersistedIdentity`) the same way `TrackShape` does, and
+    /// `CommitAlbums`'s `known &amp; AlbumFields.Identity` (not the bare constant) is what stops a disk-restored
+    /// row from re-granting the whole group once one bit of it is missing — so `Knows(Identity)` must ALSO read
+    /// false, not just `Knows(Artists)`: the group is not whole, and nothing may claim it is.</summary>
+    [Fact]
+    public void Album_disk_load_never_restores_Artists_known_though_Title_survives()
+    {
+        Store.Register(new AlbumShape());
+        Scope scope = Boot();
+        AlbumTable albums = scope.Albums;
+
+        string uri = GidUri("album", 21);
+        int slot = albums.Slot(uri.AsSpan());
+        EntityId id = albums.Id[slot];
+        Assert.Equal(EntityForm.Gid, id.Form);
+
+        // The live AlbumV4 answer: full Identity (Artists included — it closed Relation.AlbumArtists as a side
+        // effect, exactly as the decoder does; the edge itself is irrelevant to this fact, only the Known bit is).
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Albums.Add();
+        row1.Id = id;
+        row1.Title = s1.AddText("Alpha"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.TrackCount = 10;
+        row1.Kind = (byte)AlbumKind.Album;
+        row1.Known = (uint)AlbumFields.Identity;
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        // Forget the in-memory row entirely and ask the disk for it back — the exact round trip the bug lives in.
+        albums.FreeSlot(slot);
+        int slot2 = albums.Slot(uri.AsSpan());
+        Assert.True(Store.Read(scope, albums, new[] { slot2 }, (uint)AlbumFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+
+        var loaded = new Album(slot2);
+        Assert.True(loaded.Knows(AlbumFields.Title));
+        Assert.Equal("Alpha", loaded.Title);                       // the shape DOES persist Title …
+        Assert.False(loaded.Knows(AlbumFields.Artists));           // … but must never claim Artists: no edge on disk
+        Assert.False(loaded.Knows(AlbumFields.Identity));          // … and therefore the WHOLE group is not known
+    }
+
+    [Fact]
+    public void Album_ddl_round_trip_and_year_rides_with_a_release_only_answer()
+    {
+        Store.Register(new AlbumShape());
+        Scope scope = Boot();
+        AlbumTable albums = scope.Albums;
+
+        string ddl = Store.Ddl();
+        Assert.Contains("CREATE TABLE IF NOT EXISTS album(", ddl);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS ix_album_title ON album(scope_id, title COLLATE NOCASE);", ddl);
+
+        string uri = GidUri("album", 7);
+        int slot = albums.Slot(uri.AsSpan());
+        EntityId id = albums.Id[slot];
+        Assert.Equal(EntityForm.Gid, id.Form);
+
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Albums.Add();
+        row1.Id = id;
+        row1.Title = s1.AddText("Alpha"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.TrackCount = 10;
+        row1.Kind = (byte)AlbumKind.Album;
+        row1.Known = (uint)AlbumFields.Identity;
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        Assert.True(Store.Read(scope, albums, new[] { slot }, (uint)AlbumFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha", Entities.Strings.Resolve(albums.Title[slot]));
+        Assert.Equal(0, (int)albums.Year[slot]);        // no Release answer has landed yet
+
+        // A date-only answer (extension kind 183, ch 05 §7): Release known, Identity NOT — yet it carries the Year,
+        // and it must land without blanking the title Identity already wrote.
+        Staging s2 = Staging.Rent();
+        ref var row2 = ref s2.Albums.Add();
+        row2.Id = id;
+        row2.Year = 2019;
+        row2.ReleaseDateIso = s2.AddText("2019"u8);
+        row2.Known = (uint)AlbumFields.Release;
+        row2.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s2));
+        Store.Flush();
+
+        albums.FreeSlot(slot);
+        int slot2 = albums.Slot(uri.AsSpan());
+        Assert.True(Store.Read(scope, albums, new[] { slot2 }, (uint)AlbumFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha", Entities.Strings.Resolve(albums.Title[slot2]));   // survived the release-only answer
+        Assert.Equal(2019, (int)albums.Year[slot2]);                          // …and the year rode with it
+    }
+
+    /// <summary>The cover accent rides with Identity (2026-09-16): an ARGB above <c>int.MaxValue</c> must survive the
+    /// INTEGER column and come back as the same <c>uint</c>, so a cold page can tint before the palette grades.</summary>
+    [Fact]
+    public void Album_accent_round_trips_with_identity()
+    {
+        Store.Register(new AlbumShape());
+        Scope scope = Boot();
+        AlbumTable albums = scope.Albums;
+
+        string uri = GidUri("album", 9);
+        int slot = albums.Slot(uri.AsSpan());
+        EntityId id = albums.Id[slot];
+
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Albums.Add();
+        row1.Id = id;
+        row1.Title = s1.AddText("Tinted"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.TrackCount = 3;
+        row1.Kind = (byte)AlbumKind.Album;
+        row1.Accent = 0xFF8898A8u;
+        row1.Known = (uint)AlbumFields.Identity;
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        albums.FreeSlot(slot);
+        int slot2 = albums.Slot(uri.AsSpan());
+        Assert.True(Store.Read(scope, albums, new[] { slot2 }, (uint)AlbumFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+
+        Assert.Equal("Tinted", Entities.Strings.Resolve(albums.Title[slot2]));
+        Assert.Equal(0xFF8898A8u, new Album(slot2).Accent);
+    }
+
+    [Fact]
+    public void Artist_ddl_and_gid_round_trip()
+    {
+        Store.Register(new ArtistShape());
+        Scope scope = Boot();
+        ArtistTable artists = scope.Artists;
+
+        string ddl = Store.Ddl();
+        Assert.Contains("CREATE TABLE IF NOT EXISTS artist(", ddl);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS ix_artist_title ON artist(scope_id, name COLLATE NOCASE);", ddl);
+
+        string uri = GidUri("artist", 8);
+        int slot = artists.Slot(uri.AsSpan());
+        EntityId id = artists.Id[slot];
+        Assert.Equal(EntityForm.Gid, id.Form);
+
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Artists.Add();
+        row1.Id = id;
+        row1.Name = s1.AddText("Alpha Artist"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.Header = s1.AddText("header"u8);
+        row1.HeaderAccent = 0xFF00FF;
+        row1.Bio = s1.AddText("A biography"u8);
+        row1.Monthly = 1_000;
+        row1.Followers = 2_000;
+        row1.WorldRank = 42;
+        row1.Known = (uint)(ArtistFields.Identity | ArtistFields.Header | ArtistFields.Stats | ArtistFields.Bio);
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        Assert.True(Store.Read(scope, artists, new[] { slot }, (uint)ArtistFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha Artist", Entities.Strings.Resolve(artists.Name[slot]));
+        Assert.Equal("A biography", Entities.Strings.Resolve(artists.Bio[slot]));
+        Assert.Equal(1_000u, artists.Monthly[slot]);
+        Assert.Equal((ushort)42, artists.WorldRank[slot]);
+    }
+
+    [Fact]
+    public void Concert_ddl_and_text_form_round_trip()
+    {
+        Store.Register(new ConcertShape());
+        Scope scope = Boot();
+        ConcertTable concerts = scope.Concerts;
+
+        string ddl = Store.Ddl();
+        Assert.Contains("CREATE TABLE IF NOT EXISTS concert(", ddl);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS ix_concert_title ON concert(scope_id, title COLLATE NOCASE);", ddl);
+
+        const string uri = "spotify:concert:store-concert-round-trip-20260915";
+        int slot = concerts.Slot(uri.AsSpan());
+        EntityId id = concerts.Id[slot];
+        Assert.Equal(EntityForm.Text, id.Form);          // concert is not one of the six gid kinds
+
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Concerts.Add();
+        // TEXT-FORM identity must be staged as ARENA TEXT, not as a packed EntityId. A text-form EntityId's
+        // payload is an index into the PROCESS-LOCAL interner, and the store thread may never touch the
+        // interner — so `RowWriter.Emit(in StagedId)` can only take the packed branch for a GID, and a
+        // text-form id handed to it is counted by `Store.BadKey` and DROPPED. A real decoder always has the
+        // uri's UTF-8 bytes in hand and stages `s.AddText(...)`, which is what this now does.
+        row1.Id = s1.AddText(System.Text.Encoding.UTF8.GetBytes(uri));
+        row1.Title = s1.AddText("Alpha Live"u8);
+        row1.Venue = s1.AddText("The Venue"u8);
+        row1.City = s1.AddText("Metropolis"u8);
+        row1.Date = 1_700_000_000_000;
+        row1.OffsetMinutes = 120;
+        row1.Image = s1.AddText("poster"u8);
+        row1.Accent = 0xABCDEF;
+        row1.Lat = 51.5f;
+        row1.Lon = -0.12f;
+        row1.Known = (uint)(ConcertFields.Identity | ConcertFields.Art | ConcertFields.Coords);
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        Assert.True(Store.Read(scope, concerts, new[] { slot }, (uint)ConcertFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha Live", Entities.Strings.Resolve(concerts.Title[slot]));
+        Assert.Equal("The Venue", Entities.Strings.Resolve(concerts.Venue[slot]));
+        Assert.Equal(1_700_000_000_000, concerts.Date[slot]);
+        Assert.Equal((short)120, concerts.OffsetMinutes[slot]);
+        Assert.Equal(51.5f, concerts.Lat[slot]);
+        Assert.Equal(-0.12f, concerts.Lon[slot]);
+    }
+
+    [Fact]
+    public void Playlist_ddl_round_trip_and_owner_uri_cross_reference()
+    {
+        Store.Register(new PlaylistShape());
+        Scope scope = Boot();
+        PlaylistTable playlists = scope.Playlists;
+        UserTable users = scope.Users;
+
+        string ddl = Store.Ddl();
+        Assert.Contains("CREATE TABLE IF NOT EXISTS playlist(", ddl);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS ix_playlist_title ON playlist(scope_id, title COLLATE NOCASE);", ddl);
+
+        const string ownerUri = "spotify:user:store-playlist-owner-20260915";
+        int ownerSlot = users.Slot(ownerUri.AsSpan());
+
+        string uri = GidUri("playlist", 9);
+        int slot = playlists.Slot(uri.AsSpan());
+        EntityId id = playlists.Id[slot];
+        Assert.Equal(EntityForm.Gid, id.Form);
+
+        Staging s1 = Staging.Rent();
+        ref var row1 = ref s1.Playlists.Add();
+        row1.Id = id;
+        row1.Title = s1.AddText("Alpha Mix"u8);
+        row1.Description = s1.AddText("desc"u8);
+        row1.Image = s1.AddText("img"u8);
+        row1.ShareUrl = s1.AddText("https://open.spotify.com/x"u8);
+        row1.TrackCount = 42;
+        row1.OwnerUri = s1.AddText(Encoding.UTF8.GetBytes(ownerUri));   // arena — a decoder holding a uri string
+        row1.Caps = (byte)PlaylistCaps.CanView;
+        row1.Accent = 0x112233;
+        row1.Saves = 7;
+        row1.Known = (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities | PlaylistFields.Accent | PlaylistFields.Saves);
+        row1.Authority = Authority.Full;
+        Assert.True(Store.WriteBehind(s1));
+        Store.Flush();
+
+        Assert.True(Store.Read(scope, playlists, new[] { slot }, (uint)PlaylistFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Alpha Mix", Entities.Strings.Resolve(playlists.Title[slot]));
+        Assert.Equal(42, playlists.TrackCount[slot]);
+        Assert.Equal(ownerSlot, playlists.Owner[slot]);
+        Assert.Equal(7, playlists.Saves[slot]);
     }
 }

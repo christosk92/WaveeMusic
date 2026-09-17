@@ -322,7 +322,7 @@ public static partial class Shell
 
             // ── the published derived facts ──
             UseSignalEffect(static () =>
-                Auth.SetIfChanged(FoldAuth(Spotify.Status.Value, Spotify.Fault.Value, Platform.HasStoredCredential())));
+                Auth.SetIfChanged(FoldAuth(Spotify.Status.Value, Spotify.Fault.Value, Platform.Args.Fake || Platform.HasStoredCredential())));   // --fake presents its seeded account as signed in (G-065)
             UseSignalEffect(() => _pageStageHosts.SetIfChanged(
                 Video.DockedHosting.PageStageHosts(Ui.ActiveStagePlayable.Value, Playback.CurrentId.Value.Text)));
             UseSignalEffect(() =>
@@ -464,7 +464,9 @@ public static partial class Shell
                 CommandPalette(),
                 Video.PipLayer(),
                 Video.FullscreenLayer(),
-                DragPreviewLayer.Of(Drag.Preview)) with { Grow = 1f };
+                Embed.Comp(static () => new CoverScrim()),
+                DragPreviewLayer.Of(Drag.Preview),
+                Diagnostics.FpsOverlay()) with { Grow = 1f };
 
             return Ctx.Provide(ShellMaterial.Slot, MaterialState, OverlayHost.Create(stack));
         }
@@ -741,6 +743,25 @@ public static partial class Shell
         ],
     };
 
+    /// <summary>The setup wizard's cover scrim (ch 28 parity item 22): the plate opens with the engine's own overlay
+    /// scrim OFF (a shell is always behind it in 0.3 — <see cref="Setup.Covering"/>'s doc comment), so this box is the
+    /// only dim. Tok.FillSmoke, 250 ms linear, 0 under reduced motion; nothing ticks while <see cref="Setup.Covering"/>
+    /// holds still, and the box is hit-test transparent whenever it is not dimming.</summary>
+    sealed class CoverScrim : Component
+    {
+        bool _mounted;
+
+        public override Element Render()
+        {
+            bool dim = Setup.Covering.Value == Setup.Cover.Dim;
+            float ms = Design.Reduced ? 0f : 250f;
+            float target = dim ? 1f : 0f;
+            UseTransition(AnimChannel.Opacity, _mounted ? 1f - target : target, target, ms, Easing.Linear, DepKey.From(dim));
+            _mounted = true;
+            return new BoxEl { Grow = 1f, Fill = Tok.FillSmoke, Opacity = target, HitTestVisible = dim };
+        }
+    }
+
     // ══ 3. THE CONTENT HOST ═══════════════════════════════════════════════════════════════════════════════════════
 
     static readonly KeepAliveOptions s_keepAlive = new(
@@ -751,6 +772,14 @@ public static partial class Shell
 
     static readonly HashSet<string> s_warnedUnknown = new(StringComparer.Ordinal);
 
+    /// <summary>The route whose page is ON SCREEN, as opposed to <see cref="Current"/>, the route just committed: the two
+    /// differ for the exit leg of a page swap (<see cref="Design.Nav.ExitDurationMs"/>), while the old page is still
+    /// leaving. Written by <see cref="ContentHost"/> once that leg has run; the tab strip labels the active tab from it
+    /// (<see cref="TabLabelStaging"/>) so the label lands WITH the page instead of a frame ahead of it.</summary>
+    public static readonly Signal<Route> Shown = new(Route.None);
+
+    static readonly Action s_landShown = static () => Shown.Value = Current.Peek();
+
     /// <summary>The keep-alive page-swap boundary, the masthead band overlaid on it, and the offline lane. Pages receive
     /// route VALUES, never the route signal — the boundary is the only route subscriber.</summary>
     sealed class ContentHost : Component
@@ -760,6 +789,16 @@ public static partial class Shell
             // A floating surface at its default anchor reserves bottom space. The wrapper is UNCONDITIONAL: toggling it in
             // and out of the tree would remount the keep-alive boundary and cold-restart every cached page.
             float reserve = Video.FloatingSurfaceReserve.Value;
+
+            // The staged label route (see Shown): armed ONCE from mount so boot's route lands, then RE-ARMED by the effect
+            // below for every commit — the effect subscribes to the route, this render body never does. The lag is the
+            // exit leg exactly; the instant cut and reduced motion run no exit leg, so there it lands on the next tick.
+            var land = UseTimeout(s_landShown, TabLabelStaging.DelayMs(instantCut: false, reducedMotion: false));
+            UseSignalEffect(() =>
+            {
+                _ = Current.Value;
+                land.RestartIn(TabLabelStaging.DelayMs(PageMotionStyle() == Design.PageMotionStyle.None, FgMotion.ReducedMotion));
+            });
 
             // The NEUTRAL half of the material hand-over: claimed for exactly the routes no page tints (disjoint sets,
             // so the two effects need no order).
@@ -808,7 +847,8 @@ public static partial class Shell
         if (newToken is not Route next) return null;
         var motion = Motion.Peek();
         bool videoSafe = oldToken is Route prev ? NeedsVideoSafe(prev, next) : next.Kind == RouteKind.Module;
-        return videoSafe ? RecipeForVideoSafe(motion) : RecipeFor(motion);
+        if (videoSafe) return RecipeForVideoSafe(motion);
+        return oldToken is Route from ? RecipeFor(from, next, motion) : RecipeFor(motion);
     }
 
     static Element PageBody(Route route)
@@ -930,9 +970,11 @@ public static partial class Shell
             HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value);
     }
 
-    static int TitleBarTabsVersion() => unchecked(TabsVersion.Value * 397 ^ SelectedTab.Value);
+    // Both fold Shown: the strip's labels come from the staged route, so it must rebuild when that route LANDS (the
+    // exit leg after the commit), not only when the workspace or the selection changes.
+    static int TitleBarTabsVersion() => HashCode.Combine(TabsVersion.Value, SelectedTab.Value, Shown.Value);
 
-    static int TabStripItemsVersion() => unchecked(TabsVersion.Value * 397 ^ (ChromeLayout.Value.ShowNewTab ? 1 : 0));
+    static int TabStripItemsVersion() => HashCode.Combine(TabsVersion.Value, ChromeLayout.Value.ShowNewTab, Shown.Value);
 
     /// <summary>The tabs island takes a RESERVED, quantised width (issue #88): hugging the strip shoved the centred search
     /// by half of every title swing.</summary>
@@ -992,15 +1034,20 @@ public static partial class Shell
     static IReadOnlyList<TabViewItem> BuildTabItems()
     {
         var tabs = Tabs.Tabs;
+        var shown = Shown.Peek();   // the version folds it; the items source itself is untracked
         var items = new TabViewItem[tabs.Count];
         for (int i = 0; i < items.Length; i++)
         {
             var tab = tabs[i];
             var route = tab.Route;
-            var (label, glyph) = Dest(route);
+            // The header and icon name the page ON SCREEN (the staged route lags the commit by the exit leg); the pin
+            // id, the drag payload's title and the drop target describe the tab's DESTINATION and keep its own route.
+            var (destTitle, destGlyph) = Dest(route);
+            var staged = TabLabelStaging.LabelRoute(route, shown);
+            var (label, glyph) = staged == route ? (destTitle, destGlyph) : Dest(staged);
             int id = tab.Id;
             string? pinId = FrameRules.PinIdFor(route);
-            string pinTitle = route.Kind == RouteKind.Search ? Loc.Get(Strings.Nav.Search) : label;
+            string pinTitle = route.Kind == RouteKind.Search ? Loc.Get(Strings.Nav.Search) : destTitle;
             items[i] = new TabViewItem
             {
                 Key = "tab#" + id.ToString(CultureInfo.InvariantCulture),
@@ -1011,7 +1058,7 @@ public static partial class Shell
                 ContextMenu = () => TabMenu(id),
                 // CLICK-PRIMARY: switching tabs is the constant intent, so the mouse drag box is widened.
                 Drag = pinId is { } p ? Drag.Source(() => TabPayload(p, pinTitle), clickPrimary: true) : null,
-                DropTarget = TabDropTarget(route, id, label),
+                DropTarget = TabDropTarget(route, id, destTitle),
             };
         }
         return items;
@@ -1259,7 +1306,8 @@ public static partial class Shell
 
         public override Element Render()
         {
-            bool open = Ui.NarrowShell.Value && Ui.DrawerOpen.Value;
+            bool narrow = Ui.NarrowShell.Value;
+            bool open = narrow && Ui.DrawerOpen.Value;
             var hooks = UseContext(InputHooks.Current);
             _escapePreview ??= key =>
             {
@@ -1293,6 +1341,21 @@ public static partial class Shell
                 Ui.DrawerOpen.SetIfChanged(false);
             });
 
+            // BUG E1 (perf): on a desktop-width window the drawer is unreachable, so mount NOTHING — no scrim, no
+            // second `Sidebar.DrawerPane()` (a whole second PaneView planning the sidebar on every invalidation and
+            // a second `PumpBinder` registration), no drawer PaneHost at all. Gated on NARROWNESS ALONE, never on
+            // `Ui.DrawerOpen` (see `NarrowDrawerMount.ShouldMount`): the pane must stay mounted for the ENTIRE time
+            // the shell is narrow, closed included, or the first open after entering the narrow band would have
+            // nothing already-mounted for `DrawerPane`'s open/close slide (`UseTransition`) to animate from — it
+            // would just pop in. `PaneHost`'s `UseSignalEffect(PumpBinder)` is a `SignalEffectCell`
+            // (`IDisposableCell`), so mounting/unmounting `DrawerPane` across the breakpoint cleanly
+            // registers/unregisters the binder pump instead of leaking a second one (verified in the engine's
+            // `RenderContext.RunAllCleanups`).
+            // Peek, not Value: ShouldMount ignores drawerOpen entirely (see its own doc), so reading it here would
+            // only add a needless subscription — `open` above already reads it live for the cases that DO care.
+            if (!NarrowDrawerMount.ShouldMount(narrow, Ui.DrawerOpen.Peek()))
+                return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+
             return new BoxEl
             {
                 Grow = 1f, ZStack = true, HitTestVisible = open,
@@ -1307,6 +1370,19 @@ public static partial class Shell
                 ],
             };
         }
+    }
+
+    /// <summary>BUG E1's pure mount decision (`docs/plans/wavee/wavee-0.3-bug-handoff-2026-09-15.md` §7,
+    /// `NarrowDrawer.Render`): whether the narrow drawer's heavy subtree (the scrim plus a second full
+    /// `Sidebar.DrawerPane()`) should be mounted at all. Deliberately takes <paramref name="drawerOpen"/> and
+    /// ignores it — the decision is narrowness alone. A version of this that also required <paramref
+    /// name="drawerOpen"/> would unmount the pane the instant it closes on a narrow window, which would then pop
+    /// in with no animation the next time it opens (the reveal/close slide needs the pane already mounted).
+    /// Engine-free and pure so it is unit-testable without mounting a component
+    /// (<c>ShellNarrowDrawerTests</c>).</summary>
+    public static class NarrowDrawerMount
+    {
+        public static bool ShouldMount(bool narrowShell, bool drawerOpen) => narrowShell;
     }
 
     sealed class DrawerScrim : Component

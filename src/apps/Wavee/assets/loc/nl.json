@@ -49,6 +49,7 @@
     "yourDaylist": "jouw daylist",
     "heroEyebrow": "{greeting}, {name} · {what}",
     "nextUpdateAt": "Volgende update om {time}",
+    "daylistUpdating": "Je daylist wordt bijgewerkt…",
     "editorial": "Redactie",
     "oneSeries": "Één serie, {count} mixen",
     "mixesFromArtists": "{count} mixen op basis van artiesten die je speelt",

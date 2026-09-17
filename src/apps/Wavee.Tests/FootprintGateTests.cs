@@ -47,21 +47,24 @@ public class FootprintGateTests(ITestOutputHelper output)
     /// <summary>THE GID BUDGET, re-baselined for the packed identity (defect 6). The arithmetic it is drawn against,
     /// at <see cref="Rows"/> + 1 presized rows:
     /// <list type="bullet">
-    /// <item>6 bookkeeping columns = 21 B/row (Version 4, Known 4, Authority 1, FetchedAt 4, Touched 4, Inflight 4);</item>
+    /// <item>7 bookkeeping columns = 25 B/row (Version 4, Known 4, Authority 1, FetchedAt 4, Touched 4, Inflight 4,
+    /// Stale 4) — <c>Asked</c> (G-040) and <c>Stale</c> (the fifth mark) each came later at +4 B/row, +40,004 B at this
+    /// scale; the budget below absorbs them in its headroom and was not raised for either;</item>
     /// <item><c>Column&lt;EntityId&gt;</c> = 24 B/row — where the old <c>Column&lt;StringId&gt; Uri</c> was 4 B/row but
     /// dragged a <c>Dictionary&lt;StringId,int&gt;</c> behind it at 20-35 B/row (doc §1.2);</item>
     /// <item>TrackTable's 21 value columns = 80 B/row — 64 of them, plus the 16 of
     /// <c>Column&lt;UInt128&gt; OriginalAudio</c> (see below);</item>
     /// <item>the open-addressed <c>int[]</c> index = 16,384 buckets × 4 B = 65,536 B, i.e. 6.6 B/row at load 0.61.</item>
     /// </list>
-    /// 125 B/row of columns + 6.6 B/row of index ≈ <b>1.32 MB</b>. MEASURED, on this gate, over gid rows on
+    /// 129 B/row of columns + 6.6 B/row of index ≈ <b>1.36 MB</b>. MEASURED, on this gate, over gid rows on
     /// 2026-09-12, BEFORE the audio key: <b>1,153,992 B (115.4 B/row) in Debug, 1,145,088 B (114.5 B/row) in
     /// Release</b> — the doc's ~120 B/row prediction met and slightly beaten.
     ///
     /// <para><b>RAISED ONCE, ON PURPOSE, 2026-09-13: 1,300,000 → 1,470,000 (+170,000 B).</b> The FLAC work adds exactly
     /// one column, <c>TrackTable.OriginalAudio</c> — <c>Track.original_audio.uuid</c>, the key to the
     /// <c>spotify:audio:</c> entity — at <b>16 B/row, +160,016 B at this scale</b>, taking the measured figure to about
-    /// 1,314,000 B (131.4 B/row). It is not narrowable and not derivable: the uuid is on no other payload, it is not a
+    /// 1,314,000 B (131.4 B/row); <c>Table.Stale</c> adds 40,004 B on top, to about 1,354,000 B, still ~8 % under the
+    /// gate. It is not narrowable and not derivable: the uuid is on no other payload, it is not a
     /// function of the track's gid, and extension kind 5 on that entity is the only route that carries a FLAC file id
     /// (FLAC plan §5.1/§5.2 — TRACK_V4's own <c>file[]</c> lists Ogg and AAC and nothing else). Without the column the
     /// app would re-fetch a whole TrackV4 per track to ask one question about it. The new gate keeps the same ~12 % of

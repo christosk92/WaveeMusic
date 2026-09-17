@@ -1,7 +1,8 @@
 // ── Screens/Diagnostics.Probe.cs ───────────────────────────────────────────────────────────────────────────────────
-// the CLI probe arms: --headless (the headless host, below), and — owner S, Wave 6 — --perf-bench, --startup-bench,
+// the CLI probe arms: --headless (the headless host, below). Owner S's Wave-6 arms — --perf-bench, --startup-bench,
 // --crash-probe, --lyrics-advance-probe (ch 22 (a) — the env-var switch is deleted), --qr-dump (ch 28 §1.5),
-// NotificationSimulator (ch 14, +195), the process receipts
+// --relaunch-after, NotificationSimulator (ch 14) — are the named partial `Diagnostics.Probe.Arms.cs` (G-016: this
+// file's 800 is spent by the headless arm)
 //
 // Role: SHELL
 // Owner: S (Wave 6) — the headless arm is an orchestrator-owned first cut (owner X), the Platform.cs precedent
@@ -38,6 +39,10 @@ public static partial class Diagnostics
         /// first (a WinExe has none) — 0.2.9's Program.cs:28-40, in spirit.</summary>
         public static bool TryRun(string[] args, out int code)
         {
+            // The window-less Wave-6 arms first (`--relaunch-after`, `--qr-dump`: Diagnostics.Probe.Arms.cs). The GUI arms
+            // (`--perf-bench`, `--startup-bench`, `--crash-probe`, `--lyrics-advance-probe`) need the window, so they ride
+            // `FluentApp.DiagnosticRun` from `Diagnostics.Install` instead.
+            if (TryRunCliArm(args, out code)) return true;
             code = 0;
             if (Array.IndexOf(args, "--headless") < 0) return false;
             AttachParentConsole();
@@ -248,8 +253,10 @@ public static partial class Diagnostics
             }
 
             // 2. the stores (§2.8) — before anything reads them. NOT `new OverlaySettings(Platform.Settings)`: that is the
-            //    facade, whose Get reads the backing store, which would be this overlay — an infinite recursion.
-            Platform.UseSettings(new Headless.OverlaySettings(RegistryAppSettings.Open("Wavee", "Wavee")));
+            //    facade, whose Get reads the backing store, which would be this overlay — an infinite recursion. The base is
+            //    the store Boot resolved (`Platform.SettingsBackingFor`): HKCU normally, the profile's settings.json under
+            //    `--profile` — so an isolated headless run reads that profile's settings, and no run ever writes them.
+            Platform.UseSettings(new Headless.OverlaySettings(Platform.BackingSettings));
             ICredentialProtector protector = OperatingSystem.IsWindows() ? new DpapiProtector() : new NoOpProtector();
             Platform.UseCredentialSlot(new Headless.ProtectedLocalStore(new FileLocalStore(Platform.StorePath), "headless",
                 refused: static k => Log.Warn("headless", "refused to remove " + k + " (a headless run never clears the credential)")), protector);
@@ -277,6 +284,12 @@ public static partial class Diagnostics
             Spotify.Boot();
             Playback.Boot();
             Spotify.Api.Boot();                                       // Fetch.Register(Transport); idempotent
+            // G-239: the GUI installs both unconditionally (App.cs, unless --fake); a headless run has no --fake arm,
+            // so the same two compose here - the library host (sync on Online, the pin bridge; G-042/043/049) and the
+            // lyrics stack (G-008), whose resolveRequest posts through THIS host's loop, not Shell's UI marshaller
+            // (there is no Shell here - see ResolveLyricsRequest below).
+            Spotify.Library.Install();
+            Lyrics.Boot(ResolveLyricsRequest, Spotify.Api.GetTextAsync, Spotify.SpclientBaseUrl);
             if (o.Silent) Playback.Audio.UseSilentEndpoint();
             s_connect = o.Connect;
             Spotify.Connect.AnnounceOnOnline = o.Connect;             // the session's own hello on Online, once per connection; off unless --connect
@@ -304,8 +317,42 @@ public static partial class Diagnostics
             }
             finally { s_tick?.Dispose(); }
 
+            try { Spotify.Library.Shutdown(); } catch (Exception ex) { Log.Warn("headless", "library shutdown failed", ex); }
             if (o.Store) { try { Store.Shutdown(); } catch (Exception ex) { Log.Warn("headless", "store shutdown failed", ex); } }
             return Finish(s_exit);
+        }
+
+        const int LyricsResolveTimeoutMs = 4_000;    // mirrors Shell.ResolveLyricsRequest's bound (G-008)
+        const int LyricsResolvePollMs = 50;
+
+        /// <summary>The <c>resolveRequest</c> half of <c>Lyrics.Boot</c> for THIS host (G-239): the same mapping as
+        /// <see cref="Shell.ResolveLyricsRequest"/> (base62 track id -&gt; <see cref="Lyrics.Request"/>, entity read
+        /// through <see cref="Entities.Ensure"/>, bounded poll for a still-unknown row), but marshalled through
+        /// <see cref="HeadlessLoop.Post"/> instead of Shell's UI dispatcher - there is no Shell composed here, and
+        /// Entity columns are single-writer on the loop thread (C1) the same way they are single-writer on the UI
+        /// thread in the GUI. The lyrics aggregator calls this on its own worker thread.</summary>
+        static async Task<Lyrics.Request?> ResolveLyricsRequest(string trackId, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(trackId) || !Base62.TryDecode(trackId.AsSpan(), out UInt128 gid)) return null;
+            EntityId id = EntityId.ForGid(EntityKind.Track, gid);
+            if (!id.IsValid) return null;
+
+            long deadline = Environment.TickCount64 + LyricsResolveTimeoutMs;
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                var tcs = new TaskCompletionSource<Lyrics.Request?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                s_loop.Post(() =>
+                {
+                    Track track = Entities.Track(id);
+                    if (!track.Knows(TrackFields.Identity)) Entities.Ensure(track, TrackFields.Identity, FetchPriority.Visible);
+                    tcs.TrySetResult(Lyrics.RequestFrom(track, trackId));
+                });
+                Lyrics.Request? result = await tcs.Task.ConfigureAwait(false);
+                if (result is not null || Environment.TickCount64 >= deadline) return result;
+                try { await Task.Delay(LyricsResolvePollMs, ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return null; }
+            }
         }
 
         static int Finish(int code)
@@ -514,7 +561,10 @@ public static partial class Diagnostics
             {
                 if (e.Sequence <= s_lastEchoedSeq) continue;
                 s_lastEchoedSeq = e.Sequence;
-                if (e.Category is "audio" or "spotify" or "playback" or "connect")
+                // "library" added for G-239: Spotify.Library's own Log.Info lines (sync asked/skipped, rootlist writes)
+                // are the only signal a --script run has today that the library host installed above did anything -
+                // the grammar has no library/rootlist field (see library-sync.wh's header comment).
+                if (e.Category is "audio" or "spotify" or "playback" or "connect" or "library")
                     Emit(Headless.JsonLine.Echo(nowMs, e.Category, e.Format()));
             }
         }

@@ -28,6 +28,8 @@
 //                         every candidate's PARSED document. Bounded (§7 gap 7's caps) and published on EVERY search.
 //   `Lyrics.Sources.*`    the three clean-by-default sources: AMLL (identity, word-synced), Spotify-native (the
 //                         reranker's REFERENCE and a line candidate) and LRCLIB (metadata search).
+//   `Lyrics.ResolveRequest` track id → the search `Request`, parked on `Lyrics.Requests` until the publication that
+//                         commits the row's identity (G-252) — never polled.
 //
 // CONCURRENCY (C1/C4/C8). Async is allowed here (SHELL), but: nothing writes a table; every published value crosses
 // back to the UI thread through `Lyrics.Store`'s post (`Platform`-installed dispatcher); there is exactly ONE shared
@@ -1757,6 +1759,141 @@ public static partial class Lyrics
             catch (Exception e) { Log.Debug(Diag.Category, $"lyrics re-fetch for {trackId} failed: {e.GetType().Name}"); }
             lock (Docs) Asked.Add(trackId);
             Commit(trackId, doc, upgrade: false);
+        }
+    }
+
+    // ── 6b. the request resolver: track id → Request, without a poll (G-252) ─────────────────────────────────────────
+    //
+    //   aggregator worker ─ ResolveRequest(id) ─ ToUi ─▶ ready now? ─ yes ─▶ answer
+    //                                                        │ no: Ensure(Identity) once, PARK on Requests
+    //   UI thread: Entities.Publish() ─▶ Requests.AfterPublish() ─▶ parked row knows its identity? ─▶ answer
+    //   worker: no answer within RequestTimeoutMs (or the caller cancels) ─▶ null, and the parked entry is released
+    //
+    // The old resolver re-posted a probe every 50 ms for up to 4 s (a TCS, a closure, a publish-wrapped post and a
+    // Task.Delay each), waking the UI loop ~20×/s while a lookup waited. Now a wait costs nothing until a publication.
+
+    /// <summary>How long a resolve waits for its row's identity group before answering null — the aggregator's worker must
+    /// eventually get an answer either way.</summary>
+    public const int RequestTimeoutMs = 4_000;
+
+    /// <summary>The ONE waiter the resolver parks on. UI thread only (C1); the host calls <see cref="RequestWaiter.AfterPublish"/>
+    /// right after every <c>Entities.Publish()</c>.</summary>
+    public static readonly RequestWaiter Requests = new();
+
+    /// <summary>The <c>resolveRequest</c> half of <see cref="Boot"/> (G-008, G-252): base62 track id →
+    /// <see cref="Request"/>. Entity columns are single-writer on the UI thread (C1), so the read, the one
+    /// <c>Entities.Ensure</c> and the park hop through <see cref="Store.ToUi"/>; a row whose identity has not landed is
+    /// completed by the publication that commits it (<see cref="Requests"/>). Null after <see cref="RequestTimeoutMs"/>;
+    /// the caller's token is honoured. The pure mapping is <see cref="RequestFrom"/>.</summary>
+    public static async Task<Request?> ResolveRequest(string trackId, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(trackId) || !Base62.TryDecode(trackId.AsSpan(), out UInt128 gid)) return null;
+        EntityId id = EntityId.ForGid(EntityKind.Track, gid);
+        if (!id.IsValid) return null;
+        ct.ThrowIfCancellationRequested();
+
+        var completion = new TaskCompletionSource<Request?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Store.ToUi(() =>
+        {
+            if (Entities.Current is not null)
+            {
+                Track track = Entities.Track(id);
+                if (!track.Knows(TrackFields.Identity)) Entities.Ensure(track, TrackFields.Identity, FetchPriority.Visible);
+            }
+            Requests.Begin(id, trackId, completion);
+        });
+        try
+        {
+            return await completion.Task.WaitAsync(TimeSpan.FromMilliseconds((double)RequestTimeoutMs), ct).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            completion.TrySetResult(null);   // releases the parked entry: the next look prunes it
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            completion.TrySetResult(null);
+            throw;
+        }
+    }
+
+    /// <summary>A small bounded list of resolves waiting for their row's <see cref="TrackFields.Identity"/> group, checked
+    /// after a publication instead of polled. UI THREAD ONLY (C1): every member touches entity columns.
+    /// <para>Rows are held by <see cref="EntityId"/>, never by slot — a slot is scope-local, and a scope switch between the
+    /// park and the publication must not read another row. An entry whose completion is already done (the resolver timed
+    /// out, the caller cancelled) is dropped at the next look; a full list completes its OLDEST with null.</para></summary>
+    public sealed class RequestWaiter
+    {
+        /// <summary>The most resolves parked at once. The aggregator's demand queue is latest-wins, so a handful is the
+        /// real ceiling; past it the oldest gives way.</summary>
+        public const int Capacity = 16;
+
+        struct Pending
+        {
+            public EntityId Id;
+            public string TrackId;
+            public TaskCompletionSource<Request?> Completion;
+        }
+
+        readonly Pending[] _pending = new Pending[Capacity];
+        int _count;
+        uint _lookedAt;
+
+        /// <summary>Resolves parked right now.</summary>
+        public int PendingCount => _count;
+
+        /// <summary>Answer at once when the row already knows its identity; otherwise PARK until a publication commits it.
+        /// The caller asks for the identity group itself (the resolver's one <c>Entities.Ensure</c>).</summary>
+        public void Begin(EntityId id, string trackId, TaskCompletionSource<Request?> completion)
+        {
+            if (completion.Task.IsCompleted) return;
+            if (Entities.Current is null) { completion.TrySetResult(null); return; }
+            if (RequestFrom(Entities.Track(id), trackId) is { } ready) { completion.TrySetResult(ready); return; }
+
+            Prune();
+            if (_count == Capacity)
+            {
+                _pending[0].Completion.TrySetResult(null);
+                Array.Copy(_pending, 1, _pending, 0, Capacity - 1);
+                _count--;
+            }
+            _pending[_count++] = new Pending { Id = id, TrackId = trackId, Completion = completion };
+            _lookedAt = 0;   // the next publication looks, whatever its number
+        }
+
+        /// <summary>Right after <c>Entities.Publish()</c>: complete every parked resolve whose row now knows its identity.
+        /// One compare when nothing is parked or nothing was published since the last look; allocation-free.</summary>
+        public void AfterPublish()
+        {
+            if (_count == 0) return;
+            uint publication = Entities.Publication;
+            if (publication == _lookedAt) return;
+            _lookedAt = publication;
+            bool scope = Entities.Current is not null;
+            int kept = 0;
+            for (int i = 0; i < _count; i++)
+            {
+                var p = _pending[i];
+                if (p.Completion.Task.IsCompleted) continue;
+                if (scope && RequestFrom(Entities.Track(p.Id), p.TrackId) is { } ready)
+                {
+                    p.Completion.TrySetResult(ready);
+                    continue;
+                }
+                _pending[kept++] = p;
+            }
+            Array.Clear(_pending, kept, _count - kept);
+            _count = kept;
+        }
+
+        void Prune()
+        {
+            int kept = 0;
+            for (int i = 0; i < _count; i++)
+                if (!_pending[i].Completion.Task.IsCompleted) _pending[kept++] = _pending[i];
+            Array.Clear(_pending, kept, _count - kept);
+            _count = kept;
         }
     }
 

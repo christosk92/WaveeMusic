@@ -30,6 +30,160 @@ namespace Wavee;
 
 public static partial class ReleaseNotes
 {
+    // ── moved from ReleaseNotes.Host.cs (batch R2): links, the date format, the version sentence's shape, the ──────
+    // ── after-update gate and the small render decisions the page/rail/chips/avatars take. Engine-free, network- ──
+    // ── and disk-free. BCL + this file + ReleaseNotes.Model.cs ONLY: `Wavee.ReleaseTool` compiles exactly these ────
+    // ── two files, so a decision that needs the app's settings, `Platform.Keys`, the generated `Strings.*` loc-key ──
+    // ── constants, `Notify` or the Host's view records lives in ReleaseNotes.Host.cs instead (G-265): ────────────────
+    // ── `AfterUpdateGate.Consume`, `RailMarkerFor`, `KindPillLocKey`, `SectionTitleLocKey`, `SlideId`. ────────────────
+
+    /// <summary>The page's half of "which GitHub page does this open?" and the one date format (0.2.9's
+    /// `ReleaseNotesLinks`, the engine-free half of `ReleaseNotesText`). The snapshot rule (`ReleasePageUrl`) and the Store
+    /// product page are `Update`'s (Platform/Update.Host.cs) — one owner each, never a second copy here.</summary>
+    public static class Links
+    {
+        /// <summary>The repository every bare <c>#123</c> belongs to.</summary>
+        public const string Repo = ChangelogParser.WaveeRepo;
+        public const string RepoUrl = "https://github.com/" + Repo;
+        public const string ReleasesUrl = RepoUrl + "/releases";
+        /// <summary>The Store listing id an unstamped build (a test host, a hand-built MSIX) falls back to.</summary>
+        public const string FallbackStoreId = "9NJPVWTQPT9H";
+
+        /// <summary>GitHub redirects /issues/N ↔ /pull/N, so a misclassified reference still lands right.</summary>
+        public static string IssueUrl(string? repo, int number, bool pr)
+            => "https://github.com/" + (string.IsNullOrEmpty(repo) ? Repo : repo)
+             + (pr ? "/pull/" : "/issues/") + number.ToString(CultureInfo.InvariantCulture);
+
+        /// <summary>"0.3.0" → <c>…/releases/tag/wavee-v0.3.0</c>.</summary>
+        public static string ReleaseTagUrl(string? semver) => ReleasesUrl + "/tag/" + ReleaseNotesValidation.TagPrefix + (semver ?? "");
+
+        /// <summary>The Store id a card's "Get it from the Microsoft Store" opens: the stamp, else the fallback.</summary>
+        public static string StoreIdOrFallback(string? stamped) => stamped is { Length: > 0 } id ? id : FallbackStoreId;
+
+        /// <summary>A release date as the page prints it. Unparseable input is ECHOED, never blanked (ch 28 §9.2) — so a
+        /// <c>{ Length: &gt; 0 }</c> guard means "the document carried something", not "carried a date". Invariant on both
+        /// sides; the ordering is the <paramref name="format"/> (the <c>whatsNew.dateFormat</c> loc key).</summary>
+        public static string Date(string? iso, string format)
+        {
+            if (string.IsNullOrWhiteSpace(iso)) return "";
+            return DateTime.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var d)
+                ? d.ToString(format, CultureInfo.InvariantCulture)
+                : iso;
+        }
+    }
+
+    /// <summary>What the running build is, as a loader needs it — handed in, so the loaders never read the version accessor.</summary>
+    public readonly record struct RunningBuild(string Core, string Channel, bool IsStore);
+
+    /// <summary>The three shapes of the build's name sentence (0.2.9 <c>AppVersionDisplay.Of</c>): bare, codename, codename · Beta n.</summary>
+    public enum VersionDisplayShape : byte { Bare, Codename, Beta }
+
+    /// <summary>The DECISION half of the after-update welcome / About's version line; the UI formats it through the
+    /// <c>update.about.display*</c> keys. A dev build names its SemVer, not its Core.</summary>
+    public readonly record struct VersionDisplay(VersionDisplayShape Shape, string Version, string Codename, int Beta)
+    {
+        public static VersionDisplay Of(string semVer, string core, bool isDev, string? codename, int? beta)
+        {
+            string version = isDev ? semVer : core;
+            if (codename is not { Length: > 0 } name) return new(VersionDisplayShape.Bare, version, "", 0);
+            return beta is int b ? new(VersionDisplayShape.Beta, version, name, b) : new(VersionDisplayShape.Codename, version, name, 0);
+        }
+    }
+
+    public enum AfterUpdateVerdict : byte { Open, NothingPending, AutoShowOff, WizardDeferred, CrashNoticeDeferred }
+
+    /// <summary>The after-update plate's four gates (ch 28 §7), in 0.2.9's order. EVERY non-Open verdict leaves
+    /// <c>pendingFrom</c> armed: the wizard deferral re-evaluates on the marker epoch (same launch), the other two wait.
+    /// The settings write (<c>Consume</c>) is the other half of this partial, in ReleaseNotes.Host.cs.</summary>
+    public static partial class AfterUpdateGate
+    {
+        public static AfterUpdateVerdict Decide(string? pendingFrom, bool autoShow, bool wizardPendingOrOpen, bool crashNoticeThisLaunch)
+        {
+            if (string.IsNullOrEmpty(pendingFrom)) return AfterUpdateVerdict.NothingPending;
+            if (!autoShow) return AfterUpdateVerdict.AutoShowOff;
+            if (wizardPendingOrOpen) return AfterUpdateVerdict.WizardDeferred;
+            return crashNoticeThisLaunch ? AfterUpdateVerdict.CrashNoticeDeferred : AfterUpdateVerdict.Open;
+        }
+    }
+
+    /// <summary>The strip's cap — and the after-update row's. Only VISIBLE highlights count against it.</summary>
+    public const int HighlightMax = 3;
+
+    /// <summary>A changelog section shows this many rows until "Show all N" (which never folds back).</summary>
+    public const int ChangelogFold = 8;
+
+    public static int ShownRows(int count, bool expanded) => expanded || count <= ChangelogFold ? count : ChangelogFold;
+
+    /// <summary>"Open What's new" carries a dot while the running release's notes have never been opened.</summary>
+    public static bool NotesUnread(string? lastSeen, string runningCore) => !string.Equals(lastSeen ?? "", runningCore, StringComparison.Ordinal);
+
+    /// <summary>[Latest] shows when the index names this as its newest — AND on a null/empty index (every offline load).</summary>
+    public static bool IsLatest(ReleaseNotesIndex? index, string version)
+    {
+        var releases = index?.Releases;
+        return releases is not { Length: > 0 } || string.Equals(releases[0]?.Version, version, StringComparison.Ordinal);
+    }
+
+    /// <summary>A rail row's marker; the decision (<c>RailMarkerFor</c>) is in ReleaseNotes.Host.cs — it compares
+    /// versions through <c>Notify.AppUpdateVersion</c>.</summary>
+    public enum RailMarker : byte { None, You, Unread }
+
+    /// <summary>One row per VERSION, newest (first) wins — a rehearsal feed with two quads of one semver must not hand
+    /// Flow.For a duplicate key.</summary>
+    public static List<ReleaseNotesIndexEntry> RailRows(ReleaseNotesIndex? index)
+    {
+        var entries = index?.Releases ?? [];
+        var rows = new List<ReleaseNotesIndexEntry>(entries.Length);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var e in entries) if (e is not null && seen.Add(e.Version ?? "")) rows.Add(e);
+        return rows;
+    }
+
+    /// <summary>"name  ·  date" · "name" · "date" · "" — whichever the entry carries (the date already formatted).</summary>
+    public static string RailSubtitle(string? name, string date)
+        => name is { Length: > 0 } n ? (date.Length > 0 ? n + "  ·  " + date : n) : date;
+
+    /// <summary>The stacked-release divider: "0.2.8  Crest  ·  29 Aug 2026".</summary>
+    public static string DividerLabel(string version, string? name, string date)
+        => version + (name is { Length: > 0 } n ? "  " + n : "") + (date.Length > 0 ? "  ·  " + date : "");
+
+    /// <summary>"breaking" and "warning" (case-insensitive) are Warning; everything else Informational.</summary>
+    public static bool NoticeIsWarning(string? kind)
+        => string.Equals(kind, "breaking", StringComparison.OrdinalIgnoreCase) || string.Equals(kind, "warning", StringComparison.OrdinalIgnoreCase);
+
+    public enum ChipState : byte { Open, Closed, NotPlanned, Merged }
+
+    /// <summary>The LIVE state when fetched, the tool's snapshot otherwise — never blank (each half falls back on its own).</summary>
+    public static ChipState IssueChipState(IssueState? live, ReleaseIssue issue)
+    {
+        string state = live?.State ?? issue.State;
+        string? reason = live?.StateReason ?? issue.StateReason;
+        if (string.Equals(state, "open", StringComparison.OrdinalIgnoreCase)) return ChipState.Open;
+        return string.Equals(reason, "not_planned", StringComparison.OrdinalIgnoreCase) ? ChipState.NotPlanned : ChipState.Closed;
+    }
+
+    /// <summary>The live title, else the snapshot's; "" means no tooltip at all.</summary>
+    public static string IssueChipTip(IssueState? live, ReleaseIssue issue) => live?.Title is { Length: > 0 } t ? t : issue.Title ?? "";
+
+    /// <summary>h = (h·31 + ch) &amp; 0x7fffffff, mod 6 — the same login always gets the same tint (ch 28 §4.3).</summary>
+    public static int AvatarTintIndex(string? login)
+    {
+        int h = 0;
+        foreach (char c in login ?? "") h = (h * 31 + c) & 0x7fffffff;
+        return h % 6;
+    }
+
+    /// <summary>"christosk92" → "C", "jane-doe" → "JD" (the letter after the first - _ .), "" → "?".</summary>
+    public static string Initials(string? login)
+    {
+        if (string.IsNullOrEmpty(login)) return "?";
+        int dash = login.IndexOfAny(['-', '_', '.']);
+        string first = char.ToUpperInvariant(login[0]).ToString();
+        return dash > 0 && dash + 1 < login.Length ? first + char.ToUpperInvariant(login[dash + 1]) : first;
+    }
+
+    // ── end moved region (batch R2) ─────────────────────────────────────────────────────────────────────────────────
+
     // ── ChangelogParser.cs ───────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>One <c>## [version]</c> block of CHANGELOG.md. <see cref="Date"/> is null when the heading carried none and

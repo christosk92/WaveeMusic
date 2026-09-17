@@ -1,7 +1,8 @@
 // ── Entities/Store.cs — SHELL with a CORE section (owner C, wave 1, budget 1,200; plan §2, §4.4) ─────────────────────
 //
-// THE DISK. One sqlite file — `library.db`, schema v3 — holding the same columns the tables hold in memory, so
-// "every track whose title starts with X" and "this album's rows" are real indexed queries instead of a walk over
+// THE DISK. One sqlite file — `library.db`, schema v4 (v4 adds the process-wide `palette` table, §WS-C) — holding
+// the same columns the tables hold in memory, so "every track whose title starts with X" and "this album's rows"
+// are real indexed queries instead of a walk over
 // deserialized JSON (§5.4, P11). Everything here is a CACHE: a file whose schema does not match what this build
 // writes is DELETED, never migrated (plan §4.4 — a v2 file is deleted; the provider can answer again, and a
 // migration is a second schema to keep correct forever).
@@ -298,6 +299,49 @@ public sealed class RowWriter
 
     public void Null(int i) => Cols[i].Value = DBNull.Value;
 
+    /// <summary>Bind a CROSS-REFERENCE column from a <see cref="StagedId"/> — a track's <c>album_uri</c>, a show's
+    /// owner, an episode's parent show: another row's identity, staged in whichever form the wire gave it. Text-form
+    /// binds the arena <see cref="TextRef"/> directly, exactly as <see cref="Text"/> does (free — the bytes are
+    /// already in <paramref name="s"/>'s arena). Gid-form is the one this method exists for: unlike the row's OWN key
+    /// (<see cref="Emit(in EntityId,uint,int,int)"/>, which binds straight to its own dedicated parameter), a generic
+    /// column can only be bound through <see cref="Text"/>, so the packed id is formatted to a stack buffer, its UTF-8
+    /// bytes are copied into the staging arena (one more row's worth, same arena the shape's own rows already use),
+    /// and the resulting <see cref="TextRef"/> is bound — one string per non-null cross-reference, still never through
+    /// the interner (file header). Empty or a stray text-form value inside <see cref="StagedId.Packed"/> (never
+    /// produced by a decoder, but not this thread's to assume) both bind NULL — the latter counted via
+    /// <see cref="Store.BadKey"/>, same as the row-key door.</summary>
+    public void Id(int i, Staging s, in StagedId id)
+    {
+        if (!id.Text.IsEmpty) { Text(i, id.Text); return; }
+        if (id.Packed.IsEmpty) { Null(i); return; }
+        if (id.Packed.Form != EntityForm.Gid) { Store.BadKey(id.Packed.Form); Null(i); return; }
+        Span<char> chars = stackalloc char[EntityId.MaxGidTextChars];
+        int n = id.Packed.Format(chars);
+        Span<byte> bytes = stackalloc byte[EntityId.MaxGidTextChars * 3];
+        int written = Encoding.UTF8.GetBytes(chars[..n], bytes);
+        Text(i, s.AddText(bytes[..written]));
+    }
+
+    /// <summary>The <see cref="StagedId"/> spelling of the row's own key: dispatches to whichever form the wire
+    /// actually gave, so a shape's <c>Save</c> loop never has to ask which overload its own row's identity needs.
+    /// <para><b>A TEXT-form identity must arrive as <see cref="StagedId.Text"/> — arena bytes — never as a text-form
+    /// <see cref="EntityId"/> in <see cref="StagedId.Packed"/>.</b> A text-form <c>EntityId</c>'s payload is an index
+    /// into the PROCESS-LOCAL interner, and this runs on the STORE THREAD, which may never touch the interner (file
+    /// header). So the packed branch below can only serve a GID; handed a text-form id it counts
+    /// <see cref="Store.BadKey"/> and DROPS the row. That is easy to trip over because
+    /// <c>StagedId</c> has an IMPLICIT conversion from <c>EntityId</c>, so assigning a live table's
+    /// <c>Id[slot]</c> compiles and then silently persists nothing. A decoder always has the uri's UTF-8 in hand and
+    /// stages <c>s.AddText(...)</c>; anything reading an id back out of a table must format it on the UI thread
+    /// first.</para></summary>
+    public void Emit(in StagedId id, uint known, int fetchedAt, int touched)
+    {
+        if (!id.Text.IsEmpty) { Emit(id.Text, known, fetchedAt, touched); return; }
+        System.Diagnostics.Debug.Assert(id.Packed.IsEmpty || id.Packed.Form == EntityForm.Gid,
+            "StagedId.Packed carries a TEXT-form EntityId: the store thread cannot resolve it, so the row would be " +
+            "dropped. Stage the uri as arena text (s.AddText) instead.");
+        Emit(id.Packed, known, fetchedAt, touched);
+    }
+
     /// <summary>Bind the shared bookkeeping and write the row, keyed by the uri the decoder staged.
     /// <paramref name="fetchedAt"/> and <paramref name="touched"/> are APP seconds (P7); they are converted to unix
     /// seconds here, because the file outlives the epoch they are measured from.
@@ -462,7 +506,7 @@ public static partial class Store
 {
     /// <summary>Bumped whenever the generated DDL changes shape in a way the fingerprint cannot see (it can see
     /// almost everything). Part of the fingerprint, so bumping it drops every cached file.</summary>
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
 
     /// <summary>Bounded, per C8. A full queue is a signal, not a wait: writes are dropped (the provider can answer
     /// again) and reads are refused (the planner un-marks in-flight and the row is asked again next drain).</summary>
@@ -494,9 +538,13 @@ public static partial class Store
     /// deliver the same value.</para></summary>
     public static Action<Action> Post { get; set; } = static a => a();
 
-    /// <summary>The unix second that <c>Entities.Now == 0</c> means. <c>Platform.cs</c> seeds it (plan §2's
-    /// <c>Clock.SeedEpoch</c>); until then it is this process's start. In-memory time is app seconds (P7: an
-    /// <c>int</c> column, not a <c>DateTime</c>), on-disk time is unix seconds, and these two are the conversion.</summary>
+    /// <summary>The unix second that <c>Entities.Now == 0</c> means. Defaults to this process's start and is
+    /// self-consistent by construction: <c>Entities.Now</c> is defined as <c>Store.ToApp(unixNow)</c>, so the two
+    /// always agree without either seeding the other. In-memory time is app seconds (P7: an <c>int</c> column, not a
+    /// <c>DateTime</c>), on-disk time is unix seconds, and these two are the conversion.
+    /// <para><b>NOT <c>Clock.SeedEpoch</c>.</b> That constant is a FIXED PAST DATE used only to seed <c>--fake</c>
+    /// data with plausible-looking ages; seeding this <see cref="Epoch"/> from it would stamp every REAL row weeks
+    /// into the past and corrupt the sweep's TTL arithmetic (2026-09-15).</para></summary>
     public static long Epoch { get; set; } = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
     public static long ToUnix(int appSeconds) => Epoch + appSeconds;
@@ -591,11 +639,15 @@ public static partial class Store
     static BlockingCollection<Action> s_queue = new(QueueCapacity);
     static readonly ShapeSql?[] s_shapes = new ShapeSql?[16];        // indexed by (byte)EntityKind
     static readonly Action<EdgePage>?[] s_edgeAppliers = new Action<EdgePage>?[64];
+    /// <summary>The whole `meta` table, warmed into memory (see <see cref="MetaGet"/>/<see cref="MetaSet"/>). UI
+    /// thread only: written by <see cref="MetaSet"/> and by <see cref="WarmMetaCore"/>'s <see cref="Post"/>-back.</summary>
+    static readonly Dictionary<string, string> s_meta = new();
     static volatile bool s_open;
     static volatile bool s_stopping;
     static long s_scopeId;                                            // resolved on the store thread, read there only
     static SweepPolicy s_policy = SweepPolicy.Default;
     static int s_nextSweepAt;                                         // app seconds
+    static bool s_paletteWarmedOnce;                                  // Store.Palette.cs's Boot guard
 
     // Always-on counters (CLAUDE.md: no env-var switches; the diagnostics page reads these).
     static int s_reads, s_readRows, s_writes, s_writeRows, s_dropped, s_sweeps, s_evicted, s_faults, s_trimmed, s_badKeys;
@@ -653,6 +705,82 @@ public static partial class Store
     public static void RegisterEdges(EdgeRelation relation, Action<EdgePage> apply)
         => s_edgeAppliers[(byte)relation] = apply;
 
+    /// <summary>Register the appliers for the five library relations this build persists — every relation whose
+    /// payload is <see cref="LibraryEdge"/> (Liked, SavedAlbums, FollowedArtists, SavedShows, Pins). MUST run before
+    /// <see cref="Boot"/> (<c>App.cs</c>, alongside <c>RegisterShapes</c>): <see cref="Warm"/> fires inside
+    /// <c>Entities.Boot</c>, and a page whose applier slot is still null is simply dropped.
+    ///
+    /// <para><b>Everything else stays off disk, on purpose.</b> Rootlist (<see cref="RootlistEdge"/>), PlaylistTracks
+    /// (<see cref="PlaylistTrackEdge"/>), TrackTags (<see cref="StringId"/>), TrackCredits (<see cref="CreditEdge"/>)
+    /// and Friends (<see cref="FriendEdge"/>) all carry a <see cref="StringId"/> in their payload — an index into the
+    /// PROCESS-LOCAL interner (Edges.cs's file header) — and <see cref="SaveEdges{TEdge}"/> writes a payload as its
+    /// raw bytes (that method's own doc). Replaying those bytes on a later launch would resolve to whatever string
+    /// that same numeric id happens to mean THIS time, unrelated to what was saved; those relations stay answered by
+    /// the network only.</para></summary>
+    public static void RegisterLibraryEdges()
+    {
+        RegisterEdges(EdgeRelation.Liked,
+            page => ApplyLibraryEdge(page, Entities.Current.Edges.Liked, Entities.Current.Tracks));
+        RegisterEdges(EdgeRelation.SavedAlbums,
+            page => ApplyLibraryEdge(page, Entities.Current.Edges.SavedAlbums, Entities.Current.Albums));
+        RegisterEdges(EdgeRelation.FollowedArtists,
+            page => ApplyLibraryEdge(page, Entities.Current.Edges.FollowedArtists, Entities.Current.Artists));
+        RegisterEdges(EdgeRelation.SavedShows,
+            page => ApplyLibraryEdge(page, Entities.Current.Edges.SavedShows, Entities.Current.Shows));
+        RegisterEdges(EdgeRelation.Pins, ApplyPinsEdge);
+    }
+
+    /// <summary>Liked/SavedAlbums/FollowedArtists/SavedShows share this shape: every child is the SAME entity kind,
+    /// so one <paramref name="childTable"/> maps every uri (<see cref="Table.Slot(ReadOnlySpan{char})"/>). UI thread
+    /// (<see cref="RegisterEdges"/>'s contract).
+    /// <para>THE PAYLOAD'S SHAPE IS NOT COVERED BY THE SCHEMA FINGERPRINT (<see cref="SaveEdges{TEdge}"/>'s doc): a
+    /// page whose <see cref="EdgePage.Stride"/> disagrees with <c>sizeof(LibraryEdge)</c> is DROPPED rather than
+    /// reinterpreted as garbage. A page with no rows at all (<see cref="EdgePage.Count"/> 0 — a real, answered "you
+    /// have none of these") has nothing to misread and always lands.</para></summary>
+    static void ApplyLibraryEdge(EdgePage page, EdgeTable<LibraryEdge> table, Table childTable)
+    {
+        int parent = Entities.Current.Users.Slot(page.Parent);
+        if (parent == Table.None) return;
+        if (page.Count > 0 && page.Stride != Unsafe.SizeOf<LibraryEdge>()) return;
+
+        int n = page.Count;
+        int[] targets = n == 0 ? Array.Empty<int>() : new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            string uri = page.Children[i];
+            targets[i] = uri.Length == 0 ? Table.None : childTable.Slot(uri.AsSpan());
+        }
+        table.Replace(parent, targets, page.PayloadAs<LibraryEdge>(), page.State, page.Total);
+    }
+
+    /// <summary>Pins are CROSS-KIND (<see cref="PinKind"/>'s doc): a playlist, an album, an artist, a show, the Liked
+    /// collection or a rootlist folder, and which TABLE a target indexes rides the edge's OWN payload byte, not one
+    /// fixed for the whole relation — so this applier resolves each child by its own kind rather than sharing
+    /// <see cref="ApplyLibraryEdge"/>'s one-table shape. A folder pin's disk text is its bare group id (never a table
+    /// row — <see cref="PinKind.Folder"/>'s doc) and is re-interned to the very <see cref="StringId"/> value
+    /// <see cref="LibraryEdge.Flags"/> already names Folder targets by; Liked and an unrecognised kind both target
+    /// <see cref="Table.None"/>. Same stride discipline as <see cref="ApplyLibraryEdge"/>.</summary>
+    static void ApplyPinsEdge(EdgePage page)
+    {
+        int parent = Entities.Current.Users.Slot(page.Parent);
+        if (parent == Table.None) return;
+        if (page.Count > 0 && page.Stride != Unsafe.SizeOf<LibraryEdge>()) return;
+
+        ReadOnlySpan<LibraryEdge> payload = page.PayloadAs<LibraryEdge>();
+        int n = page.Count;
+        int[] targets = n == 0 ? Array.Empty<int>() : new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            string uri = page.Children[i];
+            var kind = i < payload.Length ? (PinKind)payload[i].Flags : PinKind.Unknown;
+            if (uri.Length == 0) { targets[i] = Table.None; continue; }
+            if (kind == PinKind.Folder) { targets[i] = Entities.Strings.Intern(uri.AsSpan()).Value; continue; }
+            Table? t = kind is PinKind.Unknown or PinKind.Liked ? null : Entities.TableFor(User.EntityKindOf(kind));
+            targets[i] = t?.Slot(uri.AsSpan()) ?? Table.None;
+        }
+        Entities.Current.Edges.Pins.Replace(parent, targets, payload, page.State, page.Total);
+    }
+
     /// <summary>Open the file (creating or REPLACING it) and start the store thread. Called by
     /// <c>Entities.Boot</c> through the <c>StoreBoot</c> hook; a no-op when <see cref="Use"/> was never called.</summary>
     public static void Boot()
@@ -667,6 +795,7 @@ public static partial class Store
             // after a re-Boot executes against a closed handle.
             for (int i = 0; i < s_shapes.Length; i++)
                 if (s_shapes[i] is { } sql) { sql.Upsert?.Dispose(); sql.Upsert = null; }
+            s_meta.Clear();   // this may be a DIFFERENT file (a re-Boot after Shutdown): nothing carries over
             s_open = true;
             s_stopping = false;
             s_nextSweepAt = Entities.Now + FirstSweepDelaySeconds;
@@ -674,6 +803,13 @@ public static partial class Store
             BlockingCollection<Action> queue = s_queue;
             s_thread = new Thread(() => Loop(queue)) { IsBackground = true, Name = "wavee-store" };
             s_thread.Start();
+            // FIRST, before `Warm` (Entities.Boot calls `StoreWarm` right after this returns): the palette is
+            // process-wide, not scoped, so it has no scope id to wait for. Once per boot — reset at `Shutdown`.
+            if (!s_paletteWarmedOnce)
+            {
+                s_paletteWarmedOnce = true;
+                Enqueue(WarmPaletteCore);
+            }
         }
         catch (Exception ex)
         {
@@ -791,6 +927,8 @@ public static partial class Store
         SqliteConnection.ClearAllPools();   // so a later Boot that must DELETE this file can actually do it
         s_db = null;
         s_open = false;
+        s_meta.Clear();                     // the next Boot (if any) warms fresh from whatever file it opens
+        s_paletteWarmedOnce = false;         // the next Boot opens (possibly) a different file and must warm it too
     }
 
     /// <summary>Block until everything queued has run. Tests and shutdown only — never the UI thread (C9).</summary>
@@ -843,7 +981,7 @@ public static partial class Store
 
     // ── the schema (CORE: pure text) ────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The whole v3 schema as one script — the fixed tables verbatim from plan §4.4, plus one table and two
+    /// <summary>The whole v4 schema as one script — the fixed tables verbatim from plan §4.4, plus one table and two
     /// indexes per registered kind, generated from its columns. Pure: same shapes in, same text out, which is what
     /// makes <see cref="Fingerprint"/> a decision and not a guess.</summary>
     public static string Ddl()
@@ -874,6 +1012,9 @@ public static partial class Store
         sb.Append("CREATE TABLE IF NOT EXISTS edge_state(scope_id INT, kind INT, parent TEXT, state INT, total INT, version INT, fetched_at INT, PRIMARY KEY(scope_id,kind,parent)) WITHOUT ROWID;\n");
         sb.Append("CREATE TABLE IF NOT EXISTS intent(id INTEGER PRIMARY KEY, kind INT, payload BLOB, created_at INT, state INT);\n");
         sb.Append("CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);\n");
+        // The palette: process-wide (Palette.cs's file header), so no scope_id — one row per artwork identity, ever.
+        sb.Append("CREATE TABLE IF NOT EXISTS palette(key TEXT PRIMARY KEY, known INT NOT NULL, ts INT NOT NULL, dark BLOB, light BLOB) WITHOUT ROWID;\n");
+        sb.Append("CREATE INDEX IF NOT EXISTS ix_palette_ts ON palette(ts);\n");
         return sb.ToString();
     }
 
@@ -917,13 +1058,18 @@ public static partial class Store
         Enqueue(() =>
         {
             s_scopeId = ResolveScopeId(key);
+            WarmMetaCore();
             if (me is null) return;
             ReadEdgesCore(scope, EdgeRelation.Liked, me, epoch);
             ReadEdgesCore(scope, EdgeRelation.SavedAlbums, me, epoch);
             ReadEdgesCore(scope, EdgeRelation.FollowedArtists, me, epoch);
             ReadEdgesCore(scope, EdgeRelation.SavedShows, me, epoch);
             ReadEdgesCore(scope, EdgeRelation.Pins, me, epoch);
-            ReadEdgesCore(scope, EdgeRelation.Rootlist, me, epoch);
+            // Rootlist is NOT read here, on purpose (2026-09-15): `RootlistEdge` carries two `StringId`s
+            // (FolderName, FolderId) — indices into the PROCESS-LOCAL interner — and `SaveEdges` writes a payload as
+            // raw bytes (its own doc). A persisted rootlist page would resolve those bytes to whatever string that
+            // same numeric id happens to mean on the NEXT launch, unrelated to what was saved. The rootlist stays
+            // answered by the network only; `RegisterLibraryEdges` registers no applier for it either.
         });
     }
 
@@ -953,6 +1099,84 @@ public static partial class Store
                 cmd.Parameters.Add(new SqliteParameter("$e", key.AllowExplicit ? 1L : 0L));
             }
         }
+    }
+
+    // ── small key/value persistence (meta) ─────────────────────────────────────────────────────────────────────────
+    //
+    // `meta(key TEXT PRIMARY KEY, value TEXT)` already exists in the generated DDL (see `Ddl()` above) and, until now,
+    // held only the schema fingerprint (the `INSERT OR REPLACE ... 'schema'` in `Open`). A ROW here costs nothing: the
+    // fingerprint is computed over the DDL TEXT, so a value living in `meta` never touches it — where a new COLUMN
+    // (on `edge_state` or anywhere else) would move the fingerprint and delete every user's `library.db` once, for
+    // the whole app, on the next launch (plan §4.4). So this is rows, never a column.
+    //
+    // MetaGet must never block the UI thread (C1/C9), and the store owns its own thread, so a synchronous read from
+    // sqlite is not an option here (no sync-over-async, CLAUDE.md). The chosen shape is `Warm`'s: the WHOLE table is
+    // read once on the store thread and handed back through `Post` into `s_meta`, so every `MetaGet` after that is a
+    // dictionary lookup, not a read. `MetaSet` writes `s_meta` immediately (so a `MetaGet` right after a `MetaSet`,
+    // even before the next drain, already sees it) and enqueues the durable write behind it, exactly like every
+    // other write here (D22) — a crash between the two loses at most this one value, which is what a cache promises.
+
+    /// <summary>The value last set for <paramref name="key"/>, or null when nothing has ever set it (this session or a
+    /// prior one, once <see cref="Warm"/> has run). Never touches sqlite — see the section header — so it is safe to
+    /// call from the UI thread at any time, store open or not.</summary>
+    public static string? MetaGet(string key)
+        => !string.IsNullOrEmpty(key) && s_meta.TryGetValue(key, out string? value) ? value : null;
+
+    /// <summary>Set one key. <see cref="MetaGet"/> sees it immediately (the cache is written right here, on the UI
+    /// thread); the durable write is enqueued behind it like every other write-behind. A no-op with no store open —
+    /// <see cref="s_meta"/> still gets the memory-only write, the same shape <c>--fake</c> and every unit test run
+    /// the rest of this file in.</summary>
+    public static void MetaSet(string key, string? value)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+        value ??= "";
+        s_meta[key] = value;
+        if (!s_open) return;
+        Enqueue(() =>
+        {
+            Db? db = s_db;
+            if (db is null) return;
+            try
+            {
+                lock (db.WriteLock)
+                {
+                    using var cmd = db.Write.CreateCommand();
+                    cmd.CommandText = "INSERT OR REPLACE INTO meta(key,value) VALUES($k,$v);";
+                    cmd.Parameters.Add(new SqliteParameter("$k", key));
+                    cmd.Parameters.Add(new SqliteParameter("$v", value));
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex) { s_faults++; Fault("meta.set", ex); }
+        });
+    }
+
+    /// <summary>STORE THREAD, called from <see cref="Warm"/>'s enqueued job. Read the whole `meta` table (the
+    /// `'schema'` row excepted — that one is this file's, never a caller's key) and hand it back through
+    /// <see cref="Post"/> so <see cref="MetaGet"/> can answer from memory from here on.</summary>
+    static void WarmMetaCore()
+    {
+        Db? db = s_db;
+        if (db is null) return;
+        var loaded = new List<KeyValuePair<string, string>>();
+        try
+        {
+            using var cmd = db.Read.CreateCommand();
+            cmd.CommandText = "SELECT key,value FROM meta;";
+            using SqliteDataReader r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                string key = r.GetString(0);
+                if (key == "schema") continue;
+                loaded.Add(new(key, r.IsDBNull(1) ? "" : r.GetString(1)));
+            }
+        }
+        catch (Exception ex) { s_faults++; Fault("meta.warm", ex); return; }
+
+        Post(() =>
+        {
+            for (int i = 0; i < loaded.Count; i++) s_meta[loaded[i].Key] = loaded[i].Value;
+        });
     }
 
     // ── the cold read (P4: one query per kind per drain) ────────────────────────────────────────────────────────────
@@ -1108,6 +1332,11 @@ public static partial class Store
     public static bool WriteBehind(Staging staging)
     {
         if (!s_open) return false;
+        // The five persisted library relations, straight off the SAME staging (Fetch.cs, Home.Host.cs: every caller
+        // runs `Entities.Commit(staging)` immediately before this, on the UI thread, so the live tables already hold
+        // this batch's answer by the time we get here) — see `SaveLibraryEdgesTouchedBy`'s own doc for why this is
+        // the one call site that reaches every library write, wherever it commits.
+        SaveLibraryEdgesTouchedBy(staging);
         return Enqueue(() => WriteCore(staging));
     }
 
@@ -1202,9 +1431,13 @@ public static partial class Store
     /// <summary>Persist one parent's edge list. Called from the UI thread by whoever changed it (a commit, a user
     /// edit); the children's uris are resolved HERE, because the store thread may not read a live column.
     ///
-    /// <para>The payload is written as its raw unmanaged bytes. That is safe precisely because the schema fingerprint
-    /// covers the build: a payload struct that changes shape changes the DDL's version and the whole file is dropped,
-    /// so there is no such thing as an old-shaped blob read with a new-shaped struct.</para></summary>
+    /// <para>The payload is written as its raw unmanaged bytes. <b>THIS IS NOT COVERED BY THE SCHEMA FINGERPRINT</b> —
+    /// <see cref="Ddl"/> emits the fixed <c>edge(…, payload BLOB, …)</c> table verbatim; a payload struct's SHAPE
+    /// (its field order, widths, padding) never appears in the generated text, so changing <c>TEdge</c> does not
+    /// change <see cref="Fingerprint"/> and does not drop the file. An applier reading last build's bytes as this
+    /// build's struct is a real hazard, not a hypothetical one — which is exactly why every registered applier MUST
+    /// assert <c>page.Stride == Unsafe.SizeOf&lt;TEdge&gt;()</c> before trusting <see cref="EdgePage.PayloadAs{TEdge}"/>,
+    /// and drop the page (never read it) when the width does not match (2026-09-15).</para></summary>
     public static bool SaveEdges<TEdge>(EdgeRelation relation, EdgeTable<TEdge> edges, int parent, EntityId parentId, Table children)
         where TEdge : unmanaged
     {
@@ -1295,6 +1528,89 @@ public static partial class Store
         }
         catch (Exception ex) { s_faults++; Fault("edge.write", ex); }
     }
+
+    /// <summary>THE call site: whatever a batch's <see cref="Staging.EdgesOrNull"/> says it touched, of the five
+    /// relations this build persists, is re-saved to disk — called from <see cref="WriteBehind"/>, which every write
+    /// path (a provider's answer in <c>Fetch.Answer</c>, a top-content load in <c>Home.Host.cs</c>, …) already runs
+    /// right after <c>Entities.Commit(staging)</c> lands the SAME staging's runs into the live tables. That commit is
+    /// "wherever a library relation commits" — this file has no other seam that sees every one of them, and does not
+    /// need one: it reads which relations this batch named, then re-persists each one's WHOLE current list off the
+    /// live <see cref="Edges"/> tables (not off the staged runs themselves), so a batch that only ADDED one liked
+    /// track still writes the complete, correct list. UI thread, like <see cref="SaveEdges{TEdge}"/> itself.</summary>
+    static void SaveLibraryEdgesTouchedBy(Staging staging)
+    {
+        StagedEdgeList? list = staging.EdgesOrNull;
+        if (list is null || list.RunCount == 0) return;
+        if (staging.Epoch != 0 && staging.Epoch != Entities.Current.Epoch) return;   // C7: the scope moved on
+
+        Scope scope = Entities.Current;
+        int me = scope.MeSlot;
+        if (me == Table.None) return;
+
+        bool liked = false, savedAlbums = false, followedArtists = false, savedShows = false, pins = false;
+        ReadOnlySpan<StagedRun> runs = list.Runs;
+        for (int i = 0; i < runs.Length; i++)
+        {
+            switch (runs[i].Relation)
+            {
+                case Relation.Liked: liked = true; break;
+                case Relation.SavedAlbums: savedAlbums = true; break;
+                case Relation.FollowedArtists: followedArtists = true; break;
+                case Relation.SavedShows: savedShows = true; break;
+                case Relation.Pins: pins = true; break;
+            }
+        }
+        if (!(liked || savedAlbums || followedArtists || savedShows || pins)) return;
+
+        EntityId meId = scope.Users.Id[me];
+        if (liked) SaveEdges(EdgeRelation.Liked, scope.Edges.Liked, me, meId, scope.Tracks);
+        if (savedAlbums) SaveEdges(EdgeRelation.SavedAlbums, scope.Edges.SavedAlbums, me, meId, scope.Albums);
+        if (followedArtists) SaveEdges(EdgeRelation.FollowedArtists, scope.Edges.FollowedArtists, me, meId, scope.Artists);
+        if (savedShows) SaveEdges(EdgeRelation.SavedShows, scope.Edges.SavedShows, me, meId, scope.Shows);
+        if (pins) SavePinsEdges(scope, me, meId);
+    }
+
+    /// <summary>Pins' write side: cross-kind (see <see cref="ApplyPinsEdge"/>), so it cannot share
+    /// <see cref="SaveEdges{TEdge}"/>'s one-fixed-table shape — each edge's child KEY comes from its own kind rather
+    /// than one <c>Table</c>, but it lands through the very same <see cref="SaveEdgesCore"/> the generic path uses,
+    /// so the file format (and <see cref="ApplyPinsEdge"/>'s read side) is identical either way. UI thread: every
+    /// identity read here is a live column (C1).</summary>
+    static void SavePinsEdges(Scope scope, int parent, EntityId parentId)
+    {
+        if (parent == Table.None || parentId.IsEmpty) return;
+        EdgeTable<LibraryEdge> pins = scope.Edges.Pins;
+        ReadOnlySpan<int> targets = pins.Targets(parent);
+        ReadOnlySpan<LibraryEdge> payload = pins.Payload(parent);
+        int n = targets.Length;
+
+        EntityId[] kidIds = n == 0 ? Array.Empty<EntityId>() : new EntityId[n];
+        string?[] kidText = n == 0 ? Array.Empty<string?>() : new string?[n];
+        for (int i = 0; i < n; i++)
+        {
+            var kind = (PinKind)payload[i].Flags;
+            kidText[i] = kind switch
+            {
+                PinKind.Folder => targets[i] > 0 ? Entities.Strings.Resolve(new StringId(targets[i])) : "",
+                PinKind.Liked => "",
+                _ => TextOf(Entities.TableFor(User.EntityKindOf(kind)), targets[i]),
+            };
+            kidIds[i] = default;   // every key here travels as TEXT (kidText) — see TextOf/KeyOf
+        }
+
+        int stride = n == 0 ? 0 : Unsafe.SizeOf<LibraryEdge>();
+        byte[] blob = n == 0 ? Array.Empty<byte>() : MemoryMarshal.AsBytes(payload).ToArray();
+        string parentText = KeyText(parentId);
+        byte state = (byte)pins.State(parent);
+        int total = pins.Total(parent);
+        uint version = pins.Version(parent);
+
+        Enqueue(() => SaveEdgesCore(EdgeRelation.Pins, parentText, kidIds, kidText, n, blob, stride, state, total, version));
+    }
+
+    /// <summary>A slot's uri text, or "" for none — <see cref="SavePinsEdges"/>'s per-kind lookup (mirrors
+    /// <see cref="KeyText"/>, guarded for a slot that may not belong to <paramref name="table"/> at all).</summary>
+    static string TextOf(Table? table, int slot)
+        => table is null || slot <= Table.None || slot >= table.Count ? "" : KeyText(table.Id[slot]);
 
     /// <summary>Read one parent's edge list back. The page is posted to the relation's registered applier on the UI
     /// thread (<see cref="RegisterEdges"/>); with no applier the page is simply dropped, which is what lets the
@@ -1507,6 +1823,20 @@ public static partial class Store
                 bytes = plan.BytesAfter;
                 evicted += plan.Victims;
                 s_evicted += plan.Victims;
+            }
+
+            // The palette has no scope_id (it is process-wide) and no per-kind loop above, so its stale rows are
+            // swept here, once a pass, on the same coarse cutoff `WarmPaletteCore` reads by.
+            lock (db.WriteLock)
+            {
+                try
+                {
+                    using var del = db.Write.CreateCommand();
+                    del.CommandText = "DELETE FROM palette WHERE ts < $cut;";
+                    del.Parameters.Add(new SqliteParameter("$cut", PalettePersistence.LoadCutoffUnix(DateTimeOffset.UtcNow.ToUnixTimeSeconds())));
+                    del.ExecuteNonQuery();
+                }
+                catch (SqliteException) { }
             }
 
             if (evicted > 0)

@@ -455,7 +455,9 @@ public static partial class Sidebar
     public static void MovePin(int fromIndex, int toIndex) => Pins.Move(fromIndex, toIndex);
 
     /// <summary>Refresh a pin's cached display name from live library data. No-op when unchanged; coalesced into the
-    /// next commit — never commits alone. Called by the projection, never by rows.</summary>
+    /// next commit — never commits alone. Called by <c>ResolvePins</c> on both the index-hit row and a freshly
+    /// hydrated unlisted pin, never by rows directly — going through this (rather than <c>Pins.Touch</c> straight)
+    /// is what makes a touched name actually persist.</summary>
     public static void TouchPin(string? pinId, string? name)
     {
         if (Pins.Touch(pinId, name)) s_pinNamesDirty = true;
@@ -2491,11 +2493,10 @@ public sealed class SidebarConcertsSource : SidebarDataSourceBase, ISidebarDataS
     int ResolveFeedSlot(int place, int radiusKm)
     {
         if (place == _cachedPlace && radiusKm == _cachedRadius) return _cachedFeedSlot;
-        var row = Entities.Current.Places.Row[place];
-        string key = Entities.Strings.Resolve(row.Id) + "|" + radiusKm.ToString(CultureInfo.InvariantCulture);
+        string key = ConcertFeedKey.For(ConcertFeedKey.PlaceKey(ConcertPlaces.From(place)), radiusKm, null, null);
         _cachedPlace = place;
         _cachedRadius = radiusKm;
-        _cachedFeedSlot = Entities.Current.ConcertFeeds.Slot(Entities.Strings.Intern(key));
+        _cachedFeedSlot = ConcertPlaces.FeedSlot(key);
         return _cachedFeedSlot;
     }
 }
@@ -2682,6 +2683,13 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     // The gate's extra rows: the entity each UNLISTED pin resolved through on the last rebuild (a pinned editorial
     // playlist hydrating must re-render its pin row), and the feeds the layout demands (cached per layout version).
     readonly List<EntityRef> _pinRefs = new(8);
+    // E3/Bug A1, pin-band half: `ResolvePins` collects the playlist SLOTS a LISTED pin still needs into these
+    // instead of asking per pin, and flushes at most one span-form call of each after its loop — the same pattern
+    // `SidebarProjection.Build`'s own `s_ensureIdentitySlots`/`s_ensureTracksSlots` use for the rootlist walk.
+    readonly List<int> _pinEnsureIdentitySlots = new(8);
+    readonly List<int> _pinEnsureTracksSlots = new(8);
+    // The unlisted cover-less pins' leading member tracks (`SidebarProjection.CollectMosaicTrackSlots`), one ask.
+    readonly List<int> _pinEnsureMosaicTrackSlots = new(16);
     FeedDemand _demand;
     int _demandLayoutVersion = int.MinValue;
     SidebarCustomLayout? _demandLayout;
@@ -2862,12 +2870,18 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         bool qualifiers = SidebarProjection.QualifiersAvailable(full.FlavorMask);
 
         var buffer = Entries.Buffer;
+        // Bug H: this is the ONE build whose fold state is real (collapsed folders genuinely excluded, unless the
+        // user is searching and everything is meant to be flattened) — the only pass allowed to Ensure a playlist's
+        // identity/membership. The two builds above (`full`/`build.Tree`) always force `includeFolderChildren:true`,
+        // so their own "visible" says nothing about what the pane is actually showing.
         var v3Result = SidebarProjection.Build(buffer, in u, SidebarEntryKinds.From(filter), firstSeen, recency,
                                                includeFolderChildren: searching,
                                                isFolderExpanded: searching ? null : _isFolderExpanded,
-                                               lastPlayed: lastPlayed);
+                                               lastPlayed: lastPlayed, ensureIdentity: true);
 
-        ResolvePins(build.Index);
+        // Trap 5: the pin band's folder-pending verdict needs the rootlist's OWN state, not "did the walk find it" —
+        // the walk cannot even run yet while this is Unknown (SidebarProjection.Build bails before WalkRootlist).
+        ResolvePins(build.Index, u.RootlistState);
         var query = new SidebarV3Query(filter, qualifier, sort, desc, search, qualifiers);
         var shape = SidebarBinderPipeline.Shape(buffer, _scratch, in query, Sidebar.Pins.Items,
                                                 Sidebar.CanReorderV3 ? Sidebar.V3CustomOrder : null);
@@ -2893,15 +2907,28 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         _publishedStage = build;
 
         // 8 — publish the entries cell. ONE version bump per rebuild, never per entry, and none at all when the
-        //     rebuild landed on byte-identical content (SidebarEntriesShadow's exact compare).
-        Entries.Publish(state, error, anyPending, qualifiers, shape.PinCount, _publishedStage.All);
+        //     rebuild landed on byte-identical content (SidebarEntriesShadow's exact compare). Both publishes
+        //     report back whether they actually flipped their signal — E2 needs that to gate `_revision` below.
+        bool entriesChanged = Entries.Publish(state, error, anyPending, qualifiers, shape.PinCount, _publishedStage.All);
+
+        // 8b — the edge for every planner input that is not the entries cell (pins band, recency/playback feeds,
+        //      new releases, concerts, a contributed section, a source state). Moved ahead of the old step 11 spot:
+        //      it reads only buffers already filled above (`_pinRows`/`_visited`/`_played`/`_newReleases`/
+        //      `_concerts`/`_extEntries`) and `Sidebar.Layout`, none of which depend on `_input`, so E2's revision
+        //      decision can see its result before `_input` is built.
+        bool inputChanged = PublishInput(Sidebar.Layout);
 
         // 9 — commit point: persist the first-seen document only when this pass observed something new.
         int newStamps = full.NewFirstSeenStamps + v3Result.NewFirstSeenStamps;
         if (newStamps > 0) CommitFirstSeen(firstSeen, build.All);
 
-        // 10 — the planner input. Revision is the caller's composite epoch, echoed into every plan.
-        _revision++;
+        // 10 — the planner input. Revision is the caller's composite epoch, echoed into every plan — bumped ONLY
+        //      when a publish actually flipped (BUG E2: `SidebarRevisionGate`), never unconditionally. `Revision`
+        //      feeds `PaneView.PlanDep` (Sidebar.UI.cs) and `V3Session.ShapeInput`'s `ViewEpoch`
+        //      (Sidebar.UI.LibraryV3.cs), both of which re-plan/re-group the WHOLE document on a bump; an
+        //      unconditional bump forced both on every rebuild regardless of whether anything published actually
+        //      changed (a rebuild wake that folded to nothing still cost a full re-plan + re-group, twice).
+        if (SidebarRevisionGate.ShouldBump(entriesChanged, inputChanged)) _revision++;
         _input = new SidebarProjectionInput(
             Library: _publishedStage.All,
             PlaylistTree: _publishedStage.Tree,
@@ -2923,9 +2950,6 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
             Revision: _revision,
             ExtensionEntries: _extEntries,
             ExtensionSlices: _slices);
-
-        // 11 — the edge for every planner input that is not the entries cell.
-        PublishInput(Sidebar.Layout);
     }
 
     /// <summary>Re-derive the visits, the navigation recency and the played contexts — each only when its log moved.</summary>
@@ -2947,8 +2971,10 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     }
 
     /// <summary>Bump <see cref="InputVersion"/> iff a non-entries planner input differs from the last published pass.
-    /// Every shadow is evaluated (no short-circuit), so each one always holds the pass it last saw.</summary>
-    void PublishInput(SidebarCustomLayout layout)
+    /// Every shadow is evaluated (no short-circuit), so each one always holds the pass it last saw. Returns whether
+    /// it bumped — BUG E2's <see cref="SidebarRevisionGate"/> reads this alongside <see cref="SidebarEntries.Publish"/>'s
+    /// own return to decide whether <see cref="Revision"/> moves this rebuild.</summary>
+    bool PublishInput(SidebarCustomLayout layout)
     {
         bool changed = _pinShadow.Publish(_pinRows, default);
         changed |= _visitedShadow.Publish(_visited, default);
@@ -2964,6 +2990,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
             changed = true;
         }
         if (changed) _inputVersion.Value = _inputVersion.Peek() + 1;
+        return changed;
     }
 
     /// <summary>The scalar half of the planner input — every source state and every contributed section's slice
@@ -3000,11 +3027,16 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     // Pins resolve against the fresh projection; an UNRESOLVED pin still renders from its own display cache (offline-
     // first) instead of disappearing. An unresolved pin's target is `Entities.Ensure`d at Visible priority, and its row
     // is remembered in `_pinRefs` so the gate's fingerprint re-renders the pin the moment that row hydrates.
-    void ResolvePins(SidebarSourceIndex index)
+    // `rootlistState` (trap 5) is what an unresolved FOLDER pin renders as while it is not (yet) found — Pending
+    // before the rootlist has ever answered this session, Missing only once it has and still doesn't carry it.
+    void ResolvePins(SidebarSourceIndex index, EdgeState rootlistState)
     {
         _pinRows.Clear();
         _pinnedIds.Clear();
         _pinRefs.Clear();
+        _pinEnsureIdentitySlots.Clear();
+        _pinEnsureTracksSlots.Clear();
+        _pinEnsureMosaicTrackSlots.Clear();
         var pins = Sidebar.Pins.Items;
         for (int i = 0; i < pins.Count; i++)
         {
@@ -3014,20 +3046,60 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
             if (index.TryGet(pin.Id, out var entry))
             {
                 _pinRows.Add(entry with { IsPinned = true, SourceOrder = i });
-                Sidebar.Pins.Touch(pin.Id, entry.Name);
+                Sidebar.TouchPin(pin.Id, entry.Name);
+                // Bug H: a pin is shown regardless of folder collapse, but the index it was found in came from the
+                // FULL projection (`build.All`), which never ensures identity (see `SidebarProjection.Build`'s
+                // `ensureIdentity` doc) — only the fold-state-gated buffer build does, and a collapsed-away pin
+                // never reaches that walk. Collect it here instead, bounded by the pin count (never "the whole
+                // rootlist"), the same way `ResolveLivePin` does for an UNLISTED pin below.
+                CollectListedPinAsks(in entry);
                 continue;
             }
 
             var hydrated = ResolveLivePin(pin, out var row);
             if (!row.IsNone) _pinRefs.Add(row);
-            _pinRows.Add(SidebarBinderPipeline.ResolveUnlistedPin(pin, i, hydrated));
+            if (hydrated is { } h) Sidebar.TouchPin(pin.Id, h.Name);
+            _pinRows.Add(SidebarBinderPipeline.ResolveUnlistedPin(pin, i, hydrated, rootlistState));
         }
+
+        // E3/Bug A1: ONE span-form ask per group for the whole pin band, after the loop — never one
+        // `Entities.Ensure`/`EnsureEdge` call per pin.
+        if (_pinEnsureIdentitySlots.Count > 0)
+            Entities.Ensure(Entities.Current.Playlists,
+                System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pinEnsureIdentitySlots),
+                (uint)PlaylistFields.Identity, FetchPriority.Visible);
+        if (_pinEnsureTracksSlots.Count > 0)
+            Entities.EnsureEdge(FetchEdge.PlaylistTracks,
+                System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pinEnsureTracksSlots),
+                priority: FetchPriority.Visible);
+        if (_pinEnsureMosaicTrackSlots.Count > 0)
+            Entities.Ensure(Entities.Current.Tracks,
+                System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pinEnsureMosaicTrackSlots),
+                (uint)SidebarProjection.MosaicTrackFields, FetchPriority.Prefetch);
+    }
+
+    /// <summary>Bug H/A1 companion to <see cref="ResolveLivePin"/>: a LISTED pin (already found in the projection
+    /// index) whose identity, count or cover has not landed yet. Playlist-only — Album/Artist/Show listed pins are
+    /// unaffected by this bug and read their fields directly off the edge, never gated on a Knows() check. Collects
+    /// into <see cref="_pinEnsureIdentitySlots"/>/<see cref="_pinEnsureTracksSlots"/> — <see cref="ResolvePins"/>
+    /// issues the batched asks once, after its loop.</summary>
+    void CollectListedPinAsks(in SidebarLibraryEntry entry)
+    {
+        if (entry.Kind != SidebarEntryKind.Playlist) return;
+        if (entry.IdentityKnown && entry.CountKnown && !entry.Cover.IsEmpty) return;   // nothing to warm
+        if (entry.Uri.Length == 0 || !EntityId.TryParse(entry.Uri, out var id)) return;
+        var p = new Playlist(Entities.Current.Playlists.Slot(id));
+        if (!p.Knows(PlaylistFields.Identity)) _pinEnsureIdentitySlots.Add(p.Slot);
+        // Bug A1: the count is asked regardless of cover, same rule as the rootlist walk's `ShouldEnsureCount`.
+        bool needsCount = !p.Knows(PlaylistFields.TrackCount) && p.MembershipState == EdgeState.Unknown;
+        bool needsMembership = p.ImageId.IsEmpty && p.MembershipState == EdgeState.Unknown;
+        if (needsCount || needsMembership) _pinEnsureTracksSlots.Add(p.Slot);
     }
 
     // The entity a pin the library projection does not know (an editorial/Spotify-owned playlist, or any other row
     // never saved to the user's own library/rootlist). Returns the entity's CURRENTLY known fields (null if not yet
     // known, having just kicked its fetch) and the row it read — never an async callback, never a cache keyed by pin id.
-    static SidebarLibraryEntry? ResolveLivePin(SidebarPin pin, out EntityRef row)
+    SidebarLibraryEntry? ResolveLivePin(SidebarPin pin, out EntityRef row)
     {
         row = default;
         if (pin.Uri.Length == 0 || !EntityId.TryParse(pin.Uri, out var id)) return null;
@@ -3038,11 +3110,31 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 var p = new Playlist(Entities.Current.Playlists.Slot(id));
                 row = new EntityRef(EntityKind.Playlist, p.Slot);
                 if (!p.Knows(PlaylistFields.Identity))
-                { Entities.Ensure(p, PlaylistFields.Identity, FetchPriority.Visible); return null; }
+                { _pinEnsureIdentitySlots.Add(p.Slot); return null; }
+                // G-059: an unlisted pin (the library projection does not carry it) gets the same cover-less mosaic
+                // fallback as a rootlist row — else a Pinned tile for it blanks out while its detail page mosaics fine.
+                var mosaic = p.ImageId.IsEmpty ? SidebarProjection.PlaylistMosaicTiles(in p) : null;
+                bool countKnown = p.Knows(PlaylistFields.TrackCount);
+                // Bug A1: the count is asked regardless of cover — a covered pin's subtitle needs it exactly as
+                // much as a cover-less pin's mosaic needs membership; both route through the same edge/answer.
+                bool needsCount = !countKnown && p.MembershipState == EdgeState.Unknown;
+                bool needsMembership = mosaic is null && p.ImageId.IsEmpty && p.MembershipState == EdgeState.Unknown;
+                if (needsCount || needsMembership) _pinEnsureTracksSlots.Add(p.Slot);
+                // A pin is always visible, so the rootlist walk's `ensureIdentity` gate is simply true here.
+                if (SidebarProjection.ShouldWarmMosaicTracks(true, !p.ImageId.IsEmpty, p.MembershipState, mosaic?.Count ?? 0))
+                    SidebarProjection.CollectMosaicTrackSlots(p.TrackSlots, _pinEnsureMosaicTrackSlots);
                 return new SidebarLibraryEntry("", SidebarEntryKind.Playlist, "", Entities.Strings.Resolve(p.TitleId),
-                    Entities.Strings.Resolve(p.Owner.NameId), p.ImageId, null, ChildCount: p.TrackCount, AddedAtMs: 0,
+                    Entities.Strings.Resolve(p.Owner.NameId), p.ImageId, mosaic, ChildCount: p.TrackCount, AddedAtMs: 0,
                     SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0, Circular: false,
-                    Flavor: SidebarPlaylistFlavor.None);
+                    Flavor: SidebarPlaylistFlavor.None)
+                {
+                    // Bug H: reached only past the `!Knows(Identity)` early-return above, so identity is
+                    // unconditionally landed here — never gate this branch's subtitle on a bit that was never set.
+                    IdentityKnown = true,
+                    // Bug A1: NOT unconditionally true past that same gate — a route can land Identity while
+                    // carrying no length at all (ListMetadataV2). Read the real bit.
+                    CountKnown = countKnown,
+                };
             }
             case SidebarEntryKind.Album:
             {
@@ -3050,9 +3142,19 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 row = new EntityRef(EntityKind.Album, a.Slot);
                 if (!a.Knows(AlbumFields.Identity))
                 { Entities.Ensure(a, AlbumFields.Identity, FetchPriority.Visible); return null; }
+                var artistSlots = a.ArtistSlots;
                 return new SidebarLibraryEntry("", SidebarEntryKind.Album, "", a.Title, "", a.ImageId, null,
                     ChildCount: a.TrackCount, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0,
-                    Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
+                    Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
+                {
+                    // Same derivation SidebarProjection.Build's album loop uses (Sidebar.cs): the entity's first
+                    // billed artist, not the joined Creator string — an unlisted album pin never had this overlay.
+                    FirstArtistName = artistSlots.Length > 0 ? new Artist(artistSlots[0]).Name : "",
+                    // Trap 5: reached only past the `!Knows(Identity)` early-return above, so Identity is
+                    // unconditionally landed here — `ResolveUnlistedPin`'s merge also stamps this unconditionally
+                    // once `hydrated` is non-null, but the per-kind row itself should not lie about its own state.
+                    IdentityKnown = true,
+                };
             }
             case SidebarEntryKind.Artist:
             {
@@ -3062,7 +3164,8 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 { Entities.Ensure(ar, ArtistFields.Identity, FetchPriority.Visible); return null; }
                 return new SidebarLibraryEntry("", SidebarEntryKind.Artist, "", ar.Name, "", ar.ImageId, null,
                     ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0,
-                    Circular: true, Flavor: SidebarPlaylistFlavor.None);
+                    Circular: true, Flavor: SidebarPlaylistFlavor.None)
+                { IdentityKnown = true };
             }
             case SidebarEntryKind.Show:
             {
@@ -3072,7 +3175,8 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 { Entities.Ensure(s, ShowFields.Identity, FetchPriority.Visible); return null; }
                 return new SidebarLibraryEntry("", SidebarEntryKind.Show, "", s.Title, "", s.ImageId, null,
                     ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0,
-                    Circular: false, Flavor: SidebarPlaylistFlavor.None);
+                    Circular: false, Flavor: SidebarPlaylistFlavor.None)
+                { IdentityKnown = true };
             }
             default:
                 return null;   // Folder/AppRoute/Track — no catalog entity backs any of these
@@ -3366,8 +3470,9 @@ public sealed class SidebarEntries
 
     /// <summary>Publish a completed rebuild: at most one version bump, never per entry, and none at all when the
     /// rebuild landed on byte-identical content. Both shadows are evaluated unconditionally — either one flipping is
-    /// enough to bump <see cref="Version"/>.</summary>
-    public void Publish(FluentGpu.Signals.LoadState state, Exception? error, bool anyContributingKindPending,
+    /// enough to bump <see cref="Version"/>. Returns whether it did — BUG E2's <see cref="SidebarRevisionGate"/>
+    /// reads this alongside <see cref="SidebarProjectionBinder.PublishInput"/>'s own return.</summary>
+    public bool Publish(FluentGpu.Signals.LoadState state, Exception? error, bool anyContributingKindPending,
                         bool qualifiersAvailable, int pinCount,
                         IReadOnlyList<SidebarLibraryEntry>? fullProjection = null)
     {
@@ -3379,9 +3484,24 @@ public sealed class SidebarEntries
         var meta = new SidebarEntriesMeta((int)state, error, anyContributingKindPending, qualifiersAvailable, PinCount);
         bool published = _shadow.Publish(_entries, in meta);
         bool full = fullProjection is not null && _fullShadow.Publish(fullProjection, default);
-        if (!published && !full) return;
+        if (!published && !full) return false;
         _version.Value = _version.Peek() + 1;
+        return true;
     }
+}
+
+/// <summary>BUG E2's pure revision-bump decision (`docs/plans/wavee/wavee-0.3-bug-handoff-2026-09-15.md` §7,
+/// <see cref="SidebarProjectionBinder.Rebuild"/>): <c>Revision</c> moves iff the rebuild actually published
+/// something new on at least one of the two gates — <see cref="SidebarEntries.Publish"/>'s byte-change shadow, or
+/// <see cref="SidebarProjectionBinder.PublishInput"/>'s feed-moved shadow. A rebuild that reproduced identical
+/// content on BOTH must not bump it: <c>Revision</c> feeds <c>PaneView.PlanDep</c> (Sidebar.UI.cs) and
+/// <c>V3Session.ShapeInput</c>'s <c>ViewEpoch</c> (Sidebar.UI.LibraryV3.cs), and each folds it into a `DepKey`/hash
+/// that forces a full re-plan (`Sidebar.Plan` + `PlanRail`) or a full re-group (`View.Build`) on any change — an
+/// unconditional bump made every rebuild wake pay for both, twice, regardless of whether anything visible moved.
+/// Engine-free and pure so it is unit-testable without a live binder (<c>SidebarRevisionTests</c>).</summary>
+public static class SidebarRevisionGate
+{
+    public static bool ShouldBump(bool entriesChanged, bool inputChanged) => entriesChanged || inputChanged;
 }
 
 // ── THE LIBRARY WRITE SEAM (stage B, J1) ─────────────────────────────────────────────────────────────────────────────

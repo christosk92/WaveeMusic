@@ -174,13 +174,86 @@ public static partial class Shell
     /// <summary>Total kinds — the nav probe walks this rather than a hand-kept list (ch 29 §9.3 rule (e)).</summary>
     public static int RouteKindCount => s_routes.Length;
 
-    /// <summary>Register the page a kind renders. Called once per kind at boot by the owner of that page; a second
-    /// registration WINS, so a skeleton stub can be replaced by the real page.</summary>
+    /// <summary>Register the page a kind renders. Called once per kind — at boot by the owner of that page, or on the
+    /// first miss below for a lazily-installed group; a second registration WINS, so a skeleton stub can be replaced by
+    /// the real page.</summary>
     public static void SetPage(RouteKind kind, PageFactory page) => s_pages[(int)kind] = page;
 
-    /// <summary>The page for a route, or null when nothing is registered yet (the frame paints the not-found arm).
-    /// The SAME index as <see cref="Row"/>, so a kind can never be renderable-but-unknown again.</summary>
-    public static PageFactory? PageFor(in Route route) => s_pages[(int)route.Kind];
+    /// <summary>The page for a route, or null when nothing is registered yet (the frame paints the not-found arm). The
+    /// SAME index as <see cref="Row"/>, so a kind can never be renderable-but-unknown again.
+    /// <para>LAZY PAGE-FACTORY REGISTRATION (perf: the measured <c>boot.pages</c> mark). A miss runs
+    /// <see cref="InstallLazyGroupFor"/> once for that kind's group, then resolves again — most page-factory
+    /// registration is work nothing needs until the user first navigates to that page. Cheap on the (common) hit
+    /// path: one array read, one null check, zero allocation.</para></summary>
+    public static PageFactory? PageFor(in Route route)
+    {
+        var page = s_pages[(int)route.Kind];
+        if (page is not null) return page;
+        InstallLazyGroupFor(route.Kind);
+        return s_pages[(int)route.Kind];
+    }
+
+    // ── 1.3 lazy page-factory groups ────────────────────────────────────────────────────────────────────────────────
+    //
+    // Three of the nine App.cs page-owner installs moved off the boot path and onto this miss arm: Home.InstallPages
+    // (8 kinds: Home/Search/Browse/Recents + the two section prefixes + HomeCustomize), Album.InstallPages (3: Album/
+    // Prerelease/Show) and Playlist.InstallPages (6: Playlist/Local/Liked + the three library kinds) — 17 of the 29
+    // renderable kinds, and most of the boot.pages cost. Each group installs at most ONCE (the bool below), then every
+    // kind in it resolves the ordinary way.
+    //
+    // NOT moved here — each stays eager in App.cs, called exactly where it always was:
+    //   • Artist.InstallPages (Artist/Discography + Concert.InstallPages's three concert kinds): its own comment says
+    //     why — Sidebar.ConcertsFetch must be set before the sidebar pane's FIRST mount, which happens as part of
+    //     Shell.Run(), long before any navigation could reach an Artist/Concert route.
+    //   • Modules.InstallUi, Settings.InstallScreens, Diagnostics.Install: each also wires a seam nothing routes past —
+    //     Shell.LinkModules/MatchLink answer ANY pasted link, the setup wizard and the crash-report dialog must be on
+    //     screen at first launch, and the crash-prompt latch / network-cost host are process-lifetime, not per-page.
+    //   • Shell.InstallUi's own two SetPage calls (History, SidebarCustomize): RootFactory must exist before Run.
+    //   • Queue.InstallUi / Track.InstallActions: neither owns a route (Queue is a rail/stage arm, Track a menu's
+    //     verbs) — Queue's Play/PlayNext/AddToQueue registrations must still win the first-wins race, so Track keeps
+    //     running immediately after it, exactly as before.
+    //
+    // Navigation is UI-thread only (C1): a plain bool is the whole guard, no lock and no Interlocked — PageFor never
+    // re-enters itself for the same kind mid-install.
+    static bool s_homeGroupInstalled, s_albumGroupInstalled, s_playlistGroupInstalled;
+
+    static void InstallLazyGroupFor(RouteKind kind)
+    {
+        switch (kind)
+        {
+            case RouteKind.Home or RouteKind.HomeSection or RouteKind.BrowseSection or RouteKind.HomeCustomize
+                or RouteKind.Search or RouteKind.Browse or RouteKind.BrowseCategory or RouteKind.Recents:
+                if (s_homeGroupInstalled) return;
+                s_homeGroupInstalled = true;
+                Home.InstallPages();
+                break;
+            case RouteKind.Album or RouteKind.Prerelease or RouteKind.Show:
+                if (s_albumGroupInstalled) return;
+                s_albumGroupInstalled = true;
+                Album.InstallPages();
+                break;
+            case RouteKind.Playlist or RouteKind.Local or RouteKind.Liked or RouteKind.LibraryAlbums
+                or RouteKind.LibraryArtists or RouteKind.LibraryPodcasts:
+                if (s_playlistGroupInstalled) return;
+                s_playlistGroupInstalled = true;
+                Playlist.InstallPages();
+                break;
+        }
+    }
+
+    // ── test-only seam (BootOrderingTests) ──────────────────────────────────────────────────────────────────────────
+    //
+    // Wavee.Tests has no InternalsVisibleTo (see Controls.cs / Playlist.UI.cs), so this has to be public. It exists
+    // solely so a guard test that boots every page factory — including the three lazy groups above — can put the
+    // table back the way it found it, rather than leaking a process-wide registration into whichever test runs next.
+    // Never called from production code.
+    public static PageFactory?[] SnapshotPagesForTests() => (PageFactory?[])s_pages.Clone();
+
+    public static void RestorePagesForTests(PageFactory?[] snapshot)
+    {
+        Array.Copy(snapshot, s_pages, s_pages.Length);
+        s_homeGroupInstalled = s_albumGroupInstalled = s_playlistGroupInstalled = false;
+    }
 
     /// <summary>Is there a page behind this route? Developer-gated kinds answer false unless
     /// <paramref name="developerMode"/> is on — those surfaces are reachable from Settings once the user turns
@@ -823,78 +896,61 @@ public static partial class Shell
     /// scroll and selection; the fourth oldest is evicted.</summary>
     public const int KeepAliveSlots = 3;
 
-    // Outgoing is ~94% faded by 90 ms, when incoming starts — it overlaps a nearly invisible exit, never a
-    // still-opaque one — and the card is never empty (Exit.Active stays true).
-    internal const float FadeThroughExitMs = 120f;
-    const float FadeThroughEnterDelayMs = 90f;
+    /// <summary>The masthead band's fade window — the page's REAL exit window (<see cref="Design.Nav.ExitDurationMs"/>),
+    /// so a drill-in's two halves read as one gesture rather than an independent constant that can drift from it.</summary>
+    internal const float FadeThroughExitMs = Design.Nav.FadeThroughExitMs;
 
-    /// <summary>The recipe for a page swap, WITH its Exit half. Both halves are load-bearing: the reconciler only
-    /// overlaps the outgoing page when <c>Exit.Active</c> is true — with a stripped Exit the outgoing page is detached
-    /// in the same frame and the card flashes EMPTY before the incoming page arrives.
-    /// <para>Fade-through, NOT a symmetric slide: exit fades in place over 120 ms on a fast-out ease so it is ~94%
-    /// gone when enter starts at 90 ms — two full-bleed pages never mix at readable opacity. An accelerate curve holds
-    /// the old page near 1 until the end, which is exactly the superimposed-text frame.</para></summary>
-    public static LayoutTransition RecipeFor(NavTransitionKind motion) => motion switch
-    {
-        NavTransitionKind.Back => PageFadeThroughBack,
-        NavTransitionKind.Neutral => MotionRecipes.PageFade,
-        _ => PageFadeThroughForward,
-    };
+    /// <summary>Reactive read of the persisted page-motion STYLE (Settings ▸ Appearance ▸ Page motion), clamped like
+    /// every other appearance rung (ch 27 W2 "three facts") — same contract as <c>Prefs.Appearance.LikedCover</c>.</summary>
+    static Design.PageMotionStyle PageMotionStyle()
+        => (Design.PageMotionStyle)Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount);
 
-    public static LayoutTransition PageFadeThroughForward => new(
-        TransitionChannels.Position | TransitionChannels.Opacity,
-        TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        Enter: new EnterExit(Dx: Expressive.DistBase, Opacity: 0f, Active: true),
-        Exit: new EnterExit(Dx: 0f, Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(FadeThroughExitMs, Easing.EaseOut),
-        DelayMs: FadeThroughEnterDelayMs,
-        ExitDelayMs: 0f);
+    /// <summary>The recipe for a page swap, at the persisted <see cref="PageMotionStyle"/>. The one-argument form is
+    /// Entrance (tests, a first paint). The content host classifies the relation from the two routes.</summary>
+    public static LayoutTransition RecipeFor(NavTransitionKind motion)
+        => Design.Nav.RecipeFor(PageMotionStyle(), MapMotion(motion),
+            motion == NavTransitionKind.Neutral ? Design.NavRelation.Fade : Design.NavRelation.Entrance);
 
-    public static LayoutTransition PageFadeThroughBack => new(
-        TransitionChannels.Position | TransitionChannels.Opacity,
-        TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        Enter: new EnterExit(Dx: -Expressive.DistBase, Opacity: 0f, Active: true),
-        Exit: new EnterExit(Dx: 0f, Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(FadeThroughExitMs, Easing.EaseOut),
-        DelayMs: FadeThroughEnterDelayMs,
-        ExitDelayMs: 0f);
+    public static LayoutTransition RecipeFor(in Route from, in Route to, NavTransitionKind motion)
+        => Design.Nav.RecipeFor(PageMotionStyle(), MapMotion(motion), RelationOf(from, to, motion));
 
-    /// <summary>The recipe for a swap where either side can be hosting a live composited video — today, a module watch
-    /// page. <b>Position only.</b>
-    /// <para>A composited video is a DestOut hole punched into the real back buffer by a descendant. An ancestor
-    /// opacity channel multiplies straight into the video command's own opacity (a washed-out, see-through video), and
-    /// an opacity GROUP pushes an offscreen render target the punch can never reach the back buffer from — so the hole
-    /// vanishes entirely and silently. A TRANSLATE is the one ancestor motion a hole rides correctly: it composes on
-    /// the absolute rect the punch already reads from.</para>
-    /// <para>Neutral answers <b>null</b> — an honest CUT. Neutral's only recipe is opacity and nothing else, so there
-    /// is no video-safe form of it to hand back.</para></summary>
-    public static LayoutTransition? RecipeForVideoSafe(NavTransitionKind motion) => motion switch
-    {
-        NavTransitionKind.Back => PageSlideSafeBack,
-        NavTransitionKind.Neutral => null,
-        _ => PageSlideSafeForward,
-    };
+    public static LayoutTransition? RecipeForVideoSafe(NavTransitionKind motion)
+        => Design.Nav.RecipeForVideoSafe(MapMotion(motion));
 
-    public static LayoutTransition PageSlideSafeForward => new(
-        TransitionChannels.Position,
-        TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        Enter: new EnterExit(Dx: Expressive.DistBase, Active: true),
-        Exit: new EnterExit(Dx: -Expressive.DistBase, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        DelayMs: 0f, ExitDelayMs: 0f);
-
-    public static LayoutTransition PageSlideSafeBack => new(
-        TransitionChannels.Position,
-        TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        Enter: new EnterExit(Dx: -Expressive.DistBase, Active: true),
-        Exit: new EnterExit(Dx: Expressive.DistBase, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut),
-        DelayMs: 0f, ExitDelayMs: 0f);
+    public static LayoutTransition PageSlideSafeForward => Design.Nav.PageSlideSafeForward;
+    public static LayoutTransition PageSlideSafeBack => Design.Nav.PageSlideSafeBack;
 
     /// <summary>Does a swap between these two routes need the video-safe pair? BOTH sides are classified, because the
     /// outgoing root is still drawing for the whole exit.</summary>
     public static bool NeedsVideoSafe(in Route from, in Route to)
         => from.Kind == RouteKind.Module || to.Kind == RouteKind.Module;
+
+    public static Design.NavSurface SurfaceOf(RouteKind kind) => kind switch
+    {
+        RouteKind.Module => Design.NavSurface.Module,
+        RouteKind.Album or RouteKind.Playlist or RouteKind.Artist or RouteKind.Show or RouteKind.Prerelease
+            or RouteKind.Discography or RouteKind.Concert or RouteKind.ArtistConcerts
+            or RouteKind.HomeSection or RouteKind.BrowseSection => Design.NavSurface.Detail,
+        _ => Design.NavSurface.TopLevel,
+    };
+
+    public static Design.NavRelation RelationOf(in Route from, in Route to, NavTransitionKind motion)
+        => Design.Nav.RelationOf(SurfaceOf(from.Kind), SurfaceOf(to.Kind), from.Kind == to.Kind,
+            SameIdentity(from, to), MapMotion(motion));
+
+    static bool SameIdentity(in Route a, in Route b)
+    {
+        if (a.Kind != b.Kind) return false;
+        if (Row(a.Kind).KeyedByArg) return a.Arg.Equals(b.Arg);
+        return a.Subject.Equals(b.Subject);
+    }
+
+    static Design.NavTransitionKind MapMotion(NavTransitionKind motion) => motion switch
+    {
+        NavTransitionKind.Back => Design.NavTransitionKind.Back,
+        NavTransitionKind.Neutral => Design.NavTransitionKind.Neutral,
+        _ => Design.NavTransitionKind.Forward,
+    };
 
     // ══ 6. SHELL.UI — the rail state the player bar's four toggles write ════════════════════════════════════════════
     //
@@ -1077,7 +1133,7 @@ public static partial class Shell
         bool ShowTimesElapsed, bool ShowTimesRemaining, bool ShowPrevNext, bool ShowSubtitle,
         float ButtonBox, float ButtonGlyph, float PrimaryBox, float PrimaryGlyph,
         float LeftW, float ArtSize, float RowGap, float RowPad, float ClusterGap, float LeftGap, float SeekGap,
-        float RightGap, float TopEdgeWidth)
+        float RightGap, float TopEdgeWidth, float RightWMax)
     {
         public const float MinButtonBox = 32f;
         public const float MinButtonGlyph = 16f;
@@ -1085,6 +1141,12 @@ public static partial class Shell
         public const float MinPrimaryGlyph = 18f;
         public const float PrimaryBoxRoomy = 40f;
         public const float PrimaryGlyphRoomy = 20f;
+
+        /// <summary>The inline volume rail's length (the stock 22-DIP thumb ring rides it).</summary>
+        public const float VolumeSliderW = 96f;
+
+        /// <summary>The video split button's disclosure chevron: narrow, full button height.</summary>
+        public const float SplitChevronW = 20f;
 
         /// <summary>The indeterminate seek sweep's nominal track width. Used to be a hard 2400 literal — correct for
         /// the windows the ladder was authored against, but on a 3440-DIP ultrawide the sweep stopped 1040+ DIP short
@@ -1107,7 +1169,7 @@ public static partial class Shell
             bool medium = tier >= PlayerBarTier.Medium;
             bool compact = tier >= PlayerBarTier.Compact;
 
-            return new PlayerBarLayout(
+            var layout = new PlayerBarLayout(
                 Tier: tier,
                 ShowExpand: full,
                 ShowDevices: true,          // the device picker is the only route when local playback is unavailable
@@ -1145,7 +1207,12 @@ public static partial class Shell
                 LeftGap: medium ? 8f : compact ? 6f : 4f,
                 SeekGap: medium ? 6f : compact ? 5f : 4f,
                 RightGap: medium ? 2f : compact ? 1f : 0f,
-                TopEdgeWidth: MathF.Max(TopEdgeWidthFloor, width));
+                TopEdgeWidth: MathF.Max(TopEdgeWidthFloor, width),
+                RightWMax: 0f);
+            // The right cluster's WIDEST width at this tier — the slot sum WITH the video split (PlayerBarRules.RightWidth,
+            // hasVideo: true). The live cluster is that or the same less the split (the one state input, user decision
+            // 2026-09-16); the 300-DIP seek-bar floor and any arithmetic that must hold in the widest case use this.
+            return layout with { RightWMax = PlayerBarRules.RightWidth(in layout, hasVideo: true) };
         }
     }
 
@@ -1266,6 +1333,8 @@ public static partial class Shell
     /// rather than defaulted: <c>default(Route)</c> is Home (see <see cref="Route.None"/>).</param>
     public static Route LinkFor(Track track, LinkSlot slot, bool isModulePlayable = false, Route? moduleRoute = null)
     {
+        if (!isModulePlayable && track.IsValid) isModulePlayable = Modules.IsModulePlayable(track.Id);
+        if (isModulePlayable) moduleRoute ??= Modules.LinkRouteFor(track, slot);
         if (moduleRoute is { IsNone: false } named) return named;
         if (isModulePlayable) return new Route(RouteKind.NotFound);
         switch (slot)

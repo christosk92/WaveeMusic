@@ -120,10 +120,13 @@ public static partial class Sidebar
     /// computation), so this is what makes a hydrated playlist title, a rootlist push, a navigation, a play or a V3 filter
     /// change reach the pane. It SYNCS, never invalidates: the binder's gate folds the row versions of exactly the rows
     /// the sidebar shows, so a wake from a table change elsewhere in the app costs one fold, not a three-pass rebuild
-    /// (G-180, sidebar decision D8).</summary>
+    /// (G-180, sidebar decision D8). It reads <see cref="Entities.ScopeEpoch"/> first, because the welcome effect
+    /// switches scope on every login and this effect must re-point at the new scope's signals, not keep holding the
+    /// retired set's (G-179).</summary>
     static void PumpBinder()
     {
         var binder = EnsureBinder();
+        _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a Switch re-points every table signal read below
         if (Entities.Current is { } scope)
         {
             var edges = scope.Edges;
@@ -402,7 +405,11 @@ public static partial class Sidebar
     /// <para>HOW A FRAME FLOWS. (1) Render subscribes the document/projection/pin/folder/search/mode/edit epochs and
     /// re-plans in a <c>UseMemo</c> keyed on their fold, into A/B buffers (a plan ALIASES its buffers). (2) The plan is
     /// published to the bound slots as a PLAIN FIELD from a LAYOUT effect, and only the rows the diff found changed get
-    /// their epoch bumped. (3) The row count rides <c>CountSignal</c>, written in the same effect.</para>
+    /// their epoch bumped. (3) The row count rides <c>CountSignal</c>, written in the same effect — and it is the ONLY
+    /// publish signal this render reads (W3-A2): the plan version is the slots', the effects' and the ItemsView's edge,
+    /// the rail version is <see cref="PaneView.RailHost"/>'s. A republish that changed some rows' content re-skins those rows and
+    /// nothing else; the pane itself renders once per RE-PLAN (an input the binder's content gates let through), never a
+    /// second time for the publish it caused.</para>
     ///
     /// <para>Route and playback are read ONCE here on behalf of every row (two signal effects that bump only the rows
     /// that flipped) — replacing them with per-row reads restores the Slot×52 + Pill×44 storm per navigation.</para></summary>
@@ -427,8 +434,24 @@ public static partial class Sidebar
 
         readonly Signal<int> _rowCount = new(0);
         readonly Signal<int> _planVersion = new(0);
+        /// <summary>Bumped by a publish ONLY when the RAIL plan's rows (or the entries they address) differ from the
+        /// presented rail's, or the publish was wholesale — <see cref="RailHost"/>'s one re-render edge (W3-A2). A
+        /// re-plan that hydrated a row in the expanded list, or toggled a folder past the rail's tile cap, moves
+        /// <see cref="_planVersion"/> and leaves this alone.</summary>
+        readonly Signal<int> _railVersion = new(0);
         readonly Signal<int> _dispVersion = new(0);
         readonly Signal<int> _disclosureVersion = new(0);
+
+        // ── mount-stable subtrees (W3-A2): built once, handed back by reference on every later render ──
+        // Element is immutable and the reconciler compares a ComponentEl by type + key, so reusing the SAME element
+        // across renders is exactly the reference short-circuit ToolTipSlots and the props seam rely on. Each of these
+        // reads only fields that never change after mount (the layout, the count signal, the controller, `this`).
+        Element? _paddedList;
+        Element? _searchHead;
+        Element? _dragPeekWatcher;
+        Element? _railHost;
+        /// <summary>The expanded layer's bound width — one Prop for the pane's life, never a fresh closure per render.</summary>
+        readonly Prop<float> _expandedWidth = Prop.Of(static () => Sidebar.Width.Value);
 
         // ── per-row epochs (GROW-ONLY: a slot may address an index a frame after the plan shrank) ──
         Signal<int>[] _rowEpochs = Array.Empty<Signal<int>>();
@@ -492,7 +515,6 @@ public static partial class Sidebar
         internal string? MenuHostSectionId;
 
         Func<int, (float dx, float dy)>? _displacement;
-        bool _countSeeded;
 
         sealed record PlanStage(SidebarCustomLayout Document, SidebarRowPlan Pane, SidebarRowPlan Rail,
                                 string EffectiveSearch, bool UsesA, int Epoch, SidebarEditState? Edit);
@@ -549,7 +571,6 @@ public static partial class Sidebar
 
             var stage = UseMemo(() => BuildStage(sourceDoc, search, edit), PlanDep(search, in edit));
             if (!_planPublished) PublishStage(stage, notify: false);
-            int planVersion = _planVersion.Value;
             int disclosureUiVersion = _disclosureVersion.Value;
             UseLayoutEffect(() => TryPublishStage(stage), DepKey.From(HashCode.Combine(stage.Epoch, disclosureUiVersion)));
             // AFTER the publish: the travel direction needs the plan the rows are about to render from. This read also
@@ -558,7 +579,14 @@ public static partial class Sidebar
             UseSignalEffect(RefreshPlayState);
             UseSignalEffect(RefreshSelection);
             UseLayoutEffect(RunSelectionTransaction, _selEpoch);
-            int rows = Plan.Rows.Count;
+            // THE COUNT, never the plan version (W3-A2). This render decides two things off the published plan — empty
+            // pane vs list, and whether a pending expansion has its rows yet — and both are functions of the COUNT. The
+            // 0.3 first cut read `_planVersion` here, so every publish (each one a re-plan the binder's content gates had
+            // let through: a cover landing on a saved album, a playlist learning its track count) rendered this pane a
+            // SECOND time, and that render's rail memo rebuilt ~26 tooltip-wrapped tiles — the `PaneView×1 a=324K` +
+            // `ToolTip×33` lines of the scroll census. The seed lands in PublishStage's synchronous first publish, above,
+            // before this read, so the first render already sees the real count.
+            int rows = _rowCount.Value;
             UseLayoutEffect(() =>
             {
                 if (_activeDisclosureKey is { } active && _activeDisclosureOpen
@@ -578,38 +606,27 @@ public static partial class Sidebar
             {
                 Key = "expanded-layer", Direction = 1, Grow = 1f, Shrink = 0f,
                 // Measured at the OPEN width even while presented compact: text never reflows through 56 DIP.
-                Width = Prop.Of(() => Sidebar.Width.Value), ClipToBounds = true,
+                Width = _expandedWidth, ClipToBounds = true,
                 Opacity = compact ? 0f : 1f, HitTestVisible = !compact,
                 Children = ExpandedChildren(rows),
             };
 
-            // THE RAIL IS MEMOIZED on (plan version, theme, culture, drawer|binder presence, rail head band, route):
-            // rebuilding its ~26 tooltip-wrapped tiles per pane render defeats ToolTipSlots' reference short-circuit.
-            int railHeadEpoch = Config.RailHead is null ? 0 : LayoutVersion.Value;
-            Element compactRail = UseMemo(
-                () => InDrawer
-                    ? (Element)new BoxEl { Height = 0f, Shrink = 0f }
-                    : ScrollView(Rail.Build(this, RailPlan)) with { Grow = 1f, AutoEdgeFade = true, SuppressScrollBar = true },
-                DepKey.Combine(
-                    DepKey.Combine(
-                        DepKey.From(planVersion, Tok.Epoch, Localization.CultureEpoch.Value,
-                                    (InDrawer ? 1 : 0) | (Binder is null ? 0 : 2)),
-                        DepKey.From(railHeadEpoch)),
-                    SelectedRoutePeek));
-
             var children = new List<Element>(3) { expanded };
             if (!InDrawer)
             {
+                // THE RAIL IS ITS OWN COMPONENT (W3-A2, RailHost): it re-renders on ITS edges — the rail version, the
+                // route, the culture, the binder's first publish — so a pane render never rebuilds its ~26 tooltip-wrapped
+                // tiles. The embed is held by reference: a propless ComponentEl the reconciler reuses without a render.
                 children.Add(new BoxEl
                 {
                     Key = "compact-layer", Direction = 1, Grow = 1f, Shrink = 0f, Width = SidebarPaneBounds.CompactRailW,
                     Opacity = compact ? 1f : 0f, HitTestVisible = compact,
                     // DRAG PEEK: a pure spring-load waypoint over the whole rail (never a destination, never a refusal).
                     DropTarget = RailPeekDropSpec(),
-                    Children = [compactRail],
+                    Children = [_railHost ??= Embed.Comp(() => new RailHost(this))],
                 });
                 // Owns the ONE UseDragState() subscription that ends a peek (2 flips per drag, not the drag epoch).
-                children.Add(Embed.Comp(() => new DragPeekWatcher(this)) with { Key = "drag-peek" });
+                children.Add(_dragPeekWatcher ??= Embed.Comp(() => new DragPeekWatcher(this)) with { Key = "drag-peek" });
             }
 
             var root = new BoxEl
@@ -647,13 +664,12 @@ public static partial class Sidebar
             Element? modeHead = Config.Head?.Invoke();
             // No search head on the canvas: at most one body is on screen there, so it would visibly filter nothing.
             Element? searchHead = Config.SearchHead && PublishedEdit is null && HasEntityList(Doc)
-                ? Embed.Comp(() => new SearchHead(_search, Sidebar.Width)) with { Key = "head" }
+                ? (_searchHead ??= Embed.Comp(() => new SearchHead(_search, Sidebar.Width)) with { Key = "head" })
                 : null;
 
-            // SEED the count once, before the list exists (nothing has read it yet, so it is not a backwards write).
-            if (!_countSeeded) { _countSeeded = true; _rowCount.Value = rows; }
-
-            Element body = rows == 0 ? EmptyPane() : PaddedList();
+            // The list is built ONCE: every option it carries is a mount-stable field or delegate, and the count rides
+            // its CountSignal — so a re-render hands the reconciler the same element and it writes nothing.
+            Element body = rows == 0 ? EmptyPane() : (_paddedList ??= PaddedList());
             int n = 1 + (modeHead is null ? 0 : 1) + (searchHead is null ? 0 : 1);
             var kids = new Element[n];
             int k = 0;
@@ -768,13 +784,39 @@ public static partial class Sidebar
             int binderEpoch = s_binderEpoch.Value;
             int revision = Binder?.Revision ?? 0;
             int mode = Config.ModeEpoch?.Invoke() ?? 0;
+            int editFold = SidebarEditPlan.Fold(in edit);
+            // The re-plan census (Sidebar.Census.cs): which of these inputs moved since the LAST BUILD. Accumulated here
+            // (every render folds the key) and claimed by BuildStage, which runs only when the key actually moved.
+            var moved = Shell.SidebarReplanCause.None;
+            if (layoutVer != _depLayout) moved |= Shell.SidebarReplanCause.Layout;
+            if (entriesVer != _depEntries) moved |= Shell.SidebarReplanCause.Entries;
+            if (inputVer != _depInput) moved |= Shell.SidebarReplanCause.Input;
+            if (pinsVer != _depPins) moved |= Shell.SidebarReplanCause.Pins;
+            if (folderVer != _depFolder) moved |= Shell.SidebarReplanCause.Folder;
+            if (binderEpoch != _depBinder) moved |= Shell.SidebarReplanCause.Binder;
+            if (revision != _depRevision) moved |= Shell.SidebarReplanCause.Revision;
+            if (mode != _depMode) moved |= Shell.SidebarReplanCause.Mode;
+            if (editFold != _depEdit) moved |= Shell.SidebarReplanCause.Edit;
+            if (!string.Equals(search, _depSearch, StringComparison.Ordinal)) moved |= Shell.SidebarReplanCause.Search;
+            _depLayout = layoutVer; _depEntries = entriesVer; _depInput = inputVer; _depPins = pinsVer; _depFolder = folderVer;
+            _depBinder = binderEpoch; _depRevision = revision; _depMode = mode; _depEdit = editFold; _depSearch = search;
+            _pendingReplanCauses |= moved;
             return DepKey.Combine(DepKey.From(layoutVer, entriesVer, pinsVer, folderVer),
-                DepKey.Combine(DepKey.From(revision, mode, SidebarEditPlan.Fold(in edit), binderEpoch),
+                DepKey.Combine(DepKey.From(revision, mode, editFold, binderEpoch),
                     DepKey.Combine(DepKey.From(inputVer), search)));
         }
 
+        // The last PlanDep inputs + the causes accumulated since the last build (Sidebar.Census.cs).
+        int _depLayout = int.MinValue, _depEntries = int.MinValue, _depInput = int.MinValue, _depPins = int.MinValue,
+            _depFolder = int.MinValue, _depBinder = int.MinValue, _depRevision = int.MinValue, _depMode = int.MinValue,
+            _depEdit = int.MinValue;
+        string? _depSearch;
+        Shell.SidebarReplanCause _pendingReplanCauses;
+
         PlanStage BuildStage(SidebarCustomLayout document, string search, SidebarEditState? edit)
         {
+            Shell.SidebarReplanCensus.NoteBuild(_pendingReplanCauses);
+            _pendingReplanCauses = Shell.SidebarReplanCause.None;
             var input = Input(search);
             bool useA = !_planPublished || !_presentedUsesA;
             var paneBuffers = useA ? _paneBuffersA : _paneBuffersB;
@@ -818,12 +860,17 @@ public static partial class Sidebar
             // Captured BEFORE the swap — the A/B buffers keep the outgoing rows alive for the diff.
             var oldRows = Plan.Rows;
             var oldEntries = Plan.Entries;
+            var oldRail = RailPlan;
             // A new document, a new effective query or an edit-session edge changes what rows draw without necessarily
             // changing the row record, so those bump wholesale.
             bool wholesale = !_planPublished
                              || !ReferenceEquals(stage.Document, Doc)
                              || !string.Equals(stage.EffectiveSearch, _effectiveSearch, StringComparison.Ordinal)
                              || !Nullable.Equals(stage.Edit, PublishedEdit);
+            // The rail draws from its OWN plan (and the document, for its sections), so it moves on a wholesale publish
+            // or when its rows/entries differ — a re-plan that only touched the expanded list leaves it alone (W3-A2).
+            bool railChanged = wholesale
+                               || PlanDiff.Changed(oldRail.Rows, oldRail.Entries, stage.Rail.Rows, stage.Rail.Entries);
 
             PublishedEdit = stage.Edit;
             Doc = stage.Document;
@@ -836,12 +883,21 @@ public static partial class Sidebar
             ConfigureReorder();
             EnsureRowSlots(Plan.Rows.Count);
             if (wholesale) ReseedRowExtents();
-            if (!notify) return;
+            if (!notify)
+            {
+                // The FIRST publish runs synchronously inside the pane's render, before anything has read the count
+                // signal: seeding it here is a forward write (no subscriber yet), and Render's read right after it sees
+                // the real count on frame one.
+                _rowCount.Value = Plan.Rows.Count;
+                return;
+            }
 
+            Shell.SidebarReplanCensus.NotePublish(railChanged, wholesale);
             void PublishSignals()
             {
                 _rowCount.Value = Plan.Rows.Count;
                 _planVersion.Value = _planVersion.Peek() + 1;
+                if (railChanged) _railVersion.Value = _railVersion.Peek() + 1;
                 if (wholesale) BumpAllRowEpochs();
                 else BumpChangedRowEpochs(oldRows, oldEntries);
             }
@@ -1207,12 +1263,14 @@ public static partial class Sidebar
             for (int i = 0; i < epochs.Length; i++) epochs[i].Value = epochs[i].Peek() + 1;
         }
 
+        /// <summary>Bump exactly the rows whose record or ENTRY differs from the presented plan's — through
+        /// <see cref="PlanDiff"/>, whose entry compare is by VALUE (see its remarks for the mosaic-tiles trap).</summary>
         void BumpChangedRowEpochs(IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries)
         {
             var rows = Plan.Rows;
             var entries = Plan.Entries;
             for (int i = 0; i < rows.Count; i++)
-                if (SidebarRowDiff.RowChanged(oldRows, oldEntries, rows, entries, i)) BumpRowEpoch(i);
+                if (PlanDiff.RowChanged(oldRows, oldEntries, rows, entries, i)) BumpRowEpoch(i);
         }
 
         /// <summary>The pane's ONE read of playback on behalf of every row: the coarse active-context gate first (an idle
@@ -1286,7 +1344,8 @@ public static partial class Sidebar
             return _routeKeyCache;
         }
 
-        /// <summary>The live selected route key. SUBSCRIBES the caller — only the pane's own render uses it.</summary>
+        /// <summary>The live selected route key. SUBSCRIBES the caller — only the pane's own render and the
+        /// <see cref="RailHost"/> (whose tiles bake the selected state in as a value) use it.</summary>
         internal string SelectedRoute => RouteKeyOf(Shell.Current.Value);
 
         /// <summary>The selected route key WITHOUT subscribing (rows re-render on their epoch; the rail memo keys on it).</summary>
@@ -1795,6 +1854,31 @@ public static partial class Sidebar
             if (_railDropUri.Peek() is not null) _railDropUri.Value = null;
         }
 
+        /// <summary>THE 56-DIP RAIL AS ITS OWN COMPONENT (W3-A2). The 0.3 first cut memoized <c>Rail.Build</c> INSIDE the
+        /// pane's render on (plan version, theme, culture, binder, rail head, route) — so every publish, each a re-plan the
+        /// binder's content gates had let through, re-rendered the pane (it read <c>_planVersion</c>) and the memo rebuilt
+        /// ~26 tooltip-wrapped tiles: <c>ToolTipSlots</c> compares its target by REFERENCE, so every rebuilt tile re-pushed
+        /// and re-rendered its ToolTip — the <c>ToolTip×33</c> line of the scroll census, while the sidebar itself never
+        /// scrolled. This host subscribes to <see cref="_railVersion"/> instead, which <see cref="PublishStage"/> bumps only
+        /// when the RAIL plan's rows or their entries differ (or the publish was wholesale); plus the route (a tile bakes
+        /// <c>selected</c> in as a value — a bind would freeze on the reused node, ch 25 §9), the culture, the rail head's
+        /// document epoch and the binder's first publish (the pending-skeleton edge). A retheme re-renders the tree
+        /// engine-side, so <c>Tok.Epoch</c> is read for parity with the old key only. The pane hands the rail its plan as a
+        /// plain field, exactly as it hands the slots theirs.</summary>
+        sealed class RailHost(PaneView owner) : Component
+        {
+            public override Element Render()
+            {
+                _ = owner._railVersion.Value;
+                _ = Localization.CultureEpoch.Value;
+                _ = s_binderEpoch.Value;
+                _ = Tok.Epoch;
+                if (owner.Config.RailHead is not null) _ = LayoutVersion.Value;
+                _ = owner.SelectedRoute;   // subscribes THIS host, not the pane: a navigation re-skins the selected tile
+                return ScrollView(Rail.Build(owner, owner.RailPlan)) with { Grow = 1f, AutoEdgeFade = true, SuppressScrollBar = true };
+            }
+        }
+
         /// <summary>Owns the ONE UseDragState() subscription that ends a peek, disarms the cue and flushes the freeze —
         /// on SESSION END (drop, cancel and Escape alike), in a layout effect keyed on the active EDGE.</summary>
         sealed class DragPeekWatcher(PaneView owner) : Component
@@ -2119,5 +2203,47 @@ public static partial class Sidebar
 
         /// <summary>Is this rail tile the armed drop destination (bound-safe)?</summary>
         internal bool IsRailDropActive(string key) => string.Equals(_railDropUri.Value, key, StringComparison.Ordinal);
+    }
+
+    /// <summary>THE PANE'S PUBLISH DIFF (W3-A2): which realized rows a republish must re-skin, and whether a plan moved at
+    /// all. The shape rule is <see cref="SidebarRowDiff"/>'s — a row is new at its slot, its record differs, or the entry
+    /// it addresses differs — with ONE correction: the entry compare is <see cref="SidebarEntriesShadow.SameEntry"/>,
+    /// whose <c>MosaicTiles</c> leg is BY VALUE. The projection materialises a folder's (and a cover-less playlist's)
+    /// tile list fresh on every rebuild, so the record's compiler equality — a REFERENCE compare on that one member — read
+    /// every folder row and every mosaic row as changed on every re-plan that followed a rebuild: two slots, a disclosure
+    /// chevron and a selection pill re-rendered per publication with nothing about them moved (the <c>PaneSlot×2</c> /
+    /// <c>Chevron×1</c> / <c>SelectionPill×1</c> lines of the scroll census). Public so the rule is pinned by facts
+    /// (<c>SidebarWiringTests</c>); allocation-free.</summary>
+    public static class PlanDiff
+    {
+        /// <summary>Does row <paramref name="index"/> of the new plan render differently from the same slot of the old?</summary>
+        public static bool RowChanged(
+            IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
+            IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries,
+            int index)
+        {
+            if ((uint)index >= (uint)newRows.Count) return false;
+            if (index >= oldRows.Count) return true;              // the row is new at this slot
+            var row = newRows[index];
+            if (!row.Equals(oldRows[index])) return true;
+            int entry = row.EntryIndex;
+            if (entry < 0) return false;                          // a header / divider / skeleton carries no entry
+            bool inOld = entry < oldEntries.Count;
+            bool inNew = entry < newEntries.Count;
+            if (inOld != inNew) return true;
+            return inNew && !SidebarEntriesShadow.SameEntry(oldEntries[entry], newEntries[entry]);
+        }
+
+        /// <summary>Did the plan move at all — a different row count, or any slot <see cref="RowChanged"/>? The rail's
+        /// version gate: a re-plan that reproduced the same rail rows over the same entries bumps nothing.</summary>
+        public static bool Changed(
+            IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
+            IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries)
+        {
+            if (oldRows.Count != newRows.Count) return true;
+            for (int i = 0; i < newRows.Count; i++)
+                if (RowChanged(oldRows, oldEntries, newRows, newEntries, i)) return true;
+            return false;
+        }
     }
 }

@@ -67,7 +67,8 @@ public static partial class Platform
     /// file does not have to depend on `Design.cs`/`Notify.cs`/`Sidebar.cs` to boot. The same applies to the four rail
     /// widths, whose defaults are `Design.cs` tokens: Wave 4 owes a convergence test pinning the two (the
     /// `ZoomAutoPolicy.DesignW` precedent).</para></summary>
-    public static class Keys
+    // PARTIAL: the Wave-6 keys (`diag.stageRects`, and any a Wave-6 owner adds with a writer) are in Platform.Settings.cs.
+    public static partial class Keys
     {
         // ── sidebar: legacy (v0) global pane keys — read only by the v0→v1 migration. Deliberately NOT deleted: a
         //    downgrade to an older build must still find a sane pane width. The pane state is per DESIGN (SidebarWidth
@@ -124,6 +125,9 @@ public static partial class Platform
         /// is that the collection cover is made of the user's own music, and every treatment degrades to the bundled PNG
         /// until the library owns enough distinct artwork — so a fresh install still paints what it painted before.</summary>
         public static readonly SettingKey<int> LikedCoverStyle = new("appearance.likedCover.style", 1);
+        /// <summary>The page-swap MOTION STYLE (Settings ▸ Appearance ▸ Page motion). DEFAULT 1 = Design.PageMotionStyle.Spatial —
+        /// a fresh install gets the spatial slide/scale/fade hybrid, not the plain Fluent cross-fade.</summary>
+        public static readonly SettingKey<int> PageMotionStyle = new("appearance.pageMotion.style", (int)Design.PageMotionStyle.Spatial);
         /// <summary>BPM · Key as its own COLUMN. Off: it is enrichment most listeners never scan for and it costs width on
         /// every row; it is always available inside a row's expander regardless.</summary>
         public static readonly SettingKey<bool> TempoColumn = new("detail.tempoColumn", false);
@@ -817,10 +821,21 @@ public static partial class Platform
         /// a screenshot taken on any day must be identical (ch 31 §7.3), which needs the FIXED instant.</summary>
         public static bool FakeLiveClock { get; private set; }
 
+        /// <summary>`--headless`: the no-window host (<c>Diagnostics.Probe.TryRun</c>). Boot reads it for one decision —
+        /// a headless run never applies a pending factory reset, because its `--profile` scratch folder is not the
+        /// profile the reset was armed for (headless plan §2.8).</summary>
+        public static bool Headless { get; private set; }
+
+        /// <summary>`--relaunch-after &lt;pid&gt;`: this process is the restart broker, a courier and not an app
+        /// instance. It must never consume the factory-reset marker the real relaunch has to act on.</summary>
+        public static bool RelaunchBroker { get; private set; }
+
         internal static void Parse(string[] argv)
         {
             Fake = Array.IndexOf(argv, "--fake") >= 0;
             FakeLiveClock = Fake && Array.IndexOf(argv, "--live-clock") >= 0;
+            Headless = Array.IndexOf(argv, "--headless") >= 0;
+            RelaunchBroker = Array.IndexOf(argv, "--relaunch-after") >= 0;
         }
     }
 
@@ -860,12 +875,24 @@ public static partial class Platform
     /// test with an in-memory one, and with <c>null</c> to go back to defaults-only.</summary>
     public static void UseSettings(IAppSettings? backing) => s_backing = backing;
 
+    /// <summary>The UI thread's managed thread id, for the DEBUG assert below. Nobody captures the real UI thread's
+    /// identity anywhere in this app today (`Shell.Host.InstallMarshallers` queues onto the engine's poster but never
+    /// records which OS thread the engine ends up running it on) — so this stays <c>null</c>, and the assert is a
+    /// no-op, until a host that genuinely knows the UI thread sets it once. That wiring is Shell.Host.cs's (the
+    /// orchestrator's file, out of scope for this batch); this property is the seam it would use.</summary>
+    public static int? UiThreadId { get; set; }
+
     sealed class Facade : IAppSettings
     {
         public T Get<T>(SettingKey<T> key) => s_backing is { } b ? b.Get(key) : key.Default;
 
         public void Set<T>(SettingKey<T> key, T value)
         {
+#if DEBUG
+            System.Diagnostics.Debug.Assert(
+                UiThreadId is not { } uiThreadId || uiThreadId == Environment.CurrentManagedThreadId,
+                "Settings.Set(\"" + key.Name + "\") off the UI thread — every SettingsChanged subscriber assumes C1");
+#endif
             s_backing?.Set(key, value);
             SettingsEpoch++;
             SettingsChanged.Value = SettingsEpoch;
@@ -1007,13 +1034,18 @@ public static partial class Platform
 
     /// <summary>Everything the app needs before there is a window. ORDER IS THE CONTRACT:
     /// <list type="number">
-    /// <item>the settings store, because everything below reads it;</item>
+    /// <item>a pending factory reset, BEFORE the settings, the log or library.db open — the previous process only armed a
+    /// marker because it still held those files (never in the restart broker or a headless run);</item>
+    /// <item>the settings store, because everything below reads it — its backing is <see cref="SettingsBackingFor"/>'s
+    /// answer, so a `--fake` or `--profile` run never reads or writes the user's registry;</item>
+    /// <item>the developer-mode signals, before the first mount;</item>
     /// <item><see cref="ZoomAutoPolicy.MigrateMode"/>, BEFORE anything reads <c>appearance.zoom.mode</c> (ch 00 §9.5);</item>
     /// <item>the launch locale, because the scope is partitioned by it;</item>
     /// <item>the log — levels from settings, the file sink, the engine `Diag` bridge, and the startup line whose
     ///       <c>logResolved=</c> field is the only thing that tells a packaged run's redirected LocalCache from a real
     ///       <c>%LOCALAPPDATA%\Wavee</c> (a split settings/log store reads to a user as "the app forgot everything");</item>
-    /// <item>the credential slot, because <see cref="Scope"/> asks it who the last account was.</item>
+    /// <item>the credential slot, because <see cref="Scope"/> asks it who the last account was;</item>
+    /// <item>the crash writers, as soon as the log exists — a crash anywhere after this leaves a report on disk.</item>
     /// </list>
     /// One-shot and allowed to allocate. Nothing here opens a socket, a database or a window.</summary>
     public static void Boot()
@@ -1023,24 +1055,32 @@ public static partial class Platform
         // only — CLAUDE.md forbids an environment-variable switch for behaviour or verification (ch 31 §0.15,
         // which is precisely why `WAVEE_FAKE_CHALLENGE` does NOT get ported as a second env var).
         Args.Parse(Environment.GetCommandLineArgs());
+        Backing = SettingsBackingFor(Args.Fake, ProfileRoot);
+        // Never in the broker (a courier), a headless run or a `--fake` demo: none of them is the profile the reset was
+        // armed for, and a wipe there would eat the user's real profile from a scratch launch.
+        if (!Args.RelaunchBroker && !Args.Headless && !Args.Fake) HostApplyFactoryReset();
         HostOpenSettings();
         ZoomAutoPolicy.MigrateMode(Settings);
+        Developer.Load(Settings);
         string osCulture = "";
         HostOsCulture(ref osCulture);
         var locale = AppLocale.Resolve(Settings, osCulture);
         HostOpenLocale(ref locale);
         Locale = locale;
         HostOpenLog();
+        HostInstallCrashWriters();
         HostOpenCredentials();
         Scope = ResolveScope();
-        Log.Event(WaveeLogLevel.Info, "app", "startup", "platform booted", null, -1, null,
+        Log.Event(WaveeLogLevel.Info, "app", "startup", "platform booted", null, Log.SinceStartMs, null,
             WaveeLogField.Of("account", Redact(Scope.Account)),
             WaveeLogField.Of("provider", Scope.Provider),
             WaveeLogField.Of("locale", Locale.UiCulture),
             WaveeLogField.Of("spotifyLang", Locale.SpotifyLanguage),
             WaveeLogField.Of("credential", CredentialScheme),
+            WaveeLogField.Of("settings", Backing.ToString()),
             WaveeLogField.Of("iconFont", WaveeFonts.IconsPath),
-            WaveeLogField.Of("iconFontExists", File.Exists(WaveeFonts.IconsPath)));
+            WaveeLogField.Of("iconFontExists", File.Exists(WaveeFonts.IconsPath)),
+            WaveeLogField.Of("engine", FluentGpu.Foundation.Diag.BuildFlavor));   // "diag" = a Debug/FLUENTGPU_DIAG engine is loaded: never measure perf on it
     }
 
     /// <summary>The exit path. The file sink writes on a background thread, so a bare process teardown right after the
@@ -1060,6 +1100,8 @@ public static partial class Platform
     static partial void HostOpenLocale(ref AppLocale locale);
     static partial void HostOpenLog();
     static partial void HostOpenCredentials();
+    static partial void HostApplyFactoryReset();
+    static partial void HostInstallCrashWriters();
 }
 
 // The persisted credential DTO. The PROPERTY NAMES ARE THE WIRE (0.2.9 wrote them with the default naming policy);
@@ -1069,15 +1111,12 @@ internal sealed record CredentialDto(string Kind, string Username, string Secret
 [JsonSerializable(typeof(CredentialDto))]
 internal sealed partial class CredentialJson : JsonSerializerContext { }
 
-// ── LEFT FOR OWNER S (Wave 6), deliberately not stubbed here ─────────────────────────────────────────────────────────
-//   · NetworkPolicy (ch 29 §9.10, ~160) and the three composition sites that read it.
-//   · The ambient power policy (~60) and its cadence block.
-//   · `--fake` argument parsing and `Clock.SeedEpoch` LANDED (gap G-015, orchestrator first cut, decision D17) as
-//     `Platform.Args`/`Platform.Clock` above; `Scope` gets its `--fake` arm in `ResolveScope`. Owner S's Wave 6 work
-//     is everything else this file still owes (`--screenshot`/`--width`/`--height`/the probe flags stay S's).
-//   · AppLocaleBootstrap's engine half LANDED (gap G-017, orchestrator first cut) as `HostOpenLocale`: it loads
-//     assets/loc and selects `AppLocale.Resolve`'s answer; owner S keeps the live culture switch in Settings.
-//   · The rest of ch 28's DATA GAP D3 beside `RuntimePhase`: `RuntimeStatus`, `ProvisioningOutcome` and the pure
-//     `ProgressFraction` / `ShortHash`.
-//   · LogCapturePolicy (the -1-means-build-default fold) and WaveeLogSessions (re-reading the dated file set).
-//   · The Win32 seams, the detached-window owner and the zoom/display bridges — all `Platform.Host.cs`.
+// ── WHERE OWNER S's WAVE-6 HALF LANDED (G-199) ───────────────────────────────────────────────────────────────────────
+//   · `Platform.Settings.cs` (the named partial): the settings-backing selection, `Developer`, `Network`, `AmbientPower`,
+//     `LogCapturePolicy`, `WaveeLogSessions` (pure), `WaveeVersionInfo`, `RunMarker`/`CrashPromptPolicy`,
+//     `FactoryResetPlan`, `ProvisioningOutcome`, `Keys.StageRects`.
+//   · `Platform.Host.cs`: the profile-file / in-memory settings stores, the log levels through `LogCapturePolicy`, the
+//     crash-writer install, the factory-reset apply/request and the restart broker's spawn, the NLM cost host, the
+//     ambient power poll, `Platform.Version`.
+//   · ch 28 D3's `RuntimeStatus`/`ProgressFraction`/`ShortHash` are `Setup.RuntimeFacts`/`Setup.RuntimeRules` (owner I,
+//     A18) — not duplicated here. `--screenshot`/`--width`/`--height` are parsed by `Shell.Host.cs` (`ParseArgs`).

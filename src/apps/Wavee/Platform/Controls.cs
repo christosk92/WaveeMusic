@@ -79,15 +79,37 @@ public static partial class Controls
     public static string? ArtUrl(StringId image)
     {
         if (image.IsEmpty) return null;
-        string id = Entities.Strings.Resolve(image);
+        string id = Entities.Strings.Resolve(image);      // the interned instance itself — no allocation
         if (id.Length == 0) return null;
         if (id.StartsWith("http", StringComparison.OrdinalIgnoreCase)
             || id.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
             || id.Contains(":\\", StringComparison.Ordinal)) return id;
-        return CdnPrefix + id;
+
+        // The concat arm is called per cover per render (a shelf of 13 cards × every parent render), and the string
+        // table is REF-COUNTED (a reclaimed id can come back for other content), so the cache is direct-mapped on the id
+        // AND validated against the interned instance: a hit means the slot still holds the very string this url was
+        // built from, so the same url instance comes back; a reclaimed or colliding slot simply rebuilds. Bounded by
+        // construction (a fixed array), engine-free, and safe from any thread — an entry is immutable and the slot
+        // write is a single reference store.
+        int slot = image.Value & (ArtUrlCacheSize - 1);
+        var hit = s_artUrls[slot];
+        if (hit is not null && ReferenceEquals(hit.Source, id)) return hit.Url;
+        string url = CdnPrefix + id;
+        s_artUrls[slot] = new ArtUrlEntry(id, url);
+        return url;
     }
 
     const string CdnPrefix = "https://i.scdn.co/image/";
+
+    /// <inheritdoc cref="ArtUrl"/>
+    const int ArtUrlCacheSize = 4096;
+    static readonly ArtUrlEntry?[] s_artUrls = new ArtUrlEntry?[ArtUrlCacheSize];
+
+    sealed class ArtUrlEntry(string source, string url)
+    {
+        public readonly string Source = source;
+        public readonly string Url = url;
+    }
 
     // ══ 1. THE ART SURFACES ══════════════════════════════════════════════════════════════════════════════════════════
     //
@@ -114,18 +136,35 @@ public static partial class Controls
                 Width = width, Height = height, Corners = CornerRadius4.All(corners),
                 Fill = Design.WatchedPlaceholder(url),
             };
-        // Keyed by url AND the decode bucket, because a Component freezes its ctor args at mount: a virtualized card
+        // The url and the decode target travel as RE-PUSHED PROPS (the component-props contract): a virtualized card
         // that REBINDS to a new cover — or to the SAME cover at a new decode target (a hero's unmeasured→measured
-        // bucket jump, a shelf↔grid mismatch) — must remount, or the stale instance keeps reading the load state of its
-        // FIRST decode handle and the breathe/settle never tracks the size the new real image asked for.
+        // bucket jump, a shelf↔grid mismatch) — UPDATES the mounted CoverShimmer in place, which re-arms its settle
+        // latch for the new (url, size) itself. Keying by url used to force a REMOUNT on every recycle (hook cells,
+        // effects, the keyframe track) and allocated a four-part key string per render; the key is now the decode size
+        // alone, one cached instance per size.
         //
         // Skeletonized(false): inside a derived skeleton this opaque component would otherwise map to the deriver's
         // default BAR — a stray stripe across the cover. Dropping it lets the paired image's own derived placeholder BE
         // the cover square, so every loading cover reads the same.
-        return (Embed.Comp(() => new CoverShimmer(u, decodeW, decodeH, width, height, corners))
-                with { Key = "shim:" + u + ":" + decodeW + "x" + decodeH })
+        return (Embed.Comp(new ShimmerProps(u, decodeW, decodeH, width, height, corners), static () => new CoverShimmer())
+                with { Key = ShimmerKey(decodeW, decodeH) })
             .Skeletonized(false);
     }
+
+    /// <summary>The shimmer's per-decode-size key, cached: the distinct sizes in a session are a handful (the 8-px
+    /// buckets under the ceiling plus a few literals), so the table is bounded by the app's own vocabulary; past the cap
+    /// it stops caching rather than growing.</summary>
+    static string ShimmerKey(int decodeW, int decodeH)
+    {
+        long k = ((long)decodeW << 32) | (uint)decodeH;
+        if (s_shimmerKeys.TryGetValue(k, out var key)) return key;
+        key = "shim:" + decodeW + "x" + decodeH;
+        if (s_shimmerKeys.Count < ShimmerKeyCap) s_shimmerKeys[k] = key;
+        return key;
+    }
+
+    const int ShimmerKeyCap = 256;
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<long, string> s_shimmerKeys = new();
 
     /// <summary>An ARTWORK slot: a neutral <see cref="Shimmer"/> tile under the async image, which cross-fades in over
     /// it once decoded. The tile shares ONE decode handle with the image (matched W×H, any aspect).
@@ -152,24 +191,37 @@ public static partial class Controls
         int scaledDecodePx = scaleRequested
             ? Design.ImageDecodeScale.For(decodePx > 0 ? decodePx : MathF.Max(width, height), scale)
             : decodePx;
-        int dw = useScaledDecode ? scaledDecodePx : (int)width;
-        int dh = useScaledDecode ? scaledDecodePx : (int)height;
+
+        // The decodePx branch has always cover-fit a SQUARE decode into a possibly non-square slot; the scale-only
+        // branch preserves the slot's REAL aspect instead, since nothing asked for a square crop there.
+        float aspect = decodePx > 0 ? 1f : width / MathF.Max(1f, height);
+
+        // Unscaled (no explicit decodePx, no ambient scale): dw/dh come from the pure ArtworkDecode helper below —
+        // bucketed to the same device-pixel grid a scaled decode would land on (Design.ImageDecodeScale.Bucket,
+        // A2/G-259), clamped to the same Ceiling Design.ImageDecodeScale.For applies (Bucket itself has no ceiling
+        // clamp; Design.cs is owned by another wave here, so the clamp lives at this call site instead), with dh
+        // derived from (dw, aspect) EXACTLY the way the engine's Reconciler.ImageDecodeTarget will once dw is handed
+        // to Ui.Image as a DECODE hint rather than a layout extent (see below). Both dw/dh feed BOTH Shimmer's key and
+        // the real image's own DecodePx (just past this block) so the two never fork onto separate cache handles.
+        int dw, dh;
+        if (useScaledDecode) { dw = scaledDecodePx; dh = scaledDecodePx; }
+        else { (dw, dh, _) = ArtworkDecode(width, height, 0); }
 
         // Un-tagged art keeps a TRANSPARENT placeholder because the shimmer tile below already fills the slot (and
         // carries the tint). A morph participant owns its own placeholder — resolved directly, since it has no sibling
         // to inherit from.
         ColorF placeholder = morphKey is null ? ColorF.Transparent : Design.PlaceholderFor(url);
-        // The decodePx branch has always cover-fit a SQUARE decode into a possibly non-square slot; the scale-only
-        // branch preserves the slot's REAL aspect instead, since nothing asked for a square crop there.
-        float aspect = decodePx > 0 ? 1f : width / MathF.Max(1f, height);
 
+        // Always the FLUID/responsive overload (Width/Height left NaN, dw carried as the DecodePx hint): the ImageEl
+        // itself never claims a layout extent, so the wrapping ZStack BoxEl below — Width = width, Height = height,
+        // ClipToBounds — is the ONLY thing that lays the slot out, at the real (un-bucketed) size. Before this fix the
+        // unscaled branch called the explicit-W/H overload with the BUCKETED dw/dh as the LAYOUT extent, so a slot
+        // whose edge wasn't already a multiple of 8 (e.g. a 28-DIP tile bucketing to 32) laid out past its box and the
+        // clip silently cropped the difference — up to 7 DIP, ~12.5% of a 28-DIP tile.
         Element img = url is null
             ? new BoxEl()
-            : useScaledDecode
-                ? Ui.Image(url, ImageFit.Cover, aspect, scaledDecodePx, corners, placeholder, blurHash)
-                    with { MorphId = morphKey, Saturation = saturation }
-                : Ui.Image(url, width, height, corners, placeholder, blurHash)
-                    with { MorphId = morphKey, Saturation = saturation };
+            : Ui.Image(url, ImageFit.Cover, aspect, dw, corners, placeholder, blurHash)
+                with { MorphId = morphKey, Saturation = saturation };
 
         return new BoxEl
         {
@@ -177,6 +229,34 @@ public static partial class Controls
             Corners = CornerRadius4.All(corners),
             Children = morphKey is null ? [Shimmer(url, dw, dh, width, height, corners), img] : [img],
         };
+    }
+
+    /// <summary>The pure decode-size decision behind <see cref="Artwork"/>'s unscaled branch (no explicit
+    /// <c>decodePx</c>, no ambient <c>scale</c>): bucket the slot's width edge up to the 8-DIP grid
+    /// (<see cref="Design.ImageDecodeScale.Bucket"/>) and clamp it to the same device-pixel
+    /// <see cref="Design.ImageDecodeScale.Ceiling"/> that <see cref="Design.ImageDecodeScale.For"/> applies
+    /// (<c>Bucket</c> alone has no ceiling clamp — Design.cs is owned by another wave, so the clamp lives here at the
+    /// call site), then derive the paired decode height EXACTLY the way the engine's <c>Reconciler.ImageDecodeTarget</c>
+    /// will once <c>DecodeW</c> is fed through the fluid <c>Ui.Image(ImageFit, aspect, decodePx, …)</c> overload as a
+    /// DECODE hint (layout extent left fluid): <c>h = round(w / aspect)</c>. <paramref name="decodePx"/> &gt; 0 keeps
+    /// its caller's EXACT literal (square decode, aspect 1) rather than bucketing it — the same square hand-off the
+    /// scaled branch already relies on.
+    /// <para>Public, not internal: this assembly has no <c>InternalsVisibleTo</c> (Spotify.Connect.cs, Palette.Host.cs),
+    /// so <c>Wavee.Tests</c> can only reach a pure decision like this one through a public surface.</para></summary>
+    public static (int DecodeW, int DecodeH, float Aspect) ArtworkDecode(float width, float height, int decodePx)
+    {
+        float aspect = decodePx > 0 ? 1f : width / MathF.Max(1f, height);
+        int dw = decodePx > 0
+            ? decodePx
+            : Math.Clamp(Design.ImageDecodeScale.Bucket((int)width), Design.ImageDecodeScale.BucketPx, Design.ImageDecodeScale.Ceiling);
+        // MIRRORS the engine's own `Reconciler.ImageDecodeTarget` for a fluid box, INCLUDING its degenerate arm: it
+        // derives the height from the aspect only when `AspectRatio > 0 && w > 0`, and otherwise falls back to the
+        // hint itself. A zero-width slot (a first layout pass, or one of the dynamic-size callers before its parent
+        // has measured) makes `aspect` 0 here, and `dw / 0f` is +Infinity — whose float→int conversion is undefined
+        // and lands on int.MinValue. Falling back to `dw` keeps this helper and the engine on the SAME (source, W, H)
+        // decode key in that frame, which is the whole reason the helper exists.
+        int dh = aspect > 0f ? (int)MathF.Round(dw / aspect) : dw;
+        return (dw, dh, aspect);
     }
 
     /// <summary>A square cover that FILLS the width its layout hands it (aspect-ratio 1) — for responsive grid cells

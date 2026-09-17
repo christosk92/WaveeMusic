@@ -290,12 +290,18 @@ public static partial class Sidebar
             bool track = entry.IsTrack;
             string? route = entry.RouteKey;
             // A route pin persisted with an empty Name has no entity to resolve one: the route table is its title source.
-            // An unresolved ENTITY (a real name is coming) stays dimmed from its uri instead — honest, never blank.
             bool routePin = !named && entry.Kind == SidebarEntryKind.AppRoute && route is { Length: > 0 };
+            // Trap 5: a PIN with no cached Name and no Identity yet (the store's disk leg answers
+            // `Knows(Identity)` asynchronously, after this row's first synchronous render) must not fall back to
+            // the raw uri fragment either — that reads as real data when it is a guess. Pending shows nothing
+            // rather than "3fMbdgg4jU18AjLCKBhRSm". A resolved entity that is genuinely nameless (rare) still gets
+            // the honest short-uri fallback, and non-pinned rows are untouched by this gate entirely.
             string label = item?.LabelOverride is { Length: > 0 } alias ? alias
                 : named ? entry.Name
                 : routePin ? Shell.Dest(Shell.Parse(route!)).Title
-                : PaneText.ShortUri(entry.Uri);
+                : SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown)
+                    ? PaneText.ShortUri(entry.Uri)
+                    : "";
             // Resolved pane-side by the SAME rule the selection sweep uses, so the row that draws the plate and the row
             // whose epoch got bumped can never disagree.
             bool selected = _o.RowSelectsRoute(index, sel);
@@ -421,7 +427,11 @@ public static partial class Sidebar
             {
                 Key = row.Key,
                 Label = entry.Name.Length > 0 ? entry.Name : PaneText.ShortUri(entry.Id),
-                Subtitle = section.Opts.Subtitles ? Strings.Sidebar.V3.ItemCount(entry.ChildCount) : null,
+                // Trap 5: routed through the same PURE decision every other kind's subtitle uses
+                // (`PaneText.SubtitleOf`), which gates a folder's "N items" on `entry.CountKnown` — a Pending
+                // unlisted folder pin (the rootlist hasn't answered this session) shows its title alone, never a
+                // confident "0 items".
+                Subtitle = section.Opts.Subtitles ? PaneText.SubtitleOf(in entry) : null,
                 Depth = baseDepth,
                 TreeNode = treeNode,
                 TreeDepth = treeDepth,
@@ -1021,24 +1031,17 @@ public static partial class Sidebar
 
         /// <summary>The library-shortcut count through the ONE quiet badge (never an accent pill). Albums / Artists / Liked /
         /// Podcasts read the signed-in account's library edges — the server total while a relation is still paging, so the
-        /// number does not climb — and an UNKNOWN relation is the 20×12 pending plate. Local files carries no count. Reading
-        /// the relation's publish signal is what re-renders this row when the count moves.</summary>
+        /// number does not climb — and an UNKNOWN relation is the 20×12 pending plate. Local files carries no count.
+        /// <para>The relation's publish signal is read INSIDE <see cref="Counts.Live"/>'s own component, behind a value gate
+        /// (W3-A2) — never here. This slot used to subscribe to it directly, and the library relations publish on exactly
+        /// the routes that were slow: an artist page asking "is this album saved / this artist followed" and a playlist
+        /// page asking "is this track liked" bump <c>SavedAlbums</c> / <c>FollowedArtists</c> / <c>Liked</c> on every
+        /// membership answer, so the two shortcut rows rebuilt their whole row (spec, menu, drop spec, indicator — ~67 KB
+        /// each) per publication while the number they show did not change (the <c>PaneSlot×2</c> census line).</para></summary>
         static Element? CountBadge(SidebarSectionSpec section, string routeKey)
         {
-            if (!section.Opts.CountBadges) return null;
-            LibraryEdgeKind kind;
-            switch (routeKey)
-            {
-                case "albums": kind = LibraryEdgeKind.SavedAlbums; break;
-                case "artists": kind = LibraryEdgeKind.FollowedArtists; break;
-                case "liked": kind = LibraryEdgeKind.Liked; break;
-                case "podcasts": kind = LibraryEdgeKind.SavedShows; break;
-                default: return null;
-            }
-            var relation = User.Relation(kind);
-            _ = relation.Changed.Value;
-            var me = User.Me;
-            return me.State(kind) == EdgeState.Unknown ? Counts.Badge(null) : Counts.Badge(relation.Total(me.Slot));
+            if (!section.Opts.CountBadges || ShortcutCount.KindOf(routeKey) is not { } kind) return null;
+            return Counts.Live(kind);
         }
 
         /// <summary>Attach the item-owned selection pill and both drop cues. Shape-stable for recycling: a slot never

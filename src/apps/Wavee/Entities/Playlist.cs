@@ -1,21 +1,20 @@
 // ── Entities/Playlist.cs — CORE (owner B, wave 1; plan §2, §4.3, ch 06 §7) ───────────────────────────────────────────
 //
 // THE PLAYLIST ROW: columns, the handle, the field groups, the staged shape a decoder fills and the commit that lands
-// it. Wave 1 owns the DATA (plan §2, "two notes on the entity CORE rows"); the seven ported rule sets ch 06 §8 names —
-// reorder, deposit targets, edit-error kinds, the tune menu, the drop table, membership diff, the notice verdict — are
-// owner O's, in Wave 5, in this same file. What is here is what those rules and the page will read.
+// it. Wave 1 owns the DATA (plan §2, "two notes on the entity CORE rows"). Wave 5 (owner O, WP-5.O stream A) adds §7-§10
+// below: the tuning / recommendations relations, the collaborator fold, the membership revision, the facts refold, the
+// notice + owner derivation at commit, and the ch 06 §8 rule sets NOT already ported elsewhere — edit-error kinds,
+// deposit targets, the tune menu, the create intent, the local-files helpers. Reorder / membership diff are
+// `Track.ReorderRules` / `MembershipDiff` (Track.Rules.cs), the drop table is `Drag.Evaluate` and the notice verdict is
+// `Detail.NoticeRules` — this file calls them, it does not copy them.
 //
 // SIX THINGS THIS FILE DECIDES, and each of them is a correctness fix over 0.2.9, not a translation:
 //
-//  1. CAPABILITIES ARE A KNOWN BIT, NOT A BOOL. 0.2.9's `PlaylistCapabilities` carried its own `Known` flag inside the
-//     record because a rootlist-seeded thin header has no capabilities block, and `default` (all false) reads as
-//     "revoked". Here the bits live in `Column<byte> Caps` and "did anyone tell us?" is `Knows(PlaylistFields.
-//     Capabilities)` — the same question every other group answers, with no per-kind convention (P3, ch 06 §7 gap 2).
+//  1. CAPABILITIES ARE A KNOWN BIT, NOT A BOOL: a rootlist-seeded thin header has no capabilities block, and 0.2.9's
+//     all-false `default` read as "revoked". Here "did anyone tell us?" is `Knows(PlaylistFields.Capabilities)` (P3).
 //
-//  2. THE NOTICE IS A COLUMN. `PlaylistPageNoticeRules.Next` is STATEFUL (the verdict is sticky: CreateFailed is
-//     terminal, a create-pending suppresses the deleted verdict), so it cannot be a UI-local — a remount would forget
-//     it and a re-render would recompute it from a `prev` nobody kept. It is written at commit and read as a column
-//     (ch 06 §7, and the repo rule "derived facts live on the model").
+//  2. THE NOTICE IS A COLUMN. The verdict (`Detail.NoticeRules.Next`) is STATEFUL — CreateFailed is terminal, a pending
+//     create suppresses Deleted — so a UI-local would forget it on remount. §6's commit writes it; the page reads it.
 //
 //  3. THE THREE COLUMN-EXISTENCE FACTS ARE DERIVED AT COMMIT. "Does this table get an Added-by column / a Date-added
 //     column / a Video column" is `distinct AddedBy ≥ 2` · `any AddedAt` · `any VideoPresence` over the WHOLE
@@ -24,33 +23,22 @@
 //     pass with no allocation and no second scan for the distinctness.
 //
 //  4. THE LOCAL-FILES SURFACE IS A PLAYLIST, NOT A KIND. Plan §9.5 gives the `local` route to `Playlist.Page.cs`'s
-//     `DetailKind.Playlist` arm, so imported files hang off one ordinary playlist row —
-//     <see cref="Playlist.LocalFilesUri"/> — whose membership edge is the imported library and whose capabilities say
-//     "not editable, not owned". Nothing else in the model has to learn about local files.
+//     `DetailKind.Playlist` arm: imported files hang off ONE ordinary playlist row (<see cref="Playlist.LocalFilesUri"/>)
+//     whose membership edge is the imported library (0.2.9 `LocalSource`: owned, items + metadata editable).
 //
-//  5. ONE ROW PER PLAYLIST, WHICHEVER SPELLING ARRIVES (defect 4 of the identity investigation,
-//     docs/plans/wavee/wavee-0.3-entity-identity-memory.md §4.4). `spotify:user:<u>:playlist:<gid>` and
-//     `spotify:playlist:<gid>` interned to two different `StringId`s and therefore allocated TWO `PlaylistTable` rows
-//     for ONE playlist — two headers, two membership edges, two fetches, and whichever one the sidebar happened to
-//     hold was the one that did not get the answer. The packed identity folds them IN THE PARSE: an id is the uri's
-//     TRAILING segment, so both spellings decode to the same 128-bit gid, the same `EntityId` and the same slot
-//     (`EntityId.TryParseGid`). A round trip formats the canonical `spotify:playlist:<gid>`, which Connect and deep
-//     links accept — 0.2.9 already folds the Liked collection's spellings the same way.
-//     UNVERIFIED whether the 0.3 wire path still emits the user-namespaced spelling at all (0.2.9's Home and recents
-//     did). The fold costs nothing if it does not, and it is a decision written down rather than an accident, so it
-//     stays either way. NOTE it is the GID that folds: a fixture id that is not 22 base62 characters
-//     (`spotify:playlist:1a2b`) takes the text form, and there the two spellings are still two rows.
+//  5. ONE ROW PER PLAYLIST, WHICHEVER SPELLING ARRIVES (defect 4, docs/plans/wavee/wavee-0.3-entity-identity-memory.md
+//     §4.4). `spotify:user:<u>:playlist:<gid>` and `spotify:playlist:<gid>` fold IN THE PARSE (the id is the uri's
+//     trailing gid, `EntityId.TryParseGid`) to one `EntityId` and one slot; a round trip formats the canonical spelling.
+//     It is the GID that folds: a fixture id that is not 22 base62 characters takes the text form and stays two rows.
 //
-//  6. THE ROW OWNS ITS TEXT, AND GIVES IT BACK (defect 1, doc §4.4). The engine's interner reclaims an id only when
-//     its last reference is released, and a string that was never AddRef'd is PERMANENT (the engine's
-//     `StringTable.cs:26`), so before 2026-09-12 a trim freed a playlist row's 89 B of columns and leaked its title,
-//     description, cover, permission revision, header image, generic title, chart rank type and tuning selection for
-//     the life of the process — a scope's memory floor could only rise. Every `Column<StringId>` here is written
-//     through <see cref="Table.SetText"/> and released in <see cref="PlaylistTable.ReleaseText"/>; there is no third
-//     way, and the base declares `ReleaseText` abstract so this file cannot forget one.
+//  6. THE ROW OWNS ITS TEXT, AND GIVES IT BACK (defect 1, doc §4.4): a never-AddRef'd id is PERMANENT (the engine's
+//     `StringTable.cs:26`). Every `Column<StringId>` here is written through <see cref="Table.SetText"/> and released in
+//     <see cref="PlaylistTable.ReleaseText"/> (abstract on the base, so this file cannot forget one).
 //
 // Rules: single writer, UI thread (C1); no LINQ, no closures, no async, no boxing (P8/P9); every text column is a
-// REF-COUNTED StringId (P6, and item 6 above) and every timestamp is app-epoch seconds (P7).
+// REF-COUNTED StringId (P6, and item 6 above). TIME UNITS (WP-5.O contract §2.5, binding): every edge instant
+// (`PlaylistTrackEdge.AddedAt`) and the `DaylistExpiresAt` / `DaylistCreatedAt` / `ChartUpdatedAt` columns are UNIX
+// seconds; `Entities.Now` is app seconds (`Store.ToUnix`).
 
 using FluentGpu.Foundation;
 
@@ -65,7 +53,10 @@ namespace Wavee;
 [Flags]
 public enum PlaylistFields : uint
 {
-    /// <summary>Title, description, cover, owner and the server's own track count — one wire shape fills all five.</summary>
+    /// <summary>Title, description, cover and owner — one wire shape fills all four. NOT the track count: both
+    /// routes that fill Identity stamp it applied (<see cref="Spotify.Decode.ListMetadataV2"/>,
+    /// <see cref="Spotify.Decode.PlaylistRevision"/>), but only the second ever carries a length. See
+    /// <see cref="TrackCount"/> — a decoder that knows Identity does NOT thereby know the count (bug A1).</summary>
     Identity = 1 << 0,
     /// <summary>The <see cref="PlaylistCaps"/> bitmask. NOT set by a rootlist row: a thin header is "unknown", never
     /// "revoked" (ch 06 §7 gap 2).</summary>
@@ -88,6 +79,17 @@ public enum PlaylistFields : uint
     Accent = 1 << 7,
     /// <summary>The session-control (tune) options' revision + selection. The options themselves are an edge.</summary>
     Tuning = 1 << 8,
+    /// <summary>Bug A1: the playlist's REAL track count has landed — set ONLY by the one decoder that actually saw
+    /// the wire's length field (<see cref="Spotify.Decode.PlaylistRevision"/>, gated on the proto's own `optional`
+    /// presence, not on the value: a genuinely empty playlist's real `length: 0` sets this bit exactly like a
+    /// nonzero one). NEVER inferred from <see cref="Identity"/> — <see cref="Spotify.Decode.ListMetadataV2"/> (ext
+    /// kind 205) stamps Identity applied too while carrying no length field at all
+    /// (<c>Protos/list_metadata_v2.proto</c>). Deliberately excluded from <see cref="Row"/>/<see cref="Header"/>/
+    /// <see cref="All"/>: those aggregates gate `Knows(...)` calls all over the app (an ALL-of check,
+    /// <c>Table.Knows</c>), and no route names this bit in its `Primary`/`Groups` — folding it in would make every
+    /// existing `Knows(Row)`/`Knows(All)` caller wait on a per-subject REST call the cheap batchable routes never
+    /// make. Read through <c>Playlist.Knows(PlaylistFields.TrackCount)</c> alone.</summary>
+    TrackCount = 1 << 9,
 
     /// <summary>What a card, a sidebar row or a picker row paints.</summary>
     Row = Identity | Accent,
@@ -217,6 +219,10 @@ public sealed class PlaylistTable : Table
 
     public Column<byte> IdentityAuthority, ExtrasAuthority;
 
+    /// <summary>The membership revision the rows were answered at, in the wire spelling <c>{counter},{hex}</c>
+    /// (<c>Spotify.Api.FormatRevision</c>) — the base a <c>/diff</c> read sends (B1b gap 8) and the tuning hash's input.</summary>
+    public Column<StringId> Revision;
+
     /// <summary>Flags a provider answer may SET but never CLEAR. Only the tombstone: 0.2.9 merges it as
     /// <c>incoming || current</c> precisely so a stale header cannot un-delete a playlist.</summary>
     public const uint LatchingFlags = (uint)PlaylistFlags.DeletedByOwner;
@@ -226,11 +232,8 @@ public sealed class PlaylistTable : Table
     public const uint LocalFlags = (uint)(PlaylistFlags.CreatePending | PlaylistFlags.CreateFailed
         | PlaylistFlags.HasAddedBy | PlaylistFlags.HasDateAdded | PlaylistFlags.HasVideo | PlaylistFlags.Mixed);
 
-    /// <summary>THE flag merge, pure so it can be tested without a scope. Three rules in one expression:
-    /// an answer may only clear the bits its <paramref name="mask"/> claims; it may never clear a
-    /// <see cref="LatchingFlags"/> bit (the tombstone: 0.2.9 merges it as <c>incoming || current</c> so a stale header
-    /// cannot un-delete a playlist); and it may neither set nor clear a <see cref="LocalFlags"/> bit, because the
-    /// create lifecycle and the four derived column facts are this app's arithmetic and not the server's.</summary>
+    /// <summary>THE flag merge (pure): an answer clears only the bits its <paramref name="mask"/> claims, never a
+    /// <see cref="LatchingFlags"/> bit (the tombstone), and neither sets nor clears a <see cref="LocalFlags"/> bit.</summary>
     public static uint MergeFlags(uint current, uint incoming, uint mask)
     {
         uint clear = mask & ~(LatchingFlags | LocalFlags);
@@ -267,14 +270,12 @@ public sealed class PlaylistTable : Table
         DurationMs.EnsureCapacity(capacity);
         IdentityAuthority.EnsureCapacity(capacity);
         ExtrasAuthority.EnsureCapacity(capacity);
+        Revision.EnsureCapacity(capacity);
     }
 
-    /// <summary>Give back every string a playlist row owns (defect 1; file header item 6). One line per
-    /// <c>Column&lt;StringId&gt;</c> declared above — miss one and its text is permanent; list one that some call
-    /// site wrote DIRECTLY rather than through <see cref="Table.SetText"/> and this drops a reference the row never
-    /// took, which is worse. The two halves land together or not at all.
-    /// <para>Called by <see cref="Table.FreeSlot"/> (the store's trim, R2) and by <see cref="Table.ReleaseAllText"/>
-    /// (a retired scope, D9).</para></summary>
+    /// <summary>Give back every string a playlist row owns (file header item 6): one line per <c>Column&lt;StringId&gt;</c>,
+    /// each written only through <see cref="Table.SetText"/>. Called by <see cref="Table.FreeSlot"/> (R2) and
+    /// <see cref="Table.ReleaseAllText"/> (D9).</summary>
     protected override void ReleaseText(int slot)
     {
         ClearText(ref Title, slot);
@@ -286,19 +287,15 @@ public sealed class PlaylistTable : Table
         ClearText(ref GenericTitle, slot);
         ClearText(ref ChartRankType, slot);
         ClearText(ref TuningSelected, slot);
+        ClearText(ref Revision, slot);
     }
 }
 
 // ── 3. the membership fold (the three column-existence facts, ch 06 §7) ──────────────────────────────────────────────
 
-/// <summary>One pass over a playlist's membership, folded into the facts the header and the table need. A struct with
-/// no allocation and no second scan: the "≥ 2 distinct added-by" question is answered by remembering the FIRST
-/// non-zero adder and latching as soon as a different one appears, which is what makes the distinctness O(n) with no
-/// set (P8/P9).
-///
-/// <para>Deliberately free of every other kind's types: the caller passes the two per-row facts it can see
-/// (<c>durationMs</c>, and whether the row is an episode / has a video counterpart), so this folds identically for a
-/// live decode, the seed and a unit test, and does not bind Wave 1's playlist file to Wave 1's track file.</para></summary>
+/// <summary>One pass over a playlist's membership, folded into the header/table facts with no allocation: "≥ 2 distinct
+/// added-by" remembers the FIRST non-zero adder and latches on a different one (O(n), no set — P8/P9). The caller passes
+/// the per-row facts it can see, so a live decode, the seed and a test fold identically.</summary>
 public struct PlaylistFacts
 {
     public int Rows;
@@ -311,7 +308,7 @@ public struct PlaylistFacts
     public bool AnyVideo;
 
     /// <summary>Fold one membership row in. <paramref name="addedBy"/> is a user SLOT (0 = unknown),
-    /// <paramref name="addedAt"/> app-epoch seconds (0 = none).</summary>
+    /// <paramref name="addedAt"/> UNIX seconds (0 = none).</summary>
     public void Add(int addedBy, int addedAt, int durationMs, bool isEpisode, bool hasVideo)
     {
         Rows++;
@@ -400,8 +397,18 @@ public readonly partial struct Playlist(int slot) : IEquatable<Playlist>
     public bool IsCollaborative => (Caps & PlaylistCaps.IsCollaborative) != 0;
     public bool IsOwner => (Caps & PlaylistCaps.IsOwner) != 0;
     public bool CanAdministratePermissions => (Caps & PlaylistCaps.CanAdministratePermissions) != 0;
-    public bool Editable => EditableOf(Knows(PlaylistFields.Capabilities), Caps);
-    public bool EditableMetadata => EditableMetadataOf(Knows(PlaylistFields.Capabilities), Caps);
+    /// <summary>THE EDIT-GATE TRIO (ch 06 §0.2, 0.2.9 <c>PlaylistInlineEdit.Editable/EditableMetadata/Live</c>): every
+    /// affordance routes through these, so "a notice mounts ⇒ every edit affordance disappears in the same frame" is ONE
+    /// fact. Rows may be added / removed / reordered: no notice AND the capability.</summary>
+    public bool Editable => Notice == DetailNotice.None && EditableOf(Knows(PlaylistFields.Capabilities), Caps);
+    /// <summary>Title / description / cover: no notice AND the capability.</summary>
+    public bool EditableMetadata => Notice == DetailNotice.None && EditableMetadataOf(Knows(PlaylistFields.Capabilities), Caps);
+    /// <summary>The shared half the two OWNER affordances (invite, the ⋯ menu) gate on beside <see cref="IsOwner"/>.</summary>
+    public bool Live => Notice == DetailNotice.None;
+
+    /// <summary>0.2.9 <c>SpotifyEditsLive</c>: a Spotify account scope with a session that can send. The page ANDs it into
+    /// the invite pill and the ⋯ menu (item 58: under <c>--fake</c> both are absent on an owned playlist). Pure.</summary>
+    public static bool SpotifyEditsLiveOf(bool accountScope, bool online) => accountScope && online;
 
     /// <summary>Unknown capabilities read as "may view": the page renders, read-only. NEVER as "revoked" — a
     /// rootlist-seeded thin header carries no capability block, and 0.2.9's all-false <c>default</c> is why one could
@@ -443,6 +450,7 @@ public readonly partial struct Playlist(int slot) : IEquatable<Playlist>
     // ── the late facts ──────────────────────────────────────────────────────────────────────────────────────────────
 
     public DetailNotice Notice => (DetailNotice)T.Notice[Slot];
+    /// <summary>UNIX seconds, 0 = not a daylist (as are <see cref="DaylistCreatedAt"/> and <see cref="ChartUpdatedAt"/>).</summary>
     public int DaylistExpiresAt => T.DaylistExpiresAt[Slot];
     public int DaylistCreatedAt => T.DaylistCreatedAt[Slot];
     public int ChartNewEntries => T.ChartNewEntries[Slot];
@@ -506,13 +514,9 @@ public readonly partial struct Playlist(int slot) : IEquatable<Playlist>
 
 public readonly partial struct Playlist
 {
-    /// <summary>Land one page of the membership and re-derive the header facts that depend on it. This is the seam
-    /// Wave 2's decoder and the seed both call: the edge write and the fold belong together, because a page that lands
-    /// without re-folding leaves the table's Added-by column deciding on stale evidence.
-    ///
-    /// <para><paramref name="facts"/> is folded by the CALLER over the whole resident membership (it is the only party
-    /// that can see the rows' durations and kinds); pass <c>default</c> to land the page without touching the derived
-    /// facts, which is what a page-at-a-time decode does until its last page.</para></summary>
+    /// <summary>Land one page of the membership and re-derive the facts that depend on it. <paramref name="facts"/> is
+    /// folded by the CALLER over the whole resident membership; <c>default</c> lands the page without touching them
+    /// (<see cref="Refold"/> re-derives them from the rows).</summary>
     public void ApplyPage(int offset, ReadOnlySpan<int> trackSlots, ReadOnlySpan<PlaylistTrackEdge> edges, int total,
         in PlaylistFacts facts = default)
     {
@@ -586,6 +590,8 @@ public struct StagedPlaylist : IStagedRow
     /// <summary>The owning account — resolved to a user SLOT at commit, so a byline binds before the profile lands.</summary>
     public StagedId OwnerUri;
     public TextRef ChartRankType, TuningSelected;
+    /// <summary>The membership revision in its wire spelling; written whenever present (no group gate).</summary>
+    public TextRef Revision;
     public int TrackCount, Saves, DaylistExpiresAt, DaylistCreatedAt, ChartUpdatedAt;
     public uint Accent, TuningRevision;
     public ushort ChartNewEntries;
@@ -644,20 +650,43 @@ public static partial class Entities
             int slot = s.Slot(t, in row.Id);
             if (slot == Table.None) continue;   // a row with no identity is not a row
             var authority = row.Authority == Wavee.Authority.None ? s.Authority : row.Authority;
+            // The edition is the authority: a later daylist window outranks whoever wrote the earlier one, so its
+            // Identity/Format/Daylist land even from a Thin feed row. A held window of 0 (relaunch: Daylist is not
+            // persisted) yields to any window. Applied records the edition gate too: a stale Thin card cannot retitle a new edition, a later edition still can.
+            bool newEdition = DaylistEdition.Outranks((row.Known & (uint)PlaylistFields.Daylist) != 0,
+                                                      row.DaylistExpiresAt, t.DaylistExpiresAt[slot]);
+            var editionGate = newEdition ? Wavee.Authority.Full : authority;
 
             if ((row.Known & (uint)PlaylistFields.Identity) != 0
-                && t.Accepts(slot, (uint)PlaylistFields.Identity, authority, in t.IdentityAuthority))
+                && t.Accepts(slot, (uint)PlaylistFields.Identity, editionGate, in t.IdentityAuthority))
             {
                 // SetText, never `t.Title[slot] = …`: the write AddRefs the incoming id and releases the one it
                 // overwrites, so a header re-answered a hundred times owns exactly one title's worth of interner at
                 // the end of it (defect 1, file header item 6).
                 t.SetText(ref t.Title, slot, s.Intern(row.Title));
                 t.SetText(ref t.Description, slot, s.Intern(row.Description));
-                t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                // An answer that carries no cover never blanks the one a fuller read already set — nothing
+                // legitimately removes a cover (S2, mirrors the Track.cs Fix-4 guard).
+                if (!row.Image.IsEmpty) t.SetText(ref t.Image, slot, s.Intern(row.Image));
                 t.SetText(ref t.ShareUrl, slot, s.Intern(row.ShareUrl));
-                t.TrackCount[slot] = row.TrackCount;
+                // A thin answer with no server count (0) must not zero out a count a fuller read already established
+                // (S2) — 0 is what an unset `StagedPlaylist.TrackCount` reads as, UNLESS this decoder actually saw
+                // the wire's length field (the `PlaylistFields.TrackCount` bit below), in which case a real zero is
+                // a real answer — a genuinely empty playlist — and must land, not stay stuck on a stale count.
+                if (row.TrackCount > 0 || (row.Known & (uint)PlaylistFields.TrackCount) != 0)
+                    t.TrackCount[slot] = row.TrackCount;
                 if (!row.OwnerUri.IsEmpty) t.Owner[slot] = s.Slot(users, in row.OwnerUri);
-                t.Applied(slot, (uint)PlaylistFields.Identity, authority, ref t.IdentityAuthority);
+                t.Applied(slot, (uint)PlaylistFields.Identity, editionGate, ref t.IdentityAuthority);   // a new edition is recorded as Full: a stale Thin card cannot retitle it, a later edition still can
+            }
+
+            // Bug A1: the COUNT-KNOWN bit, applied separately from Identity so a route that fills Identity without a
+            // length (ListMetadataV2) never sets it. Shares `IdentityAuthority` — same wire family, same persisted
+            // column (`PlaylistShape.IdentityFields`) — but its own group bit, so `Knows(Identity)` staying true
+            // can never be read as "the count is known too".
+            if ((row.Known & (uint)PlaylistFields.TrackCount) != 0
+                && t.Accepts(slot, (uint)PlaylistFields.TrackCount, authority, in t.IdentityAuthority))
+            {
+                t.Applied(slot, (uint)PlaylistFields.TrackCount, authority, ref t.IdentityAuthority);
             }
 
             if ((row.Known & (uint)PlaylistFields.Capabilities) != 0
@@ -675,12 +704,15 @@ public static partial class Entities
             }
 
             if ((row.Known & (uint)PlaylistFields.Format) != 0
-                && t.Accepts(slot, (uint)PlaylistFields.Format, authority, in t.IdentityAuthority))
+                && t.Accepts(slot, (uint)PlaylistFields.Format, editionGate, in t.IdentityAuthority))
             {
                 t.Format[slot] = row.Format;
-                t.SetText(ref t.HeaderImage, slot, s.Intern(row.HeaderImage));
-                t.SetText(ref t.GenericTitle, slot, s.Intern(row.GenericTitle));
-                t.Applied(slot, (uint)PlaylistFields.Format, authority, ref t.IdentityAuthority);
+                // A Format answer with no masthead (PlaylistRead stages neither) never blanks the one the feed set —
+                // except for a new edition, whose empty value replaces both: the old masthead belongs to the wrong
+                // edition. Same shape as the Image guard above.
+                if (!row.HeaderImage.IsEmpty || newEdition) t.SetText(ref t.HeaderImage, slot, s.Intern(row.HeaderImage));
+                if (!row.GenericTitle.IsEmpty || newEdition) t.SetText(ref t.GenericTitle, slot, s.Intern(row.GenericTitle));
+                t.Applied(slot, (uint)PlaylistFields.Format, editionGate, ref t.IdentityAuthority);
             }
 
             if ((row.Known & (uint)PlaylistFields.Saves) != 0
@@ -691,11 +723,11 @@ public static partial class Entities
             }
 
             if ((row.Known & (uint)PlaylistFields.Daylist) != 0
-                && t.Accepts(slot, (uint)PlaylistFields.Daylist, authority, in t.ExtrasAuthority))
+                && t.Accepts(slot, (uint)PlaylistFields.Daylist, editionGate, in t.ExtrasAuthority))
             {
                 t.DaylistExpiresAt[slot] = row.DaylistExpiresAt;
                 t.DaylistCreatedAt[slot] = row.DaylistCreatedAt;
-                t.Applied(slot, (uint)PlaylistFields.Daylist, authority, ref t.ExtrasAuthority);
+                t.Applied(slot, (uint)PlaylistFields.Daylist, editionGate, ref t.ExtrasAuthority);
             }
 
             if ((row.Known & (uint)PlaylistFields.Chart) != 0
@@ -722,6 +754,7 @@ public static partial class Entities
                 t.Applied(slot, (uint)PlaylistFields.Tuning, authority, ref t.ExtrasAuthority);
             }
 
+            if (!row.Revision.IsEmpty) t.SetText(ref t.Revision, slot, s.Intern(row.Revision));   // the newest head, ungated
             // Flags last and outside the group gates: a mask says exactly which bits this answer speaks about, the
             // latching tombstone is never cleared, and the app's own bits (create lifecycle, the derived column facts)
             // are nobody's business but ours.
@@ -730,6 +763,566 @@ public static partial class Entities
                 uint merged = PlaylistTable.MergeFlags(t.Flags[slot], row.Flags, row.FlagsMask);
                 if (merged != t.Flags[slot]) { t.Flags[slot] = merged; t.Bump(slot); }
             }
+
+            // Wave 5 (owner O): the two facts derived from what just landed.
+            if ((row.Known & (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities)) != 0)
+                DeriveOwner(t, slot, Current.MeSlot);
+            DeriveNotice(t, slot);
         }
+
+        CommitTuningOptions(s);
+    }
+
+    /// <summary>0.2.9 <c>PlaylistFetcher.CapabilitiesOf</c>: owner = the owner row is the account OR the server granted
+    /// permission administration, and an owner administers. The decoder cannot see "me"; the commit can.</summary>
+    static void DeriveOwner(PlaylistTable t, int slot, int meSlot)
+    {
+        if (!t.Knows(slot, (uint)PlaylistFields.Capabilities)) return;
+        byte caps = t.Caps[slot];
+        bool owner = (meSlot > Table.None && t.Owner[slot] == meSlot)
+                     || (caps & (byte)(PlaylistCaps.CanAdministratePermissions | PlaylistCaps.IsOwner)) != 0;
+        byte next = owner ? (byte)(caps | (byte)(PlaylistCaps.IsOwner | PlaylistCaps.CanAdministratePermissions)) : caps;
+        if (next != caps) { t.Caps[slot] = next; t.Bump(slot); }
+    }
+
+    /// <summary>THE NOTICE COLUMN (file header item 2): <c>Detail.NoticeRules.Next</c> over the row as it now stands, the
+    /// column's own verdict as <c>prev</c> — sticky exactly as the rule is.</summary>
+    static void DeriveNotice(PlaylistTable t, int slot)
+    {
+        var prev = (DetailNotice)t.Notice[slot];
+        uint flags = t.Flags[slot];
+        bool knowsCaps = t.Knows(slot, (uint)PlaylistFields.Capabilities);
+        var caps = (PlaylistCaps)t.Caps[slot];
+        var next = Detail.NoticeRules.Next(prev == DetailNotice.MinifiedAlbum ? DetailNotice.None : prev,
+            freshIsNull: false,
+            headerDeleted: (flags & (uint)PlaylistFlags.DeletedByOwner) != 0,
+            capabilitiesKnown: knowsCaps,
+            canView: global::Wavee.Playlist.CanViewOf(knowsCaps, caps),
+            isOwner: (caps & PlaylistCaps.IsOwner) != 0,
+            isCreatePending: (flags & (uint)PlaylistFlags.CreatePending) != 0);
+        if ((flags & (uint)PlaylistFlags.CreateFailed) != 0) next = DetailNotice.CreateFailed;
+        if (next == prev) return;
+        t.Notice[slot] = (byte)next;
+        t.Bump(slot);
+    }
+
+    static TuningEdge[] s_tuning = new TuningEdge[16];
+
+    /// <summary>Each contiguous staged run naming one playlist is its WHOLE Tune list; one blank row = "no options".</summary>
+    static void CommitTuningOptions(Staging s)
+    {
+        var staged = s.StagedTuningOptions;
+        if (staged is null || staged.Count == 0) return;
+        var rows = staged.Span;
+        var playlists = Current.Playlists;
+        for (int start = 0; start < rows.Length;)
+        {
+            int end = start + 1;
+            while (end < rows.Length && rows[end].Playlist.Packed == rows[start].Playlist.Packed
+                   && rows[end].Playlist.Text == rows[start].Playlist.Text) end++;
+            int slot = s.Slot(playlists, in rows[start].Playlist);
+            if (slot != Table.None)
+            {
+                if (s_tuning.Length < end - start) s_tuning = new TuningEdge[Math.Max(end - start, s_tuning.Length * 2)];
+                int n = 0;
+                for (int i = start; i < end; i++)
+                {
+                    if (rows[i].Identifier.IsEmpty) continue;
+                    s_tuning[n++] = new TuningEdge(s.Intern(rows[i].Identifier), s.Intern(rows[i].DisplayName), rows[i].Kind);
+                }
+                new global::Wavee.Playlist(slot).ReplaceTuningOptions(s_tuning.AsSpan(0, n));
+            }
+            start = end;
+        }
+    }
+}
+
+// ── persistence (Store.cs's per-kind seam) ───────────────────────────────────────────────────────────────────────────
+
+/// <summary>How a playlist header survives a restart. Persists <see cref="PlaylistFields.Identity"/>,
+/// <see cref="PlaylistFields.Capabilities"/>, <see cref="PlaylistFields.Visibility"/> and
+/// <see cref="PlaylistFields.TrackCount"/> (bug A1's count-known bit round-trips through the SAME identity_auth
+/// column and the existing <c>track_count</c> column — no new sqlite column — so a restart never re-blesses a
+/// row's count as known off a thin ListMetadataV2 answer, the way the Track table's Artists bit once did, ch 03
+/// bug C) (they share
+/// <see cref="PlaylistTable.IdentityAuthority"/> in memory, so this shape shares one <c>identity_auth</c> column for
+/// all four, bound whenever any is known — the same pattern <see cref="TrackShape"/> uses for its cold groups), plus
+/// <see cref="PlaylistFields.Accent"/> and <see cref="PlaylistFields.Saves"/> (sharing <c>extras_auth</c>).
+///
+/// <para><b>Deliberately NOT persisted:</b> <see cref="PlaylistFields.Format"/>/<see cref="PlaylistFields.Daylist"/>/
+/// <see cref="PlaylistFields.Chart"/>/<see cref="PlaylistFields.Tuning"/> (each cheap to re-ask and, for Tuning, an
+/// edge this shape does not persist). Daylist and Format stay unpersisted on purpose: a held
+/// <see cref="PlaylistTable.DaylistExpiresAt"/> of 0 is the edition-unknown state a relaunch relies on — any window
+/// outranks it (<see cref="DaylistEdition.Outranks"/>), so the feed's Thin write of the new edition is accepted over
+/// the persisted Full Identity instead of being rejected as a downgrade; <see cref="PlaylistTable.Flags"/> — it LATCHES a tombstone bit
+/// (<see cref="PlaylistFlags.DeletedByOwner"/>) through a merge (<see cref="PlaylistTable.MergeFlags"/>) that is not
+/// a plain per-group authority write, and persisting it half-right (accepting the merge's real semantics) is a
+/// follow-up, not a silent approximation; <see cref="PlaylistTable.Notice"/> — commit-DERIVED
+/// (<see cref="Entities.DeriveNotice"/>, called every commit) and re-derives itself the moment the row commits
+/// again; and <see cref="PlaylistTable.Revision"/> — written UNGATED by any field group (ch 06 §7), which does not
+/// fit this shape's known-bit-gated column model and is left to the network's next answer.</para>
+///
+/// <para>STORE THREAD (both halves) — see <see cref="ShowShape"/>'s note.</para></summary>
+public sealed class PlaylistShape : KindShape
+{
+    static readonly StoreColumn[] Cols =
+    [
+        new("title", StoreType.Text, StoreColumnFlags.Title),
+        new("description", StoreType.Text),
+        new("image", StoreType.Text),
+        new("share_url", StoreType.Text),
+        new("track_count", StoreType.Int),
+        new("owner_uri", StoreType.Text),
+        new("caps", StoreType.Int),
+        new("permission_revision", StoreType.Text),
+        new("accent", StoreType.Int),
+        new("saves", StoreType.Int),
+        new("identity_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("extras_auth", StoreType.Int, StoreColumnFlags.Authority),
+    ];
+
+    // Bug A1: TrackCount rides in this same group. Identity is always co-present whenever TrackCount is known (both
+    // playlist decoders stamp Identity applied on the SAME row they may also stamp TrackCount on), so folding it in
+    // here costs nothing extra and means a restart restores "the count is real" exactly when it was real, instead of
+    // forcing a re-ask of every visible row on every launch.
+    const uint IdentityFields = (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities | PlaylistFields.Visibility
+                                      | PlaylistFields.TrackCount);
+    const uint ExtrasFields = (uint)(PlaylistFields.Accent | PlaylistFields.Saves);
+    const uint PersistedFields = IdentityFields | ExtrasFields;
+
+    public override EntityKind Kind => EntityKind.Playlist;
+    public override string Table => "playlist";
+    public override ReadOnlySpan<StoreColumn> Columns => Cols;
+
+    public override void Save(Staging s, RowWriter w)
+    {
+        var rows = s.StagedPlaylists;
+        if (rows is null) return;
+        var span = rows.Span;
+        for (int i = 0; i < span.Length; i++)
+        {
+            ref readonly var row = ref span[i];
+            uint known = row.Known & PersistedFields;
+            bool identityGroup = (known & IdentityFields) != 0;
+
+            if ((known & (uint)PlaylistFields.Identity) != 0)
+            {
+                w.Text(0, row.Title);
+                w.Text(1, row.Description);
+                w.Text(2, row.Image);
+                w.Text(3, row.ShareUrl);
+                w.Int(4, row.TrackCount);
+                w.Id(5, s, row.OwnerUri);
+            }
+            else { w.Null(0); w.Null(1); w.Null(2); w.Null(3); w.Null(4); w.Null(5); }
+
+            if ((known & (uint)PlaylistFields.Capabilities) != 0) w.Int(6, row.Caps); else w.Null(6);
+            if ((known & (uint)PlaylistFields.Visibility) != 0) w.Text(7, row.PermissionRevision); else w.Null(7);
+            if (identityGroup) w.Int(10, (int)row.Authority); else w.Null(10);
+
+            if ((known & (uint)PlaylistFields.Accent) != 0) w.Int(8, row.Accent); else w.Null(8);
+            if ((known & (uint)PlaylistFields.Saves) != 0) w.Int(9, row.Saves); else w.Null(9);
+            if ((known & ExtrasFields) != 0) w.Int(11, (int)row.Authority); else w.Null(11);
+
+            w.Emit(row.Id, known, Entities.Now, Entities.Now);
+        }
+    }
+
+    public override void Load(RowReader r, Staging into)
+    {
+        ref var row = ref into.Playlists.Add();
+        row.Id = r.Uri;
+        row.Title = r.Text(0);
+        row.Description = r.Text(1);
+        row.Image = r.Text(2);
+        row.ShareUrl = r.Text(3);
+        row.TrackCount = (int)r.Int(4);
+        row.OwnerUri = r.Text(5);
+        row.Caps = (byte)r.Int(6);
+        row.PermissionRevision = r.Text(7);
+        row.Accent = (uint)r.Int(8);
+        row.Saves = (int)r.Int(9);
+        row.Known = r.Known & PersistedFields;
+        // Bug A1 regression heal: a persisted track count of 0 is never trusted as confidently known on load — a
+        // build with the resync-flagged-answer defect could have committed a bogus zero over a real count (a
+        // revision-gated `/diff` answer whose `contents` came back attached to `changes_require_resync`, decoded
+        // before that gate existed), and there is no way to tell that corruption apart from a genuinely empty
+        // playlist's persisted zero after the fact. Mask the bit out so a restart always re-verifies a "0" instead
+        // of trusting a wipe-worthy value forever — the same shape as bug C's Artists-bit mask (ch 03), and just as
+        // cheap: one extra round trip, paid only by a playlist that really is empty.
+        if (row.TrackCount == 0) row.Known &= ~(uint)PlaylistFields.TrackCount;
+        row.Authority = (Authority)Math.Max(r.Int(10), r.Int(11));
+    }
+}
+
+/// <summary>One staged Tune option (ch 06 W24); a blank <see cref="Identifier"/> alone in its run = "no options".</summary>
+public struct StagedTuningOption
+{
+    public StagedId Playlist;
+    public TextRef Identifier, DisplayName;
+    public byte Kind;
+}
+
+public sealed partial class Staging
+{
+    StagedList<StagedTuningOption>? _tuningOptions;
+    public StagedList<StagedTuningOption> PlaylistTuningOptions => _tuningOptions ??= Register(new StagedList<StagedTuningOption>());
+    internal StagedList<StagedTuningOption>? StagedTuningOptions => _tuningOptions;
+}
+
+// ── 7. Wave 5 data: tuning, recommendations, collaborators, revision, the refold (WP-5.O §2.5) ─────────────────────────
+
+/// <summary>What one session-control option does.</summary>
+public enum TuningOptionKind : byte { Choice = 0, Reset = 1 }
+/// <summary>One Tune option; both strings OWNED by the edge (<see cref="Edges.ReleaseTuningText"/>).</summary>
+public readonly record struct TuningEdge(StringId Identifier, StringId DisplayName, byte Kind);
+
+public sealed partial class Edges
+{
+    /// <summary>Parent = playlist slot; PAYLOAD-ONLY (targets unused): the Tune options in server order (ch 06 W24).</summary>
+    public readonly EdgeTable<TuningEdge> PlaylistTuning = new();
+    /// <summary>Parent = playlist slot, targets = track slots: the extender's "Recommended songs" (ch 06 W10).</summary>
+    public readonly EdgeTable<NoEdge> PlaylistRecs = new();
+
+    /// <summary>Give back the strings one playlist's Tune options own (before a replace; per parent at scope retire).</summary>
+    internal void ReleaseTuningText(int parent)
+    {
+        var rows = PlaylistTuning.Payload(parent);
+        for (int i = 0; i < rows.Length; i++) { Entities.Strings.Release(rows[i].Identifier); Entities.Strings.Release(rows[i].DisplayName); }
+    }
+}
+
+public readonly partial struct Playlist
+{
+    public ReadOnlySpan<TuningEdge> TuningOptions => E.PlaylistTuning.Payload(Slot);
+    public ReadOnlySpan<int> RecommendationSlots => E.PlaylistRecs.Targets(Slot);
+    public EdgeState RecommendationsState => E.PlaylistRecs.State(Slot);
+    public uint TuningRevision => T.TuningRevision[Slot];
+    /// <summary>The membership revision (<c>{counter},{hex}</c>), or empty.</summary>
+    public StringId RevisionId => T.Revision[Slot];
+
+    /// <summary>0.2.9: the options are valid only while their revision hash matches the membership's (0 / unknown = valid).</summary>
+    public bool TuningCurrent
+        => TuningRevision == 0 || RevisionId.IsEmpty || RevisionHash(Entities.Strings.Resolve(RevisionId)) == TuningRevision;
+
+    /// <summary>FNV-1a over the revision's wire spelling (0 for none). Pure.</summary>
+    public static uint RevisionHash(ReadOnlySpan<char> revision)
+    {
+        uint h = 2166136261;
+        for (int i = 0; i < revision.Length; i++) { h ^= revision[i]; h *= 16777619; }
+        return revision.IsEmpty ? 0 : h;
+    }
+
+    /// <summary>Whole tuning write (UI thread): options (AddRef'd first, the previous released after), the selected id
+    /// (Empty = untuned), the revision hash; marks <see cref="PlaylistFields.Tuning"/> known.</summary>
+    public void ApplyTuning(ReadOnlySpan<TuningEdge> options, StringId selected, uint revision)
+    {
+        ReplaceTuningOptions(options);
+        T.SetText(ref T.TuningSelected, Slot, selected);
+        T.TuningRevision[Slot] = revision;
+        T.Bump(Slot, (uint)PlaylistFields.Tuning);
+    }
+
+    internal void ReplaceTuningOptions(ReadOnlySpan<TuningEdge> options)
+    {
+        for (int i = 0; i < options.Length; i++) { Entities.Strings.AddRef(options[i].Identifier); Entities.Strings.AddRef(options[i].DisplayName); }
+        E.ReleaseTuningText(Slot);
+        Span<int> targets = options.Length <= 64 ? stackalloc int[options.Length] : new int[options.Length];
+        targets.Clear();
+        E.PlaylistTuning.ReplaceRun(Slot, targets, options);
+    }
+
+    /// <summary>Whole recommendations write (UI thread).</summary>
+    public void ApplyRecommendations(ReadOnlySpan<int> trackSlots)
+    {
+        E.PlaylistRecs.ReplaceRun(Slot, trackSlots, ReadOnlySpan<NoEdge>.Empty);
+        T.Bump(Slot);
+    }
+
+    /// <summary>Collaborators are DERIVED (0.2.9): the owner first, then distinct <c>AddedBy</c> slots in first-seen order.</summary>
+    public int CollaboratorSlots(Span<int> into)
+    {
+        int n = 0;
+        int owner = T.Owner[Slot];
+        if (owner > Table.None && into.Length > 0) into[n++] = owner;
+        var edges = E.PlaylistTracks.Payload(Slot);
+        for (int i = 0; i < edges.Length && n < into.Length; i++)
+        {
+            int by = edges[i].AddedBy;
+            if (by > Table.None && into[..n].IndexOf(by) < 0) into[n++] = by;
+        }
+        return n;
+    }
+
+    /// <summary>Re-fold <see cref="PlaylistFacts"/> over the resident membership; writes (and bumps) ONLY when an answer
+    /// moved, so a page effect and a commit hook can both call it without a publish loop. UI thread.</summary>
+    public bool Refold()
+    {
+        if (!IsValid) return false;
+        var slots = E.PlaylistTracks.Targets(Slot);
+        var edges = E.PlaylistTracks.Payload(Slot);
+        var tracks = Entities.Current.Tracks;
+        var facts = default(PlaylistFacts);
+        for (int i = 0; i < slots.Length; i++)
+        {
+            int ts = slots[i];
+            bool row = ts > Table.None && ts < tracks.Count;
+            uint flags = row ? tracks.Flags[ts] : 0;
+            facts.Add(i < edges.Length ? edges[i].AddedBy : 0, i < edges.Length ? edges[i].AddedAt : 0,
+                      row ? tracks.DurationMs[ts] : 0, (flags & (uint)TrackFlags.Podcast) != 0,
+                      (flags & (uint)TrackFlags.VideoMask) != 0);
+        }
+        const uint derived = (uint)(PlaylistFlags.HasAddedBy | PlaylistFlags.HasDateAdded | PlaylistFlags.HasVideo | PlaylistFlags.Mixed);
+        if ((T.Flags[Slot] & derived) == facts.Flags && T.EpisodeCount[Slot] == facts.Episodes
+            && T.DurationMs[Slot] == facts.DurationMs) return false;
+        Apply(in facts);
+        return true;
+    }
+}
+
+// ── 8. the ported rule sets (ch 06 §8, verbatim; inputs are values, never engine types) ──────────────────────────────
+
+/// <summary>Which EDIT failed. The kind says what went wrong; the verb says what the user was doing.</summary>
+public enum PlaylistEditVerb : byte { Generic = 0, Add, Remove, Reorder, Rename }
+/// <summary>The one failure vocabulary a playlist write surfaces (0.2.9 <c>SeamPorts.PlaylistMutationFailure</c>).</summary>
+public enum PlaylistMutationFailure : byte { Unknown = 0, Conflict, Forbidden, Deleted, Offline, Pending, NotSupported, NoOp, Invalid }
+/// <summary>The ONLY failure type a playlist mutation surfaces to the UI.</summary>
+public sealed class PlaylistMutationException(PlaylistMutationFailure kind, string message, Exception? inner = null)
+    : Exception(message, inner)
+{
+    public PlaylistMutationFailure Kind { get; } = kind;
+}
+
+/// <summary>0.2.9 <c>PlaylistEditErrorKinds</c>: exception → kind → loc KEY per (kind × verb), and the severity split.</summary>
+public static class PlaylistEditErrorKinds
+{
+    /// <summary>The typed failure wins anywhere in the inner / aggregate chain; <see cref="NotSupportedException"/> is NotSupported.</summary>
+    public static PlaylistMutationFailure KindOf(Exception? ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException)
+        {
+            if (e is PlaylistMutationException typed) return typed.Kind;
+            if (e is AggregateException agg && agg.InnerExceptions.Count > 0)
+                for (int i = 0; i < agg.InnerExceptions.Count; i++)
+                {
+                    var k = KindOf(agg.InnerExceptions[i]);
+                    if (k != PlaylistMutationFailure.Unknown) return k;
+                }
+            if (e is NotSupportedException) return PlaylistMutationFailure.NotSupported;
+        }
+        return PlaylistMutationFailure.Unknown;
+    }
+
+    /// <summary>An HTTP status off a write → the kind. 0 is a LOST edit in 0.3 (no offline outbox): Unknown, not Offline.</summary>
+    public static PlaylistMutationFailure KindOfStatus(int status) => status switch
+    {
+        409 => PlaylistMutationFailure.Conflict,
+        401 or 403 => PlaylistMutationFailure.Forbidden,
+        404 or 410 => PlaylistMutationFailure.Deleted,
+        _ => PlaylistMutationFailure.Unknown,
+    };
+
+    public static string KeyFor(PlaylistMutationFailure kind, PlaylistEditVerb verb = PlaylistEditVerb.Generic) => kind switch
+    {
+        PlaylistMutationFailure.Conflict => verb == PlaylistEditVerb.Reorder ? Strings.Detail.Edit.ReorderConflict : Strings.Detail.Edit.Conflict,
+        PlaylistMutationFailure.Forbidden => Strings.Detail.Edit.Forbidden,
+        PlaylistMutationFailure.Deleted => Strings.Detail.Edit.DeletedElsewhere,
+        PlaylistMutationFailure.Offline => Strings.Detail.Edit.QueuedOffline,
+        PlaylistMutationFailure.Pending => verb == PlaylistEditVerb.Reorder ? Strings.Drag.StillSyncing : Strings.Detail.Edit.PendingSync,
+        PlaylistMutationFailure.NotSupported => Strings.Detail.Edit.OfflineSpotifyEdits,
+        PlaylistMutationFailure.NoOp => verb == PlaylistEditVerb.Reorder ? Strings.Drag.AlreadyThere : Strings.Detail.Edit.Failed,
+        PlaylistMutationFailure.Invalid => verb == PlaylistEditVerb.Reorder ? Strings.Drag.CantMoveHere : Strings.Detail.Edit.Failed,
+        _ => Strings.Detail.Edit.Failed,
+    };
+
+    /// <summary>Kept / not-a-failure outcomes are Informational; everything else is an Error.</summary>
+    public static bool IsInformational(PlaylistMutationFailure kind)
+        => kind is PlaylistMutationFailure.Offline or PlaylistMutationFailure.Pending
+                or PlaylistMutationFailure.NoOp or PlaylistMutationFailure.Invalid;
+}
+
+/// <summary>One playlist a deposit could land in — 0.2.9's <c>PlaylistSummary</c> reduced to what the rule reads.</summary>
+public readonly record struct DepositCandidate(string Uri, string Name, bool CanEdit, int Slot = 0);
+
+/// <summary>0.2.9 <c>PlaylistDepositTargets</c>: the ONE eligibility predicate and the ONE order (MRU first, then
+/// rootlist order) shared by "Add to playlist ▸", "Move to playlist ▸" and the picker (ch 06 §0.14).</summary>
+public static class PlaylistDepositTargets
+{
+    public const int MaxInline = 10;
+    public const int MaxRecent = 8;
+
+    /// <summary>A real Spotify PLAYLIST uri: not Liked (Collection), not a route key, not <c>wavee:playlist:</c>.</summary>
+    public static bool IsDepositable(string? uri)
+        => uri is { Length: > 0 } && EntityUri.ProviderOf(uri.AsSpan(), out var kind) == EntityProvider.Spotify
+           && kind == EntityKind.Playlist;
+
+    public static bool IsEligible(in DepositCandidate p, string? excludeUri = null)
+        => IsDepositable(p.Uri) && p.CanEdit
+           && !(excludeUri is { Length: > 0 } && string.Equals(p.Uri, excludeUri, StringComparison.Ordinal));
+
+    /// <summary>The eligible playlists, most-recently-deposited first, then rootlist order; a stale recent is skipped;
+    /// <paramref name="query"/> is an ordinal-case-insensitive name filter. Stable.</summary>
+    public static List<DepositCandidate> Order(IReadOnlyList<DepositCandidate>? playlists,
+        IReadOnlyList<string>? recentUris = null, string? excludeUri = null, string? query = null)
+    {
+        var ordered = new List<DepositCandidate>(playlists?.Count ?? 0);
+        if (playlists is not { Count: > 0 }) return ordered;
+        if (recentUris is { Count: > 0 })
+            for (int r = 0; r < recentUris.Count; r++)
+            {
+                string uri = recentUris[r];
+                if (!IsDepositable(uri)) continue;
+                for (int i = 0; i < playlists.Count; i++)
+                {
+                    var p = playlists[i];
+                    if (!string.Equals(p.Uri, uri, StringComparison.Ordinal)) continue;
+                    if (IsEligible(in p, excludeUri) && Matches(p.Name, query) && !AlreadyOrdered(ordered, p.Uri)) ordered.Add(p);
+                    break;
+                }
+            }
+        for (int i = 0; i < playlists.Count; i++)
+        {
+            var p = playlists[i];
+            if (IsEligible(in p, excludeUri) && Matches(p.Name, query) && !AlreadyOrdered(ordered, p.Uri)) ordered.Add(p);
+        }
+        return ordered;
+    }
+
+    /// <summary>The MRU with <paramref name="uri"/> promoted to the front, deduped, capped at <see cref="MaxRecent"/>.</summary>
+    public static List<string> Remember(IReadOnlyList<string>? recentUris, string? uri)
+    {
+        var next = new List<string>(MaxRecent);
+        if (IsDepositable(uri)) next.Add(uri!);
+        if (recentUris is { Count: > 0 })
+            for (int i = 0; i < recentUris.Count && next.Count < MaxRecent; i++)
+            {
+                string u = recentUris[i];
+                if (IsDepositable(u) && !next.Contains(u)) next.Add(u);
+            }
+        return next;
+    }
+
+    /// <summary>The MRU codec: newline-joined; empty segments dropped on read, non-depositable ones never written.</summary>
+    public static List<string> Parse(string? stored)
+    {
+        var uris = new List<string>();
+        if (string.IsNullOrEmpty(stored)) return uris;
+        foreach (var part in stored.Split('\n', StringSplitOptions.RemoveEmptyEntries)) uris.Add(part);
+        return uris;
+    }
+
+    public static string Serialize(IReadOnlyList<string>? uris)
+    {
+        if (uris is not { Count: > 0 }) return "";
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < uris.Count; i++)
+            if (IsDepositable(uris[i])) (sb.Length > 0 ? sb.Append('\n') : sb).Append(uris[i]);
+        return sb.ToString();
+    }
+
+    /// <summary>The next unused "<c>{base} #N</c>" — forwards to the ONE implementation, <c>Spotify.Encode.NextPlaylistName</c>.</summary>
+    public static string NextDefaultName(IReadOnlyList<DepositCandidate>? playlists, string baseName)
+    {
+        var taken = new string[playlists?.Count ?? 0];
+        for (int i = 0; i < taken.Length; i++) taken[i] = playlists![i].Name ?? "";
+        return Spotify.Encode.NextPlaylistName(taken, baseName);
+    }
+
+    static bool Matches(string? name, string? query)
+        => string.IsNullOrEmpty(query) || (name is not null && name.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+    static bool AlreadyOrdered(List<DepositCandidate> ordered, string uri)
+    {
+        for (int i = 0; i < ordered.Count; i++)
+            if (string.Equals(ordered[i].Uri, uri, StringComparison.Ordinal)) return true;
+        return false;
+    }
+}
+
+/// <summary>One Tune option as the pure model reads it.</summary>
+public readonly record struct TuneOption(string Identifier, string? DisplayName, TuningOptionKind Kind);
+
+/// <summary>0.2.9 <c>PlaylistTuneMenuModel</c>: eligibility, the visible choices, the Reset gate (null while untuned, item 56).</summary>
+public static class PlaylistTuneMenuModel
+{
+    public static bool IsEligible(IReadOnlyList<TuneOption>? options, bool sourceAvailable)
+    {
+        if (!sourceAvailable || options is null) return false;
+        for (int i = 0; i < options.Count; i++)
+            if (options[i].Kind == TuningOptionKind.Choice && !string.IsNullOrWhiteSpace(options[i].DisplayName)) return true;
+        return false;
+    }
+
+    public static List<TuneOption> VisibleChoices(IReadOnlyList<TuneOption> options)
+    {
+        var visible = new List<TuneOption>(options.Count);
+        foreach (var o in options) if (o.Kind == TuningOptionKind.Choice && !string.IsNullOrWhiteSpace(o.DisplayName)) visible.Add(o);
+        return visible;
+    }
+
+    public static TuneOption? ResetOption(IReadOnlyList<TuneOption> options, string? selectedIdentifier)
+    {
+        if (string.IsNullOrEmpty(selectedIdentifier)) return null;
+        for (int i = 0; i < options.Count; i++)
+            if (options[i].Kind == TuningOptionKind.Reset) return options[i];
+        return null;
+    }
+}
+
+// ── 9. local files (0.2.9 LocalPlayables + PlayableUri). The uri↔path codec is FOR WP-6.T TO ADOPT OR REPLACE. ──────
+public readonly partial struct Playlist
+{
+    public const string LocalFilePrefix = "wavee:local:file:";
+    /// <summary><c>wavee:local:file:</c> + base64url(UTF-8 path), unpadded — byte-identical to 0.2.9's.</summary>
+    public static string LocalFileUri(string absolutePath)
+        => LocalFilePrefix + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(absolutePath ?? ""))
+               .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    /// <summary>The path behind a local-file identity; null for anything else or a malformed payload.</summary>
+    public static string? LocalPathOf(EntityId id)
+    {
+        if (id.Provider != EntityProvider.Local) return null;
+        string text = id.Text;
+        if (!text.StartsWith(LocalFilePrefix, StringComparison.Ordinal) || text.Length == LocalFilePrefix.Length) return null;
+        string b64 = text[LocalFilePrefix.Length..].Replace('-', '+').Replace('_', '/');
+        b64 = b64.PadRight((b64.Length + 3) & ~3, '=');
+        var bytes = new byte[b64.Length];
+        return Convert.TryFromBase64String(b64, bytes, out int n) ? System.Text.Encoding.UTF8.GetString(bytes, 0, n) : null;
+    }
+
+    /// <summary>0.2.9 <c>LocalPlayables.TitleOf</c> verbatim: the file name without its extension; a URL's last segment.</summary>
+    public static string LocalTitleOf(string pathOrUrl)
+    {
+        if (string.IsNullOrWhiteSpace(pathOrUrl)) return "";
+        if (pathOrUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || pathOrUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            int q = pathOrUrl.IndexOfAny(['?', '#']);
+            string trimmed = q >= 0 ? pathOrUrl[..q] : pathOrUrl;
+            int slash = trimmed.LastIndexOf('/');
+            string tail = slash >= 0 && slash + 1 < trimmed.Length ? trimmed[(slash + 1)..] : trimmed;
+            return tail.Length > 0 ? tail : pathOrUrl;
+        }
+        string name = System.IO.Path.GetFileNameWithoutExtension(pathOrUrl);   // .NET Core: never throws on a bad char
+        return name.Length > 0 ? name : pathOrUrl;
+    }
+
+    public enum LocalDropAction : byte { None, PlayAudio, PlayVideo }
+
+    public static bool IsLocalAudioFile(string? path)
+        => path is { Length: > 0 } && (path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".flac", StringComparison.OrdinalIgnoreCase));
+    public static bool IsLocalVideoFile(string? path) => path is { Length: > 0 } && path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>0.2.9 <c>LocalPlayables.ClassifyDrop</c>: audio wins over video; the first playable path is picked.</summary>
+    public static LocalDropAction ClassifyDrop(IReadOnlyList<string>? paths, out string picked)
+    {
+        picked = "";
+        if (paths is null) return LocalDropAction.None;
+        for (int i = 0; i < paths.Count; i++)
+            if (IsLocalAudioFile(paths[i])) { picked = paths[i]; return LocalDropAction.PlayAudio; }
+        for (int i = 0; i < paths.Count; i++)
+            if (IsLocalVideoFile(paths[i])) { picked = paths[i]; return LocalDropAction.PlayVideo; }
+        return LocalDropAction.None;
     }
 }

@@ -7,6 +7,9 @@
 // Wave: 3
 // Budget: 1790 lines
 // Spec: plan + ch 14 §9 + ch 20 §9
+// Named partial: `Playback.Transitions.cs` (gap batch B3) — the hand-off, next-row, device-reload, video-switch,
+// restore, remote-volume, autoplay and play-report arms, their pure planners, and the pure host gates (§4 moved there)
+// Named partial: `Playback.Wire.cs` (gap batch R4-1) — the PutState snapshot and its parity half (§10 moved there)
 //
 // THE REDUCER. One value in, one `State` mutated in place, a fixed set of effect SLOTS filled. Nothing here opens a
 // socket, reads a clock, allocates or awaits: `Playback.Host.cs` (SHELL) drains a mailbox on the UI thread, calls
@@ -88,7 +91,7 @@ public static partial class Playback
 
     /// <summary>Why the host is being asked to load. <see cref="Ownership.AllowsLoad"/> reads it: a launch RESTORE may
     /// seed a paused deck without claiming, everything else must own playback first.</summary>
-    public enum LoadOrigin : byte { Claim, Advance, MediaKindRefresh, VideoRecovery, Restore }
+    public enum LoadOrigin : byte { Claim, Advance, MediaKindRefresh, VideoRecovery, Restore, DeviceReload }
 
     /// <summary>What a fold decided the SHELL must do about it. Flags, because one cluster can both stop the host and
     /// oblige an inactive announce. Ported verbatim from 0.2.9's <c>OwnerFx</c>.</summary>
@@ -149,11 +152,46 @@ public static partial class Playback
         Resumed,
         /// <summary>The pump stopped and holds nothing.</summary>
         Stopped,
+        /// <summary>The pump JOINED the prepared row — a gapless butt-join or a committed crossfade (D4). <c>Epoch</c> is
+        /// the OUTGOING load's, <see cref="Input.Id"/> the prepared identity, <see cref="Input.LongArg"/> its position.
+        /// The reducer advances WITHOUT a Load and hands the new epoch back through <see cref="Effects.Adopt"/>.</summary>
+        HandedOff,
+        /// <summary>This load's endgame window opened (the pump's <c>EndingSoonMs</c>: fade + 8 s) — prepare the next
+        /// row now. Once per load.</summary>
+        EndingSoon,
+        /// <summary>The output device changed format under a graph that cannot render on it: reload the row at the
+        /// current position, play intent kept (G-108).</summary>
+        DeviceReload,
+        /// <summary>The video host found no source for the row (the manifest resolve answered nothing): demote to audio.</summary>
+        VideoUnavailable,
     }
 
     /// <summary>Why the current playable is not playing. <see cref="Fault.None"/> is the ONLY value that lets the
     /// transport arm (ch 20 §7: <c>canTransport = Current != none &amp;&amp; Error == None</c>).</summary>
     public enum Fault : byte { None, Network, Unavailable, DrmRequired, DecodeFailed, RuntimeMissing, Unknown }
+
+    /// <summary>THE auto-skip decision, pure: does a failed load step the deck onto the next playable row instead of
+    /// parking it? Three things must all hold. The fault must be TERMINAL FOR THE ROW — the catalog has no playable
+    /// file, refused the key for this file, or the bytes will not decode (<see cref="IsTerminal"/>) — and not a
+    /// session-level one: <see cref="Fault.Network"/> means the next row would fail too, <see cref="Fault.RuntimeMissing"/>
+    /// has its own door (the setup toast), and <see cref="Fault.Unknown"/> is nobody's verdict. The load must have been
+    /// the deck's OWN move (<see cref="LoadOrigin.Advance"/> — a natural end, a hand-off gone wrong, a Next) and never a
+    /// row the listener CHOSE (<see cref="LoadOrigin.Claim"/>: they clicked it, so it parks with Retry and says what is
+    /// wrong). And the guard must hold: at most <see cref="MaxConsecutive"/> skips in a row before the deck parks
+    /// anyway, so a context of dead rows cannot spin. Repeat-one never skips — the only next row is the dead one.</summary>
+    public static class AutoSkip
+    {
+        /// <summary>Consecutive dead rows the deck steps past before it parks with the fault. The counter resets on the
+        /// first audio that actually plays.</summary>
+        public const int MaxConsecutive = 3;
+
+        /// <summary>Is this fault about THE ROW, so the next row is worth trying?</summary>
+        public static bool IsTerminal(Fault fault) => fault is Fault.Unavailable or Fault.DrmRequired or Fault.DecodeFailed;
+
+        /// <inheritdoc cref="AutoSkip"/>
+        public static bool Skips(Fault fault, LoadOrigin origin, bool repeatTrack, int consecutive)
+            => IsTerminal(fault) && origin == LoadOrigin.Advance && !repeatTrack && consecutive < MaxConsecutive;
+    }
 
     /// <summary>A recoverable interruption affecting the active stream. Deliberately coarse: byte-range and retry
     /// detail stay in diagnostics while playback surfaces only what the chrome can say — ch 20 W10's "Reconnecting"
@@ -453,181 +491,7 @@ public static partial class Playback
         }
     }
 
-    // ── 4. the pure host gates (ported from _old/Wavee/App + SpotifyLive/Audio) ──────────────────────────────────────
-
-    /// <summary>The PURE decision rules for the ONE current media's host swap: which kind a playable is, whether a
-    /// change reloads the current host or swaps hosts, whether a crossfade is allowed across the boundary, what
-    /// <c>track_player</c> Connect should report, and whether the outgoing host must be stopped first. Ported from
-    /// <c>_old/Wavee/App/MediaSwitchLogic.cs</c>.
-    ///
-    /// <para>0.2.9's <c>HasVideoMetadata</c> / <c>StampVideoAssociation</c> are deliberately NOT ported: both took an
-    /// <c>IReadOnlyDictionary&lt;string,string&gt;</c> of wire metadata, and 0.3's cluster decode folds that map to
-    /// typed fields on the way in (<c>Spotify.Decode.ClusterTrack</c>) — re-introducing the dictionary here would
-    /// re-introduce the per-row allocation the decode exists to remove.</para></summary>
-    public static class MediaSwitch
-    {
-        /// <summary>Classify the current media into the ONE kind that selects its host. A video track is always
-        /// <see cref="PlayableKind.Video"/> regardless of origin (video wins over local); otherwise a local file is
-        /// <see cref="PlayableKind.LocalFile"/>; everything else is <see cref="PlayableKind.Audio"/>.</summary>
-        public static PlayableKind KindOf(bool isVideoTrack, bool isLocalFile)
-            => isVideoTrack ? PlayableKind.Video
-             : isLocalFile ? PlayableKind.LocalFile
-             : PlayableKind.Audio;
-
-        /// <summary>What the current-media owner should do to honour a change from one playable to another.</summary>
-        public enum SwitchAction : byte
-        {
-            /// <summary>Same kind → the host is unchanged; just re-load the new playable onto it.</summary>
-            LoadOnCurrent,
-            /// <summary>Different kind → stop the outgoing host, swap for the new kind's host, then load.</summary>
-            SwapThenLoad,
-        }
-
-        /// <inheritdoc cref="SwitchAction"/>
-        public static SwitchAction Decide(PlayableKind current, PlayableKind next)
-            => current == next ? SwitchAction.LoadOnCurrent : SwitchAction.SwapThenLoad;
-
-        /// <summary>Whether a crossfade / prepared-next transition is allowed across this boundary. Crossfade is an
-        /// AUDIO-only, same-kind capability; every cross-kind boundary and every video boundary is a HARD CUT.</summary>
-        public static bool AllowCrossfade(PlayableKind from, PlayableKind to)
-            => from == to && from == PlayableKind.Audio;
-
-        /// <summary>The Connect <c>track_player</c> metadata value: <c>"video"</c> for <see cref="PlayableKind.Video"/>,
-        /// else <c>"audio"</c> (a local file plays through the audio host and therefore also reports audio).</summary>
-        public static string TrackPlayer(PlayableKind kind) => kind == PlayableKind.Video ? "video" : "audio";
-
-        /// <summary>Whether the outgoing host must be stopped BEFORE the new one starts. True on any kind change so
-        /// two decoders never both output audio at once.</summary>
-        public static bool ShouldStopOutgoingHost(PlayableKind current, PlayableKind next) => current != next;
-
-        /// <summary>Whether the ONE current-media HOST INSTANCE actually changes. <see cref="PlayableKind.Audio"/> and
-        /// <see cref="PlayableKind.LocalFile"/> share the SAME host — only a <see cref="PlayableKind.Video"/> boundary
-        /// flips to (or away from) the video host, so an Audio↔LocalFile change stays a same-host reload and keeps the
-        /// fast-start / prepared-next path untouched.</summary>
-        public static bool HostChanges(PlayableKind current, PlayableKind next)
-            => (current == PlayableKind.Video) != (next == PlayableKind.Video);
-    }
-
-    /// <summary>What the audio host does with a seek request, decided against the state of the serialized pump at the
-    /// moment the seek op RUNS (never earlier — the answer depends on ops that ran before it).</summary>
-    public enum SeekAdmission : byte
-    {
-        /// <summary>Hand the seek to the engine now: a session is open and its byte source can serve the target.</summary>
-        ApplyNow,
-        /// <summary>Park the target and apply it after the next body attach / session open — the engine's seek would
-        /// otherwise block the pump waiting for bytes that only a LATER pump op can attach.</summary>
-        Defer,
-    }
-
-    /// <summary>The pure decision behind the audio host's seek. It exists because of one deadlock: the controller
-    /// enqueues <c>LoadFastStart</c> → <c>Seek(resumePositionMs)</c> → (later) <c>SupplyBody</c> onto ONE serialized
-    /// pump, and the engine's seek holds its replacement gate until the decode producer has PCM at the target. A
-    /// fast-start session owns only the ~80 KB clear head; a target beyond it makes the decoder block waiting for the
-    /// body attach that is the very next op in the pump, BEHIND the seek. Nothing completes; the bar buffers forever.
-    /// A launch restore at a saved position and a video→audio swap mid-track both take this path.</summary>
-    public static class SeekGate
-    {
-        /// <param name="hasSession">An engine session is open (a deferred-open load has none until its body attaches).</param>
-        /// <param name="sourceCanServeBeyondHead">The active byte source can read past its clear head: a Spotify stream
-        /// with its body attached, or a source that never had a head/body split (local file, module stream).</param>
-        public static SeekAdmission Decide(bool hasSession, bool sourceCanServeBeyondHead)
-            => hasSession && sourceCanServeBeyondHead ? SeekAdmission.ApplyNow : SeekAdmission.Defer;
-
-        /// <summary>The position the host should REPORT while a seek is parked: the parked TARGET. The session's own
-        /// clock still reads the pre-seek position (0 for a fresh load), and publishing that would show 0:00 for a
-        /// track the user resumed at 3:45. A negative <paramref name="pendingSeekMs"/> means nothing is parked.</summary>
-        public static long ReportedPositionMs(long pendingSeekMs, long clockPositionMs)
-            => pendingSeekMs >= 0 ? pendingSeekMs : clockPositionMs;
-    }
-
-    /// <summary>The buffering-bar-on-a-paused-restored-track fix. A launch-recovery restore loads the current track
-    /// PAUSED so the bar can show it at its saved position; the host announced Prebuffering/Buffering anyway while
-    /// attaching the head and body — work it does whether or not anyone asked to HEAR it — and with no Play() ever
-    /// called the ticker that retires the flag never started. The indeterminate bar latched until the user pressed
-    /// play.</summary>
-    public static class PlayIntentGate
-    {
-        /// <summary>A load nobody asked to hear announces nothing: buffering while attaching is expected work, not a
-        /// state the UI needs to show. Once there IS play intent every buffering signal is real.</summary>
-        public static bool ShouldAnnounceBuffering(bool playIntent) => playIntent;
-    }
-
-    /// <summary>Frame-domain arithmetic for the gapless join, in ONE place. A session's sample clock counts frames
-    /// consumed since THAT session was built (a seek rebases the position clock, never the sample clock; a
-    /// device-format soft reload builds a NEW session at clock 0 and seeks it to the saved playhead). Every writer of
-    /// the active track's natural-end frame therefore expresses it as "clock now + frames still to play", never as
-    /// "frames from track start" — computing it track-absolute once at open is what scheduled a mid-track reopen's
-    /// join hundreds of seconds into the future.</summary>
-    public static class GaplessJoinClock
-    {
-        public static long MsToFrames(long ms, int rate) => ms * rate / 1000L;
-
-        /// <summary>The active track's natural-end frame, on the session clock, given where the playhead is now.</summary>
-        public static long JoinFrameFor(long sampleClockNow, long durationMs, long playheadMs, int rate)
-            => sampleClockNow + MsToFrames(Math.Max(0L, durationMs - playheadMs), rate);
-
-        /// <summary>Where to start the next voice: never in the past, and never further out than the active track's own
-        /// remaining time + 100 ms — a stale estimate degrades to a ≤100 ms butt-join instead of a 164 s stall.</summary>
-        public static long ScheduleJoin(long activeJoinFrame, long sampleClockNow, long remainingMs, int rate)
-        {
-            long join = Math.Max(activeJoinFrame, sampleClockNow);
-            long bound = sampleClockNow + MsToFrames(Math.Max(0L, remainingMs), rate) + rate / 10;
-            return Math.Min(join, bound);
-        }
-
-        /// <summary>A primed voice is only spliceable into a mixer running at the rate it was resampled for.</summary>
-        public static bool PrimedSlotMatches(int primedMixRate, int sessionRate) => primedMixRate == sessionRate;
-
-        /// <summary>May the join commit right now? Never into a session a soft reload may replace, and never while the
-        /// reported playhead is a stale 0 — with a stale playhead "duration − position" reads as "the whole track
-        /// remains" and the join is scheduled off a clock that is not this track's.</summary>
-        public static bool CanCommit(bool clockStale, bool softReloading) => !clockStale && !softReloading;
-    }
-
-    /// <summary>What the host does with the live session after the engine swapped the output sink underneath it.</summary>
-    public enum DeviceRecoveryAction : byte
-    {
-        /// <summary>Rate changed, body reopenable: build a NEW session/graph at the live rate, restore the playhead.</summary>
-        ReopenNewGraph,
-        /// <summary>Same rate, reopenable body: the existing graph can still render on the new sink.</summary>
-        AdoptIntoExistingGraph,
-        /// <summary>Same rate, body not reopenable: keep the session and make sure it is audible (a swap can leave the
-        /// transport parked).</summary>
-        KeepSession,
-        /// <summary>Rate changed, body not reopenable: the session stays SILENT and the host cannot rebuild in place —
-        /// surface an honest fault so the reducer records it and the bar offers Retry.</summary>
-        ReloadThroughController,
-    }
-
-    /// <summary>The pure decision behind a device-format recovery. A rate-changed sink rebuild latches "requires graph
-    /// rebuild" one-way — the mixer/decoder graph bound at prepare time cannot render on the new device and the
-    /// session stays SILENT until a new graph exists — so "leave the old session playing" is only a benign no-op for a
-    /// SAME-rate swap. Every early exit of the soft reload routes through here, so a rate change ends in an audible
-    /// session or a Retry, never in silence until the next track.</summary>
-    public static class DeviceRecoveryPlan
-    {
-        public static DeviceRecoveryAction Decide(bool requiresGraphRebuild, bool canReopen)
-            => canReopen
-                ? (requiresGraphRebuild ? DeviceRecoveryAction.ReopenNewGraph : DeviceRecoveryAction.AdoptIntoExistingGraph)
-                : requiresGraphRebuild ? DeviceRecoveryAction.ReloadThroughController : DeviceRecoveryAction.KeepSession;
-    }
-
-    /// <summary>How an OS audio endpoint is NAMED in the picker. Pure strings, so the rule is pinned by a test rather
-    /// than by whatever hardware the developer happens to have plugged in (ch 20 §9 asks for it here; the enumeration
-    /// service itself stays SHELL, in owner H's <c>Playback.Audio.cs</c>).</summary>
-    public static class AudioDeviceNaming
-    {
-        /// <summary>The short label: the endpoint's own description first, else the friendly name with its trailing
-        /// " (adapter)" parenthetical stripped, else the raw name. Null / empty in, null out.</summary>
-        public static string? Shorten(string? deviceDesc, string? friendlyName)
-        {
-            if (!string.IsNullOrWhiteSpace(deviceDesc)) return deviceDesc.Trim();
-            if (string.IsNullOrWhiteSpace(friendlyName)) return friendlyName;
-            string name = friendlyName.Trim();
-            int open = name.LastIndexOf(" (", StringComparison.Ordinal);
-            return open > 0 && name.EndsWith(')') ? name[..open] : name;
-        }
-    }
+    // ── 4. the pure host gates live in Playback.Transitions.cs §11 ──────────────────────────────────────────────────────
 
     // ── 5. the ownership fold, with the fence (C5) ──────────────────────────────────────────────────────────────────
     //
@@ -1015,9 +879,12 @@ public static partial class Playback
         /// <summary>The current playable's duration in ms as the source stated it. 0 = unknown, and the seek bar is
         /// DISABLED rather than drawn as a full grey rail (ch 20 §7).</summary>
         public int DurationMs;
-        /// <summary>0..1, LINEAR — the slider's own scale. The cubic taper is the audio host's
-        /// (<c>Playback.Audio.VolumeTaper</c>), and the wire scale is the snapshot's.</summary>
+        /// <summary>THIS device's volume, 0..1, LINEAR — the sink's and the PUT body's. The cubic taper is the audio
+        /// host's (<c>Playback.Audio.VolumeTaper</c>), and the wire scale is the snapshot's. Never a foreign owner's:
+        /// that one is <see cref="MirrorVolume"/>, and the slider reads <see cref="SliderVolume"/>.</summary>
         public float Volume;
+        /// <summary>The foreign owner's volume as the cluster stated it, 0..1; -1 = none stated.</summary>
+        public float MirrorVolume;
         public bool Shuffle;
         public RepeatMode Repeat;
         /// <summary>Restrictions as the cluster stated them. The bar greys its buttons off
@@ -1059,6 +926,55 @@ public static partial class Playback
         // ── the connect bookkeeping the PUT body carries ──
         public long StartedPlayingAtMs;
         public long HasBeenPlayingForMs;
+        /// <summary>The controller command the next PUT is attributed to (a <c>connect/volume</c> or a player command's
+        /// message id), so the sender's own control does not fight an unattributed echo (G-073). 0 = none.</summary>
+        public uint LastCommandMessageId;
+        /// <summary>The frame-clock stamp that command arrived at: a PUT more than <see cref="CommandAttribution.WindowMs"/>
+        /// later is not its answer (G-246).</summary>
+        public long LastCommandAtMs;
+        /// <summary>The sender's device-id hash (<c>last_command_sent_by_device_id</c>, resolved through the roster); 0 = none.</summary>
+        public ulong LastCommandSender;
+
+        // ── the next row, the hosts, the registration (gap batch B3, Playback.Transitions.cs) ──
+        /// <summary>The row after the cursor the pump was last told about — prefetched, or prepared when
+        /// <see cref="NextArmed"/> (G-112). Empty = nothing armed.</summary>
+        public EntityId NextId;
+        /// <summary><see cref="NextId"/> was PREPARED (a full open), not merely prefetched.</summary>
+        public bool NextArmed;
+        /// <summary>The pump said this load's endgame window opened; the next row is prepared from here on.</summary>
+        public bool EndingSoon;
+        /// <summary>The deck shows a row NO host holds — a launch restore, a stop, a lost ownership, the end of the queue.
+        /// The next Resume loads it at <see cref="PosMs"/> instead of resuming a session that does not exist.</summary>
+        public bool Parked;
+        /// <summary>The placement wants video: a row that has one loads on the video host (G-141).</summary>
+        public bool VideoWanted;
+        /// <summary>Re-resolves spent on the current video load (G-142).</summary>
+        public byte VideoRetries;
+        /// <summary>Where autoplay stands for <see cref="Context"/> (G-080) — and, while <see cref="MorePages"/>, where the
+        /// next context page stands: one "more rows were asked for" phase for both answers.</summary>
+        public AutoplayPhase Autoplay;
+        /// <summary>The host holds a next page for <see cref="Context"/> (G-242): its run-out pages before autoplay is asked,
+        /// and a station — which autoplay refuses — keeps paging.</summary>
+        public bool MorePages;
+        /// <summary>The host has said whether <see cref="Context"/> pages (<see cref="InputKind.ContextPages"/> landed for
+        /// it). Until then no refill is decided: the answer may still name a page.</summary>
+        public bool PagesKnown;
+        /// <summary>The host holds a next page of the autoplay answer: a consumed autoplay run pages before it re-asks.</summary>
+        public bool AutoplayPages;
+        /// <summary>The row after <see cref="NextId"/> the pump was told to warm. Empty = none.</summary>
+        public EntityId Next2Id;
+        /// <summary>A play registration is open for the row on the deck (G-076): exactly one per row, however many
+        /// reloads, host switches and pauses it lives through.</summary>
+        public bool ReportOpen;
+        /// <summary>Why the current load started — the registration's <c>reason_start</c> when its audio begins.</summary>
+        public PlayReason StartReason;
+        /// <summary>WHO asked for the current load — the deck's own move (<see cref="LoadOrigin.Advance"/>) or a row the
+        /// listener chose (<see cref="LoadOrigin.Claim"/>). A failed load reads it to decide between stepping past a dead
+        /// row and parking on it with Retry (<see cref="AutoSkip"/>).</summary>
+        public LoadOrigin LoadWhy;
+        /// <summary>Dead rows the deck has stepped past in a row without any audio playing between them — the
+        /// <see cref="AutoSkip"/> guard. Reset by the first <see cref="AudioSignal.Started"/> and by a Play.</summary>
+        public byte AutoSkips;
 
         // ── reads ──
         /// <summary>The ownership verdict, Us / Foreign / Nobody.</summary>
@@ -1083,6 +999,16 @@ public static partial class Playback
         public readonly bool CanSkipNext => CanTransport && !NoNext;
         /// <summary>May Previous fire?</summary>
         public readonly bool CanSkipPrev => CanTransport && !NoPrev;
+        /// <summary>Does the CONTEXT allow Next / Previous, error or not? The player bar reads these for its own fold:
+        /// a failed load parks the deck row with <see cref="Error"/> set and <see cref="CanTransport"/> false, and the
+        /// one way out that does not re-play the dead row is to skip past it (<c>Advance</c> heals the error through
+        /// <c>PutOnDeck</c>). <see cref="CanSkipNext"/> / <see cref="CanSkipPrev"/> stay the reducer's folded verdict.</summary>
+        public readonly bool NextAllowedByContext => HasCurrent && !NoNext;
+        /// <inheritdoc cref="NextAllowedByContext"/>
+        public readonly bool PrevAllowedByContext => HasCurrent && !NoPrev;
+        /// <summary>What the volume slider shows: the foreign owner's volume while one owns playback (dragging it is a
+        /// volume PUT to that device), ours otherwise.</summary>
+        public readonly float SliderVolume => Own.Kind == Owner.Foreign && MirrorVolume >= 0f ? MirrorVolume : Volume;
 
         /// <summary>The position to PAINT at <paramref name="nowMs"/> (frame clock): the last authoritative report
         /// extrapolated while playing, and the report itself otherwise. Clamped into the duration when one is known —
@@ -1099,6 +1025,7 @@ public static partial class Playback
         public static State Initial => new()
         {
             Volume = 1f,
+            MirrorVolume = -1f,
             Own = OwnerState.Initial,
             Cursor = QueueCursor.None,
             ActiveDeviceSlot = -1,
@@ -1168,6 +1095,38 @@ public static partial class Playback
         Format,
         /// <summary>A recoverable interruption started or ended (<c>IntArg</c> = <see cref="RecoveryKind"/>).</summary>
         Recovery,
+        /// <summary>A controller set THIS device's volume (<c>IntArg</c> = 0..<see cref="MaxWireVolume"/>, <c>LongArg</c> =
+        /// the sender's message id). Never forwarded.</summary>
+        RemoteVolume,
+        /// <summary>The queue changed under the deck: re-arm the next row.</summary>
+        QueueChanged,
+        /// <summary>The video placement turned on or off (<c>IntArg</c> != 0 = on).</summary>
+        VideoPlacement,
+        /// <summary>The row <see cref="Input.Id"/> gained video facts the connect-state service has not been told.</summary>
+        VideoOffer,
+        /// <summary>Put the last session back on the deck at launch (<c>IntArg</c> = position, <c>LongArg</c> = duration).</summary>
+        Restore,
+        /// <summary>An episode's saved resume point for load <c>Epoch</c> (<c>IntArg</c> = ms).</summary>
+        ResumeAt,
+        /// <summary>The autoplay answer for <see cref="Input.Context"/> (<c>IntArg</c> = rows appended; <c>LongArg</c> bit 0 =
+        /// a page follows, bit 1 = the ask should be retried once the session is online).</summary>
+        Autoplayed,
+        /// <summary>An autoplay page answered for <see cref="Input.Context"/> (<c>IntArg</c> = rows appended, <c>LongArg</c> != 0 =
+        /// another page follows it).</summary>
+        AutoplayPaged,
+        /// <summary>The session came online: a deferred autoplay ask and a dropped prefetch are re-issued.</summary>
+        SessionOnline,
+        /// <summary>The host holds (<c>IntArg</c> != 0) or no longer holds a next page for <see cref="Input.Context"/> (G-242).</summary>
+        ContextPages,
+        /// <summary>A context page answered for <see cref="Input.Context"/> (<c>IntArg</c> = rows appended, <c>LongArg</c> != 0 =
+        /// another page follows it).</summary>
+        Paged,
+        /// <summary>The user queued rows the host staged (<c>IntArg</c> = how many, <c>LongArg</c> != 0 = play them next):
+        /// forwarded to a foreign owner as <c>add_to_queue</c> / <c>set_queue</c> (G-248).</summary>
+        QueueToOwner,
+        /// <summary>The deck's context becomes <see cref="Input.Context"/> WITHOUT a load — a radio parked behind the
+        /// current row (G-251). <see cref="Input.Cursor"/> is the deck row's cursor in the rewritten queue.</summary>
+        SwitchContext,
     }
 
     /// <summary>One input — a VALUE (C2). A plain <c>readonly struct</c> and NOT a <c>record struct</c> on purpose:
@@ -1211,6 +1170,21 @@ public static partial class Playback
             PlayableKind kind = PlayableKind.Audio, int fromMs = 0, long nowMs = 0)
             => new(InputKind.Play, row, id, context, cursor, fromMs, nowMs: nowMs, playKind: kind);
 
+        /// <summary>A play with its claim cause and its start state stated — what an inbound Connect load and a restored
+        /// context post. <c>LongArg</c> packs the cause (low byte) and <see cref="PausedBit"/>; a plain
+        /// <see cref="Play"/> is <see cref="ClaimCause.UserPlay"/>, playing.</summary>
+        public static Input PlayFrom(EntityRef row, EntityId id, EntityId context, QueueCursor cursor, PlayableKind kind,
+            int fromMs, long nowMs, ClaimCause cause, bool paused)
+            => new(InputKind.Play, row, id, context, cursor, fromMs, (long)cause | (paused ? PausedBit : 0L),
+                nowMs: nowMs, playKind: kind);
+
+        /// <summary>The bit of a Play's <c>LongArg</c> that asks for a paused start.</summary>
+        public const long PausedBit = 1L << 8;
+
+        /// <summary>The bit of a SetShuffle's <c>IntArg</c> that says the queue is ALREADY in the asked order (a load that
+        /// built it shuffled), so no reorder effect follows.</summary>
+        public const int ShuffleOrderedBit = 2;
+
         public static Input Next(long nowMs = 0) => new(InputKind.Next, nowMs: nowMs);
         public static Input Prev(long nowMs = 0) => new(InputKind.Prev, nowMs: nowMs);
         public static Input Pause(long nowMs = 0) => new(InputKind.Pause, nowMs: nowMs);
@@ -1245,6 +1219,42 @@ public static partial class Playback
         public static Input Release(ReleaseCause cause) => new(InputKind.Release, intArg: (int)cause);
         public static Input Stop(StopReason why) => new(InputKind.Stop, intArg: (int)why);
         public static Input DeviceLost() => new(InputKind.DeviceLost);
+        public static Input ShuffleOrdered(bool on) => new(InputKind.SetShuffle, intArg: (on ? 1 : 0) | ShuffleOrderedBit);
+        public static Input HandedOff(uint epoch, EntityId preparedId, int positionMs, long nowMs = 0)
+            => new(InputKind.AudioSignal, id: preparedId, intArg: (int)AudioSignal.HandedOff, longArg: positionMs,
+                epoch: epoch, nowMs: nowMs);
+        public static Input RemoteVolume(int wire, uint messageId, long nowMs = 0)
+            => new(InputKind.RemoteVolume, intArg: wire, longArg: messageId, nowMs: nowMs);
+        public static Input QueueChanged(long nowMs = 0) => new(InputKind.QueueChanged, nowMs: nowMs);
+        public static Input VideoPlacement(bool active, long nowMs = 0)
+            => new(InputKind.VideoPlacement, intArg: active ? 1 : 0, nowMs: nowMs);
+        public static Input VideoOffer(EntityId track) => new(InputKind.VideoOffer, id: track);
+        public static Input Restore(EntityRef row, EntityId id, EntityId context, QueueCursor cursor, int positionMs,
+            int durationMs, long nowMs = 0)
+            => new(InputKind.Restore, row, id, context, cursor, positionMs, durationMs, nowMs: nowMs);
+        public static Input ResumeAt(uint epoch, int positionMs, long nowMs = 0)
+            => new(InputKind.ResumeAt, intArg: positionMs, epoch: epoch, nowMs: nowMs);
+        public static Input Autoplayed(EntityId context, int appended, bool morePages = false, bool retry = false, long nowMs = 0)
+            => new(InputKind.Autoplayed, context: context, intArg: appended,
+                longArg: (morePages ? AutoplayMorePagesBit : 0L) | (retry ? AutoplayRetryBit : 0L), nowMs: nowMs);
+        /// <summary>The bits of an Autoplayed's <c>LongArg</c>.</summary>
+        public const long AutoplayMorePagesBit = 1L, AutoplayRetryBit = 2L;
+        public static Input AutoplayPaged(EntityId context, int appended, bool morePages, long nowMs = 0)
+            => new(InputKind.AutoplayPaged, context: context, intArg: appended, longArg: morePages ? 1 : 0, nowMs: nowMs);
+        public static Input SessionOnline(long nowMs = 0) => new(InputKind.SessionOnline, nowMs: nowMs);
+        public static Input ContextPages(EntityId context, bool morePages, long nowMs = 0)
+            => new(InputKind.ContextPages, context: context, intArg: morePages ? 1 : 0, nowMs: nowMs);
+        public static Input Paged(EntityId context, int appended, bool morePages, long nowMs = 0)
+            => new(InputKind.Paged, context: context, intArg: appended, longArg: morePages ? 1 : 0, nowMs: nowMs);
+        /// <summary><c>LongArg</c> packs the staged run's offset (above bit 0) and "play next" (bit 0).</summary>
+        public static Input QueueToOwner(int count, bool next, int offset = 0, long nowMs = 0)
+            => new(InputKind.QueueToOwner, intArg: count, longArg: ((long)Math.Max(0, offset) << 1) | (next ? 1L : 0L), nowMs: nowMs);
+        /// <summary>The context under the deck row changes with no load (G-251): the host has already rewritten the queue
+        /// around the row at <paramref name="cursor"/>.</summary>
+        public static Input SwitchContext(EntityId context, QueueCursor cursor, long nowMs = 0)
+            => new(InputKind.SwitchContext, context: context, cursor: cursor, nowMs: nowMs);
+        public static Input Suspend(long nowMs = 0) => new(InputKind.Suspend, nowMs: nowMs);
+        public static Input Wake(long nowMs = 0) => new(InputKind.Resume_, nowMs: nowMs);
 
         /// <summary>0..1 → the Connect wire's 0..65535, rounded the way the cluster rounds it back.</summary>
         public static int WireVolume(float value) => (int)Math.Round(Math.Clamp(value, 0f, 1f) * MaxWireVolume);
@@ -1266,6 +1276,9 @@ public static partial class Playback
         public uint LoadEpoch;
         public int LoadFromMs;
         public LoadOrigin LoadWhy;
+        /// <summary>Open the load PAUSED at <see cref="LoadFromMs"/> — a paused transfer, a paused device reload or host
+        /// switch. The host follows the load with the host's pause in the same execute pass.</summary>
+        public bool LoadPaused;
 
         // ── transport ──
         public bool Start, Stop, PauseHost, ResumeHost;
@@ -1282,10 +1295,63 @@ public static partial class Playback
         public float VolumeValue;
         public uint VolumeEpoch;
 
-        // ── gapless ──
+        // ── gapless (G-100, G-112) ──
+        /// <summary>Fully open the next row for the hand-off (the endgame). A pump holding another id replaces it.</summary>
         public bool PrepareNext;
         public EntityRef NextRow;
         public EntityId NextId;
+        /// <summary>WARM the next row only — head, mirrors, key; no ring, no decoder. What a load asks for.</summary>
+        public bool Prefetch;
+        public EntityRef PrefetchRow;
+        public EntityId PrefetchId;
+        /// <summary>Warm the row after the next one too; the host runs it before <see cref="Prefetch"/>.</summary>
+        public bool Prefetch2;
+        public EntityRef Prefetch2Row;
+        public EntityId Prefetch2Id;
+        /// <summary>The prepared row stopped being next: dispose the slot (and a join not yet live).</summary>
+        public bool CancelPrepared;
+        /// <summary>A hand-off advanced the deck without a Load: the pump adopts <see cref="AdoptTo"/> in place of
+        /// <see cref="AdoptFrom"/> for the voice already playing.</summary>
+        public bool Adopt;
+        public uint AdoptFrom, AdoptTo;
+
+        // ── queue writes the host applies (G-074, G-080) ──
+        /// <summary>A controller's <c>add_to_queue</c>: enqueue <see cref="QueueAddId"/>.</summary>
+        public bool QueueAdd;
+        public EntityId QueueAddId;
+        /// <summary>Reorder the rows ahead of the cursor: shuffle them (<see cref="ReorderShuffle"/>) or restore the
+        /// context's own order.</summary>
+        public bool Reorder;
+        public bool ReorderShuffle;
+        /// <summary>The context is running out: ask autoplay for <see cref="AutoplayContext"/> (the host declines when
+        /// the setting is off) and answer with <see cref="Input.Autoplayed"/>.</summary>
+        public bool Autoplay;
+        public EntityId AutoplayContext;
+        /// <summary>The context is running out and the host holds its next page: fetch it for <see cref="PageContext"/> and
+        /// answer with <see cref="Input.Paged"/> (G-242).</summary>
+        public bool Page;
+        public EntityId PageContext;
+        /// <summary>The autoplay run is nearly consumed and the host holds its next page: fetch it for
+        /// <see cref="AutoplayPageContext"/> and answer with <see cref="Input.AutoplayPaged"/>.</summary>
+        public bool AutoplayPage;
+        public EntityId AutoplayPageContext;
+
+        // ── video (G-142) ──
+        /// <summary>The video placement was demoted to audio after its retry: the shell turns the surface off and says
+        /// why.</summary>
+        public bool VideoDemoted;
+        public Fault VideoDemotedWhy;
+
+        // ── the auto-skip (a dead row the deck stepped past on its own) ──
+        /// <summary>The deck advanced onto a row whose load failed for good and moved on to the next playable one in
+        /// this same drain (<see cref="AutoSkip"/>): the shell says so — a toast naming <see cref="SkippedId"/> — because
+        /// a track that silently vanishes from a listen is a bug report. Coalesces like every slot: three dead rows in
+        /// one drain surface the LAST one.</summary>
+        public bool SkippedUnavailable;
+        public EntityId SkippedId;
+
+        // ── the play report (G-076, G-079) — a SEQUENCE, drained by the host after every Step ──
+        public PlayReport Play;
 
         // ── connect: announce ──
         public bool PublishState;
@@ -1303,6 +1369,8 @@ public static partial class Playback
         public long RemoteArg;
         public bool RemoteFlag;
         public uint RemoteEpoch;
+        /// <summary><see cref="RemoteCmd.PlayContext"/>: what to play on the owner — the context and the row to start at.</summary>
+        public EntityId RemoteContext, RemoteTrack;
 
         // ── connect: a transfer ──
         public bool Transfer;
@@ -1330,7 +1398,9 @@ public static partial class Playback
 
         /// <summary>Is anything at all pending? The host skips its whole execute pass when nothing is.</summary>
         public readonly bool Any => Load || Start || Stop || PauseHost || ResumeHost || Seek || Volume
-            || PrepareNext || PublishState || SendRemote || Transfer || Fetch || Smtc || SmtcTimeline || Snapshot;
+            || PrepareNext || PublishState || SendRemote || Transfer || Fetch || Smtc || SmtcTimeline || Snapshot
+            || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage
+            || VideoDemoted || SkippedUnavailable;
     }
 
     // ── 9. Step — the reducer ───────────────────────────────────────────────────────────────────────────────────────
@@ -1345,8 +1415,8 @@ public static partial class Playback
         switch (i.Kind)
         {
             case InputKind.Play: DoPlay(ref s, in i, ref fx); break;
-            case InputKind.Next: Advance(ref s, in i, ref fx, forward: true); break;
-            case InputKind.Prev: Advance(ref s, in i, ref fx, forward: false); break;
+            case InputKind.Next: Advance(ref s, in i, ref fx, forward: true, PlayReason.ForwardButton); break;
+            case InputKind.Prev: Advance(ref s, in i, ref fx, forward: false, PlayReason.BackButton); break;
             case InputKind.Pause: DoPause(ref s, in i, ref fx); break;
             case InputKind.Resume: DoResume(ref s, in i, ref fx); break;
             case InputKind.Seek: DoSeek(ref s, in i, ref fx); break;
@@ -1368,142 +1438,175 @@ public static partial class Playback
             case InputKind.Release: DoRelease(ref s, in i, ref fx); break;
             case InputKind.Stop: DoStop(ref s, (StopReason)i.IntArg, ref fx); break;
             case InputKind.Suspend: DoSuspend(ref s, in i, ref fx); break;
-            case InputKind.Resume_: break;              // waking changes nothing by itself; the pump re-reports
+            case InputKind.Resume_: DoWake(ref s, in i, ref fx); break;
             case InputKind.Tick: DoTick(ref s, in i, ref fx); break;
             case InputKind.LiveReport: DoLiveReport(ref s, in i, ref fx); break;
             case InputKind.GoLive: DoGoLive(ref s, in i, ref fx); break;
+            case InputKind.RemoteVolume: DoRemoteVolume(ref s, in i, ref fx); break;
+            case InputKind.QueueChanged: DoQueueChanged(ref s, ref fx); break;
+            case InputKind.VideoPlacement: DoVideoPlacement(ref s, in i, ref fx); break;
+            case InputKind.VideoOffer: DoVideoOffer(ref s, in i, ref fx); break;
+            case InputKind.Restore: DoRestore(ref s, in i, ref fx); break;
+            case InputKind.ResumeAt: DoResumeAt(ref s, in i, ref fx); break;
+            case InputKind.Autoplayed: DoAutoplayed(ref s, in i, ref fx); break;
+            case InputKind.AutoplayPaged: DoAutoplayPaged(ref s, in i, ref fx); break;
+            case InputKind.SessionOnline: DoSessionOnline(ref s, ref fx); break;
+            case InputKind.ContextPages: DoContextPages(ref s, in i, ref fx); break;
+            case InputKind.Paged: DoPaged(ref s, in i, ref fx); break;
+            case InputKind.QueueToOwner: DoQueueToOwner(ref s, in i, ref fx); break;
+            case InputKind.SwitchContext: DoSwitchContext(ref s, in i, ref fx); break;
             default: break;
         }
     }
 
     // ── 9.1 transport ───────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>Does <paramref name="row"/> name <paramref name="id"/>? False for no row, a slot past the table, or a
+    /// slot from a retired scope that now reads another identity — every case the host must re-resolve.
+    /// <see cref="EntityRef.Id"/> already guards a slot past its table's end (returns <c>default</c>, never throws),
+    /// so nothing here needs to re-check the table count.</summary>
+    public static bool RowNamesId(EntityRef row, EntityId id) => !row.IsNone && !id.IsEmpty && row.Id.Equals(id);
+
     static void DoPlay(ref State s, in Input i, ref Effects fx)
     {
-        // Forwarding: while another device owns playback, a local Play is a PLAY COMMAND to that device, not a load
-        // here. This is the routing rule, and it reads the ownership verdict — never a raw cluster id.
-        if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.Play, ref fx, 0, false); return; }
+        var cause = (ClaimCause)(byte)(i.LongArg & 0xFF);
+        bool paused = (i.LongArg & Input.PausedBit) != 0;
+        bool inbound = cause >= ClaimCause.InboundPlay;
 
-        Ownership.Claim(ref s.Own, ClaimCause.UserPlay, ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
-        s.Current = i.Row;
-        s.CurrentId = i.Id;
-        s.Kind = i.PlayKind;
+        // Forwarding: while another device owns playback, a local Play is a PLAY COMMAND to that device, not a load
+        // here. This is the routing rule, and it reads the ownership verdict — never a raw cluster id. An INBOUND load
+        // that raced a takeover is simply stale: it is nobody's command to forward.
+        if (!s.RoutesLocal)
+        {
+            // Not a bare `play` (a RESUME on the owner): the desktop `play` envelope naming the context and the row, so
+            // the phone starts what was clicked here (0.2.9 parity; user report 2026-09-16 "it does not start playing").
+            if (!inbound) ForwardPlay(ref s, in i, ref fx);
+            return;
+        }
+
+        EntityRef row = i.Row;
+        EntityId id = i.Id;
+        QueueCursor cursor = i.Cursor;
+        int fromMs = i.IntArg;
+        // A clicked row the catalog has RULED dead starts the context at the next playable row instead: the greyed row
+        // stays where it was clicked, and the listener hears the list rather than a parked "0:00". Only when the cursor
+        // names that row in the live queue (a queue the reducer has not been handed yet is not walked), never for the
+        // row already on the deck (a Retry re-issues exactly that row and must keep meaning "try it again"), and never
+        // past the end: with nothing playable after it the dead row loads, fails and parks with Retry, as a lone one does.
+        if (!cursor.IsNone && Entities.Current is not null && Queue.RefAt(in cursor) == row
+            && !(row == s.Current && cursor == s.Cursor) && !RowPlayable(row))
+        {
+            int at = Queue.NextPlayable(Queue.Rows, default(LiveRows), cursor.Index, forward: true, wrap: false);
+            if (at >= 0) { cursor = Queue.CursorOf(at); row = Queue.RefAt(at); id = row.Id; fromMs = 0; }
+        }
+
+        Ownership.Claim(ref s.Own, cause, ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
+        ReportEnd(ref s, ref fx, inbound ? PlayReason.Remote : PlayReason.ClickRow, s.Position(i.NowMs));
+        if (!i.Context.Equals(s.Context)) ResetRefill(ref s);
         s.Context = i.Context;
-        s.Cursor = i.Cursor;
-        s.Phase = Phase.Loading;
-        s.Buffering = false;
-        s.Error = Fault.None;
-        s.Recovery = RecoveryKind.None;
-        s.PosMs = i.IntArg;
-        s.PosQpc = i.NowMs;
-        s.DurationMs = 0;
-        s.StreamFormat = StringId.Empty;
-        s.Live = LiveWindow.None;
-        s.Edge = LiveEdgeState.AtEdge;
-        s.TunedInAtMs = 0;
         s.StartedPlayingAtMs = i.NowMs;
         s.HasBeenPlayingForMs = 0;
-        Bump(ref s);
-        s.LoadEpoch = s.Epoch;
-
-        fx.Load = true;
-        fx.LoadRow = i.Row;
-        fx.LoadId = i.Id;
-        fx.LoadKind = i.PlayKind;
-        fx.LoadEpoch = s.Epoch;
-        fx.LoadFromMs = i.IntArg;
-        fx.LoadWhy = LoadOrigin.Claim;
-        if (i.Row.IsNone && !i.Id.IsEmpty) { fx.Fetch = true; fx.FetchId = i.Id; fx.FetchEpoch = s.Epoch; }
-        Prepare(ref s, ref fx);
-        Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
-        fx.Smtc = true;
-        fx.SmtcEpoch = s.Epoch;
+        s.AutoSkips = 0;                                  // a chosen row is a fresh intent: the guard starts over
+        PlayableKind kind = i.PlayKind == PlayableKind.Audio ? KindOfRow(row, s.VideoWanted) : i.PlayKind;
+        PutOnDeck(ref s, in i, row, id, cursor, kind, fromMs, paused);
+        s.StartReason = inbound ? PlayReason.Remote : PlayReason.ClickRow;
+        EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused);
+        if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
         fx.Snapshot = true;
     }
 
-    /// <summary>Next / Previous. TEN CLICKS ARE TEN STEPS AND ONE LOAD (C3): each one moves the cursor synchronously —
-    /// which is what answers the click inside the frame — and rewrites the same <see cref="Effects.Load"/> slot, so
-    /// the shell opens exactly one stream, for the LAST epoch.</summary>
-    static void Advance(ref State s, in Input i, ref Effects fx, bool forward)
+    /// <summary>Next / Previous, and the natural end (<paramref name="why"/> = <see cref="PlayReason.TrackDone"/>).
+    /// TEN CLICKS ARE TEN STEPS AND ONE LOAD (C3): each one moves the cursor synchronously — which is what answers the
+    /// click inside the frame — and rewrites the same <see cref="Effects.Load"/> slot, so the shell opens exactly one
+    /// stream, for the LAST epoch.</summary>
+    static void Advance(ref State s, in Input i, ref Effects fx, bool forward, PlayReason why)
     {
         if (!s.RoutesLocal) { Forward(ref s, forward ? RemoteCmd.SkipNext : RemoteCmd.SkipPrev, ref fx, 0, false); return; }
-        if (forward ? s.NoNext : s.NoPrev) return;       // the context disallows it (the cluster said so)
+        bool natural = why == PlayReason.TrackDone;
+        if (!natural && (forward ? s.NoNext : s.NoPrev)) return;   // the context disallows the SKIP (the cluster said so)
 
         // Repeat-one re-plays the same row rather than moving: the one place the cursor stands still under a transport
-        // verb. An explicit Previous past the first three seconds also restarts the row instead of stepping back.
-        if (forward && s.Repeat == RepeatMode.Track && s.HasCurrent) { Restart(ref s, in i, ref fx); return; }
-        if (!forward && s.Phase != Phase.Idle && s.Position(i.NowMs) > RestartWindowMs) { Restart(ref s, in i, ref fx); return; }
-
-        var cursor = s.Cursor;
-        bool moved = forward ? Queue.TryAdvance(ref cursor, out EntityRef row) : Queue.TryRetreat(ref cursor, out row);
-        if (!moved)
+        // verb. A natural end reloads the row (its session has ended); a click restarts the live one. An explicit
+        // Previous past the first three seconds also restarts the row instead of stepping back.
+        if (forward && s.Repeat == RepeatMode.Track && s.HasCurrent)
         {
-            if (!forward) return;                        // the head of history: stay where we are
-            if (s.Repeat != RepeatMode.Context) { EndOfQueue(ref s, ref fx); return; }
-            // Wrap: the first non-history row is the head of the context.
-            int head = Queue.NextIndex(Queue.Rows, -1);
-            if (head < 0) { EndOfQueue(ref s, ref fx); return; }
-            cursor = Queue.CursorOf(head);
-            row = Queue.RefAt(head);
+            if (!natural) { Restart(ref s, in i, ref fx, why); return; }
+            ReportEnd(ref s, ref fx, why, s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
+            PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, s.Kind, 0, paused: false);
+            s.StartReason = why;
+            EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
+            return;
         }
+        if (!forward && s.Phase != Phase.Idle && s.Position(i.NowMs) > RestartWindowMs) { Restart(ref s, in i, ref fx, why); return; }
 
-        s.Cursor = cursor;
-        s.Current = row;
-        s.CurrentId = row.Id;
-        s.Phase = Phase.Loading;
-        s.Buffering = false;
-        s.Error = Fault.None;
-        s.Recovery = RecoveryKind.None;
-        s.PosMs = 0;
-        s.PosQpc = i.NowMs;
-        s.DurationMs = 0;
-        s.StreamFormat = StringId.Empty;
-        s.Live = LiveWindow.None;
-        s.Edge = LiveEdgeState.AtEdge;
-        s.TunedInAtMs = 0;
-        Bump(ref s);
-        s.LoadEpoch = s.Epoch;
+        // The walk steps past every row the catalog has ruled dead (`RowPlayable`): the deck never lands on a row whose
+        // load can only fail, in either direction, and a context whose remaining rows are all dead has run out exactly
+        // like one with none left. Under repeat-context (and no page still to fetch — a context with a page pages
+        // first, or the rows past its first page would never play, G-242) the walk wraps to the first row the CONTEXT
+        // provided (`Queue.WrapIndex`): a consumed queued or autoplay row must not replay.
+        bool wrap = forward && s.Repeat == RepeatMode.Context && !s.MorePages;
+        int at = Queue.NextPlayable(Queue.Rows, default(LiveRows), s.Cursor.Index, forward, wrap);
+        if (at < 0)
+        {
+            if (!forward) return;                        // the head of history (or only dead rows behind us): stay
+            if (!wrap) { EndOfContext(ref s, in i, ref fx, why); return; }
+            EndOfQueue(ref s, in i, ref fx, why);        // repeat-context with nothing playable anywhere in it
+            return;
+        }
+        QueueCursor cursor = Queue.CursorOf(at);
+        EntityRef row = Queue.RefAt(at);
 
-        fx.Load = true;
-        fx.LoadRow = row;
-        fx.LoadId = s.CurrentId;
-        fx.LoadKind = s.Kind;
-        fx.LoadEpoch = s.Epoch;
-        fx.LoadFromMs = 0;
-        fx.LoadWhy = LoadOrigin.Advance;
-        Prepare(ref s, ref fx);
-        Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
-        fx.Smtc = true;
-        fx.SmtcEpoch = s.Epoch;
+        ReportEnd(ref s, ref fx, why, natural && s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
+        PutOnDeck(ref s, in i, row, row.Id, cursor, KindOfRow(row, s.VideoWanted), 0, paused: false);
+        s.StartReason = why;
+        EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
         fx.Snapshot = true;
     }
 
     /// <summary>How far into a row Previous still means "previous" rather than "start this one again".</summary>
     public const int RestartWindowMs = 3_000;
 
-    static void Restart(ref State s, in Input i, ref Effects fx)
+    static void Restart(ref State s, in Input i, ref Effects fx, PlayReason why)
     {
+        if (s.Parked) { s.PosMs = 0; s.PosQpc = i.NowMs; fx.SmtcTimeline = true; return; }   // nothing live to seek
+        bool registered = s.ReportOpen;
+        ReportEnd(ref s, ref fx, why, s.Position(i.NowMs));
         s.PosMs = 0;
         s.PosQpc = i.NowMs;
         Bump(ref s);
         fx.Seek = true;
         fx.SeekMs = 0;
         fx.SeekEpoch = s.Epoch;
+        if (registered) ReportStart(ref s, ref fx, why, 0);   // the same row, played again, is a new registration
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
         fx.SmtcTimeline = true;
     }
 
-    static void EndOfQueue(ref State s, ref Effects fx)
+    /// <summary>Nothing more to play: the phase ends, the host stops, and the deck parks at the row's start so a play
+    /// press replays it rather than resuming a session that ended.</summary>
+    static void EndOfQueue(ref State s, in Input i, ref Effects fx, PlayReason why)
     {
+        ReportEnd(ref s, ref fx, why, why == PlayReason.TrackDone && s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
         s.Phase = Phase.Ended;
         s.Buffering = false;
+        s.PosMs = 0;
+        s.PosQpc = i.NowMs;
+        s.Parked = true;
+        s.EndingSoon = false;
+        s.NextId = default;
+        s.NextArmed = false;
         Bump(ref s);
+        s.LoadEpoch = s.Epoch;
+        fx.Load = false;                                 // a load earlier in this drain was skipped past
+        fx.PrepareNext = false;
+        fx.Prefetch = false;
         fx.Stop = true;
         fx.StopWhy = StopReason.EndOfQueue;
         fx.TransportEpoch = s.Epoch;
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;
+        fx.Snapshot = true;
     }
 
     static void DoPause(ref State s, in Input i, ref Effects fx)
@@ -1517,6 +1620,7 @@ public static partial class Playback
         // PAUSE NEVER RELEASES OWNERSHIP — ownership is not audibility (the 2026-09-11 rule).
         fx.PauseHost = true;
         fx.TransportEpoch = s.Epoch;
+        ReportPaused(ref s, ref fx, s.PosMs);
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;
@@ -1527,12 +1631,26 @@ public static partial class Playback
     {
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.Resume, ref fx, 0, false); return; }
         if (!s.HasCurrent || s.Error != Fault.None) return;
+        if (s.Parked || s.Phase == Phase.Ended)
+        {
+            // No host holds this row (a restore, a stop, a lost ownership, the end): resuming it is LOADING it, at the
+            // position the deck shows — a new playback as far as the newest-starter rule goes, so it restamps.
+            Ownership.Claim(ref s.Own, ClaimCause.UserPlay, ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
+            s.StartedPlayingAtMs = i.NowMs;
+            s.HasBeenPlayingForMs = 0;
+            PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, KindOfRow(s.Current, s.VideoWanted), s.PosMs, paused: false);
+            s.StartReason = PlayReason.PlayButton;
+            EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused: false);
+            if (!s.CurrentId.IsEmpty && !RowNamesId(s.Current, s.CurrentId)) { fx.Fetch = true; fx.FetchId = s.CurrentId; fx.FetchEpoch = s.Epoch; }
+            return;
+        }
         Ownership.Claim(ref s.Own, ClaimCause.UserResume, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, acknowledged: true);
         s.PosQpc = i.NowMs;
         s.Phase = Phase.Playing;
         Bump(ref s);
         fx.ResumeHost = true;
         fx.TransportEpoch = s.Epoch;
+        ReportResumed(ref s, ref fx, s.PosMs);
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;
@@ -1543,6 +1661,16 @@ public static partial class Playback
         if (s.NoSeek) return;
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.SeekTo, ref fx, i.IntArg, false); return; }
         int ms = i.IntArg < 0 ? 0 : s.DurationMs > 0 && i.IntArg > s.DurationMs ? s.DurationMs : i.IntArg;
+        if (s.Parked)
+        {
+            // Nothing live to seek: the parked deck just moves where its eventual load will start.
+            s.PosMs = ms;
+            s.PosQpc = i.NowMs;
+            fx.SmtcTimeline = true;
+            fx.Snapshot = true;
+            return;
+        }
+        ReportSeeked(ref s, ref fx, s.Position(i.NowMs), ms);
         s.PosMs = ms;
         s.PosQpc = i.NowMs;
         Bump(ref s);
@@ -1559,9 +1687,10 @@ public static partial class Playback
         if (!s.RoutesLocal)
         {
             // The slider follows the ACTIVE device: while a phone owns playback, dragging it is a volume PUT to the
-            // phone (its own route, not a player command) and our own sink is untouched.
+            // phone (its own route, not a player command) and our own sink is untouched. The slider moves at once; the
+            // phone's next cluster confirms it.
             Forward(ref s, RemoteCmd.Unknown, ref fx, wire, false);
-            if (fx.SendRemote) fx.RemoteIsVolume = true;
+            if (fx.SendRemote) { fx.RemoteIsVolume = true; s.MirrorVolume = wire / (float)MaxWireVolume; }
             return;
         }
         float v = wire / (float)MaxWireVolume;
@@ -1575,13 +1704,17 @@ public static partial class Playback
         fx.Snapshot = true;
     }
 
+    /// <summary>Shuffle on/off. Locally it is not a flag but an ORDER (G-080): the rows ahead of the cursor are shuffled,
+    /// or put back in the context's own order, by the host (<see cref="Effects.Reorder"/>) — unless the input says the
+    /// queue was already built in that order (<see cref="Input.ShuffleOrdered"/>).</summary>
     static void DoShuffle(ref State s, in Input i, ref Effects fx)
     {
-        bool on = i.IntArg != 0;
+        bool on = (i.IntArg & 1) != 0;
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.SetShufflingContext, ref fx, 0, on); return; }
         if (s.Shuffle == on) return;
         s.Shuffle = on;
         Bump(ref s);
+        if ((i.IntArg & Input.ShuffleOrderedBit) == 0) { fx.Reorder = true; fx.ReorderShuffle = on; }
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
         fx.Snapshot = true;
     }
@@ -1599,6 +1732,8 @@ public static partial class Playback
         if (s.Repeat == mode) return;
         s.Repeat = mode;
         Bump(ref s);
+        ArmNext(ref s, ref fx);                          // repeat changes what a natural end continues into
+        CheckRefill(ref s, ref fx);
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
         fx.Snapshot = true;
     }
@@ -1614,9 +1749,11 @@ public static partial class Playback
                 s.Phase = Phase.Playing;
                 s.Buffering = false;
                 s.Error = Fault.None;
+                s.AutoSkips = 0;                          // audio is out: the dead-row run, if any, is over
                 s.PosMs = (int)i.LongArg;
                 s.PosQpc = i.NowMs;
                 Bump(ref s);
+                ReportStart(ref s, ref fx, s.StartReason, s.PosMs);   // once per row: a reload's Started finds it open
                 Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
                 fx.Smtc = true;
                 fx.SmtcEpoch = s.Epoch;
@@ -1649,7 +1786,13 @@ public static partial class Playback
                 break;
 
             case AudioSignal.Paused:
-                if (s.Phase == Phase.Playing) { s.PosMs = s.Position(i.NowMs); s.PosQpc = i.NowMs; s.Phase = Phase.Paused; }
+                if (s.Phase == Phase.Playing)
+                {
+                    s.PosMs = s.Position(i.NowMs);
+                    s.PosQpc = i.NowMs;
+                    s.Phase = Phase.Paused;
+                    ReportPaused(ref s, ref fx, s.PosMs);          // the host paused on its own (a device, a focus loss)
+                }
                 fx.Smtc = true;
                 fx.SmtcEpoch = s.Epoch;
                 break;
@@ -1667,12 +1810,34 @@ public static partial class Playback
                 break;
 
             case AudioSignal.Failed:
+            {
+                var fault = (Fault)Math.Clamp(i.LongArg, 0, (long)Fault.Unknown);
+                // A video load gets its retry and then falls back to audio at the carried position (G-142).
+                if (s.Kind == PlayableKind.Video && s.RoutesLocal) { DoVideoFault(ref s, in i, ref fx, retry: true, fault); break; }
+                // A row the deck ADVANCED onto on its own — a natural end, a Next — whose fault is terminal for the row
+                // is stepped past like a dead disc in a changer: the next playable row loads in this same drain (the
+                // same Advance a natural end runs, so it too skips ruled-dead rows, pages, autoplays or ends), the
+                // skipped identity is surfaced for a toast, and the bounded guard keeps a broken context from spinning.
+                // A row the listener chose, a session-level fault, repeat-one and a tripped guard park below, with Retry.
+                if (s.RoutesLocal && AutoSkip.Skips(fault, s.LoadWhy, s.Repeat == RepeatMode.Track, s.AutoSkips))
+                {
+                    s.AutoSkips++;
+                    fx.SkippedUnavailable = true;
+                    fx.SkippedId = s.CurrentId;
+                    ReportEnd(ref s, ref fx, PlayReason.TrackError, s.Position(i.NowMs));
+                    Advance(ref s, in i, ref fx, forward: true, PlayReason.TrackDone);
+                    break;
+                }
                 // The load is dead. Keep the row on the deck so the bar can say WHAT failed, drop to Paused, and
                 // release nothing: a failed load is not a transfer.
+                ReportEnd(ref s, ref fx, PlayReason.TrackError, s.Position(i.NowMs));
                 s.Phase = Phase.Paused;
                 s.Buffering = false;
-                s.Error = (Fault)Math.Clamp(i.LongArg, 0, (long)Fault.Unknown);
-                if (s.Error == Fault.None) s.Error = Fault.Unknown;
+                s.Error = fault == Fault.None ? Fault.Unknown : fault;
+                s.Parked = true;
+                s.EndingSoon = false;
+                s.NextId = default;
+                s.NextArmed = false;
                 Bump(ref s);
                 fx.Stop = true;
                 fx.StopWhy = StopReason.Failed;
@@ -1681,20 +1846,30 @@ public static partial class Playback
                 fx.Smtc = true;
                 fx.SmtcEpoch = s.Epoch;
                 break;
+            }
 
             case AudioSignal.Stopped:
                 if (s.Phase is Phase.Playing or Phase.Loading) { s.Phase = Phase.Paused; Bump(ref s); }
                 break;
+
+            case AudioSignal.HandedOff: DoHandedOff(ref s, in i, ref fx); break;
+            case AudioSignal.EndingSoon: DoEndingSoon(ref s, ref fx); break;
+            case AudioSignal.DeviceReload: DoDeviceReload(ref s, in i, ref fx); break;
+
+            case AudioSignal.VideoUnavailable:
+                if (s.Kind == PlayableKind.Video && s.RoutesLocal) DoVideoFault(ref s, in i, ref fx, retry: false, Fault.Unavailable);
+                break;
         }
     }
 
-    /// <summary>The stream ran out. Advancing INLINE (rather than posting a second input) is what makes gapless
-    /// gapless: the next Load lands in the SAME drain, so the pump is asked for it before the frame ends.</summary>
+    /// <summary>The stream ran out with NOTHING prepared — the hard-cut fallback of D4 (a prepared row arrives as
+    /// <see cref="AudioSignal.HandedOff"/> instead). Advancing INLINE (rather than posting a second input) still matters:
+    /// the next Load lands in the SAME drain, so the pump is asked for it before the frame ends.</summary>
     static void DoEnded(ref State s, in Input i, ref Effects fx)
     {
         if (i.Epoch != s.LoadEpoch) return;
         s.HasBeenPlayingForMs += Math.Max(0, i.NowMs - s.PosQpc);
-        Advance(ref s, in i, ref fx, forward: true);
+        Advance(ref s, in i, ref fx, forward: true, PlayReason.TrackDone);
     }
 
     static void DoDuration(ref State s, in Input i, ref Effects fx)
@@ -1741,15 +1916,7 @@ public static partial class Playback
 
         if (changed || stop) Bump(ref s);                 // the ONE bump — see the note above
 
-        if (stop)
-        {
-            s.Phase = Phase.Idle;
-            s.Buffering = false;
-            s.LoadEpoch = s.Epoch;                        // every in-flight load for the old epoch is now superseded
-            fx.Stop = true;
-            fx.StopWhy = StopReason.LostOwnership;
-            fx.TransportEpoch = s.Epoch;
-        }
+        if (stop) LoseHost(ref s, in i, ref fx, StopReason.LostOwnership, PlayReason.Remote);
         // We cannot know a phone's format, and 0.2.9 left ours on screen (ch 21 G8).
         if (changed && s.Own.Kind != Owner.Us) s.StreamFormat = StringId.Empty;
         if ((owner & OwnerFx.PublishInactive) != 0) Announce(ref s, ref fx, PublishReason.BecameInactive);
@@ -1767,6 +1934,27 @@ public static partial class Playback
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;
         fx.Snapshot = true;
+    }
+
+    /// <summary>The local host stops holding the row, WITHOUT a bump of its own (the caller has bumped once for the
+    /// whole transition, C4): the registration closes, the in-flight load is superseded, the deck parks and the next-row
+    /// arm resets. What a lost ownership, a transfer away and a release share.</summary>
+    static void LoseHost(ref State s, in Input i, ref Effects fx, StopReason why, PlayReason reason)
+    {
+        ReportEnd(ref s, ref fx, reason, s.Position(i.NowMs));
+        s.Phase = Phase.Idle;
+        s.Buffering = false;
+        s.Parked = true;
+        s.EndingSoon = false;
+        s.NextId = default;
+        s.NextArmed = false;
+        s.LoadEpoch = s.Epoch;                            // every in-flight load for the old epoch is now superseded
+        fx.Load = false;
+        fx.PrepareNext = false;
+        fx.Prefetch = false;
+        fx.Stop = true;
+        fx.StopWhy = why;
+        fx.TransportEpoch = s.Epoch;
     }
 
     static void MirrorRemote(ref State s, in Input i, ref Effects fx)
@@ -1792,7 +1980,8 @@ public static partial class Playback
         s.NoPrev = r.NoPrev;
         s.NoSeek = r.NoSeek;
         s.StreamFormat = StringId.Empty;
-        if (r.Volume >= 0) s.Volume = Math.Clamp(r.Volume / (float)MaxWireVolume, 0f, 1f);
+        // The slider follows the OWNER; our own volume (the sink's, the PUT body's) is untouched.
+        if (r.Volume >= 0) s.MirrorVolume = Math.Clamp(r.Volume / (float)MaxWireVolume, 0f, 1f);
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;
     }
@@ -1804,13 +1993,22 @@ public static partial class Playback
     {
         ref readonly RemoteCommand c = ref i.Command;
         if (!c.Ok || c.Kind == RemoteCmd.Unknown) return;
+        // The PUT this command causes is attributed to it, so the controller sees its own id come back (G-073) — for
+        // CommandAttribution.WindowMs, and no longer (G-246): stamped here, aged when the snapshot is captured.
+        if (c.MessageId != 0)
+        {
+            s.LastCommandMessageId = (uint)c.MessageId;
+            s.LastCommandAtMs = i.NowMs;
+            s.LastCommandSender = c.SenderHash;
+        }
 
         switch (c.Kind)
         {
             case RemoteCmd.Play:
             case RemoteCmd.Transfer:
                 // An inbound play/transfer IS a claim: the controller addressed US, so we own playback from this
-                // Step, before any cluster confirms it. The shell resolves the context and posts the real Play.
+                // Step, before any cluster confirms it. The host resolves what it asks for (`RemoteLoadArrived`) and
+                // folds the real Play with the inbound cause.
                 Ownership.Claim(ref s.Own,
                     c.Kind == RemoteCmd.Transfer ? ClaimCause.InboundTransfer : ClaimCause.InboundPlay,
                     ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
@@ -1829,12 +2027,12 @@ public static partial class Playback
 
             case RemoteCmd.SkipNext:
                 Ownership.Claim(ref s.Own, ClaimCause.InboundSkip, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
-                Advance(ref s, in i, ref fx, forward: true);
+                Advance(ref s, in i, ref fx, forward: true, PlayReason.Remote);
                 break;
 
             case RemoteCmd.SkipPrev:
                 Ownership.Claim(ref s.Own, ClaimCause.InboundSkip, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
-                Advance(ref s, in i, ref fx, forward: false);
+                Advance(ref s, in i, ref fx, forward: false, PlayReason.Remote);
                 break;
 
             case RemoteCmd.SeekTo:
@@ -1867,11 +2065,20 @@ public static partial class Playback
                     break;
                 }
 
-            // AddToQueue / SetQueue / UpdateContext / SetOptions are QUEUE and CONTEXT writes: they land in
-            // `Entities/Queue.cs` through the host, not in the transport reducer. The claim below is the part that IS
-            // ours — a controller that queues onto us has addressed us.
+            // A controller that queues onto us has addressed us: the claim is ours, and the write is the host's
+            // (`Queue.Enqueue`, G-074) — whose version bump re-arms the next row on the following drain.
             case RemoteCmd.AddToQueue:
+                Ownership.Claim(ref s.Own, ClaimCause.InboundQueueStart, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                if (!c.Track.IsEmpty) { fx.QueueAdd = true; fx.QueueAddId = c.Track; }
+                Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+                break;
+
+            // set_queue / update_context: the claim and the PUT attributed to the sender are folded here; their ROWS are
+            // decoded by `Decode.ConnectQueue` and spliced behind the deck by the host's intake (`RunQueue`,
+            // Playback.Host.Remote.cs) in the same drain — before this announce is executed, so the PUT carries the new
+            // queue. set_options never reaches here: the glue folds it to the shuffle / repeat verbs above.
             case RemoteCmd.SetQueue:
+            case RemoteCmd.UpdateContext:
                 Ownership.Claim(ref s.Own, ClaimCause.InboundQueueStart, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
                 Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
                 break;
@@ -1887,15 +2094,10 @@ public static partial class Playback
         ulong target = (ulong)i.LongArg;
         if (target == 0 || target == s.Us) return;       // self-to-self is a 400; the caller must not ask
         Ownership.Release(ref s.Own, ReleaseCause.TransferAway);
-        s.Phase = Phase.Idle;
-        s.Buffering = false;
         s.StreamFormat = StringId.Empty;
         Bump(ref s);
-        s.LoadEpoch = s.Epoch;
+        LoseHost(ref s, in i, ref fx, StopReason.Released, PlayReason.Remote);
         s.TransferEpoch = s.Epoch;
-        fx.Stop = true;
-        fx.StopWhy = StopReason.Released;
-        fx.TransportEpoch = s.Epoch;
         fx.Transfer = true;
         fx.TransferTo = target;
         fx.TransferSlot = i.IntArg;
@@ -1936,22 +2138,52 @@ public static partial class Playback
 
     static void DoRelease(ref State s, in Input i, ref Effects fx)
     {
-        OwnerFx owner = Ownership.Release(ref s.Own, (ReleaseCause)i.IntArg);
+        var cause = (ReleaseCause)i.IntArg;
+        bool wasUs = s.Own.Kind == Owner.Us;
+        OwnerFx owner = Ownership.Release(ref s.Own, cause);
+        if (cause == ReleaseCause.Logout) { SignOut(ref s, in i, ref fx, wasUs); return; }
         if (owner == OwnerFx.None) return;
         if ((owner & OwnerFx.StopHost) != 0)
         {
-            s.Phase = Phase.Idle;
-            s.Buffering = false;
             s.StreamFormat = StringId.Empty;
             Bump(ref s);
-            s.LoadEpoch = s.Epoch;
-            fx.Stop = true;
-            fx.StopWhy = StopReason.Released;
-            fx.TransportEpoch = s.Epoch;
+            LoseHost(ref s, in i, ref fx, StopReason.Released, PlayReason.EndPlay);
         }
         if ((owner & OwnerFx.PublishInactive) != 0) Announce(ref s, ref fx, PublishReason.BecameInactive);
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;
+    }
+
+    /// <summary>The account signed out (G-036): whatever owned playback, the deck is the account's and it goes — the
+    /// host stops, the registration closes, the mirrored foreign row is dropped, and the epochs move on so every result
+    /// still in flight for the old session is stale. This device's identity, its volume and the placement wish stay.</summary>
+    static void SignOut(ref State s, in Input i, ref Effects fx, bool wasUs)
+    {
+        ReportEnd(ref s, ref fx, PlayReason.Logout, s.Position(i.NowMs));
+        ulong us = s.Us;
+        float volume = s.Volume;
+        bool video = s.VideoWanted;
+        uint epoch = s.Epoch, seq = s.PublishSeq;
+        s = State.Initial;
+        s.Us = us;
+        s.Volume = volume;
+        s.VideoWanted = video;
+        s.Epoch = epoch;
+        s.PublishSeq = seq;
+        s.Own.Cause = wasUs ? NobodyCause.FromUs : NobodyCause.Launch;
+        Bump(ref s);
+        s.LoadEpoch = s.Epoch;
+        s.TransferEpoch = s.Epoch;
+        fx.Load = false;
+        fx.PrepareNext = false;
+        fx.Prefetch = false;
+        fx.Stop = true;
+        fx.StopWhy = StopReason.Released;
+        fx.TransportEpoch = s.Epoch;
+        if (wasUs) Announce(ref s, ref fx, PublishReason.BecameInactive);
+        fx.Smtc = true;
+        fx.SmtcEpoch = s.Epoch;
+        fx.Snapshot = true;
     }
 
     static void DoStop(ref State s, StopReason why, ref Effects fx)
@@ -1959,6 +2191,11 @@ public static partial class Playback
         if (s.Phase == Phase.Idle) return;
         s.Phase = Phase.Idle;
         s.Buffering = false;
+        s.Parked = true;
+        s.EndingSoon = false;
+        s.NextId = default;
+        s.NextArmed = false;
+        s.ReportOpen = false;                            // a stop is not a play event the service is told about
         Bump(ref s);
         s.LoadEpoch = s.Epoch;
         fx.Stop = true;
@@ -1969,17 +2206,33 @@ public static partial class Playback
         fx.SmtcEpoch = s.Epoch;
     }
 
+    /// <summary>The machine is going to sleep (D13, G-081): pause LOCAL playback and nothing else. A foreign owner is
+    /// never forwarded a pause — a sleeping laptop must not pause somebody's speaker — and a deck that is not playing is
+    /// left exactly as it is.</summary>
     static void DoSuspend(ref State s, in Input i, ref Effects fx)
     {
-        if (s.Phase != Phase.Playing) return;
+        if (!s.RoutesLocal || s.Phase is not (Phase.Playing or Phase.Loading)) return;
         s.PosMs = s.Position(i.NowMs);
         s.PosQpc = i.NowMs;
         s.Phase = Phase.Paused;
         Bump(ref s);
         fx.PauseHost = true;
         fx.TransportEpoch = s.Epoch;
+        ReportPaused(ref s, ref fx, s.PosMs);
         fx.Snapshot = true;
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+        fx.Smtc = true;
+        fx.SmtcEpoch = s.Epoch;
+    }
+
+    /// <summary>…and waking (D13, G-082). A suspended machine loses its server-side device registration even though
+    /// the socket still looks alive, so the device RE-ANNOUNCES as a new connection (0.2.9's
+    /// <c>AnnounceNewConnection</c> after <c>PBT_APMRESUMEAUTOMATIC</c>); the tick folds the lost time and expires a
+    /// protection window that ran out while asleep. Playback does not resume by itself.</summary>
+    static void DoWake(ref State s, in Input i, ref Effects fx)
+    {
+        DoTick(ref s, in i, ref fx);
+        Announce(ref s, ref fx, PublishReason.NewConnection);
     }
 
     // ── 9.4 the ticker and the live window ──────────────────────────────────────────────────────────────────────────
@@ -1999,13 +2252,8 @@ public static partial class Playback
         }
         OwnerFx owner = Ownership.Tick(ref s.Own, i.NowMs);
         if ((owner & OwnerFx.StopHost) == 0) return;
-        s.Phase = Phase.Idle;
-        s.Buffering = false;
         Bump(ref s);
-        s.LoadEpoch = s.Epoch;
-        fx.Stop = true;
-        fx.StopWhy = StopReason.LostOwnership;
-        fx.TransportEpoch = s.Epoch;
+        LoseHost(ref s, in i, ref fx, StopReason.LostOwnership, PlayReason.Remote);
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;
     }
@@ -2050,17 +2298,6 @@ public static partial class Playback
         fx.PublishEpoch = s.Epoch;
     }
 
-    /// <summary>Arm gapless: what plays after the cursor, WITHOUT moving it. Only where a prepared stream can actually
-    /// be used — every video and cross-kind boundary is a hard cut (<see cref="MediaSwitch.AllowCrossfade"/>).</summary>
-    static void Prepare(ref State s, ref Effects fx)
-    {
-        if (s.Kind == PlayableKind.Video) return;
-        if (!Queue.TryPeek(in s.Cursor, out EntityRef next) || next.IsNone) return;
-        fx.PrepareNext = true;
-        fx.NextRow = next;
-        fx.NextId = next.Id;
-    }
-
     /// <summary>Forward a transport verb to the device that owns playback. THE routing rule: it reads the ownership
     /// verdict, never a raw cluster id (memory rule <c>connect-ownership-single-authority</c>).</summary>
     static void Forward(ref State s, RemoteCmd cmd, ref Effects fx, long arg, bool flag)
@@ -2077,115 +2314,19 @@ public static partial class Playback
         fx.RemoteEpoch = s.Epoch;
     }
 
-    // ── 10. the snapshot the PUT body encodes ───────────────────────────────────────────────────────────────────────
-
-    /// <summary>This device's Connect identity — the constants a PUT body carries about US, filled once at boot and
-    /// never derived from state. Kept out of <see cref="State"/> because none of it ever changes and a reducer that
-    /// copies six strings per Step is a reducer nobody will keep pure.</summary>
-    /// <param name="DeviceId">Our persisted, launch-stable device id.</param>
-    /// <param name="DeviceName">What the picker shows for us.</param>
-    /// <param name="ClientId">The keymaster client id we authenticated with.</param>
-    /// <param name="Platform">`PrivateDeviceInfo.platform`.</param>
-    /// <param name="SoftwareVersion">`DeviceInfo.device_software_version`.</param>
-    /// <param name="SpircVersion">`DeviceInfo.spirc_version`.</param>
-    public readonly record struct DeviceIdentity(
-        string DeviceId,
-        string DeviceName,
-        string ClientId,
-        string Platform,
-        string SoftwareVersion,
-        string SpircVersion);
-
-    /// <summary>THE value <c>Spotify.Decode.PutState</c> encodes — our player state as one flat, self-contained
-    /// struct.
-    ///
-    /// <para><b>Why a snapshot and not <see cref="State"/> itself.</b> The PUT runs on an api thread and
-    /// <see cref="State"/> is the UI thread's (C1); and half of what the body needs (the device identity, the wire
-    /// volume scale, the message id) is not playback state at all. The host captures this ON the UI thread, inside
-    /// the drain, and hands the value across — so the encoder can never read a table, a signal or the reducer.</para>
-    ///
-    /// <para><b>The identities travel packed.</b> <see cref="Track"/> and <see cref="Context"/> are
-    /// <see cref="EntityId"/>s, written to the wire through <c>EntityId.Format(Span&lt;byte&gt;)</c> — the same call
-    /// the staged uri uses — so the encoder allocates nothing.</para></summary>
-    public readonly struct Snapshot
+    /// <summary>A local Play while another device owns playback: forward "play this context from this row" to it
+    /// (<see cref="RemoteCmd.PlayContext"/>). The context is the play's own; a row played on its own (no context) names
+    /// the row as the context, which is how the desktop plays a single track. Our shuffle setting rides along as the
+    /// player option override, as 0.2.9's envelope did.</summary>
+    static void ForwardPlay(ref State s, in Input i, ref Effects fx)
     {
-        // ── us ──
-        public readonly DeviceIdentity Device;
-        /// <summary>The wire's is_active. Its ONE writer is <see cref="Ownership.IsActiveOnWire"/>.</summary>
-        public readonly bool IsActive;
-        public readonly PublishReason Reason;
-        public readonly uint MessageId;
-        /// <summary>OUR device's volume on the wire scale, 0..<see cref="MaxWireVolume"/>. Always ours, even while a
-        /// foreign device owns playback — a non-active Wavee still reports its real volume.</summary>
-        public readonly int Volume;
-        public readonly long ClientTimestampMs;
-        public readonly long StartedPlayingAtMs;
-        public readonly long HasBeenPlayingForMs;
-
-        // ── the player state ──
-        public readonly bool HasTrack;
-        public readonly EntityId Track;
-        public readonly EntityId Context;
-        /// <summary>The queue item id for the current row ("" when we minted the session ourselves).</summary>
-        public readonly string Uid;
-        public readonly long PositionAsOfMs;
-        public readonly long TimestampMs;
-        public readonly long DurationMs;
-        public readonly bool IsPlaying;
-        public readonly bool IsPaused;
-        public readonly bool IsBuffering;
-        public readonly bool Shuffling;
-        public readonly RepeatMode Repeat;
-        /// <summary>Decides `track_player` — <see cref="MediaSwitch.TrackPlayer"/>.</summary>
-        public readonly PlayableKind Kind;
-
-        public Snapshot(in DeviceIdentity device, bool isActive, PublishReason reason, uint messageId, int volume,
-            long clientTimestampMs, long startedPlayingAtMs, long hasBeenPlayingForMs,
-            bool hasTrack, EntityId track, EntityId context, string uid,
-            long positionAsOfMs, long timestampMs, long durationMs,
-            bool isPlaying, bool isPaused, bool isBuffering, bool shuffling, RepeatMode repeat, PlayableKind kind)
-        {
-            Device = device; IsActive = isActive; Reason = reason; MessageId = messageId; Volume = volume;
-            ClientTimestampMs = clientTimestampMs; StartedPlayingAtMs = startedPlayingAtMs;
-            HasBeenPlayingForMs = hasBeenPlayingForMs;
-            HasTrack = hasTrack; Track = track; Context = context; Uid = uid;
-            PositionAsOfMs = positionAsOfMs; TimestampMs = timestampMs; DurationMs = durationMs;
-            IsPlaying = isPlaying; IsPaused = isPaused; IsBuffering = isBuffering;
-            Shuffling = shuffling; Repeat = repeat; Kind = kind;
-        }
-
-        /// <summary>The same snapshot with the message id the glue actually SENT it under. The id is minted inside
-        /// the debounce (ten captures in one window become one PUT), so the capture cannot know it — and the ownership
-        /// fold needs the number that went on the wire, because the response quoting it is the verdict (C5).</summary>
-        public Snapshot WithMessageId(uint messageId)
-            => new(in Device, IsActive, Reason, messageId, Volume, ClientTimestampMs, StartedPlayingAtMs,
-                HasBeenPlayingForMs, HasTrack, Track, Context, Uid, PositionAsOfMs, TimestampMs, DurationMs,
-                IsPlaying, IsPaused, IsBuffering, Shuffling, Repeat, Kind);
-
-        /// <summary>Capture the current state for an announce. PURE — the caller supplies the clock (a unix-ms stamp)
-        /// and the message id, so a unit test pins the exact body a given state produces.
-        ///
-        /// <para>While we are NOT the active device the PLAYER half is empty but the DEVICE half is not: librespot
-        /// publishes an idle player_state plus our own volume rather than mirroring the foreign device's row, and
-        /// mirroring it is how 0.2.9 announced a phone's track as ours.</para></summary>
-        public static Snapshot Of(in State s, in DeviceIdentity device, PublishReason reason, uint messageId,
-            long unixMs, long frameNowMs, string uid = "")
-        {
-            bool active = Ownership.IsActiveOnWire(in s.Own);
-            int volume = (int)Math.Round(Math.Clamp(s.Volume, 0f, 1f) * MaxWireVolume);
-            if (!active)
-                return new Snapshot(in device, false, reason, messageId, volume, unixMs, 0, 0,
-                    false, default, default, "", 0, unixMs, 0, false, false, false, false, RepeatMode.Off,
-                    PlayableKind.Audio);
-
-            return new Snapshot(in device, true, reason, messageId, volume, unixMs,
-                s.StartedPlayingAtMs, s.HasBeenPlayingForMs,
-                s.HasCurrent, s.CurrentId, s.Context, uid,
-                s.Position(frameNowMs), unixMs, s.DurationMs,
-                s.Phase == Phase.Playing, s.Phase == Phase.Paused, s.Buffering,
-                s.Shuffle, s.Repeat, s.Kind);
-        }
+        if (i.Id.IsEmpty) return;
+        Forward(ref s, RemoteCmd.PlayContext, ref fx, 0, s.Shuffle);
+        fx.RemoteContext = i.Context.IsEmpty ? i.Id : i.Context;
+        fx.RemoteTrack = i.Id;
     }
+
+    // ── 10. the snapshot the PUT body encodes, and its parity half, live in Playback.Wire.cs ─────────────────────────
 
     // ── 11. identity hashing (the fold's device keys) ───────────────────────────────────────────────────────────────
 

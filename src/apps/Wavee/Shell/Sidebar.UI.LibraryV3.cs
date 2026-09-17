@@ -217,7 +217,15 @@ public static partial class Sidebar
             bool group = LibraryV3Document.FoldersApply(in state);
             int revision = Binder?.Revision ?? 0;
 
-            long epoch = ViewEpoch(cell.Version.Peek(), revision, skip, group, state.DrillFolderId);
+            // BUG E, step 3: the VIEW's own re-bucket gate, split from the binder's composite `Revision` — see
+            // `SidebarRevisionGate`. `Revision` still moves on an Input-only rebuild (pins/recency/feeds, no
+            // library content change), which is exactly what `PlanDep` needs to re-plan but `View.Build`
+            // (a full re-bucket/re-group of the published library) does not: `cell.Version.Peek()` (Entries'
+            // exact byte-content gate) already covers every input `View.Build` reads from the projection, `skip`
+            // covers the pin band, `group`/`drill` cover the view state — `revision` added nothing to the GATE
+            // beyond false-positive re-groups. It still goes INTO `View.Build` below, as `EnsureParentMap`'s own
+            // cheap internal memo key for the folder→parent walk over the tree slice.
+            long epoch = ViewEpoch(cell.Version.Peek(), skip, group, state.DrillFolderId);
             if (epoch != _viewEpoch)
             {
                 _viewEpoch = epoch;
@@ -229,12 +237,11 @@ public static partial class Sidebar
             return group ? input with { PlaylistTree = View.Rows } : input with { Library = View.Rows };
         }
 
-        static long ViewEpoch(int entriesVersion, int revision, int skip, bool group, string? drill)
+        static long ViewEpoch(int entriesVersion, int skip, bool group, string? drill)
         {
             unchecked
             {
                 long h = entriesVersion;
-                h = h * 1099511628211L + revision;
                 h = h * 1099511628211L + skip;
                 h = h * 1099511628211L + (group ? 1 : 0);
                 h = h * 1099511628211L + (drill is { Length: > 0 } d ? StringComparer.Ordinal.GetHashCode(d) : 0);
@@ -839,7 +846,10 @@ public static partial class Sidebar
                 // The HOVER SCOPE for the chevrons' HoverOpacity reveal (nothing else under it carries a reveal style).
                 OnHoverMove = static _ => { },
                 OnPointerExit = static () => { },
-                Children = [ZStack(scroller, RailChevrons(canLeft, canRight)) with { Grow = 1f }],
+                // SHRINK (G-254): the ContentSized scroller reports the full run of words, a ZStack measures its widest
+                // layer, and flex items do not shrink by default — so a rail wider than the pane never scrolled and the
+                // trailing words and the right chevron were clipped.
+                Children = [ZStack(scroller, RailChevrons(canLeft, canRight)) with { Grow = 1f, Shrink = 1f }],
             };
         }
 

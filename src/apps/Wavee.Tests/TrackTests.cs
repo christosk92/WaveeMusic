@@ -124,6 +124,56 @@ public class TrackTests
         Assert.False(track.IsPlayable);
     }
 
+    [Theory]
+    [InlineData(false, false, 0, false)]
+    [InlineData(false, true, 0, false)]                    // a stray flag on an unruled row is not a verdict
+    [InlineData(true, false, 0, false)]                    // ruled playable
+    [InlineData(true, true, 0, true)]                      // ruled unavailable, nothing to wait for
+    [InlineData(true, true, 1_800_000_000, false)]         // ruled unavailable WITH an instant: not-yet-out, never this
+    [InlineData(true, true, 1, false)]                     // any instant at all, even a passed one, is the other rule's
+    public void Unplayable_is_a_ruled_unavailable_with_no_release_instant(bool known, bool unavailable, int availableAt,
+        bool expected)
+        => Assert.Equal(expected, Track.Unplayable(known, unavailable, availableAt));
+
+    [Fact]
+    public void Unplayable_and_not_yet_out_split_a_ruled_verdict_on_the_release_instant()
+    {
+        // Two rows the catalog ruled unavailable: one names WHEN (a pending release — dimmed until the date, then healed
+        // with no refetch), one names nothing (withdrawn, region-locked, a terminal envelope verdict — dimmed for good).
+        TestScope.Fresh();
+        const long now = 1_790_000_000;
+        var s = Staging.Rent();
+        ref var pending = ref s.Tracks.Add();
+        pending.Id = s.Text("spotify:track:pending");
+        pending.Title = s.Text("Announced");
+        pending.Flags = (uint)TrackFlags.Unavailable;
+        pending.AvailableAt = (int)(now + 86_400);
+        pending.Known = (uint)(TrackFields.Identity | TrackFields.Availability);
+        pending.Authority = Authority.Full;
+        ref var gone = ref s.Tracks.Add();
+        gone.Id = s.Text("spotify:track:gone");
+        gone.Flags = (uint)TrackFlags.Unavailable;
+        gone.Known = (uint)(TrackFields.Identity | TrackFields.Availability);
+        gone.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+
+        var announced = Entities.Track(EntityUri.Parse("spotify:track:pending"));
+        Assert.True(announced.NotYetOut(now));
+        Assert.False(announced.Unplayable());
+        Assert.False(announced.NotYetOut(now + 2 * 86_400));  // the release drop heals the pending row
+
+        var withdrawn = Entities.Track(EntityUri.Parse("spotify:track:gone"));
+        Assert.True(withdrawn.Unplayable());
+        Assert.True(withdrawn.NotYetOut(now));                 // the shared dim/play gate also holds — same greyed row
+        Assert.True(withdrawn.NotYetOut(now + 365 * 86_400));  // and no clock ever heals it
+        Assert.False(withdrawn.IsPlayable);
+
+        // Unruled stays out of both: the verdict is the Known bit, never the flag alone.
+        var unruled = Entities.Track(EntityUri.Parse("spotify:track:never-asked"));
+        Assert.False(unruled.Unplayable());
+        Assert.False(unruled.NotYetOut(now));
+    }
+
     // ── the commit (C1) ─────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -433,5 +483,80 @@ public class TrackTests
 
         Assert.Equal(settled, Entities.Strings.MapCount);
         Assert.Equal("track overwrite take 5 20260912", Entities.Track(EntityUri.Parse(uri)).Title);
+    }
+
+    // ── ForDisplay: the relink redirection (Track.Rules.cs §5b) ─────────────────────────────────────────────────────
+
+    /// <summary>A row that knows its own title paints itself, whether or not it points at a canonical row: the
+    /// versions-panel pointer is not a redirect for a titled row.</summary>
+    [Fact]
+    public void A_row_that_knows_its_title_displays_itself_even_with_a_canonical_pointer()
+    {
+        TestScope.Fresh();
+        const string self = "wavee:local:file:fordisplay-titled-20260916";
+        const string other = "wavee:local:file:fordisplay-titled-canonical-20260916";
+        var s = Staging.Rent();
+        ref var row = ref s.Tracks.Add();
+        row.Id = s.Text(self);
+        row.Title = s.Text("titled row 20260916");
+        row.CanonicalUri = s.Text(other);
+        row.Known = (uint)(TrackFields.Identity | TrackFields.Canonical);
+        row.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+
+        var track = Entities.Track(EntityUri.Parse(self));
+        Assert.True(track.Canonical.IsValid);
+        Assert.Equal(track.Slot, track.ForDisplay.Slot);
+        Assert.Equal("titled row 20260916", track.ForDisplay.Title);
+    }
+
+    /// <summary>A row with NO title that points at a valid canonical row paints the canonical row's facts — the shape a
+    /// relinked id takes when only its pointer has landed (a persisted column, a partial answer).</summary>
+    [Fact]
+    public void A_row_without_a_title_displays_its_canonical_row()
+    {
+        TestScope.Fresh();
+        const string alias = "wavee:local:file:fordisplay-alias-20260916";
+        const string canonical = "wavee:local:file:fordisplay-canonical-20260916";
+        var s = Staging.Rent();
+
+        ref var target = ref s.Tracks.Add();
+        target.Id = s.Text(canonical);
+        target.Title = s.Text("canonical title 20260916");
+        target.DurationMs = 201_000;
+        target.Known = (uint)TrackFields.Identity;
+        target.Authority = Authority.Full;
+
+        ref var row = ref s.Tracks.Add();              // `Add` may reallocate: `target` is not read after this line
+        row.Id = s.Text(alias);
+        row.CanonicalUri = s.Text(canonical);
+        row.Known = (uint)TrackFields.Canonical;
+        row.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+
+        var asked = Entities.Track(EntityUri.Parse(alias));
+        var shown = asked.ForDisplay;
+        Assert.False(asked.Knows(TrackFields.Title));
+        Assert.Equal(Entities.Track(EntityUri.Parse(canonical)).Slot, shown.Slot);
+        Assert.NotEqual(asked.Slot, shown.Slot);
+        Assert.Equal("canonical title 20260916", shown.Title);
+        Assert.Equal(201_000, shown.DurationMs);
+        // Identity stays the asked row's: the redirect is for what is READ, never for who the row is.
+        Assert.Equal(alias, asked.Uri.Text);
+    }
+
+    /// <summary>A row with neither a title nor a canonical pointer is thin and displays itself — never slot 0.</summary>
+    [Fact]
+    public void A_row_without_a_title_or_a_canonical_displays_itself()
+    {
+        TestScope.Fresh();
+        var bare = Entities.Track(EntityUri.Parse("wavee:local:file:fordisplay-bare-20260916"));
+        Assert.False(bare.Knows(TrackFields.Title));
+        Assert.False(bare.Canonical.IsValid);
+        Assert.Equal(bare.Slot, bare.ForDisplay.Slot);
+
+        // The permanent "none" row reads the same way: a default handle never redirects anywhere.
+        Track none = default;
+        Assert.Equal(none.Slot, none.ForDisplay.Slot);
     }
 }

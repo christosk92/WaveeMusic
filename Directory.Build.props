@@ -19,6 +19,11 @@
     <!-- Warning-clean is enforced (mirrors src/Directory.Build.props) for every project under src/apps, Wavee.Tests
          included; a project opts out only in its own csproj, and none in the solution does. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- The engine projects are referenced from outside the solution (see Wavee.slnx). In a SOLUTION build MSBuild unsets
+         Configuration/Platform for such references (ShouldUnsetParentConfigurationAndPlatform), so `dotnet build
+         Wavee.slnx -c Release` built the engine as Debug and copied bin\Debug\FluentGpu.*.dll into this app's bin\Release:
+         the DEBUG parity self-check then ran every frame (2026-09-17). Keep the parent configuration on every reference. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
     <RootNamespace>$(MSBuildProjectName)</RootNamespace>
   </PropertyGroup>
 

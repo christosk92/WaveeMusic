@@ -159,6 +159,80 @@ public class QueueTests
         Assert.True(QueueCursor.None.IsNone);
     }
 
+    // ── the playable walk (a dead row is never advanced onto) ───────────────────────────────────────────────────────
+
+    static bool[] AllLive(int n)
+    {
+        var flags = new bool[n];
+        Array.Fill(flags, true);
+        return flags;
+    }
+
+    [Fact]
+    public void The_playable_walk_is_the_plain_walk_when_every_row_is_live()
+    {
+        var rows = Session();
+        var live = new Queue.PlayableFlags(AllLive(rows.Length));
+        Assert.Equal(Queue.NextIndex(rows, 2), Queue.NextPlayable(rows, live, 2, forward: true, wrap: false));
+        Assert.Equal(Queue.PrevIndex(rows, 2), Queue.NextPlayable(rows, live, 2, forward: false, wrap: false));
+        Assert.Equal(Queue.NextIndex(rows, -1), Queue.NextPlayable(rows, live, -1, forward: true, wrap: false));
+    }
+
+    [Fact]
+    public void The_playable_walk_steps_past_dead_rows_in_both_directions()
+    {
+        var rows = Session();
+        var flags = AllLive(rows.Length);
+        flags[3] = false;                                                // both user-queued rows are dead…
+        flags[4] = false;
+        flags[1] = false;                                                // …and so is the most recent history row
+        var f = new Queue.PlayableFlags(flags);
+
+        Assert.Equal(5, Queue.NextPlayable(rows, f, 2, forward: true, wrap: false));
+        Assert.Equal(0, Queue.NextPlayable(rows, f, 2, forward: false, wrap: false));
+    }
+
+    [Fact]
+    public void A_run_of_dead_rows_to_the_end_answers_none_and_the_walk_is_bounded()
+    {
+        var rows = Session();
+        var flags = AllLive(rows.Length);
+        for (int i = 3; i < rows.Length; i++) flags[i] = false;
+        Assert.Equal(-1, Queue.NextPlayable(rows, new Queue.PlayableFlags(flags), 2, forward: true, wrap: false));
+
+        // Every row dead: no answer in either direction, wrap or not — and it returns, which is the bound.
+        var dead = new Queue.PlayableFlags(new bool[rows.Length]);
+        Assert.Equal(-1, Queue.NextPlayable(rows, dead, 2, forward: true, wrap: true));
+        Assert.Equal(-1, Queue.NextPlayable(rows, dead, 2, forward: true, wrap: false));
+        Assert.Equal(-1, Queue.NextPlayable(rows, dead, 2, forward: false, wrap: false));
+        Assert.Equal(-1, Queue.NextPlayable(default, dead, -1, forward: true, wrap: true));   // an empty list
+    }
+
+    [Fact]
+    public void The_wrap_lands_on_the_first_live_context_row_and_may_replay_the_deck()
+    {
+        var rows = Session();
+        var flags = AllLive(rows.Length);
+        for (int i = 3; i < rows.Length; i++) flags[i] = false;
+
+        // Off the end under repeat-context: the first row the CONTEXT provided (history row 0, `WrapIndex`).
+        Assert.Equal(0, Queue.NextPlayable(rows, new Queue.PlayableFlags(flags), 2, forward: true, wrap: true));
+
+        // With the history dead too the only live row is the one on the deck: it replays rather than ending.
+        flags[0] = false;
+        flags[1] = false;
+        Assert.Equal(2, Queue.NextPlayable(rows, new Queue.PlayableFlags(flags), 2, forward: true, wrap: true));
+    }
+
+    [Fact]
+    public void Flags_past_the_array_are_not_playable()
+    {
+        var f = new Queue.PlayableFlags([true]);
+        Assert.True(f.IsPlayable(0));
+        Assert.False(f.IsPlayable(1));
+        Assert.False(f.IsPlayable(-1));
+    }
+
     // ── identity and insertion ──────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -295,17 +369,105 @@ public class QueueTests
         QueueEdge[] rows = [Row(QueueBucket.NowPlaying, 1)];
         Queue.Replace(refs, rows);
 
-        Queue.Enqueue(episode, itemId: 42);
+        Queue.Enqueue(episode, Queue.CursorOf(0), itemId: 42);
 
         Assert.Equal(2, Queue.Count);
         Assert.Equal(episode, Queue.RefAt(1));
         Assert.Equal((byte)QueueBucket.UserQueue, Queue.Rows[1].Bucket);
         Assert.Equal((byte)QueueProvider.Queue, Queue.Rows[1].Provider);
         Assert.Equal(42UL, Queue.Rows[1].ItemId);
-        Assert.Equal((byte)EdgePending.Add, Queue.Pending[1]);
+        // A local queue write is authoritative: nothing would ever settle a pending bit, so none is set.
+        Assert.Equal((byte)EdgePending.None, Queue.Pending[1]);
 
         // A ref the queue cannot represent is dropped, not aliased onto row 0.
-        Queue.Enqueue(default);
+        Queue.Enqueue(default, Queue.CursorOf(0));
         Assert.Equal(2, Queue.Count);
+    }
+
+    // ── enqueue against the deck (B3's finding: the bucket rule lands behind an advanced cursor) ────────────────────
+
+    [Fact]
+    public void After_an_advance_the_enqueue_index_follows_the_cursor_not_the_original_now_playing_row()
+    {
+        // The reducer moved the cursor to row 2 without re-bucketing: row 0 still SAYS NowPlaying. The bucket rule answers
+        // 1 — behind the cursor, where the row would never play and would shift the deck's own index.
+        QueueEdge[] rows = [Row(QueueBucket.NowPlaying, 1), Row(QueueBucket.NextUp, 2), Row(QueueBucket.NextUp, 3), Row(QueueBucket.NextUp, 4)];
+        Assert.Equal(1, Queue.EnqueueIndex(rows));
+        Assert.Equal(3, Queue.EnqueueIndex(rows, cursorIndex: 2));
+
+        // Queued rows still waiting right after the cursor stay ahead of the new one; no deck falls back to the buckets.
+        QueueEdge[] queued = [Row(QueueBucket.History, 1), Row(QueueBucket.NowPlaying, 2), Row(QueueBucket.UserQueue, 3, QueueProvider.Queue), Row(QueueBucket.NextUp, 4)];
+        Assert.Equal(3, Queue.EnqueueIndex(queued, cursorIndex: 1));
+        Assert.Equal(queued.Length, Queue.EnqueueIndex(queued, cursorIndex: 3));
+        Assert.Equal(3, Queue.EnqueueIndex(queued, cursorIndex: -1));
+    }
+
+    [Fact]
+    public void Enqueue_after_an_advance_lands_after_the_deck_and_never_shifts_it()
+    {
+        TestScope.Fresh();
+        EntityRef[] refs = [new(EntityKind.Track, 1), new(EntityKind.Track, 2), new(EntityKind.Track, 3), new(EntityKind.Track, 4)];
+        QueueEdge[] rows = [Row(QueueBucket.NowPlaying, 1), Row(QueueBucket.NextUp, 2), Row(QueueBucket.NextUp, 3), Row(QueueBucket.NextUp, 4)];
+        Queue.Replace(refs, rows);
+        var cursor = Queue.CursorOf(0);
+        Assert.True(Queue.TryAdvance(ref cursor, out _));
+        Assert.True(Queue.TryAdvance(ref cursor, out _));                       // on row 2, buckets untouched
+
+        EntityRef added = new(EntityKind.Track, 9);
+        Queue.Enqueue(added, cursor);
+
+        Assert.Equal(5, Queue.Count);
+        Assert.Equal(refs[2], Queue.RefAt(cursor.Index));                        // the deck's row did not move
+        Assert.Equal(added, Queue.RefAt(3));
+        Assert.True(Queue.TryPeek(in cursor, out EntityRef next));
+        Assert.Equal(added, next);                                              // …and it is what plays next
+        Assert.True(Queue.IsOrdered(Queue.Rows));                                // the list was followed first
+        Assert.Equal((byte)QueueBucket.NowPlaying, Queue.Rows[2].Bucket);
+    }
+
+    [Fact]
+    public void The_same_recording_queued_twice_is_two_rows()
+    {
+        TestScope.Fresh();
+        EntityRef track = new(EntityKind.Track, 5);
+        EntityRef[] refs = [track];
+        QueueEdge[] rows = [Row(QueueBucket.NowPlaying, 1)];
+        Queue.Replace(refs, rows);
+
+        Queue.Enqueue(track, Queue.CursorOf(0));
+        Queue.Enqueue(track, Queue.CursorOf(0));
+
+        Assert.Equal(3, Queue.Count);
+        Assert.Equal((byte)QueueBucket.NowPlaying, Queue.Rows[0].Bucket);        // the deck's row was not re-bucketed in place
+        Assert.NotEqual(0UL, Queue.Rows[1].ItemId);
+        Assert.NotEqual(Queue.Rows[1].ItemId, Queue.Rows[2].ItemId);
+    }
+
+    // ── the --fake seed's default queue (ch 31 §3.1) ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_fake_seed_lands_the_default_queue_one_plus_three_plus_eight()
+    {
+        Entities.Boot(CatalogScope.Fake());
+        Entities.SeedFake(1_788_000_000);
+
+        var rows = Queue.Rows;
+        Assert.Equal(Entities.QueueSeedRows, rows.Length);
+        Assert.True(Queue.IsOrdered(rows));
+        Assert.Equal(EdgeState.Complete, Queue.State);
+        Assert.True(Queue.Range(QueueBucket.NowPlaying, out _, out int nowPlaying));
+        Assert.Equal(1, nowPlaying);
+
+        Span<int> index = stackalloc int[rows.Length];
+        Queue.Split(rows, Queue.Divider(rows, -1), index, out int user, out int next, out int autoplay);
+        Assert.Equal((3, 5, 3), (user, next, autoplay));
+        for (int i = 0; i < rows.Length; i++) Assert.Equal(EntityKind.Track, Queue.RefAt(i).Kind);
+        ulong first = rows[0].ItemId;
+
+        // Deterministic ids (ch 31 §7.2 rule A): a second seed stamps the same ones.
+        Entities.Boot(CatalogScope.Fake());
+        Entities.SeedFake(1_788_000_000);
+        Assert.Equal(Entities.QueueSeedFirstItemId, first);
+        Assert.Equal(first, Queue.Rows[0].ItemId);
     }
 }

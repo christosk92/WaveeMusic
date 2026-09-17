@@ -100,6 +100,31 @@ public class SidebarPaneStateTests
         Assert.False(SidebarPaneState.Restore(s, SidebarDesign.LibraryV3, viewport).WidthUserSet);
     }
 
+    /// <summary>G-066: a FRESH profile's pane state at the exact width the gap's screenshot showed collapsed
+    /// (1,770 DIP — Classic's MID tier, since it sits below <c>NavPaneWideEnterW</c> = 1,800). Pins every fact the
+    /// register asked to compare against 0.2.9: <c>SidebarPaneState.Restore</c> answers an EXPANDED, un-collapsed
+    /// pane (the "sidebar.collapsed" default is <c>false</c> and nothing here ever flips it), and the frame's own
+    /// narrow-band fold (<see cref="Shell.Layout.NarrowFor"/>, <see cref="Shell.FrameRules.PresentedCompact"/>) agrees
+    /// — 1,770 is nowhere near the 720/760 whole-shell narrow band, so nothing forces the 56-DIP compact rail either.
+    /// A collapsed rail at this width on an otherwise-fresh profile is therefore NOT a pure-fold defect: it can only
+    /// be a persisted <c>sidebar.classic.collapsed=true</c> already sitting in the settings store the process opened
+    /// (this batch's report says where to look next).</summary>
+    [Fact]
+    public void FreshProfile_At1770_RestoresExpandedAndUncollapsed_G066()
+    {
+        var s = new MemoryAppSettings();
+        const float viewport = 1770f;
+
+        var pane = SidebarPaneState.Restore(s, SidebarDesign.Classic, viewport);
+        Assert.Equal(280f, pane.Width);          // Classic's MID tier (1,400 ≤ 1,770 < 1,800)
+        Assert.False(pane.Collapsed);
+        Assert.False(pane.WidthUserSet);
+
+        bool narrow = Shell.Layout.NarrowFor(viewport, current: false, initialized: false);
+        Assert.False(narrow);
+        Assert.False(Shell.FrameRules.PresentedCompact(narrow, pane.Collapsed));
+    }
+
     [Fact]
     public void Breakpoints_AndHysteresis_AreSharedByEveryDesign()
     {

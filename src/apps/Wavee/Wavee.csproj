@@ -66,21 +66,24 @@
 
   <Import Project="Wavee.Publish.props" />
 
-  <!-- Native in-process PlayReady CDM DLL (ops/tools/playready-native): build it if its sources changed, then copy it
-       NEXT TO Wavee.exe so DesktopProtectedVideoPlayer's P/Invokes resolve at runtime. Without this the DLL is absent
-       from Wavee's bin and DRM video fails to load (it now degrades to a typed DRM error, but the DLL is required to
-       actually play). Mirrors FluentGpu.WindowsApp.csproj; the Exec is tolerant so a machine without the C++ toolchain
-       still builds Wavee (DRM just stays unavailable). -->
-  <PropertyGroup>
-    <_PlayReadyNativeArch Condition="'$(RuntimeIdentifier)' == 'win-x64'">x64</_PlayReadyNativeArch>
-    <_PlayReadyNativeArch Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</_PlayReadyNativeArch>
-    <_PlayReadyNativeArch Condition="'$(_PlayReadyNativeArch)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'AMD64'">x64</_PlayReadyNativeArch>
-    <_PlayReadyNativeArch Condition="'$(_PlayReadyNativeArch)' == ''">arm64</_PlayReadyNativeArch>
-    <_PlayReadyNativeDir>$(EngineRoot)ops\tools\playready-native</_PlayReadyNativeDir>
-    <_PlayReadyNativeDll>$(_PlayReadyNativeDir)\out\$(_PlayReadyNativeArch)\FluentGpu.PlayReady.Native.dll</_PlayReadyNativeDll>
-  </PropertyGroup>
+  <!-- Native in-process PlayReady runtime DLL (ops/tools/playready-native: FgPlayReady.h + PrRuntime/PrLicense/PrSession.cpp):
+       build it if any of its sources changed, then copy it NEXT TO Wavee.exe so ProtectedVideoRuntime's P/Invokes resolve
+       at runtime. Without it DRM video degrades to a typed DRM error. The architecture rule and the DLL path are the
+       ENGINE's one definition (PlayReadyNative.props, shared with FluentGpu.WindowsApp and FluentGpu.Windows.Tests): the
+       RID a publish names, else the SDK's own RID — never PROCESSOR_ARCHITECTURE, which an x64-emulated shell on an ARM64
+       box reports while the arm64 dotnet runs an arm64 process that cannot load an x64 DLL. The Exec stays tolerant so a
+       machine without the C++ toolchain still builds Wavee (DRM just stays unavailable); the release preflight asserts
+       both arch DLLs export the runtime ABI (G-152). -->
+  <Import Project="$(EngineRoot)ops\tools\playready-native\PlayReadyNative.props" />
+  <!-- Every source file of the helper (the translation units, its headers, the script): an edit to any of them rebuilds and
+       nothing else does. Never in a design-time build: an IDE evaluation must not start an MSVC compile racing the
+       command-line one over the same out\<arch> objects. -->
+  <ItemGroup>
+    <_PlayReadyNativeInputs Include="$(_PlayReadyNativeDir)\*.cpp;$(_PlayReadyNativeDir)\*.h;$(_PlayReadyNativeDir)\build.cmd" />
+  </ItemGroup>
   <Target Name="BuildDesktopPlayReadyNative" BeforeTargets="PrepareForBuild"
-          Inputs="$(_PlayReadyNativeDir)\PlayReadyNative.cpp;$(_PlayReadyNativeDir)\CencMediaSource.h;$(_PlayReadyNativeDir)\build.cmd"
+          Condition="'$(DesignTimeBuild)' != 'true'"
+          Inputs="@(_PlayReadyNativeInputs)"
           Outputs="$(_PlayReadyNativeDll)">
     <Exec Command="cmd /c &quot;$(_PlayReadyNativeDir)\build.cmd&quot; $(_PlayReadyNativeArch)" ContinueOnError="true" />
   </Target>
@@ -155,13 +158,14 @@
           SkipUnchangedFiles="true" />
   </Target>
 
-  <!-- Gate on the client deriver, not just the sibling csproj: a partial PlayPlay junction (csproj only, no Client/)
-       must not flip WAVEE_PLAYPLAY_LOCAL or AudioPlaybackStack references a type that never compiles. -->
-  <PropertyGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\InProcessPlayPlayKeyDeriver.cs')">
+  <!-- Gate on the package's 0.3 entry, not just the sibling csproj: a partial junction (csproj only, no Client/), or a
+       0.2.x package that has no PlayPlayHost, must not flip WAVEE_PLAYPLAY_LOCAL and leave App.cs calling a type that
+       never compiles (decision D3). -->
+  <PropertyGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\PlayPlayHost.cs')">
     <DefineConstants>$(DefineConstants);WAVEE_PLAYPLAY_LOCAL</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\InProcessPlayPlayKeyDeriver.cs')">
+  <ItemGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\PlayPlayHost.cs')">
     <Compile Include="..\Wavee.PlayPlay\**\*.cs" Exclude="..\Wavee.PlayPlay\**\bin\**;..\Wavee.PlayPlay\**\obj\**;..\Wavee.PlayPlay\Tests\**" Link="Wavee.PlayPlay\%(RecursiveDir)%(Filename)%(Extension)" />
     <Protobuf Include="..\Wavee.PlayPlay\Protos\playplay.proto" GrpcServices="None" ProtoRoot="..\Wavee.PlayPlay\Protos" Condition="Exists('..\Wavee.PlayPlay\Protos\playplay.proto')" />
   </ItemGroup>

@@ -157,4 +157,25 @@ public class EpisodeTests
         Assert.Equal(before, Entities.Strings.MapCount);
         Assert.True(t.Description[slot].IsEmpty);
     }
+
+    /// <summary>Wave 5 (owner M): the three presentations of progress read ONE number — a local position beside a
+    /// catalogue duration lands "in progress" through `Episode.Rules`.</summary>
+    [Fact]
+    public void Progress_reads_through_the_rules_as_one_number()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        ref var row = ref s.Episodes.RowFor(s.Text("spotify:episode:one"), Authority.Local,
+            (uint)(EpisodeFields.Identity | EpisodeFields.Progress));
+        row.DurationMs = 3_000_000;
+        row.ProgressMs = 1_500_000;
+        TestScope.CommitAndPublish(s);
+
+        var episode = Entities.Episode(EntityUri.Parse("spotify:episode:one"));
+        float pct = Episode.Rules.PctOf(episode);
+        Assert.True(Episode.Rules.InProgress(pct));
+        Assert.True(Episode.Rules.HasRule(pct));
+        Assert.True(Episode.Rules.Matches(Episode.Rules.Status.InProgress, pct));
+        Assert.False(Episode.Rules.Played(pct));
+    }
 }

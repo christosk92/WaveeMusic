@@ -1,9 +1,18 @@
-// ── Entities/Track.cs — CORE (owner A, wave 1; plan §2, §4.2 · the file's full budget is 1,200) ───────────────────────
+// ── Entities/Track.cs ──────────────────────────────────────────────────────────────────────────────────────────────
+// the columns, the flags, the field groups, the handle, the staging row and the commit for a track
 //
-// THE COLUMNS, THE FLAGS, THE FIELD GROUPS AND THE HANDLE for a track. This is the Wave-1 half of `Track.cs`: the data
-// model only. The pure rules that share the file — the lane table, the tier/relief ladders, the density and art
-// ladders, the sort cycle, the filter model, `TrackExpandedFacts`, the shared number formats — are owner M's, in
-// Wave 4.5 (plan §2, "Two notes on the entity CORE rows": the columns must exist before Wave 2 can decode into them).
+// Role: CORE
+// Owner: A (Wave 1: the data model) · M (Wave 4.5: the rules, in the named partial `Track.Rules.cs`)
+// Wave: 1 · 4.5
+// Budget: 1,200 lines — the columns alone fill half of it, so the rules live in `Track.Rules.cs` (a >30 % partial)
+// Spec: plan §2, §4.2 · ch 01 §7-§9, ch 04 §7-§8, ch 05 §7
+//
+// THE COLUMNS, THE FLAGS, THE FIELD GROUPS AND THE HANDLE for a track. This is the Wave-1 half of the track CORE: the
+// data model only. The pure rules of the surface — the lane table, the tier/relief ladders, the density and art ladders,
+// the sort cycle, the command-bar fit, the filter model, the expanded-row facts, the shared number formats (incl. the
+// exact `KeyLabel(byte)` / `CamelotLabel(byte)` tables), the membership diff, the reorder rules and the right-click
+// target resolver — are owner M's, Wave 4.5, in `Entities/Track.Rules.cs` (plan §2, "Two notes on the entity CORE rows":
+// the columns must exist before Wave 2 can decode into them).
 //
 // Where the shape comes from. Plan §4.2 gives the derivation from the 30-field 0.2.9 `Track` record
 // (`Wavee.Core/Domain/Models.cs:285`) and the hot/cold split; ch 01 §7, ch 04 §7 and ch 05 §7 are the READERS, and
@@ -51,6 +60,12 @@ public enum TrackFields : uint
     Explicit = 1 << 4,
     Image = 1 << 5,
     Identity = Title | Artists | Album | Duration | Explicit | Image,
+    /// <summary>What a list row must know before it paints as REAL (title, album, duration, explicit, image): Identity
+    /// minus <see cref="Artists"/>, because the credit line rides the <c>TrackArtists</c> edge and a disk-restored row
+    /// withholds that bit until the edge re-lands (<c>TrackShape.PersistedIdentity</c>) — a warm open must reveal at
+    /// once and let the credits fill in place. The table's reveal gate and the row's own shimmer/real decision read this
+    /// group and nothing narrower.</summary>
+    Face = Title | Album | Duration | Explicit | Image,
 
     // ── cold groups: separate transports, separate arrival times ──
     /// <summary>Extension kind 185. Rides every list surface's bundle (ch 04 §7: the Plays toggle must not change the
@@ -274,7 +289,9 @@ public readonly partial struct Track(int slot) : IEquatable<Track>
     public int Slot { get; } = slot;
 
     /// <summary>A handle that addresses a live row. Slot 0 is the permanent "none" row in every table.</summary>
-    public bool IsValid => Slot > Table.None && Slot < T.Count;
+    /// <remarks>Qualified: the static <c>Track.Table(...)</c> factory (Track.Table.cs) hides the base type by name inside
+    /// this struct.</remarks>
+    public bool IsValid => Slot > global::Wavee.Table.None && Slot < T.Count;
 
     /// <summary>Bumps on every write to this row (D8). Comparing it across frames costs 1 (P5).</summary>
     public uint Version => T.Version[Slot];
@@ -282,6 +299,14 @@ public readonly partial struct Track(int slot) : IEquatable<Track>
     /// <summary>Does the row carry EVERY bit of <paramref name="fields"/>? The question a page asks before it paints
     /// (P3) — never a null check, because there are no nulls in a column.</summary>
     public bool Knows(TrackFields fields) => (T.Known[Slot] & (uint)fields) == (uint)fields;
+
+    /// <summary>A request naming this row is out right now (the planner's <c>Inflight</c> mark; cleared when a group
+    /// lands or the batch settles).</summary>
+    public bool InFlight => T.Inflight[Slot] != 0;
+
+    /// <summary>Somebody has answered about this row before — a commit, or the disk saying it has nothing
+    /// (<c>FetchedAt != 0</c>). False only for a row nobody has ever asked or answered.</summary>
+    public bool Answered => T.FetchedAt[Slot] != 0;
 
     /// <summary>THE row's identity, packed: kind, provider, form and the 128-bit payload in 24 bytes (§2 of
     /// Entities.cs). This is what a queue row, a route subject, a pin or a cross-kind list carries — never the slot,
@@ -495,14 +520,26 @@ public static partial class Entities
                 // overwrites (defect 1). A row re-answered by a search hit, then by TrackV4, then by a playlist item
                 // would otherwise leak two titles, two credit lines and two covers into the interner — and the
                 // OVERWRITE half is the one that leaks SILENTLY, because nothing about the row looks wrong afterwards.
-                t.SetText(ref t.Title, slot, s.Intern(row.Title));
-                t.SetText(ref t.ArtistLine, slot, s.Intern(row.ArtistLine));
-                t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                // A thin answer that carries no title (S5: a disc track with only a gid) must not blank the one a
+                // fuller answer already set — same rule as the image guard right below (Fix 4).
+                if (!row.Title.IsEmpty) t.SetText(ref t.Title, slot, s.Intern(row.Title));
+                // Same guard as Title/Image right above and below: a thin answer with no credit line (a disk load,
+                // whose row never carries `ArtistLine` — see `TrackShape.PersistedIdentity`) must not blank a line a
+                // fuller live answer already interned (bug C's secondary defect, Track.cs:512 in the handoff).
+                if (!row.ArtistLine.IsEmpty) t.SetText(ref t.ArtistLine, slot, s.Intern(row.ArtistLine));
+                // An answer that carries no cover never blanks the one a playlist item already set — nothing
+                // legitimately removes an image (Fix 4).
+                if (!row.Image.IsEmpty) t.SetText(ref t.Image, slot, s.Intern(row.Image));
                 t.DurationMs[slot] = row.DurationMs;
                 if (!row.AlbumUri.IsEmpty) t.Album[slot] = s.Slot(Current.Albums, in row.AlbumUri);
                 t.Flags[slot] = (t.Flags[slot] & ~(uint)TrackFlags.IdentityMask)
                               | (row.Flags & (uint)TrackFlags.IdentityMask);
-                t.Applied(slot, (uint)TrackFields.Identity, auth, ref t.IdentityAuthority);
+                // `known & Identity`, NOT the bare `TrackFields.Identity` constant: every LIVE producer fills the
+                // whole six-bit group as one wire shape, so this was always equivalent for them — but a disk-loaded
+                // batch (`TrackShape.Load`) now deliberately withholds the `Artists` bit (bug C), and marking the
+                // group Known unconditionally here would silently re-grant it regardless of what the row actually
+                // staged, defeating that mask one line downstream of it.
+                t.Applied(slot, known & (uint)TrackFields.Identity, auth, ref t.IdentityAuthority);
             }
 
             // The cold groups share ONE authority column (plan §4.2's `ExtrasAuthority`): they arrive from different
@@ -607,5 +644,158 @@ public static partial class Entities
         if (s_starDirty.Count == 0) return;
         foreach (int album in s_starDirty) global::Wavee.Album.DeriveTopTrack(album);   // qualified: inside `Entities`, `Album` binds to the factory METHOD, not the handle type
         s_starDirty.Clear();
+    }
+}
+
+// ── persistence (Store.cs's per-kind seam) ───────────────────────────────────────────────────────────────────────────
+
+/// <summary>How a track survives a restart. Persists <see cref="TrackFields.Identity"/> — minus the
+/// <see cref="TrackFields.Artists"/> bit, see below — and the six cold groups whose facts are answered values
+/// (<see cref="TrackFields.PlayCount"/>, <see cref="TrackFields.Year"/>,
+/// <see cref="TrackFields.Availability"/>, <see cref="TrackFields.Isrc"/>, <see cref="TrackFields.Canonical"/>,
+/// <see cref="TrackFields.Video"/> — the counterpart's URI only, not its still or the user's own mp4 — and
+/// <see cref="TrackFields.Audio"/>).
+///
+/// <para><b>Deliberately NOT persisted:</b> <see cref="TrackTable.ArtistLine"/> — it reads as the credit line
+/// (ch 01 GAP 2), but the click targets behind it are <c>Edges.TrackArtists</c>, which this shape does not persist
+/// (only the five <c>LibraryEdge</c> relations are, per the store's own scope). Because of that, the
+/// <see cref="TrackFields.Artists"/> bit inside <see cref="TrackFields.Identity"/> is masked OUT of
+/// <c>PersistedFields</c> below — on both <see cref="Save"/> and <see cref="Load"/>, since they share the one
+/// constant. <b>Do not restore it.</b> A row that came back from disk claiming Identity known WITH Artists would
+/// tell <c>Fetch.NeedOf = wanted &amp; ~Known &amp; ~Asked</c> "never ask again" for a fact this cache genuinely
+/// cannot answer, and there is no route that answers Artists on its own: <c>TrackV4</c> is the only producer of
+/// both the credit line and the <c>TrackArtists</c> edge run, and a relation that arrives only as a side effect of
+/// a row answer is asked by asking for the row's own group (<c>Fetch.Routes.cs</c>'s <see cref="FetchEdge"/> doc).
+/// An earlier version of this comment argued the credit line "is left to re-arrive with the network's next
+/// Identity answer" — that premise is false: marking Identity known is exactly what guarantees there is no next
+/// Identity answer (bug C, 2026-09-15 — a cached track showed LESS than an uncached one, forever). Masking the
+/// bit costs one extra Identity round trip per cached track after a restart, which is what every track paid
+/// before persistence existed at all. <see cref="TrackFields.Tags"/>, <see cref="TrackFields.Publishing"/> and
+/// <see cref="TrackFields.Files"/> are markers with no column of their own (their data is an edge or lives on
+/// <see cref="AlbumTable"/>) and are masked out of the persisted <c>known</c> bits for the same reason — a bit
+/// with no data behind it is a promise the disk cannot keep.</para>
+///
+/// <para><b>Two Flags sub-ranges, two columns.</b> <see cref="TrackTable.Flags"/> is ONE shared column in memory but
+/// its bits belong to independently-gated groups (<see cref="TrackFlags.IdentityMask"/> to Identity,
+/// <see cref="TrackFlags.AvailabilityMask"/> to Availability); a single persisted <c>flags</c> column bound whenever
+/// EITHER group was known would let a later Availability-only batch's coalesce blank Identity's bits (and vice
+/// versa) with a value that was never staged for them. <c>identity_flags</c>/<c>avail_flags</c> keep the same
+/// independence on disk that <see cref="Table.Accepts"/> enforces in memory.</para>
+///
+/// <para>STORE THREAD (both halves) — see <see cref="ShowShape"/>'s note. The three cross-reference columns go
+/// through <see cref="RowWriter.Id"/>, because a track's album/canonical/video-counterpart target can be either
+/// packed-gid or arena text, exactly like the row's own identity.</para></summary>
+public sealed class TrackShape : KindShape
+{
+    static readonly StoreColumn[] Cols =
+    [
+        new("title", StoreType.Text, StoreColumnFlags.Title),
+        new("image", StoreType.Text),
+        new("album_uri", StoreType.Text),
+        new("duration_ms", StoreType.Int),
+        new("identity_flags", StoreType.Int),
+        new("play_count", StoreType.Int),
+        new("year", StoreType.Int),
+        new("available_at", StoreType.Int),
+        new("avail_flags", StoreType.Int),
+        new("isrc", StoreType.Text),
+        new("canonical_uri", StoreType.Text),
+        new("video_uri", StoreType.Text),
+        new("tempo", StoreType.Int),
+        new("musical_key", StoreType.Int),
+        new("camelot", StoreType.Int),
+        new("camelot_color", StoreType.Int),
+        new("identity_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("extras_auth", StoreType.Int, StoreColumnFlags.Authority),
+    ];
+
+    const uint ExtrasFields = (uint)(TrackFields.PlayCount | TrackFields.Year | TrackFields.Availability
+                                    | TrackFields.Isrc | TrackFields.Canonical | TrackFields.Video | TrackFields.Audio);
+    /// <summary>Every bit of <see cref="TrackFields.Identity"/> this shape can actually answer from disk.
+    /// <see cref="TrackFields.Artists"/> is masked OUT — see the class doc above — because the credit line and
+    /// its click targets live only in <c>Edges.TrackArtists</c>, which nothing below persists. Title, Album,
+    /// Duration, Explicit and Image ARE real columns (<see cref="Save"/>), so restoring their bits is honest.</summary>
+    const uint PersistedIdentity = (uint)TrackFields.Identity & ~(uint)TrackFields.Artists;
+    /// <summary>What <see cref="Save"/> may write and <see cref="Load"/> may restore into <c>Known</c> — ONE
+    /// constant shared by both, so they can never drift apart. Bug C's root cause was exactly a <c>Known</c> bit
+    /// (Artists) surviving a disk restore without the data its live answer implies; keeping Save and Load on the
+    /// same mask is what makes that class of bug structurally harder to reintroduce.</summary>
+    const uint PersistedFields = PersistedIdentity | ExtrasFields;
+
+    public override EntityKind Kind => EntityKind.Track;
+    public override string Table => "track";
+    public override ReadOnlySpan<StoreColumn> Columns => Cols;
+
+    public override void Save(Staging s, RowWriter w)
+    {
+        var rows = s.TracksOrNull;
+        if (rows is null) return;
+        var span = rows.Span;
+        for (int i = 0; i < span.Length; i++)
+        {
+            ref readonly var row = ref span[i];
+            uint known = row.Known & PersistedFields;
+            bool identity = (known & PersistedIdentity) != 0;
+            bool extras = (known & ExtrasFields) != 0;
+
+            if (identity)
+            {
+                w.Text(0, row.Title);
+                w.Text(1, row.Image);
+                w.Id(2, s, row.AlbumUri);
+                w.Int(3, row.DurationMs);
+                w.Int(4, (long)(row.Flags & (uint)TrackFlags.IdentityMask));
+                w.Int(16, (int)row.Authority);
+            }
+            else { w.Null(0); w.Null(1); w.Null(2); w.Null(3); w.Null(4); w.Null(16); }
+
+            if ((known & (uint)TrackFields.PlayCount) != 0) w.Int(5, row.PlayCount); else w.Null(5);
+            if ((known & (uint)TrackFields.Year) != 0) w.Int(6, row.Year); else w.Null(6);
+            if ((known & (uint)TrackFields.Availability) != 0)
+            {
+                w.Int(7, row.AvailableAt);
+                w.Int(8, (long)(row.Flags & (uint)TrackFlags.AvailabilityMask));
+            }
+            else { w.Null(7); w.Null(8); }
+            if ((known & (uint)TrackFields.Isrc) != 0) w.Text(9, row.Isrc); else w.Null(9);
+            if ((known & (uint)TrackFields.Canonical) != 0) w.Id(10, s, row.CanonicalUri); else w.Null(10);
+            if ((known & (uint)TrackFields.Video) != 0) w.Id(11, s, row.VideoUri); else w.Null(11);
+            if ((known & (uint)TrackFields.Audio) != 0)
+            {
+                w.Int(12, row.Tempo);
+                w.Int(13, row.Key);
+                w.Int(14, row.Camelot);
+                w.Int(15, row.CamelotColor);
+            }
+            else { w.Null(12); w.Null(13); w.Null(14); w.Null(15); }
+            if (extras) w.Int(17, (int)row.Authority); else w.Null(17);
+
+            w.Emit(row.Id, known, Entities.Now, Entities.Now);
+        }
+    }
+
+    public override void Load(RowReader r, Staging into)
+    {
+        ref var row = ref into.Tracks.Add();
+        row.Id = r.Uri;
+        row.Title = r.Text(0);
+        row.Image = r.Text(1);
+        row.AlbumUri = r.Text(2);
+        row.DurationMs = (int)r.Int(3);
+        uint identityFlags = (uint)r.Int(4);
+        row.PlayCount = (uint)r.Int(5);
+        row.Year = (ushort)r.Int(6);
+        row.AvailableAt = (int)r.Int(7);
+        uint availFlags = (uint)r.Int(8);
+        row.Flags = identityFlags | availFlags;
+        row.Isrc = r.Text(9);
+        row.CanonicalUri = r.Text(10);
+        row.VideoUri = r.Text(11);
+        row.Tempo = (ushort)r.Int(12);
+        row.Key = (byte)r.Int(13);
+        row.Camelot = (byte)r.Int(14);
+        row.CamelotColor = (uint)r.Int(15);
+        row.Known = r.Known & PersistedFields;
+        row.Authority = (Authority)Math.Max(r.Int(16), r.Int(17));
     }
 }

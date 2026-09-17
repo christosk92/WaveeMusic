@@ -75,6 +75,45 @@ public class PlayerBarStateFoldTests
         Assert.True(f.NextEnabled);
     }
 
+    [Fact]
+    public void An_error_keeps_previous_and_next_armed_where_the_context_allows_them()
+    {
+        // The way OUT of a dead row: Retry re-plays the same row, but `Advance` has no error guard and heals the fault
+        // through `PutOnDeck`, so the skip verbs must stay live under Error even though the transport (play/pause) is
+        // not. The context's own restriction still wins — a cluster that forbids the skip greys it as ever.
+        var f = Shell.PlayerBarRules.Fold(hasCurrent: true, Playback.Fault.Unavailable, Playback.Phase.Paused,
+            buffering: false, Playback.RecoveryKind.None, canSkipPrev: true, canSkipNext: true);
+        Assert.Equal(Shell.PlayerState.Error, f.State);
+        Assert.False(f.CanTransport);
+        Assert.True(f.PrevEnabled);
+        Assert.True(f.NextEnabled);
+        Assert.Equal(Shell.PrimaryVerb.Retry, f.Primary);
+
+        var restricted = Shell.PlayerBarRules.Fold(true, Playback.Fault.DecodeFailed, Playback.Phase.Paused, false,
+            Playback.RecoveryKind.None, canSkipPrev: false, canSkipNext: true);
+        Assert.False(restricted.PrevEnabled);
+        Assert.True(restricted.NextEnabled);
+
+        // NoTrack and Loading are unchanged: nothing to skip from, so the skip verbs stay dead.
+        var idle = Shell.PlayerBarRules.Fold(false, Playback.Fault.None, Playback.Phase.Idle, false,
+            Playback.RecoveryKind.None, true, true);
+        Assert.False(idle.PrevEnabled);
+        Assert.False(idle.NextEnabled);
+        var loading = Shell.PlayerBarRules.Fold(true, Playback.Fault.None, Playback.Phase.Loading, false,
+            Playback.RecoveryKind.None, true, true);
+        Assert.False(loading.NextEnabled);
+    }
+
+    [Theory]
+    [InlineData(true, Playback.Fault.None, Shell.RowAction.Toggle)]           // the deck row toggles pause/resume
+    [InlineData(true, Playback.Fault.Unavailable, Shell.RowAction.Start)]     // the deck row under a fault is dead: start it afresh
+    [InlineData(true, Playback.Fault.Network, Shell.RowAction.Start)]
+    [InlineData(true, Playback.Fault.Unknown, Shell.RowAction.Start)]
+    [InlineData(false, Playback.Fault.None, Shell.RowAction.Start)]           // any other row starts
+    [InlineData(false, Playback.Fault.Unavailable, Shell.RowAction.Start)]
+    public void A_row_click_toggles_only_the_healthy_deck_row(bool deckRow, Playback.Fault error, Shell.RowAction expected)
+        => Assert.Equal(expected, Shell.PlayerBarRules.RowVerb(deckRow, error));
+
     [Theory]
     [InlineData(Shell.PlayerState.NoTrack, true, Shell.NowPlayingText.NothingPlaying, Shell.NowPlayingInk.Secondary)]
     [InlineData(Shell.PlayerState.Reconnecting, true, Shell.NowPlayingText.Reconnecting, Shell.NowPlayingInk.Secondary)]
@@ -167,11 +206,251 @@ public class PlayerBarOverflowTests
     }
 
     [Fact]
-    public void The_inline_video_slot_rides_the_queue_tier()
+    public void The_inline_video_slot_rides_the_queue_tier_and_needs_a_video()
     {
-        Assert.True(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide), true));
-        Assert.False(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Comfortable), true));
-        Assert.False(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Full), false));
+        // The queue tier AND a video: with no video the cluster reclaims the split's width (user decision 2026-09-16).
+        Assert.True(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Full), hasVideo: true));
+        Assert.True(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide), hasVideo: true));
+        Assert.False(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Comfortable), hasVideo: true));
+        Assert.False(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Minimal), hasVideo: true));
+        foreach (var tier in new[]
+                 {
+                     Shell.PlayerBarTier.Minimal, Shell.PlayerBarTier.Compact, Shell.PlayerBarTier.Medium,
+                     Shell.PlayerBarTier.Comfortable, Shell.PlayerBarTier.Wide, Shell.PlayerBarTier.Full,
+                 })
+            Assert.False(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(tier), hasVideo: false));
+    }
+
+    [Fact]
+    public void The_video_row_belongs_to_the_tiers_without_the_inline_split()
+    {
+        // Wide/Full carry the split inline, so the menu never duplicates it; below Wide the menu is the only route.
+        Assert.DoesNotContain(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Wide, video: true));
+        Assert.DoesNotContain(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Full, video: true));
+        Assert.Contains(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Comfortable, video: true));
+        Assert.Contains(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Minimal, video: true));
+        Assert.DoesNotContain(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Comfortable, active: false, video: true));
+    }
+}
+
+/// <summary>A2 (2026-09-16 recording): the now-playing bar reflowed on track start because the heart, lyrics, video and
+/// "⋯" were ADDED on <c>active</c>, each arrival stealing width from the seek bar while every cluster animated its
+/// bounds. Slot presence is now a function of the tier, with ONE state input — <c>hasVideo</c> — that adds or removes
+/// the video split (user decision, same day: an unlit 52-DIP hole beside lyrics was worse than the row easing once
+/// when a video track lands). <see cref="Shell.PlayerState"/> still lights faces only. These facts pin that split.</summary>
+public class PlayerBarSlotReservationTests
+{
+    static readonly Shell.PlayerBarTier[] Tiers =
+    [
+        Shell.PlayerBarTier.Minimal, Shell.PlayerBarTier.Compact, Shell.PlayerBarTier.Medium,
+        Shell.PlayerBarTier.Comfortable, Shell.PlayerBarTier.Wide, Shell.PlayerBarTier.Full,
+    ];
+
+    static readonly Shell.PlayerState[] States =
+    [
+        Shell.PlayerState.NoTrack, Shell.PlayerState.Loading, Shell.PlayerState.Reconnecting,
+        Shell.PlayerState.Error, Shell.PlayerState.Active,
+    ];
+
+    /// <summary>The slot sum a test computes for itself, walking the bits the way the row does.</summary>
+    static float SlotSum(in Shell.PlayerBarLayout layout, bool hasVideo)
+    {
+        var slots = Shell.PlayerBarRules.RightSlots(layout, hasVideo);
+        float w = 0f;
+        int n = 0;
+        for (int bit = 1; bit <= (int)Shell.RightSlot.More; bit <<= 1)
+        {
+            var slot = (Shell.RightSlot)bit;
+            if ((slots & slot) == 0) continue;
+            w += Shell.PlayerBarRules.SlotWidth(slot, layout);
+            n++;
+        }
+        return n == 0 ? 0f : w + layout.RightGap * (n - 1);
+    }
+
+    [Fact]
+    public void The_right_width_is_the_slot_sum_at_every_tier_with_and_without_a_video()
+    {
+        foreach (var tier in Tiers)
+        {
+            var layout = Shell.PlayerBarLayout.ForTier(tier);
+            foreach (bool video in new[] { false, true })
+                Assert.Equal(SlotSum(layout, video), Shell.PlayerBarRules.RightWidth(layout, video));
+            Assert.True(Shell.PlayerBarRules.RightWidth(layout, hasVideo: false) > 0f);   // the device picker is always in the row
+        }
+    }
+
+    [Fact]
+    public void The_layout_s_max_width_is_the_widest_cluster_of_the_tier()
+    {
+        foreach (var tier in Tiers)
+        {
+            var L = Shell.PlayerBarLayout.ForTier(tier);
+            Assert.Equal(Shell.PlayerBarRules.RightWidth(L, hasVideo: true), L.RightWMax);
+            Assert.True(Shell.PlayerBarRules.RightWidth(L, hasVideo: false) <= L.RightWMax);
+        }
+    }
+
+    [Fact]
+    public void Wide_carries_nine_slots_and_the_plan_s_width_with_a_video_and_eight_without()
+    {
+        var L = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide);
+        var withoutVideo = Shell.RightSlot.Shuffle | Shell.RightSlot.Repeat | Shell.RightSlot.Volume | Shell.RightSlot.VolumeSlider
+                           | Shell.RightSlot.Lyrics | Shell.RightSlot.Queue | Shell.RightSlot.Devices | Shell.RightSlot.More;
+        Assert.Equal(withoutVideo | Shell.RightSlot.Video, Shell.PlayerBarRules.RightSlots(L, hasVideo: true));
+        Assert.Equal(withoutVideo, Shell.PlayerBarRules.RightSlots(L, hasVideo: false));
+        // 7 plain buttons + the 96 rail + the 32+20 split, and 8 gaps between 9 slots (388 with the shipped constants).
+        float expected = 7f * L.ButtonBox + Shell.PlayerBarLayout.VolumeSliderW + (L.ButtonBox + Shell.PlayerBarLayout.SplitChevronW)
+                         + 8f * L.RightGap;
+        Assert.Equal(expected, L.RightWMax);
+        Assert.Equal(expected, Shell.PlayerBarRules.RightWidth(L, hasVideo: true));
+        // Without a video the split AND its gap go: 7 buttons + the rail, 7 gaps between 8 slots.
+        Assert.Equal(7f * L.ButtonBox + Shell.PlayerBarLayout.VolumeSliderW + 7f * L.RightGap,
+            Shell.PlayerBarRules.RightWidth(L, hasVideo: false));
+    }
+
+    [Fact]
+    public void A_track_starting_without_a_video_moves_nothing()
+    {
+        // The width has NO input from PlayerState: with hasVideo fixed, every state at every tier yields one number.
+        // (The rules take no state argument at all; the fact pins that the FACE gate is the only place state enters.)
+        foreach (var tier in Tiers)
+        {
+            var L = Shell.PlayerBarLayout.ForTier(tier);
+            float idle = Shell.PlayerBarRules.RightWidth(L, hasVideo: false);
+            var idleSlots = Shell.PlayerBarRules.RightSlots(L, hasVideo: false);
+            foreach (var state in States)
+            {
+                // A no-video track in any of the five states: the same slots, the same width as the idle bar.
+                Assert.Equal(idle, Shell.PlayerBarRules.RightWidth(L, hasVideo: false));
+                Assert.Equal(idleSlots, Shell.PlayerBarRules.RightSlots(L, hasVideo: false));
+                Assert.False(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Video, state, hasVideo: false));
+            }
+        }
+    }
+
+    [Fact]
+    public void A_video_arriving_adds_exactly_the_split_slot()
+    {
+        foreach (var tier in Tiers)
+        {
+            var L = Shell.PlayerBarLayout.ForTier(tier);
+            var without = Shell.PlayerBarRules.RightSlots(L, hasVideo: false);
+            var with = Shell.PlayerBarRules.RightSlots(L, hasVideo: true);
+            float delta = Shell.PlayerBarRules.RightWidth(L, hasVideo: true) - Shell.PlayerBarRules.RightWidth(L, hasVideo: false);
+            Assert.Equal(Shell.RightSlot.None, without & Shell.RightSlot.Video);
+            if (L.ShowQueue)
+            {
+                Assert.Equal(without | Shell.RightSlot.Video, with);
+                Assert.Equal(L.ButtonBox + Shell.PlayerBarLayout.SplitChevronW + L.RightGap, delta);
+            }
+            else
+            {
+                // Below Wide the video verb lives in the "⋯" menu; the row is untouched.
+                Assert.Equal(without, with);
+                Assert.Equal(0f, delta);
+            }
+        }
+    }
+
+    [Fact]
+    public void Slot_widths_are_the_button_box_but_for_the_rail_and_the_split()
+    {
+        var L = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide);
+        Assert.Equal(Shell.PlayerBarLayout.VolumeSliderW, Shell.PlayerBarRules.SlotWidth(Shell.RightSlot.VolumeSlider, L));
+        Assert.Equal(L.ButtonBox + Shell.PlayerBarLayout.SplitChevronW, Shell.PlayerBarRules.SlotWidth(Shell.RightSlot.Video, L));
+        Assert.Equal(L.ButtonBox, Shell.PlayerBarRules.SlotWidth(Shell.RightSlot.Lyrics, L));
+        Assert.Equal(L.ButtonBox, Shell.PlayerBarRules.SlotWidth(Shell.RightSlot.More, L));
+    }
+
+    [Fact]
+    public void Slot_presence_follows_the_tier_flags_and_only_the_video_split_follows_has_video()
+    {
+        foreach (var tier in Tiers)
+        foreach (bool video in new[] { false, true })
+        {
+            var L = Shell.PlayerBarLayout.ForTier(tier);
+            var slots = Shell.PlayerBarRules.RightSlots(L, video);
+            Assert.Equal(L.ShowShuffleRepeat, (slots & Shell.RightSlot.Shuffle) != 0);
+            Assert.Equal(L.ShowShuffleRepeat, (slots & Shell.RightSlot.Repeat) != 0);
+            Assert.Equal(L.ShowVolumeButton, (slots & Shell.RightSlot.Volume) != 0);
+            Assert.Equal(L.ShowVolumeSlider, (slots & Shell.RightSlot.VolumeSlider) != 0);
+            // Lyrics stays a face-only slot: RESERVED wherever the tier shows it, whatever plays.
+            Assert.Equal(L.ShowLyrics, (slots & Shell.RightSlot.Lyrics) != 0);
+            // The video split is the ONE slot with a state input: the queue tier AND a video.
+            Assert.Equal(L.ShowQueue && video, (slots & Shell.RightSlot.Video) != 0);
+            Assert.Equal(L.ShowQueue, (slots & Shell.RightSlot.Queue) != 0);
+            Assert.Equal(L.ShowDevices, (slots & Shell.RightSlot.Devices) != 0);
+            Assert.Equal(L.ShowExpand, (slots & Shell.RightSlot.Expand) != 0);
+            Assert.Equal(Shell.PlayerBarRules.OverflowSlotReserved(L), (slots & Shell.RightSlot.More) != 0);
+        }
+    }
+
+    [Fact]
+    public void The_overflow_slot_never_moves_with_playback()
+    {
+        // The invariant the reservation rests on: at every tier the menu is non-empty iff the slot is reserved, for
+        // EVERY combination of transport ownership, activity and video — so no state can make "⋯" appear or vanish.
+        Span<Shell.OverflowCommand> buffer = stackalloc Shell.OverflowCommand[Shell.PlayerBarRules.MaxOverflow];
+        foreach (var tier in Tiers)
+        {
+            var L = Shell.PlayerBarLayout.ForTier(tier);
+            bool reserved = Shell.PlayerBarRules.OverflowSlotReserved(L);
+            foreach (bool owns in new[] { false, true })
+            foreach (bool active in new[] { false, true })
+            foreach (bool video in new[] { false, true })
+            {
+                int n = Shell.PlayerBarRules.Overflow(L, owns, active, video, buffer);
+                Assert.Equal(reserved, n > 0);
+            }
+        }
+        Assert.False(Shell.PlayerBarRules.OverflowSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Full)));
+        Assert.True(Shell.PlayerBarRules.OverflowSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide)));
+    }
+
+    [Fact]
+    public void Faces_follow_state_while_slots_do_not()
+    {
+        // Lyrics need a playable; the video split (present only WITH a video) additionally needs an Active playable;
+        // everything else is always lit.
+        foreach (var state in States)
+        {
+            bool active = state == Shell.PlayerState.Active;
+            Assert.Equal(active, Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Lyrics, state, hasVideo: true));
+            Assert.Equal(active, Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Lyrics, state, hasVideo: false));
+            Assert.Equal(active, Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Video, state, hasVideo: true));
+            Assert.False(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Video, state, hasVideo: false));
+            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Shuffle, state, false));
+            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Volume, state, false));
+            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Queue, state, false));
+            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.Devices, state, false));
+            Assert.True(Shell.PlayerBarRules.SlotFaceVisible(Shell.RightSlot.More, state, false));
+        }
+    }
+
+    [Fact]
+    public void The_heart_s_face_needs_a_playable_and_its_slot_survives_to_the_floor()
+    {
+        var minimal = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Minimal);
+        var wide = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide);
+        Assert.True(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Active));
+        Assert.True(Shell.PlayerBarRules.LikeFaceVisible(minimal, Shell.PlayerState.Active));   // identity-first
+        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Loading));
+        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.NoTrack));
+        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Error));
+    }
+
+    [Fact]
+    public void The_minimal_tier_at_the_300_dip_floor_leaves_the_seek_bar_48()
+    {
+        // 300 − row pads − identity block − two row gaps − (primary + cluster gap) − the WIDEST right cluster ≥ 48. Below
+        // Medium there are no prev/next and no time labels, so the centre is the primary and the seek rail alone.
+        var L = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Minimal);
+        Assert.False(L.ShowPrevNext);
+        Assert.False(L.ShowTimesElapsed);
+        Assert.False(L.ShowTimesRemaining);
+        float seek = 300f - 2f * L.RowPad - L.LeftW - 2f * L.RowGap - (L.PrimaryBox + L.ClusterGap) - L.RightWMax;
+        Assert.True(seek >= 48f, "the seek bar has " + seek + " DIP at the 300-DIP floor");
     }
 }
 

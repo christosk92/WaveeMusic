@@ -472,3 +472,18 @@ public class SetupQrTests
         }
     }
 }
+
+public class SetupRuntimeIssueTests
+{
+    [Theory]
+    [InlineData(ProvisioningOutcome.Ready, Setup.RuntimeIssue.None)]
+    [InlineData(ProvisioningOutcome.NeverAttempted, Setup.RuntimeIssue.None)]
+    [InlineData(ProvisioningOutcome.RuntimeUnavailable, Setup.RuntimeIssue.Missing)]
+    [InlineData(ProvisioningOutcome.PackDownloadFailed, Setup.RuntimeIssue.Missing)]
+    [InlineData(ProvisioningOutcome.ArchUnsupported, Setup.RuntimeIssue.WrongArch)]
+    [InlineData(ProvisioningOutcome.NoSupportedPack, Setup.RuntimeIssue.NoPack)]
+    [InlineData(ProvisioningOutcome.HashMismatch, Setup.RuntimeIssue.Unsupported)]
+    [InlineData(ProvisioningOutcome.SignatureInvalid, Setup.RuntimeIssue.Unsupported)]
+    public void A_provisioning_outcome_names_the_banner_issue(ProvisioningOutcome outcome, Setup.RuntimeIssue issue)
+        => Assert.Equal(issue, Setup.RuntimeRules.IssueFor(outcome));
+}

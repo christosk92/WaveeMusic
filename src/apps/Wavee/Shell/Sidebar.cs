@@ -47,6 +47,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -1321,6 +1322,29 @@ public readonly record struct SidebarLibraryEntry(
     /// <summary>True when the entity's only source of truth — the rootlist, for a folder — does not contain it. A
     /// missing row renders visible-but-disabled with a reason (never auto-removed).</summary>
     public bool Missing { get; init; }
+
+    /// <summary>Bug H (playlists) / trap 5 (pins of any resolvable kind): true once the row's own Identity has
+    /// actually landed — for a PLAYLIST, <see cref="PlaylistFields.Identity"/> (title, cover, owner); for an
+    /// unlisted Album/Artist/Show PIN, <c>Sidebar.Host.ResolveLivePin</c>'s own <c>Knows(Identity)</c> gate on the
+    /// matching entity table. Default false is the landed-safe polarity — a row minted before its identity arrives
+    /// must not be mistaken for a resolved one, and (trap 5) the pin band must not fall back to a raw id/uri
+    /// fragment as a title while this is false (<see cref="SidebarProjection.ShouldShowUriFallbackTitle"/>).
+    /// <b>Does NOT imply the track count is known</b> — <see cref="CountKnown"/> is the bit for that (bug A1:
+    /// Identity's own route can stamp it applied while carrying no length at all). Meaningless for a Folder
+    /// (<see cref="Missing"/>/<see cref="CountKnown"/> are its bits) or any non-pinnable row kind.</summary>
+    public bool IdentityKnown { get; init; }
+
+    /// <summary>Bug A1: true once a PLAYLIST row's REAL track count has landed — stamped from
+    /// <see cref="PlaylistFields.TrackCount"/> alone (<c>Playlist.Knows</c>), never from <see cref="IdentityKnown"/>
+    /// or from <c>TrackCount == 0</c>, both of which a thin answer (ListMetadataV2, ext kind 205 — no length field)
+    /// also produces. Default false is the landed-safe polarity: an unresolved row must not paint a confident
+    /// "0 songs". <c>Sidebar.PaneText.SubtitleOf</c> (Sidebar.UI.Rows.cs) gates the "N songs" subtitle on this bit
+    /// for a playlist. For a FOLDER pin awaiting the rootlist's first answer this session
+    /// (<see cref="SidebarProjection.ResolveFolderPinState"/>, trap 5) this is also stamped false — the data side is
+    /// correct, but as of this fix <c>Sidebar.UI.Slot.cs</c>'s <c>FolderRow</c> does not yet gate its "N items"
+    /// subtitle on it (that render-side wiring is a one-line follow-up outside this file's scope). Meaningless for
+    /// every other kind.</summary>
+    public bool CountKnown { get; init; }
 
     /// <summary>uri -> last-played unix ms from local + server listening history, stamped by the projection for
     /// Playlist/Album/Artist/Show rows. 0 = never played. This is what the Recents sort mode sorts on — NOT
@@ -4118,20 +4142,87 @@ public static class SidebarSearch
 // identity when it is renamed OR moved, and `v3.expandedFolders` / folder pins written by 0.2.9 match again. A
 // FolderStart that arrived WITHOUT a group id (a malformed answer) is keyed "~<position>": unique within the tree so
 // the list can still key its rows, and unable to collide with any real hex id, a persisted pin or a synced uri.
-// GAP: a cover-less playlist's own 2×2 mosaic (0.2.9's PlaylistSummary.MosaicTiles, built from the playlist's own
-// track covers) has no Entities equivalent; a playlist row's MosaicTiles is always null. The FOLDER mosaic (first ≤4
-// CHILD playlist covers) is unaffected and ports in full.
+// G-059 (fixed): a cover-less playlist's own 2×2 mosaic — first ≤4 distinct member-track album covers, membership
+// order, the SAME rule Entities/Playlist.UI.cs's `MosaicTiles` gives the playlist DETAIL page's own cover (kept
+// aligned by comment, not by call: that rule resolves each cover to a URL for its two other callers, which is not
+// what a projected row wants). `PlaylistMosaicTiles` below collects the tracks' own `Track.ImageId` StringIds
+// directly — no url resolve, no per-rebuild string allocation — exactly like the FOLDER mosaic's tiles (first ≤4
+// CHILD playlist covers), which is unaffected and ports in full. `Controls.ArtUrl` builds the url at RENDER time for
+// both, same as every other cover.
 
 public readonly record struct SidebarProjectionResult(int Count, byte FlavorMask, int NewFirstSeenStamps);
+
+/// <summary>Trap 5: what an unresolved FOLDER pin should render as (<see cref="SidebarProjection.ResolveFolderPinState"/>).
+/// <c>Normal</c> means the caller already found it live and this verdict is moot. <c>Pending</c> is the honest
+/// "don't know yet" — title only, no subtitle, never the disabled "missing" row. <c>Missing</c> is the confident
+/// negative, earned only once the rootlist has actually answered and still does not carry the folder.</summary>
+public enum SidebarPinFolderState : byte { Normal = 0, Pending = 1, Missing = 2 }
 
 public static class SidebarProjection
 {
     static readonly StringBuilder s_join = new(64);
 
+    // E3/Bug A1: reused across rebuilds (single-writer, UI thread, C1) — `WalkRootlist` collects the playlist SLOTS
+    // that need an ask into these instead of calling `Entities.Ensure`/`EnsureEdge` per row, and `Build` issues at
+    // most ONE span-form call of each after the walk. Before this, an un-identified/un-counted rootlist rented two
+    // pooled Fetch buffers and pumped the network once PER ROW.
+    static readonly List<int> s_ensureIdentitySlots = new(32);
+    static readonly List<int> s_ensureTracksSlots = new(32);
+    // The member TRACK slots (not playlists) a cover-less row's mosaic still needs the album/image of — see
+    // `ShouldWarmMosaicTracks`. Flushed as one span-form `Entities.Ensure` on the Tracks table at Prefetch.
+    static readonly List<int> s_ensureMosaicTrackSlots = new(64);
+
+    /// <summary>How many leading member tracks a cover-less playlist's mosaic is warmed and repainted over. The
+    /// membership answer (`PlaylistRevision`) lands bare uri-only track slots — no album, no image — so the tiles
+    /// need each leading track's own Identity group, which nothing but the playlist's PAGE used to ask for: the
+    /// rail showed an empty tile until the page had been opened once, every launch. The warm asks this many, and
+    /// <see cref="SidebarLibraryFingerprint"/> folds the same prefix's row versions so the landing actually
+    /// repaints; the two must stay one number, or a tile that landed past the fold never redraws.</summary>
+    public const int MosaicTrackPrefix = 8;
+
+    /// <summary>G-059: a cover-less playlist's own 2×2 mosaic — the first ≤4 distinct member-track album covers, in
+    /// membership order, THE SAME RULE as <see cref="Playlist.MosaicTiles"/> (Entities/Playlist.UI.cs:95, the
+    /// playlist DETAIL page's own cover rule) — keep the two aligned if either changes. That rule resolves each
+    /// track's image to a URL (its two other callers want one, for a palette/deposit-art fallback); this one does
+    /// NOT — it collects the tracks' own <see cref="Track.ImageId"/> directly, already-interned StringIds with no
+    /// resolve, no string concat and no new intern per rebuild, exactly like a folder's tiles
+    /// (<c>p.ImageId</c> in <c>WalkRootlist</c>'s FolderFrame fold below). <see cref="Controls.ArtUrl"/> builds the
+    /// url at RENDER time, same as every other cover.
+    ///
+    /// <para>Null while the tracks edge has not landed (so the row keeps showing the placeholder instead of flashing
+    /// "no cover", and re-tries once <see cref="Playlist.MembershipState"/> moves) or once loaded none of them carry
+    /// a cover; 1-3 tiles is a legitimate single-cover result (the row's cover slot, Sidebar's own <c>Cover.Art</c>,
+    /// takes tile 0 when there are fewer than four — same as the folder mosaic).</para></summary>
+    internal static List<StringId>? PlaylistMosaicTiles(in Playlist p)
+    {
+        if (p.MembershipState == EdgeState.Unknown) return null;
+        Span<int> albums = stackalloc int[4];
+        List<StringId>? tiles = null;
+        var slots = p.TrackSlots;
+        for (int i = 0; i < slots.Length; i++)
+        {
+            int n = tiles?.Count ?? 0;
+            if (n >= 4) break;
+            var t = new Track(slots[i]);
+            int album = t.AlbumSlot;
+            if (album <= Table.None || albums[..n].IndexOf(album) >= 0) continue;
+            StringId image = t.ImageId;
+            if (image.IsEmpty) continue;
+            albums[n] = album;
+            (tiles ??= new List<StringId>(4)).Add(image);
+        }
+        return tiles;
+    }
+
     /// <summary>Fill <paramref name="into"/> (CLEARED first) with the unified entry list for the requested kinds, read
     /// straight off <paramref name="u"/>'s edges. <paramref name="includeFolderChildren"/> false ⇒ a collapsed folder's
     /// children are not emitted (still folded into its mosaic/child-count); true ⇒ fully flattened.
-    /// <paramref name="lastPlayed"/> is uri → last-played unix ms; null/absent ⇒ every row's LastPlayedMs stays 0.</summary>
+    /// <paramref name="lastPlayed"/> is uri → last-played unix ms; null/absent ⇒ every row's LastPlayedMs stays 0.
+    /// <paramref name="ensureIdentity"/> — Bug H: true only for the ONE caller whose <paramref name="includeFolderChildren"/>
+    /// / <paramref name="isFolderExpanded"/> pair reflects the pane's REAL fold state (the published-entries pass,
+    /// <c>Sidebar.Host.Rebuild</c>'s "buffer" build) — never the structural full/tree passes, whose
+    /// <paramref name="includeFolderChildren"/>:true forces every row "visible" regardless of collapse. Passing true
+    /// from one of those would warm a whole hundreds-deep rootlist's identity/membership on every rebuild.</summary>
     public static SidebarProjectionResult Build(
         List<SidebarLibraryEntry> into,
         in User u,
@@ -4140,7 +4231,8 @@ public static class SidebarProjection
         SidebarRecency? recency,
         bool includeFolderChildren,
         Func<string, bool>? isFolderExpanded = null,
-        IReadOnlyDictionary<string, long>? lastPlayed = null)
+        IReadOnlyDictionary<string, long>? lastPlayed = null,
+        bool ensureIdentity = false)
     {
         into.Clear();
         var rec = recency ?? SidebarRecency.Empty;
@@ -4150,9 +4242,26 @@ public static class SidebarProjection
 
         bool wantPlaylists = (kinds & SidebarEntryKindMask.Playlist) != 0;
         bool wantFolders = (kinds & SidebarEntryKindMask.Folder) != 0;
+        s_ensureIdentitySlots.Clear();
+        s_ensureTracksSlots.Clear();
+        s_ensureMosaicTrackSlots.Clear();
         if ((wantPlaylists || wantFolders) && u.RootlistState != EdgeState.Unknown)
             WalkRootlist(into, in u, wantPlaylists, wantFolders, includeFolderChildren, isFolderExpanded,
-                         rec, seen, lastPlayed, ref flavorMask);
+                         rec, seen, lastPlayed, ref flavorMask, ensureIdentity);
+        // E3: ONE span-form ask per group, after the walk, instead of one `Fetch.Plan` per un-identified/un-counted
+        // row — `WalkRootlist` only ever populates these when `ensureIdentity` is true (the one fold-state-real pass).
+        if (s_ensureIdentitySlots.Count > 0)
+            Entities.Ensure(Entities.Current.Playlists, CollectionsMarshal.AsSpan(s_ensureIdentitySlots),
+                (uint)PlaylistFields.Identity, FetchPriority.Visible);
+        if (s_ensureTracksSlots.Count > 0)
+            Entities.EnsureEdge(FetchEdge.PlaylistTracks, CollectionsMarshal.AsSpan(s_ensureTracksSlots),
+                priority: FetchPriority.Visible);
+        // The mosaic's own data: the leading member tracks' album + image, one batched ask at Prefetch (a tile, not
+        // a page). `Fetch.Plan` reads the store before the network, so on a relaunch a track that ever answered
+        // fills from disk with no request at all; only genuinely never-seen tracks ride a TrackV4 batch.
+        if (s_ensureMosaicTrackSlots.Count > 0)
+            Entities.Ensure(Entities.Current.Tracks, CollectionsMarshal.AsSpan(s_ensureMosaicTrackSlots),
+                (uint)MosaicTrackFields, FetchPriority.Prefetch);
 
         if ((kinds & SidebarEntryKindMask.Album) != 0)
         {
@@ -4236,14 +4345,15 @@ public static class SidebarProjection
         { Id = id; Name = name; RowIndex = rowIndex; Descend = descend; ChildCount = 0; Tiles = null; }
     }
 
-    // App seconds -> unix ms for an edge's AddedAt. 0 means "never dated" and stays 0 so the first-seen fallback
-    // can fire; any other value converts, including the negative app seconds of dates older than this launch.
-    static long AddedMs(int appSeconds) => appSeconds == 0 ? 0L : Store.ToUnix(appSeconds) * 1000L;
+    // An edge's AddedAt (UNIX seconds, WP-4.5 gap 1) -> unix ms. 0 (or anything before the epoch) means "never dated"
+    // and stays 0 so the first-seen fallback can fire.
+    static long AddedMs(int unixSeconds) => unixSeconds <= 0 ? 0L : unixSeconds * 1000L;
 
     static void WalkRootlist(
         List<SidebarLibraryEntry> into, in User u,
         bool wantPlaylists, bool wantFolders, bool includeFolderChildren, Func<string, bool>? isFolderExpanded,
-        SidebarRecency rec, SidebarFirstSeen seen, IReadOnlyDictionary<string, long>? lastPlayed, ref byte flavorMask)
+        SidebarRecency rec, SidebarFirstSeen seen, IReadOnlyDictionary<string, long>? lastPlayed, ref byte flavorMask,
+        bool ensureIdentity = false)
     {
         var targets = u.RootlistSlots;
         var payload = u.Rootlist;
@@ -4299,7 +4409,9 @@ public static class SidebarProjection
                     var frame = stack[stack.Count - 1];
                     stack.RemoveAt(stack.Count - 1);
                     if (frame.RowIndex >= 0)
-                        into[frame.RowIndex] = into[frame.RowIndex] with { ChildCount = frame.ChildCount, MosaicTiles = frame.Tiles };
+                        // A real FolderEnd landed — the count is exactly what was walked, never a placeholder.
+                        into[frame.RowIndex] = into[frame.RowIndex] with
+                            { ChildCount = frame.ChildCount, MosaicTiles = frame.Tiles, CountKnown = true };
                     break;
                 }
 
@@ -4320,6 +4432,17 @@ public static class SidebarProjection
 
                     if (!visible || !wantPlaylists) break;
 
+                    // Bug H: a VISIBLE row's identity is ensured from the pane, not from opening the playlist's own
+                    // page — the same pattern `Sidebar.Host.ResolveLivePin` already applies to unlisted pins. Gated
+                    // on the caller-controlled `ensureIdentity` (see its doc on `Build`): only the ONE rebuild pass
+                    // whose `includeFolderChildren`/`isFolderExpanded` pair reflects the pane's REAL fold state sets
+                    // it true, so this never fires from the structural full/tree passes that flatten the WHOLE
+                    // rootlist regardless of collapse.
+                    bool identityKnown = p.Knows(PlaylistFields.Identity);
+                    // E3: collected, never asked here — `Build` issues ONE span-form `Entities.Ensure` after the
+                    // whole walk (see `s_ensureIdentitySlots`'s doc).
+                    if (ShouldEnsureIdentity(ensureIdentity, identityKnown)) s_ensureIdentitySlots.Add(p.Slot);
+
                     string uri = p.Uri.Text;
                     string id = SidebarPinId.PlaylistPrefix + uri;
                     var flavor = FlavorOf(p);
@@ -4329,9 +4452,27 @@ public static class SidebarProjection
                     long added = AddedMs(edge.AddedAt);
                     string parentId = stack.Count > 0 ? stack[stack.Count - 1].Id : "";
                     string parentName = stack.Count > 0 ? stack[stack.Count - 1].Name : "";
+                    // G-059: a cover of its own always wins; only a cover-less row pays for the track walk.
+                    List<StringId>? mosaic = null;
+                    bool hasCover = !p.ImageId.IsEmpty;
+                    if (!hasCover) mosaic = PlaylistMosaicTiles(in p);
+
+                    // Bug A1: the count is asked regardless of cover — the subtitle needs it on EVERY playlist, not
+                    // just a cover-less one. Bug H's membership ensure stays cover-gated (only a cover-less row's
+                    // mosaic needs it at all); both route through the same `PlaylistTracks` edge/answer, so a row
+                    // that needs either is queued once. Collected, never asked here — see `s_ensureTracksSlots`.
+                    bool countKnown = p.Knows(PlaylistFields.TrackCount);
+                    bool needsCount = ShouldEnsureCount(ensureIdentity, countKnown, p.MembershipState);
+                    bool needsMembership = mosaic is null && ShouldEnsureMembership(ensureIdentity, hasCover, p.MembershipState);
+                    if (needsCount || needsMembership) s_ensureTracksSlots.Add(p.Slot);
+                    // Once membership HAS landed the tiles still need the leading tracks' own album/image (the
+                    // answer lands bare uri-only slots) — collected here, asked once by `Build` at Prefetch.
+                    if (ShouldWarmMosaicTracks(ensureIdentity, hasCover, p.MembershipState, mosaic?.Count ?? 0))
+                        CollectMosaicTrackSlots(p.TrackSlots, s_ensureMosaicTrackSlots);
+
                     into.Add(new SidebarLibraryEntry(
                         id, SidebarEntryKind.Playlist, uri, Entities.Strings.Resolve(p.TitleId), OwnerNameOf(in p),
-                        p.ImageId, null, p.TrackCount, added,
+                        p.ImageId, mosaic, p.TrackCount, added,
                         SortStamp: added > 0 ? added : seen.Stamp(id),
                         LastVisitedTicksUtc: rec.LastVisitedTicks(id),
                         SourceOrder: order++, Depth: edge.Depth, Circular: false, Flavor: flavor)
@@ -4340,12 +4481,100 @@ public static class SidebarProjection
                         ParentFolderId = parentId, ParentFolderName = parentName,
                         IsOwner = p.IsOwner, CanEdit = p.Editable, FirstArtistName = "",
                         LastPlayedMs = LastPlayed(lastPlayed, uri),
+                        IdentityKnown = identityKnown,
+                        CountKnown = countKnown,
                     });
                     break;
                 }
             }
         }
+
+        // A3: a folder whose `spotify:end-group:` marker never arrived (a truncated/malformed answer, or the wire
+        // simply stopped short) leaves its frame open — WITHOUT this drain its row keeps the literal 0 stamped at
+        // FolderStart forever, a confident "0 items" for a folder that may hold hundreds. Patch every still-open
+        // frame with whatever was actually walked before it, the SAME patch a real FolderEnd applies above — never
+        // a re-derived "unknown" state, just the honest count of what this answer actually carried.
+        for (int fi = 0; fi < stack.Count; fi++)
+        {
+            var frame = stack[fi];
+            if (frame.RowIndex >= 0)
+                // The drained count IS the honest count of what this answer carried — not a guess, so CountKnown
+                // too, the same as a real FolderEnd above.
+                into[frame.RowIndex] = into[frame.RowIndex] with
+                    { ChildCount = frame.ChildCount, MosaicTiles = frame.Tiles, CountKnown = true };
+        }
     }
+
+    /// <summary>Bug H, the pure half of "ensure a visible playlist row's identity": true only when the caller has
+    /// said these rows are genuinely visible (<paramref name="ensureIdentity"/> — see <see cref="Build"/>'s doc) AND
+    /// the identity has not already landed. Pulled out of <c>WalkRootlist</c> so the RULE is testable without
+    /// touching <c>Entities</c> at all — "the projection requests Identity for the rows it emits" is this predicate
+    /// returning true, not a side-effecting call a test would have to fake a whole entity table to observe.</summary>
+    public static bool ShouldEnsureIdentity(bool ensureIdentity, bool identityKnown) => ensureIdentity && !identityKnown;
+
+    /// <summary>The same rule for a cover-less row's MEMBERSHIP edge (the mosaic fallback's data source): only for a
+    /// row with no cover of its own, only when genuinely visible, and only while membership has not landed — never
+    /// for every cover-less playlist in a large rootlist.</summary>
+    public static bool ShouldEnsureMembership(bool ensureIdentity, bool hasCover, EdgeState membershipState)
+        => ensureIdentity && !hasCover && membershipState == EdgeState.Unknown;
+
+    /// <summary>Bug A1, the pure half of "ask for a visible playlist row's real count": only when the caller says
+    /// these rows are genuinely visible, the count has not landed, and membership is still Unknown — once it moves
+    /// (Partial/Complete), the SAME answer that moved it (`PlaylistRevision` is the only route that ever fills
+    /// <see cref="FetchEdge.PlaylistTracks"/>) would already have set <see cref="PlaylistFields.TrackCount"/> too,
+    /// so re-asking here would be a pure no-op. Unlike <see cref="ShouldEnsureMembership"/>, deliberately NOT
+    /// gated on <paramref name="countKnown"/>'s cover — a covered row's subtitle needs the real count exactly as
+    /// much as a cover-less one's mosaic needs membership.</summary>
+    public static bool ShouldEnsureCount(bool ensureIdentity, bool countKnown, EdgeState membershipState)
+        => ensureIdentity && !countKnown && membershipState == EdgeState.Unknown;
+
+    /// <summary>The mosaic warm's pure half: a genuinely visible row (<paramref name="ensureIdentity"/>), with no
+    /// cover of its own, whose membership HAS landed (before that there are no member slots to ask about — that
+    /// window is <see cref="ShouldEnsureMembership"/>'s) and whose mosaic is still short of four tiles. A full
+    /// mosaic asks for nothing, so a settled row costs no plan call at all on later rebuilds.</summary>
+    public static bool ShouldWarmMosaicTracks(bool ensureIdentity, bool hasCover, EdgeState membershipState, int tileCount)
+        => ensureIdentity && !hasCover && membershipState != EdgeState.Unknown && tileCount < 4;
+
+    /// <summary>What the mosaic reads off a member track: its album (the distinct-tile key) and its image. A subset
+    /// of <see cref="TrackFields.Identity"/> that the persisted track shape restores from disk, so a relaunch
+    /// answers it without a request; the page's own <c>Row</c> ask supersets it and dedupes against it.</summary>
+    public const TrackFields MosaicTrackFields = TrackFields.Album | TrackFields.Image;
+
+    /// <summary>The first <see cref="MosaicTrackPrefix"/> member slots that do not yet know
+    /// <see cref="MosaicTrackFields"/>, appended to <paramref name="into"/> in membership order. Bounded by the same
+    /// prefix the fingerprint folds, so every landing this asks for is one the row repaints on.</summary>
+    internal static void CollectMosaicTrackSlots(ReadOnlySpan<int> members, List<int> into)
+    {
+        int n = members.Length < MosaicTrackPrefix ? members.Length : MosaicTrackPrefix;
+        for (int i = 0; i < n; i++)
+        {
+            var t = new Track(members[i]);
+            if (!t.IsValid || t.Knows(MosaicTrackFields)) continue;
+            into.Add(members[i]);
+        }
+    }
+
+    /// <summary>Trap 5, the folder-pin half: an unresolved FOLDER pin (no hydration path — the rootlist walk is its
+    /// only source of truth) must not render a confident negative before the account's
+    /// rootlist has even answered once THIS session. The rootlist relation is network-only, never persisted, so
+    /// every cold launch starts <see cref="EdgeState.Unknown"/> — for that window "not found in the projection"
+    /// means "not yet known", not "gone". <see cref="SidebarPinFolderState.Missing"/> (the confident negative,
+    /// "Not in your library on this device yet") is only correct once <paramref name="rootlistState"/> shows the
+    /// relation actually answered (anything but Unknown) and the folder is still absent.</summary>
+    public static SidebarPinFolderState ResolveFolderPinState(EdgeState rootlistState, bool foundInProjection)
+        => foundInProjection ? SidebarPinFolderState.Normal
+         : rootlistState == EdgeState.Unknown ? SidebarPinFolderState.Pending
+         : SidebarPinFolderState.Missing;
+
+    /// <summary>Trap 5, the pin-band TITLE half: a PIN whose Identity has not landed must not fall back to a raw
+    /// id/uri fragment as its title ("3fMbdgg4jU18AjLCKBhRSm · Artist") — that reads as real data when it is a
+    /// guess off the pin's own key, and the store's disk leg answers <c>Knows(Identity)</c> asynchronously, well
+    /// after the pin band's first synchronous render. Scoped to pins ALONE (<paramref name="isPinned"/>): the
+    /// general (non-pinned) library row has always shown the short uri as an honest last-resort label for a
+    /// genuinely nameless RESOLVED entity — a real, if rare, case unrelated to this bug — so this predicate never
+    /// touches that path. False (never show it) exactly while a pin's Identity is still unknown; true otherwise —
+    /// including every non-pinned row, where Identity landing (or not) was never this predicate's business.</summary>
+    public static bool ShouldShowUriFallbackTitle(bool isPinned, bool identityKnown) => !isPinned || identityKnown;
 
     /// <summary>Playlist provenance, derived from facts the Entities row actually carries (never a stored column).
     /// <see cref="SidebarPlaylistFlavor.None"/> means "the data does not say", never "mine".</summary>
@@ -4585,13 +4814,33 @@ public static class SidebarLibraryFingerprint
     static ulong Row(ulong h, Table table, int slot)
         => slot > Table.None && slot < table.Count ? Mix(h, table.Version[slot]) : Mix(h, 0xFFFF_FFFEu);
 
+    // Bug A2: the mosaic needs each member TRACK's own AlbumSlot/ImageId, which lands in a LATER drain than the
+    // membership edge itself (the batched `SidebarProjection.MosaicTrackFields` ask over the bare uri-only slots the
+    // edge answer created) — the edge's own Version does not move for that, only the track row's does. Folded over
+    // exactly the prefix that ask covers (`SidebarProjection.MosaicTrackPrefix`), so every landing it caused repaints.
+    const int MosaicFoldCap = SidebarProjection.MosaicTrackPrefix;
+
     // A playlist row names its OWNER through the Users table (the creator line and the ByYou/BySpotify flavor), so the
     // owner row's version rides with it.
     static ulong PlaylistRow(ulong h, PlaylistTable playlists, Table users, int slot)
     {
         h = Row(h, playlists, slot);
         if (slot <= Table.None || slot >= playlists.Count) return h;
-        return Row(h, users, playlists.Owner[slot]);
+        h = Row(h, users, playlists.Owner[slot]);
+        // G-059: a cover-less playlist's 2×2 mosaic depends on the PlaylistTracks edge, a table this row's OWN version
+        // does not move for (an edge is a separate relation, versioned separately — Playlist.MembershipVersion). Fold
+        // it in ONLY for a playlist that actually has no cover of its own, so every other row pays nothing extra.
+        if (playlists.Image[slot].IsEmpty)
+        {
+            h = Mix(h, Entities.Current.Edges.PlaylistTracks.Version(slot));
+            // Bug A2: fold a bounded prefix of the member tracks' OWN row versions too, so a track's Identity
+            // landing after the edge already did moves the fold and the tiles actually repaint.
+            var tracks = Entities.Current.Tracks;
+            var members = new Playlist(slot).TrackSlots;
+            int n = members.Length < MosaicFoldCap ? members.Length : MosaicFoldCap;
+            for (int i = 0; i < n; i++) h = Row(h, tracks, members[i]);
+        }
+        return h;
     }
 }
 
@@ -4675,11 +4924,20 @@ public static class SidebarBinderPipeline
 
     /// <summary>Build the row for a pin the live projection does NOT know — an editorial/Spotify-owned entity never
     /// saved to the user's own library/rootlist. Renders the pin's own offline display cache first (an unresolved pin
-    /// must never disappear), then OVERLAYS <paramref name="hydrated"/> once the binder resolves the handle.</summary>
-    public static SidebarLibraryEntry ResolveUnlistedPin(SidebarPin pin, int sourceOrder, SidebarLibraryEntry? hydrated)
+    /// must never disappear), then OVERLAYS <paramref name="hydrated"/> once the binder resolves the handle.
+    /// <para>Trap 5: <paramref name="rootlistState"/> defaults to <see cref="EdgeState.Complete"/> — a caller that
+    /// does not pass it (every non-folder-pin-state test, and any future caller that genuinely does not care) keeps
+    /// the pre-existing "not found ⇒ missing" behaviour; only a FOLDER pin ever reads it at all.</para></summary>
+    public static SidebarLibraryEntry ResolveUnlistedPin(SidebarPin pin, int sourceOrder, SidebarLibraryEntry? hydrated,
+        EdgeState rootlistState = EdgeState.Complete)
     {
-        // A folder pin the rootlist walk does not know is genuinely GONE — a folder has no separate hydration path.
+        // A folder pin has no separate hydration path (below) — its ONLY source of truth is the rootlist walk that
+        // already ran this rebuild, so "not found" here means "not in the account's rootlist" only once that
+        // rootlist has genuinely answered THIS session (bug A follow-up, trap 5: the rootlist is network-only,
+        // never persisted, so a "not found" this early is "not yet known", not "gone").
         bool folder = pin.Kind == SidebarEntryKind.Folder;
+        var folderState = folder ? SidebarProjection.ResolveFolderPinState(rootlistState, foundInProjection: false)
+                                  : SidebarPinFolderState.Normal;
         var baseEntry = new SidebarLibraryEntry(
             pin.Id, pin.Kind, pin.Uri, pin.Name, "", StringId.Empty, null,
             ChildCount: 0, AddedAtMs: pin.AddedAtMs, SortStamp: pin.AddedAtMs, LastVisitedTicksUtc: 0,
@@ -4687,15 +4945,31 @@ public static class SidebarBinderPipeline
             Flavor: SidebarPlaylistFlavor.None)
         {
             IsPinned = true, FolderId = folder ? SidebarPinId.FolderIdOf(pin.Id) : "", FolderName = "",
-            FirstArtistName = "", Missing = folder,
+            FirstArtistName = "", Missing = folderState == SidebarPinFolderState.Missing,
+            // Pending or Missing, there is no real item count to show either way — never a confident "0 items"
+            // (the folder subtitle's own gate; see SidebarLibraryEntry.CountKnown's doc).
+            CountKnown = false,
         };
 
         if (hydrated is not { } h) return baseEntry;
         return baseEntry with
         {
+            Name = h.Name.Length > 0 ? h.Name : baseEntry.Name,          // the ylpin bridge mints "" — the entity names it
             Cover = h.Cover.IsEmpty ? baseEntry.Cover : h.Cover,
+            // G-059: baseEntry's is always null (the pin's own display cache carries no mosaic) — h's is
+            // ResolveLivePin's fresh read, so it wins outright whenever hydration ran at all.
+            MosaicTiles = h.MosaicTiles,
             ChildCount = h.ChildCount,
             Creator = h.Creator.Length > 0 ? h.Creator : baseEntry.Creator,
+            FirstArtistName = h.FirstArtistName.Length > 0 ? h.FirstArtistName : baseEntry.FirstArtistName,
+            // Bug H: `hydrated` is non-null only past ResolveLivePin's own `Knows(Identity)` gate, so the merged
+            // row's identity IS known — never leave this on baseEntry's default false, or an unlisted pin's
+            // subtitle stays hidden forever even once hydration lands.
+            IdentityKnown = true,
+            // Bug A1: unlike Identity, the count is NOT unconditionally true past that same gate — ResolveLivePin
+            // stamps its own `CountKnown` from the real `PlaylistFields.TrackCount` bit (never hardcoded), and this
+            // overlay must forward it rather than repeat the A1 mistake one layer up.
+            CountKnown = h.CountKnown,
         };
     }
 

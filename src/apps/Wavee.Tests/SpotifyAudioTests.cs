@@ -132,6 +132,9 @@ public class SpotifyAudioLadderTests
         return new Md.AudioFile { FileId = ByteString.CopyFrom(id), Format = format };
     }
 
+    /// <summary>The market the unrestricted ladder facts run in; no fixture above restricts it.</summary>
+    const string Market = "NL";
+
     static Md.Track Track(byte gidMarker, params Md.AudioFile[] files)
     {
         var gid = new byte[16];
@@ -149,8 +152,8 @@ public class SpotifyAudioLadderTests
             File(Md.AudioFile.Types.Format.OggVorbis160, 0x60),
             File(Md.AudioFile.Types.Format.OggVorbis320, 0x20));
 
-        Spotify.Audio.FileChoice high = Spotify.Audio.Choose(track, null, Spotify.Audio.Quality.VeryHigh320, 0);
-        Spotify.Audio.FileChoice low = Spotify.Audio.Choose(track, null, Spotify.Audio.Quality.Normal96, 0);
+        Spotify.Audio.FileChoice high = Spotify.Audio.Choose(track, null, Spotify.Audio.Quality.VeryHigh320, 0, Market);
+        Spotify.Audio.FileChoice low = Spotify.Audio.Choose(track, null, Spotify.Audio.Quality.Normal96, 0, Market);
 
         Assert.Equal((byte)0x20, high.FileId[0]);
         Assert.Equal(Spotify.Audio.Format.OggVorbis320, high.Fmt);
@@ -169,17 +172,107 @@ public class SpotifyAudioLadderTests
         Md.Track alternative = Track(0x22, File(Md.AudioFile.Types.Format.OggVorbis160, 0x60));
         main.Alternative.Add(alternative);
 
-        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(main, null, Spotify.Audio.Quality.High160, 0);
+        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(main, null, Spotify.Audio.Quality.High160, 0, Market);
 
         Assert.True(choice.Ok);
         Assert.Equal((byte)0x60, choice.FileId[0]);
         Assert.Equal((byte)0x22, choice.TrackGid[0]);
     }
 
+    /// <summary>RELINKING's other half. A relinked id often keeps its OLD file[] listed — but restricted in the session's
+    /// market. Picking that file handed the key service the old gid, which refused (NoKey → Unavailable) where the
+    /// unrestricted alternative would have played. The market gate skips the track's own files and takes the
+    /// alternative's file AND gid.</summary>
+    [Fact]
+    public void A_track_restricted_in_the_market_yields_to_its_unrestricted_alternative()
+    {
+        Md.Track main = Track(0x11, File(Md.AudioFile.Types.Format.OggVorbis160, 0x16));
+        main.Restriction.Add(new Md.Restriction { CountriesForbidden = "SEGB" });
+        Md.Track alternative = Track(0x22, File(Md.AudioFile.Types.Format.OggVorbis160, 0x60));
+        main.Alternative.Add(alternative);
+
+        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(main, null, Spotify.Audio.Quality.High160, 0, "SE");
+
+        Assert.True(choice.Ok);
+        Assert.Equal((byte)0x60, choice.FileId[0]);
+        Assert.Equal((byte)0x22, choice.TrackGid[0]);
+
+        // Elsewhere the same payload plays its own file under its own gid: the restriction is a gate, not a verdict.
+        Spotify.Audio.FileChoice home = Spotify.Audio.Choose(main, null, Spotify.Audio.Quality.High160, 0, "NL");
+        Assert.Equal((byte)0x16, home.FileId[0]);
+        Assert.Equal((byte)0x11, home.TrackGid[0]);
+    }
+
+    /// <summary>An alternative that is itself ruled out of the market is skipped for the next one; a track whose every
+    /// candidate is ruled out is the same named fault as one with no files at all.</summary>
+    [Fact]
+    public void Restricted_alternatives_are_skipped_and_a_wholly_restricted_track_is_a_named_fault()
+    {
+        Md.Track main = Track(0x11);
+        Md.Track blocked = Track(0x22, File(Md.AudioFile.Types.Format.OggVorbis160, 0x60));
+        blocked.Restriction.Add(new Md.Restriction { CountriesAllowed = "USGB" });
+        Md.Track open = Track(0x33, File(Md.AudioFile.Types.Format.OggVorbis160, 0x61));
+        main.Alternative.Add(blocked);
+        main.Alternative.Add(open);
+
+        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(main, null, Spotify.Audio.Quality.High160, 0, "SE");
+        Assert.Equal((byte)0x61, choice.FileId[0]);
+        Assert.Equal((byte)0x33, choice.TrackGid[0]);
+
+        main.Alternative.RemoveAt(1);
+        Spotify.Audio.FileChoice none = Spotify.Audio.Choose(main, null, Spotify.Audio.Quality.High160, 0, "SE");
+        Assert.False(none.Ok);
+        Assert.Equal(Spotify.Audio.Fault.NoFile, none.Fault);
+    }
+
+    /// <summary>The country gate over the wire's 2-char chunks (`lean_metadata.proto`'s note): an empty
+    /// <c>countries_allowed</c> is an empty WHITELIST — no gate — never "allowed nowhere".</summary>
+    [Theory]
+    [InlineData("", "SE", false, true)]         // empty allowed list = playable
+    [InlineData("USGB", "SE", false, false)]    // allowed list without the market = blocked
+    [InlineData("USSEGB", "SE", false, true)]   // allowed list with the market = playable
+    [InlineData("usse", "SE", false, true)]     // case is not a verdict
+    [InlineData("SEGB", "SE", true, false)]     // forbidden list containing the market = blocked
+    [InlineData("USGB", "SE", true, true)]      // forbidden list without the market = playable
+    [InlineData("", "SE", true, true)]          // empty forbidden list forbids nobody
+    [InlineData("USGB", "", false, true)]       // no market yet = nothing to evaluate = playable
+    public void The_country_gate_reads_two_char_chunks(string list, string market, bool forbidden, bool expected)
+        => Assert.Equal(expected, Spotify.Audio.CountryAllowed(list, market, forbidden));
+
+    /// <summary>`Allowed` over the whole restriction list: only a country rule can rule the market out — the catalogue and
+    /// type fields decide nothing, and a track with no restriction is admitted everywhere.</summary>
+    [Fact]
+    public void Allowed_is_false_only_when_a_country_rule_names_the_market_out()
+    {
+        Md.Track plain = Track(0x01);
+        Assert.True(Spotify.Audio.Allowed(plain, "SE"));
+
+        Md.Track catalogueOnly = Track(0x02);
+        catalogueOnly.Restriction.Add(new Md.Restriction
+        {
+            Catalogue = { Md.Restriction.Types.Catalogue.Subscription }, Type = Md.Restriction.Types.Type.Streaming,
+        });
+        Assert.True(Spotify.Audio.Allowed(catalogueOnly, "SE"));
+
+        Md.Track emptyWhitelist = Track(0x03);
+        emptyWhitelist.Restriction.Add(new Md.Restriction { CountriesAllowed = "" });
+        Assert.True(Spotify.Audio.Allowed(emptyWhitelist, "SE"));
+
+        Md.Track whitelisted = Track(0x04);
+        whitelisted.Restriction.Add(new Md.Restriction { CountriesAllowed = "USGB" });
+        Assert.False(Spotify.Audio.Allowed(whitelisted, "SE"));
+        Assert.True(Spotify.Audio.Allowed(whitelisted, "GB"));
+
+        Md.Track forbidden = Track(0x05);
+        forbidden.Restriction.Add(new Md.Restriction { CountriesForbidden = "SEGB" });
+        Assert.False(Spotify.Audio.Allowed(forbidden, "SE"));
+        Assert.True(Spotify.Audio.Allowed(forbidden, "NL"));
+    }
+
     [Fact]
     public void A_track_with_nothing_playable_anywhere_is_a_named_fault()
     {
-        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(Track(0x33), null, Spotify.Audio.Quality.High160, 0);
+        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(Track(0x33), null, Spotify.Audio.Quality.High160, 0, Market);
 
         Assert.False(choice.Ok);
         Assert.Equal(Spotify.Audio.Fault.NoFile, choice.Fault);
@@ -196,7 +289,7 @@ public class SpotifyAudioLadderTests
         lossless.Files.Add(new Af.ExtendedAudioFile { File = File(Md.AudioFile.Types.Format.FlacFlac24Bit, 0xF2) });
         lossless.DefaultFileNormalizationParams = new Af.NormalizationParams { LoudnessDb = -8f, TruePeakDb = -3f };
 
-        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(track, lossless, Spotify.Audio.Quality.Lossless, 0);
+        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(track, lossless, Spotify.Audio.Quality.Lossless, 0, Market);
 
         Assert.Equal(Spotify.Audio.Format.Flac24, choice.Fmt);
         Assert.Equal((byte)0xF2, choice.FileId[0]);
@@ -214,7 +307,7 @@ public class SpotifyAudioLadderTests
         var lossless = new Af.AudioFilesExtensionResponse();
         lossless.Files.Add(new Af.ExtendedAudioFile { File = File(Md.AudioFile.Types.Format.FlacFlac, 0xF1) });
 
-        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(track, lossless, Spotify.Audio.Quality.VeryHigh320, 0);
+        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(track, lossless, Spotify.Audio.Quality.VeryHigh320, 0, Market);
 
         Assert.Equal(Spotify.Audio.Format.OggVorbis320, choice.Fmt);
     }
@@ -239,6 +332,81 @@ public class SpotifyAudioLadderTests
         Assert.Equal(Spotify.Audio.Format.Mp3, choice.Fmt);
         Assert.Equal("https://example.invalid/episode.mp3", choice.ExternalUrl);
         Assert.Equal(1_800_000L, choice.DurationMs);
+    }
+
+    // ── gap batch B4: what a failure means, the lossless fallback, whose gain a body opens with ─────────────────────────
+
+    /// <summary>G-038: a TRACK_V4 read that never reached a server, a 5xx or a 429 is the network being unlucky — retryable —
+    /// and only an answer that says "nothing here" is the terminal Restricted.</summary>
+    [Theory]
+    [InlineData(0, 0, false, Spotify.Audio.Fault.Network)]          // transport: DNS, socket, timeout
+    [InlineData(401, 0, false, Spotify.Audio.Fault.Network)]        // survived the token refresh
+    [InlineData(429, 0, false, Spotify.Audio.Fault.Network)]
+    [InlineData(503, 0, false, Spotify.Audio.Fault.Network)]
+    [InlineData(404, 0, false, Spotify.Audio.Fault.Restricted)]
+    [InlineData(200, 0, false, Spotify.Audio.Fault.Restricted)]     // answered, with no entry for the track
+    [InlineData(200, 404, false, Spotify.Audio.Fault.Restricted)]
+    [InlineData(200, 503, false, Spotify.Audio.Fault.Network)]      // the entry itself failed upstream
+    [InlineData(200, 200, true, Spotify.Audio.Fault.None)]
+    public void A_metadata_failure_is_a_network_fault_unless_the_answer_says_nothing_is_there(int http, int entity,
+        bool hasPayload, Spotify.Audio.Fault expected)
+        => Assert.Equal(expected, Spotify.Audio.MetadataFault(http, entity, hasPayload));
+
+    /// <summary>D7, G-101: a refused lossless key plays the Ogg 320 rung; nothing else falls back.</summary>
+    [Theory]
+    [InlineData(Spotify.Audio.Format.Flac, Spotify.Audio.Fault.NoDeriver, true)]
+    [InlineData(Spotify.Audio.Format.Flac24, Spotify.Audio.Fault.NoKey, true)]
+    [InlineData(Spotify.Audio.Format.Flac24, Spotify.Audio.Fault.Network, false)]   // a network fault is retried, not downgraded
+    [InlineData(Spotify.Audio.Format.OggVorbis320, Spotify.Audio.Fault.NoDeriver, false)]
+    [InlineData(Spotify.Audio.Format.Flac, Spotify.Audio.Fault.None, false)]
+    public void Only_a_lossless_file_whose_key_is_refused_falls_back(Spotify.Audio.Format format, Spotify.Audio.Fault fault,
+        bool fallsBack)
+        => Assert.Equal(fallsBack, Spotify.Audio.LosslessFallback.Decide(format, fault));
+
+    /// <summary>D7: a build that cannot derive a lossless key never asks for the lossless rung.</summary>
+    [Fact]
+    public void The_lossless_rung_is_asked_for_only_by_a_build_that_can_derive_its_key()
+    {
+        Assert.Equal(Spotify.Audio.Quality.VeryHigh320,
+            Spotify.Audio.LosslessFallback.Effective(Spotify.Audio.Quality.Lossless, canDerive: false));
+        Assert.Equal(Spotify.Audio.Quality.Lossless,
+            Spotify.Audio.LosslessFallback.Effective(Spotify.Audio.Quality.Lossless, canDerive: true));
+        Assert.Equal(Spotify.Audio.Quality.High160,
+            Spotify.Audio.LosslessFallback.Effective(Spotify.Audio.Quality.High160, canDerive: false));
+    }
+
+    /// <summary>G-105 / G-106: the catalogue's figure first; else ONLY an Ogg body's header (gain at 144, linear peak at
+    /// 148). A FLAC's byte 144 is STREAMINFO/SEEKTABLE data — read as a float it was up to +30 dB.</summary>
+    [Fact]
+    public void A_body_opens_with_the_catalogue_gain_else_the_ogg_header_and_never_a_flac_s_bytes()
+    {
+        var header = new byte[160];
+        BitConverter.TryWriteBytes(header.AsSpan(144), -3.5f);
+        BitConverter.TryWriteBytes(header.AsSpan(148), 0.9f);
+
+        Assert.Equal((-3.5f, 0.9f), Spotify.Audio.GainFor(Spotify.Audio.Format.OggVorbis320, 0f, 0f, header));
+        Assert.Equal((0f, 0f), Spotify.Audio.GainFor(Spotify.Audio.Format.Flac, 0f, 0f, header));
+        Assert.Equal((0f, 0f), Spotify.Audio.GainFor(Spotify.Audio.Format.Mp3, 0f, 0f, header));
+        Assert.Equal((-6f, 0.7f), Spotify.Audio.GainFor(Spotify.Audio.Format.Flac24, -6f, 0.7f, header));
+        Assert.Equal((0f, 0f), Spotify.Audio.GainFor(Spotify.Audio.Format.OggVorbis160, 0f, 0f, ReadOnlySpan<byte>.Empty));
+
+        BitConverter.TryWriteBytes(header.AsSpan(144), 99f);                // garbage bytes, not a gain
+        Assert.Equal(0f, Spotify.Audio.GainFor(Spotify.Audio.Format.OggVorbis96, 0f, 0f, header).GainDb);
+    }
+
+    /// <summary>G-109: a podcast enclosure is a plain external body — no file id, no key, no resolve.</summary>
+    [Fact]
+    public void A_podcast_enclosure_is_an_external_mp3_choice()
+    {
+        Spotify.Audio.FileChoice choice = Spotify.Audio.ExternalChoice("https://podcast.example/ep1.mp3", 1_800_000);
+
+        Assert.True(choice.Ok);
+        Assert.Equal("https://podcast.example/ep1.mp3", choice.ExternalUrl);
+        Assert.Equal(Spotify.Audio.Format.Mp3, choice.Fmt);
+        Assert.Equal(1_800_000L, choice.DurationMs);
+        Assert.Empty(choice.FileId);
+        Assert.StartsWith("ext", choice.FileIdHex);
+        Assert.Equal(choice.FileIdHex, Spotify.Audio.ExternalChoice("https://podcast.example/ep1.mp3", 0).FileIdHex);
     }
 
     /// <summary>The gain is capped by the true-peak headroom: a quiet track is not lifted past clipping.</summary>

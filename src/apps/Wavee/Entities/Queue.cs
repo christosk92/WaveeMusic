@@ -53,7 +53,8 @@
 // release them in their own `ReleaseText`.
 //
 // What is NOT here, deliberately: `QueueSlots`, `QueueMovePlan` and `QueueOrder` — ch 21 §8's three ported rule sets,
-// owner Q's, Wave 5, in this same file. Wave 1 owns the shape they will read.
+// owner Q's, Wave 5 — plus the context build and the session writes live in the named partial `Queue.Rules.cs` (this
+// file passed §2's budget on the Wave 1 model alone). Wave 1 owns the shape they read.
 //
 // Rules: single writer, UI thread (C1); no allocation on any path here (P8); no LINQ, no closures (P9).
 
@@ -221,6 +222,57 @@ public static partial class Queue
         return from - 1 < 0 ? -1 : from - 1;
     }
 
+    // ── the playable walk (a dead row is never advanced onto) ───────────────────────────────────────────────────────
+    //
+    // A ROW THE CATALOG HAS RULED DEAD — `Track.Unplayable()`: withdrawn, region-locked, gone, no release instant that
+    // could ever heal it — is still a queue row (the list is the context's, and the greyed row belongs where the user
+    // sees it), but the deck must never LAND on it: its load can only fail, and a natural end that lands there strands
+    // the session on "3:33 / 0:00" with nothing playing. So the cursor walk has a second form that asks, per row, "may
+    // the deck land here?" and steps past every row that answers no — bounded by the list's length, so a context whose
+    // every row is dead answers -1 rather than looping. The question itself is the caller's (the reducer reads the live
+    // track table; a test hands flags): this file owns the WALK, not the verdict.
+
+    /// <summary>Which rows the deck may land on — the one question <see cref="NextPlayable"/> asks per row. A struct
+    /// implementation (generic, no boxing) so the walk stays allocation-free and the reducer's live-table reader and a
+    /// fixture's flag array go through the same rule.</summary>
+    public interface IPlayableRows
+    {
+        bool IsPlayable(int index);
+    }
+
+    /// <summary>Row verdicts as a flat array of flags — a fixture's shape. An index past the array is not playable.</summary>
+    public readonly struct PlayableFlags(bool[] flags) : IPlayableRows
+    {
+        public bool IsPlayable(int index) => (uint)index < (uint)flags.Length && flags[index];
+    }
+
+    /// <summary>The next index the deck may LAND on from <paramref name="index"/>, or -1. Forward is
+    /// <see cref="NextIndex"/> repeated past every row <paramref name="playable"/> refuses; backward is
+    /// <see cref="PrevIndex"/> the same way (into history — that is what history is for). With <paramref name="wrap"/>
+    /// — repeat-context — a forward walk that runs off the end resumes at <see cref="WrapIndex"/> (the first row the
+    /// context itself provided) and continues up to AND INCLUDING <paramref name="index"/>: a context whose only live
+    /// row is the one on the deck replays that row rather than ending. Every row is visited at most once, so the answer
+    /// is bounded by the list's length however many rows are dead. Pass -1 to start at the head.</summary>
+    public static int NextPlayable<TRows>(ReadOnlySpan<QueueEdge> rows, TRows playable, int index, bool forward, bool wrap)
+        where TRows : struct, IPlayableRows
+    {
+        if (forward)
+        {
+            for (int i = NextIndex(rows, index); i >= 0; i = NextIndex(rows, i))
+                if (playable.IsPlayable(i)) return i;
+            if (!wrap) return -1;
+            int head = WrapIndex(rows);
+            if (head < 0) return -1;
+            int last = (uint)index < (uint)rows.Length ? index : rows.Length - 1;
+            for (int i = head; i <= last; i++)
+                if (playable.IsPlayable(i)) return i;
+            return -1;
+        }
+        for (int i = PrevIndex(rows, index); i >= 0; i = PrevIndex(rows, i))
+            if (playable.IsPlayable(i)) return i;
+        return -1;
+    }
+
     /// <summary>Where a server-minted queue item sits, or -1. THE stable identity across a reorder — 0.2.9's
     /// <c>QueueItemId</c>, never index-derived and never reused. A linear scan on purpose: the queue is tens of rows,
     /// and an index over it would have to be invalidated by every splice.</summary>
@@ -231,15 +283,107 @@ public static partial class Queue
         return -1;
     }
 
-    /// <summary>Where a new "Add to queue" row belongs: after the last user-queued row, else straight after the row
-    /// that is playing, else at the end. Appending — rather than prepending — is what makes queueing three tracks play
-    /// them in the order they were clicked.</summary>
-    public static int EnqueueIndex(ReadOnlySpan<QueueEdge> rows)
+    /// <summary>Where a new "Add to queue" row belongs: after the last user-queued row, else in front of the first
+    /// continuation row (straight after the row that is playing), else at the end. Appending — rather than prepending —
+    /// is what makes queueing three tracks play them in the order they were clicked; landing IN FRONT of the
+    /// continuation is what keeps the buckets in reading order even when nothing is on the deck.
+    /// <para>BUCKETS ONLY: right for a list whose buckets follow the deck. Once the reducer has advanced without a
+    /// follow the NowPlaying row is the ORIGINAL one, and this answer lands behind the cursor — pass the cursor
+    /// (<see cref="EnqueueIndex(ReadOnlySpan{QueueEdge},int)"/>).</para></summary>
+    public static int EnqueueIndex(ReadOnlySpan<QueueEdge> rows) => EnqueueIndex(rows, -1);
+
+    /// <summary>Where "Add to queue" lands relative to the DECK: straight after the cursor and after every queued row
+    /// still waiting right behind it, so the row is never placed behind the cursor and never shifts it. A cursor that names
+    /// no row falls back to the bucket rule.</summary>
+    public static int EnqueueIndex(ReadOnlySpan<QueueEdge> rows, int cursorIndex)
     {
-        if (Range(rows, QueueBucket.UserQueue, out int start, out int length)) return start + length;
-        if (Range(rows, QueueBucket.NowPlaying, out int nowStart, out int nowLength)) return nowStart + nowLength;
-        return rows.Length;
+        if ((uint)cursorIndex < (uint)rows.Length)
+        {
+            int i = cursorIndex + 1;
+            while (i < rows.Length && (rows[i].Provider == (byte)QueueProvider.Queue || rows[i].Bucket == (byte)QueueBucket.UserQueue)) i++;
+            return i;
+        }
+        int first = rows.Length;
+        for (int i = 0; i < rows.Length; i++) if (Rank((QueueBucket)rows[i].Bucket) >= 2) { first = i; break; }
+        int n = 0;
+        while (first + n < rows.Length && rows[first + n].Bucket == (byte)QueueBucket.UserQueue) n++;
+        return first + n;
     }
+
+    // ── the seed decision (bug I) ───────────────────────────────────────────────────────────────────────────────────
+    //
+    // A REAL CURRENT ROW MUST NOT SIT NEXT TO AN UNKNOWN QUEUE. `Playback.Current` can go real three ways that never
+    // ran a `Replace` — a restored session (the launch restore seeds a single row already), a mirrored remote cluster
+    // (another device's `next_tracks`), or a claim that landed before any context resolve finished — and the rail has
+    // no way to tell "we have not asked yet" from "the session genuinely has nothing queued" except this exact
+    // distinction (`Queue.State`'s own doc, above). So the decision of WHERE to seed FROM is pulled out here, pure, and
+    // the caller's own `Replace` — the SAME one a Play uses — is still the only write (P8: one path in).
+
+    /// <summary>Where a queue that is still <see cref="EdgeState.Unknown"/> should be seeded from, once a real current
+    /// row exists. Every input is a fact the caller already has in hand — a cluster's own row count, whether a context
+    /// is worth resolving — so this never performs I/O and never blocks; a caller answering <see cref="SeedSource.Context"/>
+    /// still has to go run the resolve itself and land it later (no sync-over-async), the same way
+    /// <see cref="SeedSource.Cluster"/> means "build straight from the rows you already copied out of the cluster."</summary>
+    public enum SeedSource : byte
+    {
+        /// <summary>Nothing to seed: no real current row (the skeleton is exactly right and stays), or the queue is
+        /// not <see cref="EdgeState.Unknown"/> — a real Play, or an earlier seed, already answered "what plays next"
+        /// and must never be re-decided out from under it.</summary>
+        None = 0,
+        /// <summary>Build from the cluster's own prev/next tracks — a remote device's queue mirrored onto ours.</summary>
+        Cluster = 1,
+        /// <summary>Resolve the context locally (the same resolve a Play runs) and land its rows without a claim.</summary>
+        Context = 2,
+        /// <summary>Nothing beyond the row itself is available: seed the bare current row alone, so the rail leaves
+        /// the skeleton for a one-row "Playing from" card instead of staying on "we do not know".</summary>
+        CurrentOnly = 3,
+    }
+
+    /// <summary>The seed decision (see <see cref="SeedSource"/>). PURE: an <see cref="EdgeState"/> and three bools in,
+    /// one enum out, nothing dereferenced. A queue that already left <see cref="EdgeState.Unknown"/> — by a real Play
+    /// or an earlier seed — is never touched again from here, which is what keeps a late cluster from clobbering a
+    /// queue the listener already built by hand.</summary>
+    public static SeedSource DecideSeed(EdgeState state, bool hasCurrent, bool hasClusterTracks, bool hasContext)
+    {
+        if (state != EdgeState.Unknown || !hasCurrent) return SeedSource.None;
+        if (hasClusterTracks) return SeedSource.Cluster;
+        if (hasContext) return SeedSource.Context;
+        return SeedSource.CurrentOnly;
+    }
+
+    // ── the seed retry decision (bug: a boot-time context resolve asked before the session authorises) ───────────────
+    //
+    // `SeedSource.Context` still has to go run `ContextResolve` on an api thread (`Playback.Host.Context.cs`'s
+    // `ResolveSeedContext`) — and at boot that resolve can be asked before the session has adopted its catalog scope,
+    // which answers 401. The old code treated every refusal the same as a genuinely empty context and landed the bare
+    // row (`SeedSource.CurrentOnly`'s shape), which then blocked `DecideSeed` from ever re-seeding richer rows once the
+    // session did come online. This is the pure half of the fix: which refusals are worth waiting on.
+
+    /// <summary>Sentinel <c>status</c> for <see cref="SeedRetryOn"/>: the seed's context resolve never reached the
+    /// network at all — <see cref="ResolveSeedContext"/>'s own doc, "the api queue was full" — so there is no HTTP
+    /// status to report, but the same three-way question (wait, land the bare row, or give up) still applies.</summary>
+    public const int SeedResolveQueueFull = -1;
+
+    /// <summary>Where a refused or empty seed-context resolve should go next. PURE: one status in, one enum out.</summary>
+    public enum SeedRetryDecision : byte
+    {
+        /// <summary>Land the bare current row now (<see cref="SeedSource.CurrentOnly"/>'s shape) — nothing richer is
+        /// coming that is worth waiting for.</summary>
+        CurrentOnly = 0,
+        /// <summary>Leave the queue <see cref="EdgeState.Unknown"/> (the rail's skeleton) and ask the SAME resolve
+        /// again once the session reaches <c>SessionPhase.Online</c> — an authentication refusal, not an answer.</summary>
+        RetryOnline = 1,
+    }
+
+    /// <summary>The seed retry decision (see <see cref="SeedRetryDecision"/>). PURE. An authentication refusal (401,
+    /// or 403) is the ONLY outcome worth waiting for: it is exactly what a resolve run before the session is
+    /// authorised comes back with, and the session WILL eventually answer it, so the caller arms a one-shot retry for
+    /// the next Online transition instead of landing a lesser answer that then blocks a real re-seed forever
+    /// (<see cref="DecideSeed"/> never re-decides a queue once it leaves <see cref="EdgeState.Unknown"/>). Every other
+    /// outcome — a genuine empty context (2xx, no tracks), any other server or transport failure (status 0), or the
+    /// local api queue having been full (<see cref="SeedResolveQueueFull"/>) — is not worth waiting on.</summary>
+    public static SeedRetryDecision SeedRetryOn(int status)
+        => status is 401 or 403 ? SeedRetryDecision.RetryOnline : SeedRetryDecision.CurrentOnly;
 
     // ── session-bound reads ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -354,16 +498,33 @@ public static partial class Queue
         finally { ArrayPool<int>.Shared.Return(rented); }
     }
 
-    /// <summary>"Add to queue": splice a row in at <see cref="EnqueueIndex"/>, marked <see cref="EdgePending.Add"/> so
-    /// it renders the instant it is clicked while the shell sends it (C6). A ref the queue already holds is updated in
-    /// place — a double-click must not add a second row — and because the target carries the KIND, "already holds it"
-    /// now means the same ENTITY and not merely the same slot number in some other table.</summary>
+    /// <summary>"Add to queue" against the deck the reducer is on (a controller's <c>add_to_queue</c>, G-074): the
+    /// reducer's cursor while playback is ours, the bucket rule for a remote mirror. The same way the reducer reads the
+    /// live queue, this reads the reducer's cursor — so a caller without one (the playback host's drain) still lands the
+    /// row after the deck and not behind it.</summary>
     public static void Enqueue(EntityRef row, ulong itemId = 0)
+        => Enqueue(row, Playback.OwnerSignal.Peek() == Playback.Owner.Foreign ? QueueCursor.None : Playback.Snap().Cursor, itemId);
+
+    /// <summary>"Add to queue" after <paramref name="cursor"/>: follow the deck, then splice the row in at
+    /// <see cref="EnqueueIndex(ReadOnlySpan{QueueEdge},int)"/> with <paramref name="itemId"/>, or a freshly minted id when 0.
+    /// A ref the queue already holds gets a SECOND row — the same recording may legitimately be queued twice, and
+    /// <c>EdgeTable.Insert</c>'s update-in-place would have re-bucketed the existing (possibly context) row where it
+    /// stands. A local write is authoritative: no pending bit.</summary>
+    public static void Enqueue(EntityRef row, in QueueCursor cursor, ulong itemId = 0)
     {
         int packed = Pack(row);
         if (packed == 0) return;
-        Q.Insert(Session, packed, new QueueEdge(itemId, (byte)QueueProvider.Queue, (byte)QueueBucket.UserQueue),
-            EnqueueIndex(Rows), EdgePending.Add);
+        var run = Copy(1);
+        try
+        {
+            QueueOrder.Follow(run.T, run.R, cursor.Index);
+            int at = EnqueueIndex(run.R, cursor.Index);
+            Open(ref run, at, 1);
+            run.Targets[at] = packed;
+            run.Rows[at] = new QueueEdge(itemId != 0 ? itemId : MintItemIds(1), (byte)QueueProvider.Queue, (byte)QueueBucket.UserQueue);
+            Land(in run);
+        }
+        finally { Return(in run); }
     }
 
     /// <summary>Take a row out optimistically: it STAYS, greyed, until <see cref="Settle"/> (C6). Addressed by flat

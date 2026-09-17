@@ -24,7 +24,7 @@ namespace Wavee.Tests;
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class AudioStreamCollection
 {
-    /// <summary>The fetch thread and the fake CDN are timing-honest; they run alone so a loaded runner cannot starve them.</summary>
+    /// <summary>The fetch task and the fake CDN are timing-honest; they run alone so a loaded runner cannot starve them.</summary>
     public const string Name = "audio-stream";
 }
 
@@ -77,13 +77,41 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
 
     static Audio.Body NewBody(FakeCdn cdn, Audio.Fetcher fetcher, int length, bool known = true, byte[]? head = null,
         ChunkDiskCache? disk = null, int waitMs = Audio.Ring.DefaultWaitMs, string fileId = FileA, bool prepared = false,
-        float peak = 0f)
+        float peak = 0f, string[]? mirrors = null, Func<string, string[]?>? reresolve = null, bool gainKnown = true)
     {
         long estimate = Skip + 60_000L * Audio.NominalBytesPerSecond(Audio.Format.OggVorbis320) / 1000;
-        return new Audio.Body(cdn, ["https://cdn-a.test/audio", "https://cdn-b.test/audio"], Key, Skip,
+        return new Audio.Body(cdn, mirrors ?? ["https://cdn-a.test/audio", "https://cdn-b.test/audio"], Key, Skip,
             known ? length : estimate, known, 60_000, Audio.Format.OggVorbis320, 0f, fileId, head, disk, fetcher,
-            metered: false, waitMs: waitMs, peak: peak, prepared: prepared);
+            metered: false, waitMs: waitMs, peak: peak, prepared: prepared, gainKnown: gainKnown, reresolve: reresolve);
     }
+
+    /// <summary>The open's seams over <paramref name="cdn"/>: the head, resolve and key COUNT their calls, work runs inline.</summary>
+    sealed class OpenCounters
+    {
+        public int Heads, Resolves, Keys;
+    }
+
+    static Audio.OpenSeams Seams(FakeCdn cdn, Audio.Fetcher fetcher, OpenCounters counters, byte[]? head = null,
+        ChunkDiskCache? disk = null)
+        => new(cdn, disk,
+            Head: (_, _) => { Interlocked.Increment(ref counters.Heads); return head ?? []; },
+            Resolve: (_, _) =>
+            {
+                Interlocked.Increment(ref counters.Resolves);
+                return new Audio.Mirrors(["https://cdn-a.test/audio"], long.MaxValue, Audio.Fault.None);
+            },
+            Key: (string _, ReadOnlySpan<byte> _, ReadOnlySpan<byte> _, Span<byte> key16, bool _, CancellationToken _) =>
+            {
+                Interlocked.Increment(ref counters.Keys);
+                Key.CopyTo(key16);
+                return Audio.Fault.None;
+            },
+            ExternalLength: (_, _) => 0,
+            Run: work => { work(); return true; },
+            Fetcher: fetcher);
+
+    static Audio.FileChoice Choice(Audio.Format format, float catalogueGain = 0f, string fileId = FileA)
+        => new(new byte[20], fileId, new byte[16], format, 60_000, catalogueGain, null, Audio.Fault.None);
 
     /// <summary>The range a seek probe at container <paramref name="offset"/> must be: [start, end) aligned OUT to whole
     /// slots at both ends.</summary>
@@ -301,6 +329,88 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         Assert.Equal(1, cdn.PeakLive);
     }
 
+    // ── the async fetch: a broken source, a cancelled read, a mid-body wire fault ─────────────────────────────────────
+
+    [Fact]
+    public void A_source_that_throws_settles_the_range_and_the_ring_plans_again_and_recovers()
+    {
+        // The bug this batch closes: a sync-over-async fault used to escape `Serve` entirely and never reach
+        // `body.Settle(...)`, so the ring's `_pendingStart` never cleared and `TryPlan` starved forever. Now every
+        // exception outside the wire is caught by `ServeAsync`'s last resort, settled as `Refused`, and the ring
+        // plans again — a broken source recovers the moment it stops being broken.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { ThrowOnOpen = true };
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 300);
+        body.Start();
+
+        Assert.Equal(Audio.Body.Starved, body.ReadAt(0, new byte[4_096], body.Epoch));  // a fault is a starve: not EOF, not −1
+        WaitUntil(() => fetcher.Faults >= 2, "a second range to be planned after the first faulted one settled");
+        Assert.Equal(0, fetcher.InFlight);
+
+        cdn.ThrowOnOpen = false;
+        Assert.Equal(Expected(plain, 0, 100_000), Read(body, 0, 100_000));              // the same body, the same ring, recovered
+        WaitIdle(fetcher);
+        Assert.Equal(1, cdn.PeakLive);                                                  // never more than one range in flight
+    }
+
+    [Fact]
+    public void A_cancel_during_a_body_read_settles_the_range_stale_and_the_probe_goes_next()
+    {
+        // Distinct from `Retarget_cancels_the_in_flight_range_and_the_probe_goes_first` above: THIS cancel lands
+        // inside the body READ (`HttpReply.ReadAsync`'s pass-through), not the open. `FetchRangeAsync`'s exception
+        // filter order is what makes it settle Stale and not Refused — the cancellation-first `catch` must win over
+        // the wire-fault filter even though the runtime wraps a cancelled read the same way a torn one is wrapped.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        cdn.HoldReads();
+        body.Start();
+        WaitUntil(() => cdn.Count == 1 && cdn.Live == 0, "range 1 opened and blocked in its first read");
+
+        const long far = 2_600_000;
+        body.Retarget(far, Audio.Ring.ProbeWindow, 1);
+        WaitUntil(() => cdn.ReadCancelsObserved == 1, "the held read to observe its token");
+        WaitUntil(() => cdn.Count >= 2, "the probe to reach the wire");
+
+        Assert.Equal(1, fetcher.Cancelled);
+        Assert.Equal(0, cdn.CancelsObserved);          // the cancel landed in the read, not the open
+        Assert.Equal(0, fetcher.Faults);                // Stale, not the fault path
+        Assert.Equal(0, body.Resolves);                 // Stale invalidates no mirror set
+        Assert.Equal(ProbeRange(far, BigBytes), cdn.Ranges[1]);
+
+        cdn.ReleaseReads();
+        Assert.Equal(Expected(plain, far, 16_000), Read(body, far, 16_000));
+        WaitIdle(fetcher);
+        Assert.Equal(1, fetcher.PeakInFlight);
+    }
+
+    [Fact]
+    public void A_mirror_that_faults_mid_body_falls_through_to_the_next_one()
+    {
+        // A torn HTTP/2 stream (`IOException`) on ONE mirror is not a refusal of the range — the next mirror is
+        // asked the SAME range, and nothing about it counts as a `Fetcher.Faults` fault or invalidates the mirror
+        // set (that only happens once every mirror has been tried and none answered).
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { FaultPrefix = "https://flaky.", FaultAfterBytes = 4_096 };
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes,
+            mirrors: ["https://flaky.cdn-a.test/audio", "https://cdn-b.test/audio"]);
+        body.Start();
+        Assert.Equal(Expected(plain, 0, 100_000), Read(body, 0, 100_000));
+        WaitIdle(fetcher);
+
+        string[] urls = cdn.Urls;
+        var ranges = cdn.Ranges;
+        Assert.StartsWith("https://flaky.", urls[0]);
+        Assert.StartsWith("https://cdn-b.", urls[1]);
+        Assert.Equal(ranges[0], ranges[1]);            // the same range, re-asked of the next mirror
+        for (int i = 2; i < urls.Length; i++) Assert.StartsWith("https://cdn-b.", urls[i]);
+        Assert.Equal(0, fetcher.Faults);
+        Assert.Equal(0, body.Resolves);
+    }
+
     [Fact]
     public void Scrubbing_ten_seeks_keeps_one_range_in_flight()
     {
@@ -465,7 +575,7 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         cdn.Hold();
         body.Start();
 
-        Assert.Equal(-1, body.ReadAt(0, new byte[4_096], body.Epoch));  // starved against the held range
+        Assert.Equal(Audio.Ring.Starved, body.ReadAt(0, new byte[4_096], body.Epoch));   // starved against the held range
         cdn.Release();
         WaitIdle(fetcher);
         body.Retarget(2_600_000, Audio.Ring.ProbeWindow, body.Epoch + 1);
@@ -713,9 +823,10 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         int n = body.ReadAt(0, new byte[4_096], body.Epoch);
         clock.Stop();
 
-        Assert.Equal(-1, n);                                            // a fault, never a 0 the decoder would call EOF
+        Assert.Equal(Audio.Ring.Starved, n);                            // a starve, never a 0 the decoder would call EOF
         Assert.Equal(1, body.Ring.Starves);
         Assert.InRange(clock.ElapsedMilliseconds, 250, 5_000);
+        Assert.True(body.StallMs >= 250, $"stall {body.StallMs} ms");   // what the pump folds into "Reconnecting"
         cdn.Release();
     }
 
@@ -728,7 +839,7 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 1_000);
         body.Start();
 
-        Assert.Equal(-1, body.ReadAt(0, new byte[4_096], body.Epoch));
+        Assert.Equal(Audio.Ring.Starved, body.ReadAt(0, new byte[4_096], body.Epoch));
         WaitIdle(fetcher);
 
         Assert.InRange(fetcher.Requests, 1, 8);                         // ~4/s for a second, plus the tail
@@ -832,6 +943,376 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         Assert.Equal(Expected(plain, 100_000, 1_000), some);
     }
 
+    // ── gap batch B4: the starve rule, landing, re-resolve, the reply rule, the gain, growth, the open ──────────────────
+
+    [Fact]
+    public void A_slow_range_lands_slot_by_slot_so_a_reader_keeping_pace_never_starves()
+    {
+        // G-102: at ~64 KB/s a 512 KiB range took the reader's whole bound before a byte of it was served. Landed a slot at
+        // a time, a reader that asks for the next slot while it arrives waits a slot's time, never the range's.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { ThrottleBytes = 4 * 1024, ThrottleDelayMs = 8 };   // a slot per ≥ 128 ms, a range per ≥ 1 s
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 800);
+        body.Start();
+
+        const int span = 700_000;
+        byte[] got = Read(body, 0, span);
+
+        Assert.Equal(Expected(plain, 0, span), got);
+        Assert.Equal(0, body.Ring.Starves);
+        Assert.Equal(0L, body.StallMs);                                  // bytes flowed at the last read: no stall to report
+        output.WriteLine($"throttled read of {span} bytes: {body.Ring.Waits} waits, 0 starves, {fetcher.Requests} ranges");
+    }
+
+    [Fact]
+    public void A_starve_is_never_the_end_the_stall_is_counted_and_bytes_clear_it()
+    {
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 200);
+        cdn.Hold();
+        body.Start();
+
+        var dst = new byte[4_096];
+        Assert.Equal(Audio.Body.Starved, body.ReadAt(0, dst, body.Epoch));
+        Assert.Equal(Audio.Body.Starved, body.ReadAt(0, dst, body.Epoch));       // asked again: still waiting, still not EOF
+        Assert.True(body.StallMs >= 300, $"stall {body.StallMs} ms after two bounded 200 ms waits");
+
+        cdn.Release();
+        Assert.Equal(dst.Length, body.ReadAt(0, dst, body.Epoch));
+        Assert.Equal(Expected(plain, 0, dst.Length), dst);
+        Assert.Equal(0L, body.StallMs);
+        WaitIdle(fetcher);
+    }
+
+    [Theory]
+    [InlineData(0L, Playback.Audio.StarvePolicy.Verdict.Flowing)]
+    [InlineData(1_499L, Playback.Audio.StarvePolicy.Verdict.Flowing)]
+    [InlineData(1_500L, Playback.Audio.StarvePolicy.Verdict.Recovering)]
+    [InlineData(89_999L, Playback.Audio.StarvePolicy.Verdict.Recovering)]
+    [InlineData(90_000L, Playback.Audio.StarvePolicy.Verdict.Failed)]
+    public void A_stall_is_reconnecting_after_a_second_and_a_half_and_a_network_fault_after_ninety(long stallMs,
+        Playback.Audio.StarvePolicy.Verdict expected)
+        => Assert.Equal(expected, Playback.Audio.StarvePolicy.Decide(stallMs));
+
+    [Fact]
+    public void A_seek_inside_the_clear_head_cancels_nothing_and_sends_no_probe()
+    {
+        // G-116: the window is the head's, so the seek is an epoch bump — the range already on the wire keeps going.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, head: plain[..Audio.HeadMaxBytes]);
+        cdn.Hold();
+        body.Start();
+        WaitUntil(() => cdn.Live == 1, "range 1 to be held open");
+
+        body.Retarget(1_000, Audio.Ring.ProbeWindow, body.Epoch + 1);
+        Assert.Equal(Expected(plain, 1_000, 16_000), Read(body, 1_000, 16_000));
+
+        Assert.Equal(0, fetcher.Cancelled);
+        Assert.Equal(1, cdn.Count);
+        Assert.Equal(0, cdn.CancelsObserved);
+        cdn.Release();
+        WaitIdle(fetcher);
+    }
+
+    [Fact]
+    public void Expired_mirrors_are_resolved_again_and_the_read_carries_on()
+    {
+        // G-115: every url of the set refuses (their TTL ran out during a long pause); the body asks storage-resolve for a
+        // fresh set instead of retrying dead urls until the reader gives up.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { RefusePrefix = "https://old." };
+        using var fetcher = new Audio.Fetcher();
+        int asked = 0;
+        using var body = NewBody(cdn, fetcher, BigBytes, mirrors: ["https://old.cdn-a.test/audio", "https://old.cdn-b.test/audio"],
+            reresolve: _ => { Interlocked.Increment(ref asked); return ["https://new.cdn.test/audio"]; });
+        body.Start();
+
+        Assert.Equal(Expected(plain, 0, 100_000), Read(body, 0, 100_000));
+        Assert.Equal(1, asked);
+        Assert.Equal(1, body.Resolves);
+        WaitIdle(fetcher);
+    }
+
+    [Fact]
+    public void A_body_with_no_mirrors_resolves_them_on_its_first_miss()
+    {
+        // G-120: a body opened off the cache asked nothing; the first byte the cache cannot answer resolves the urls.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        int asked = 0;
+        using var body = NewBody(cdn, fetcher, BigBytes, mirrors: [],
+            reresolve: _ => { Interlocked.Increment(ref asked); return ["https://cdn.test/audio"]; });
+        body.Start();
+
+        Assert.Equal(Expected(plain, 0, 50_000), Read(body, 0, 50_000));
+        Assert.Equal(1, asked);
+        WaitIdle(fetcher);
+    }
+
+    [Theory]
+    [InlineData(0L, 0L, 0L)]                   // asked 0, got 0
+    [InlineData(524_288L, 524_288L, 0L)]       // a 206 where it was asked
+    [InlineData(524_288L, 0L, 524_288L)]       // a 200 from byte 0: read past the start
+    [InlineData(8_000_000L, 0L, -1L)]          // too far to read past: refused
+    [InlineData(524_288L, 65_536L, -1L)]       // a 206 somewhere else: refused
+    public void A_reply_that_does_not_start_where_it_was_asked_is_read_past_or_refused(long asked, long replyStart, long expected)
+        => Assert.Equal(expected, Audio.RangeReply.SkipFor(asked, replyStart));
+
+    [Fact]
+    public void A_host_that_ignores_range_serves_the_right_bytes_after_the_first_range()
+    {
+        // G-118: every range after the first used to be taken as its own start, corrupting the rest of the track.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { IgnoreRange = true };
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        body.Start();
+
+        Assert.Equal(Expected(plain, 0, 1_500_000), Read(body, 0, 1_500_000));
+        WaitIdle(fetcher);
+    }
+
+    [Fact]
+    public void An_ogg_body_with_no_header_at_hand_learns_its_gain_and_peak_from_chunk_zero()
+    {
+        // G-107: a head GET that failed on an uncached file used to leave the track un-normalized for good.
+        var (_, cipher) = Big.Value;
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(new FakeCdn(cipher), fetcher, BigBytes, gainKnown: false);
+        Assert.False(body.GainKnown);
+        Assert.Equal(0f, body.GainDb);
+        body.Start();
+        WaitIdle(fetcher);
+
+        Assert.True(body.GainKnown);
+        Assert.Equal(-3.5f, body.GainDb);
+        Assert.Equal(HeaderPeak, body.Peak);
+    }
+
+    [Fact]
+    public void A_waiting_prepare_sees_the_tail_the_moment_it_lands()
+    {
+        var (_, cipher) = Big.Value;
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(new FakeCdn(cipher), fetcher, BigBytes);
+        body.Start();
+
+        Assert.True(body.WaitForTail(10_000, CancellationToken.None));
+        Assert.Equal(LastGranule, body.TailGranule);
+        WaitIdle(fetcher);
+    }
+
+    [Fact]
+    public void A_promoted_prepared_body_grows_its_ring_to_the_measured_tier_and_keeps_its_bytes()
+    {
+        // G-114: a prepared track's ring is sized ≤ 30 s for the hand-off; once it IS the playing track on a link that earns
+        // the 600 s tier, it grows — out of the shared budget — without losing a resident byte.
+        var (plain, cipher) = Big.Value;
+        using var fetcher = new Audio.Fetcher();
+        using (var warm = NewBody(new FakeCdn(cipher), fetcher, BigBytes, fileId: FileB))
+        {
+            warm.Start();
+            WaitIdle(fetcher);                                          // the fetcher has measured a fast link now
+        }
+        var cdn = new FakeCdn(cipher);
+        using var next = NewBody(cdn, fetcher, BigBytes, prepared: true);
+        next.Start();
+        WaitIdle(fetcher);
+        int before = next.Ring.Slots;
+        long inUse = Audio.ReadAheadBudget.InUseBytes;
+        Assert.True(next.Ring.Seconds <= Audio.ReadAheadBudget.PreparedSeconds);
+
+        next.Promote();
+        WaitIdle(fetcher);
+
+        Assert.True(next.Ring.Slots > before, $"slots {before} -> {next.Ring.Slots}");
+        Assert.Equal(inUse + (long)(next.Ring.Slots - before) * Slot, Audio.ReadAheadBudget.InUseBytes);
+        Assert.Equal(Expected(plain, 0, 400_000), Read(next, 0, 400_000));
+        Assert.Equal(Expected(plain, 2_600_000, 100_000), Read(next, 2_600_000, 100_000));
+        output.WriteLine($"promoted: {before} -> {next.Ring.Slots} slots, ring {next.Ring.Seconds}s");
+    }
+
+    [Fact]
+    public void A_growing_ring_is_granted_what_is_left_and_possibly_nothing()
+    {
+        int total = (int)(Audio.ReadAheadBudget.TotalBytes / Slot);
+        Assert.Equal(40, Audio.ReadAheadBudget.GrantExtra(40, 0));
+        Assert.Equal(10, Audio.ReadAheadBudget.GrantExtra(40, (long)(total - 10) * Slot));
+        Assert.Equal(0, Audio.ReadAheadBudget.GrantExtra(40, Audio.ReadAheadBudget.TotalBytes));
+        Assert.Equal(0, Audio.ReadAheadBudget.GrantExtra(-3, 0));
+    }
+
+    [Fact]
+    public void A_disposed_body_hands_its_slot_arrays_to_the_pool()
+    {
+        var (_, cipher) = Big.Value;
+        using var fetcher = new Audio.Fetcher();
+        var body = NewBody(new FakeCdn(cipher), fetcher, BigBytes, fileId: FileB);
+        int slots = body.Ring.Slots;
+        body.Dispose();
+
+        Assert.True(Audio.ReadAheadBudget.PooledSlots >= Math.Min(slots, Audio.ReadAheadBudget.PoolMaxSlots));
+        Assert.Equal(-1, body.ReadAt(0, new byte[16], body.Epoch));     // gone: −1, never a starve a reader would wait on
+    }
+
+    [Fact]
+    public void A_cold_open_asks_the_head_the_mirrors_and_the_key_once_each()
+    {
+        // G-134: `OpenBody`'s parallel trio, through its seams.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        var counters = new OpenCounters();
+
+        Audio.Opened opened = Audio.OpenBody(Choice(Audio.Format.OggVorbis320),
+            Seams(cdn, fetcher, counters, head: plain[..Audio.HeadMaxBytes]), CancellationToken.None);
+        using var stream = opened.Stream;
+        Audio.Body body = opened.Body!;
+        WaitIdle(fetcher);
+
+        Assert.True(opened.Ok);
+        Assert.Equal((1, 1, 1), (counters.Heads, counters.Resolves, counters.Keys));
+        Assert.Equal(-3.5f, opened.GainDb);                             // the Ogg header's gain, off the clear head
+        Assert.Equal(HeaderPeak, opened.Peak);
+        Assert.Equal(Expected(plain, 0, 200_000), Read(body, 0, 200_000));
+    }
+
+    [Fact]
+    public void A_native_decryptor_replaces_the_key_stream_for_its_file()
+    {
+        // D3, the PlayPlay seam's second half: a file whose key path left a native decryptor is decrypted through it —
+        // here a byte mask — and never through the AES-CTR keystream of the key the open was handed.
+        var (plain, _) = Big.Value;
+        byte[] masked = (byte[])plain.Clone();
+        UnmaskInPlace(masked, 0);
+        using var fetcher = new Audio.Fetcher();
+        var seams = Seams(new FakeCdn(masked), fetcher, new OpenCounters()) with
+        {
+            Decryptor = static hex => hex == FileA ? new Audio.BodyDecrypt(UnmaskInPlace) : null,
+        };
+
+        Audio.Opened opened = Audio.OpenBody(Choice(Audio.Format.OggVorbis320), seams, CancellationToken.None);
+        using var stream = opened.Stream;
+        WaitIdle(fetcher);
+
+        Assert.True(opened.Ok);
+        Assert.Equal(Expected(plain, 0, 200_000), Read(opened.Body!, 0, 200_000));
+    }
+
+    /// <summary>The fixture "native" transform: XOR with a position-dependent byte, so a decryptor that ignored the stream
+    /// offset would corrupt every range but the first.</summary>
+    static void UnmaskInPlace(Span<byte> buffer, long streamOffset)
+    {
+        for (int i = 0; i < buffer.Length; i++) buffer[i] ^= (byte)(0x5A ^ ((streamOffset + i) >> 12));
+    }
+
+    [Fact]
+    public void A_flac_open_never_reads_a_gain_out_of_its_stream_info()
+    {
+        // G-105: byte 144 of a FLAC is STREAMINFO/SEEKTABLE data; read as a float it was up to +30 dB.
+        var (plain, cipher) = Big.Value;
+        using var fetcher = new Audio.Fetcher();
+        Audio.Opened opened = Audio.OpenBody(Choice(Audio.Format.Flac),
+            Seams(new FakeCdn(cipher), fetcher, new OpenCounters(), head: plain[..Audio.HeadMaxBytes]), CancellationToken.None);
+        using var stream = opened.Stream;
+
+        Assert.Equal(0f, opened.GainDb);
+        Assert.Equal(0f, opened.Peak);
+        Assert.True(opened.Body!.GainKnown);
+        WaitIdle(fetcher);
+    }
+
+    [Fact]
+    public void A_cached_file_opens_with_no_head_no_resolve_and_no_range()
+    {
+        // G-120, plan §5.4: a cached replay is zero requests. Only the key is asked for (it is not cached across launches).
+        using var dir = new TempDir();
+        SkipWhenTheVolumeIsInsideTheReserve(dir.Path);
+        var (plain, cipher) = Big.Value;
+        PrimeCache(dir.Path, plain, cipher);
+
+        using var disk = new ChunkDiskCache(dir.Path);
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        var counters = new OpenCounters();
+        Audio.Opened opened = Audio.OpenBody(Choice(Audio.Format.OggVorbis320),
+            Seams(cdn, fetcher, counters, disk: disk), CancellationToken.None);
+        using var stream = opened.Stream;
+        Audio.Body body = opened.Body!;
+
+        Assert.Equal(Expected(plain, 0, BigBytes - Skip), Read(body, 0, BigBytes - Skip));
+        WaitIdle(fetcher);
+
+        Assert.Equal((0, 0, 1), (counters.Heads, counters.Resolves, counters.Keys));
+        Assert.Empty(cdn.Ranges);
+        Assert.Equal(-3.5f, opened.GainDb);                             // the header came off the cached chunk 0
+    }
+
+    [Fact]
+    public void An_external_body_s_length_comes_from_a_range_probe_when_the_host_has_no_head_length()
+    {
+        // G-119: a host that answers HEAD with no Content-Length used to fail the episode as a network fault.
+        // `ProbeLength` is gone (folded into the `OpenSeams.ExternalLength` seam itself); exercised end to end
+        // through `OpenBody` now, over the three answers that seam can give.
+        const string url = "https://podcast.test/episode.mp3";
+
+        // >0: the HEAD length names it directly.
+        {
+            var cdn = new FakeCdn(Big.Value.Cipher);
+            using var fetcher = new Audio.Fetcher();
+            Audio.OpenSeams seams = Seams(cdn, fetcher, new OpenCounters()) with { ExternalLength = (_, _) => BigBytes };
+            Audio.Opened opened = Audio.OpenBody(Audio.ExternalChoice(url, 60_000), seams, CancellationToken.None);
+            using var stream = opened.Stream;
+            Assert.True(opened.Ok);
+            Assert.True(opened.Body!.LengthKnown);
+            Assert.Equal((long)BigBytes, opened.Body!.Length);
+            WaitIdle(fetcher);
+        }
+
+        // 0: reachable but unnamed (a host that answers neither HEAD nor a Content-Range total) — opens on the
+        // duration's estimate, and the first range names the truth off the fake's own `TotalLength`.
+        {
+            var cdn = new FakeCdn(Big.Value.Cipher);
+            using var fetcher = new Audio.Fetcher();
+            Audio.OpenSeams seams = Seams(cdn, fetcher, new OpenCounters()) with { ExternalLength = (_, _) => 0 };
+            Audio.Opened opened = Audio.OpenBody(Audio.ExternalChoice(url, 60_000), seams, CancellationToken.None);
+            using var stream = opened.Stream;
+            Audio.Body body = opened.Body!;
+            Assert.True(opened.Ok);
+            Assert.False(body.LengthKnown);
+            Read(body, 0, 4_096);
+            WaitIdle(fetcher);
+            Assert.True(body.LengthKnown);
+            Assert.Equal((long)BigBytes, body.Length);
+        }
+
+        // −1: unreachable — the open itself fails.
+        {
+            var cdn = new FakeCdn(Big.Value.Cipher) { Refuse = true };
+            using var fetcher = new Audio.Fetcher();
+            Audio.OpenSeams seams = Seams(cdn, fetcher, new OpenCounters()) with { ExternalLength = (_, _) => -1 };
+            Audio.Opened opened = Audio.OpenBody(Audio.ExternalChoice(url, 60_000), seams, CancellationToken.None);
+            using var stream = opened.Stream;
+            Assert.False(opened.Ok);
+            Assert.Equal(Audio.Fault.Network, opened.Fault);
+        }
+    }
+
+    [Fact]
+    public void The_audio_cache_lives_where_0_2_9_put_it()
+    {
+        // D8, G-122: `%LOCALAPPDATA%\Wavee\Wavee\Cache\audio` — the root 0.2.9's AppDataStore("Wavee", "Wavee") answered,
+        // so an upgrade replays its cache instead of orphaning it.
+        string local = Path.Combine("C:", "Users", "someone", "AppData", "Local", "Wavee");
+        Assert.Equal(Path.Combine(local, "Wavee", "Cache", "audio"), Audio.DiskCache.DirectoryUnder(local));
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     static void PrimeCache(string directory, byte[] plain, byte[] cipher)
@@ -869,54 +1350,140 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         }
     }
 
-    /// <summary>The fake wire: serves <paramref name="cipher"/>, records every open as [start, end), tracks how many are
-    /// live, and can hold opens until released or cancelled.</summary>
+    /// <summary>The fake wire: serves <paramref name="cipher"/>, records every open as [start, end) and its url, tracks
+    /// how many opens are live, and can hold an OPEN or a READ open independently until released or cancelled — two
+    /// gates, because a held read must let its `OpenAsync` return successfully first (a real reply is returned at
+    /// HEADERS, before any body byte).</summary>
     sealed class FakeCdn(byte[] cipher) : Audio.IRangeSource
     {
         readonly Lock _gate = new();
         readonly List<(long Start, long End)> _ranges = [];
-        readonly ManualResetEventSlim _open = new(true);
-        int _live, _peak, _cancels;
+        readonly List<string> _urls = [];
+        volatile TaskCompletionSource _open = Done();
+        volatile TaskCompletionSource _read = Done();
+        int _live, _peak, _cancels, _readCancels;
+
+        static TaskCompletionSource Done()
+        {
+            var t = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            t.SetResult();
+            return t;
+        }
 
         public bool Refuse { get; init; }
+        /// <summary>Refuse every url that starts with this (an expired mirror set).</summary>
+        public string? RefusePrefix { get; init; }
+        /// <summary>A host that ignores `Range`: every reply is a 200 of the whole file from byte 0.</summary>
+        public bool IgnoreRange { get; init; }
+        /// <summary>A slow link: each body read hands out at most this many bytes, after <see cref="ThrottleDelayMs"/>.</summary>
+        public int ThrottleBytes { get; init; }
+        public int ThrottleDelayMs { get; init; }
+        /// <summary>Every open THROWS (a broken source, not a wire fault) until cleared.</summary>
+        public bool ThrowOnOpen { get; set; }
+        /// <summary>A mirror whose url starts with this hands out <see cref="FaultAfterBytes"/> then throws
+        /// `IOException` mid-body — the wire fault `FetchRangeAsync` retries on the next mirror.</summary>
+        public string? FaultPrefix { get; init; }
+        public int FaultAfterBytes { get; init; }
+
         public (long Start, long End)[] Ranges { get { lock (_gate) return [.. _ranges]; } }
+        public string[] Urls { get { lock (_gate) return [.. _urls]; } }
         public int Count { get { lock (_gate) return _ranges.Count; } }
         public int Live => Volatile.Read(ref _live);
         public int PeakLive => Volatile.Read(ref _peak);
         public int CancelsObserved => Volatile.Read(ref _cancels);
-        public void Hold() => _open.Reset();
-        public void Release() => _open.Set();
+        /// <summary>Reads cancelled while held (as opposed to an open cancelled before it ever answered).</summary>
+        public int ReadCancelsObserved => Volatile.Read(ref _readCancels);
 
-        public Audio.IRangeReply? Open(string url, long start, long end, CancellationToken ct)
+        /// <summary>Hold every subsequent `OpenAsync` until <see cref="Release"/>.</summary>
+        public void Hold() => _open = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Release() => _open.TrySetResult();
+        /// <summary>Hold every subsequent body `ReadAsync` until <see cref="ReleaseReads"/> — the open itself still
+        /// answers at once.</summary>
+        public void HoldReads() => _read = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void ReleaseReads() => _read.TrySetResult();
+
+        public ValueTask<Audio.IRangeReply?> OpenAsync(string url, long start, long end, CancellationToken ct)
         {
             int live = Interlocked.Increment(ref _live);
             lock (_gate)
             {
                 _ranges.Add((start, end + 1));
+                _urls.Add(url);
                 if (live > _peak) _peak = live;
             }
+            Task gate = _open.Task;
+            if (gate.IsCompleted)
+            {
+                // Synchronous: a fast-path test that reasons about exact request counts and ordering sees no
+                // scheduler hop between the call and the answer.
+                try { return new ValueTask<Audio.IRangeReply?>(Serve(url, start, end)); }
+                finally { Interlocked.Decrement(ref _live); }
+            }
+            return HeldAsync(gate, url, start, end, ct);
+        }
+
+        async ValueTask<Audio.IRangeReply?> HeldAsync(Task gate, string url, long start, long end, CancellationToken ct)
+        {
             try
             {
-                try { _open.Wait(ct); }
+                try { await gate.WaitAsync(ct).ConfigureAwait(false); }
                 catch (OperationCanceledException) { Interlocked.Increment(ref _cancels); return null; }
-                if (Refuse || start >= cipher.Length) return null;
-                return new Reply(cipher, start, Math.Min(end + 1, cipher.Length));
+                return Serve(url, start, end);
             }
             finally { Interlocked.Decrement(ref _live); }
         }
 
-        sealed class Reply(byte[] data, long start, long stop) : Audio.IRangeReply
+        Audio.IRangeReply? Serve(string url, long start, long end)
+        {
+            if (ThrowOnOpen) throw new NotSupportedException("fake: the source is broken");   // NOT a wire fault by
+            // `FetchRangeAsync`'s filter — it reaches `ServeAsync`'s last-resort catch instead, exactly like a real bug.
+            if (Refuse || start >= cipher.Length) return null;
+            if (RefusePrefix is { } prefix && url.StartsWith(prefix, StringComparison.Ordinal)) return null;
+            int faultAt = FaultPrefix is { } flaky && url.StartsWith(flaky, StringComparison.Ordinal) ? FaultAfterBytes : -1;
+            return IgnoreRange
+                ? new Reply(cipher, 0, cipher.Length, this, faultAt)
+                : new Reply(cipher, start, Math.Min(end + 1, cipher.Length), this, faultAt);
+        }
+
+        sealed class Reply(byte[] data, long start, long stop, FakeCdn owner, int faultAt) : Audio.IRangeReply
         {
             long _at = start;
+            readonly long _from = start;
+            int _served;
 
             public long TotalLength => data.Length;
 
-            public int Read(Span<byte> dst)
+            public long Start => _from;
+
+            public ValueTask<int> ReadAsync(Memory<byte> dst, CancellationToken ct)
+            {
+                Task gate = owner._read.Task;
+                if (!gate.IsCompleted || owner.ThrottleBytes > 0) return SlowAsync(gate, dst, ct);
+                return new ValueTask<int>(Copy(dst.Span));
+            }
+
+            async ValueTask<int> SlowAsync(Task gate, Memory<byte> dst, CancellationToken ct)
+            {
+                try { await gate.WaitAsync(ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { Interlocked.Increment(ref owner._readCancels); throw; }   // as
+                // the runtime's `HttpContent` stream does: a cancelled read THROWS, it does not answer 0.
+                if (owner.ThrottleBytes > 0) await Task.Delay(owner.ThrottleDelayMs, ct).ConfigureAwait(false);
+                return Copy(dst.Span);
+            }
+
+            int Copy(Span<byte> dst)
             {
                 int n = (int)Math.Min(dst.Length, stop - _at);
                 if (n <= 0) return 0;
+                if (owner.ThrottleBytes > 0) n = Math.Min(n, owner.ThrottleBytes);
+                if (faultAt >= 0)
+                {
+                    if (_served >= faultAt) throw new IOException("fake: the mirror reset the stream");
+                    n = Math.Min(n, faultAt - _served);   // the fault lands on a LATER read, not folded into this one
+                }
                 data.AsSpan((int)_at, n).CopyTo(dst);
                 _at += n;
+                _served += n;
                 return n;
             }
 

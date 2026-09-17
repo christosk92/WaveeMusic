@@ -649,7 +649,12 @@ Describe 'the release scripts themselves' {
     # does, and refuse any byte above 0x7F anywhere in them (comments too - a copy/paste out of one must stay safe).
     $scripts = @(
         (Join-Path $repoRoot 'ops\build\pack-wavee-msix.ps1'),
-        (Join-Path $repoRoot 'ops\release\wavee-release.ps1')
+        (Join-Path $repoRoot 'ops\release\wavee-release.ps1'),
+        # G-237: the four scripts that were blind to the EngineRoot.local.props pin, now routed through
+        # Resolve-EngineRoot - covered here the same way the two above already were.
+        (Join-Path $repoRoot 'ops\build\generate-third-party-notices.ps1'),
+        (Join-Path $repoRoot 'ops\build\publish-wavee-aot.ps1'),
+        (Join-Path $repoRoot 'ops\release\wavee-store-submit.ps1')
     )
 
     foreach ($s in $scripts) {
@@ -666,6 +671,15 @@ Describe 'the release scripts themselves' {
             $bytes = Get-FileBytes $s
             @($bytes | Where-Object { $_ -gt 127 }).Count | Should Be 0
         }
+    }
+
+    # ops/tools/perf-tour.ps1 (G-237) carries a UTF-8 BOM (unlike the BOM-less scripts above), so PS 5.1 decodes it
+    # as UTF-8 and its em-dashes in comments are safe - only the parse check applies, not the ASCII-only one.
+    It 'perf-tour.ps1 parses without errors' {
+        $tokens = $null
+        $errors = $null
+        [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'ops\tools\perf-tour.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+        @($errors).Count | Should Be 0
     }
 
     It 'names the symbols zip so it can never be mistaken for a package by the repoint regex' {

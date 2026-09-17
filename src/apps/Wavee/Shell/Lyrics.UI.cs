@@ -336,9 +336,12 @@ public static partial class Lyrics
             Element banner = VideoNote();
             Element debug = Embed.Comp(() => new DebugLayer(this)) with { Key = "lyrics-debug:" + trackId };
 
+            // SHRINK (G-254): the rail places this view in a ROW slot, a ZStack measures its widest layer (the loading
+            // shimmer's bars are ~263 DIP; the rail can be 200), and flex items do not shrink by default — a narrow rail,
+            // or a drag back to narrow, would keep the wider width and clip the reading column.
             return new BoxEl
             {
-                Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true,
+                Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true,
                 Children = ticker is null
                     ? [body, dots, resync, banner, debug]
                     : [body, ticker, dots, resync, banner, debug],
@@ -764,7 +767,8 @@ public static partial class Lyrics
         /// <summary>A centred one-line state ("No lyrics available", "Nothing playing").</summary>
         internal Element Message(string text) => new BoxEl
         {
-            Grow = 1f, MinHeight = 0f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            // Shrink: the view's other root, in the same row slot (G-254).
+            Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Padding = new Edges4(Spacing.XXL, 0f, Spacing.XXL, 0f),
             Children = [new TextEl(text) { Size = 14f, LineHeight = 20f, Color = InkMode.Secondary, Wrap = TextWrap.Wrap }],
         };
@@ -1519,43 +1523,120 @@ public static partial class Lyrics
 
     // ══ 4. THE ROW ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The row's RENDER shape (W3-A4): the bits of a packed emphasis word that change the element TREE — the
+    /// active branch (its halo blur, its Primary ink, its scale rest), the near glow glyphs and the reserve band's
+    /// padding. Everything else the word carries — the ring distance's opacity rung and the past bit — reaches the row
+    /// through its opacity SPRING (a signal effect retargets the slab; no render), so a hand-off re-renders the FOUR rows
+    /// whose shape flips (the two active rows, the two near-edge rows), never the dozen whose rung moved.</summary>
+    public static class RowRender
+    {
+        public const int ActiveBit = 1, NearBit = 2, ReserveBit = 4;
+
+        /// <summary>The shape word of a packed emphasis word.</summary>
+        public static int ShapeOf(int packed)
+        {
+            int dist = Emphasis.DistOf(packed);
+            int s = 0;
+            if (dist == 0) s |= ActiveBit;
+            if (dist <= Surface.NearDistance) s |= NearBit;
+            if (Emphasis.HasReserve(packed)) s |= ReserveBit;
+            return s;
+        }
+
+        public static bool IsActive(int shape) => (shape & ActiveBit) != 0;
+        public static bool IsNear(int shape) => (shape & NearBit) != 0;
+        public static bool HasReserve(int shape) => (shape & ReserveBit) != 0;
+    }
+
     /// <summary>One lyric line. Frozen at mount: the owner, its index, its <see cref="Line"/>, its emphasis signal and its
     /// halo signal — a genuine document change re-KEYS the row. Live values only through signals: its OWN packed
-    /// emphasis (<c>.Value</c>), the owner's shared <c>NowMs</c> (peeked), <c>Secondary</c> (<c>.Value</c>),
-    /// <c>HaloScale</c> (<c>.Value</c>, inside the active branch only) and the follow mode (peeked).</summary>
-    sealed class LineRow(ViewCore owner, int index, Line line, Signal<int> emphasis, FloatSignal? glowFade) : Component
+    /// emphasis (the render tracks a value-gated <see cref="RowRender.ShapeOf"/> memo over it and PEEKS the word for
+    /// the rest seeds; the opacity rung retargets the slab spring from a mount-once signal effect), the owner's shared
+    /// <c>NowMs</c> (peeked), <c>Secondary</c> (<c>.Value</c>), <c>HaloScale</c> (<c>.Value</c>, inside the active
+    /// branch only) and the follow mode (peeked). Every handler, bind and spring spec is a mount-once field: a render
+    /// allocates the element records and their children arrays, nothing else.
+    /// <para>The root's static <c>Opacity</c> is the MOUNT seed and never changes afterwards (the field below), so the
+    /// reconciler's column diff never rewrites the channel: after realization the spring owns it outright (the slab
+    /// writes every tick and its settled value back into the paint column), and a structural re-render cannot snap a
+    /// row mid-fade or stomp a rung the spring already reached without a render.</para></summary>
+    sealed class LineRow : Component
     {
-        Prop<float> GlowOpacity()
+        readonly ViewCore _owner;
+        readonly int _index;
+        readonly Line _line;
+        readonly Signal<int> _emphasis;
+        readonly Prop<float> _glowOpacity;
+        readonly Func<int> _shape;
+        readonly Action _retargetOpacity;
+        readonly Action<NodeHandle> _onLine, _onGlow, _onDof;
+        readonly Action _onClick;
+        float _seedOpacity = float.NaN;   // the root's static Opacity, fixed at the first render
+
+        // Critically damped at AMLL's stiffness/mass; the brightness hand-off is symmetric (one response).
+        static readonly SpringParams s_opacitySpring = SpringParams.FromResponse(0.18f, 1.0f);
+        static readonly SpringParams s_scaleSpring = new(100f, 2f * MathF.Sqrt(100f * 2f), 2f);
+
+        public LineRow(ViewCore owner, int index, Line line, Signal<int> emphasis, FloatSignal? glowFade)
+        {
+            _owner = owner;
+            _index = index;
+            _line = line;
+            _emphasis = emphasis;
+            _glowOpacity = GlowOpacityOf(glowFade, owner.InkMode.BloomScale);
+            _shape = () => RowRender.ShapeOf(emphasis.Value);
+            _retargetOpacity = RetargetOpacity;
+            _onLine = h => owner.ReportLineNode(index, h);
+            _onGlow = h => owner.ReportGlowNode(index, h);
+            _onDof = h => owner.ReportDofNode(index, h);
+            _onClick = () => owner.SeekToLine(index);
+        }
+
+        /// <summary>The halo layer's opacity: the owner's per-line fade signal, bound (a per-frame write is a
+        /// compositor-only column store), scaled by the ink's bloom once at mount.</summary>
+        static Prop<float> GlowOpacityOf(FloatSignal? glowFade, float k)
         {
             if (glowFade is not { } s) return 0f;
-            float k = owner.InkMode.BloomScale;
             return k >= 1f ? (Prop<float>)s : Prop.Of(() => s.Value * k);
+        }
+
+        /// <summary>The opacity rung, delivered to the slab without a render. Tracks THIS line's packed word only; the
+        /// mount run (inside the first render) finds no host node yet and leaves the static seed in place — the first
+        /// retarget after realization springs from that seed (velocity-continuous on a live track).</summary>
+        void RetargetOpacity()
+        {
+            float to = Emphasis.OpacityOf(_emphasis.Value);
+            var ctx = Context;
+            if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
+            anim.Spring(ctx.HostNode, AnimChannel.Opacity, to, s_opacitySpring);
         }
 
         public override Element Render()
         {
-            int e = emphasis.Value;                          // THIS line's packed word only
-            int dist = Emphasis.DistOf(e);
-            bool isActive = dist == 0;
-            bool past = (e & Emphasis.PastBit) != 0;
+            var owner = _owner;
+            int index = _index;
+            var line = _line;
+            // The render tracks the SHAPE (a memo that notifies only when a tree-changing bit flips) and peeks the word.
+            int shape = UseComputed(_shape).Value;
+            UseSignalEffect(_retargetOpacity);
+            int e = _emphasis.Peek();
+            bool isActive = RowRender.IsActive(shape);
+            bool near = RowRender.IsNear(shape);
             bool large = owner.Large;
             var ink = owner.InkMode;
             var m = owner.Metrics;
-            float reserve = Emphasis.HasReserve(e) ? Interlude.ReserveDip(large) : 0f;
+            float reserve = RowRender.HasReserve(shape) ? Interlude.ReserveDip(large) : 0f;
 
             // Distance is carried by OPACITY + DoF; scale is a flat 0.98, left-anchored. Reduced motion is a VALUE
             // folded into the spring key, so the first render after an OS flip retargets.
             bool reduce = Design.Reduced;
             float scale = Surface.ScaleFor(isActive, reduce);
-            float opacity = Emphasis.OpacityOf(e);
+            if (float.IsNaN(_seedOpacity)) _seedOpacity = Emphasis.OpacityOf(e);
             float blur = owner.Follow_.Peek() == FollowMode.Following ? owner.DofDeclaredFor(index) : 0f;
 
-            var key = DepKey.From(dist, (isActive ? 2 : 0) | (past ? 4 : 0) | (reduce ? 8 : 0));
-            // Critically damped at AMLL's stiffness/mass; the brightness hand-off is symmetric (one response).
-            UseSpring(AnimChannel.Opacity, opacity, SpringParams.FromResponse(0.18f, 1.0f), key);
-            var scaleSpring = new SpringParams(100f, 2f * MathF.Sqrt(100f * 2f), 2f);
-            UseSpring(AnimChannel.ScaleX, scale, scaleSpring, key);
-            UseSpring(AnimChannel.ScaleY, scale, scaleSpring, key);
+            // The scale springs retarget on the active flip (the only input of the scale rest), never per rung.
+            var key = DepKey.From((isActive ? 2 : 0) | (reduce ? 8 : 0));
+            UseSpring(AnimChannel.ScaleX, scale, s_scaleSpring, key);
+            UseSpring(AnimChannel.ScaleY, scale, s_scaleSpring, key);
 
             Element textEl;
             float lift = Wipe.LiftFor(large, reduce);
@@ -1570,38 +1651,30 @@ public static partial class Lyrics
                 // Sung glyphs full-bright; unsung the same ink at the ABSOLUTE unsung alpha, sitting `lift` DIP low.
                 var mainWipe = new GlyphWipe(Before: sung, After: sung with { A = Lyrics.Wipe.UnsungAlpha },
                     Split: split, Softness: softness, Lift: lift);
-                Element main = LineText(line.Text, sung) with
-                {
-                    Wipe = mainWipe,
-                    OnRealized = h => owner.ReportLineNode(index, h),
-                };
+                Element main = LineText(line.Text, sung, mainWipe, _onLine);
                 // The bloom glyphs mount only NEAR the focus (still dim + blurred, so the swap never pops on the focal
                 // row); same split, feather and lift as the main layer, so the halo never floats out from under it.
-                bool near = dist <= Surface.NearDistance;
                 var bloom = ink.Bloom;
                 var glowWipe = new GlyphWipe(Before: bloom, After: bloom with { A = 0f }, Split: split, Softness: softness, Lift: lift);
-                Element glowText = (near ? LineText(line.Text, bloom) with { Wipe = glowWipe } : LineText("", bloom))
-                    with { OnRealized = h => owner.ReportGlowNode(index, h) };
-                Element glow = new BoxEl { Opacity = GlowOpacity(), HitTestVisible = false, Children = [glowText] };
+                Element glowText = near ? LineText(line.Text, bloom, glowWipe, _onGlow) : LineText("", bloom, null, _onGlow);
+                Element glow = new BoxEl { Opacity = _glowOpacity, HitTestVisible = false, Children = [glowText] };
                 textEl = new BoxEl { ZStack = true, Children = [glow, main] };
             }
             else
             {
                 // Line-level lyrics: the same persistent ZStack. σ on the ACTIVE row only — at dist ≥ 1 the parent already
                 // carries a DoF σ and a nested blur layer is pin-ineligible.
-                bool near = dist <= Surface.NearDistance;
                 Element glow = new BoxEl
                 {
                     Blur = isActive ? Surface.LineSyncedHaloSigma(large) * owner.HaloScale.Value : 0f,
                     BlurCachePolicy = BlurCachePolicy.HoldIfCached,
-                    Opacity = GlowOpacity(),
+                    Opacity = _glowOpacity,
                     HitTestVisible = false,
-                    Children = [LineText(near ? line.Text : "", ink.Bloom with { A = Surface.LineSyncedHaloTextAlpha })],
+                    Children = [LineText(near ? line.Text : "", ink.Bloom with { A = Surface.LineSyncedHaloTextAlpha }, null, null)],
                 };
-                Element main = LineText(line.Text, isActive ? ink.Primary : ink.Secondary) with
+                Element main = LineText(line.Text, isActive ? ink.Primary : ink.Secondary, null, _onLine) with
                 {
                     BrushTransitionMs = Design.Motion.Fast,   // the Secondary↔Primary flip never snaps in one frame
-                    OnRealized = h => owner.ReportLineNode(index, h),
                 };
                 textEl = new BoxEl { ZStack = true, Children = [glow, main] };
             }
@@ -1621,18 +1694,18 @@ public static partial class Lyrics
                 Direction = 1,
                 Blur = blur,
                 BlurCachePolicy = BlurCachePolicy.HoldIfCached,
-                OnRealized = h => owner.ReportDofNode(index, h),
+                OnRealized = _onDof,
                 Children = secondaryText is null ? [textEl] : [textEl, SecondaryText(secondaryText)],
             };
 
             return new BoxEl
             {
                 Direction = 1,
-                // The springs' REST targets: at settle the slab and the element agree, so a later emphasis render cannot
-                // snap the row or flash a newly realized one.
+                // The scale REST target: at settle the slab and the element agree, so a later shape render cannot snap
+                // the row or flash a newly realized one. Opacity is the frozen mount seed (see the class doc).
                 ScaleX = scale,
                 ScaleY = scale,
-                Opacity = opacity,
+                Opacity = _seedOpacity,
                 Shrink = 0f,
                 // PAD, not margin: the measured seam reads the border box.
                 Padding = new Edges4(m.SidePad, m.RowPad + reserve, m.SidePad, m.RowPad),
@@ -1641,19 +1714,20 @@ public static partial class Lyrics
                 TransformOriginX = 0f,
                 TransformOriginY = 0.5f,
                 Cursor = CursorId.Hand,
-                OnClick = () => owner.SeekToLine(index),
+                OnClick = _onClick,
                 Role = AutomationRole.Button,
                 Focusable = true,
                 AllowFocusOnInteraction = false,
                 Children = [dofContent],
             };
 
-            // Wrapped, unbounded, never trimmed on BOTH surfaces. `ViewCore.MeasureRunLength` rebuilds this style — the
-            // two change together.
-            TextEl LineText(string text, ColorF color) => new(text)
+            // Wrapped, unbounded, never trimmed on BOTH surfaces; built ONCE with its wipe and its realization report
+            // (no `with` clone per layer). `ViewCore.MeasureRunLength` rebuilds this style — the two change together.
+            TextEl LineText(string text, ColorF color, GlyphWipe? wipe, Action<NodeHandle>? onRealized) => new(text)
             {
                 Size = m.FontSize, Weight = 700, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
                 Color = color, MaxLines = 0, Trim = TextTrim.None,
+                Wipe = wipe, OnRealized = onRealized,
             };
 
             // No wipe, no glow, no lift (a translation is not sung); everything else inherited from dofContent.
@@ -1673,9 +1747,19 @@ public static partial class Lyrics
 
     /// <summary>The surface's clock host (keyed per track, mounted only while the surface is visible). It wakes the
     /// step on a transport or position edge, mounts the per-frame <see cref="Stepper"/> ONLY while a lane is moving, and
-    /// otherwise re-arms from a one-shot timeout at the next media instant — "lyrics wake only for the words".</summary>
+    /// otherwise re-arms from a one-shot timeout at the next media instant — "lyrics wake only for the words".
+    /// <para>NO STEP RUNS INSIDE THIS RENDER (the G-259 lost wakeup, found here by R4-0). A signal effect's body runs
+    /// EAGERLY when its hook is created, i.e. inside this render, which has already read <c>_motionLive</c>,
+    /// <c>_cascadeRunning</c>, <c>Follow_</c>, the wake and the re-check and is still running; a step writes those, and the
+    /// engine drops a write into a running computation (<c>Computation.MarkDirty</c> returns early while Dirty, D42). The
+    /// Ticker then kept a stale gate: a Stepper polling every frame after the step had quiesced, or none mounted when it
+    /// asked for motion. So the edge effect's mount run only SUBSCRIBES — the mount's first step is owed by
+    /// <see cref="ViewCore.ResetScrollSnap"/> (a passive effect, after paint: it wakes motion, which mounts the Stepper) —
+    /// and the <see cref="Stepper"/>, which mounts inside this render, steps only from later frame ticks.</para></summary>
     sealed class Ticker(ViewCore owner) : Component
     {
+        bool _edgeSubscribed;
+
         public override Element Render()
         {
             // Once per mount (a track change): the next step owes a first landing.
@@ -1687,11 +1771,13 @@ public static partial class Lyrics
             bool motionLive = owner.MotionLiveValue;
 
             // The play-start edge is one immediate step, and a position publication in EITHER state carries a scrub or a
-            // seek to a surface whose stepper is unmounted mid-gap.
+            // seek to a surface whose stepper is unmounted mid-gap. Every step runs from a later flush, never the eager
+            // mount run (see the summary).
             UseSignalEffect(() =>
             {
                 bool playing = Playback.IsPlaying.Value;
                 _ = Playback.PositionMs.Value;
+                if (!_edgeSubscribed) { _edgeSubscribed = true; return; }
                 if (ViewCore.ProbeSyncMode && playing) return;
                 owner.OnFrame(forceVisual: !playing);
             });
@@ -1715,15 +1801,20 @@ public static partial class Lyrics
     }
 
     /// <summary>The per-frame step: a frame-clock subscriber running ONE step per produced frame. Its subscription is the
-    /// request for those frames; unmounting it lets the loop idle. It never re-renders its owner.</summary>
+    /// request for those frames; unmounting it lets the loop idle. It never re-renders its owner. It mounts INSIDE the
+    /// <see cref="Ticker"/>'s render, so its eager mount run only subscribes and every step comes from a later tick's flush,
+    /// where the Ticker is Clean and hears the gate writes in that same flush (the lost wakeup, see Ticker).</summary>
     sealed class Stepper(ViewCore owner) : Component
     {
+        bool _subscribed;
+
         public override Element Render()
         {
             var tick = UseContextSignal(FrameClock.Tick);
             UseSignalEffect(() =>
             {
-                _ = tick.Value;
+                _ = tick.Value;                                              // the subscription is the request for frames
+                if (!_subscribed) { _subscribed = true; return; }            // the eager mount run: subscribe, never step
                 owner.OnFrame();
             });
             return new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f };

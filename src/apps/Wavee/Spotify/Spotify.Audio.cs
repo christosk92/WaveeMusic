@@ -28,7 +28,7 @@
 //      lossless note below.
 //   5. THE STREAM. AES-128-CTR with a PUBLIC iv over ranged CDN GETs, offset 0 at the container's first byte. For Ogg
 //      and MP3 that means skipping the 167-byte Spotify header; for FLAC it means offset 0, because a Spotify FLAC has
-//      no such header. The STORES under that — the clear head, the read-ahead ring, the fetch thread, the disk cache —
+//      no such header. The STORES under that — the clear head, the read-ahead ring, the fetch task, the disk cache —
 //      are the named partial `Spotify.Audio.Stream.cs` (owner F, Vorbis plan §5); this file keeps the CTR math, the
 //      mirrors, the key and the ladder, and `Open` is the seam between the two halves.
 //
@@ -52,7 +52,11 @@
 //
 // THREADING. Everything here BLOCKS and runs on an api thread (`Api.Run`) or on Wave 3's audio pump thread. No table,
 // no signal, no `Entities.Strings` (C1). The CDN and key caches are this file's own, guarded by one `Lock` each, and
-// they are bounded (C8): 64 mirror sets, 256 keys, oldest evicted.
+// they are bounded (C8): 64 mirror sets, 256 keys, 4 ladder answers, oldest evicted.
+//
+// WHAT A FAILURE MEANS (G-038, D7). A metadata read that never reached a server, a 5xx or a 429 is `Fault.Network` (the bar
+// retries); only an answer that says "nothing here" is `Fault.Restricted`. A lossless file whose key is refused plays its
+// Ogg 320 rung instead of failing, and a build that cannot derive a lossless key never asks for the lossless rung at all.
 
 using System.Security.Cryptography;
 using Google.Protobuf;
@@ -77,7 +81,7 @@ public static partial class Spotify
 
         /// <summary>What the bytes are. The rung is implied by the name for Ogg; MP3 and FLAC are one each because the
         /// decoder does not care about their bitrate and nothing else asks.</summary>
-        public enum Format : byte { Unknown = 0, OggVorbis96, OggVorbis160, OggVorbis320, Mp3, Flac, Flac24 }
+        public enum Format : byte { Unknown = 0, OggVorbis96, OggVorbis160, OggVorbis320, Mp3, Flac, Flac24, Aac }
 
         /// <summary>What the user asked for. The persisted setting is an int (`Platform.Keys.PlaybackQuality`), so the
         /// VALUES are the wire and a rename here is a preference the user loses.</summary>
@@ -143,6 +147,40 @@ public static partial class Spotify
         /// <summary>True when this build can answer for a file the AP refuses. The player bar reads it to say
         /// "unavailable on this build" once, rather than failing track by track.</summary>
         public static bool CanDerive => KeyDeriver is not null;
+
+        /// <summary>Decrypts one landed piece of a Spotify-hosted body IN PLACE. <paramref name="streamOffset"/> is
+        /// <paramref name="buffer"/>[0]'s byte offset in the whole file — the contract of <see cref="Ctr.DecryptInPlace"/>,
+        /// which is what a body without one runs. It is called from the fetch task and the disk-cache reads, so an
+        /// implementation serializes whatever state it keeps.</summary>
+        public delegate void BodyDecrypt(Span<byte> buffer, long streamOffset);
+
+        /// <summary>THE PLAYPLAY SEAM, second half. A key the deriver produced can come with a NATIVE body decryptor that
+        /// replaces the AES-CTR keystream for that file. Asked once per body open, after <see cref="Key"/> answered for
+        /// the file; null, or a null answer, decrypts with the key. Set once at boot by the private assembly, beside
+        /// <see cref="KeyDeriver"/>.</summary>
+        public static Func<string, BodyDecrypt?>? BodyDecryptorFor { get; set; }
+
+        /// <summary>Is the active connection metered? A SEAM the platform's network-cost probe installs (WP-6.S
+        /// <c>NetworkPolicy</c>); null reads as unmetered. Read per open: a metered link gets the 10 s read-ahead tier.</summary>
+        public static Func<bool>? MeteredConnection { get; set; }
+
+        /// <summary>D7, the lossless rung and its fallback, as two pure rules. The AP never serves a FLAC key and a
+        /// public-only build has no deriver, so a Lossless setting there is VeryHigh320 from the start (no AUDIO_FILES
+        /// request, no refused key); and when a deriver IS installed but refuses one file, that file plays its Ogg 320
+        /// rung instead of failing — the plan's gate: "the public-only build plays the 320 rung".</summary>
+        public static class LosslessFallback
+        {
+            /// <summary>Should an open that failed with <paramref name="fault"/> on <paramref name="fmt"/> re-run the
+            /// ladder at VeryHigh320? Only a lossless file whose key could not be had.</summary>
+            public static bool Decide(Format fmt, Fault fault)
+                => fmt is Format.Flac or Format.Flac24 && fault is Fault.NoDeriver or Fault.NoKey;
+
+            /// <summary>The quality the ladder is asked for: Lossless only when this build can derive a lossless key.</summary>
+            public static Quality Effective(Quality asked, bool canDerive)
+                => asked == Quality.Lossless && !canDerive ? Quality.VeryHigh320 : asked;
+        }
+
+        static int s_fallbackLogged;
 
         // ── 2. the ladder (PURE) ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -267,11 +305,74 @@ public static partial class Spotify
         /// a NaN, a zero) is "unknown" — a wrong peak would silence a track through the cap. PURE.</summary>
         public static float SanePeak(float peak) => float.IsFinite(peak) && peak > 0f && peak <= 4f ? peak : 0f;
 
+        /// <summary>A header track gain beyond ±30 dB, or not finite, is garbage bytes (a wrong key, a file that has no
+        /// such header), never a gain. PURE.</summary>
+        public static float SaneGain(float gainDb) => float.IsFinite(gainDb) && Math.Abs(gainDb) <= 30f ? gainDb : 0f;
+
+        /// <summary>The Ogg rungs — the only files whose Spotify header carries normalization data.</summary>
+        public static bool IsOggFormat(Format format)
+            => format is Format.OggVorbis96 or Format.OggVorbis160 or Format.OggVorbis320;
+
+        /// <summary>How much decrypted file a header gain and peak need: the gain at 144, the peak at 148.</summary>
+        public const int HeaderGainBytes = 152;
+
+        /// <summary>The normalization a body opens with (D6; G-105). The catalogue's figure when it carried one (the
+        /// lossless AUDIO_FILES normalization params); otherwise, for an OGG body ONLY, the Spotify header's track gain at
+        /// byte 144 and its linear peak at 148 (librespot <c>NormalisationData::parse_from_ogg</c>). A FLAC has no such header
+        /// — byte 144 of a FLAC is STREAMINFO/SEEKTABLE data, which read as a float was up to +30 dB — and an MP3 or an
+        /// external body carries none, so both answer (0, 0). <paramref name="clearHeader"/> is the decrypted file from byte
+        /// 0 (the clear head, or the cached chunk 0); empty when neither is at hand, and then the body learns the figure
+        /// when chunk 0 lands (G-107). PURE.</summary>
+        public static (float GainDb, float Peak) GainFor(Format fmt, float catalogueGainDb, float cataloguePeak,
+            ReadOnlySpan<byte> clearHeader)
+        {
+            if (catalogueGainDb != 0f && float.IsFinite(catalogueGainDb)) return (catalogueGainDb, SanePeak(cataloguePeak));
+            if (!IsOggFormat(fmt) || clearHeader.Length < HeaderGainBytes) return (0f, 0f);
+            return (SaneGain(HeadGainDb(clearHeader)), HeadPeak(clearHeader));
+        }
+
+        /// <summary>Does a country list admit <paramref name="market"/>? The wire spells a list as 2-char country codes
+        /// run together (<c>"SEGBUS"</c>, `metadata.proto` Restriction). An EMPTY <c>countries_allowed</c> is an empty
+        /// WHITELIST — no country gate at all, not "allowed nowhere" (`lean_metadata.proto`'s corpus note) — and an empty
+        /// forbidden list forbids nobody. A market that is not a 2-char code (the session has not learned it yet) is no
+        /// verdict either: a gate nobody can evaluate admits. PURE.</summary>
+        /// <param name="forbiddenList">true = <paramref name="list"/> is <c>countries_forbidden</c> (a member is OUT);
+        /// false = <c>countries_allowed</c> (a non-member is out).</param>
+        public static bool CountryAllowed(string list, string market, bool forbiddenList)
+        {
+            if (list.Length < 2 || market.Length != 2) return true;
+            bool listed = false;
+            for (int i = 0; i + 1 < list.Length; i += 2)
+            {
+                if (string.Compare(list, i, market, 0, 2, StringComparison.OrdinalIgnoreCase) != 0) continue;
+                listed = true;
+                break;
+            }
+            return forbiddenList ? !listed : listed;
+        }
+
+        /// <summary>May this track's OWN file[] be played in <paramref name="market"/>? False only when a restriction
+        /// rules the market out — not in a non-empty <c>countries_allowed</c>, or in <c>countries_forbidden</c>. The
+        /// catalogue and type fields are NOT a verdict (`lean_metadata.proto`: the restriction appears on the relinked
+        /// class and the dead class alike). A relinked id keeps its old file[] listed but restricted; playing it hands
+        /// the key service the OLD gid, which refuses (NoKey → Unavailable) where the alternative would have played. PURE.</summary>
+        public static bool Allowed(Md.Track t, string market)
+        {
+            foreach (Md.Restriction r in t.Restriction)
+            {
+                if (r.HasCountriesAllowed && !CountryAllowed(r.CountriesAllowed, market, forbiddenList: false)) return false;
+                if (r.HasCountriesForbidden && !CountryAllowed(r.CountriesForbidden, market, forbiddenList: true)) return false;
+            }
+            return true;
+        }
+
         /// <summary>The whole ladder over the two payloads, pure: TRACK_V4 plus an optional AUDIO_FILES. FLAC wins when
-        /// the account returned it AND the setting asked for it; otherwise the Ogg rungs; otherwise the first
-        /// alternative that has any file, carrying ITS gid.</summary>
+        /// the account returned it AND the setting asked for it; otherwise the Ogg rungs of the track's own file[] — but
+        /// only when <see cref="Allowed"/> admits the track in <paramref name="market"/>; otherwise (and when the list is
+        /// empty) the first alternative that is admitted AND has a file, carrying ITS gid.</summary>
+        /// <param name="market">The session's 2-char market (<c>Api.Market</c>), passed in so the ladder stays pure.</param>
         public static FileChoice Choose(Md.Track track, Af.AudioFilesExtensionResponse? lossless, Quality quality,
-            long fallbackDurationMs)
+            long fallbackDurationMs, string market)
         {
             if (quality == Quality.Lossless && lossless is not null)
             {
@@ -286,13 +387,17 @@ public static partial class Spotify
                 }
             }
 
-            (byte[] fileId, Format format) = PickFile(track.File, quality);
-            if (fileId.Length > 0)
-                return new FileChoice(fileId, Hexed(fileId), track.Gid.ToByteArray(), format,
-                    track.HasDuration ? track.Duration : fallbackDurationMs, 0f, null, Fault.None);
+            if (Allowed(track, market))
+            {
+                (byte[] fileId, Format format) = PickFile(track.File, quality);
+                if (fileId.Length > 0)
+                    return new FileChoice(fileId, Hexed(fileId), track.Gid.ToByteArray(), format,
+                        track.HasDuration ? track.Duration : fallbackDurationMs, 0f, null, Fault.None);
+            }
 
             foreach (Md.Track alternative in track.Alternative)
             {
+                if (!Allowed(alternative, market)) continue;
                 (byte[] altId, Format altFormat) = PickFile(alternative.File, quality);
                 if (altId.Length == 0) continue;
                 long duration = alternative.HasDuration ? alternative.Duration
@@ -335,9 +440,11 @@ public static partial class Spotify
         // generated parser, which is the same wire and no second copy of anybody's decoder.
 
         /// <summary>Pull one extension payload for one uri out of a `BatchedExtensionResponse`. Empty when the service
-        /// answered for a different kind, or answered an error status for this one.</summary>
-        public static ReadOnlySpan<byte> Payload(ReadOnlySpan<byte> response, Xm.ExtensionKind kind)
+        /// answered for a different kind, or answered an error status for this one. <paramref name="entityStatus"/> is
+        /// that entry's own status (its header's, else 200), or 0 when the response held no entry of the kind at all.</summary>
+        public static ReadOnlySpan<byte> Payload(ReadOnlySpan<byte> response, Xm.ExtensionKind kind, out int entityStatus)
         {
+            entityStatus = 0;
             if (response.Length == 0) return default;
             Xm.BatchedExtensionResponse parsed;
             try { parsed = Xm.BatchedExtensionResponse.Parser.ParseFrom(response); }
@@ -348,34 +455,51 @@ public static partial class Spotify
                 foreach (var data in array.ExtensionData)
                 {
                     int status = data.Header is { } header && header.HasStatusCode ? header.StatusCode : 200;
+                    if (entityStatus == 0) entityStatus = status;
                     if (status is < 200 or >= 300) continue;
                     if (data.ExtensionData is null) continue;
+                    entityStatus = status;
                     return data.ExtensionData.Value.Span;
                 }
             }
             return default;
         }
 
-        static Md.Track? TrackMetadata(string trackUri, CancellationToken ct)
+        /// <summary>What a failed TRACK_V4 / EPISODE_V4 read MEANS (G-038). A request that never reached a server
+        /// (status 0), a 401 that survived the token refresh, a timeout, a 429 or a 5xx — at the HTTP level or on the entry
+        /// itself — is the network being unlucky: <see cref="Fault.Network"/>, which the bar offers to retry. Only an
+        /// answer that genuinely says "nothing here" (a 2xx with no payload, a 404, any other 4xx) is
+        /// <see cref="Fault.Restricted"/>, the terminal "unavailable". PURE.</summary>
+        public static Fault MetadataFault(int httpStatus, int entityStatus, bool hasPayload)
+        {
+            if (hasPayload) return Fault.None;
+            if (httpStatus is 0 or 401 or 408 or 429 or >= 500) return Fault.Network;
+            if (httpStatus is < 200 or >= 300) return Fault.Restricted;
+            return entityStatus is 408 or 429 or >= 500 ? Fault.Network : Fault.Restricted;
+        }
+
+        static Md.Track? TrackMetadata(string trackUri, CancellationToken ct, out Fault fault)
         {
             Xm.ExtensionKind[] kinds = [Xm.ExtensionKind.TrackV4];
             Api.Result result = Api.MetadataPost(Api.MetadataBody(trackUri, kinds, Api.Market, Api.Catalogue), ct);
-            if (!result.Ok) return null;
-            ReadOnlySpan<byte> payload = Payload(result.Bytes, Xm.ExtensionKind.TrackV4);
+            int entity = 0;
+            ReadOnlySpan<byte> payload = result.Ok ? Payload(result.Bytes, Xm.ExtensionKind.TrackV4, out entity) : default;
+            fault = MetadataFault(result.Status, entity, !payload.IsEmpty);
             if (payload.IsEmpty) return null;
             try { return Md.Track.Parser.ParseFrom(payload); }
-            catch (InvalidProtocolBufferException) { return null; }
+            catch (InvalidProtocolBufferException) { fault = Fault.Restricted; return null; }
         }
 
-        static Md.Episode? EpisodeMetadata(string episodeUri, CancellationToken ct)
+        static Md.Episode? EpisodeMetadata(string episodeUri, CancellationToken ct, out Fault fault)
         {
             Xm.ExtensionKind[] kinds = [Xm.ExtensionKind.EpisodeV4];
             Api.Result result = Api.MetadataPost(Api.MetadataBody(episodeUri, kinds, Api.Market, Api.Catalogue), ct);
-            if (!result.Ok) return null;
-            ReadOnlySpan<byte> payload = Payload(result.Bytes, Xm.ExtensionKind.EpisodeV4);
+            int entity = 0;
+            ReadOnlySpan<byte> payload = result.Ok ? Payload(result.Bytes, Xm.ExtensionKind.EpisodeV4, out entity) : default;
+            fault = MetadataFault(result.Status, entity, !payload.IsEmpty);
             if (payload.IsEmpty) return null;
             try { return Md.Episode.Parser.ParseFrom(payload); }
-            catch (InvalidProtocolBufferException) { return null; }
+            catch (InvalidProtocolBufferException) { fault = Fault.Restricted; return null; }
         }
 
         /// <summary>The FLAC half, on the `spotify:audio:` entity derived from `original_audio.uuid`. Null whenever the
@@ -390,7 +514,7 @@ public static partial class Spotify
             Xm.ExtensionKind[] kinds = [Xm.ExtensionKind.AudioFiles];
             Api.Result result = Api.MetadataPost(Api.MetadataBody(audioUri, kinds, Api.Market, Api.Catalogue), ct);
             if (!result.Ok) return null;
-            ReadOnlySpan<byte> payload = Payload(result.Bytes, Xm.ExtensionKind.AudioFiles);
+            ReadOnlySpan<byte> payload = Payload(result.Bytes, Xm.ExtensionKind.AudioFiles, out _);
             if (payload.IsEmpty) return null;
             try { return Af.AudioFilesExtensionResponse.Parser.ParseFrom(payload); }
             catch (InvalidProtocolBufferException) { return null; }
@@ -473,11 +597,14 @@ public static partial class Spotify
         /// play in exchange for nothing.</summary>
         public static bool ApKeysDisabled => s_apKeysDisabled;
 
-        /// <summary>Reset the AP latch. `Spotify.Session` calls it on a fresh login — a new session is a new answer.</summary>
+        /// <summary>Reset the AP latch. `Spotify.Session.AdoptWelcome` calls it on EVERY AP welcome — a fresh login and
+        /// the reconnect after an `ap channel failed` alike (the Welcome effect fires per successful `ConnectAndLogin`,
+        /// not per account) — so one refused key window never outlives the AP session that produced it.</summary>
         public static void ResetKeyLatch()
         {
             s_apKeysDisabled = false;
             lock (KeyGate) { KeyCache.Clear(); KeyOrder.Clear(); }
+            lock (ChoiceGate) Array.Clear(s_choices);           // a new session may be a new market: its ladder answers anew
         }
 
         /// <summary>The 16-byte AES key for one (file, track) pair. Cached for the session — a key is immutable.
@@ -643,7 +770,7 @@ public static partial class Spotify
         /// <summary>The one CDN client for the process. HTTP/2 is preferred per request and a single connection carries
         /// every range a file has in flight (`EnableMultipleHttp2Connections = false`), which is what makes a cancelled
         /// range an `RST_STREAM` rather than a dropped TCP connection. No `Timeout`: a range's deadline is its own
-        /// `CancellationToken` on the fetch thread, and a client-wide timeout would also kill a legitimately long
+        /// `CancellationToken` on the fetch task, and a client-wide timeout would also kill a legitimately long
         /// 512 KiB body on a slow link.</summary>
         static readonly HttpClient Cdn = new(new SocketsHttpHandler
         {
@@ -654,12 +781,15 @@ public static partial class Spotify
         })
         { Timeout = Timeout.InfiniteTimeSpan };
 
-        /// <summary>The quality the user chose, capped where the plan says it must be. Read PER OPEN, so a settings
-        /// change applies from the very next track rather than from the next launch.</summary>
+        /// <summary>The quality the user chose, capped where the plan says it must be: a metered connection first
+        /// (<see cref="Platform.Network.EffectiveQuality()"/> — the metered cap applies to the lossless rung exactly as
+        /// it does to 320), then Lossless only on a build that can derive a lossless key (D7,
+        /// <see cref="LosslessFallback.Effective"/>). Read PER OPEN, so a settings or connection-cost change applies from
+        /// the very next track rather than from the next launch.</summary>
         public static Quality PreferredQuality()
         {
-            int stored = Platform.Settings.Get(Platform.Keys.PlaybackQuality);
-            return (Quality)Math.Clamp(stored, 0, 3);
+            int effective = Platform.Network.EffectiveQuality();
+            return LosslessFallback.Effective((Quality)Math.Clamp(effective, 0, 3), CanDerive);
         }
 
         /// <summary>THE entry point Wave 3 calls. Blocks: metadata, ladder, CDN, key, then an opened stream.</summary>
@@ -668,16 +798,114 @@ public static partial class Spotify
         /// <inheritdoc cref="Open(string, CancellationToken)"/>
         /// <param name="prepared">The NEXT track, opened ahead of a hand-off: its ring comes out of the shared read-ahead
         /// budget at no more than <see cref="ReadAheadBudget.PreparedSeconds"/> (Vorbis plan §5.3).</param>
+        /// <remarks>A lossless file whose key is refused re-runs the ladder at VeryHigh320 over the SAME metadata (D7), and
+        /// that answer is remembered for the uri at this setting, so the next open does not ask for the FLAC again.</remarks>
         public static Opened Open(string uri, Quality quality, long fallbackDurationMs, CancellationToken ct, bool prepared = false)
         {
             if (!Current.IsOnline) return Opened.Failed(Fault.Offline);
 
-            FileChoice choice = uri.StartsWith("spotify:episode:", StringComparison.Ordinal)
-                ? ChooseEpisode(uri, quality, fallbackDurationMs, ct)
-                : ChooseTrack(uri, quality, fallbackDurationMs, ct);
+            CachedChoice resolved = ChooseFor(uri, quality, fallbackDurationMs, ct);
+            FileChoice choice = resolved.Choice;
             if (!choice.Ok) return Opened.Failed(choice.Fault == Fault.None ? Fault.NoFile : choice.Fault);
 
-            return Open(choice, ct, prepared);
+            Opened opened = Open(choice, ct, prepared);
+            if (!LosslessFallback.Decide(choice.Fmt, opened.Fault)) return opened;
+
+            if (Interlocked.Exchange(ref s_fallbackLogged, 1) == 0)
+                Log.Warn("audio", $"lossless key unavailable ({opened.Fault}) — playing the Ogg 320 rung instead (logged once)");
+            Md.Track? track = resolved.Track ?? TrackMetadata(uri, ct, out _);
+            if (track is null) return opened;
+            FileChoice ogg = Choose(track, null, Quality.VeryHigh320, fallbackDurationMs, Api.Market);
+            if (!ogg.Ok) return opened;
+            RememberChoice(new CachedChoice(uri, quality, ogg, track, Environment.TickCount64));
+            return Open(ogg, ct, prepared);
+        }
+
+        /// <summary>The next track's metadata, ladder, head, mirrors and key, warmed without opening it (the reducer's
+        /// "prefetch at load", G-112). Non-blocking: the ladder runs on an api thread and lands in the choice cache, the rest
+        /// in <see cref="Prefetch(in FileChoice)"/>'s caches, so the boundary's <see cref="Open(string, Quality, long,
+        /// CancellationToken, bool)"/> costs the first range and the tail.</summary>
+        public static void Prefetch(string uri)
+        {
+            if (uri.Length == 0 || !Current.IsOnline) return;
+            Quality quality = PreferredQuality();
+            Api.Run(() =>
+            {
+                FileChoice warmed = ChooseFor(uri, quality, 0, CancellationToken.None).Choice;
+                if (warmed.Ok) Prefetch(in warmed);
+            });
+        }
+
+        /// <summary>A plain body on somebody else's host (a podcast enclosure, G-109): no key, no CDN resolve, format MP3.
+        /// The file-id slot carries a short key of the url for the log lines and the live-body diagnostics.</summary>
+        public static FileChoice ExternalChoice(string url, long durationMs)
+            => new([], "ext" + ((uint)StringComparer.Ordinal.GetHashCode(url)).ToString("x8"), [], Format.Mp3,
+                Math.Max(0, durationMs), 0f, url, Fault.None);
+
+        // ── 8a. the choice cache (C8: four answers) ─────────────────────────────────────────────────────────────────
+        //
+        // The ladder's answer for a uri at a quality: what a prefetch warms and the boundary's open reads, and what the
+        // lossless fallback re-chooses over. File ids do not move; the mirrors and keys under them have their own caches.
+
+        const int ChoiceCacheMax = 4;
+        const long ChoiceTtlMs = 30 * 60_000;
+
+        /// <summary>One remembered ladder answer, with the track it came from (null for an episode).</summary>
+        readonly record struct CachedChoice(string Uri, Quality Quality, FileChoice Choice, Md.Track? Track, long AtMs);
+
+        static readonly Lock ChoiceGate = new();
+        static readonly CachedChoice[] s_choices = new CachedChoice[ChoiceCacheMax];
+        static int s_choiceNext;
+
+        static CachedChoice ChooseFor(string uri, Quality quality, long fallbackDurationMs, CancellationToken ct)
+        {
+            long now = Environment.TickCount64;
+            lock (ChoiceGate)
+            {
+                foreach (CachedChoice c in s_choices)
+                {
+                    if (c.Uri is not null && c.Quality == quality && now - c.AtMs < ChoiceTtlMs
+                        && string.Equals(c.Uri, uri, StringComparison.Ordinal)) return c;
+                }
+            }
+
+            CachedChoice made;
+            if (uri.StartsWith("spotify:episode:", StringComparison.Ordinal))
+            {
+                Md.Episode? episode = EpisodeMetadata(uri, ct, out Fault fault);
+                made = new CachedChoice(uri, quality,
+                    episode is null ? FileChoice.Failed(fault) : Choose(episode, quality, fallbackDurationMs), null, now);
+            }
+            else
+            {
+                Md.Track? track = TrackMetadata(uri, ct, out Fault fault);
+                if (track is null) made = new CachedChoice(uri, quality, FileChoice.Failed(fault), null, now);
+                else
+                {
+                    Af.AudioFilesExtensionResponse? lossless = quality == Quality.Lossless ? LosslessMetadata(track, ct) : null;
+                    made = new CachedChoice(uri, quality, Choose(track, lossless, quality, fallbackDurationMs, Api.Market),
+                                            track, now);
+                }
+            }
+            if (made.Choice.Ok) RememberChoice(in made);
+            return made;
+        }
+
+        static void RememberChoice(in CachedChoice choice)
+        {
+            lock (ChoiceGate)
+            {
+                for (int i = 0; i < s_choices.Length; i++)
+                {
+                    if (s_choices[i].Quality == choice.Quality && string.Equals(s_choices[i].Uri, choice.Uri, StringComparison.Ordinal))
+                    {
+                        s_choices[i] = choice;
+                        return;
+                    }
+                }
+                s_choices[s_choiceNext] = choice;
+                s_choiceNext = (s_choiceNext + 1) % s_choices.Length;
+            }
         }
 
         /// <summary>The half after the ladder: the head, the CDN, the key and the byte stores. Split out so a caller
@@ -689,20 +917,6 @@ public static partial class Spotify
         public static Opened Open(in FileChoice choice, CancellationToken ct, bool prepared = false)
             => OpenBody(in choice, ct, prepared);
 
-        static FileChoice ChooseTrack(string uri, Quality quality, long fallbackDurationMs, CancellationToken ct)
-        {
-            Md.Track? track = TrackMetadata(uri, ct);
-            if (track is null) return FileChoice.Failed(Fault.Restricted);
-            Af.AudioFilesExtensionResponse? lossless = quality == Quality.Lossless ? LosslessMetadata(track, ct) : null;
-            return Choose(track, lossless, quality, fallbackDurationMs);
-        }
-
-        static FileChoice ChooseEpisode(string uri, Quality quality, long fallbackDurationMs, CancellationToken ct)
-        {
-            Md.Episode? episode = EpisodeMetadata(uri, ct);
-            return episode is null ? FileChoice.Failed(Fault.Restricted) : Choose(episode, quality, fallbackDurationMs);
-        }
-
         /// <summary>A per-request deadline linked to the caller's token. The CDN client itself has no `Timeout` (a
         /// legitimately long range body on a slow link must not be killed by a client-wide clock), so every request
         /// that is NOT a ranged body carries its own.</summary>
@@ -713,19 +927,35 @@ public static partial class Spotify
             return cts;
         }
 
-        static long HeadLength(string url, CancellationToken ct)
+        /// <summary>An external body's length (the <see cref="OpenSeams.ExternalLength"/> seam, formerly the two-step
+        /// `HeadLength` + `ProbeLength`): HEAD's `Content-Length`, else a `Range: bytes=0-0` GET's `Content-Range` total
+        /// (a host that refuses HEAD, or answers it with no length). &gt;0 the length · 0 reachable but unnamed (G-119: the
+        /// body opens on the duration's estimate and the first range names the truth) · −1 unreachable. Blocks on the
+        /// open's thread (an api thread or the pump's blocking `Open`, C9), HTTP/1.1 — the only synchronous sends left on
+        /// <see cref="Cdn"/> (the ranged body itself is async end to end, `Spotify.Audio.Stream.cs`'s
+        /// `HttpRangeSource.OpenAsync`).</summary>
+        static long ExternalLength(string url, CancellationToken ct)
         {
+            using var deadline = Deadline(ct, 20);
             try
             {
-                using var deadline = Deadline(ct, 20);
-                using var message = new HttpRequestMessage(HttpMethod.Head, url);
-                using HttpResponseMessage response = Cdn.Send(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-                if (!response.IsSuccessStatusCode) return 0;
-                return response.Content.Headers.ContentLength ?? 0;
+                using var head = new HttpRequestMessage(HttpMethod.Head, url);
+                using HttpResponseMessage r = Cdn.Send(head, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                if (r.IsSuccessStatusCode && r.Content.Headers.ContentLength is > 0 and { } n) return n;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException) { }
+            try
+            {
+                using var probe = new HttpRequestMessage(HttpMethod.Get, url);
+                probe.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 0);
+                using HttpResponseMessage r = Cdn.Send(probe, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                if ((int)r.StatusCode is not (200 or 206)) return -1;
+                return r.Content.Headers.ContentRange is { HasLength: true, Length: { } total } ? total
+                     : (int)r.StatusCode == 200 ? r.Content.Headers.ContentLength ?? 0 : 0;
             }
             catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException)
             {
-                return 0;
+                return -1;
             }
         }
 

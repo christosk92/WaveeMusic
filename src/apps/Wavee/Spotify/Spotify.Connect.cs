@@ -6,6 +6,13 @@
 // Wave: 2
 // Budget: 400 lines
 // Spec: plan
+// Named partial: `Spotify.Connect.Commands.cs` (gap batch B3b) — where a REQUEST verb goes after the ack
+// Named partial: `Spotify.Connect.Outbound.cs` (gap batch R4-1) — §4, commands to another device, and the queue forwards
+//
+// GAP BATCH R4-1: the PUT is sized to its snapshot (`Decode.PutStateCapacity`, a 50 + 50 window no longer fits 64 KB);
+// a rejected PlayerStateChanged / VolumeChanged re-announces the device, at most once per 30 s (G-247, 0.2.9's
+// MaybeReannounce); Online boots play registration (G-023); and a sign-out sends the BecameInactive it owes BEFORE the
+// session that could carry it is torn down (`RetireThen`, G-036).
 //
 // THE GLUE, AND ONLY THE GLUE (D19, plan §4.10). Three jobs:
 //   IN   `OnDealer` — the dealer receive thread hands every non-protocol frame here. Parse it with owner D's pure
@@ -39,7 +46,7 @@ namespace Wavee;
 public static partial class Spotify
 {
     /// <summary>The Connect glue: dealer in, put-state and commands out. SHELL.</summary>
-    public static class Connect
+    public static partial class Connect
     {
         // ── 1. the mailbox ───────────────────────────────────────────────────────────────────────────────────────────
 
@@ -194,6 +201,7 @@ public static partial class Spotify
                 }
                 // The free clock sample, fed BEFORE the delta is visible to anyone (C5).
                 if (delta.ServerTimestampMs > 0) ObserveClusterTimestamp(delta.ServerTimestampMs);
+                TraceCluster(in delta, buffer);                    // the diagnostics page's last cluster, while the buffer is ours
                 Enqueue(new Item(delta, buffer, epoch));
                 return;
             }
@@ -208,8 +216,9 @@ public static partial class Spotify
                 // pocket is worse than a command we could not read: `Ok` says whether we understood the BODY, and a
                 // body we did not understand is still a command we received.
                 Reply(message.Key, ok: true);
-                if (command.Kind != Decode.RemoteCmd.Unknown) Enqueue(new Item(command, epoch));
-                else Log.Warn("spotify", "connect command not understood — acked and dropped");
+                // A play/transfer goes to the playback host with its decoded body (claim and load in ONE slot, G-071); the
+                // verbs with a body are folded or decoded first (G-074). Spotify.Connect.Commands.cs.
+                RouteCommand(in command, message.Payload, epoch);
                 return;
             }
 
@@ -232,7 +241,9 @@ public static partial class Spotify
             }
 
             // Everything else (presence pushes, playlist pushes, the user-attribute stream) is somebody else's frame.
-            // It is not an error and it is not logged per push: the dealer carries a lot of traffic we do not read.
+            // It is not an error and it is not logged per push: the dealer carries a lot of traffic we do not read. A
+            // library push (the rootlist, a collection) is the library host's to classify and settle (Spotify.Library.cs).
+            if (message.Kind == DealerFrameKind.Message) Library.OnDealerPush(message.Uri);
         }
 
         // ── 3. out: put-state ────────────────────────────────────────────────────────────────────────────────────────
@@ -265,6 +276,9 @@ public static partial class Spotify
         /// one writer is <c>Playback.Ownership.IsActiveOnWire</c>.</para></summary>
         public static void PublishState(in Playback.Snapshot snapshot, PutReason reason)
         {
+            // No dealer connection, no device to announce to: arm no timer and wake no api thread for a PUT the flush would
+            // drop anyway. The hello on reaching Online announces whatever the state is by then.
+            if (Current.ConnectionId.IsEmpty) return;
             lock (PublishGate)
             {
                 s_pendingSnapshot = snapshot;
@@ -279,6 +293,7 @@ public static partial class Spotify
         /// waits 50 ms is a device the picker does not show for 50 ms longer than it has to.</summary>
         public static void PublishNow(in Playback.Snapshot snapshot, PutReason reason)
         {
+            if (Current.ConnectionId.IsEmpty) return;              // as PublishState: nothing to announce to
             lock (PublishGate) { s_pendingSnapshot = snapshot; s_pendingReason = reason; s_pendingActive = snapshot.IsActive; }
             Api.Run(Flush);
         }
@@ -299,8 +314,116 @@ public static partial class Spotify
         /// quote it. UI THREAD (it runs inside <c>Spotify.Apply</c>).</summary>
         internal static void AnnounceDevice()
         {
+            // G-023: Online is where play registration starts — its batcher, its heartbeat and the resume-point ticker —
+            // rather than on the first registration event (idempotent; a headless run registers its plays too).
+            Telemetry.Boot();
             if (!AnnounceOnOnline) return;
             Hello?.Invoke();
+        }
+
+        // ── 3b. a rejected put, and the put a sign-out owes ─────────────────────────────────────────────────────────
+
+        /// <summary>What a non-OK put-state answer means (0.2.9 <c>DeviceStatePublisher</c>).</summary>
+        public enum PutRejection : byte
+        {
+            /// <summary>422 after a BecameInactive: "you already were" — a soft acknowledgement, not a failure.</summary>
+            SoftAck,
+            /// <summary>Refused: no verdict will come, so the claim bound to it must hear so.</summary>
+            Rejected,
+            /// <summary>Refused a PUT that assumes our registration (a state or volume change) — 422 above all, the service's
+            /// "I no longer have your device": the claim hears so AND the device re-announces (G-247).</summary>
+            Reannounce,
+        }
+
+        /// <summary>The rejection route for <paramref name="reason"/> answered <paramref name="status"/>. PURE.</summary>
+        public static PutRejection RejectionOf(PutReason reason, int status)
+            => status == 422 && reason == PutReason.BecameInactive ? PutRejection.SoftAck
+             : reason is PutReason.PlayerStateChanged or PutReason.VolumeChanged ? PutRejection.Reannounce
+             : PutRejection.Rejected;
+
+        /// <summary>The fewest milliseconds between two re-announces: a hard-down service must not become a hot loop.</summary>
+        public const long ReannounceIntervalMs = 30_000;
+
+        /// <summary>May a rejected put re-announce now, the last re-announce having gone at <paramref name="lastMs"/>? PURE.</summary>
+        public static bool ReannounceDue(long nowMs, long lastMs) => nowMs - lastMs >= ReannounceIntervalMs;
+
+        static long s_lastReannounceMs = long.MinValue / 2;
+
+        /// <summary>API THREAD: re-announce this device as a new connection (the hello), rate-limited across the api threads.
+        /// Without it a device the service dropped stays off every picker until something else announces (G-247).</summary>
+        static void MaybeReannounce()
+        {
+            long now = Playback.FrameNowMs();
+            long last = Interlocked.Read(ref s_lastReannounceMs);
+            if (!ReannounceDue(now, last) || Interlocked.CompareExchange(ref s_lastReannounceMs, now, last) != last) return;
+            Log.Info("spotify", "put-state rejected: re-announcing this device as a new connection");
+            Hello?.Invoke();
+        }
+
+        /// <summary>How a sign-out treats the cluster (G-036). PURE.</summary>
+        public enum RetireRoute : byte
+        {
+            /// <summary>Nothing is owed: no connection, no player, or playback is not ours.</summary>
+            SignOutNow,
+            /// <summary>Playback is ours: the BecameInactive PUT goes first, then the sign-out.</summary>
+            InactiveFirst,
+        }
+
+        public static RetireRoute RetireRouteOf(bool hasConnection, bool hasPlayer, bool ownsPlayback)
+            => hasConnection && hasPlayer && ownsPlayback ? RetireRoute.InactiveFirst : RetireRoute.SignOutNow;
+
+        /// <summary>The longest a sign-out waits on its BecameInactive PUT.</summary>
+        public const int RetireTimeoutMs = 2_000;
+
+        /// <summary>Sign out AFTER telling the cluster this device is no longer active (G-036). The session's Logout step
+        /// clears the connection id and forgets the bearer in the same fold that closes the epoch, and the reducer's own
+        /// <c>Release(Logout)</c> announce is only ever posted after it — so that announce finds no connection and the
+        /// BecameInactive never left; the phone went on showing Wavee as the active device. Here the inactive PUT is built
+        /// on the UI thread (<c>Playback.RetireForSignOut</c>) and sent on an api thread, bounded by
+        /// <see cref="RetireTimeoutMs"/>, and <paramref name="signOut"/> runs when it is done — or at once when nothing is
+        /// owed. Any thread. <c>Spotify.Logout</c> is the caller.</summary>
+        public static void RetireThen(Action signOut)
+        {
+            if (RetireRouteOf(!Current.ConnectionId.IsEmpty, Hello is not null, ownsPlayback: true) == RetireRoute.SignOutNow)
+            {
+                signOut();
+                return;
+            }
+            Playback.ToUi(() =>
+            {
+                bool owed = Playback.RetireForSignOut(out Playback.Snapshot inactive);
+                if (RetireRouteOf(!Current.ConnectionId.IsEmpty, Hello is not null, owed) == RetireRoute.SignOutNow)
+                {
+                    signOut();
+                    return;
+                }
+                uint messageId;
+                lock (PublishGate) messageId = ++s_messageId;
+                Playback.Snapshot snapshot = inactive.WithMessageId(messageId);
+                bool queued = Api.Run(() =>
+                {
+                    try { SendRetire(in snapshot); }
+                    finally { signOut(); }
+                });
+                if (!queued) signOut();
+            });
+        }
+
+        /// <summary>API THREAD: the sign-out's BecameInactive, sent while the session still has its connection and bearer.
+        /// Its response is not folded — the session it would describe is being closed.</summary>
+        static void SendRetire(in Playback.Snapshot snapshot)
+        {
+            byte[] rented = ArrayPool<byte>.Shared.Rent(Decode.PutStateCapacity(in snapshot));
+            try
+            {
+                int written = Decode.PutState(in snapshot, rented);
+                var args = new RequestArgs { Id = OurDeviceId, Body = rented.AsSpan(0, written) };
+                using var bounded = new CancellationTokenSource(RetireTimeoutMs);
+                Api.Result result = Api.Send(RequestKind.ConnectStatePut, args, bounded.Token);
+                Log.Info("spotify", "put-state BecameInactive before sign-out msgId=" + snapshot.MessageId + " status=" + result.Status);
+            }
+            catch (Exception ex) { Log.Warn("spotify", "the sign-out's inactive put-state failed", ex); }
+            finally { ArrayPool<byte>.Shared.Return(rented); }
         }
 
         static void Flush()
@@ -323,11 +446,16 @@ public static partial class Spotify
             string connectionId = ConnectionId();
             if (connectionId.Length == 0) return;                  // no dealer, no device: nothing to announce to
 
-            byte[] rented = ArrayPool<byte>.Shared.Rent(64 * 1024);
+            // Sized to the snapshot: a 50 + 50 window with its rows' metadata is several times the old fixed 64 KB (G-240).
+            byte[] rented = ArrayPool<byte>.Shared.Rent(Decode.PutStateCapacity(in snapshot));
             try
             {
-                int written = Decode.PutState(in snapshot, rented);
+                // started_playing_at is UNIX ms on the wire and the reducer stamps the frame clock: the two clocks sampled
+                // together here convert it exactly, however long the window held the snapshot (B3b).
+                long frameToUnixMs = Playback.UnixNowMs() - Playback.FrameNowMs();
+                int written = Decode.PutState(in snapshot, rented, frameToUnixMs);
                 if (written <= 0) return;
+                TracePut(in snapshot, reason, frameToUnixMs);
 
                 var args = new RequestArgs { Id = OurDeviceId, Body = rented.AsSpan(0, written) };
                 Api.Result result = Api.Send(RequestKind.ConnectStatePut, args, CancellationToken.None);
@@ -335,11 +463,13 @@ public static partial class Spotify
                 {
                     // 422 after a BecameInactive is the service saying "you already were" — a soft acknowledgement,
                     // not a failure, and warning about it trains the reader to ignore the warning that matters.
-                    if (result.Status == 422 && reason == PutReason.BecameInactive) return;
+                    PutRejection rejection = RejectionOf(reason, result.Status);
+                    if (rejection == PutRejection.SoftAck) return;
                     Log.Warn("spotify", "put-state " + reason + " rejected (" + result.Status + ")");
                     // No verdict will come for this put. Say so, or a claim bound to it sits Protected — and audible —
                     // until its 5 s window expires (C5).
                     Playback.Post(Playback.Input.PutVerdict(messageId, accepted: false));
+                    if (rejection == PutRejection.Reannounce) MaybeReannounce();
                     return;
                 }
 
@@ -363,6 +493,17 @@ public static partial class Spotify
                     delta.Origin = Decode.ClusterOrigin.PutResponse;
                     delta.PutMsgId = messageId;
                     if (delta.ServerTimestampMs > 0) ObserveClusterTimestamp(delta.ServerTimestampMs);
+                    TraceEcho(in delta, buffer, messageId);
+                    // Always-on: a claim the service did NOT adopt is the one line that explains "other devices do not
+                    // show Wavee" (2026-09-16) — the diagnostics page's echo card is not in the log the user sends.
+                    if (isActive)
+                    {
+                        ReadOnlySpan<byte> echoActive = buffer.Utf8(delta.ActiveDeviceId);
+                        if (echoActive.IsEmpty || !echoActive.SequenceEqual(DeviceIdUtf8))
+                            Log.Warn("spotify", "put-state echo msgId=" + messageId + " did not adopt our claim: cluster active="
+                                + (echoActive.IsEmpty ? "(none)" : Encoding.UTF8.GetString(echoActive[..Math.Min(8, echoActive.Length)]) + "…"));
+                    }
+                    TraceCluster(in delta, buffer);
                     Enqueue(new Item(delta, buffer, Current.Epoch));
                 }
                 catch (Exception ex)
@@ -377,139 +518,6 @@ public static partial class Spotify
             }
         }
 
-        // ── 4. out: commands to another device ───────────────────────────────────────────────────────────────────────
-        //
-        // Three ROUTES, not one: a transfer moves the cluster's active device, a player command is a verb for the
-        // device that already has it, and volume is its own PUT with a protobuf body. All three go through
-        // `RequestKind.Custom` rather than D's `ConnectState*` kinds, because the captured desktop client sends a
-        // header tuple those kinds do not carry (form content-type + gzip + connection id on the command route, a
-        // protobuf PUT on volume). The delta is written down in the handover rather than patched into D's fold.
-
-        const HeaderSet CommandHeaders = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity
-            | HeaderSet.AcceptLanguage | HeaderSet.ContentForm | HeaderSet.GzipBody | HeaderSet.ConnectionId;
-
-        const HeaderSet TransferHeaders = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity
-            | HeaderSet.AcceptLanguage | HeaderSet.ContentForm | HeaderSet.ConnectionId;
-
-        /// <summary>Move playback to <paramref name="targetDeviceId"/>, from whoever owns it now. Self-to-self is a
-        /// 400 and the caller must not ask for it.</summary>
-        public static bool Transfer(string fromDeviceId, string targetDeviceId, CancellationToken ct)
-        {
-            var buffer = new ArrayBufferWriter<byte>(256);
-            using (var w = new Utf8JsonWriter(buffer))
-            {
-                w.WriteStartObject();
-                w.WriteStartObject("options");
-                w.WriteString("restore_paused", "restore");
-                w.WriteString("restore_position", "extrapolate");
-                w.WriteString("restore_track", "only_current");
-                w.WriteString("license", "premium");
-                w.WriteEndObject();
-                w.WriteString("transfer_intent_id", NewId());
-                w.WriteString("command_id", NewId());
-                w.WriteString("interaction_id", Guid.NewGuid().ToString());
-                w.WriteEndObject();
-            }
-            return PostCommand("/connect-state/v1/connect/transfer/from/", fromDeviceId, targetDeviceId,
-                buffer.WrittenSpan, TransferHeaders, ct);
-        }
-
-        /// <summary>One verb for the device that holds playback. <paramref name="endpoint"/> is the wire spelling
-        /// (`pause`, `resume`, `skip_next`, `seek_to`, `set_shuffling_context`, …) and <paramref name="value"/> is the
-        /// verb's one argument, written under <paramref name="valueName"/> when that name is non-empty.</summary>
-        public static bool Command(string targetDeviceId, string endpoint, string valueName, long value,
-            bool flag, CancellationToken ct)
-        {
-            var buffer = new ArrayBufferWriter<byte>(256);
-            using (var w = new Utf8JsonWriter(buffer))
-            {
-                w.WriteStartObject();
-                w.WriteStartObject("command");
-                w.WriteString("endpoint", endpoint);
-                if (valueName.Length > 0)
-                {
-                    if (endpoint.StartsWith("set_", StringComparison.Ordinal)) w.WriteBoolean(valueName, flag);
-                    else w.WriteNumber(valueName, value);
-                }
-                w.WriteStartObject("logging_params");
-                w.WriteStartArray("interaction_ids");
-                w.WriteEndArray();
-                w.WriteString("device_identifier", OurDeviceId);
-                w.WriteString("command_id", NewId());
-                w.WriteEndObject();
-                w.WriteEndObject();
-                w.WriteString("connection_type", "wlan");
-                w.WriteString("intent_id", NewId());
-                w.WriteEndObject();
-            }
-            return PostCommand("/connect-state/v1/player/command/from/", OurDeviceId, targetDeviceId,
-                buffer.WrittenSpan, CommandHeaders, ct);
-        }
-
-        /// <summary>Volume is not a player verb: it is a PUT with a three-field `SetVolumeCommand` protobuf body,
-        /// hand-encoded so this path carries no generated message for three bytes of varint.</summary>
-        public static bool Volume(string targetDeviceId, int volume0To65535, CancellationToken ct)
-        {
-            Span<byte> body = stackalloc byte[16];
-            int n = VolumeBody(volume0To65535, body);
-
-            Span<char> path = stackalloc char[192];
-            var w = new PathWriter(path);
-            w.Append("/connect-state/v1/connect/volume/from/");
-            w.AppendEscaped(OurDeviceId);
-            w.Append("/to/");
-            w.AppendEscaped(targetDeviceId);
-            var args = new RequestArgs
-            {
-                Path = w.Written,
-                Host = ApiHost.Spclient,
-                Verb = Verb.Put,
-                Headers = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity | HeaderSet.ContentProtobuf,
-                Body = body[..n],
-            };
-            Api.Result result = Api.Send(RequestKind.Custom, args, ct);
-            if (!result.Ok) Log.Warn("spotify", "connect volume rejected (" + result.Status + ")");
-            return result.Ok;
-        }
-
-        /// <summary>The `SetVolumeCommand` body, hand-encoded. PURE, and separate from the send because it is a fixed
-        /// three-field wire spec that a capture pins exactly: volume 19496 is
-        /// <c>08 a8 98 01 1a 00 22 04 'wlan'</c>. Returns the length written; needs 12 bytes at most.</summary>
-        public static int VolumeBody(int volume0To65535, Span<byte> into)
-        {
-            int n = 0;
-            into[n++] = 0x08;                                              // field 1, volume, varint
-            uint value = (uint)Math.Clamp(volume0To65535, 0, 65535);
-            while (value >= 0x80) { into[n++] = (byte)(value | 0x80); value >>= 7; }
-            into[n++] = (byte)value;
-            into[n++] = 0x1a; into[n++] = 0x00;                            // field 3, logging_params, empty message
-            into[n++] = 0x22; into[n++] = 0x04;                            // field 4, connection_type
-            into[n++] = (byte)'w'; into[n++] = (byte)'l'; into[n++] = (byte)'a'; into[n++] = (byte)'n';
-            return n;
-        }
-
-        static bool PostCommand(string prefix, string fromDeviceId, string targetDeviceId, ReadOnlySpan<byte> body,
-            HeaderSet headers, CancellationToken ct)
-        {
-            Span<char> path = stackalloc char[256];
-            var w = new PathWriter(path);
-            w.Append(prefix);
-            w.AppendEscaped(fromDeviceId);
-            w.Append("/to/");
-            w.AppendEscaped(targetDeviceId);
-            var args = new RequestArgs
-            {
-                Path = w.Written,
-                Host = ApiHost.Spclient,
-                Verb = Verb.Post,
-                Headers = headers,
-                Body = body,
-            };
-            Api.Result result = Api.Send(RequestKind.Custom, args, ct);
-            if (!result.Ok) Log.Warn("spotify", "connect " + prefix + " rejected (" + result.Status + ")");
-            return result.Ok;
-        }
-
-        static string NewId() => Guid.NewGuid().ToString("N");
+        // ── 4. out: commands to another device — Spotify.Connect.Outbound.cs ─────────────────────────────────────────────
     }
 }

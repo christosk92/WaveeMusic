@@ -643,58 +643,182 @@ public class DesignNavMotionTests
         => Assert.Contains('\u001F', Design.Nav.SlotKey(new Design.PageSlot(0, "album", "x")));
 
     [Fact]
-    public void Every_direction_has_an_ACTIVE_enter_and_exit()
+    public void Sidebar_to_sidebar_is_Entrance_and_list_to_album_is_DrillIn()
     {
-        // A stripped Exit detaches the outgoing page in the SAME frame and the content card flashes EMPTY.
+        Assert.Equal(Design.NavRelation.Entrance, Design.Nav.RelationOf(
+            Design.NavSurface.TopLevel, Design.NavSurface.TopLevel, sameKind: false, sameIdentity: false,
+            Design.NavTransitionKind.Forward));
+        Assert.Equal(Design.NavRelation.DrillIn, Design.Nav.RelationOf(
+            Design.NavSurface.TopLevel, Design.NavSurface.Detail, sameKind: false, sameIdentity: false,
+            Design.NavTransitionKind.Forward));
+        Assert.Equal(Design.NavRelation.DrillIn, Design.Nav.RelationOf(
+            Design.NavSurface.Detail, Design.NavSurface.TopLevel, sameKind: false, sameIdentity: false,
+            Design.NavTransitionKind.Back));
+    }
+
+    [Fact]
+    public void Same_kind_different_identity_is_Sibling_including_artist_to_artist()
+    {
+        Assert.Equal(Design.NavRelation.Sibling, Design.Nav.RelationOf(
+            Design.NavSurface.Detail, Design.NavSurface.Detail, sameKind: true, sameIdentity: false,
+            Design.NavTransitionKind.Forward));
+        Assert.Equal(Design.NavRelation.Fade, Design.Nav.RelationOf(
+            Design.NavSurface.TopLevel, Design.NavSurface.TopLevel, sameKind: true, sameIdentity: true,
+            Design.NavTransitionKind.Neutral));
+    }
+
+    [Fact]
+    public void Every_directed_recipe_keeps_enter_and_exit_active()
+    {
+        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
         foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
         {
-            var r = Design.Nav.RecipeFor(kind);
+            var r = Design.Nav.RecipeFor(kind, relation);
             Assert.True(r.Enter.Active);
             Assert.True(r.Exit.Active);
         }
     }
 
+    /// <summary>THE regression guard: every SEQUENCED style (everything but None) must finish the exit leg before the
+    /// enter leg starts, on every relation and both directions. This is what the old `DelayMs == 0` test got backwards
+    /// — the enter delay must be AT LEAST the exit duration, or two full-bleed pages are briefly both legible (measured:
+    /// summed opacity peaking at 1.83 for ~130ms). <c>ExitDelayMs</c> must be the explicit 0f, never null (null inherits
+    /// `DelayMs` and pushes the exit out by the same amount, flashing the content card empty).</summary>
     [Fact]
-    public void The_exit_is_mostly_gone_before_the_enter_starts()
+    public void Every_sequenced_style_finishes_the_exit_leg_before_the_enter_leg_starts()
     {
-        // Fade-through, not a cross-fade: at the enter delay the outgoing page is ~94% gone, so two full-bleed pages are
-        // never legible at the same time.
-        Assert.Equal(120f, Design.Nav.FadeThroughExitMs);
-        var r = Design.Nav.PageFadeThroughForward;
-        Assert.True(r.DelayMs > 0f && r.DelayMs < Design.Nav.FadeThroughExitMs,
-                    "enter must start inside the exit window, after most of it");
-        Assert.True(r.DelayMs / Design.Nav.FadeThroughExitMs >= 0.7f);
+        foreach (var style in new[] { Design.PageMotionStyle.Fluent, Design.PageMotionStyle.Spatial, Design.PageMotionStyle.WinUi, Design.PageMotionStyle.Classic })
+        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
+        foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
+        {
+            var r = Design.Nav.RecipeFor(style, kind, relation);
+            Assert.True(r.Exit.Active);
+            Assert.NotNull(r.ExitDynamics);
+            Assert.Equal(0f, r.ExitDelayMs);
+            Assert.True(r.DelayMs >= r.ExitDynamics!.Value.DurationMs,
+                $"{style}/{kind}/{relation}: enter delay {r.DelayMs}ms must be >= the exit duration {r.ExitDynamics!.Value.DurationMs}ms, or the two legs overlap.");
+        }
     }
 
     [Fact]
-    public void Forward_and_back_slide_opposite_ways_at_the_base_distance()
+    public void Fluent_is_a_plain_crossfade_with_no_geometry_on_any_relation()
     {
-        // DistBase, not DistLarge: a long slide covers half its travel in the first presented frame after a heavy mount.
-        Assert.Equal(Expressive.DistBase, Design.Nav.PageFadeThroughForward.Enter.Dx);
-        Assert.Equal(-Expressive.DistBase, Design.Nav.PageFadeThroughBack.Enter.Dx);
+        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
+        foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
+        {
+            var r = Design.Nav.RecipeFor(Design.PageMotionStyle.Fluent, kind, relation);
+            Assert.Equal(0f, r.Enter.Dx);
+            Assert.Equal(0f, r.Enter.Dy);
+            Assert.Equal(1f, r.Enter.Sx);
+            Assert.Equal(1f, r.Enter.Sy);
+            Assert.Equal(0f, r.Exit.Dx);
+            Assert.Equal(0f, r.Exit.Dy);
+            Assert.Equal(1f, r.Exit.Sx);
+            Assert.Equal(1f, r.Exit.Sy);
+        }
     }
 
     [Fact]
-    public void No_video_safe_recipe_touches_opacity()
+    public void Spatial_entrance_has_no_translation_but_sibling_and_drillin_do()
     {
-        // An ancestor opacity multiplies straight into a composited video's own opacity, and an opacity GROUP erases the
-        // punched hole entirely. A TRANSLATE is the one ancestor motion a hole rides correctly.
+        var entrance = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.Entrance);
+        Assert.Equal(0f, entrance.Enter.Dx);
+        Assert.Equal(0f, entrance.Enter.Dy);
+        Assert.Equal(1f, entrance.Enter.Sx);
+
+        var drill = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.DrillIn);
+        Assert.True(drill.Enter.Sx is > 0f and < 1f);
+        Assert.True(drill.Exit.Sx > 1f);
+
+        var sibling = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.Sibling);
+        Assert.NotEqual(0f, sibling.Enter.Dx);
+    }
+
+    /// <summary>Spatial's Sibling moves ONLY the incoming page — the outgoing page fades in place instead of sliding
+    /// away with it (the WinUI-style "both pages move" treatment is <see cref="PageMotionStyle.WinUi"/>'s job).</summary>
+    [Fact]
+    public void Spatial_sibling_moves_only_the_incoming_page()
+    {
+        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.Sibling);
+        var back = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Back, Design.NavRelation.Sibling);
+        Assert.Equal(0f, fwd.Exit.Dx);
+        Assert.Equal(0f, back.Exit.Dx);
+        Assert.Equal(-fwd.Enter.Dx, back.Enter.Dx);
+    }
+
+    [Fact]
+    public void WinUi_entrance_rises_140_DIP_and_the_outgoing_side_only_fades()
+    {
+        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.WinUi, Design.NavTransitionKind.Forward, Design.NavRelation.Entrance);
+        var back = Design.Nav.RecipeFor(Design.PageMotionStyle.WinUi, Design.NavTransitionKind.Back, Design.NavRelation.Entrance);
+        Assert.Equal(140f, fwd.Enter.Dy);
+        Assert.Equal(0f, fwd.Exit.Dy);
+        Assert.Equal(0f, fwd.Exit.Dx);
+        Assert.Equal(-140f, back.Enter.Dy);
+    }
+
+    [Fact]
+    public void WinUi_sibling_moves_both_pages_by_different_amounts()
+    {
+        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.WinUi, Design.NavTransitionKind.Forward, Design.NavRelation.Sibling);
+        Assert.Equal(200f, fwd.Enter.Dx);
+        Assert.Equal(-150f, fwd.Exit.Dx);
+    }
+
+    [Fact]
+    public void Classic_is_the_old_fade_through_uniform_across_every_relation()
+    {
+        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
+        {
+            var r = Design.Nav.RecipeFor(Design.PageMotionStyle.Classic, Design.NavTransitionKind.Forward, relation);
+            Assert.Equal(Expressive.DistBase, r.Enter.Dx);
+            Assert.Equal(-Expressive.DistBase, r.Exit.Dx);
+        }
+    }
+
+    [Fact]
+    public void None_is_an_instant_cut_with_exit_still_active()
+    {
+        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
+        {
+            var r = Design.Nav.RecipeFor(Design.PageMotionStyle.None, Design.NavTransitionKind.Forward, relation);
+            Assert.True(r.Exit.Active);
+            Assert.True(r.Dynamics.DurationMs <= 1f);
+            Assert.True(r.ExitDynamics!.Value.DurationMs <= 1f);
+        }
+    }
+
+    [Fact]
+    public void DrillIn_is_a_semantic_zoom_not_an_eight_DIP_fade()
+    {
+        var fwd = Design.Nav.RecipeFor(Design.NavTransitionKind.Forward, Design.NavRelation.DrillIn);
+        var back = Design.Nav.RecipeFor(Design.NavTransitionKind.Back, Design.NavRelation.DrillIn);
+        Assert.True(fwd.Enter.Sx is > 0f and < 1f);
+        Assert.True(fwd.Exit.Sx > 1f);
+        Assert.True(back.Enter.Sx > 1f);
+        Assert.True(back.Exit.Sx is > 0f and < 1f);
+    }
+
+    [Fact]
+    public void No_video_safe_recipe_touches_opacity_and_travel_matches_sibling()
+    {
         foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
         {
             var r = Design.Nav.RecipeForVideoSafe(kind);
             Assert.NotNull(r);
             Assert.Equal(TransitionChannels.Position, r!.Value.Channels);
             Assert.True(r.Value.Exit.Active);
+            Assert.Equal(Design.Nav.SiblingDx, MathF.Abs(r.Value.Enter.Dx));
         }
     }
 
     [Fact]
     public void Neutral_has_no_video_safe_form_and_says_so()
-    {
-        // Neutral's only recipe is opacity and nothing else, so there is nothing to hand back — a hard CUT is what "no
-        // motion this page can survive" looks like.
-        Assert.Null(Design.Nav.RecipeForVideoSafe(Design.NavTransitionKind.Neutral));
-    }
+        => Assert.Null(Design.Nav.RecipeForVideoSafe(Design.NavTransitionKind.Neutral));
+
+    [Fact]
+    public void AccentFor_a_coverless_page_is_the_payload_hex_not_a_live_track()
+        => Assert.Equal(Design.Palette.ChromeFromPayload(0xFFC2185Bu), Detail.AccentFor(null, 0xFFC2185Bu));
 }
 
 public class DesignWashTests
@@ -798,6 +922,29 @@ public class DesignTintOwnershipTests
         Assert.Equal(TintOwnership.Outcome.NoWrite,
             TintOwnership.Resolve(new object(), new TintOwnership.Request(new object(), false, true, true)));
     }
+
+    // ── the artist page's tint gate (ch 08 BUG D): "ready" must mean "the art is usable", not "Knows(Overview)" ──────
+
+    [Fact]
+    public void A_claim_with_a_cached_grading_writes_the_KNOWN_colour_even_when_the_overview_is_still_unknown()
+    {
+        // The artist page used to gate the tint's `ready` flag on Knows(Overview) — eight field groups committing at
+        // once — so a claim from a page whose ART is already graded (the search/home card's avatar, warmed by an
+        // earlier batch) still had nothing to say until the whole overview landed, and the chrome held the PREVIOUS
+        // artist's colour for that whole stretch. The gate only needs to know the claim HAS a colour.
+        Assert.Equal(TintOwnership.Outcome.WriteKnownColor,
+            TintOwnership.Resolve(PageA, new TintOwnership.Request(PageB, IsClaim: true, Definite: false, HasColor: true)));
+    }
+
+    [Fact]
+    public void A_claim_with_no_cached_grading_still_HOLDS_even_when_the_overview_is_still_unknown()
+    {
+        // The other half of the same fix: an artist whose art has never been graded yet must not dip the chrome to
+        // neutral while its overview is still in flight — the hold is exactly what an overview-agnostic gate needs,
+        // so it must survive moving the gate off Knows(Overview).
+        Assert.Equal(TintOwnership.Outcome.WriteHeldColor,
+            TintOwnership.Resolve(PageA, new TintOwnership.Request(PageB, IsClaim: true, Definite: false, HasColor: false)));
+    }
 }
 
 public class DesignRevealRampTests
@@ -825,6 +972,72 @@ public class DesignRevealRampTests
         Assert.True(Design.RevealRamp.Revealed(4000, Design.RevealRamp.Done));
         Assert.False(Design.RevealRamp.Revealed(12, 12));
         Assert.True(Design.RevealRamp.Revealed(11, 12));
+    }
+
+    // ── G-259: a step after Done wrapped int.MaxValue + 12 negative and blanked every row of a short list ──────────────
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    [InlineData(24)]
+    [InlineData(5000)]
+    [InlineData(int.MaxValue)]
+    public void A_step_after_Done_stays_Done(int visible)
+        => Assert.Equal(Design.RevealRamp.Done, Design.RevealRamp.Next(Design.RevealRamp.Done, visible));
+
+    [Fact]
+    public void No_input_overflows_or_goes_negative()
+    {
+        Assert.Equal(Design.RevealRamp.Done, Design.RevealRamp.Next(int.MaxValue - 1, 2));
+        Assert.Equal(Design.RevealRamp.Done, Design.RevealRamp.Next(int.MaxValue - Design.RevealRamp.Chunk, 5000));
+        Assert.Equal(Design.RevealRamp.Done, Design.RevealRamp.Next(Design.RevealRamp.Cap + 1, int.MaxValue));
+        // A negative count is "nothing revealed yet": it saturates to 0 and takes one ordinary chunk.
+        Assert.Equal(Design.RevealRamp.Chunk, Design.RevealRamp.Next(int.MinValue, 100));
+        Assert.Equal(Design.RevealRamp.Chunk, Design.RevealRamp.Next(-1, 100));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]     // al3, the Single the gate shot blank
+    [InlineData(10)]    // al5
+    [InlineData(12)]    // al2
+    [InlineData(13)]
+    [InlineData(24)]    // the top of the window the bug blanked
+    [InlineData(25)]
+    [InlineData(60)]
+    [InlineData(4000)]
+    public void A_list_ramped_from_the_armed_chunk_reaches_Done_and_holds_it(int visible)
+    {
+        // The table arms at Chunk, then the ticker steps once per frame until Done and may step again before it unmounts.
+        int reveal = Design.RevealRamp.Chunk;
+        int steps = 0;
+        while (reveal != Design.RevealRamp.Done)
+        {
+            int next = Design.RevealRamp.Next(reveal, visible);
+            Assert.True(next > reveal, $"the ramp must only move forward (visible={visible}, {reveal} → {next})");
+            reveal = next;
+            Assert.True(++steps <= Design.RevealRamp.Cap / Design.RevealRamp.Chunk, $"the ramp must finish near the cap (visible={visible})");
+        }
+        for (int extra = 0; extra < 3; extra++) reveal = Design.RevealRamp.Next(reveal, visible);
+        Assert.Equal(Design.RevealRamp.Done, reveal);
+        for (int row = 0; row < Math.Min(visible, 100); row++) Assert.True(Design.RevealRamp.Revealed(row, reveal));
+    }
+
+    [Fact]
+    public void Any_start_finishes_within_Cap_over_Chunk_steps()
+    {
+        foreach (int start in new[] { int.MinValue, -1, 0, 1, 11, 12, 47, 59, 60, 61, int.MaxValue - 1 })
+            foreach (int visible in new[] { int.MinValue, 0, 1, 12, 24, 59, 60, 61, int.MaxValue })
+            {
+                int reveal = start;
+                int steps = 0;
+                while (reveal != Design.RevealRamp.Done)
+                {
+                    reveal = Design.RevealRamp.Next(reveal, visible);
+                    Assert.True(reveal >= 0, $"never negative (start={start}, visible={visible})");
+                    Assert.True(++steps <= Design.RevealRamp.Cap / Design.RevealRamp.Chunk, $"terminates (start={start}, visible={visible})");
+                }
+            }
     }
 }
 
@@ -858,6 +1071,35 @@ public class DesignDecodeScaleTests
     [Fact]
     public void A_scaled_budget_is_never_smaller_than_the_unscaled_one()
         => Assert.True(Design.ImageDecodeScale.For(188f, 1.5f) > Design.ImageDecodeScale.For(188f, 1f));
+}
+
+// A2 (G-259 follow-up): Controls.cs's Artwork unscaled branch already has a final device-pixel edge (the laid-out DIP
+// size) and only needs the CACHE KEY to land on the same grid a scaled decode would — this is that standalone rounding
+// rule, exercised with no engine/UI dependency.
+public class DesignDecodeScaleBucketTests
+{
+    [Fact]
+    public void Rounds_up_to_the_next_multiple_of_the_bucket()
+    {
+        Assert.Equal(128, Design.ImageDecodeScale.Bucket(121));
+        Assert.Equal(8, Design.ImageDecodeScale.Bucket(1));
+        Assert.Equal(304, Design.ImageDecodeScale.Bucket(300));   // 300 is not a multiple of 8
+    }
+
+    [Fact]
+    public void Is_idempotent_on_an_exact_multiple()
+    {
+        Assert.Equal(128, Design.ImageDecodeScale.Bucket(128));
+        Assert.Equal(Design.ImageDecodeScale.BucketPx, Design.ImageDecodeScale.Bucket(Design.ImageDecodeScale.BucketPx));
+        Assert.Equal(640, Design.ImageDecodeScale.Bucket(640));
+    }
+
+    [Fact]
+    public void Never_returns_zero_for_a_positive_input()
+    {
+        foreach (int px in new[] { 1, 2, 7, 8, 9, 127, 128, 129, 4000 })
+            Assert.True(Design.ImageDecodeScale.Bucket(px) > 0, $"px={px}");
+    }
 }
 
 public class DesignMorphKeyTests

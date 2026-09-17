@@ -7,15 +7,29 @@
   FluentGpuDiag=true build of Wavee (ScrollTrace compiled in) with the engine's diagnostic env gates set, so one
   run yields, in one folder:
 
-    fg-scroll.log        FG_SCROLL_LOG=1   - DM STATUS edges, DM STRIKE/DISABLED, FB BEGIN/UPDATE/END, WHEEL lines
-    fg-scrolltrace.csv   FG_SCROLL_TRACE   - the per-frame Frame/Phase/Latch/Release/GestureEnd/Latency rows
-    stderr.txt           FG_FPS_LOG=1      - one [fps] line per scroll-active frame incl. `wait <kind><ms> WxH@Hz`
-    wavee-<date>.log     the app's always-on log (scroll.frames / nav.frames / frame.slow / session.frames)
+    fg-scroll.log        (absent unless FG_SCROLL_LOG is set) - this script deliberately does NOT set it; see below
+    fg-scrolltrace.csv   FG_SCROLL_TRACE   - the per-frame Frame/RawWheel/FbLift/Coalesce/VelDeposit/Phase/Latch/
+                                              VelSample/Release/GestureEnd/ApplyPan/WheelSeed/WheelCancel/AnimTick/
+                                              AnimEvent/Note/OffsetWrite/FrameTiming/Latency rows (bug-B, 2026-09-15:
+                                              Phase/Latch/VelSample/Release/GestureEnd were dead columns - declared
+                                              in Foundation/ScrollTrace.cs but never emitted - until the scroll-v3
+                                              rewrite's dead sites were re-wired; all columns above are live now)
+    stderr.txt            FG_FPS_LOG=1      - one [fps] line per scroll-active frame incl. `wait <kind><ms> WxH@Hz`
+    wavee-<date>.log      the app's always-on log (scroll.frames / nav.frames / frame.slow / session.frames)
 
   Those env vars are ENGINE diagnostic gates (FG_*), read at process start by the engine; the app itself has no
   environment switches (CLAUDE.md). They only do anything in a build made with -p:FluentGpuDiag=true:
 
     dotnet build src\apps\Wavee\Wavee.csproj -c Release -p:FluentGpuDiag=true -o src\apps\Wavee\bin\verify\diag
+
+  Env block mirrors fluent-gpu-pin\ops\diag\wavee-scroll-session.ps1 (the canonical capture harness) on two points
+  this script used to get wrong (bug-B handoff §8.5):
+    - FG_SCROLL_LOG is NOT set. It is per-event Console.WriteLine with AutoFlush and visibly perturbs the pacing
+      being measured (ScrollLog's own class doc says so) - use fg-scrolltrace.csv for "what happened", not this.
+    - FG_BIND_CONTRACT and FG_BACKWARDS_WRITE are explicitly forced to '0'. Both are default-ON once compiled in
+      (FLUENTGPU_DIAG), and both change the feel this capture exists to measure - BackwardsWriteGuard scans a
+      signal's subscriber list on every write; leaving them on (this script's prior behavior: never set at all,
+      so they ran at their compiled-in default) measures a build that is NOT what ships.
 
   Single-instance: a second Wavee.exe hands its launch to the running one and exits, so the script refuses to
   start while any Wavee.exe is alive - close the user's instance first (never Stop-Process it from a script).
@@ -52,11 +66,15 @@ $traceCsv = Join-Path $OutDir 'fg-scrolltrace.csv'
 $scrollLog = Join-Path $env:TEMP 'fg-scroll.log'      # ScrollLog's fixed path; copied out at the end
 if (Test-Path $scrollLog) { Remove-Item $scrollLog -Force }
 
-# Engine diagnostic gates (read once at process start).
-$env:FG_SCROLL_LOG = '1'
+# Engine diagnostic gates (read once at process start). Mirrors wavee-scroll-session.ps1's env block (bug-B §8.5):
+# FG_SCROLL_LOG is deliberately NOT set (perturbs pacing); FG_BIND_CONTRACT/FG_BACKWARDS_WRITE are forced OFF
+# (both default-ON once FLUENTGPU_DIAG is compiled in, and both change the feel being captured).
+Remove-Item Env:FG_SCROLL_LOG -ErrorAction SilentlyContinue
 $env:FG_SCROLL_TRACE = $traceCsv
 $env:FG_FPS_LOG = '1'
 $env:FG_SCROLL_PERF = '1'
+$env:FG_BIND_CONTRACT = '0'
+$env:FG_BACKWARDS_WRITE = '0'
 
 $logDir = Join-Path $env:LOCALAPPDATA 'Wavee\logs'
 $before = @{}

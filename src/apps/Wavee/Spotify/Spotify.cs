@@ -168,6 +168,11 @@ public static partial class Spotify
         /// <summary>Close the session and forget its tokens, but KEEP the stored credential — a shutdown, a headless run
         /// ending, a "go offline". Only <see cref="Logout"/> (and a genuine rejection) ever clears the credential.</summary>
         Disconnect,
+        /// <summary>`--fake` (G-065): present as signed in with the seeded profile — no socket, no credential slot, no
+        /// login5. <c>Id</c>/<c>Id2</c>/<c>Id3</c> = username/country/product, exactly like <see cref="Welcome"/>, but the
+        /// tier is always Premium (the demo previews every gated surface) and no effect follows: the offline seed is
+        /// already the app's whole "backend". One-way — nothing ever leaves this phase except a fresh <c>--fake</c> launch.</summary>
+        FakeOnline,
     }
 
     /// <summary>One folded event. A value with no spans, so a shell can post it across a thread (C2).</summary>
@@ -354,6 +359,20 @@ public static partial class Spotify
                 s.Locale = kept.Locale;
                 return SessionEffects.CloseAll;
             }
+
+            case SessionEventKind.FakeOnline:
+                // `--fake` (G-065): a pure fact, not a login — no epoch bump (nothing was ever in flight to abandon),
+                // no `SaveCredential`/`ClearCredential` (the slot is never touched) and no `Welcome`/`AnnounceDevice`
+                // effect (there is no catalog scope to adopt and no Connect device to announce; the offline seed and
+                // `Platform.Scope`'s fake arm already did the one thing a real welcome's effect would have done).
+                s.HasCredential = true;
+                s.Username = e.Id;
+                s.Country = e.Id2;
+                s.Product = e.Id3;
+                s.Tier = Tier.Premium;
+                s.Phase = SessionPhase.Online;
+                s.Fault = SessionFault.None;
+                return SessionEffects.None;
 
             default:
                 return SessionEffects.None;
@@ -1402,6 +1421,12 @@ public static partial class Spotify
         Origin = 1 << 17,
         PathfinderDesktop = 1 << 18,
         PathfinderWeb = 1 << 19,
+        /// <summary>Origin + Referer of the xpui shell — the video manifest and PlayReady licence routes' CORS fence (G-144).</summary>
+        XpuiOrigin = 1 << 20,
+        /// <summary>Accept: */* (the video manifest route, G-144).</summary>
+        AcceptAny = 1 << 21,
+        /// <summary>The PlayReady licence POST: text/xml; charset=utf-8 + the AcquireLicense SOAPAction (G-144).</summary>
+        SoapLicense = 1 << 22,
     }
 
     /// <summary>Which request. One per FAMILY, not one per caller: <c>Spotify.Api.cs</c>'s function per request picks
@@ -1417,6 +1442,10 @@ public static partial class Spotify
         CollectionPage, CollectionDelta, CollectionWrite,
         ConnectStatePut, ConnectStateTransfer, ConnectStateCommand, ConnectStateVolume,
         ContextResolve, Autoplay, StorageResolve, ServerTime, Profile, Popcount,
+        /// <summary>GET <c>/inspiredby-mix/v2/seed_to_playlist/&lt;seed uri&gt;?response-format=json</c> — "Start radio"'s
+        /// seed → its radio PLAYLIST (G-251, 0.2.9 <c>GetInspiredByMixPlaylistAsync</c>). <c>Args.Id</c> is the literal
+        /// <c>spotify:track:…</c> / <c>spotify:artist:…</c>; its colons stay unescaped in the path segment.</summary>
+        RadioSeed,
         /// <summary>The escape hatch: <c>Args.Path</c> verbatim on <c>Args.Host</c> with <c>Args.Headers</c>. A new
         /// route lands here first and graduates to a kind when a second caller wants it.</summary>
         Custom,
@@ -1656,6 +1685,14 @@ public static partial class Spotify
                 w.Append(args.Flag ? "/context-resolve/v1/autopodcast" : "/context-resolve/v1/autoplay");
                 return new Request(Verb.Post, ApiHost.Spclient, w.Written,
                     Common | HeaderSet.ContentJson | HeaderSet.AcceptJson, args.Body);
+
+            case RequestKind.RadioSeed:
+                // The seed is our own well-formed `spotify:<kind>:<base62>` text: ':' is a legal pchar (RFC 3986 §3.3) and
+                // the captured desktop client sends it literally, so it is appended raw rather than through AppendEscaped.
+                w.Append("/inspiredby-mix/v2/seed_to_playlist/");
+                w.Append(args.Id);
+                w.Append("?response-format=json");
+                return new Request(Verb.Get, ApiHost.Spclient, w.Written, Common | HeaderSet.AcceptJson, default);
 
             case RequestKind.StorageResolve:
                 w.Append("/storage-resolve/files/audio/interactive/");

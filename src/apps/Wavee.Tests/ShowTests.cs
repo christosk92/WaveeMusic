@@ -138,4 +138,22 @@ public class ShowTests
         Assert.Equal(before, Entities.Strings.MapCount);
         Assert.True(t.Publisher[slot].IsEmpty);
     }
+
+    /// <summary>Wave 5 (owner M): the page's gate reads THIS column through `Episode.Rules.CanLoadMore` — the cursor
+    /// and the edge's total, never the resident count (ch 09 §9.1).</summary>
+    [Fact]
+    public void The_load_more_gate_is_the_cursor_through_the_episode_rules()
+    {
+        TestScope.Fresh();
+        var shows = Entities.Current.Shows;
+        var episodes = Entities.Current.Episodes;
+        int show = shows.Slot("spotify:show:gate".AsSpan());
+        int e1 = episodes.Slot("spotify:episode:g1".AsSpan());
+        Entities.Current.Edges.ShowEpisodes.ReplacePage(show, 0, [e1], default, total: 30);
+
+        var handle = new Show(show);
+        Assert.True(Episode.Rules.CanLoadMore(handle.EpisodesAsked, 0, handle.TotalEpisodes));
+        shows.EpisodesAsked[show] = 30;
+        Assert.False(Episode.Rules.CanLoadMore(handle.EpisodesAsked, 0, handle.TotalEpisodes));
+    }
 }

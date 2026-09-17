@@ -14,6 +14,8 @@
 // The named timers (P10) are asserted as constants, which is the only way a "this is event-driven, not polled" claim
 // survives a refactor: a new timer would have to be given a name and a number, and this file would have to change.
 
+using System;
+using System.Threading;
 using Wavee;
 using Xunit;
 
@@ -97,5 +99,67 @@ public class SpotifyTelemetryShapeTests
         Assert.Same(supplied, Spotify.Telemetry.Client);
         Assert.Same(supplied, Spotify.Telemetry.Client);
         Assert.Equal("windows", Spotify.Telemetry.Client.PlatformType);
+    }
+}
+
+// ── G-077: the sequence is in-memory (Interlocked), persisted only on a flush, and a restart never replays a number
+// the service has already seen ──────────────────────────────────────────────────────────────────────────────────────
+//
+// `Telemetry.Boot`/`Enqueue`/`Flush` are process-global (one worker thread, one `Pending` list, one `s_sequence`,
+// started once — `Boot` is idempotent for the process's whole lifetime), so this class shares the `platform`
+// collection with `PlatformTests` (disabled parallelization) and every fact restores `Platform.UseSettings` and
+// `Spotify.Telemetry.PostGabo` in a `finally`, the same discipline `PlatformSettingsTests.WithStore` uses.
+[Collection(PlatformCollection.Name)]
+public class SpotifyTelemetrySequenceTests
+{
+    /// <summary>An <see cref="IAppSettings"/> that counts <c>Set</c> CALLS, not distinct keys — the question this
+    /// file asks ("did the flush write once, not once per event?") is exactly the one <see cref="MemoryAppSettings"/>'s
+    /// dictionary can't answer, because a second `Set` of the same key never grows its count.</summary>
+    sealed class CountingAppSettings : IAppSettings
+    {
+        public int SetCalls;
+        public T Get<T>(SettingKey<T> key) => key.Default;
+        public void Set<T>(SettingKey<T> key, T value) => Interlocked.Increment(ref SetCalls);
+    }
+
+    [Fact]
+    public void Ten_events_write_no_setting_and_the_hundredth_flushes_the_sequence_exactly_once()
+    {
+        var store = new CountingAppSettings();
+        Platform.UseSettings(store);
+        Func<byte[], Spotify.Api.Result> originalPost = Spotify.Telemetry.PostGabo;
+        Spotify.Telemetry.PostGabo = static _ => new Spotify.Api.Result(200, []);
+        try
+        {
+            for (int i = 0; i < 10; i++) Spotify.Telemetry.Enqueue("Test", []);
+            Thread.Sleep(150);   // give the worker thread time to drain the 10 into `Pending` — nothing should flush
+            Assert.Equal(0, store.SetCalls);
+
+            for (int i = 10; i < Spotify.Telemetry.GaboMaxEvents; i++) Spotify.Telemetry.Enqueue("Test", []);
+
+            DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+            while (Volatile.Read(ref store.SetCalls) == 0 && DateTime.UtcNow < deadline) Thread.Sleep(20);
+
+            Assert.Equal(1, store.SetCalls);
+        }
+        finally
+        {
+            Spotify.Telemetry.PostGabo = originalPost;
+            Platform.UseSettings(null);
+        }
+    }
+
+    /// <summary>The worst case a crash can strand: a flush just missed (`GaboMaxEvents - 1` events minted since the
+    /// last persisted flush) the instant before the process dies, so the persisted value is that far behind the
+    /// highest number actually sent. The margin must still land the next boot strictly past it.</summary>
+    [Fact]
+    public void The_resume_margin_clears_the_worst_case_unpersisted_gap()
+    {
+        long lastSent = 123_456;
+        long persisted = lastSent - (Spotify.Telemetry.GaboMaxEvents - 1);
+
+        long resumed = persisted + Spotify.Telemetry.GaboSequenceResumeMargin;
+
+        Assert.True(resumed > lastSent);
     }
 }

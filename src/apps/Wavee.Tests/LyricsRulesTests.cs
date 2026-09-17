@@ -477,6 +477,63 @@ public class LyricsEmphasisTests
     }
 }
 
+/// <summary>The row's render SHAPE (W3-A4): which bits of the packed word rebuild the row's element tree. The opacity
+/// rung and the past bit ride the row's spring instead, so a hand-off re-renders four rows, not a dozen.</summary>
+public class LyricsRowRenderTests
+{
+    static int Shape(int index, int active, int reserve = -1) => Lyrics.RowRender.ShapeOf(Lyrics.Emphasis.Pack(index, active, reserve));
+
+    [Fact]
+    public void A_hand_off_flips_the_shape_of_exactly_four_rows()
+    {
+        // 20 → 21 in a 40-line document: the two active rows (20, 21) and the two near-edge rows (18 leaves the ±2
+        // ring, 23 enters it). Every other row's word may change (its rung, its past bit) — its shape does not.
+        var flipped = new List<int>();
+        for (int i = 0; i < 40; i++)
+            if (Shape(i, 20) != Shape(i, 21)) flipped.Add(i);
+        Assert.Equal(new[] { 18, 20, 21, 23 }, flipped);
+    }
+
+    [Fact]
+    public void The_opacity_rung_and_the_past_bit_are_not_shape()
+    {
+        // Rows 15 (sung, dist 5) and 25 (upcoming, dist 5) sit on the far rungs of the sung and upcoming ladders (both
+        // ladders floor at the same far opacity, so their rungs may coincide) …
+        int past = Lyrics.Emphasis.Pack(15, 20, -1), future = Lyrics.Emphasis.Pack(25, 20, -1);
+        Assert.NotEqual(Lyrics.Emphasis.OpacityOf(Lyrics.Emphasis.Pack(19, 20, -1)), Lyrics.Emphasis.OpacityOf(past));   // rung 1 vs rung 5 differ
+        // … and share one shape: neither is active, near or reserved.
+        Assert.Equal(0, Lyrics.RowRender.ShapeOf(past));
+        Assert.Equal(0, Lyrics.RowRender.ShapeOf(future));
+        // A rung move inside the far band (dist 3 → 4) is no shape change either.
+        Assert.Equal(Shape(17, 20), Shape(16, 20));
+    }
+
+    [Fact]
+    public void The_active_row_is_also_near_and_the_ring_is_NearDistance_wide()
+    {
+        int active = Shape(20, 20);
+        Assert.True(Lyrics.RowRender.IsActive(active));
+        Assert.True(Lyrics.RowRender.IsNear(active));
+        Assert.True(Lyrics.RowRender.IsNear(Shape(20 + Lyrics.Surface.NearDistance, 20)));
+        Assert.False(Lyrics.RowRender.IsNear(Shape(20 + Lyrics.Surface.NearDistance + 1, 20)));
+        Assert.False(Lyrics.RowRender.IsActive(Shape(21, 20)));
+    }
+
+    [Fact]
+    public void The_reserve_band_is_shape_because_it_is_padding()
+    {
+        Assert.True(Lyrics.RowRender.HasReserve(Shape(20, 20, reserve: 20)));
+        Assert.False(Lyrics.RowRender.HasReserve(Shape(20, 20)));
+        Assert.NotEqual(Shape(20, 20), Shape(20, 20, reserve: 20));
+    }
+
+    [Fact]
+    public void No_active_line_gives_every_row_the_empty_shape()
+    {
+        for (int i = 0; i < 12; i++) Assert.Equal(0, Shape(i, active: -1));
+    }
+}
+
 public class LyricsWipeTests
 {
     [Fact]

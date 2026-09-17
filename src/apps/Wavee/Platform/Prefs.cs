@@ -112,6 +112,16 @@ public static partial class Prefs
             return Clamp(Platform.Settings.Get(Platform.Keys.LikedCoverStyle), treatmentCount);
         }
 
+        /// <summary>Reactive read of the page-swap motion STYLE (Settings ▸ Appearance ▸ Page motion), as the raw
+        /// persisted int, clamped against <paramref name="styleCount"/>.
+        /// <para>The clamp is the point: a hand-edited value or a downgrade from a build that shipped more styles must
+        /// read as a real style, never as nothing at all — same contract as <see cref="LikedCover"/>.</para></summary>
+        public static int PageMotionStyle(int styleCount)
+        {
+            _ = Epoch.Value;
+            return Clamp(Platform.Settings.Get(Platform.Keys.PageMotionStyle), styleCount);
+        }
+
         /// <summary>The ONE writer every appearance row goes through: persist, then bump so every mounted surface
         /// re-reads on the same frame.</summary>
         public static void Set<T>(SettingKey<T> key, T value)

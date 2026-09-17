@@ -42,7 +42,7 @@ without it still builds — the public-only variant — which is why the release
 ## Commands
 
 ```powershell
-dotnet build Wavee.slnx                                   # Debug — the app + engine projects by path
+dotnet build Wavee.slnx                                   # Debug — the app, pulling in the engine via $(EngineRoot)
 dotnet build Wavee.slnx -c Release                        # AND Release: the engine's diag-gate arms differ per configuration
 dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj       # 6.6k+ tests; baseline in docs/guide/releasing-wavee.md §gates
 dotnet run --project src/apps/Wavee -- --fake             # offline FakeData demo (no login / network)

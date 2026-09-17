@@ -188,6 +188,14 @@ public static partial class Spotify
         /// excess is taken off the FRONT — the newest plays are the ones still worth registering.</summary>
         public static int Overflow(int pendingCount) => Math.Max(0, pendingCount - GaboBacklogCap);
 
+        /// <summary>The gabo POST, swappable — the same seam <see cref="Spotify.Post"/> and `Library.Net` already
+        /// use for a real socket. A test flushes without one by replacing this; nothing else about the batcher
+        /// (caps, retries, the backlog drop, the sequence persist) changes shape when it does.</summary>
+        public static Func<byte[], Api.Result> PostGabo { get; set; } = static body =>
+            Api.PostEncoded(GaboRoute, ApiHost.SpclientWg,
+                HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity | HeaderSet.ContentProtobuf,
+                body, "application/x-protobuf", "gzip", CancellationToken.None);
+
         static readonly BlockingCollection<Ev.EventEnvelope?> GaboQueue = new(GaboQueueDepth);
         static readonly List<Ev.EventEnvelope> Pending = new(GaboMaxEvents);
         static Timer? s_gaboHeartbeat;
@@ -205,11 +213,23 @@ public static partial class Spotify
         /// queue. Non-zero means plays went unregistered, which is worth a diagnostics row.</summary>
         public static int Dropped => Volatile.Read(ref s_gaboDropped);
 
+        /// <summary>How far ahead of the last PERSISTED sequence a fresh boot starts. The number is persisted only on
+        /// a flush (every 100 events at most, or the 300 s heartbeat) and not on every `Enqueue`, so a crash between
+        /// two flushes can strand up to <see cref="GaboMaxEvents"/> increments that never reached disk. Resuming at
+        /// exactly the persisted value would then replay numbers the service has already seen; resuming a full
+        /// batch ahead never does, at the cost of a small, harmless gap in the sequence the service does not mind
+        /// (it only rejects a number going backwards, never one skipping forward).</summary>
+        public const long GaboSequenceResumeMargin = GaboMaxEvents;
+
         /// <summary>Start the worker and the two timers. Idempotent; `App.cs` calls it once the session is online.</summary>
         public static void Boot()
         {
             if (Interlocked.CompareExchange(ref s_booted, 1, 0) != 0) return;
-            try { Interlocked.Exchange(ref s_sequence, Platform.Settings.Get(Platform.Keys.GaboGlobalSequence)); }
+            try
+            {
+                long persisted = Platform.Settings.Get(Platform.Keys.GaboGlobalSequence);
+                Interlocked.Exchange(ref s_sequence, persisted + GaboSequenceResumeMargin);
+            }
             catch (Exception ex) { Log.Warn("spotify", "gabo sequence unreadable — starting at 0", ex); }
 
             new Thread(GaboLoop) { IsBackground = true, Name = "wavee-spotify-gabo" }.Start();
@@ -228,8 +248,6 @@ public static partial class Spotify
         {
             if (Volatile.Read(ref s_booted) == 0) Boot();
             long sequence = Interlocked.Increment(ref s_sequence);
-            try { Platform.Settings.Set(Platform.Keys.GaboGlobalSequence, sequence); }
-            catch (Exception ex) { Log.Warn("spotify", "gabo sequence not persisted", ex); }
             if (!GaboQueue.TryAdd(Envelope(eventName, payload, sequence)))
                 Interlocked.Increment(ref s_gaboDropped);
         }
@@ -267,38 +285,61 @@ public static partial class Spotify
         static void FlushGabo()
         {
             if (Pending.Count == 0) return;
-            var request = new Ev.PublishEventsRequest();
-            request.Event.AddRange(Pending);
-            byte[] body = Api.Gzip(request.ToByteArray());
-
-            for (int attempt = 0; attempt < 3; attempt++)
+            try
             {
-                Api.Result result = Api.PostEncoded(GaboRoute, ApiHost.SpclientWg,
-                    HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity | HeaderSet.ContentProtobuf,
-                    body, "application/x-protobuf", "gzip", CancellationToken.None);
-                if (result.Ok)
+                var request = new Ev.PublishEventsRequest();
+                request.Event.AddRange(Pending);
+                byte[] body = Api.Gzip(request.ToByteArray());
+
+                for (int attempt = 0; attempt < 3; attempt++)
                 {
-                    Log.Info("spotify", "gabo flushed " + Pending.Count + " event(s)");
-                    Pending.Clear();
-                    s_pendingBytes = 0;
+                    Api.Result result = PostGabo(body);
+                    if (result.Ok)
+                    {
+                        Log.Info("spotify", "gabo flushed " + Pending.Count + " event(s)");
+                        Pending.Clear();
+                        s_pendingBytes = 0;
+                        return;
+                    }
+                    Log.Warn("spotify", "gabo flush failed status=" + result.Status + " attempt=" + (attempt + 1));
+                }
+
+                // Three refusals: keep what we have for the next trigger, but BOUND it. Dropping the oldest is the
+                // honest choice — the newest plays are the ones still worth registering — and it is counted, never
+                // silent.
+                int drop = Overflow(Pending.Count);
+                if (drop == 0)
+                {
+                    Log.Warn("spotify", "gabo retained " + Pending.Count + " event(s) for the next flush");
                     return;
                 }
-                Log.Warn("spotify", "gabo flush failed status=" + result.Status + " attempt=" + (attempt + 1));
+                Pending.RemoveRange(0, drop);
+                Interlocked.Add(ref s_gaboDropped, drop);
+                s_pendingBytes = 0;
+                for (int i = 0; i < Pending.Count; i++) s_pendingBytes += Pending[i].CalculateSize();
+                Log.Error("spotify", "gabo backlog capped — dropped " + drop + " event(s)");
             }
-
-            // Three refusals: keep what we have for the next trigger, but BOUND it. Dropping the oldest is the honest
-            // choice — the newest plays are the ones still worth registering — and it is counted, never silent.
-            int drop = Overflow(Pending.Count);
-            if (drop == 0)
+            finally
             {
-                Log.Warn("spotify", "gabo retained " + Pending.Count + " event(s) for the next flush");
-                return;
+                // ONE settings write per FLUSH, not per event (G-077) — and posted through `Spotify.Post` so it lands
+                // on the UI thread like every other write, whatever thread the gabo worker happens to be. Runs
+                // whether the POST above succeeded, failed-and-retained or failed-and-dropped: the sequence numbers
+                // were already minted (in `Enqueue`, in memory) for whatever is in `Pending` either way, and what
+                // this persists is "how far the in-memory counter has gotten", not "what the service has accepted".
+                PersistSequence();
             }
-            Pending.RemoveRange(0, drop);
-            Interlocked.Add(ref s_gaboDropped, drop);
-            s_pendingBytes = 0;
-            for (int i = 0; i < Pending.Count; i++) s_pendingBytes += Pending[i].CalculateSize();
-            Log.Error("spotify", "gabo backlog capped — dropped " + drop + " event(s)");
+        }
+
+        /// <summary>Persist the current sequence off the gabo worker thread, through <see cref="Spotify.Post"/>
+        /// (C1: settings are written on the UI thread only). One write per flush call — not one per event.</summary>
+        static void PersistSequence()
+        {
+            long sequence = Sequence;
+            Post(() =>
+            {
+                try { Platform.Settings.Set(Platform.Keys.GaboGlobalSequence, sequence); }
+                catch (Exception ex) { Log.Warn("spotify", "gabo sequence not persisted", ex); }
+            });
         }
 
         // ── 4. the play-registration projection (the event shapes, as values) ────────────────────────────────────────

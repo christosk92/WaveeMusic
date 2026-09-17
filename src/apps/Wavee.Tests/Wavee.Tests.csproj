@@ -35,4 +35,10 @@
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.WindowsApi\FluentGpu.WindowsApi.csproj" />
   </ItemGroup>
 
+  <!-- The private local-playback package's facts (decision D3): linked only when the junction carries the 0.3 package,
+       the same gate Wavee.csproj compiles the package behind. -->
+  <ItemGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\PlayPlayHost.cs')">
+    <Compile Include="..\Wavee.PlayPlay\Tests\**\*.cs" Link="Wavee.PlayPlay\Tests\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

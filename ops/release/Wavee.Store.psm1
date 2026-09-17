@@ -259,7 +259,7 @@ function Get-WaveeStorePackageEvidence {
     $map = Join-Path $SymbolsDir 'Wavee.map.xml'
     $hasPlayPlay = $false
     foreach ($line in [IO.File]::ReadLines($map)) {
-        if ($line.Contains('InProcessPlayPlayKeyDeriver')) { $hasPlayPlay = $true; break }
+        if ($line.Contains('PlayPlayHost')) { $hasPlayPlay = $true; break }
     }
     if (-not $hasPlayPlay) { throw 'Archived native map does not prove PlayPlay is included.' }
     [pscustomobject]@{ Path = (Resolve-Path -LiteralPath $Msix).Path; Architecture = $Architecture

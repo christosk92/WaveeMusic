@@ -485,13 +485,26 @@ public static partial class Shell
 
         public TabNavResult ActivateById(int id) => Activate(IndexOf(id));
 
-        /// <summary>Re-select a tab WITHOUT a route intent — the cold-start session restore, which already knows the
-        /// route it is about to put on the tab. Does not touch <see cref="LastSelectedPinnedId"/>: restore must not
-        /// rewrite pins. False when the id is gone (a session-only tab from last launch).</summary>
-        public bool TrySelect(int id)
+        /// <summary>The active tab as an index into the PINNED block, or −1 when the active tab is session-only — what the
+        /// session document persists (G-258). Never the tab id: ids are minted per process (<c>_nextId</c> restarts at 1),
+        /// so a persisted id can name an unrelated tab on the next launch.</summary>
+        public int ActivePinnedIndex
         {
-            if (IndexOf(id) < 0) return false;
-            ActiveId = id;
+            get
+            {
+                int index = ActiveIndex;
+                return index >= 0 && _tabs[index].Pinned ? index : -1;   // pins are a prefix: the index IS the pinned index
+            }
+        }
+
+        /// <summary>Re-select a PINNED tab by its index in the pinned block WITHOUT a route intent — the cold-start session
+        /// restore, which already knows the route it is about to put on the tab (<see cref="RestoreActiveRoute"/>). Does
+        /// not touch <see cref="LastSelectedPinnedId"/>: restore must not rewrite pins. False when there is no such pin
+        /// (−1 = the session's tab was session-only, or the pins changed since), leaving the pinned default selected.</summary>
+        public bool TrySelectPinned(int pinnedIndex)
+        {
+            if ((uint)pinnedIndex >= (uint)PinnedBoundary()) return false;
+            ActiveId = _tabs[pinnedIndex].Id;
             return true;
         }
 
@@ -574,6 +587,18 @@ public static partial class Shell
             if (!SameSlot(tab.Route, route)) _tabs[index] = tab with { Route = route };
             if (tab.Pinned) PinnedRevision++;
             return tab.Pinned;
+        }
+
+        /// <summary>Cold start, the session half (G-258): the restored route lands on the ACTIVE tab, so the strip's label
+        /// names the page on screen instead of the seeded Home — the same "the tab follows the page" rule
+        /// <see cref="SetActiveRoute"/> applies to a navigation, but WITHOUT bumping <see cref="PinnedRevision"/>: restore
+        /// must not rewrite pins (0.2.9 <c>RestoreSessionNav</c>). Returns the active tab's id.</summary>
+        public int RestoreActiveRoute(Route route)
+        {
+            int index = ActiveIndex;
+            var tab = _tabs[index];
+            if (!SameSlot(tab.Route, route)) _tabs[index] = tab with { Route = route };
+            return tab.Id;
         }
 
         /// <summary>Cold start: replace the workspace with the persisted pins (routes run through
@@ -675,6 +700,29 @@ public static partial class Shell
             else if (IndexOf(LastSelectedPinnedId) < 0) LastSelectedPinnedId = FirstPinnedId();
             if (LastSelectedPinnedId != before) PinnedRevision++;
         }
+    }
+
+    /// <summary>WHEN the strip relabels. A navigation commits <c>Motion</c>, <c>Current</c> and the tab's route in ONE
+    /// flush, but the page it replaces is still on screen for its exit leg (<see cref="Design.Nav.ExitDurationMs"/>) —
+    /// so a tab labelled from its own route names the NEXT page while the previous one is still leaving, one frame
+    /// (and then 90 ms) ahead of the content. The strip therefore labels the active tab from <c>Shell.Shown</c>, the
+    /// route the content host reports once the exit leg has run, and only falls back to the tab's own route when the
+    /// staged route is not about that tab.</summary>
+    public static class TabLabelStaging
+    {
+        /// <summary>The route the tab's label and glyph come from. <paramref name="shown"/> wins when it is a real route
+        /// on the SAME tab (a tab id is 1-based; a Tab of 0 is a route that never went through a commit — the boot Home,
+        /// a restored pin — and must not claim every other un-normalised tab); otherwise the tab's own route stands.
+        /// The pin id and the drop target keep the tab's route regardless — they describe the DESTINATION, not what
+        /// is on screen right now.</summary>
+        public static Route LabelRoute(in Route tabRoute, in Route shown)
+            => !shown.IsNone && shown.Tab != 0 && shown.Tab == tabRoute.Tab ? shown : tabRoute;
+
+        /// <summary>How long the label lags the commit: the exit leg, exactly. The instant cut
+        /// (<see cref="Design.PageMotionStyle.None"/>) and the OS reduced-motion preference both run no exit leg, so
+        /// there the label lands with the page (the next timer tick).</summary>
+        public static float DelayMs(bool instantCut, bool reducedMotion)
+            => instantCut || reducedMotion ? 0f : Design.Nav.ExitDurationMs;
     }
 
     // ══ 4. THE PINNED SUBSET'S CODEC ════════════════════════════════════════════════════════════════════════════════

@@ -238,7 +238,7 @@ $packScript = Join-Path $root 'ops\build\pack-wavee-msix.ps1'
 $appInstallerTemplate = Join-Path $root 'ops\build\Wavee.AppInstaller.template.xml'
 $feedBodyFile = Join-Path $PSScriptRoot 'feed-release-body.md'
 $releaseToolProject = Join-Path $root 'src\apps\Wavee.ReleaseTool'
-$playPlayProbe = Join-Path $root 'src\apps\Wavee.PlayPlay\Client\InProcessPlayPlayKeyDeriver.cs'
+$playPlayProbe = Join-Path $root 'src\apps\Wavee.PlayPlay\Client\PlayPlayHost.cs'
 
 $props = Get-WaveeVersionProps $propsPath
 $semver = $props.Version
@@ -549,8 +549,10 @@ if (-not (Test-PhaseDone 'preflight')) {
         # built from source, so what matters here is not a hardcoded commit (that would just go stale) but that
         # the resolved checkout exists, is a git repository, and its commit is recorded in the release ledger for
         # symbolication / provenance - the same reason the app's own commit is stamped into WaveeVersionInfo.
-        $engineRoot = $env:EngineRoot
-        if (-not $engineRoot) { $engineRoot = Join-Path $root '..\fluent-gpu' }
+        # Resolve-EngineRoot (Wavee.Build.psm1) mirrors Directory.Build.props's own precedence exactly - override,
+        # then this worktree's EngineRoot.local.props pin (D1), then the sibling checkout - so this check can never
+        # assert a different engine than the one the build actually used (G-022, G-205).
+        $engineRoot = Resolve-EngineRoot -RepoRoot $root -Override $env:EngineRoot
         if (-not (Test-Path (Join-Path $engineRoot 'src\FluentGpu.Engine\FluentGpu.Engine.csproj'))) {
             throw "no FluentGpu engine checkout at '$engineRoot' (set EngineRoot, or clone christosk92/fluent-gpu beside this repo)"
         }
@@ -873,69 +875,10 @@ if ($script:State.commit) { $commit = "$($script:State.commit)" }
 # PlayReady native DLL export check (video plan Q8 / G-152): a release must never ship a PlayReady CDM DLL that
 # fails to export FgPrRuntimeCreate for the architecture it was built for - that export is the only thing
 # DesktopProtectedVideoPlayer P/Invokes into, and a stale/missing one silently degrades DRM video for every
-# install of that arch until the NEXT release. No dumpbin dependency (not guaranteed on this box): the export
-# table is read directly out of the PE image bytes.
+# install of that arch until the NEXT release. The PE export-directory reader (Get-PeExportedNames) and the
+# predicate over it (Test-PeExport) live in Wavee.Build.psm1 - not here - so Pester can exercise the parser
+# against a fixture PE without dot-sourcing this script (G-205).
 # ===============================================================================================================
-
-function Get-PeExportedNames {
-    <#  Minimal PE export-directory reader. Returns the plain export name list; an image with no export
-        table (or that is not a PE at all) returns @() rather than throwing - the caller decides what that means. #>
-    param([Parameter(Mandatory = $true)][byte[]]$Bytes)
-
-    if ($Bytes.Length -lt 0x40 -or $Bytes[0] -ne 0x4D -or $Bytes[1] -ne 0x5A) { return @() }   # 'MZ'
-    $u16 = { param($o) [BitConverter]::ToUInt16($Bytes, $o) }
-    $u32 = { param($o) [BitConverter]::ToUInt32($Bytes, $o) }
-
-    $peOffset = & $u32 0x3C
-    if ($Bytes.Length -lt ($peOffset + 24) -or $Bytes[$peOffset] -ne 0x50 -or $Bytes[$peOffset + 1] -ne 0x45) { return @() }   # 'PE'
-    $numSections = & $u16 ($peOffset + 6)
-    $optHeaderSize = & $u16 ($peOffset + 20)
-    $optHeaderStart = $peOffset + 24
-    $magic = & $u16 $optHeaderStart
-    $dataDirOffset = $optHeaderStart + $(if ($magic -eq 0x20B) { 112 } else { 96 })   # PE32+ vs PE32
-    $exportRva = & $u32 $dataDirOffset
-    $exportSize = & $u32 ($dataDirOffset + 4)
-    if ($exportRva -eq 0 -or $exportSize -eq 0) { return @() }
-
-    $sections = @()
-    $sectionStart = $optHeaderStart + $optHeaderSize
-    for ($i = 0; $i -lt $numSections; $i++) {
-        $so = $sectionStart + ($i * 40)
-        $sections += [pscustomobject]@{
-            VirtualSize      = & $u32 ($so + 8)
-            VirtualAddress   = & $u32 ($so + 12)
-            SizeOfRawData    = & $u32 ($so + 16)
-            PointerToRawData = & $u32 ($so + 20)
-        }
-    }
-    $rvaToOffset = {
-        param([uint32]$Rva)
-        foreach ($s in $sections) {
-            $size = [Math]::Max($s.VirtualSize, $s.SizeOfRawData)
-            if ($Rva -ge $s.VirtualAddress -and $Rva -lt ($s.VirtualAddress + $size)) {
-                return [uint32]($Rva - $s.VirtualAddress + $s.PointerToRawData)
-            }
-        }
-        $null
-    }
-
-    $expOff = & $rvaToOffset $exportRva
-    if ($null -eq $expOff) { return @() }
-    $numNames = & $u32 ($expOff + 24)
-    $namesRva = & $u32 ($expOff + 32)
-    $namesOff = & $rvaToOffset $namesRva
-    if ($null -eq $namesOff -or $numNames -eq 0) { return @() }
-
-    $names = @()
-    for ($i = 0; $i -lt $numNames; $i++) {
-        $nameOff = & $rvaToOffset (& $u32 ($namesOff + ($i * 4)))
-        if ($null -eq $nameOff) { continue }
-        $end = $nameOff
-        while ($end -lt $Bytes.Length -and $Bytes[$end] -ne 0) { $end++ }
-        $names += [System.Text.Encoding]::ASCII.GetString($Bytes, $nameOff, $end - $nameOff)
-    }
-    $names
-}
 
 function Assert-PlayReadyNativeExport {
     param([Parameter(Mandatory = $true)][string]$MsixPath, [Parameter(Mandatory = $true)][string]$Arch)
@@ -951,8 +894,7 @@ function Assert-PlayReadyNativeExport {
         $ms = New-Object System.IO.MemoryStream
         $es = $entry.Open()
         try { $es.CopyTo($ms) } finally { $es.Dispose() }
-        $names = Get-PeExportedNames $ms.ToArray()
-        if ($names -notcontains 'FgPrRuntimeCreate') {
+        if (-not (Test-PeExport $ms.ToArray() 'FgPrRuntimeCreate')) {
             throw "$entryName in $(Split-Path -Leaf $MsixPath) ($Arch) does not export FgPrRuntimeCreate - stale or mismatched native build; rebuild ops/tools/playready-native for $Arch"
         }
     }

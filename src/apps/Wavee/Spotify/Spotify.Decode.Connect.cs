@@ -1,12 +1,13 @@
 // ── Spotify/Spotify.Decode.Connect.cs ───────────────────────────────────────────────────────────────────────────
-// the cluster fold, the remote-command decode and the PutState encoder (plan §4.10, D19; §9's encode half
-// landed in Wave 3 by owner G, against the field map this file's stub wrote down)
+// the cluster fold and the remote-command decode (plan §4.10, D19)
 //
 // Role: CORE
 // Owner: E
 // Wave: 2
 // Budget: 520 lines
 // Spec: plan §4.6 / §4.10 — a named partial of Spotify.Decode.cs, declared when the decoder passed its 1,600 budget
+// Named partial: `Spotify.Decode.PutState.cs` (gap batch R4-1) — §9, the encode half (the ProtoWriter and PutState with
+// its 0.2.9 parity half), moved out when the parity half would have put this file 70 % over its budget
 //
 // The Connect half of the decoder, split out of `Spotify.Decode.cs` under §5's rule that a file 30% past its budget
 // gets a named partial rather than a second type. Everything here is the same CORE contract as its parent file: pure
@@ -14,8 +15,6 @@
 //
 // It is the DECODE half only. `Spotify.Connect.cs` (SHELL, owner F) owns the dealer subscription, the debounce, the
 // PutState round trip and the reply; this file owns "these bytes mean this", and Wave 3's `Playback` folds the value.
-
-using System.Buffers.Binary;
 
 using FluentGpu.Foundation;
 
@@ -137,6 +136,9 @@ public static partial class Spotify
             public ClusterOrigin Origin;
             public uint PutMsgId;
             public int UpdateReason;
+            /// <summary>A push's <c>devices_that_changed</c>, comma-joined in the arena (empty for a put-state response) —
+            /// the Connect diagnostics page's row, never a routing input.</summary>
+            public TextRef ChangedDevices;
         }
 
         /// <summary>A `ClusterUpdate` (the dealer's `hm://connect-state/v1/cluster` push) → the delta plus the update
@@ -146,18 +148,29 @@ public static partial class Spotify
             var r = new ProtoReader(proto);
             ReadOnlySpan<byte> cluster = default;
             int reason = 0;
+            TextRef changed = default;
             while (r.Next())
             {
                 switch (r.Field)
                 {
                     case 1: cluster = r.Bytes(); break;
                     case 2: reason = r.Int32(); break;
+                    case 4:                                        // devices_that_changed, joined contiguously in the arena
+                        {
+                            ReadOnlySpan<byte> id = r.Bytes();
+                            if (id.IsEmpty) break;
+                            if (!changed.IsEmpty) into.AddText(","u8);
+                            TextRef added = into.AddText(id);
+                            changed = changed.IsEmpty ? added : new TextRef(changed.Offset, added.Offset + added.Length - changed.Offset);
+                            break;
+                        }
                     default: r.Skip(); break;
                 }
             }
             var delta = Cluster(cluster, ourDeviceId, into);
             delta.Origin = ClusterOrigin.Push;
             delta.UpdateReason = reason;
+            delta.ChangedDevices = changed;
             return delta;
         }
 
@@ -374,6 +387,11 @@ public static partial class Spotify
             Unknown, Play, Pause, Resume, SeekTo, SkipNext, SkipPrev,
             SetShufflingContext, SetRepeatingContext, SetRepeatingTrack,
             Transfer, AddToQueue, SetQueue, UpdateContext, SetOptions,
+            /// <summary>OUTBOUND only: "play THIS context from THIS track" to the device that owns playback — the desktop
+            /// `play` envelope with a context uri and a skip_to (0.2.9 <c>OutboundEnvelope.Play</c>). The inbound `play`
+            /// decodes as <see cref="Play"/>; a bare outbound <see cref="Play"/> is a resume, which is why a local row click
+            /// while a phone owned playback used to do nothing visible (2026-09-16).</summary>
+            PlayContext,
         }
 
         /// <summary>One decoded remote command — a pure value, no strings (ported from `ConnectCommand.TryParse`).
@@ -385,7 +403,9 @@ public static partial class Spotify
         /// `set_shuffling_context` landing on an old id looked like a replay and was dropped.</para>
         /// <para>It is the VERB. What a <see cref="RemoteCmd.Play"/> or <see cref="RemoteCmd.Transfer"/> asks to play — the
         /// context, the track to start at, the position, the transferred queue — is <see cref="ConnectLoad"/>'s, decoded
-        /// from the same body into a pooled <see cref="ClusterBuffer"/> (Spotify.Decode.Remote.cs, G-071).</para></summary>
+        /// from the same body into a pooled <see cref="ClusterBuffer"/> (Spotify.Decode.Remote.cs, G-071). The bodies of
+        /// <see cref="RemoteCmd.SetOptions"/> (<see cref="OptionVerbs"/>) and of <see cref="RemoteCmd.SetQueue"/> /
+        /// <see cref="RemoteCmd.UpdateContext"/> (<see cref="ConnectQueue"/>) are Spotify.Decode.Commands.cs's (G-074).</para></summary>
         public readonly record struct RemoteCommand(
             RemoteCmd Kind, bool Ok, int MessageId, long SeekToMs, bool BoolArg,
             EntityId Track, ulong SenderHash, ulong SessionHash, ulong DedupeKey);
@@ -505,227 +525,6 @@ public static partial class Spotify
             return h;
         }
 
-        // ── 9. the encode half: PutState (landed in Wave 3 by owner G, per the stub's own field map) ──────────────────
-
-        /// <summary>A minimal protobuf WRITER — the mirror of <see cref="ProtoReader"/>, and the only one in the app.
-        /// It exists for one message (<see cref="PutState"/>): using the generated `PutStateRequest` would put a
-        /// reflection-descriptor graph and a fresh object tree on a path that runs on every transport change.
-        ///
-        /// <para><b>Nested messages.</b> A length-delimited field needs its length BEFORE its body, so
-        /// <see cref="Open"/> reserves three bytes (enough for 2 MiB) and <see cref="Close"/> writes the real varint
-        /// and slides the body left if it turned out shorter. <c>Span.CopyTo</c> is a memmove, so the overlap is
-        /// safe.</para></summary>
-        public ref struct ProtoWriter
-        {
-            readonly Span<byte> _b;
-
-            public ProtoWriter(Span<byte> into) { _b = into; Length = 0; }
-
-            /// <summary>How many bytes have been written.</summary>
-            public int Length { get; private set; }
-
-            public void Var(ulong v)
-            {
-                while (v >= 0x80) { _b[Length++] = (byte)(v | 0x80); v >>= 7; }
-                _b[Length++] = (byte)v;
-            }
-
-            public void Tag(int field, int wire) => Var((ulong)((field << 3) | wire));
-
-            /// <summary>A varint field. Zero is proto3's default and is NOT written — the wire is smaller and a
-            /// reader answers the same value.</summary>
-            public void U(int field, ulong value) { if (value != 0) { Tag(field, 0); Var(value); } }
-
-            /// <summary>A varint field written even when it is zero — for the handful desktop always emits.</summary>
-            public void UAlways(int field, ulong value) { Tag(field, 0); Var(value); }
-
-            public void B(int field, bool value) { if (value) { Tag(field, 0); Var(1); } }
-
-            public void F64(int field, double value)
-            {
-                Tag(field, 1);
-                BinaryPrimitives.WriteUInt64LittleEndian(_b[Length..], BitConverter.DoubleToUInt64Bits(value));
-                Length += 8;
-            }
-
-            public void Utf8(int field, scoped ReadOnlySpan<byte> bytes)
-            {
-                if (bytes.IsEmpty) return;
-                Tag(field, 2);
-                Var((ulong)bytes.Length);
-                bytes.CopyTo(_b[Length..]);
-                Length += bytes.Length;
-            }
-
-            public void Str(int field, string value)
-            {
-                if (value.Length == 0) return;
-                Tag(field, 2);
-                int n = System.Text.Encoding.UTF8.GetByteCount(value);
-                Var((ulong)n);
-                Length += System.Text.Encoding.UTF8.GetBytes(value, _b[Length..]);
-            }
-
-            /// <summary>An <see cref="EntityId"/> as its canonical uri, formatted straight into the buffer — no
-            /// string, no interner, no allocation (the same call the staged uri uses).</summary>
-            public void Id(int field, EntityId id)
-            {
-                if (id.IsEmpty) return;
-                Span<byte> uri = stackalloc byte[256];
-                int n = id.Format(uri);
-                if (n > 0) Utf8(field, uri[..n]);
-            }
-
-            /// <summary>A <c>map&lt;string,string&gt;</c> entry (key = 1, value = 2).</summary>
-            public void Entry(int field, string key, string value)
-            {
-                int m = Open(field);
-                Str(1, key);
-                Str(2, value);
-                Close(m);
-            }
-
-            /// <summary>Begin a nested message; pass the returned marker to <see cref="Close"/>.</summary>
-            public int Open(int field)
-            {
-                Tag(field, 2);
-                Length += 3;                                   // reserved for the length varint
-                return Length;
-            }
-
-            public void Close(int start)
-            {
-                int len = Length - start;
-                int need = len < 0x80 ? 1 : len < 0x4000 ? 2 : 3;
-                if (need != 3)
-                {
-                    _b.Slice(start, len).CopyTo(_b[(start - 3 + need)..]);   // memmove: the overlap is safe
-                    Length = start - 3 + need + len;
-                }
-                int p = start - 3;
-                ulong v = (ulong)len;
-                while (v >= 0x80) { _b[p++] = (byte)(v | 0x80); v >>= 7; }
-                _b[p] = (byte)v;
-            }
-        }
-
-        /// <summary>`connectstate.PutStateRequest` ← the local player's snapshot. Returns the bytes written.
-        ///
-        /// <para>The field map the Wave-2 stub wrote down: <c>PutStateRequest{ callback_url=1, device=2{
-        /// device_info=1, player_state=2, private_device_info=3 }, member_type=3, is_active=4, put_state_reason=5,
-        /// message_id=6, last_command_sent_by_device_id=7, last_command_message_id=8, started_playing_at=9,
-        /// has_been_playing_for_ms=11, client_side_timestamp=12, only_write_player_state=13 }</c>, with the
-        /// `PlayerState` half the mirror of <see cref="PlayerState"/> above.</para>
-        ///
-        /// <para><b>The DeviceInfo / Capabilities constants are desktop parity and load-bearing</b> — ported verbatim
-        /// from 0.2.9's `ConnectStateBuilder`, which proved them byte-exact over 24 captured desktop PUTs.
-        /// <c>license = "premium"</c> is what makes this device eligible for Recently Played and play counts;
-        /// <c>needs_full_player_state</c> is why we get whole cluster snapshots instead of deltas; the
-        /// <c>supported_types</c> list and the five unnamed capability bits are anti-fraud surface. Changing one of
-        /// them silently breaks a feature or gets the account throttled, so none of them is a preference.</para>
-        ///
-        /// <para><b>While we are not the active device the PLAYER half is empty</b> — the snapshot says so, and that
-        /// is librespot's rule: publish an idle player_state plus our own volume rather than mirroring the owner's
-        /// row. 0.2.9 mirroring it is how a phone's track was once announced as ours.</para>
-        ///
-        /// <para>Allocates nothing: every identity is formatted into the caller's buffer through
-        /// <c>EntityId.Format(Span&lt;byte&gt;)</c> and every constant is a UTF-8 literal.</para></summary>
-        public static int PutState(in Playback.Snapshot snap, Span<byte> into)
-        {
-            var w = new ProtoWriter(into);
-
-            int device = w.Open(2);
-            {
-                int info = w.Open(1);                          // Device.device_info
-                w.B(1, true);                                  // can_play
-                w.UAlways(2, (ulong)Math.Clamp(snap.Volume, 0, 65535));
-                w.Str(3, snap.Device.DeviceName);
-                Capabilities(ref w, 4);
-                w.Str(6, snap.Device.SoftwareVersion);
-                w.UAlways(7, 1);                               // device_type = COMPUTER
-                w.Str(9, snap.Device.SpircVersion);
-                w.Str(10, snap.Device.DeviceId);
-                w.Str(13, snap.Device.ClientId);
-                w.Str(14, "spotify");                          // brand
-                w.Str(15, "PC laptop");                        // model
-                w.Entry(16, "debug_level", "1");               // metadata_map
-                w.Entry(16, "tier1_port", "0");
-                w.Str(23, "premium");                          // license — Recently-Played eligibility
-                w.Close(info);
-
-                int player = w.Open(2);                        // Device.player_state
-                w.U(1, (ulong)Math.Max(0, snap.TimestampMs));
-                w.Id(2, snap.Context);
-                if (snap.HasTrack)
-                {
-                    int track = w.Open(7);
-                    w.Id(1, snap.Track);
-                    w.Str(2, snap.Uid);
-                    w.Entry(3, "track_player", Playback.MediaSwitch.TrackPlayer(snap.Kind));
-                    w.Str(6, "context");                       // provider
-                    w.Close(track);
-                }
-                w.F64(9, 1.0);                                 // playback_speed
-                w.U(10, (ulong)Math.Max(0, snap.PositionAsOfMs));
-                w.U(11, (ulong)Math.Max(0, snap.DurationMs));
-                w.B(12, snap.IsPlaying);
-                w.B(13, snap.IsPaused);
-                w.B(14, snap.IsBuffering);
-                int options = w.Open(16);                      // ContextPlayerOptions
-                w.B(1, snap.Shuffling);
-                w.B(2, snap.Repeat == RepeatMode.Context);
-                w.B(3, snap.Repeat == RepeatMode.Track);
-                w.Close(options);
-                w.Close(player);
-
-                int priv = w.Open(3);                          // Device.private_device_info
-                w.Str(1, snap.Device.Platform);
-                w.Close(priv);
-            }
-            w.Close(device);
-
-            w.UAlways(3, 2);                                   // member_type = CONNECT_STATE
-            w.B(4, snap.IsActive);
-            w.U(5, (ulong)snap.Reason);                        // put_state_reason — the PROTO's own ordinal
-            w.U(6, snap.MessageId);
-            w.U(9, (ulong)Math.Max(0, snap.StartedPlayingAtMs));
-            w.U(11, (ulong)Math.Max(0, snap.HasBeenPlayingForMs));
-            w.U(12, (ulong)Math.Max(0, snap.ClientTimestampMs));
-            return w.Length;
-        }
-
-        /// <summary>`DeviceInfo.capabilities` — CONSTANT, so it is written the same way every time. The 15
-        /// `supported_types` and the five unnamed bits are the captured desktop client's, verbatim.</summary>
-        static void Capabilities(ref ProtoWriter w, int field)
-        {
-            int c = w.Open(field);
-            w.B(2, true);                                      // can_be_player
-            w.B(5, true);                                      // gaia_eq_connect_id
-            w.B(6, true);                                      // supports_logout
-            w.B(7, true);                                      // is_observable
-            w.UAlways(8, 64);                                  // volume_steps
-            w.Utf8(9, "audio/ad"u8); w.Utf8(9, "audio/audio"u8); w.Utf8(9, "audio/episode"u8);
-            w.Utf8(9, "audio/episode+track"u8); w.Utf8(9, "audio/interruption"u8); w.Utf8(9, "audio/local"u8);
-            w.Utf8(9, "audio/media"u8); w.Utf8(9, "audio/podcast-chapter"u8); w.Utf8(9, "audio/track"u8);
-            w.Utf8(9, "audio/user-highlight"u8); w.Utf8(9, "video/ad"u8); w.Utf8(9, "video/episode"u8);
-            w.Utf8(9, "video/podcast-chapter"u8); w.Utf8(9, "video/track"u8); w.Utf8(9, "video/user-highlight"u8);
-            w.B(10, true);                                     // command_acks
-            w.B(15, true);                                     // supports_playlist_v2
-            w.B(16, true);                                     // is_controllable
-            w.B(17, true);                                     // supports_external_episodes
-            w.B(18, true);                                     // supports_set_backend_metadata
-            w.B(19, true);                                     // supports_transfer_command
-            w.B(20, true);                                     // supports_command_request
-            w.B(22, true);                                     // needs_full_player_state — whole snapshots, not deltas
-            w.B(23, true);                                     // supports_gzip_pushes
-            w.B(25, true);                                     // supports_set_options_command
-            int hifi = w.Open(26);                             // supports_hifi
-            w.B(1, true); w.B(2, true); w.B(3, true);
-            w.Close(hifi);
-            w.B(29, true);                                     // supports_dj
-            w.UAlways(30, 4);                                  // supported_audio_quality = VERY_HIGH (320 kbps OGG)
-            w.B(33, true); w.B(34, true); w.B(35, true); w.B(36, true); w.B(38, true);   // unnamed, 24/24 captures
-            w.Close(c);
-        }
+        // ── 9. the encode half — ProtoWriter, PutState and its parity half — lives in Spotify.Decode.PutState.cs ──────────
     }
 }

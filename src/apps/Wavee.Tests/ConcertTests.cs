@@ -240,4 +240,153 @@ public class ConcertTests
         Assert.Equal(before, Entities.Strings.MapCount);
         Assert.False(places.TryGetSlot(key, out _));
     }
+
+    // ── Wave 5 (WP-5.N-C): the feed-subject key rule, the concert staging runs and what their commit owns ───────────
+
+    [Fact]
+    public void The_default_feed_subject_is_place_and_radius_and_the_tuple_extends_it_order_insensitively()
+    {
+        // The default key is the sidebar's own `placeId|radius`, so the hub and the sidebar share one feed.
+        Assert.Equal("2643743|100", ConcertFeedKey.For("2643743", 100, null, null));
+        Assert.Equal("geo:u33dc0|25", ConcertFeedKey.For(ConcertFeedKey.PlaceKey(null, "u33dc0"), 25, null, null));
+        Assert.Equal("", ConcertFeedKey.PlaceKey(" ", null));
+
+        var window = new ConcertDateRange(new DateOnly(2030, 7, 17), new DateOnly(2030, 7, 19));
+        Assert.Equal("2643743|100|2030-07-17..2030-07-19", ConcertFeedKey.For("2643743", 100, window, null));
+        Assert.Equal(
+            ConcertFeedKey.For("2643743", 100, null, ["spotify:concept:rock", "spotify:concept:jazz"]),
+            ConcertFeedKey.For("2643743", 100, null, ["spotify:concept:jazz", "spotify:concept:rock"]));
+        Assert.EndsWith("|spotify:concept:jazz,spotify:concept:rock",
+            ConcertFeedKey.For("2643743", 100, null, ["spotify:concept:rock", "spotify:concept:jazz"]));
+    }
+
+    [Fact]
+    public void A_schedule_run_lands_Complete_even_when_it_is_empty()
+    {
+        // "This artist has no upcoming shows" is an ANSWER: the page must stop skeletoning, not wait forever.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var run = s.ConcertRun(ConcertLink.ArtistConcerts);
+        run.End(new StagedId(s.Text("spotify:artist:resting")));
+        TestScope.CommitAndPublish(s);
+
+        var artist = Entities.Artist(EntityUri.Parse("spotify:artist:resting"));
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.ArtistConcerts.State(artist.Slot));
+        Assert.Equal(0, Entities.Current.Edges.ArtistConcerts.Count(artist.Slot));
+    }
+
+    [Fact]
+    public void The_near_you_bit_is_the_answers_fact_whatever_authority_holds_the_identity()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        ref var full = ref s.Concerts.RowFor(new StagedId(s.Text("spotify:concert:near")), Authority.Full, (uint)ConcertFields.Tile);
+        full.Title = s.Text("Full title");
+        full.Date = 1_760_000_000_000;
+        full.Flags = (uint)ConcertFlags.NearUser;
+        full.FlagsMask = (uint)ConcertFlags.NearMask;
+        TestScope.CommitAndPublish(s);
+
+        // a thinner schedule answer asked against ANOTHER place: it may not rewrite the title, but it clears the bit
+        s = Staging.Rent();
+        ref var thin = ref s.Concerts.RowFor(new StagedId(s.Text("spotify:concert:near")), Authority.Thin, (uint)ConcertFields.Tile);
+        thin.Title = s.Text("Thin title");
+        thin.Date = 1_760_000_000_000;
+        thin.FlagsMask = (uint)ConcertFlags.NearMask;
+        TestScope.CommitAndPublish(s);
+
+        var concert = Entities.Concert(EntityUri.Parse("spotify:concert:near"));
+        Assert.False(concert.IsNearUser);
+        Assert.Equal("Full title", Entities.Strings.Resolve(concert.TitleId));
+    }
+
+    [Fact]
+    public void A_keyed_concepts_run_creates_its_place_and_keeps_wire_order()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var run = s.ConcertRun(ConcertLink.PlaceConcepts);
+        foreach (var (uri, name, weight) in new[] { ("spotify:concept:techno", "techno", 0.9f), ("spotify:concept:ambient", "ambient", 0.4f) })
+        {
+            ref var e = ref run.Add();
+            e.T0 = s.Text(uri);
+            e.T1 = s.Text(name);
+            e.U0 = BitConverter.SingleToUInt32Bits(weight);
+        }
+        run.EndKeyed(s.Text("geo:u33dc0"));
+        TestScope.CommitAndPublish(s);
+
+        Assert.True(Entities.Current.Places.TryGetSlot(Entities.Strings.Intern("geo:u33dc0"), out int place));
+        var concepts = ConcertPlaces.ConceptsOf(place);
+        Assert.Equal(new[] { "spotify:concept:techno", "spotify:concept:ambient" }, concepts.Select(c => c.Uri).ToArray());
+        Assert.Equal(0.9, concepts[0].Weight, 3);
+    }
+
+    [Fact]
+    public void An_offer_list_rewrite_hands_back_the_text_the_old_list_owned()
+    {
+        // Defect 1 for payload edges: the commit AddRefs the new payload FIRST, then releases the list it replaces.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        ref var row = ref s.Concerts.RowFor(new StagedId(s.Text("spotify:concert:offers")), Authority.Full, (uint)ConcertFields.Tile);
+        row.Date = 1_760_000_000_000;
+        var first = s.ConcertRun(ConcertLink.Offers);
+        StageOffer(s, ref first, "offer-rewrite-provider-a-20260914", "https://a.example/20260914", "AAA");
+        first.End(new StagedId(s.Text("spotify:concert:offers")));
+        TestScope.CommitAndPublish(s);
+        int held = Entities.Strings.MapCount;
+
+        s = Staging.Rent();
+        var second = s.ConcertRun(ConcertLink.Offers);
+        StageOffer(s, ref second, "offer-rewrite-provider-b-20260914", "https://b.example/20260914", "BBB");
+        second.End(new StagedId(s.Text("spotify:concert:offers")));
+        TestScope.CommitAndPublish(s);
+
+        Assert.Equal(held, Entities.Strings.MapCount);               // three strings in, three strings out
+        var offer = Assert.Single(Entities.Concert(EntityUri.Parse("spotify:concert:offers")).Offers.ToArray());
+        Assert.Equal("offer-rewrite-provider-b-20260914", Entities.Strings.Resolve(offer.Provider));
+    }
+
+    static void StageOffer(Staging s, ref ConcertRun run, string provider, string url, string currency)
+    {
+        ref var o = ref run.Add();
+        o.T0 = s.Text(provider);
+        o.T1 = s.Text(url);
+        o.T2 = s.Text(currency);
+        o.B0 = (byte)ConcertOfferAvailability.Available;
+    }
+
+    [Fact]
+    public void A_first_feed_page_replaces_and_an_append_merges_into_the_held_sections()
+    {
+        TestScope.Fresh();
+        StagePage(append: false, ("spotify:concert:a", 0, "near"), ("spotify:concert:b", 2, "all"));
+        StagePage(append: false, ("spotify:concert:c", 2, "all"));                 // a refetch: the old list is gone
+        StagePage(append: true, ("spotify:concert:c", 2, "all"), ("spotify:concert:d", 2, "all"), ("spotify:concert:e", 1, "rec"));
+
+        int feed = ConcertPlaces.FeedSlot("merge|100");
+        var e = Entities.Current.Edges.FeedSection;
+        var uris = e.Targets(feed).ToArray().Select(t => new Concert(t).Uri.Text).ToArray();
+        Assert.Equal(new[] { "spotify:concert:c", "spotify:concert:d", "spotify:concert:e" }, uris);
+        Assert.Equal(2, ConcertFeedMerge.SectionEnd(e.Payload(feed), 0));
+    }
+
+    static void StagePage(bool append, params (string Uri, byte Kind, string Section)[] members)
+    {
+        var s = Staging.Rent();
+        foreach (var m in members)
+        {
+            ref var row = ref s.Concerts.RowFor(new StagedId(s.Text(m.Uri)), Authority.Thin, (uint)ConcertFields.Tile);
+            row.Date = 1_760_000_000_000;
+        }
+        var run = s.ConcertRun(ConcertLink.FeedSection);
+        foreach (var m in members)
+        {
+            ref var edge = ref run.Add(new StagedId(s.Text(m.Uri)));
+            edge.B0 = m.Kind;
+            edge.T0 = s.Text(m.Section);
+        }
+        if (append) run.AppendKeyed(s.Text("merge|100")); else run.EndKeyed(s.Text("merge|100"));
+        TestScope.CommitAndPublish(s);
+    }
 }

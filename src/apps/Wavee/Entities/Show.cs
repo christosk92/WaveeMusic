@@ -198,3 +198,78 @@ public static partial class Entities
         }
     }
 }
+
+// ── persistence (Store.cs's per-kind seam) ───────────────────────────────────────────────────────────────────────────
+
+/// <summary>How a show survives a restart (Store.cs §2). Persists <see cref="ShowFields.Identity"/> and
+/// <see cref="ShowFields.About"/> — the two groups this file's commit actually applies. <see cref="ShowTable.EpisodesAsked"/>
+/// is NOT persisted: it is a paging cursor over <c>Edges.ShowEpisodes</c>, which this shape does not persist either
+/// (only the five <c>LibraryEdge</c> relations are), so a stale cursor with no membership behind it would just pin a
+/// wrong "load more" gate after a cold start — the cursor re-derives itself from the network the moment the page asks.
+///
+/// <para>STORE THREAD (both halves): never touches a live column or the interner (file header). <see cref="Save"/>
+/// reads the <see cref="Staging"/> that was just committed — the same batch the provider answered with — and
+/// <see cref="Load"/> only ever produces TEXT-form <see cref="StagedId"/>s (<see cref="RowReader.Uri"/>), which the
+/// later UI-thread commit resolves through the ordinary <c>Staging.Slot</c> path (Store.cs's read-side note).</para></summary>
+public sealed class ShowShape : KindShape
+{
+    static readonly StoreColumn[] Cols =
+    [
+        new("title", StoreType.Text, StoreColumnFlags.Title),
+        new("image", StoreType.Text),
+        new("publisher", StoreType.Text),
+        new("description", StoreType.Text),
+        new("identity_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("about_auth", StoreType.Int, StoreColumnFlags.Authority),
+    ];
+
+    const uint PersistedFields = (uint)(ShowFields.Identity | ShowFields.About);
+
+    public override EntityKind Kind => EntityKind.Show;
+    public override string Table => "show";
+    public override ReadOnlySpan<StoreColumn> Columns => Cols;
+
+    public override void Save(Staging s, RowWriter w)
+    {
+        var rows = s.ShowsOrNull;
+        if (rows is null) return;
+        var span = rows.Span;
+        for (int i = 0; i < span.Length; i++)
+        {
+            ref readonly var row = ref span[i];
+            uint known = row.Known & PersistedFields;
+            bool identity = (known & (uint)ShowFields.Identity) != 0;
+            bool about = (known & (uint)ShowFields.About) != 0;
+
+            if (identity)
+            {
+                w.Text(0, row.Title);
+                w.Text(1, row.Image);
+                w.Text(2, row.Publisher);
+                w.Int(4, (int)row.Authority);
+            }
+            else { w.Null(0); w.Null(1); w.Null(2); w.Null(4); }
+
+            if (about)
+            {
+                w.Text(3, row.Description);
+                w.Int(5, (int)row.Authority);
+            }
+            else { w.Null(3); w.Null(5); }
+
+            w.Emit(row.Id, known, Entities.Now, Entities.Now);
+        }
+    }
+
+    public override void Load(RowReader r, Staging into)
+    {
+        ref var row = ref into.Shows.Add();
+        row.Id = r.Uri;
+        row.Title = r.Text(0);
+        row.Image = r.Text(1);
+        row.Publisher = r.Text(2);
+        row.Description = r.Text(3);
+        row.Known = r.Known & PersistedFields;
+        row.Authority = (Authority)Math.Max(r.Int(4), r.Int(5));
+    }
+}

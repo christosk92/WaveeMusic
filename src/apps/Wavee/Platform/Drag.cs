@@ -463,7 +463,7 @@ public static partial class Drag
     public static DragChipSpec? Chip(DragState state)
     {
         if (!string.Equals(state.Kind, Resource, StringComparison.Ordinal))
-            return ExtraChip?.Invoke(state);
+            return ExtraChip?.Invoke(state) ?? ReorderChip?.Invoke(state);
 
         if (Unwrap(state.Payload) is not { } payload) return null;
         var model = payload.ChipModel();
@@ -497,6 +497,9 @@ public static partial class Drag
     /// composition time (owner J's sidebar customizer); null for every other kind, which leaves that gesture its
     /// deliberate ghost lift.</summary>
     public static Func<DragState, DragChipSpec?>? ExtraChip { get; set; }
+
+    /// <summary>The Home customizer's reorder chip — a second resolver so the sidebar's `ExtraChip` owner is untouched.</summary>
+    public static Func<DragState, DragChipSpec?>? ReorderChip { get; set; }
 
     /// <summary>The liked collection's chip artwork, BUILT ONCE and installed at composition time by the surface that
     /// owns the liked cover treatments (owner O's `User.Cover.cs`). Null leaves the generic playlist glyph, which is the

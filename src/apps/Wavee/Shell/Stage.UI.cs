@@ -121,7 +121,7 @@ public static partial class Stage
 
     /// <summary>THE WAY OUT: a 44-DIP disc made of INK with a card shadow — deliberately one rung above the 40-DIP FAB
     /// beside it. The shadow is load-bearing: the one separation channel that works in both polarities.</summary>
-    static BoxEl ExitFab(string glyph, Action onClick) => new()
+    internal static BoxEl ExitFab(string glyph, Action onClick) => new()
     {
         Width = 44f, Height = 44f, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Corners = Radii.Circle(44f), Fill = Ink.GlassPlate, HoverFill = Ink.GlassPlateHover, PressedFill = Ink.GlassPlatePressed,
@@ -188,14 +188,13 @@ public static partial class Stage
         ],
     };
 
-    // The pivot rung (the context band's constants, restated: that layout is owner M's, Wave 4.5).
-    const float PivotGap = 16f, PivotPadX = 8f, UnderlineH = 2f, UnderlineGap = 4f;
+    // The pivot rung reads the context band's OWN constants (`Detail.BandLayout`, G-214) — never a restated copy.
 
     /// <summary>One pivot link: 14/20/600, a tab role, and an ALWAYS-mounted underline that switches COLOUR (167 ms).</summary>
     static Element PivotLink(string label, bool active, ColorF accent, Action go) => new BoxEl
     {
         Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Padding = new Edges4(PivotPadX, Spacing.XS, PivotPadX, Spacing.XXS), Corners = Radii.ControlAll,
+        Padding = new Edges4(Detail.BandLayout.PivotPadX, Spacing.XS, Detail.BandLayout.PivotPadX, Spacing.XXS), Corners = Radii.ControlAll,
         Role = AutomationRole.Tab, Focusable = true, Cursor = CursorId.Hand, OnClick = go,
         Children =
         [
@@ -206,14 +205,14 @@ public static partial class Stage
             },
             new BoxEl
             {
-                Height = UnderlineH, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(0f, UnderlineGap, 0f, 0f),
+                Height = Detail.BandLayout.UnderlineHeight, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(0f, Detail.BandLayout.UnderlineGap, 0f, 0f),
                 Fill = active ? accent : ColorF.Transparent, BrushTransitionMs = Design.Motion.Fast, HitTestVisible = false,
             },
         ],
     };
 
     /// <summary>The 20 × 2 accent RULE — a section ornament, never a selection bar.</summary>
-    static Element SectionRule(ColorF accent) => new BoxEl { Width = 20f, Height = UnderlineH, Shrink = 0f, Fill = accent, HitTestVisible = false };
+    static Element SectionRule(ColorF accent) => new BoxEl { Width = 20f, Height = Detail.BandLayout.UnderlineHeight, Shrink = 0f, Fill = accent, HitTestVisible = false };
 
     // ══ 2. SHARED READS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -265,10 +264,7 @@ public static partial class Stage
             var track = CurrentTrack();
             string art = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
             bool runDrift = Drift.Runs(drift, false, Playback.IsPlaying.Value, art.Length > 0);
-            int available = Prefs.Lyrics.Available.Value;
-            int secondary = Prefs.Lyrics.SecondaryLine();
-            bool lyricsPane = Pane.Current.Value == Pane.Lyrics;
-            var accent = CurrentAccent(track);
+            // NOT read here: the secondary-line capability, the line mode and the pane (`SecondaryLineFab` owns them).
             var L = stage.Value;
 
             // Escape routes to the FOCUSED node, so the surface takes focus once at mount (no ring: visual false).
@@ -314,7 +310,7 @@ public static partial class Stage
                             new BoxEl
                             {
                                 Grow = 1f, Direction = 1, MinHeight = 0f, MinWidth = 0f,
-                                Children = [TopBar(L.Wide, available, secondary, lyricsPane, accent), StageBody(stage, L)],
+                                Children = [TopBar(L.Wide), StageBody(stage, L)],
                             },
                         ],
                     },
@@ -401,18 +397,36 @@ public static partial class Stage
     /// <summary>The surface's own controls, pushed right under the scrim's top deepening (no veil of its own). The 🌐 is
     /// composed only when the document on screen has a second layer AND the lyrics pane is up; the ⌄ is unconditional
     /// and its tooltip teaches the keyboard half.</summary>
-    static Element TopBar(bool wide, int available, int secondary, bool lyricsPane, ColorF accent)
+    static Element TopBar(bool wide) => new BoxEl
     {
-        var kids = new List<Element>(3) { new BoxEl { Grow = 1f, MinWidth = 0f, HitTestVisible = false } };
-        if (available != 0 && lyricsPane)
-            kids.Add(ToolTip.Wrap(ScrimFab(Icons.Globe, () => Prefs.Lyrics.SetSecondaryLine(Prefs.Lyrics.Next(secondary, available)),
-                Rail.HeaderGlyph, accent, latched: (available & Prefs.Lyrics.BitFor(secondary)) != 0), Prefs.Lyrics.Tooltip(secondary)));
-        kids.Add(ToolTip.Wrap(ExitFab(Icons.ChevronDown, static () => Shell.Ui.ImmersiveLyrics.Value = false), Loc.Get(Strings.Player.CloseLyricsHint)));
-        return new BoxEl
+        Direction = 0, AlignItems = FlexAlign.Start, Gap = Spacing.S, Shrink = 0f, Height = Band.TopBandFor(wide),
+        Padding = new Edges4(Spacing.L, Spacing.L, Spacing.L, Spacing.M),
+        Children =
+        [
+            // Shrink (G-256): a grown spacer that keeps its last arranged width across maximize → restore would push the ⌄.
+            new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false },
+            Embed.Comp(static () => new SecondaryLineFab()),
+            ToolTip.Wrap(ExitFab(Icons.ChevronDown, static () => Shell.Ui.ImmersiveLyrics.Value = false), Loc.Get(Strings.Player.CloseLyricsHint)),
+        ],
+    };
+
+    /// <summary>The 🌐 secondary-line FAB as its OWN subscriber (capability, line mode, pane, accent), so a flip re-renders
+    /// this FAB alone. It must never be read by <see cref="SurfaceCore"/>: the lyrics pane mounts INSIDE the surface's first
+    /// render, and its document host publishes the capability from an eager effect in that same run — the engine drops a
+    /// write into a computation that is still running (the lost wakeup, D42), so the surface kept the stale capability.
+    /// Absent, it is a zero box (the spacer absorbs its gap, so the ⌄ never moves).</summary>
+    sealed class SecondaryLineFab : Component
+    {
+        public override Element Render()
         {
-            Direction = 0, AlignItems = FlexAlign.Start, Gap = Spacing.S, Shrink = 0f, Height = Band.TopBandFor(wide),
-            Padding = new Edges4(Spacing.L, Spacing.L, Spacing.L, Spacing.M), Children = kids.ToArray(),
-        };
+            int available = Prefs.Lyrics.Available.Value;
+            int secondary = Prefs.Lyrics.SecondaryLine();
+            bool lyricsPane = Pane.Current.Value == Pane.Lyrics;
+            if (available == 0 || !lyricsPane) return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+            var accent = CurrentAccent(CurrentTrack());
+            return ToolTip.Wrap(ScrimFab(Icons.Globe, () => Prefs.Lyrics.SetSecondaryLine(Prefs.Lyrics.Next(secondary, available)),
+                Rail.HeaderGlyph, accent, latched: (available & Prefs.Lyrics.BitFor(secondary)) != 0), Prefs.Lyrics.Tooltip(secondary));
+        }
     }
 
     /// <summary>The two regions. The identity's horizontal participation lives on THIS wrapper (Grow 0, the authored
@@ -593,9 +607,11 @@ public static partial class Stage
                 Children =
                 [
                     Shell.TimeText(remaining: false, ink: Ink.InkTertiary),
-                    new BoxEl { Grow = 1f, MinWidth = 0f, HitTestVisible = false },
+                    // Shrink on both spacers (G-256): a grown spacer keeps its last arranged width across maximize →
+                    // restore unless it may shrink, and pushes the remaining-time label off the column.
+                    new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false },
                     Embed.Comp(static () => new QualityBadge()),
-                    new BoxEl { Grow = 1f, MinWidth = 0f, HitTestVisible = false },
+                    new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false },
                     Shell.TimeText(remaining: true, ink: Ink.InkTertiary),
                 ],
             },
@@ -912,7 +928,7 @@ public static partial class Stage
                     },
                     new BoxEl
                     {
-                        Direction = 0, Height = Band.PivotBandH, Shrink = 0f, AlignItems = FlexAlign.End, Justify = FlexJustify.End, Gap = PivotGap,
+                        Direction = 0, Height = Band.PivotBandH, Shrink = 0f, AlignItems = FlexAlign.End, Justify = FlexJustify.End, Gap = Detail.BandLayout.PivotGap,
                         Padding = new Edges4(Spacing.XXL, 0f, Spacing.XXL, Spacing.L),
                         Children =
                         [
@@ -935,7 +951,9 @@ public static partial class Stage
             var accent = CurrentAccent(track);
             _ = Platform.SettingsChanged.Value;
             bool autoplay = Platform.Settings.Get(Platform.Keys.AutoplayEnabled);
-            string? source = ContextName(Playback.ContextUri.Value);
+            EntityId contextId = Playback.ContextUri.Value;
+            UseEffect(static () => Queue.EnsureContext(Playback.ContextUri.Peek()), DepKey.From(contextId.GetHashCode()));
+            string? source = Queue.ContextName(contextId);
             Element? rows = QueuePaneBody?.Invoke();
             var content = new List<Element>(2) { AutoplayRow(autoplay, accent) };
             content.Add(rows ?? new BoxEl
@@ -970,27 +988,6 @@ public static partial class Stage
                     },
                 ],
             };
-        }
-    }
-
-    /// <summary>The context's name, answered from the entity it names — never a "Playing from …" with no name. Liked Songs
-    /// answers synchronously.</summary>
-    static string? ContextName(EntityId context)
-    {
-        switch (context.Kind)
-        {
-            case EntityKind.Collection: return Loc.Get(Strings.Player.LikedSongs);
-            case EntityKind.Playlist:
-                _ = Entities.Current.Playlists.Changed.Value;
-                return Entities.Current.Playlists.TryGetSlot(context, out int p) && new Playlist(p).Knows(PlaylistFields.Identity)
-                    ? Entities.Strings.Resolve(new Playlist(p).TitleId) : null;
-            case EntityKind.Album:
-                _ = Entities.Current.Albums.Changed.Value;
-                return Entities.Current.Albums.TryGetSlot(context, out int a) && new Album(a).Knows(AlbumFields.Title) ? new Album(a).Title : null;
-            case EntityKind.Artist:
-                _ = Entities.Current.Artists.Changed.Value;
-                return Entities.Current.Artists.TryGetSlot(context, out int r) && new Artist(r).Knows(ArtistFields.Name) ? new Artist(r).Name : null;
-            default: return null;
         }
     }
 

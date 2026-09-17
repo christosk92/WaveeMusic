@@ -49,6 +49,7 @@
     "yourDaylist": "내 데이리스트",
     "heroEyebrow": "{name}님, {greeting} · {what}",
     "nextUpdateAt": "다음 업데이트: {time}",
+    "daylistUpdating": "데이리스트를 업데이트하는 중…",
     "editorial": "에디토리얼",
     "oneSeries": "한 시리즈, 믹스 {count}개",
     "mixesFromArtists": "자주 듣는 아티스트로 만든 믹스 {count}개",

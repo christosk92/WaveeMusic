@@ -282,6 +282,25 @@ public class PlatformSettingsTests
             Assert.Equal(Platform.SettingsEpoch, Platform.SettingsChanged.Peek());
         });
 
+    /// <summary>G-077's DEBUG assert is gated on <see cref="Platform.UiThreadId"/>, which nothing in this app has
+    /// ever captured (no host anywhere records the OS thread the engine's UI loop runs on) — so it defaults to
+    /// <c>null</c> and a write from ANY thread, including this test's, must be a no-op that never trips. A write
+    /// FROM the id it is set to is the other half of the same guarantee: the assert only ever fires on a genuine
+    /// mismatch, never on the thread it was told is the right one.</summary>
+    [Fact]
+    public void Settings_Set_NeverAssertsWithNoCapturedUiThread_OrFromTheCapturedOne()
+        => WithStore(new MemoryAppSettings(), () =>
+        {
+            Assert.Null(Platform.UiThreadId);
+            Platform.Settings.Set(Platform.Keys.ThemeMode, 3);           // no UI thread known — must not throw
+
+            Platform.UiThreadId = Environment.CurrentManagedThreadId;
+            try { Platform.Settings.Set(Platform.Keys.ThemeMode, 4); }   // written from the captured thread itself
+            finally { Platform.UiThreadId = null; }
+
+            Assert.Equal(4, Platform.Settings.Get(Platform.Keys.ThemeMode));
+        });
+
     /// <summary>The per-subject seam (ch 30 §9.3(7)): one key per context uri / library kind / sidebar design, built
     /// at the call site. The SHAPE of the name is persisted, so this pins the strings, not just the mechanism.</summary>
     [Fact]

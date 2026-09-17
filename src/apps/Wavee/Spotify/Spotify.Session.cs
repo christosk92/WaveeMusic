@@ -313,6 +313,7 @@ public static partial class Spotify
         CatalogScope next = WelcomeScope(scope.Key, account, market, s.Tier);
         if (next == scope.Key) return;
         Entities.Switch(next);
+        Playback.Rebind();               // G-241: the restored deck follows the scope switch before the next drain
         Log.Info("spotify", "catalog scope adopted (" + Platform.Redact(next.Account) + ", market " + next.Market
             + ", tier " + s.Tier + ")");
     }
@@ -370,8 +371,29 @@ public static partial class Spotify
         Apply(new SessionEvent(SessionEventKind.Login, Flag: true));
     }
 
+    /// <summary>`--fake` (G-065): present the chrome as signed in with the seeded profile — no socket, no credential
+    /// slot, no login5, and <see cref="SignIn.Requests"/> is never bumped, so the sign-in door never learns there was
+    /// "nothing to resume" (<c>Screens/Setup.UI.cs</c>'s door also short-circuits on <c>Platform.Args.Fake</c> directly,
+    /// belt and braces). Called once, from <c>App.cs</c>, in <see cref="Login"/>'s place — the exact call site is in
+    /// this batch's report, since <c>App.cs</c> is not this batch's file. The identity is <see cref="Entities.FakeAccount"/>,
+    /// the same literal <c>Platform.Scope</c>'s fake arm already put in <c>CatalogScope.Account</c>, so nothing here
+    /// switches the catalog scope — the seed is already the account's whole "backend".</summary>
+    public static void BootFake()
+    {
+        Boot();
+        Post(() =>
+        {
+            var e = new SessionEvent(SessionEventKind.FakeOnline,
+                Id: Entities.Intern(Encoding.UTF8.GetBytes(Entities.FakeAccount)),
+                Id2: Entities.Intern(Encoding.UTF8.GetBytes("US")),
+                Id3: Entities.Intern(Encoding.UTF8.GetBytes("premium")));
+            Apply(e);
+        });
+        Log.Info("spotify", "fake session online (" + Entities.FakeAccount + ")");
+    }
+
     /// <summary>Sign out: tear every socket down, forget the tokens, wipe the stored credential.</summary>
-    public static void Logout() => Publish(new SessionEvent(SessionEventKind.Logout));
+    public static void Logout() => Connect.RetireThen(static () => Publish(new SessionEvent(SessionEventKind.Logout)));   // G-036: BecameInactive leaves before the session clears
 
     /// <summary>Close the session WITHOUT signing out: every socket down and the tokens forgotten, the stored credential
     /// kept, so the next <see cref="Login"/> resumes. What a shutdown or a headless run's exit calls. Returns immediately.</summary>
@@ -469,10 +491,22 @@ public static partial class Spotify
         return buffer.ToArray();
     }
 
-    static byte[] Get(string url, CancellationToken ct)
+    static byte[] Get(string url, CancellationToken ct) => Get(url, ct, authed: false);
+
+    /// <summary><paramref name="authed"/> adds the session's bearer and client-token — the pair every spclient route
+    /// needs. The server-clock probe went out bare and answered 401 three times per session and per reconnect
+    /// (2026-09-16 logs), so the clock offset never synced past the passive bootstrap.</summary>
+    static byte[] Get(string url, CancellationToken ct, bool authed)
     {
         using var msg = new HttpRequestMessage(HttpMethod.Get, url);
         msg.Headers.TryAddWithoutValidation("User-Agent", Identity.UserAgent);
+        if (authed)
+        {
+            Session cur = Current;
+            string bearer = TextOf(cur.AccessToken), clientToken = TextOf(cur.ClientToken);
+            if (bearer.Length > 0) msg.Headers.TryAddWithoutValidation("Authorization", "Bearer " + bearer);
+            if (clientToken.Length > 0) msg.Headers.TryAddWithoutValidation("client-token", clientToken);
+        }
         using var resp = Http.Send(msg, ct);
         resp.EnsureSuccessStatusCode();
         using var stream = resp.Content.ReadAsStream(ct);
@@ -480,6 +514,18 @@ public static partial class Spotify
         stream.CopyTo(buffer);
         return buffer.ToArray();
     }
+
+    /// <summary>The access point pings its client every two minutes (librespot's observed cadence; the client answers
+    /// <c>CmdPong</c>). It is the ONLY traffic on an idle AP channel.</summary>
+    public const int ApPingIntervalMs = 120_000;
+
+    /// <summary>The AP socket's read timeout: TWO missed pings plus a minute, never less. The first cut used 90 s
+    /// ("longer than the AP's ping interval" — it was not), so an idle channel timed out about 90 s after the last
+    /// packet, every time: the session dropped, re-logged in, reconnected the dealer and re-announced the device
+    /// (<c>put-state NewDevice</c>) every two to three minutes — 199 and 188 drops in the two earlier logs of
+    /// 2026-09-16 alone — and every other Spotify client lost Wavee as the active device on each flap. A dead channel
+    /// is still detected, five minutes late instead of ninety seconds early.</summary>
+    public const int ApReadTimeoutMs = 2 * ApPingIntervalMs + 60_000;
 
     // ── 8. the AP thread ─────────────────────────────────────────────────────────────────────────────────────────────
     //
@@ -631,7 +677,7 @@ public static partial class Spotify
                 tcp = new TcpClient { NoDelay = true };
                 tcp.Connect(host, port);
                 var stream = tcp.GetStream();
-                stream.ReadTimeout = 90_000;                          // longer than the AP's ping interval
+                stream.ReadTimeout = ApReadTimeoutMs;                 // see the constant: two missed AP pings, not one
                 Publish(new SessionEvent(SessionEventKind.Connected));
 
                 var codec = Negotiate(stream, ct);
@@ -1603,7 +1649,7 @@ public static partial class Spotify
     {
         Span<char> path = stackalloc char[64];
         var request = Build(Current, RequestKind.ServerTime, new RequestArgs(), path);
-        byte[] body = Get(SpclientBaseUrl() + new string(request.Path), ct);
+        byte[] body = Get(SpclientBaseUrl() + new string(request.Path), ct, authed: true);
         var reader = new Utf8JsonReader(body, new JsonReaderOptions { MaxDepth = 4 });
         while (reader.Read())
         {

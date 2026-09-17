@@ -91,6 +91,18 @@ public enum FetchEdge : byte
     BrowseCategories,
     /// <summary>A browse page's bands, paged by section (<c>Edges.BrowseSections</c>).</summary>
     BrowseSections,
+    /// <summary>"Similar albums" (<c>Edges.AlbumSimilar</c>): parent = the ALBUM; the request is seeded by its top-play
+    /// track, which the planner resolves into <see cref="FetchBatch.Revisions"/>.</summary>
+    AlbumSimilar,
+    // the artist page's three independently paged discography facets (ch 08 GAP 8) and its concert schedule (ch 17)
+    /// <summary>One page of an artist's Albums facet (<c>Edges.ArtistAlbums</c>, <c>queryArtistDiscographyAlbums</c>).</summary>
+    ArtistAlbums,
+    /// <summary>One page of the Singles &amp; EPs facet (<c>Edges.ArtistSingles</c>).</summary>
+    ArtistSingles,
+    /// <summary>One page of the Compilations facet (<c>Edges.ArtistCompilations</c>).</summary>
+    ArtistCompilations,
+    /// <summary>The artist's concert schedule (<c>Edges.ArtistConcerts</c>, the <c>ArtistConcerts</c> query).</summary>
+    ArtistConcerts,
 }
 
 /// <summary>The transport family a route runs on.</summary>
@@ -117,7 +129,11 @@ public enum PathfinderOp : byte
     Home, HomeSection, BrowseAll, BrowsePage, BrowseSection,
     /// <summary>The facet's own search operation; the facet is the subject uri's <c>NN</c>.</summary>
     Search, SearchGenres, SearchSuggestions,
-    Concert, AlbumMerch,
+    Concert, AlbumMerch, SimilarAlbums,
+    /// <summary>The discography facet operations: one persisted hash, three operation names (Spotify.Api.Artist.cs).</summary>
+    DiscographyAlbums, DiscographySingles, DiscographyCompilations,
+    /// <summary>An artist's concert schedule (Spotify.Api.Concert.cs).</summary>
+    ArtistConcerts,
 }
 
 /// <summary>The spclient REST routes a route can name.</summary>
@@ -216,8 +232,9 @@ public static class FetchRoutes
     [
         // The v2 read is the one answer that carries the capability block; justified by it alone.
         FetchRoute.Spclient(SpclientRoute.PlaylistRead,
-            (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities | PlaylistFields.Format),
-            primary: (uint)PlaylistFields.Capabilities),
+            (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities | PlaylistFields.Format
+                 | PlaylistFields.Daylist | PlaylistFields.Chart | PlaylistFields.Tuning),
+            primary: (uint)(PlaylistFields.Capabilities | PlaylistFields.Daylist | PlaylistFields.Chart | PlaylistFields.Tuning)),
         // The detail page's own facts justify the per-playlist pathfinder read; the ACCENT alone does not — it is the
         // cold-start colour a card already has from the home / search / library answer it came in, and a sidebar asking
         // `PlaylistFields.Row` must stay one batchable kind-205 POST, not four hundred per-subject reads. Asked alone it
@@ -357,6 +374,7 @@ public static class FetchRoutes
         FetchEdge.AlbumRecommendations => FetchRoute.Metadata(RecommendedPlaylists, 0),
         FetchEdge.AlbumMerch => FetchRoute.Pathfinder(PathfinderOp.AlbumMerch, 0),
         FetchEdge.AlbumMoreBy => FetchRoute.Pathfinder(PathfinderOp.GetAlbum, 0),
+        FetchEdge.AlbumSimilar => FetchRoute.Pathfinder(PathfinderOp.SimilarAlbums, 0),
         FetchEdge.ArtistPopular or FetchEdge.ArtistRelated => FetchRoute.Pathfinder(PathfinderOp.ArtistOverview, 0),
         FetchEdge.ArtistReleases => FetchRoute.Pathfinder(PathfinderOp.Discography, 0),
         FetchEdge.ShowEpisodes => FetchRoute.Metadata(ShowV4, 0),
@@ -369,6 +387,10 @@ public static class FetchRoutes
         FetchEdge.SearchResults => FetchRoute.Pathfinder(PathfinderOp.Search, 0),
         FetchEdge.BrowseCategories => FetchRoute.Pathfinder(PathfinderOp.BrowseAll, 0),
         FetchEdge.BrowseSections => FetchRoute.Pathfinder(PathfinderOp.BrowsePage, 0),
+        FetchEdge.ArtistAlbums => FetchRoute.Pathfinder(PathfinderOp.DiscographyAlbums, 0),
+        FetchEdge.ArtistSingles => FetchRoute.Pathfinder(PathfinderOp.DiscographySingles, 0),
+        FetchEdge.ArtistCompilations => FetchRoute.Pathfinder(PathfinderOp.DiscographyCompilations, 0),
+        FetchEdge.ArtistConcerts => FetchRoute.Pathfinder(PathfinderOp.ArtistConcerts, 0),
         _ => default,
     };
 

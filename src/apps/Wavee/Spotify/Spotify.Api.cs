@@ -1,19 +1,20 @@
 // ── Spotify/Spotify.Api.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// one function per request
+// one function per request, and the fetch provider that routes the planner's batches through them
 //
-// Role: SHELL
+// Role: SHELL (the runner, the provider) + CORE (the request builders, the route walk, the outcome fold)
 // Owner: F
-// Wave: 2
+// Wave: 2; gap batch B1b (G-040 provider half, G-041 pathfinder provider, G-042 routes, G-033, G-053, G-055, G-008)
 // Budget: 1800 lines
-// Spec: plan
+// Spec: plan; gap register §2.3. Named partial: Spotify.Api.Library.cs (the playlist4 lists, the collection, zstd)
 //
 // WHAT THIS REPLACES. 0.2.9 carried ~20 `Spotify*Service` classes, a `PathfinderClient`, a `PathfinderResource`, a
 // four-layer middleware pipeline (auth · client-token · rate limit · pathfinder headers) and a `Resource<K,V>` cache
 // per service — every one of them re-deciding a url, a verb and a `Dictionary<string,string>` of headers. Here a
-// request is a VALUE: `Spotify.Build` (owner D, CORE, pure) folds (session, kind, args) into a `Request`, and this
-// file is the RUNNER that turns that value into an `HttpRequestMessage`, plus the one-function-per-request calls that
-// pick a kind and fill the arguments. No service classes, no interfaces, no DI and no per-service cache: an answer
-// goes to `Spotify.Decode` and lands in the columns, and the columns ARE the cache (D16).
+// request is a VALUE: `Spotify.Build` (owner D, CORE, pure) folds (session, kind, args) into a `Request`, a `Route`
+// (Spotify.Api.Library.cs) carries the routes whose captured spelling the fold does not have, and this file is the
+// RUNNER that turns either value into an `HttpRequestMessage`, plus the one-function-per-request calls that pick a
+// kind and fill the arguments. No service classes, no interfaces, no DI and no per-service cache: an answer goes to
+// `Spotify.Decode` and lands in the columns, and the columns ARE the cache (D16).
 //
 // THREADING (C9/C1). Every call here BLOCKS — `HttpClient.Send`, not `SendAsync`, exactly like `Spotify.Session.cs`,
 // whose comment this file inherits: these paths exist to block. None of them may run on the UI thread. `Run` is the
@@ -21,9 +22,23 @@
 // four named threads `wavee-spotify-api-0..3`. Nothing here touches a table, a signal or `Entities.Strings` (C1): an
 // answer is decoded into a `Staging` on the worker thread and handed to the UI thread through `Spotify.Post`.
 //
-// EPOCHS (C4). The only stateful consumer here is the `Fetch` provider, and its epoch is the batch's: the staging is
-// stamped with `batch.Epoch` and `Entities.Commit` drops the whole batch if the scope has moved. Nothing else in this
-// file holds state across calls beyond the HTTP connection pool.
+// THE PROVIDER (§5, gap batch B1b). The planner hands over a batch that shares a NEED — (subject, kind, groups) for
+// rows, (relation, offset) for an edge — and the routing table (`FetchRoutes`, Entities/Fetch.Routes.cs) says which
+// transport fills each group. The provider walks that table minus the routes this build cannot DECODE:
+//
+//     batch ──RoutesFor──▶ Metadata kinds ──▶ ONE BatchedEntityRequest, every kind under one EntityRequest per uri
+//                     └──▶ Pathfinder ops ──▶ per subject (home, search, browse, album, track, artist overview …)
+//                     └──▶ Spclient routes ─▶ per subject (playlist v2 read, permission/base, popcount, top tracks)
+//           sealed = need & ~served ── answered WITHOUT: the groups stay asked for the scope, never a failure
+//
+//     edge ──ForEdge──▶ one route per parent: rootlist / recents (revision-gated /diff), collection paging, members …
+//
+// and folds every status into ONE verdict (`FetchOutcome`): an answer — `Fetch.Answer(ticket, staging)` through
+// `Spotify.Post` — unless a retryable failure is worth another attempt, or nothing answered at all.
+//
+// EPOCHS (C4). The provider's epoch is the batch's: the staging is stamped with `batch.Epoch` and `Entities.Commit`
+// drops the whole batch if the scope has moved. `Abandon` records the new epoch so a batch still walking its subjects
+// stops sending the moment its scope is gone.
 //
 // ALLOCATION, HONESTLY. A network call allocates: one path string, one `HttpRequestMessage`, one response `byte[]`,
 // and for the metadata POST one uri string per row (`FetchBatch.Uri`, the door Wave 1 wrote for exactly this, free
@@ -46,7 +61,7 @@ namespace Wavee;
 public static partial class Spotify
 {
     /// <summary>Every Spotify HTTP request the app makes, one function each. SHELL: each one blocks.</summary>
-    public static class Api
+    public static partial class Api
     {
         // ── 1. the answer ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -63,18 +78,26 @@ public static partial class Spotify
             public readonly byte[] Body;
             /// <summary>The server's <c>Retry-After</c> in seconds, or 0. Handed to <see cref="Fetch.Failed"/>.</summary>
             public readonly int RetryAfterSeconds;
+            /// <summary>The server's <c>ETag</c>, VERBATIM and never parsed (the content-filter one is
+            /// <c>{iso}#{int}#{int}#{int}</c>, which a typed header parse rejects), or null. Sent back as
+            /// <c>If-None-Match</c> by the conditional reads that keep one (<see cref="LikedContentFilters"/>, G-053).</summary>
+            public readonly string? ETag;
 
-            public Result(int status, byte[] body, int retryAfterSeconds = 0)
+            public Result(int status, byte[] body, int retryAfterSeconds = 0, string? etag = null)
             {
                 Status = status;
                 Body = body;
                 RetryAfterSeconds = retryAfterSeconds;
+                ETag = etag;
             }
 
             public bool Ok => Status is >= 200 and < 300;
             /// <summary>A conditional read the server answered "unchanged".</summary>
             public bool NotModified => Status == 304;
             public ReadOnlySpan<byte> Bytes => Body;
+
+            /// <summary>The same answer with its body replaced — how a zstd frame becomes the message it wraps.</summary>
+            public Result WithBody(byte[] body) => new(Status, body, RetryAfterSeconds, ETag);
 
             public static Result Transport => new(0, []);
         }
@@ -133,6 +156,21 @@ public static partial class Spotify
             return false;
         }
 
+        /// <summary>Run a blocking call on an api thread and hand its value back as a task — the door for a caller that
+        /// lives in async code (the palette's filler, the lyrics stack) and must not park a pool thread on a socket. A
+        /// full queue FAULTS the task (C8); it is never queued somewhere else.</summary>
+        public static Task<T> RunAsync<T>(Func<T> work)
+        {
+            var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+            bool queued = Run(() =>
+            {
+                try { done.TrySetResult(work()); }
+                catch (Exception ex) { done.TrySetException(ex); }
+            });
+            if (!queued) done.TrySetException(new InvalidOperationException("api queue full (" + QueueDepth + ")"));
+            return done.Task;
+        }
+
         static void WorkerLoop(int index)
         {
             foreach (Action work in Work.GetConsumingEnumerable())
@@ -160,6 +198,7 @@ public static partial class Spotify
         const string ApResolveHost = "https://apresolve.spotify.com";
         const string DealerFallbackHost = "https://dealer.spotify.com";
         const string ImageUploadHost = "https://image-upload.spotify.com";
+        const string XpuiOrigin = "https://xpui.app.spotify.com";
 
         /// <summary>Which origin answers a host. <see cref="ApiHost.Spclient"/> is the resolved one and the only one
         /// that changes between sessions.</summary>
@@ -208,34 +247,57 @@ public static partial class Spotify
 
             string url = BaseUrl(request.Host) + new string(request.Path);
             byte[] body = request.Body.IsEmpty ? [] : request.Body.ToArray();
-            Verb verb = request.Verb;
-            HeaderSet headers = request.Headers;
             string syncReason = request.SyncReason.IsEmpty ? "" : new string(request.SyncReason);
+            return SendAuthed(request.Verb, url, request.Headers, kind, body, syncReason, ct);
+        }
 
+        /// <summary>A <see cref="Route"/> value → the answer, with the same single 401 retry. A route marked
+        /// <see cref="Route.Zstd"/> comes back UNWRAPPED; a zstd body that does not decode is a transport failure
+        /// (status 0), never an empty 200 a decoder would read as "the list is empty".</summary>
+        public static Result Send(in Route route, byte[] body, CancellationToken ct, string? ifNoneMatch = null)
+        {
+            Result result = SendAuthed(route.Verb, BaseUrl(route.Host) + route.Path, route.Headers, route.Kind, body,
+                route.SyncReason, ct, ifNoneMatch: ifNoneMatch);
+            if (!route.Zstd || !IsZstd(result.Body)) return result;
+            return Unzstd(result.Body) is { } unwrapped ? result.WithBody(unwrapped) : new Result(0, [], 0, result.ETag);
+        }
+
+        /// <summary>The ONE bearer-retry loop every send shares: a 401 re-mints once and goes again, and the second 401
+        /// IS the answer — a loop here is how a revoked account burns a token bucket.</summary>
+        static Result SendAuthed(Verb verb, string url, HeaderSet headers, RequestKind kind, byte[] body, string syncReason,
+            CancellationToken ct, string? contentType = null, string? contentEncoding = null, string? ifNoneMatch = null,
+            ClientIdentity? identity = null)
+        {
             for (int attempt = 0; ; attempt++)
             {
-                Result result = SendOnce(verb, url, headers, kind, body, syncReason, ct);
+                Result result = SendOnce(verb, url, headers, kind, body, syncReason, ct, contentType, contentEncoding, ifNoneMatch, identity);
                 if (result.Status != 401 || attempt > 0) return result;
-                // The bearer expired mid-flight (or the clock drifted). One forced mint, one retry, and then the 401
-                // IS the answer — a loop here is how a revoked account burns a token bucket.
                 if (AccessToken(force: true) is null) return result;
             }
         }
 
         static Result SendOnce(Verb verb, string url, HeaderSet headers, RequestKind kind, byte[] body,
-            string syncReason, CancellationToken ct, string? contentType = null, string? contentEncoding = null)
+            string syncReason, CancellationToken ct, string? contentType, string? contentEncoding, string? ifNoneMatch,
+            ClientIdentity? identity = null)
         {
             try
             {
                 using var message = new HttpRequestMessage(MethodOf(verb), url);
                 Stamp(message, headers, kind, body, syncReason);
+                if (identity is { } client)
+                {
+                    message.Headers.TryAddWithoutValidation("App-Platform", client.AppPlatform);
+                    message.Headers.TryAddWithoutValidation("Spotify-App-Version", client.AppVersion);
+                    message.Headers.TryAddWithoutValidation("User-Agent", client.UserAgent);
+                }
+                if (ifNoneMatch is { Length: > 0 }) message.Headers.TryAddWithoutValidation("If-None-Match", ifNoneMatch);
                 if (message.Content is { } payload)
                 {
                     if (contentType is not null) payload.Headers.ContentType = new MediaTypeHeaderValue(contentType);
                     if (contentEncoding is not null) payload.Headers.ContentEncoding.Add(contentEncoding);
                 }
                 using HttpResponseMessage response = Client.Send(message, HttpCompletionOption.ResponseHeadersRead, ct);
-                return new Result((int)response.StatusCode, ReadBody(response, ct), RetryAfter(response));
+                return new Result((int)response.StatusCode, ReadBody(response, ct), RetryAfter(response), ETagOf(response));
             }
             catch (OperationCanceledException)
             {
@@ -254,16 +316,20 @@ public static partial class Spotify
         /// value type that belongs to another file.</summary>
         public static Result PostEncoded(scoped ReadOnlySpan<char> path, ApiHost host, HeaderSet headers, byte[] body,
             string contentType, string? contentEncoding, CancellationToken ct)
-        {
-            string url = BaseUrl(host) + new string(path);
-            for (int attempt = 0; ; attempt++)
-            {
-                Result result = SendOnce(Verb.Post, url, headers, RequestKind.Custom, body, "", ct,
-                    contentType, contentEncoding);
-                if (result.Status != 401 || attempt > 0) return result;
-                if (AccessToken(force: true) is null) return result;
-            }
-        }
+            => SendAuthed(Verb.Post, BaseUrl(host) + new string(path), headers, RequestKind.Custom, body, "", ct,
+                contentType, contentEncoding);
+
+        /// <summary>A client-identity tuple a request presents INSTEAD of <see cref="Identity"/>'s pin.</summary>
+        public readonly record struct ClientIdentity(string AppPlatform, string AppVersion, string UserAgent);
+
+        /// <summary>An spclient POST that presents its own client identity: the local-playback license route, whose token
+        /// belongs to a runtime of a DIFFERENT Spotify build than <see cref="Identity"/> pins (the private assembly passes
+        /// that build's tuple). Bearer, client-token and Accept-Language as every spclient call carries them; the body's
+        /// media type is <paramref name="contentType"/>. Blocks; api threads only (C9).</summary>
+        public static Result PostAsClient(string path, byte[] body, string contentType, in ClientIdentity identity, CancellationToken ct)
+            => SendAuthed(Verb.Post, BaseUrl(ApiHost.Spclient) + path,
+                HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.AcceptLanguage, RequestKind.Custom, body, "", ct,
+                contentType, null, null, identity);
 
         static byte[] ReadBody(HttpResponseMessage response, CancellationToken ct)
         {
@@ -282,6 +348,10 @@ public static partial class Spotify
             if (value.Date is { } date) return (int)Math.Max(0, (date - DateTimeOffset.UtcNow).TotalSeconds);
             return 0;
         }
+
+        /// <summary>The raw <c>ETag</c> value, or null. Raw on purpose — see <see cref="Result.ETag"/>.</summary>
+        static string? ETagOf(HttpResponseMessage response)
+            => response.Headers.TryGetValues("ETag", out IEnumerable<string>? values) ? values.FirstOrDefault() : null;
 
         /// <summary>The two-letter language every `Accept-Language` carries. `Platform.Locale` is decided once at boot
         /// and is what `Spotify.Session` itself publishes to the AP (`Spotify.Session.cs`'s `Boot` and its 0x74 locale
@@ -329,9 +399,12 @@ public static partial class Spotify
             if ((headers & HeaderSet.AcceptGeoblock) != 0) h.TryAddWithoutValidation("spotify-accept-geoblock", "dummy");
             if ((headers & HeaderSet.DsaMode) != 0) h.TryAddWithoutValidation("spotify-dsa-mode-enabled", "false");
             if ((headers & HeaderSet.Origin) != 0) h.TryAddWithoutValidation("Origin", SpclientBaseUrl().TrimEnd('/'));
+            if ((headers & HeaderSet.XpuiOrigin) != 0) { h.TryAddWithoutValidation("Origin", XpuiOrigin); h.TryAddWithoutValidation("Referer", XpuiOrigin + "/"); }
+            if ((headers & HeaderSet.AcceptAny) != 0) h.TryAddWithoutValidation("Accept", "*/*");
+            if ((headers & HeaderSet.SoapLicense) != 0) h.TryAddWithoutValidation("SOAPAction", "\"http://schemas.microsoft.com/DRM/2007/03/protocols/AcquireLicense\"");
             if (syncReason.Length > 0) h.TryAddWithoutValidation("spotify-playlist-sync-reason", syncReason);
 
-            const HeaderSet AnyContent = HeaderSet.ContentProtobuf | HeaderSet.ContentJson | HeaderSet.ContentForm;
+            const HeaderSet AnyContent = HeaderSet.ContentProtobuf | HeaderSet.ContentJson | HeaderSet.ContentForm | HeaderSet.SoapLicense;
             if (body.Length == 0 && (headers & AnyContent) == 0) return;
 
             bool gzip = (headers & HeaderSet.GzipBody) != 0;
@@ -345,6 +418,8 @@ public static partial class Spotify
                 content.Headers.ContentType = new MediaTypeHeaderValue(ContentTypeFor(kind));
             else if ((headers & HeaderSet.ContentJson) != 0)
                 content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            else if ((headers & HeaderSet.SoapLicense) != 0)
+                content.Headers.ContentType = new MediaTypeHeaderValue("text/xml") { CharSet = "utf-8" };
             if (gzip)
             {
                 // `X-Transfer-Encoding`, NOT `Content-Encoding`: the connect-state and playlist gateways read the
@@ -387,20 +462,6 @@ public static partial class Spotify
         // but "300 URIS, and a uri's kinds never split across two requests" — the response envelope is keyed by
         // (kind, uri) and a half-answered uri reads as an answered one to the decoder, which is how a track ends up
         // permanently missing its descriptors.
-
-        /// <summary>The catalogue trait one entity kind is fetched with. Exactly one per kind — extra traits are added
-        /// by the caller, not by this map. Kinds the metadata service does not serve fold to
-        /// <c>ExtensionKind.UnknownExtension</c>, which is never sent.</summary>
-        public static Xm.ExtensionKind CatalogKindOf(EntityKind kind) => kind switch
-        {
-            EntityKind.Track => Xm.ExtensionKind.TrackV4,
-            EntityKind.Episode => Xm.ExtensionKind.EpisodeV4,
-            EntityKind.Album => Xm.ExtensionKind.AlbumV4,
-            EntityKind.Artist => Xm.ExtensionKind.ArtistV4,
-            EntityKind.Show => Xm.ExtensionKind.ShowV4,
-            EntityKind.Playlist => Xm.ExtensionKind.ListMetadataV2,
-            _ => Xm.ExtensionKind.UnknownExtension,
-        };
 
         /// <summary>Split <paramref name="uriCount"/> uris into POST-sized runs. PURE, and the reason it is separate
         /// from the send: 700 uris must be 300 + 300 + 100, and a test says so without a socket.</summary>
@@ -450,6 +511,25 @@ public static partial class Spotify
             return request.ToByteArray();
         }
 
+        /// <summary>THE provider's body (G-040): every uri of a batch, EVERY kind of the batch's need under that uri's one
+        /// <c>EntityRequest</c> — the mixed-kind POST. A repeated uri folds into the request already there; an empty uri
+        /// (a slot recycled between plan and send) and a kind ≤ 0 are skipped; nothing askable is an empty body.</summary>
+        public static byte[] BatchBody(ReadOnlySpan<string> uris, ReadOnlySpan<int> kinds, string country, string catalogue)
+        {
+            Xm.BatchedEntityRequest request = NewBatch(country, catalogue);
+            HashSet<string>? seen = null;
+            for (int i = 0; i < uris.Length; i++)
+            {
+                string uri = uris[i];
+                if (uri.Length == 0 || !(seen ??= new HashSet<string>(uris.Length, StringComparer.Ordinal)).Add(uri)) continue;
+                var entity = new Xm.EntityRequest { EntityUri = uri };
+                foreach (int kind in kinds)
+                    if (kind > 0) entity.Query.Add(new Xm.ExtensionQuery { ExtensionKind = (Xm.ExtensionKind)kind });
+                if (entity.Query.Count > 0) request.EntityRequest.Add(entity);
+            }
+            return request.EntityRequest.Count == 0 ? [] : request.ToByteArray();
+        }
+
         static Xm.BatchedEntityRequest NewBatch(string country, string catalogue)
         {
             Span<byte> taskId = stackalloc byte[16];
@@ -473,24 +553,7 @@ public static partial class Spotify
             Span<char> buffer = stackalloc char[64];
             Request request = Build(Current, RequestKind.ExtendedMetadata, args, buffer);
             string url = BaseUrl(request.Host) + new string(request.Path);
-            HeaderSet headers = request.Headers | HeaderSet.GzipBody;
-            for (int attempt = 0; ; attempt++)
-            {
-                Result result = SendOnce(Verb.Post, url, headers, RequestKind.ExtendedMetadata, body, "", ct);
-                if (result.Status != 401 || attempt > 0) return result;
-                if (AccessToken(force: true) is null) return result;
-            }
-        }
-
-        /// <summary>The catalogue read for a span of uris of ONE kind: build, POST, decode into <paramref name="into"/>.
-        /// Returns the status, so a caller can tell "nothing there" from "we never asked".</summary>
-        public static int Metadata(ReadOnlySpan<string> uris, EntityKind kind, Staging into, CancellationToken ct)
-        {
-            Xm.ExtensionKind ext = CatalogKindOf(kind);
-            if (ext == Xm.ExtensionKind.UnknownExtension || uris.Length == 0) return 0;
-            var kinds = new Xm.ExtensionKind[uris.Length];
-            kinds.AsSpan().Fill(ext);
-            return PostMetadata(MetadataBody(uris, kinds, Market, Catalogue), into, ct);
+            return SendAuthed(Verb.Post, url, request.Headers | HeaderSet.GzipBody, RequestKind.ExtendedMetadata, body, "", ct);
         }
 
         /// <summary>One entity, one trait — the door every "extra" below goes through.</summary>
@@ -557,72 +620,478 @@ public static partial class Spotify
         public static int UserProfiles(ReadOnlySpan<string> userUris, Staging into, CancellationToken ct)
         {
             if (userUris.Length == 0) return 0;
-            var kinds = new Xm.ExtensionKind[userUris.Length];
-            kinds.AsSpan().Fill(Xm.ExtensionKind.UserProfile);
-            return PostMetadata(MetadataBody(userUris, kinds, Market, Catalogue), into, ct);
+            ReadOnlySpan<int> kind = [FetchRoutes.UserProfile];
+            return PostMetadata(BatchBody(userUris, kind, Market, Catalogue), into, ct);
         }
 
-        // ── 5. the fetch provider (the planner's transport, Wave 1's seam) ───────────────────────────────────────────
+        /// <summary>The <c>spotify:user:</c> uris of a <c>BatchedExtensionResponse</c> that kind <paramref name="kind"/>
+        /// ANSWERED — a 2xx entity header with the extension data present. PURE; the profile fallback's "who is left"
+        /// (G-033), read with the same rule <see cref="Decode.ExtendedMetadata"/> stages by.</summary>
+        public static HashSet<string> AnsweredUris(ReadOnlySpan<byte> response, int kind)
+        {
+            var answered = new HashSet<string>(StringComparer.Ordinal);
+            var r = new Decode.ProtoReader(response);
+            while (r.Next())
+            {
+                if (r.Field != 2 || r.Wire != 2) { r.Skip(); continue; }
+                var array = r.Message();
+                int arrayKind = 0;
+                List<string>? hits = null;
+                while (array.Next())
+                {
+                    if (array.Field == 2 && array.Wire == 0) { arrayKind = array.Int32(); continue; }
+                    if (array.Field != 3 || array.Wire != 2) { array.Skip(); continue; }
+                    var entity = array.Message();
+                    ReadOnlySpan<byte> uri = default;
+                    int status = 200;
+                    bool data = false;
+                    while (entity.Next())
+                    {
+                        if (entity.Field == 1 && entity.Wire == 2) status = (int)entity.Message().Varint(1, 200);
+                        else if (entity.Field == 2 && entity.Wire == 2) uri = entity.Bytes();
+                        else if (entity.Field == 3 && entity.Wire == 2) { entity.Skip(); data = true; }
+                        else entity.Skip();
+                    }
+                    if (data && status is >= 200 and < 300 && !uri.IsEmpty) (hits ??= []).Add(Encoding.UTF8.GetString(uri));
+                }
+                if (arrayKind == kind && hits is not null)
+                    foreach (string hit in hits) answered.Add(hit);
+            }
+            return answered;
+        }
 
-        /// <summary>`Entities.Ensure` → `Fetch.Plan` → here. One batch is one POST; the answer is decoded on the api
-        /// thread into a pooled `Staging` and handed to the UI thread, which is C10 exactly.</summary>
+        // ── 5. the fetch provider (the planner's transport, G-040/G-041/G-042) ───────────────────────────────────────
+
+        /// <summary>Can this build DECODE what a route answers? A route with no fold behind it is never SENT — a round
+        /// trip whose answer lands nowhere is a request loop with extra steps — and its groups seal instead. Pure; the
+        /// list moves only when a fold lands (the gaps are reported beside each exclusion):
+        /// <c>fetchPlaylist</c> has no persisted hash; the content-filter and friend-feed answers have no staged column.</summary>
+        public static bool Serves(in FetchRoute route) => route.Transport switch
+        {
+            RouteTransport.Metadata => route.Extension > 0,
+            RouteTransport.Pathfinder => route.Op is PathfinderOp.GetAlbum or PathfinderOp.GetTrack
+                or PathfinderOp.ArtistOverview or PathfinderOp.Discography or PathfinderOp.Home or PathfinderOp.HomeSection
+                or PathfinderOp.BrowseAll or PathfinderOp.BrowsePage or PathfinderOp.BrowseSection or PathfinderOp.Search or PathfinderOp.SearchGenres or PathfinderOp.SearchSuggestions
+                or PathfinderOp.AlbumMerch or PathfinderOp.SimilarAlbums
+                or PathfinderOp.DiscographyAlbums or PathfinderOp.DiscographySingles or PathfinderOp.DiscographyCompilations
+                or PathfinderOp.Concert or PathfinderOp.ArtistConcerts,
+            RouteTransport.Spclient => route.Rest is SpclientRoute.PlaylistRead or SpclientRoute.LikedContentFilters or SpclientRoute.PermissionBase
+                or SpclientRoute.Popcount or SpclientRoute.ArtistTopTracksExtended or SpclientRoute.Rootlist
+                or SpclientRoute.CollectionPage or SpclientRoute.Recents,
+            _ => false,
+        };
+
+        /// <summary>THE ROUTE WALK the provider sends (G-040's <c>Api.RoutesFor</c>): <see cref="FetchRoutes.For(FetchSubject,EntityKind,uint,Span{FetchRoute},out uint)"/>'s
+        /// rule — a route is taken while the need still has one of its primary groups unserved — over the table MINUS
+        /// the routes this build does not <see cref="Serves"/>. Skipping those BEFORE they count as served is the point:
+        /// a playlist asking <c>Identity | Daylist</c> must still get its kind-205 POST for Identity when the
+        /// <c>fetchPlaylist</c> route that would have carried both cannot be sent. <paramref name="sealedGroups"/> is
+        /// what nothing sent will fill.</summary>
+        public static int RoutesFor(FetchSubject subject, EntityKind kind, uint need, Span<FetchRoute> into, out uint sealedGroups)
+        {
+            ReadOnlySpan<FetchRoute> routes = FetchRoutes.Of(subject, kind);
+            uint served = 0;
+            int n = 0;
+            for (int i = 0; i < routes.Length && n < into.Length; i++)
+            {
+                ref readonly FetchRoute route = ref routes[i];
+                if ((need & route.Primary & ~served) == 0 || !Serves(in route)) continue;
+                into[n++] = route;
+                served |= route.Groups;
+            }
+            sealedGroups = need & ~served;
+            return n;
+        }
+
+        /// <summary>The extension kinds of the batch's ONE mixed-kind POST: the metadata routes' kinds, deduped, in table
+        /// order — or the batch's own DERIVED kind alone (<see cref="FetchBatch.Extension"/>, kind 5 on the
+        /// <c>spotify:audio:</c> entity), which never rides beside another.</summary>
+        public static int MetadataKinds(ReadOnlySpan<FetchRoute> routes, int derivedExtension, Span<int> into)
+        {
+            if (into.IsEmpty) return 0;
+            if (derivedExtension > 0) { into[0] = derivedExtension; return 1; }
+            int n = 0;
+            for (int i = 0; i < routes.Length && n < into.Length; i++)
+            {
+                if (routes[i].Transport != RouteTransport.Metadata || routes[i].Extension <= 0) continue;
+                if (into[..n].IndexOf(routes[i].Extension) >= 0) continue;
+                into[n++] = routes[i].Extension;
+            }
+            return n;
+        }
+
+        /// <summary>Can this build answer a relation at this page? Its route must be one the build <see cref="Serves"/>,
+        /// AND the fold behind it must land that relation at that offset: <c>getAlbum</c> lands its tracklist at offset 0
+        /// whatever it was asked, the playlist v2 read has no page parameter here, the search fold rewrites the whole
+        /// list, and <c>getAlbum</c> carries no more-by run (both reported). Pins (G-062, B2b) route through the same
+        /// collection-v2 paging as Liked/SavedAlbums/etc and land through <c>Decode.LibrarySet</c>'s pins arm, so they
+        /// answer like any other collection edge. A relation answered "no" is answered WITHOUT a request, which the door
+        /// records as a vacancy.</summary>
+        public static bool ServesEdge(FetchEdge edge, int offset) => edge switch
+        {
+            FetchEdge.None => false,
+            // getAlbum lands a later tracklist page at its own offset; at offset 0 it is ALWAYS the "more by" prefetch
+            // (AlbumV4 owns the first tracklist page — FetchEdge.AlbumTracks routes there at offset 0, never here),
+            // so its answer must decode with landTracks: false (Decode.AlbumAnswer) rather than fold tracksV2 again
+            FetchEdge.PlaylistTracks
+                => offset <= 0 && Serves(FetchRoutes.ForEdge(edge, 0)),
+            _ => Serves(FetchRoutes.ForEdge(edge, offset)),
+        };
+
+        /// <summary>What a batch's requests came back with, folded into the ONE verdict the planner takes. PURE.
+        ///
+        /// <list type="bullet">
+        /// <item>2xx, 304 and 404 are ANSWERS (404 is "nothing there", which seals rather than re-asks).</item>
+        /// <item>A retryable failure (0, 429, 5xx) FAILS the batch while another attempt remains, so the backoff re-runs
+        /// it with its marks kept. On the LAST attempt whatever did answer is committed — a secondary endpoint that keeps
+        /// failing must not cost the rows the primary one already delivered.</item>
+        /// <item>A terminal failure (any other 4xx) fails the batch only when nothing answered: the terminal path
+        /// un-asks, and the next mount really retries.</item>
+        /// <item>A request that was never sent is neither: a batch with nothing sendable is answered empty (sealed).</item>
+        /// <item>A route that did NOT answer beside one that did leaves its groups <see cref="Unfilled"/>: the batch is
+        /// delivered as an answer (what landed is committed), and the planner un-asks exactly those groups so the next
+        /// mount — or a Retry — really asks again. Without it a 401 on the top-tracks REST beside a 200 overview sealed
+        /// <c>ArtistFields.Chart</c> for the scope and the chart shimmered forever.</item>
+        /// </list></summary>
+        public struct FetchOutcome
+        {
+            int _answered, _retryStatus, _retryAfter, _terminalStatus;
+            uint _unfilled;
+            bool _retryable, _terminal, _faulted;
+
+            /// <summary>How many requests came back with an answer.</summary>
+            public readonly int Answered => _answered;
+
+            /// <summary>The field groups of every route that did not answer (a failure of any kind — never a 404, which
+            /// IS an answer). What <see cref="Fetch.Answer"/> takes as its <c>unfilled</c>: the groups it may un-ask when
+            /// the batch is delivered as an answer regardless. A route noted without groups adds nothing here.</summary>
+            public readonly uint Unfilled => _unfilled;
+
+            public void Note(int status, int retryAfterSeconds = 0) => Note(status, retryAfterSeconds, 0);
+
+            /// <summary>Note one request's status; <paramref name="groups"/> are the field groups its route fills, so a
+            /// non-answer can report them <see cref="Unfilled"/>.</summary>
+            public void Note(int status, int retryAfterSeconds, uint groups)
+            {
+                if (status is >= 200 and < 300 or 304 or 404) { _answered++; return; }
+                _unfilled |= groups;
+                if (Fetch.Retryable(status))
+                {
+                    if (_retryable) return;
+                    _retryable = true;
+                    _retryStatus = status;
+                    _retryAfter = retryAfterSeconds;
+                    return;
+                }
+                if (_terminal) return;
+                _terminal = true;
+                _terminalStatus = status;
+            }
+
+            public void Note(in Result result) => Note(result.Status, result.RetryAfterSeconds, 0);
+
+            /// <inheritdoc cref="Note(int,int,uint)"/>
+            public void Note(in Result result, uint groups) => Note(result.Status, result.RetryAfterSeconds, groups);
+
+            /// <summary>A decoder threw: the staging is not trustworthy and the batch fails as a transport error would.</summary>
+            public void Fault() => _faulted = true;
+
+            /// <summary>Does batch attempt <paramref name="attempt"/> (0-based) fail? The status and retry-after are what
+            /// <see cref="Fetch.Failed"/> takes.</summary>
+            public readonly bool Fails(int attempt, out int status, out int retryAfterSeconds)
+            {
+                status = 0;
+                retryAfterSeconds = 0;
+                if (_faulted) return true;
+                bool last = attempt + 1 >= Fetch.MaxAttempts;
+                if (_retryable && (!last || _answered == 0))
+                {
+                    status = _retryStatus;
+                    retryAfterSeconds = _retryAfter;
+                    return true;
+                }
+                if (_terminal && _answered == 0)
+                {
+                    status = _terminalStatus;
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        /// <summary>`Entities.Ensure` / `EnsureEdge` → `Fetch.Plan` → here. `Start` runs on the UI thread and only
+        /// queues; the batch is answered on an api thread and posted back (C10).</summary>
         sealed class SpotifyFetchProvider : FetchProvider
         {
             public override EntityProvider Provider => EntityProvider.Spotify;
 
             public override void Start(FetchBatch batch)
             {
-                uint ticket = batch.Ticket;
-                if (!Run(() => Answer(batch, ticket))) Fetch.Failed(ticket, 0, 0);
+                // The planner only ever starts a batch of ITS current epoch, so a start is also the news of which epoch
+                // is live — the one a re-Boot (which resets epochs without an Abandon) would otherwise leave stale.
+                Volatile.Write(ref s_liveEpoch, batch.Epoch);
+                if (!Run(() => Execute(batch))) Fetch.Failed(batch.Ticket, 0, 0);
             }
 
-            static void Answer(FetchBatch batch, uint ticket)
+            public override void Abandon(uint epoch) => Volatile.Write(ref s_liveEpoch, epoch);
+        }
+
+        /// <summary>The epoch of the scope the planner is on (the last <c>Abandon</c> or started batch);
+        /// <see cref="uint.MaxValue"/> before either. A batch of any other epoch is walking for a table set nobody
+        /// holds, and stops sending.</summary>
+        static uint s_liveEpoch = uint.MaxValue;
+
+        static bool Stale(FetchBatch batch)
+        {
+            uint live = Volatile.Read(ref s_liveEpoch);
+            return live != uint.MaxValue && live != batch.Epoch;
+        }
+
+        /// <summary>Answer one batch, exactly once. The batch is the planner's pooled object: everything it holds is
+        /// read BEFORE the post, and nothing after it.</summary>
+        static void Execute(FetchBatch batch)
+        {
+            uint ticket = batch.Ticket;
+            int attempt = batch.Attempt;
+            Staging staging = Staging.Rent();
+            staging.Epoch = batch.Epoch;
+            var outcome = new FetchOutcome();
+            try
             {
-                Xm.ExtensionKind ext = batch.Extension != 0 ? (Xm.ExtensionKind)batch.Extension : CatalogKindOf(batch.Kind);   // kind 5 rides its own batch on the spotify:audio: entity (FLAC plan §5)
-                if (ext == Xm.ExtensionKind.UnknownExtension)
-                {
-                    // Not a kind the metadata service serves. That is an ANSWER ("nothing for these"), not a failure:
-                    // failing would clear the in-flight marks and the planner would ask again on the next mount.
-                    Spotify.Post(() => Fetch.Answer(ticket, null));
-                    return;
-                }
+                if (batch.Subject == FetchSubject.Edge) AnswerEdge(batch, staging, ref outcome);
+                else AnswerRows(batch, staging, ref outcome);
+            }
+            catch (Exception ex)
+            {
+                // A decoder that throws must not strand the batch: the planner would keep the in-flight marks for the
+                // life of the scope and those rows would never be asked for again.
+                Log.Error("spotify", "fetch provider faulted (" + batch.Subject + " " + batch.Kind + " " + batch.Edge + ")", ex);
+                outcome.Fault();
+            }
 
-                int count = batch.Count;
-                var uris = new string[count];
-                var kinds = new Xm.ExtensionKind[count];
-                for (int i = 0; i < count; i++)
-                {
-                    uris[i] = batch.Uri(i);
-                    kinds[i] = ext;
-                }
+            if (Stale(batch))
+            {
+                Staging.Return(staging);
+                Spotify.Post(() => Fetch.Answer(ticket, null));
+                return;
+            }
+            if (outcome.Fails(attempt, out int status, out int retryAfter))
+            {
+                Staging.Return(staging);
+                Spotify.Post(() => Fetch.Failed(ticket, status, retryAfter));
+                return;
+            }
+            // An answer beside a route that did not answer: the planner un-asks the groups that route would have filled.
+            uint unfilled = outcome.Unfilled;
+            Spotify.Post(() => Fetch.Answer(ticket, staging, unfilled));
+        }
 
-                Result result = MetadataPost(MetadataBody(uris, kinds, Market, Catalogue), CancellationToken.None);
-                if (!result.Ok)
-                {
-                    int status = result.Status;
-                    int retryAfter = result.RetryAfterSeconds;
-                    Spotify.Post(() => Fetch.Failed(ticket, status, retryAfter));
-                    return;
-                }
+        /// <summary>A row batch: the one mixed-kind POST, then every other route per subject.</summary>
+        static void AnswerRows(FetchBatch batch, Staging s, ref FetchOutcome outcome)
+        {
+            Span<FetchRoute> routes = stackalloc FetchRoute[FetchRoutes.MaxRoutes];
+            int n = RoutesFor(batch.Subject, batch.Kind, batch.Wanted, routes, out _);
+            Span<int> kinds = stackalloc int[FetchRoutes.MaxRoutes];
+            int k = MetadataKinds(routes[..n], batch.Extension, kinds);
+            // The one POST answers for every metadata route at once, so its groups are their union: a refused POST
+            // leaves all of them unfilled, an answered one leaves none.
+            uint metadataGroups = 0;
+            for (int r = 0; r < n; r++)
+                if (routes[r].Transport == RouteTransport.Metadata) metadataGroups |= routes[r].Groups;
+            if (k > 0) MetadataFor(batch, kinds[..k], s, ref outcome, metadataGroups);
 
-                Staging staging = Staging.Rent();
-                staging.Epoch = batch.Epoch;
-                try
+            for (int r = 0; r < n; r++)
+            {
+                FetchRoute route = routes[r];
+                if (route.Transport == RouteTransport.Metadata) continue;
+                for (int i = 0; i < batch.Count; i++)
                 {
-                    if (result.Body.Length > 0) Decode.ExtendedMetadata(result.Bytes, staging, batch);
+                    if (Stale(batch)) return;
+                    string uri = batch.Uri(i);
+                    if (uri.Length == 0) continue;
+                    if (route.Transport == RouteTransport.Pathfinder) AnswerQuery(route.Op, uri, 0, s, ref outcome, route.Groups);
+                    else AnswerRest(route.Rest, uri, s, ref outcome, route.Groups);
                 }
-                catch (Exception ex)
-                {
-                    // A decoder that throws must not strand the batch: the planner would keep the in-flight marks for
-                    // the life of the scope and those rows would never be asked for again.
-                    Log.Error("spotify", "metadata decode faulted", ex);
-                    Staging.Return(staging);
-                    Spotify.Post(() => Fetch.Failed(ticket, 0, 0));
-                    return;
-                }
-                Spotify.Post(() => Fetch.Answer(ticket, staging));
             }
         }
+
+        /// <summary>The batch's uris, all of <paramref name="kinds"/> each, in ONE POST (P4), decoded with the batch in
+        /// hand (kind 5's answer is keyed by the derived uri only the batch can map back). For a user batch the REST arm
+        /// then resolves whoever kind 15 left unanswered (G-033). <paramref name="groups"/> are what the POST's routes
+        /// fill, reported <see cref="FetchOutcome.Unfilled"/> when it does not answer.</summary>
+        static void MetadataFor(FetchBatch batch, ReadOnlySpan<int> kinds, Staging s, ref FetchOutcome outcome, uint groups = 0)
+        {
+            var uris = new string[batch.Count];
+            for (int i = 0; i < uris.Length; i++) uris[i] = batch.Uri(i);
+            byte[] body = BatchBody(uris, kinds, Market, Catalogue);
+            if (body.Length == 0) return;
+
+            Result result = MetadataPost(body, CancellationToken.None);
+            outcome.Note(in result, groups);
+            if (!result.Ok || result.Body.Length == 0) return;
+            Decode.ExtendedMetadata(result.Bytes, s, batch);
+
+            if (batch.Subject == FetchSubject.Entity && batch.Kind == EntityKind.User && kinds.IndexOf(FetchRoutes.UserProfile) >= 0)
+                ProfileFallback(uris, result.Body, s);
+        }
+
+        /// <summary>The REST arm of profile resolution, one user at a time, for the users kind 15 did not answer. Only
+        /// 200 and 404 are answers, and neither decides the batch: kind 15 already did, and a REST outage must not re-POST
+        /// the batch that succeeded — an unresolved user simply stays sealed for the scope.</summary>
+        static void ProfileFallback(string[] uris, byte[] response, Staging s)
+        {
+            HashSet<string>? answered = null;
+            foreach (string uri in uris)
+            {
+                if (!uri.StartsWith(UserPrefix, StringComparison.Ordinal)) continue;
+                answered ??= AnsweredUris(response, FetchRoutes.UserProfile);
+                if (answered.Contains(uri)) continue;
+                Result rest = Profile(UsernameOf(uri), CancellationToken.None);
+                if (rest.Status == 200 && rest.Body.Length > 0) Decode.Profile(rest.Bytes, Encoding.UTF8.GetBytes(uri), s);
+            }
+        }
+
+        /// <summary>One pathfinder operation for one subject at one page, decoded into <paramref name="s"/>. The answers
+        /// that carry their own <c>data.*</c> root go through <see cref="Decode.Export"/> — the dispatch the offline
+        /// fixture path also uses, and the fix for the folds that were handed a root-positioned reader (B1's report).</summary>
+        static void AnswerQuery(PathfinderOp op, string uri, int offset, Staging s, ref FetchOutcome outcome, uint groups = 0)
+        {
+            CancellationToken ct = CancellationToken.None;
+            offset = Math.Max(0, offset);
+            Result result;
+            switch (op)
+            {
+                case PathfinderOp.GetAlbum:
+                    // NEVER lands the offset-0 tracklist. `FetchRoutes.ForEdge` sends AlbumTracks at offset <= 0 to
+                    // Metadata(AlbumV4), so getAlbum reaching here at offset 0 can only be the AlbumMoreBy prefetch —
+                    // and its ClosePage(AlbumTracks) used to REWRITE the tracklist V4 had already landed (one real row
+                    // plus stale rows, because ReplacePage never shrank). Identity, billed artists, more-by and other
+                    // versions from this same answer are still wanted, so only the tracks run is suppressed (it is
+                    // popped, not skipped — the edges are already on the pending stack). A later page (offset > 0) is
+                    // the real AlbumTracks paging route and takes the AlbumTracksPage arm, which ignores the flag.
+                    result = AlbumQuery(uri, offset, AlbumPageSize, ct);
+                    if (result.Ok) Decode.AlbumAnswer(result.Bytes, offset, s, landTracks: false);
+                    break;
+                case PathfinderOp.AlbumMerch:
+                    result = AlbumMerch(uri, ct);
+                    if (result.Ok) Decode.AlbumMerch(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
+                    break;
+                case PathfinderOp.GetTrack:
+                    result = TrackQuery(uri, ct);
+                    if (result.Ok) Decode.Export(result.Bytes, s);
+                    break;
+                case PathfinderOp.ArtistOverview:
+                    // The WHOLE overview (facets, extras, pick, pre-release, latest), not Export's identity-and-runs fold.
+                    result = ArtistPageAnswer(uri, s);
+                    break;
+                case PathfinderOp.Discography:
+                    result = Discography(uri, offset, DiscographyPageSize, ct);
+                    if (result.Ok) Decode.DiscographyAll(result.Bytes, Encoding.UTF8.GetBytes(uri), offset, s);
+                    break;
+                case PathfinderOp.Home:
+                    if (HomeFacetOf(uri) is not { } homeFacet) return;
+                    result = HomeQuery(homeFacet, LocalTimeZone, ct);
+                    if (result.Ok) Decode.HomeFeed(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
+                    break;
+                case PathfinderOp.HomeSection:
+                    result = HomeSection(uri, LocalTimeZone, offset, ct);
+                    if (result.Ok) Decode.HomeSection(result.Bytes, offset, s);
+                    break;
+                case PathfinderOp.BrowseAll:
+                    result = BrowseAll(ct);
+                    if (result.Ok) Decode.BrowseAll(result.Bytes, s);
+                    break;
+                case PathfinderOp.BrowsePage:
+                    result = BrowsePage(uri, offset, ct);
+                    if (result.Ok) Decode.BrowsePage(result.Bytes, Encoding.UTF8.GetBytes(uri), offset, s);
+                    break;
+                case PathfinderOp.BrowseSection:
+                    result = BrowseSection(uri, offset, ct);
+                    if (result.Ok) Decode.BrowseSection(result.Bytes, offset, s);
+                    break;
+                case PathfinderOp.Search:
+                    if (!TryParseSearchSubject(uri, out SearchFacet facet, out string term) || term.Length == 0) return;
+                    result = Search(facet, term, offset, SearchPageSize(facet), ct);
+                    if (result.Ok) Decode.SearchPage(result.Bytes, Encoding.UTF8.GetBytes(uri), offset, s);
+                    break;
+                case PathfinderOp.SearchGenres:
+                    if (!TryParseSearchSubject(uri, out _, out string genreTerm) || genreTerm.Length == 0) return;
+                    result = Search(SearchFacet.Genres, genreTerm, 0, SearchPageSize(SearchFacet.Genres), ct);
+                    if (result.Ok) Decode.SearchGenres(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
+                    break;
+                case PathfinderOp.SearchSuggestions:
+                    if (!TryParseSearchSubject(uri, out _, out string relatedTerm) || relatedTerm.Length == 0) return;
+                    result = Search(SearchFacet.Suggestions, relatedTerm, 0, 30, ct);
+                    if (result.Ok) Decode.SearchRelated(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
+                    break;
+                case PathfinderOp.DiscographyAlbums:
+                    result = DiscographyFacetAnswer(uri, DiscoFacet.Albums, offset, s);
+                    break;
+                case PathfinderOp.DiscographySingles:
+                    result = DiscographyFacetAnswer(uri, DiscoFacet.Singles, offset, s);
+                    break;
+                case PathfinderOp.DiscographyCompilations:
+                    result = DiscographyFacetAnswer(uri, DiscoFacet.Compilations, offset, s);
+                    break;
+                case PathfinderOp.Concert:
+                    result = ConcertAnswer(uri, s);
+                    break;
+                case PathfinderOp.ArtistConcerts:
+                    result = ArtistConcertsAnswer(uri, offset, s);
+                    break;
+                default:
+                    return;                                           // not served: nothing was sent, nothing to note
+            }
+            outcome.Note(in result, groups);
+        }
+
+        /// <summary>One spclient route for one subject, decoded into <paramref name="s"/>.</summary>
+        static void AnswerRest(SpclientRoute rest, string uri, Staging s, ref FetchOutcome outcome, uint groups = 0)
+        {
+            CancellationToken ct = CancellationToken.None;
+            Result result;
+            switch (rest)
+            {
+                case SpclientRoute.PlaylistRead:
+                    result = Playlist(IdOf(uri), ct);
+                    if (result.Ok && result.Body.Length > 0) PlaylistAnswer(result.Bytes, uri, s);
+                    break;
+                case SpclientRoute.PermissionBase:
+                    result = PlaylistPermissionBase(IdOf(uri), ct);
+                    if (result.Ok) Decode.PermissionBase(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
+                    break;
+                case SpclientRoute.Popcount:
+                    result = Popcount(IdOf(uri), ct);
+                    if (result.Ok) Decode.Popcount(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
+                    break;
+                case SpclientRoute.ArtistTopTracksExtended:
+                    result = ArtistTopTracksExtended(uri, ct);
+                    if (result.Ok) Decode.ArtistTopTracks(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
+                    break;
+                case SpclientRoute.LikedContentFilters:
+                    ContentFiltersAnswer(uri, s, ref outcome);
+                    return;
+                default:
+                    return;
+            }
+            outcome.Note(in result, groups);
+        }
+
+        const string UserPrefix = "spotify:user:";
+
+        /// <summary>The username a <c>spotify:user:</c> uri names (the path segment the rootlist, the collection and the
+        /// profile routes take), unescaped when the uri carried an escape. Anything else is returned as it is.</summary>
+        public static string UsernameOf(string userUri)
+        {
+            if (!userUri.StartsWith(UserPrefix, StringComparison.Ordinal)) return userUri;
+            ReadOnlySpan<char> tail = userUri.AsSpan(UserPrefix.Length);
+            int colon = tail.IndexOf(':');
+            string name = new(colon < 0 ? tail : tail[..colon]);
+            return name.Contains('%') ? Uri.UnescapeDataString(name) : name;
+        }
+
+        /// <summary>The trailing id of a uri (<c>spotify:playlist:x</c> → <c>x</c>), as the string a path segment needs.</summary>
+        static string IdOf(string uri) => new(EntityUri.IdOf(uri.AsSpan()));
 
         // ── 6. pathfinder: the persisted-query table ─────────────────────────────────────────────────────────────────
         //
@@ -665,8 +1134,15 @@ public static partial class Spotify
                 "d889c8c936ab192af8ced595427f5ba2acdf63478fdc0a181c8d477f8322630e", true);
             public static readonly Query UserTop = new("userTopContent",
                 "49ee15704de4a7fdeac65a02db20604aa11e46f02e809c55d9a89f6db9754356", true);
+            /// <summary>The paged discography. One hash hosts four operation names (…All/Albums/Singles/Compilations),
+            /// so the NAME is what selects the facet; the DESKTOP identity, because it is not a web-player surface
+            /// (docs/plans/wavee/discography-pagination-fix-proposal.md).</summary>
             public static readonly Query Discography = new("queryArtistDiscographyAll",
-                "5e07d323febb57b4a56a42abbf781490e58764aa45feb6e3dc0591564fc56599", true);
+                "5e07d323febb57b4a56a42abbf781490e58764aa45feb6e3dc0591564fc56599", false);
+            /// <summary>The cover grader (G-055): <c>spotify:image:</c> uris in, both themes' role sets out. The desktop
+            /// identity, as 0.2.9's <c>CoverColorFiller</c> sent it.</summary>
+            public static readonly Query DynamicColors = new("getDynamicColorsByUris",
+                "f0f112945d6d745bd8ff790317bbf8d310036da75df33130490e9d6dc96c59d9", false);
 
             public static readonly Query SearchTopResults = new("searchTopResultsList",
                 "337d8b1b4f911fb12c60996623391703c2807550baccb51d95f5eabc8c8bdacd", true);
@@ -770,21 +1246,17 @@ public static partial class Spotify
             return result;
         }
 
-        /// <summary>Decode a pathfinder answer through one of owner E's folds. The reader goes by reference, which is
-        /// why this is a named delegate and not a <c>Func</c>.</summary>
-        public delegate void JsonFold(ref Utf8JsonReader reader, Staging staging);
-
-        /// <summary>Run <paramref name="fold"/> over an answer. False when there was nothing to read — the caller then
-        /// knows the difference between "the server said no" and "the server said nothing".</summary>
-        public static bool Fold(in Result result, JsonFold fold, Staging into)
-        {
-            if (!result.Ok || result.Body.Length == 0) return false;
-            var reader = new Utf8JsonReader(result.Bytes);
-            fold(ref reader, into);
-            return true;
-        }
-
         // ── 7. the pathfinder requests, one function each ────────────────────────────────────────────────────────────
+        //
+        // The `…(…, Staging into, ct)` forms decode through `Decode.Export`, which dispatches on the answer's own
+        // `data.*` root; the folds underneath expect a reader positioned INSIDE that root, and handing them the
+        // document root decoded nothing at all (B1's report).
+
+        /// <summary>The album page's track window per request.</summary>
+        public const int AlbumPageSize = 50;
+
+        /// <summary>The discography page the client sends (captured: 20, <c>DATE_DESC</c>).</summary>
+        public const int DiscographyPageSize = 20;
 
         public static Result AlbumQuery(string albumUri, int offset, int limit, CancellationToken ct)
         {
@@ -800,8 +1272,8 @@ public static partial class Spotify
         /// page, decoded straight into <paramref name="into"/>.</summary>
         public static int Album(string albumUri, Staging into, CancellationToken ct)
         {
-            Result result = AlbumQuery(albumUri, 0, 50, ct);
-            Fold(result, static (ref Utf8JsonReader r, Staging s) => Decode.GetAlbum(ref r, s), into);
+            Result result = AlbumQuery(albumUri, 0, AlbumPageSize, ct);
+            if (result.Ok) Decode.Export(result.Bytes, into);
             return result.Status;
         }
 
@@ -815,7 +1287,7 @@ public static partial class Spotify
         public static int Track(string trackUri, Staging into, CancellationToken ct)
         {
             Result result = TrackQuery(trackUri, ct);
-            Fold(result, static (ref Utf8JsonReader r, Staging s) => Decode.GetTrack(ref r, s), into);
+            if (result.Ok) Decode.Export(result.Bytes, into);
             return result.Status;
         }
 
@@ -831,7 +1303,7 @@ public static partial class Spotify
         public static int ArtistOverview(string artistUri, Staging into, CancellationToken ct)
         {
             Result result = ArtistOverviewQuery(artistUri, ct);
-            Fold(result, static (ref Utf8JsonReader r, Staging s) => Decode.ArtistOverview(ref r, s), into);
+            if (result.Ok) Decode.Export(result.Bytes, into);
             return result.Status;
         }
 
@@ -850,8 +1322,48 @@ public static partial class Spotify
         public static int Home(string facet, string timeZone, Staging into, CancellationToken ct)
         {
             Result result = HomeQuery(facet, timeZone, ct);
-            Fold(result, static (ref Utf8JsonReader r, Staging s) => Decode.Home(ref r, s), into);
+            if (result.Ok) Decode.HomeFeed(result.Bytes, Encoding.UTF8.GetBytes(facet.Length == 0 ? Wavee.Home.FeedUri : Wavee.Home.FacetPrefix + facet), into);
             return result.Status;
+        }
+
+        /// <summary>The facet a Home subject names: <c>""</c> for the feed itself (<c>wavee:home</c>), the tail of
+        /// <c>wavee:home:&lt;facet&gt;</c>, or null for a uri that is not a Home subject. PURE.</summary>
+        public static string? HomeFacetOf(string uri)
+        {
+            if (uri == Wavee.Home.FeedUri) return "";
+            return uri.StartsWith(Wavee.Home.FacetPrefix, StringComparison.Ordinal) ? uri[Wavee.Home.FacetPrefix.Length..] : null;
+        }
+
+        /// <summary>What <c>timeZone</c> says when the local zone has no IANA spelling (this app runs globalization-
+        /// invariant, where the Windows→IANA table is not available): a real zone, so the server still answers.</summary>
+        public const string FallbackTimeZone = "Etc/UTC";
+
+        /// <summary>The zone the Home feed buckets its greeting and time-of-day shelves by, as an IANA id (0.2.9
+        /// <c>SpotifyTimeZone.LocalIana</c>).</summary>
+        public static string LocalTimeZone
+        {
+            get
+            {
+                string id;
+                try { id = TimeZoneInfo.Local.Id; }
+                catch (Exception) { id = ""; }                     // a corrupt registry zone throws rather than answering
+                return IanaZone(id);
+            }
+        }
+
+        /// <summary>A local zone id → the IANA id the gateway wants: an id that already has an area ("Europe/Amsterdam")
+        /// is itself, a Windows id converts when the runtime can, and anything else is <see cref="FallbackTimeZone"/>.
+        /// A Windows id sent verbatim would be silently wrong, which is why this never passes one through. PURE.</summary>
+        public static string IanaZone(string localId)
+        {
+            if (localId.Contains('/')) return localId;
+            try
+            {
+                if (localId.Length > 0 && TimeZoneInfo.TryConvertWindowsIdToIanaId(localId, out string? iana) && iana is { Length: > 0 })
+                    return iana;
+            }
+            catch (Exception) { /* invariant globalization throws rather than answering false */ }
+            return FallbackTimeZone;
         }
 
         public static Result HomeSection(string sectionUri, string timeZone, int offset, CancellationToken ct)
@@ -966,15 +1478,48 @@ public static partial class Spotify
             vars.W.WriteEndObject();
         }
 
-        /// <summary>The artist page's full discography tab.</summary>
-        public static Result Discography(string artistUri, int offset, int limit, CancellationToken ct)
+        /// <summary>The artist page's full discography, one page: the CAPTURED variables — <c>{uri, offset, limit,
+        /// order: "DATE_DESC"}</c> — which is what makes the answer a paged list rather than the overview's capped one.
+        /// PURE.</summary>
+        public static byte[] DiscographyBody(string artistUri, int offset, int limit)
         {
             var vars = new Vars(Queries.Discography);
             vars.W.WriteString("uri", artistUri);
-            vars.W.WriteNumber("offset", offset);
+            vars.W.WriteNumber("offset", Math.Max(0, offset));
             vars.W.WriteNumber("limit", limit);
-            vars.W.WriteString("locale", "");
-            return Pathfinder(Queries.Discography, vars.Finish(), ct);
+            vars.W.WriteString("order", "DATE_DESC");
+            return vars.Finish();
+        }
+
+        public static Result Discography(string artistUri, int offset, int limit, CancellationToken ct)
+            => Pathfinder(Queries.Discography, DiscographyBody(artistUri, offset, limit), ct);
+
+        /// <summary>The cover grader's body: <c>{"imageUris":[…]}</c>, the uris verbatim and in order — the answer is
+        /// POSITIONAL (no uri is echoed), so the order is the contract. PURE.</summary>
+        public static byte[] DynamicColorsBody(ReadOnlySpan<string> imageUris)
+        {
+            var vars = new Vars(Queries.DynamicColors);
+            vars.W.WriteStartArray("imageUris");
+            foreach (string uri in imageUris) vars.W.WriteStringValue(uri);
+            vars.W.WriteEndArray();
+            return vars.Finish();
+        }
+
+        /// <summary>THE PALETTE'S FILLER (G-055) — install as <c>Palette.Filler = Spotify.Api.GradeCovers</c> once signed
+        /// in. Runs on an api thread; the grading comes back index-parallel with <paramref name="imageUris"/>
+        /// (<see cref="Palette.ParseDynamicColors"/>). A non-answer FAULTS the task, which is the palette's "transport
+        /// failure" (it frees the rows to re-queue) as opposed to a null entry, which is a real "no colours".</summary>
+        public static Task<Palette.Graded?[]> GradeCovers(string[] imageUris, CancellationToken ct)
+            => RunAsync(() => Grade(imageUris, ct));
+
+        static Palette.Graded?[] Grade(string[] imageUris, CancellationToken ct)
+        {
+            if (imageUris.Length == 0) return [];
+            Result result = Pathfinder(Queries.DynamicColors, DynamicColorsBody(imageUris), ct);
+            if (!result.Ok || result.Body.Length == 0)
+                throw new HttpRequestException("getDynamicColorsByUris answered " + result.Status);
+            using JsonDocument document = JsonDocument.Parse(result.Body);
+            return Palette.ParseDynamicColors(document.RootElement, imageUris.Length);
         }
 
         // ── 8. search ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1003,6 +1548,45 @@ public static partial class Spotify
             SearchFacet.Genres => Queries.SearchGenres,
             _ => Queries.SearchSuggestions,
         };
+
+        /// <summary>The page's facet (<see cref="Wavee.SearchFacet"/>, the entity layer's chip order) → the operation
+        /// family here. The two enums order differently and Profiles is Users on the wire; a cast would be wrong for
+        /// seven of the eleven. PURE.</summary>
+        public static SearchFacet FacetOf(Wavee.SearchFacet facet) => facet switch
+        {
+            Wavee.SearchFacet.Tracks => SearchFacet.Tracks,
+            Wavee.SearchFacet.Albums => SearchFacet.Albums,
+            Wavee.SearchFacet.Playlists => SearchFacet.Playlists,
+            Wavee.SearchFacet.Audiobooks => SearchFacet.Audiobooks,
+            Wavee.SearchFacet.Podcasts => SearchFacet.Podcasts,
+            Wavee.SearchFacet.Artists => SearchFacet.Artists,
+            Wavee.SearchFacet.Episodes => SearchFacet.Episodes,
+            Wavee.SearchFacet.Profiles => SearchFacet.Users,
+            Wavee.SearchFacet.Genres => SearchFacet.Genres,
+            Wavee.SearchFacet.Authors => SearchFacet.Authors,
+            _ => SearchFacet.Top,
+        };
+
+        /// <summary>A search subject's uri (<c>wavee:search:&lt;NN&gt;:&lt;query&gt;</c>, <c>Entities.Search</c>) → its
+        /// operation facet and the query VERBATIM (colons included). False for anything else, or a facet index the
+        /// entity layer does not define. PURE.</summary>
+        public static bool TryParseSearchSubject(string uri, out SearchFacet facet, out string query)
+        {
+            facet = SearchFacet.Top;
+            query = "";
+            string prefix = Wavee.Search.Prefix;
+            if (!uri.StartsWith(prefix, StringComparison.Ordinal) || uri.Length < prefix.Length + 3) return false;
+            char tens = uri[prefix.Length], ones = uri[prefix.Length + 1];
+            if (tens is < '0' or > '9' || ones is < '0' or > '9' || uri[prefix.Length + 2] != ':') return false;
+            var index = (Wavee.SearchFacet)((tens - '0') * 10 + (ones - '0'));
+            if (!Enum.IsDefined(index)) return false;
+            facet = FacetOf(index);
+            query = uri[(prefix.Length + 3)..];
+            return true;
+        }
+
+        /// <summary>How many hits a subject asks for: the top-results list is a short mixed shelf; a facet is a page.</summary>
+        public static int SearchPageSize(SearchFacet facet) => facet == SearchFacet.Top ? 10 : 30;
 
         /// <summary>Build one search body. PURE, and public because the facet-to-shape mapping is the thing worth
         /// pinning: three shapes, twelve operations, and <c>includePreReleases</c> true for exactly two of them.</summary>
@@ -1064,22 +1648,30 @@ public static partial class Spotify
             return vars.Finish();
         }
 
+        /// <summary>A search the user is WAITING on gets eight seconds (0.2.9 <c>FetchSearchAsync</c>'s linked
+        /// <c>CancelAfter</c>, G-053), not the client's thirty: past that the omnibar is showing a spinner for an answer
+        /// the user has already typed past. A timeout is a transport status (0), which the planner retries.</summary>
+        public const int SearchDeadlineMs = 8_000;
+
         /// <summary>One search. <paramref name="limit"/> is clamped to the gateway's window (1..50) and the offset
         /// floored at zero, because a negative offset is a 500 rather than an empty page.</summary>
         public static Result Search(SearchFacet facet, string term, int offset, int limit, CancellationToken ct)
         {
             offset = Math.Max(0, offset);
             limit = Math.Clamp(limit, 1, 50);
-            return Pathfinder(QueryFor(facet), SearchBody(facet, term, offset, limit), ct);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(SearchDeadlineMs);
+            Result result = Pathfinder(QueryFor(facet), SearchBody(facet, term, offset, limit), deadline.Token);
+            if (result.Status == 0 && deadline.IsCancellationRequested && !ct.IsCancellationRequested)
+                Log.Warn("spotify", "search " + facet + " timed out after " + SearchDeadlineMs + " ms");
+            return result;
         }
 
         public static int Search(SearchFacet facet, string term, int offset, int limit, string subjectUri,
             Staging into, CancellationToken ct)
         {
             Result result = Search(facet, term, offset, limit, ct);
-            if (!result.Ok || result.Body.Length == 0) return result.Status;
-            var reader = new Utf8JsonReader(result.Bytes);
-            Decode.Search(ref reader, Encoding.UTF8.GetBytes(subjectUri), into);
+            if (result.Ok) Decode.Export(result.Bytes, into, Encoding.UTF8.GetBytes(subjectUri));
             return result.Status;
         }
 
@@ -1200,11 +1792,13 @@ public static partial class Spotify
         // ── 10. the spclient one-offs ────────────────────────────────────────────────────────────────────────────────
         //
         // Each of these was a `Spotify*Service` class. A route, a verb, a header set and a status rule is all any of
-        // them ever was; `RequestKind.Custom` carries the ones D's fold has no kind for, which is exactly what the
-        // escape hatch is documented to be ("a new route lands here first and graduates when a second caller wants it").
+        // them ever was; `RequestKind.Custom` carries the ones D's fold has no kind for, and a `Route` value carries the
+        // ones whose captured spelling (a query string, an Accept) the fold's kind does not have.
 
         const HeaderSet CommonJson = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity
             | HeaderSet.AcceptLanguage | HeaderSet.AcceptJson;
+        const HeaderSet CommonProtobuf = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity
+            | HeaderSet.AcceptLanguage | HeaderSet.AcceptProtobuf;
 
         static Result Get(scoped ReadOnlySpan<char> path, ApiHost host, HeaderSet headers, CancellationToken ct)
         {
@@ -1212,10 +1806,15 @@ public static partial class Spotify
             return Send(RequestKind.Custom, args, ct);
         }
 
-        /// <summary>The account's "liked songs" chip set. 304 is an answer (unchanged); 404 means "no chip set", which
-        /// is ordinary and not an error.</summary>
-        public static Result LikedContentFilters(CancellationToken ct)
-            => Get("/content-filter/v1/liked-songs?subjective=true&market=from_token", ApiHost.Spclient, CommonJson, ct);
+        /// <summary><c>/content-filter/v1/liked-songs</c>, the account's Liked Songs chip set. PURE.</summary>
+        public static Route LikedContentFiltersRoute
+            => new(Verb.Get, ApiHost.Spclient, "/content-filter/v1/liked-songs?subjective=true&market=from_token", CommonJson);
+
+        /// <summary>The account's "liked songs" chip set, CONDITIONAL (G-053): pass the <see cref="Result.ETag"/> of the
+        /// body you hold and a 304 says it still stands (0.2.9 restamped its 6 h cache on exactly that). 404 means "no
+        /// chip set", which is ordinary and not an error.</summary>
+        public static Result LikedContentFilters(string? etag, CancellationToken ct)
+            => Send(LikedContentFiltersRoute, [], ct, etag);
 
         /// <summary>The friend-activity seed, per dealer connection id. A 404 is an EMPTY feed, not a failure — the
         /// service answers 404 for an account that follows nobody.</summary>
@@ -1255,19 +1854,31 @@ public static partial class Spotify
         /// <see cref="ImplausibleSaveCount"/> is not a number to render.</summary>
         public const long ImplausibleSaveCount = 100_000_000;
 
-        public static Result Popcount(string playlistId, CancellationToken ct)
-        {
-            var args = new RequestArgs { Id = playlistId };
-            return Send(RequestKind.Popcount, args, ct);
-        }
+        /// <summary><c>/popcount/v2/playlist/&lt;id&gt;/count</c> — a protobuf answer, so a protobuf Accept. PURE.</summary>
+        public static Route PopcountRoute(string playlistId)
+            => new(Verb.Get, ApiHost.Spclient, "/popcount/v2/playlist/" + Escaped(playlistId) + "/count", CommonProtobuf,
+                   RequestKind.Popcount);
 
-        /// <summary>The REST arm of profile resolution. Only 200 and 404 are ANSWERS: a 404 seals "no public profile",
-        /// and every other status means we did not find out.</summary>
-        public static Result Profile(string username, CancellationToken ct)
-        {
-            var args = new RequestArgs { Id = username };
-            return Send(RequestKind.Profile, args, ct);
-        }
+        public static Result Popcount(string playlistId, CancellationToken ct) => Send(PopcountRoute(playlistId), [], ct);
+
+        /// <summary><c>/playlist-permission/v1/playlist/&lt;id&gt;/permission/base</c> (G-053): the base link-share
+        /// level and its revision, polled after every mutation in the capture. PURE.</summary>
+        public static Route PermissionBaseRoute(string playlistId)
+            => new(Verb.Get, ApiHost.Spclient, "/playlist-permission/v1/playlist/" + Escaped(playlistId) + "/permission/base",
+                   CommonProtobuf);
+
+        public static Result PlaylistPermissionBase(string playlistId, CancellationToken ct)
+            => Send(PermissionBaseRoute(playlistId), [], ct);
+
+        /// <summary><c>/user-profile-view/v3/profile/&lt;username&gt;?market=from_token</c> — the captured spelling, market
+        /// included. PURE.</summary>
+        public static Route ProfileRoute(string username)
+            => new(Verb.Get, ApiHost.Spclient, "/user-profile-view/v3/profile/" + Escaped(username) + "?market=from_token",
+                   CommonJson);
+
+        /// <summary>The REST arm of profile resolution (G-033). Only 200 and 404 are ANSWERS: a 404 seals "no public
+        /// profile", and every other status means we did not find out.</summary>
+        public static Result Profile(string username, CancellationToken ct) => Send(ProfileRoute(username), [], ct);
 
         /// <summary>The artist page's extended top-track list — a JSON body of bare uris the pathfinder overview does
         /// not carry. The FULL artist uri is the path tail, escaped. The list is capped at
@@ -1296,6 +1907,15 @@ public static partial class Spotify
             return Send(RequestKind.ContextResolve, args, ct);
         }
 
+        /// <summary>"Start radio" (G-251): the seed's radio PLAYLIST, <c>GET /inspiredby-mix/v2/seed_to_playlist/&lt;seed&gt;</c>
+        /// — <paramref name="seedUri"/> is the literal <c>spotify:track:…</c> or <c>spotify:artist:…</c>. The JSON answer's
+        /// <c>mediaItems[0].uri</c> is read by <see cref="Decode.RadioPlaylistUri"/>; a 404 is "this seed has no radio".</summary>
+        public static Result RadioSeed(string seedUri, CancellationToken ct)
+        {
+            var args = new RequestArgs { Id = seedUri };
+            return Send(RequestKind.RadioSeed, args, ct);
+        }
+
         /// <summary>Autoplay for a context that ran out. <paramref name="podcast"/> picks the `/autopodcast` twin.</summary>
         public static Result Autoplay(byte[] body, bool podcast, CancellationToken ct)
         {
@@ -1303,229 +1923,80 @@ public static partial class Spotify
             return Send(RequestKind.Autoplay, args, ct);
         }
 
-        // ── 11. playlists, the rootlist and recents ──────────────────────────────────────────────────────────────────
-
-        /// <summary>A revision on the wire is <c>{counter},{hex}</c> — the 4-byte big-endian counter, a comma, and the
-        /// 20-byte hash as lowercase hex. It goes into a QUERY STRING, so the comma must be percent-encoded or the
-        /// gateway answers 509; passing it through <see cref="PathWriter.AppendEscaped"/> is what guarantees that.</summary>
-        public static int FormatRevision(ReadOnlySpan<byte> revision, Span<char> into)
+        /// <summary>A path segment, percent-escaped through <see cref="PathWriter.AppendEscaped"/> — the one escape
+        /// every route here shares.</summary>
+        static string Escaped(string segment)
         {
-            if (revision.Length < 5) return 0;
-            int counter = (revision[0] << 24) | (revision[1] << 16) | (revision[2] << 8) | revision[3];
-            if (!counter.TryFormat(into, out int written)) return 0;
-            if (written + 1 + (revision.Length - 4) * 2 > into.Length) return 0;
-            into[written++] = ',';
-            written += Hex.Encode(revision[4..], into[written..]);
-            return written;
+            // Every character escapes to at most three: a buffer of 3× can never overflow the writer.
+            Span<char> buffer = segment.Length <= 256 ? stackalloc char[768] : new char[segment.Length * 3];
+            var w = new PathWriter(buffer);
+            w.AppendEscaped(segment);
+            return new string(w.Written);
         }
 
-        /// <summary>The 8 bytes a CREATE sends as its base revision: four zeroes and ASCII "root". Never stored.</summary>
-        public static ReadOnlySpan<byte> CreateBaseRevision => [0, 0, 0, 0, (byte)'r', (byte)'o', (byte)'o', (byte)'t'];
+        // ── 11. the absolute-url text GET (G-008) ────────────────────────────────────────────────────────────────────
 
-        /// <summary>A membership item id: 8 random bytes as 16 lowercase hex characters. Minted by the CLIENT, which
-        /// is why a freshly added row already has an addressable uid before the server has heard of it.</summary>
-        public static string NewItemId()
-        {
-            Span<byte> bytes = stackalloc byte[8];
-            RandomNumberGenerator.Fill(bytes);
-            Span<char> hex = stackalloc char[16];
-            return new string(hex[..Hex.Encode(bytes, hex)]);
-        }
+        /// <summary>May a bearer go to <paramref name="url"/>? https on <c>spotify.com</c> or a subdomain of it — the
+        /// resolved spclient host is one — and nothing else, ever: this is the gate between the account's token and a
+        /// url a caller composed. PURE.</summary>
+        public static bool IsSpotifyUrl(string url)
+            => Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
+               && parsed.Scheme == Uri.UriSchemeHttps
+               && (parsed.Host.Equals("spotify.com", StringComparison.OrdinalIgnoreCase)
+                   || parsed.Host.EndsWith(".spotify.com", StringComparison.OrdinalIgnoreCase));
 
-        /// <summary>A client-minted playlist id: 16 random bytes as 22 base62 characters. There is no create ENDPOINT
-        /// any more — a create is a `/changes` POST to an id we invented — so the uri exists before the request does.</summary>
-        public static string NewPlaylistId()
+        /// <summary>A bearer GET of an ABSOLUTE Spotify url, answered as text (null on a miss, a non-2xx or a refused
+        /// url) — the lyrics stack's Spotify-native source (G-008). BLOCKS; api threads only.
+        ///
+        /// <para>The header recipe is 0.2.9's proven color-lyrics one: <c>App-Platform: Android</c> with the desktop
+        /// app version and NO client token. The Android platform is what lets that CDN serve without a client token; a
+        /// desktop or web-player platform needs one and 403s without it — which is why this does not go through the
+        /// header-set runner, whose Identity bit stamps the desktop platform. One forced re-mint on a 401, as every
+        /// other send.</para></summary>
+        public static string? GetText(string url, CancellationToken ct)
         {
-            Span<byte> bytes = stackalloc byte[16];
-            RandomNumberGenerator.Fill(bytes);
-            UInt128 value = UInt128.Zero;
-            foreach (byte b in bytes) value = (value << 8) | b;
-            Span<char> id = stackalloc char[Base62.GidChars];
-            return new string(id[..Base62.Encode(value, id)]);
-        }
-
-        public static Result Playlist(string playlistId, CancellationToken ct)
-        {
-            var args = new RequestArgs { Id = playlistId };
-            return Send(RequestKind.PlaylistRead, args, ct);
-        }
-
-        /// <summary>The revision-gated diff. 304 means "you are current"; 509 means the revision was mis-encoded and
-        /// the caller must fall back to a full read.</summary>
-        public static Result PlaylistDiff(string playlistId, ReadOnlySpan<byte> revision, CancellationToken ct)
-        {
-            Span<char> formatted = stackalloc char[64];
-            int length = FormatRevision(revision, formatted);
-            if (length == 0) return Playlist(playlistId, ct);
-            var args = new RequestArgs { Id = playlistId, Id2 = formatted[..length] };
-            return Send(RequestKind.PlaylistDiff, args, ct);
-        }
-
-        public static Result PlaylistChanges(string playlistId, byte[] body, CancellationToken ct)
-        {
-            var args = new RequestArgs { Id = playlistId, Body = body };
-            return Send(RequestKind.PlaylistChanges, args, ct);
-        }
-
-        public static Result PlaylistCreate(string playlistId, byte[] body, CancellationToken ct)
-        {
-            var args = new RequestArgs { Id = playlistId, Body = body };
-            return Send(RequestKind.PlaylistCreate, args, ct);
-        }
-
-        public static Result PlaylistSignals(string playlistId, byte[] body, CancellationToken ct)
-        {
-            var args = new RequestArgs { Id = playlistId, Body = body };
-            return Send(RequestKind.PlaylistSignals, args, ct);
-        }
-
-        public static Result Rootlist(string username, CancellationToken ct)
-        {
-            var args = new RequestArgs { Id = username };
-            return Send(RequestKind.RootlistRead, args, ct);
-        }
-
-        public static Result RootlistChanges(string username, byte[] body, CancellationToken ct)
-        {
-            var args = new RequestArgs { Id = username, Body = body };
-            return Send(RequestKind.RootlistChanges, args, ct);
-        }
-
-        public static Result Recents(CancellationToken ct)
-        {
-            var args = default(RequestArgs);
-            return Send(RequestKind.RecentsPage, args, ct);
-        }
-
-        public static Result RecentsDiff(CancellationToken ct)
-        {
-            var args = default(RequestArgs);
-            return Send(RequestKind.RecentsDiff, args, ct);
-        }
-
-        /// <summary>Upload a playlist cover, hop one. The image service is not one of D's hosts and there is no kind
-        /// for it — the ONE absolute url in this file, sent through the same stamping as everything else.</summary>
-        public static Result CoverUpload(byte[] jpeg, CancellationToken ct)
-        {
-            const HeaderSet headers = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity
-                | HeaderSet.AcceptJson | HeaderSet.ContentJson;
-            return SendOnce(Verb.Post, ImageUploadHost + "/v4/playlist", headers, RequestKind.Custom, jpeg, "", ct,
-                contentType: "image/jpeg");
-        }
-
-        /// <summary>Hop two: register the upload token against the playlist.</summary>
-        public static Result CoverRegister(string playlistId, string uploadToken, CancellationToken ct)
-        {
-            var buffer = new ArrayBufferWriter<byte>(96);
-            using (var w = new Utf8JsonWriter(buffer))
+            if (!IsSpotifyUrl(url))
             {
-                w.WriteStartObject();
-                w.WriteString("uploadToken", uploadToken);
-                w.WriteEndObject();
+                Log.Warn("spotify", "GetText refused a url outside spotify.com");
+                return null;
             }
-            Span<char> path = stackalloc char[128];
-            var p = new PathWriter(path);
-            p.Append("/playlist/v2/playlist/");
-            p.AppendEscaped(playlistId);
-            p.Append("/register-image");
-            var args = new RequestArgs
+            for (int attempt = 0; ; attempt++)
             {
-                Path = p.Written,
-                Host = ApiHost.SpclientWg,
-                Verb = Verb.Post,
-                Headers = CommonJson | HeaderSet.ContentJson,
-                Body = buffer.WrittenSpan,
-            };
-            return Send(RequestKind.Custom, args, ct);
-        }
-
-        /// <summary>A collaborator invite link. The permission object MUST be nested — a flat body is a 400.</summary>
-        public static Result PlaylistInvite(string playlistId, long ttlMs, CancellationToken ct)
-        {
-            var buffer = new ArrayBufferWriter<byte>(96);
-            using (var w = new Utf8JsonWriter(buffer))
-            {
-                w.WriteStartObject();
-                w.WriteStartObject("permission");
-                w.WriteString("permissionLevel", "CONTRIBUTOR");
-                w.WriteEndObject();
-                w.WriteNumber("ttlMs", ttlMs);
-                w.WriteEndObject();
+                Result result = GetTextOnce(url, ct);
+                if (result.Status == 401 && attempt == 0 && AccessToken(force: true) is not null) continue;
+                return result.Ok && result.Body.Length > 0 ? Encoding.UTF8.GetString(result.Body) : null;
             }
-            Span<char> path = stackalloc char[128];
-            var p = new PathWriter(path);
-            p.Append("/playlist-permission/v1/playlist/");
-            p.AppendEscaped(playlistId);
-            p.Append("/permission-grant");
-            var args = new RequestArgs
+        }
+
+        /// <summary><see cref="GetText"/> on an api thread, as the task the lyrics stack takes — install as
+        /// <c>Lyrics.Boot(resolve, Spotify.Api.GetTextAsync, Spotify.SpclientBaseUrl)</c>.</summary>
+        public static Task<string?> GetTextAsync(string url, CancellationToken ct) => RunAsync(() => GetText(url, ct));
+
+        static Result GetTextOnce(string url, CancellationToken ct)
+        {
+            try
             {
-                Path = p.Written,
-                Host = ApiHost.SpclientWg,
-                Verb = Verb.Post,
-                Headers = CommonJson | HeaderSet.ContentJson,
-                Body = buffer.WrittenSpan,
-            };
-            return Send(RequestKind.Custom, args, ct);
-        }
-
-        /// <summary>Public/private. The body is two bytes: <c>08 01</c> BLOCKED (private), <c>08 02</c> VIEWER.</summary>
-        public static Result PlaylistVisibility(string playlistId, bool isPublic, CancellationToken ct)
-        {
-            Span<char> path = stackalloc char[128];
-            var p = new PathWriter(path);
-            p.Append("/playlist-permission/v1/playlist/");
-            p.AppendEscaped(playlistId);
-            p.Append("/permission/base/level");
-            ReadOnlySpan<byte> body = isPublic ? [0x08, 0x02] : [0x08, 0x01];
-            var args = new RequestArgs
+                using var message = new HttpRequestMessage(HttpMethod.Get, url);
+                HttpRequestHeaders h = message.Headers;
+                if (AccessToken() is { Length: > 0 } bearer) h.TryAddWithoutValidation("Authorization", "Bearer " + bearer);
+                h.TryAddWithoutValidation("App-Platform", "Android");
+                h.TryAddWithoutValidation("Spotify-App-Version", Identity.AppVersion);
+                h.TryAddWithoutValidation("Accept", "application/json");
+                using HttpResponseMessage response = Client.Send(message, HttpCompletionOption.ResponseHeadersRead, ct);
+                return new Result((int)response.StatusCode, ReadBody(response, ct));
+            }
+            catch (OperationCanceledException)
             {
-                Path = p.Written,
-                Host = ApiHost.Spclient,
-                Verb = Verb.Post,
-                Headers = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity | HeaderSet.AcceptLanguage
-                    | HeaderSet.ContentProtobuf | HeaderSet.AcceptProtobuf,
-                Body = body,
-            };
-            return Send(RequestKind.Custom, args, ct);
+                return Result.Transport;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException or ObjectDisposedException)
+            {
+                Log.Warn("spotify", "GetText failed: " + ex.GetType().Name);
+                return Result.Transport;
+            }
         }
 
-        // ── 12. the collection (liked songs, saved albums, followed artists, shows, pins) ─────────────────────────────
-
-        /// <summary>The collection-v2 set name one library edge lives in. The service's own spelling, not ours: four
-        /// of the five kinds share the name "collection" and are told apart by the item's uri.</summary>
-        public static string WireSet(LibraryEdgeKind set) => set switch
-        {
-            LibraryEdgeKind.FollowedArtists => "artist",
-            LibraryEdgeKind.SavedShows => "show",
-            LibraryEdgeKind.Pins => "ylpin",
-            _ => "collection",
-        };
-
-        /// <summary>The episodes set has no <see cref="LibraryEdgeKind"/> of its own (Wave 1 folds "listen later" into
-        /// the show edges); the wire name is kept here so the page that wants it does not re-invent the string.</summary>
-        public const string ListenLaterSet = "listenlater";
-
-        public const int CollectionPageSize = 300;
-
-        public static Result CollectionPage(byte[] body, CancellationToken ct)
-        {
-            var args = new RequestArgs { Body = body };
-            return Send(RequestKind.CollectionPage, args, ct);
-        }
-
-        public static Result CollectionDelta(byte[] body, CancellationToken ct)
-        {
-            var args = new RequestArgs { Body = body };
-            return Send(RequestKind.CollectionDelta, args, ct);
-        }
-
-        public static Result CollectionWrite(byte[] body, CancellationToken ct)
-        {
-            var args = new RequestArgs { Body = body };
-            return Send(RequestKind.CollectionWrite, args, ct);
-        }
-
-        // ── 13. storage resolve (the CDN mirrors for one audio file) ─────────────────────────────────────────────────
+        // ── 12. storage resolve (the CDN mirrors for one audio file) ─────────────────────────────────────────────────
 
         /// <summary>Where the bytes of <paramref name="fileIdHex"/> live. Format-agnostic — the file id IS the key —
         /// and the answer is a `StorageResolveResponse` with a mirror list and a TTL. <see cref="Audio"/> is the

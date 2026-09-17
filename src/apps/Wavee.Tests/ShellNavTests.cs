@@ -25,6 +25,10 @@ using Xunit;
 
 namespace Wavee.Tests;
 
+// Shares the ENTITIES collection: `Shell.Parse(uri, name)` interns the label through `Entities.Strings`, and a
+// `TestScope.Fresh()` running in parallel resets that interner mid-test — the label id then resolves to nothing
+// and a trail silently loses a crumb. The failure only shows in a full run, never in isolation.
+[Collection(EntitiesCollection.Name)]
 public class ShellNavReducerTests
 {
     static Shell.Nav Fresh() => new(new Shell.Route(Shell.RouteKind.Home));
@@ -89,6 +93,10 @@ public class ShellNavReducerTests
     }
 }
 
+// Shares the ENTITIES collection: `Shell.Parse(uri, name)` interns the label through `Entities.Strings`, and a
+// `TestScope.Fresh()` running in parallel resets that interner mid-test — the label id then resolves to nothing
+// and a trail silently loses a crumb. The failure only shows in a full run, never in isolation.
+[Collection(EntitiesCollection.Name)]
 public class ShellTrailTests
 {
     static Shell.Route Section(string uri, string name) => Shell.Parse("home-section:" + uri, name);
@@ -176,6 +184,10 @@ public class ShellTrailTests
     }
 }
 
+// Shares the ENTITIES collection: `Shell.Parse(uri, name)` interns the label through `Entities.Strings`, and a
+// `TestScope.Fresh()` running in parallel resets that interner mid-test — the label id then resolves to nothing
+// and a trail silently loses a crumb. The failure only shows in a full run, never in isolation.
+[Collection(EntitiesCollection.Name)]
 public class ShellOriginsTests
 {
     [Fact]
@@ -200,6 +212,10 @@ public class ShellOriginsTests
     }
 }
 
+// Shares the ENTITIES collection: `Shell.Parse(uri, name)` interns the label through `Entities.Strings`, and a
+// `TestScope.Fresh()` running in parallel resets that interner mid-test — the label id then resolves to nothing
+// and a trail silently loses a crumb. The failure only shows in a full run, never in isolation.
+[Collection(EntitiesCollection.Name)]
 public class ShellPageMotionTests
 {
     [Fact]
@@ -212,8 +228,21 @@ public class ShellPageMotionTests
     }
 
     [Fact]
-    public void Forward_and_back_enter_from_opposite_sides()
-        => Assert.Equal(-Shell.PageFadeThroughForward.Enter.Dx, Shell.PageFadeThroughBack.Enter.Dx);
+    public void Home_to_album_is_DrillIn_and_artist_to_artist_is_Sibling()
+    {
+        var home = new Shell.Route(Shell.RouteKind.Home);
+        var album = Shell.Parse("album:spotify:album:1");
+        var a = Shell.Parse("artist:spotify:artist:a");
+        var b = Shell.Parse("artist:spotify:artist:b");
+        Assert.Equal(Design.NavRelation.DrillIn, Shell.RelationOf(home, album, Shell.NavTransitionKind.Forward));
+        Assert.Equal(Design.NavRelation.Sibling, Shell.RelationOf(a, b, Shell.NavTransitionKind.Forward));
+        Assert.Equal(Design.NavRelation.Entrance, Shell.RelationOf(home, new Shell.Route(Shell.RouteKind.LibraryAlbums),
+            Shell.NavTransitionKind.Forward));
+    }
+
+    [Fact]
+    public void Forward_and_back_sibling_enter_from_opposite_sides()
+        => Assert.Equal(-Shell.PageSlideSafeForward.Enter.Dx, Shell.PageSlideSafeBack.Enter.Dx);
 
     [Fact]
     public void The_video_safe_pair_is_position_only_and_neutral_is_an_honest_cut()
@@ -502,6 +531,97 @@ public class TabWorkspaceTests
         Assert.Single(snap.Tabs);
         Assert.Equal("album:spotify:album:1TSZDcvlPtAnekTaItI3qO", snap.Tabs[0].Route);
         Assert.Equal(0, snap.LastSelected);
+    }
+
+    // ── the session restore onto the workspace (G-258) ────────────────────────────────────────────────────────────────
+
+    const string AlbumKey = "album:spotify:album:1TSZDcvlPtAnekTaItI3qO";
+
+    [Fact]
+    public void A_restored_route_lands_on_the_active_tab_without_rewriting_pins()
+    {
+        // The relaunch onto an album with no pins: the strip must read the album, not the seeded Home.
+        var w = new Shell.TabWorkspace();
+        w.RestorePinned(new Shell.WorkspaceTabsSnapshot([], -1));
+        int revision = w.PinnedRevision;
+
+        int id = w.RestoreActiveRoute(Shell.Parse(AlbumKey, "RAM"));
+
+        Assert.Single(w.Tabs);
+        Assert.Equal(w.ActiveId, id);
+        Assert.Equal(Shell.RouteKind.Album, w.Active.Route.Kind);
+        Assert.Equal(revision, w.PinnedRevision);
+    }
+
+    [Fact]
+    public void Restoring_onto_a_pinned_tab_does_not_bump_the_pinned_revision()
+    {
+        var w = new Shell.TabWorkspace();
+        w.RestorePinned(new Shell.WorkspaceTabsSnapshot([new Shell.PersistedTab("browse", null)], 0));
+        int revision = w.PinnedRevision;
+
+        w.RestoreActiveRoute(Shell.Parse(AlbumKey, "RAM"));
+
+        Assert.True(w.Active.Pinned);
+        Assert.Equal(Shell.RouteKind.Album, w.Active.Route.Kind);
+        Assert.Equal(revision, w.PinnedRevision);
+    }
+
+    [Fact]
+    public void The_session_selects_a_surviving_pin_by_its_pinned_index()
+    {
+        var w = new Shell.TabWorkspace();
+        w.RestorePinned(new Shell.WorkspaceTabsSnapshot(
+            [new Shell.PersistedTab("browse", null), new Shell.PersistedTab(AlbumKey, "RAM")], 0));
+        int revision = w.PinnedRevision;
+        int lastPinned = w.LastSelectedPinnedId;
+
+        Assert.True(w.TrySelectPinned(1));
+
+        Assert.Equal(1, w.ActiveIndex);
+        Assert.Equal(1, w.ActivePinnedIndex);
+        Assert.Equal(Shell.RouteKind.Album, w.Active.Route.Kind);
+        Assert.Equal(revision, w.PinnedRevision);          // restore never rewrites pins
+        Assert.Equal(lastPinned, w.LastSelectedPinnedId);
+    }
+
+    [Fact]
+    public void A_missing_pinned_index_keeps_the_pinned_default()
+    {
+        var w = new Shell.TabWorkspace();
+        w.RestorePinned(new Shell.WorkspaceTabsSnapshot([new Shell.PersistedTab("browse", null)], 0));
+        int active = w.ActiveId;
+
+        Assert.False(w.TrySelectPinned(-1));               // the session's tab was session-only
+        Assert.False(w.TrySelectPinned(1));                // the pins changed since the session was written
+        Assert.Equal(active, w.ActiveId);
+    }
+
+    [Fact]
+    public void A_session_only_active_tab_persists_as_no_pinned_index()
+    {
+        var w = new Shell.TabWorkspace();
+        w.Open(Shell.Parse("browse"), pinned: true);
+        Assert.Equal(0, w.ActivePinnedIndex);
+
+        w.Open(Shell.Parse("settings"));                   // unpinned, appended, active
+        Assert.Equal(-1, w.ActivePinnedIndex);
+    }
+
+    [Fact]
+    public void A_pinned_index_survives_the_id_reminting_of_a_relaunch()
+    {
+        // Last launch: the album pin is active. Ids are per process — the next launch mints new ones.
+        var before = new Shell.TabWorkspace();
+        before.Open(Shell.Parse("browse"), pinned: true);
+        before.Open(Shell.Parse(AlbumKey, "RAM"), pinned: true);
+        int savedIndex = before.ActivePinnedIndex;
+        var pins = before.PinnedSnapshot();
+
+        var after = new Shell.TabWorkspace();
+        after.RestorePinned(in pins);
+        Assert.True(after.TrySelectPinned(savedIndex));
+        Assert.Equal(Shell.RouteKind.Album, after.Active.Route.Kind);
     }
 }
 

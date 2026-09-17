@@ -7,6 +7,9 @@
 // Budget: 700 lines
 // Spec: DERIVED (the plan's Platform/ bucket)
 // Wave 0 first cut (orchestrator): the settings store, the profile paths, store.json, DPAPI, the log writer; owner S completes in Wave 6
+// Wave 6 (owner S): the settings isolation (`FileAppSettings`, the `--fake` in-memory store), the crash-writer install,
+// the factory reset + restart broker spawn, `Platform.Version`, the NLM cost host, the ambient power poll (G-086, G-094,
+// G-198, G-199). Its CORE halves are `Platform.Settings.cs`.
 //
 // The SHELL half of everything `Platform.cs` declares as a seam: the registry-backed settings store, the profile path
 // resolver, the portable `store.json` the credential slot and the device id live in, the Windows at-rest protector,
@@ -64,7 +67,18 @@ public static partial class Platform
     /// <summary>The portable key/value file: the credential blob and the device id.</summary>
     public static string StorePath => Path.Combine(LocalFolder, "store.json");
 
-    static partial void HostOpenSettings() => UseSettings(RegistryAppSettings.Open(Publisher, Product));
+    /// <summary>The store <see cref="Backing"/> names: an in-memory overlay over defaults for `--fake` (never the
+    /// registry), a JSON file inside the profile folder for `--profile`, HKCU otherwise.</summary>
+    static partial void HostOpenSettings() => UseSettings(Backing switch
+    {
+        SettingsBacking.Memory => new Diagnostics.Headless.OverlaySettings(DefaultsOnlySettings.Instance),
+        SettingsBacking.ProfileFile => new FileAppSettings(Path.Combine(LocalFolder, ProfileSettingsFileName)),
+        _ => RegistryAppSettings.Open(Publisher, Product),
+    });
+
+    /// <summary>The raw store <see cref="Boot"/> installed (never the facade). The headless host overlays THIS — an
+    /// overlay over the facade would read itself.</summary>
+    public static IAppSettings BackingSettings => s_backing ?? DefaultsOnlySettings.Instance;
 
     /// <summary>The OS UI locale, from Win32 rather than <c>CultureInfo.CurrentUICulture</c>: this app builds with
     /// <c>InvariantGlobalization</c>, under which that property is always the invariant culture and "system" would
@@ -96,13 +110,11 @@ public static partial class Platform
 
     static partial void HostOpenLog()
     {
-        // The persisted levels are -1 = "use the build default" until owner S ports LogCapturePolicy, which is the
-        // ONE place allowed to resolve that; until then a stored level is honoured verbatim and -1 means Info.
-        int min = Settings.Get(Keys.LogMinLevel);
-        int file = Settings.Get(Keys.LogFileMinLevel);
+        // The persisted levels are -1 = "use the build default"; LogCapturePolicy is the ONE place that resolves that,
+        // so this launch path and the logs panel's runtime toggles can never disagree.
         Log.Configure(Path.Combine(LogFolder, "wavee.log"),
-            min >= 0 ? (WaveeLogLevel)min : WaveeLogLevel.Info,
-            file >= 0 ? (WaveeLogLevel)file : WaveeLogLevel.Info);
+            LogCapturePolicy.Resolve(Settings.Get(Keys.LogMinLevel), LogCapturePolicy.BuildDefaultMinLevel),
+            LogCapturePolicy.Resolve(Settings.Get(Keys.LogFileMinLevel), LogCapturePolicy.BuildDefaultFileLevel));
 
         Diag.Sink = Log.DiagSink;   // fold engine diagnostics into the one always-on stream
 
@@ -114,6 +126,318 @@ public static partial class Platform
             WaveeLogField.Of("logResolved", FinalPath.Resolve(LogFolder) ?? "?"),
             WaveeLogField.Of("framework", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription),
             WaveeLogField.Of("os", System.Runtime.InteropServices.RuntimeInformation.OSDescription));
+        // The update end-to-end harness waits for this exact line: category app, event startup.
+        if (Array.IndexOf(Environment.GetCommandLineArgs(), RelaunchedAfterUpdateFlag) >= 0)
+            Log.Event(WaveeLogLevel.Info, "app", "startup", "relaunched by Windows after an update", null, -1, null,
+                WaveeLogField.Of("flag", RelaunchedAfterUpdateFlag));
+    }
+
+    // ── 1.1 the crash writers (G-094, S half) ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>A crash on ANY thread leaves a report on disk, arms <c>crash.pendingReport</c> for the next launch and
+    /// marks the run "crashed". The report body is <c>Diagnostics.CrashReport</c> (beside the files list it shares its
+    /// naming and prune rule with); `Shell.Host.cs`'s own crash net only logs. Everything here is best-effort (we are
+    /// terminating), but a failure is LOGGED, never swallowed — a silent catch here is how a lost report goes unnoticed.
+    /// The Shell's app-loop catch rethrows into this handler, and <c>CrashReport.Write</c> is idempotent per process.</summary>
+    static partial void HostInstallCrashWriters()
+    {
+        AppDomain.CurrentDomain.UnhandledException += static (_, e) =>
+        {
+            if (e.ExceptionObject is not Exception fatal) return;
+            try
+            {
+                string report = Diagnostics.CrashReport.Write(fatal, Log.FilePath);
+                if (report.Length > 0) Settings.Set(Keys.PendingCrashReport, report);
+            }
+            catch (Exception writeEx)
+            {
+                try { Log.Warn("crash", "Crash report could not be written or armed", writeEx); } catch { }
+            }
+            try { RunMarker.MarkCrashed(Settings); } catch { }
+            try { Log.Flush(); } catch { }
+        };
+    }
+
+    // ── 1.2 the factory reset and the restart broker (G-094, S half) ────────────────────────────────────────────────
+
+    /// <summary>The token Wavee appends to the restart command line it registers before an MSIX deployment, so the
+    /// process Windows brings back AFTER the update can say so in its log. INERT: one log line, nothing branches on it.</summary>
+    public const string RelaunchedAfterUpdateFlag = "--relaunched-after-update";
+
+    /// <summary>The marker lives in %TEMP%, outside every wipe root.</summary>
+    public static string FactoryResetMarkerPath => Path.Combine(Path.GetTempPath(), FactoryResetPlan.MarkerFileName);
+
+    /// <summary>What a reset wipes by default: the profile folder and %TEMP%\Wavee.</summary>
+    public static IReadOnlyList<string> FactoryResetDefaultRoots() => [LocalFolder, Path.Combine(Path.GetTempPath(), Product)];
+
+    /// <summary>Arm a reset, spawn the restart broker, and END THIS PROCESS (Settings ▸ Storage ▸ Factory reset, after its
+    /// confirm). The wipe runs in the next process; if the spawn fails the marker is still on disk, so a manual launch
+    /// applies it anyway.</summary>
+    public static void RequestFactoryResetAndRelaunch(IEnumerable<string>? extraRoots = null)
+    {
+        var lines = FactoryResetPlan.MarkerLines(extraRoots, FactoryResetDefaultRoots());
+        Directory.CreateDirectory(Path.GetDirectoryName(FactoryResetMarkerPath)!);
+        File.WriteAllLines(FactoryResetMarkerPath, lines);
+        Log.Info("app", "factory reset armed; relaunching (extra roots " + lines.Count.ToString(CultureInfo.InvariantCulture) + ")");
+        Log.Flush();
+        RestartAfterExit();
+        Environment.Exit(0);
+    }
+
+    static partial void HostApplyFactoryReset()
+    {
+        string marker = FactoryResetMarkerPath;
+        if (!File.Exists(marker)) return;
+        string[] extras;
+        try { extras = File.ReadAllLines(marker); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { extras = []; }
+        foreach (string root in FactoryResetPlan.Roots(FactoryResetDefaultRoots(), extras)) DeleteTree(root);
+        // The registry half only when this launch's settings ARE the registry: a `--profile` run's reset is its folder.
+        if (Backing == SettingsBacking.Registry && OperatingSystem.IsWindows())
+        {
+            try { AppDataStore.ForUnpackaged(Publisher, Product).Clear(); } catch { }
+            try { Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(@"Software\" + Publisher, throwOnMissingSubKey: false); } catch { }
+        }
+        try { File.Delete(marker); } catch { }
+    }
+
+    static void DeleteTree(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return;
+        string path;
+        try { path = Path.GetFullPath(raw); } catch { return; }
+        try
+        {
+            if (File.Exists(path)) { File.SetAttributes(path, FileAttributes.Normal); File.Delete(path); return; }
+            if (!Directory.Exists(path)) return;
+            foreach (string file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                try { File.SetAttributes(file, FileAttributes.Normal); File.Delete(file); } catch { }
+            Directory.Delete(path, recursive: true);
+        }
+        catch { }
+    }
+
+    /// <summary>Spawn the broker (this exe as <c>--relaunch-after &lt;pid&gt;</c>) that starts a fresh Wavee once THIS pid
+    /// is gone — which is what releases the instance mutex and library.db. The caller MUST then end the process. Never
+    /// throws: a failed spawn leaves the user to relaunch by hand, strictly better than breaking the shutdown path.</summary>
+    public static void RestartAfterExit()
+    {
+        string? exe = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exe) || !File.Exists(exe)) return;
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
+            psi.ArgumentList.Add("--relaunch-after");
+            psi.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+            System.Diagnostics.Process.Start(psi);
+        }
+        catch (Exception ex) { Log.Warn("app", "restart broker could not be spawned", ex); }
+    }
+
+    // ── 1.3 the build stamp (G-198) ──────────────────────────────────────────────────────────────────────────────────
+
+    static WaveeVersionInfo? s_version;
+
+    /// <summary>This build's stamp, read once from the entry assembly's metadata (the attributes `Wavee.csproj` writes).
+    /// About, the crash header, the update checker and the what's-new gate read THIS, never AssemblyName.Version.</summary>
+    public static WaveeVersionInfo Version => s_version ??= ReadVersion();
+
+    static WaveeVersionInfo ReadVersion()
+    {
+        try
+        {
+            var asm = System.Reflection.Assembly.GetEntryAssembly() ?? typeof(Platform).Assembly;
+            var pairs = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var a in System.Reflection.CustomAttributeExtensions.GetCustomAttributes<System.Reflection.AssemblyMetadataAttribute>(asm))
+                if (a.Value is not null) pairs[a.Key] = a.Value;
+            string? inf = System.Reflection.CustomAttributeExtensions
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(asm)?.InformationalVersion;
+            return WaveeVersionInfo.Parse(inf, pairs);
+        }
+        catch { return WaveeVersionInfo.Parse(null, null); }
+    }
+
+    // ── 1.4 the network cost host (ch 29 W9) ─────────────────────────────────────────────────────────────────────────
+
+    public static partial class Network
+    {
+        /// <summary>The fallback poll for a host whose NLM cost connection point is missing (the push is the fast path).</summary>
+        const int RefreshMs = 60_000;
+
+        static int s_installed, s_refreshing;
+        static Action<Action>? s_post;
+        static Timer? s_poll;
+        static IDisposable? s_connectivity, s_costEvents;
+
+        /// <summary>UI THREAD, once, from the GUI composition (`Diagnostics.Install`): seed the caps, read the cost now,
+        /// subscribe NLM's connectivity and cost pushes, and arm the 60 s fallback. The headless host does not install it
+        /// (an unknown cost is unmetered, so its quality verb is never capped by a policy it cannot see).</summary>
+        public static void Install(Action<Action> post)
+        {
+            if (Interlocked.Exchange(ref s_installed, 1) != 0) return;
+            s_post = post;
+            try { SeedCaps(Settings); } catch (Exception ex) { Log.Warn("network", "metered caps could not be seeded", ex); }
+            Refresh();
+            s_poll = new Timer(static _ => Refresh(), null, RefreshMs, RefreshMs);
+            try { s_connectivity = FluentGpu.WindowsApi.Network.NetworkStatus.Subscribe(static _ => Refresh()); } catch { s_connectivity = null; }
+            try { s_costEvents = FluentGpu.WindowsApi.Network.NetworkStatus.SubscribeCost(static c => Publish(c)); } catch { s_costEvents = null; }
+        }
+
+        public static void Shutdown()
+        {
+            try { s_costEvents?.Dispose(); } catch { }
+            try { s_connectivity?.Dispose(); } catch { }
+            try { s_poll?.Dispose(); } catch { }
+            s_costEvents = s_connectivity = null;
+            s_poll = null;
+        }
+
+        static void Refresh()
+        {
+            if (Interlocked.Exchange(ref s_refreshing, 1) != 0) return;
+            _ = RefreshAsync();
+        }
+
+        static async Task RefreshAsync()
+        {
+            try
+            {
+                var cost = FluentGpu.WindowsApi.Network.NetworkCost.Unknown;
+                try { cost = await FluentGpu.WindowsApi.Network.NetworkStatus.ReadCostAsync().ConfigureAwait(false); }
+                catch { cost = FluentGpu.WindowsApi.Network.NetworkCost.Unknown; }
+                Publish(cost);
+            }
+            finally { Interlocked.Exchange(ref s_refreshing, 0); }
+        }
+
+        /// <summary>Any thread → the UI thread → <see cref="Apply"/>.</summary>
+        static void Publish(FluentGpu.WindowsApi.Network.NetworkCost cost)
+        {
+            if (s_post is { } post) post(() => Apply(cost));
+        }
+    }
+
+    // ── 1.5 the ambient power poll (G-086) ───────────────────────────────────────────────────────────────────────────
+
+    static FluentGpu.Hosting.AppHost? s_powerHost;
+    static AmbientPower.Debounce s_power;
+
+    /// <summary>Bind the ambient cadence to the host and apply the launch verdict immediately (no debounce at launch).
+    /// Called once per launch from the engine's pre-loop hook (`FluentApp.DiagnosticRun`, installed by
+    /// `Diagnostics.Probe.InstallGuiArms`) — the only app-reachable point that holds the host. The recurring poll
+    /// itself is NOT a raw <see cref="Timer"/> (that kept waking a minimized/suspended window): <see cref="Shell"/>'s
+    /// root component hosts it on a <c>UseInterval</c> tick — engine's per-frame timer queue, which auto-pauses while
+    /// parked/minimized and resumes cleanly — calling <see cref="TickAmbientPower"/> every <see cref="AmbientPower.PollMs"/>.</summary>
+    public static void AttachAmbientPower(FluentGpu.Hosting.AppHost host)
+    {
+        s_powerHost = host;
+        host.InactiveFrameIntervalMs = Design.Cadence.InactiveFrameIntervalMs;
+        s_power = AmbientPower.Debounce.Start(ReadPlugged(), System.Diagnostics.Stopwatch.GetTimestamp());
+        ApplyPower();
+    }
+
+    /// <summary>The recurring half of the ambient power poll (ch 00 §9.5, G-086) — the root component's
+    /// <c>UseInterval</c> tick calls this every <see cref="AmbientPower.PollMs"/>. There is no power-source change
+    /// notification to subscribe to, so this stays a poll; hosting it on the frame-clock timer queue rather than a
+    /// raw thread-pool <see cref="Timer"/> is what lets it go quiet while the window is minimized or suspended.</summary>
+    public static void TickAmbientPower()
+    {
+        if (s_powerHost is null) return;
+        if (AmbientPower.Step(ref s_power, ReadPlugged(), System.Diagnostics.Stopwatch.GetTimestamp(),
+                System.Diagnostics.Stopwatch.Frequency))
+            ApplyPower();
+    }
+
+    /// <summary>Stop the power poll (the exit tail, via `Diagnostics.Shutdown`). The root component's `UseInterval`
+    /// tick itself dies with the component at process exit; this just makes a stray tick a no-op in the meantime.</summary>
+    public static void DetachAmbientPower()
+    {
+        s_powerHost = null;
+    }
+
+    static bool ReadPlugged()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(8)) return true;
+        try { return AmbientPower.Plugged(true, FluentGpu.WindowsApi.Power.PowerSession.ReadPower()); }
+        catch { return AmbientPower.Plugged(false, default); }   // a failed read resolves plugged, never dims the app
+    }
+
+    static void ApplyPower()
+    {
+        if (s_powerHost is not { } host) return;
+        float hz = AmbientPower.LoopHzFor(s_power.Applied);
+        host.Animation.DefaultLoopHz = hz;
+        Log.Info("app", "ambient cadence " + (s_power.Applied ? "plugged" : "battery") + " loopHz=" + hz.ToString(CultureInfo.InvariantCulture));
+    }
+}
+
+/// <summary><see cref="IAppSettings"/> in one JSON object inside a profile folder — a `--profile &lt;dir&gt;` run's store,
+/// so an isolated launch never touches HKCU. The key/value contract is the registry store's: the same key names, the
+/// same scalar types, values rendered invariant, a missing or unparsable value answering the key's default, and every
+/// failure swallowed. Write-through with an fsync'd write-then-rename (a scratch profile's writes are rare).</summary>
+public sealed class FileAppSettings : IAppSettings
+{
+    readonly string _path;
+    readonly Lock _gate = new();
+    readonly Dictionary<string, string> _data;
+
+    public FileAppSettings(string filePath)
+    {
+        _path = filePath;
+        try
+        {
+            _data = File.Exists(filePath)
+                ? JsonSerializer.Deserialize(File.ReadAllText(filePath), LocalStoreJson.Default.DictionaryStringString) ?? new()
+                : new();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { _data = new(); }
+    }
+
+    public T Get<T>(SettingKey<T> key)
+    {
+        string? raw;
+        lock (_gate) if (!_data.TryGetValue(key.Name, out raw)) return key.Default;
+        var inv = CultureInfo.InvariantCulture;
+        if (typeof(T) == typeof(string)) return (T)(object)raw;
+        if (typeof(T) == typeof(bool) && bool.TryParse(raw, out bool b)) return Unsafe.As<bool, T>(ref b);
+        if (typeof(T) == typeof(int) && int.TryParse(raw, NumberStyles.Integer, inv, out int i)) return Unsafe.As<int, T>(ref i);
+        if (typeof(T) == typeof(long) && long.TryParse(raw, NumberStyles.Integer, inv, out long l)) return Unsafe.As<long, T>(ref l);
+        if (typeof(T) == typeof(float) && float.TryParse(raw, NumberStyles.Float, inv, out float f)) return Unsafe.As<float, T>(ref f);
+        if (typeof(T) == typeof(double) && double.TryParse(raw, NumberStyles.Float, inv, out double d)) return Unsafe.As<double, T>(ref d);
+        return key.Default;
+    }
+
+    public void Set<T>(SettingKey<T> key, T value)
+    {
+        if (value is null) return;
+        var inv = CultureInfo.InvariantCulture;
+        string? text =
+            typeof(T) == typeof(string) ? (string)(object)value
+            : typeof(T) == typeof(bool) ? (Unsafe.As<T, bool>(ref value) ? "true" : "false")
+            : typeof(T) == typeof(int) ? Unsafe.As<T, int>(ref value).ToString(inv)
+            : typeof(T) == typeof(long) ? Unsafe.As<T, long>(ref value).ToString(inv)
+            : typeof(T) == typeof(float) ? Unsafe.As<T, float>(ref value).ToString("R", inv)
+            : typeof(T) == typeof(double) ? Unsafe.As<T, double>(ref value).ToString("R", inv)
+            : null;
+        if (text is null) return;
+        lock (_gate)
+        {
+            if (_data.TryGetValue(key.Name, out string? old) && old == text) return;
+            _data[key.Name] = text;
+            try
+            {
+                string? dir = Path.GetDirectoryName(_path);
+                if (dir is not null) Directory.CreateDirectory(dir);
+                string tmp = _path + ".tmp";
+                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    fs.Write(JsonSerializer.SerializeToUtf8Bytes(_data, LocalStoreJson.Default.DictionaryStringString));
+                    fs.Flush(flushToDisk: true);
+                }
+                File.Move(tmp, _path, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
     }
 }
 

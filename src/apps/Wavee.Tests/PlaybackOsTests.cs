@@ -131,6 +131,43 @@ public class PlaybackSmtcRuleTests
     public void An_unknown_duration_on_a_non_live_source_is_not_a_live_stream()
         // Zero duration is ALSO what "not known yet" looks like; only the source's own liveness may zero the bar.
         => Assert.False(Playback.Os.ZeroTimelineOnce(durationMs: 0, isLive: false, alreadyCleared: false));
+
+    [Theory]
+    [InlineData(EntityKind.Track, false, Playback.Os.CardShape.Track)]
+    [InlineData(EntityKind.Track, true, Playback.Os.CardShape.Episode)]
+    [InlineData(EntityKind.Episode, false, Playback.Os.CardShape.Episode)]
+    [InlineData(EntityKind.Album, false, Playback.Os.CardShape.Empty)]
+    [InlineData(EntityKind.Unknown, false, Playback.Os.CardShape.Empty)]
+    public void The_card_layout_follows_the_rows_kind_and_never_reads_an_episode_as_a_track(
+        EntityKind kind, bool podcastTrack, Playback.Os.CardShape expected)
+        // G-083: 0.3 read the Track table for every row, so an episode's card showed another row's text.
+        => Assert.Equal(expected, Playback.Os.CardShapeFor(kind, podcastTrack));
+
+    [Fact]
+    public void The_card_is_pushed_again_when_the_same_rows_metadata_or_art_lands()
+    {
+        // G-084: a transferred row starts before its metadata is known; the identity alone would never re-push it.
+        var id = EntityId.ForGid(EntityKind.Track, (UInt128)0xC0FFEEUL);
+        var cold = new Playback.Os.CardKey(id, Knows: false, Image: 0);
+        Assert.NotEqual(cold, cold with { Knows = true });
+        Assert.NotEqual(cold with { Knows = true }, cold with { Knows = true, Image = 7 });
+        Assert.Equal(cold, new Playback.Os.CardKey(id, false, 0));        // a pause or a tick changes none of the three
+    }
+}
+
+public class PlaybackPowerPolicyTests
+{
+    [Theory]
+    [InlineData(Playback.Phase.Playing, true, Playback.PlayableKind.Audio, Playback.Os.AwakeKind.System)]
+    [InlineData(Playback.Phase.Playing, true, Playback.PlayableKind.LocalFile, Playback.Os.AwakeKind.System)]
+    [InlineData(Playback.Phase.Playing, true, Playback.PlayableKind.Video, Playback.Os.AwakeKind.Display)]
+    [InlineData(Playback.Phase.Paused, true, Playback.PlayableKind.Video, Playback.Os.AwakeKind.None)]
+    [InlineData(Playback.Phase.Loading, true, Playback.PlayableKind.Audio, Playback.Os.AwakeKind.None)]
+    [InlineData(Playback.Phase.Playing, false, Playback.PlayableKind.Video, Playback.Os.AwakeKind.None)]
+    public void Keep_awake_is_ours_only_while_we_play_and_the_display_only_for_video(
+        Playback.Phase phase, bool routesLocal, Playback.PlayableKind kind, Playback.Os.AwakeKind expected)
+        // G-085: decided from the state being published; a phone playing somebody's music keeps nothing awake here.
+        => Assert.Equal(expected, Playback.Os.AwakeFor(phase, routesLocal, kind));
 }
 
 public class PlaybackJumpListTests

@@ -203,6 +203,28 @@ public class ControlsArtUrlTests
     [InlineData("C:\\Music\\cover.jpg")]
     public void A_formed_url_or_a_local_path_passes_through(string value)
         => Assert.Equal(value, Controls.ArtUrl(Entities.Strings.Intern(value)));
+
+    [Fact]
+    public void The_same_id_resolves_to_the_same_url_instance()
+    {
+        // The concat arm is called per cover per render; a repeated resolve must hand back the cached instance rather
+        // than a fresh concatenation (the shelf's 13 cards × every parent render used to allocate one each).
+        var id = Entities.Strings.Intern("ab67616d0000b273cafecafecafecafecafecafe");
+        var first = Controls.ArtUrl(id);
+        Assert.Equal("https://i.scdn.co/image/ab67616d0000b273cafecafecafecafecafecafe", first);
+        Assert.Same(first, Controls.ArtUrl(id));
+        Assert.Same(first, Controls.ArtUrl(id));
+    }
+
+    [Fact]
+    public void Different_ids_resolve_to_their_own_urls()
+    {
+        var a = Entities.Strings.Intern("ab67616d0000b273000000000000000000000001");
+        var b = Entities.Strings.Intern("ab67616d0000b273000000000000000000000002");
+        Assert.Equal("https://i.scdn.co/image/ab67616d0000b273000000000000000000000001", Controls.ArtUrl(a));
+        Assert.Equal("https://i.scdn.co/image/ab67616d0000b273000000000000000000000002", Controls.ArtUrl(b));
+        Assert.Same(Controls.ArtUrl(a), Controls.ArtUrl(a));
+    }
 }
 
 [Collection(EntitiesCollection.Name)]
@@ -277,4 +299,159 @@ public class ControlsRichTextTests
         }
         finally { Controls.RouteForUri = saved; }
     }
+}
+
+/// <summary>The card family's props gate on DATA. An entity adapter rebuilds its closures (and its subtitle element) on
+/// every parent render; if those counted by identity, every ShelfCard / NowPlayingOverlay host on the page re-rendered
+/// on every parent render (13× a frame on the artist page). A delegate counts by PRESENCE, never identity.</summary>
+public class ControlsCardEqualityTests
+{
+    // Each call returns FRESH delegates and a FRESH subtitle element with the same data — the shape a re-rendering
+    // adapter hands over.
+    static Controls.CardData Card(string uri = "spotify:album:1", string title = "Blue", string? subtitle = "Joni Mitchell · 1971",
+                                  bool play = true, string? dragKind = "album", bool circular = false, int titleLines = 1)
+        => new(uri, title, subtitle is null ? null : new TextEl(subtitle) { Size = 12f, MaxLines = 1 }, "https://i.scdn.co/image/x",
+               OnClick: () => { }, OnPlay: play ? () => { } : null, Circular: circular,
+               Drag: dragKind is null ? null : new DragSource(dragKind, () => null), TitleLines: titleLines);
+
+    [Fact]
+    public void A_card_rebuilt_with_fresh_closures_and_an_identical_subtitle_is_equal()
+    {
+        var a = Card();
+        var b = Card();
+        // The compiler caches a non-capturing lambda as one static delegate, so OnClick may legitimately be the same
+        // instance; the subtitle element is built fresh per call and proves the "rebuilt adapter" shape.
+        Assert.NotSame(a.Subtitle, b.Subtitle);
+        Assert.Equal(a, b);
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+    }
+
+    [Fact]
+    public void A_card_whose_data_changed_is_not_equal()
+    {
+        var a = Card();
+        Assert.NotEqual(a, Card(uri: "spotify:album:2"));
+        Assert.NotEqual(a, Card(title: "Clouds"));
+        Assert.NotEqual(a, Card(subtitle: "Joni Mitchell · 1969"));
+        Assert.NotEqual(a, Card(subtitle: null));
+        Assert.NotEqual(a, Card(circular: true));
+        Assert.NotEqual(a, Card(titleLines: 2));
+    }
+
+    [Fact]
+    public void A_delegate_counts_by_presence_not_identity()
+    {
+        Assert.Equal(Card(play: true), Card(play: true));
+        Assert.NotEqual(Card(play: true), Card(play: false));
+        Assert.Equal(Card(dragKind: "album"), Card(dragKind: "album"));   // fresh payload factories, same kind
+        Assert.NotEqual(Card(dragKind: "album"), Card(dragKind: "playlist"));
+        Assert.NotEqual(Card(dragKind: "album"), Card(dragKind: null));
+    }
+
+    [Fact]
+    public void The_shell_controls_count_by_value_and_the_thunks_by_presence()
+    {
+        // NaN is the "unpinned" default and must compare equal to itself, or every re-push of a plain card would differ.
+        Assert.Equal(Card(), Card() with { Height = float.NaN });
+        Assert.NotEqual(Card(), Card() with { Height = 230f });
+        Assert.NotEqual(Card(), Card() with { Selected = true });
+        Assert.Equal(Card() with { Selected = true, SelectedAccent = () => default },
+                     Card() with { Selected = true, SelectedAccent = () => default });
+        Assert.Equal(Card() with { Menu = () => null }, Card() with { Menu = () => null });
+        Assert.NotEqual(Card(), Card() with { Menu = () => null });
+        Assert.Equal(new Controls.GridCardProps(Card()), new Controls.GridCardProps(Card()));
+    }
+
+    [Fact]
+    public void Shelf_card_props_gate_on_the_card_data_and_the_width()
+    {
+        Assert.Equal(new Controls.ShelfCardProps(Card(), 148f), new Controls.ShelfCardProps(Card(), 148f));
+        Assert.NotEqual(new Controls.ShelfCardProps(Card(), 148f), new Controls.ShelfCardProps(Card(), 172f));
+        Assert.NotEqual(new Controls.ShelfCardProps(Card(), 148f), new Controls.ShelfCardProps(Card(title: "Clouds"), 148f));
+    }
+
+    [Fact]
+    public void Overlay_props_gate_on_data_with_the_play_handler_by_presence()
+    {
+        var a = new Controls.OverlayProps("spotify:album:1", () => { }, 44f, true, "Play");
+        var b = new Controls.OverlayProps("spotify:album:1", () => { }, 44f, true, "Play");
+        Assert.NotSame(a.OnPlay, b.OnPlay);
+        Assert.Equal(a, b);
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+        Assert.NotEqual(a, a with { OnPlay = null });
+        Assert.NotEqual(a, a with { Uri = "spotify:album:2" });
+        Assert.NotEqual(a, a with { Fab = 30f });
+        Assert.NotEqual(a, a with { Centred = false });
+        Assert.NotEqual(a, a with { PlayName = "Pause" });
+    }
+}
+
+/// <summary>The grid card's cover chrome (the now-playing overlay and the corner "…") costs ~1 ms and ~68 KB a card to
+/// mount and is invisible until hover, so it exists only while the card is HOT (pointer inside, keyboard focus reached
+/// it) or RELATES to playback (the equalizer pill must show on a card nobody points at). The host feeds the decision;
+/// this pins it.</summary>
+public class CardChromeRulesTests
+{
+    [Fact]
+    public void A_hot_card_mounts_its_chrome_even_when_nothing_plays()
+        => Assert.True(Controls.CardChromeRules.Mounted(hot: true, relates: false));
+
+    [Fact]
+    public void A_card_that_relates_to_playback_mounts_its_chrome_without_a_pointer()
+        => Assert.True(Controls.CardChromeRules.Mounted(hot: false, relates: true));
+
+    [Fact]
+    public void A_cold_unrelated_card_mounts_nothing()
+        => Assert.False(Controls.CardChromeRules.Mounted(hot: false, relates: false));
+
+    [Fact]
+    public void Hot_is_true_with_the_pointer_in_and_focus_out()
+        => Assert.True(Controls.CardChromeRules.Hot(pointerIn: true, focusIn: false));
+
+    [Fact]
+    public void Hot_is_true_with_the_pointer_out_and_focus_in()
+        => Assert.True(Controls.CardChromeRules.Hot(pointerIn: false, focusIn: true));
+
+    [Fact]
+    public void Hot_is_false_with_neither_bit_set()
+        => Assert.False(Controls.CardChromeRules.Hot(pointerIn: false, focusIn: false));
+
+    [Fact]
+    public void FocusIn_latches_true_on_a_genuine_gain()
+        => Assert.True(Controls.CardChromeRules.FocusIn(got: false, stillInside: true));
+
+    [Fact]
+    public void FocusIn_is_false_on_a_loss_that_lands_outside_the_shell()
+        => Assert.False(Controls.CardChromeRules.FocusIn(got: false, stillInside: false));
+
+    [Fact]
+    public void FocusIn_is_true_on_a_gain_regardless_of_stillInside()
+        => Assert.True(Controls.CardChromeRules.FocusIn(got: true, stillInside: false));
+}
+
+/// <summary>The watched placeholder bind is cached per url: the thunk is a pure function of its url, so every slot
+/// showing the same cover shares ONE bound <c>Prop</c> and a per-render caller allocates no closure.</summary>
+public class DesignWatchedPlaceholderTests
+{
+    [Fact]
+    public void The_same_url_yields_the_same_bound_prop()
+    {
+        const string url = "https://i.scdn.co/image/ab67616d0000b273feedfeedfeedfeedfeedfeed";
+        var a = Design.WatchedPlaceholder(url);
+        var b = Design.WatchedPlaceholder(url);
+        Assert.True(a.IsBound);
+        Assert.Equal(a, b);   // Prop equality is the payload's identity: the very same thunk
+    }
+
+    [Fact]
+    public void Different_urls_yield_different_binds()
+    {
+        var a = Design.WatchedPlaceholder("https://i.scdn.co/image/ab67616d0000b273000000000000000000000001");
+        var b = Design.WatchedPlaceholder("https://i.scdn.co/image/ab67616d0000b273000000000000000000000002");
+        Assert.NotEqual(a, b);
+    }
+
+    [Fact]
+    public void A_missing_url_and_an_empty_one_share_the_neutral_bind()
+        => Assert.Equal(Design.WatchedPlaceholder(null), Design.WatchedPlaceholder(""));
 }

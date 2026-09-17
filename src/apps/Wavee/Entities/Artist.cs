@@ -1,7 +1,8 @@
-// ── Entities/Artist.cs — CORE (owner A, wave 1; plan §2 · the file's full budget is 550) ─────────────────────────────
+// ── Entities/Artist.cs — CORE (owner A, wave 1; owner N stream N-B, wave 5; plan §2 · the file's full budget is 550) ──
 //
-// THE ARTIST COLUMNS, FLAGS, FIELD GROUPS, HANDLE AND THE TWO SPARSE SIDE TABLES. The ported pure rules that share
-// this file (`ArtistPopularLayout`, the discography era bands, the two layout rules) are owner N's, in Wave 5.
+// THE ARTIST COLUMNS, FLAGS, FIELD GROUPS, HANDLE, THE TWO SPARSE SIDE TABLES, AND THE STAGED FORM OF THE OVERVIEW'S
+// PAYLOAD EDGES. The ported pure rules and the commit-time derivations (the popular merge, the payload-edge commit,
+// the tour banner) are the named partial `Artist.Rules.cs` (Wave 5, N-B) — this file passed 715 lines with them.
 //
 // Ch 08 §7 is the reader and its DATA GAPS 2-18 are the specification; ch 02 §7 adds the card's predicates. The plan's
 // §4 declares no artist columns at all, so every column below cites the gap that asks for it.
@@ -309,6 +310,10 @@ public readonly partial struct Artist(int slot) : IEquatable<Artist>
     public StringId HeaderId => T.Header[Slot];
     /// <summary>The hero photograph, falling back to the avatar (ch 08 §7's first row).</summary>
     public StringId HeroImageId => T.Header[Slot].IsEmpty ? T.Image[Slot] : T.Header[Slot];
+    /// <summary>The ONE image every artwork-derived colour on the artist page keys on — <c>Header ?? Image</c>
+    /// (ch 08 §4, 0.2.9 <c>ArtistPage.PaletteImageUrl</c>). The same answer as <see cref="HeroImageId"/>, named for the
+    /// palette so the page reads the rule, not a coincidence.</summary>
+    public StringId PaletteImageId => HeroImageId;
     public uint HeaderAccent => T.HeaderAccent[Slot];
     public StringId BioId => T.Bio[Slot];
     public StringId BioLeadId => T.BioLead[Slot];
@@ -356,6 +361,12 @@ public readonly partial struct Artist(int slot) : IEquatable<Artist>
     public ReadOnlySpan<CityEdge> TopCities => Entities.Current.Edges.ArtistCities.Payload(Slot);
     /// <summary>Targets unused; the payload IS the link (ch 08 GAP 14).</summary>
     public ReadOnlySpan<LinkEdge> Links => Entities.Current.Edges.ArtistLinks.Payload(Slot);
+    /// <summary>The artist's upcoming shows, concert slots (ch 08 GAP 16; the edge is Concert.cs's).</summary>
+    public ReadOnlySpan<int> ConcertSlots => Entities.Current.Edges.ArtistConcerts.Targets(Slot);
+    /// <summary>The music videos' thumb + duration, parallel to <see cref="VideoSlots"/>.</summary>
+    public ReadOnlySpan<VideoEdge> VideoPayload => Entities.Current.Edges.ArtistVideos.Payload(Slot);
+    /// <summary>Each playlist's subtitle, parallel to <see cref="PlaylistSlots"/>.</summary>
+    public ReadOnlySpan<StringId> PlaylistSubtitleIds => Entities.Current.Edges.ArtistPlaylists.Payload(Slot);
 
     public bool Equals(Artist other) => other.Slot == Slot;
     public override bool Equals(object? obj) => obj is Artist other && other.Slot == Slot;
@@ -456,6 +467,15 @@ public static partial class Entities
 
     static partial void CommitArtists(Staging s)
     {
+        // The chart merge reads `Knows(Chart)` as it stood BEFORE this batch, so it runs ahead of the row loop that may
+        // apply the bit (Artist.Rules.cs). The payload edges ride after the rows, as every edge does.
+        CommitPopular(s);
+        CommitArtistRows(s);
+        CommitArtistExtras(s);
+    }
+
+    static void CommitArtistRows(Staging s)
+    {
         var staged = s.ArtistsOrNull;
         if (staged is null || staged.Count == 0) return;
 
@@ -480,7 +500,15 @@ public static partial class Entities
                 t.SetText(ref t.Name, slot, s.Intern(row.Name));
                 // A name-only stub must not blank a portrait the overview already gave us (ch 07 G9).
                 if (!row.Image.IsEmpty) t.SetText(ref t.Image, slot, s.Intern(row.Image));
-                t.Applied(slot, (uint)ArtistFields.Identity, auth, ref t.IdentityAuthority);
+                // `known & Identity`, NOT the bare `ArtistFields.Identity` constant (the "Top artists" chip bug,
+                // 2026-09-15): a billed-artist mention (`Spotify.Decode.cs`'s `ThinArtist`, a track/album's credit
+                // run) stages Name ALONE — it never reads a portrait off the wire at all — so sealing the whole
+                // group here would mark `Image` known with nothing behind it. `Fetch.NeedOf = wanted & ~Known &
+                // ~Asked` (Fetch.cs) then sees no hole to fill and the photo is never asked for: the chip rail
+                // falls back to initials forever, permanently, for every artist whose only mention so far was a
+                // credit line. Same fix as `CommitTracks`/`CommitAlbums` (Track.cs, Album.cs) for the identical
+                // class of bug.
+                t.Applied(slot, known & (uint)ArtistFields.Identity, auth, ref t.IdentityAuthority);
             }
 
             uint overview = known & ~(uint)ArtistFields.Identity;
@@ -492,6 +520,9 @@ public static partial class Entities
                 t.SetText(ref t.Header, slot, s.Intern(row.Header));
                 t.HeaderAccent[slot] = row.HeaderAccent;
                 t.Applied(slot, (uint)ArtistFields.Header, auth, ref t.OverviewAuthority);
+                // The grading is requested at commit, not on the hero's first render (ch 07 G1's explicit-Ensure path).
+                StringId header = t.Header[slot];
+                if (!header.IsEmpty) Palette.Ensure(new ReadOnlySpan<StringId>(in header));
             }
             if ((overview & (uint)ArtistFields.Stats) != 0
                 && t.Accepts(slot, (uint)ArtistFields.Stats, auth, in t.OverviewAuthority))
@@ -514,42 +545,57 @@ public static partial class Entities
             if ((overview & (uint)ArtistFields.Tour) != 0
                 && t.Accepts(slot, (uint)ArtistFields.Tour, auth, in t.OverviewAuthority))
             {
-                t.SetText(ref t.TourEyebrow, slot, s.Intern(row.TourEyebrow));
-                t.SetText(ref t.TourHeadline, slot, s.Intern(row.TourHeadline));
-                t.SetText(ref t.TourSubline, slot, s.Intern(row.TourSubline));
-                t.Flags[slot] = (t.Flags[slot] & ~(uint)ArtistFlags.TourMask) | (row.Flags & (uint)ArtistFlags.TourMask);
+                // The banner is DERIVED from the concert list (`Artist.DeriveTour`, ch 08 GAP 15). An overview answer
+                // speaks for the group — it says "the tour is whatever the concerts say" — but carries no banner text,
+                // and must not blank one the concert commit already derived. Only a row that states text writes it.
+                if (!row.TourEyebrow.IsEmpty || !row.TourHeadline.IsEmpty || !row.TourSubline.IsEmpty)
+                {
+                    t.SetText(ref t.TourEyebrow, slot, s.Intern(row.TourEyebrow));
+                    t.SetText(ref t.TourHeadline, slot, s.Intern(row.TourHeadline));
+                    t.SetText(ref t.TourSubline, slot, s.Intern(row.TourSubline));
+                    t.Flags[slot] = (t.Flags[slot] & ~(uint)ArtistFlags.TourMask) | (row.Flags & (uint)ArtistFlags.TourMask);
+                }
                 t.Applied(slot, (uint)ArtistFields.Tour, auth, ref t.OverviewAuthority);
             }
             if ((overview & (uint)ArtistFields.Latest) != 0
                 && t.Accepts(slot, (uint)ArtistFields.Latest, auth, in t.OverviewAuthority))
             {
-                if (!row.LatestUri.IsEmpty) t.Latest[slot] = s.Slot(Current.Albums, in row.LatestUri);
+                // The answer SPOKE for the latest release: no uri is "there is none", not "unchanged".
+                t.Latest[slot] = row.LatestUri.IsEmpty ? Table.None : s.Slot(Current.Albums, in row.LatestUri);
                 t.Applied(slot, (uint)ArtistFields.Latest, auth, ref t.OverviewAuthority);
             }
             if ((overview & (uint)ArtistFields.Pick) != 0
                 && t.Accepts(slot, (uint)ArtistFields.Pick, auth, in t.OverviewAuthority))
             {
                 // A pick arrives whole and replaces the previous one whole; the artist keeps its row, so a re-answer
-                // costs no slab growth at all.
+                // costs no slab growth at all. An answer that says "NONE" (no pinned item) releases the row and zeroes
+                // the pointer — it used to allocate an empty side row anyway, and `HasPick` then lied.
                 var picks = Current.ArtistPicks;
                 int pick = t.Pick[slot];
-                if (pick <= 0) { pick = picks.Alloc(); t.Pick[slot] = pick; }
-                ref var p = ref picks.Row[pick];
-                // A side slab is not a `Column<StringId>`, so `Table.SetText` cannot reach it — the same pair one
-                // level down (file header note 3). REPLACING a pick is the case that matters: the second answer for an
-                // artist overwrites all eight fields, and without the release half those eight strings would stay in
-                // the interner for the life of the process (defect 1).
-                Entities.RetainText(ref p.Eyebrow, s.Intern(row.PickEyebrow));
-                Entities.RetainText(ref p.Title, s.Intern(row.PickTitle));
-                Entities.RetainText(ref p.Subtitle, s.Intern(row.PickSubtitle));
-                Entities.RetainText(ref p.Comment, s.Intern(row.PickComment));
-                Entities.RetainText(ref p.Cover, s.Intern(row.PickCover));
-                Entities.RetainText(ref p.Uri, s.Intern(row.PickUri));
-                Entities.RetainText(ref p.ItemUri, s.Intern(row.PickItemUri));
-                Entities.RetainText(ref p.Background, s.Intern(row.PickBackground));
-                p.ItemKind = row.PickItemKind;
-                p.ReleaseAt = row.PickReleaseAt;
-                picks.MarkDirty();
+                if (!HasPickContent(in row))
+                {
+                    if (pick > 0) { picks.ReleaseRow(pick); t.Pick[slot] = 0; picks.MarkDirty(); }
+                }
+                else
+                {
+                    if (pick <= 0) { pick = picks.Alloc(); t.Pick[slot] = pick; }
+                    ref var p = ref picks.Row[pick];
+                    // A side slab is not a `Column<StringId>`, so `Table.SetText` cannot reach it — the same pair one
+                    // level down (file header note 3). REPLACING a pick is the case that matters: the second answer
+                    // overwrites all eight fields, and without the release half those eight strings would stay in the
+                    // interner for the life of the process (defect 1).
+                    Entities.RetainText(ref p.Eyebrow, s.Intern(row.PickEyebrow));
+                    Entities.RetainText(ref p.Title, s.Intern(row.PickTitle));
+                    Entities.RetainText(ref p.Subtitle, s.Intern(row.PickSubtitle));
+                    Entities.RetainText(ref p.Comment, s.Intern(row.PickComment));
+                    Entities.RetainText(ref p.Cover, s.Intern(row.PickCover));
+                    Entities.RetainText(ref p.Uri, s.Intern(row.PickUri));
+                    Entities.RetainText(ref p.ItemUri, s.Intern(row.PickItemUri));
+                    Entities.RetainText(ref p.Background, s.Intern(row.PickBackground));
+                    p.ItemKind = row.PickItemKind;
+                    p.ReleaseAt = row.PickReleaseAt;
+                    picks.MarkDirty();
+                }
                 t.Applied(slot, (uint)ArtistFields.Pick, auth, ref t.OverviewAuthority);
             }
             if ((overview & (uint)ArtistFields.PreRelease) != 0
@@ -557,16 +603,25 @@ public static partial class Entities
             {
                 var upcoming = Current.ArtistPreReleases;
                 int pre = t.PreRelease[slot];
-                if (pre <= 0) { pre = upcoming.Alloc(); t.PreRelease[slot] = pre; }
-                ref var u = ref upcoming.Row[pre];
-                Entities.RetainText(ref u.Uri, s.Intern(row.UpcomingUri));
-                Entities.RetainText(ref u.Name, s.Intern(row.UpcomingName));
-                Entities.RetainText(ref u.Cover, s.Intern(row.UpcomingCover));
-                Entities.RetainText(ref u.Type, s.Intern(row.UpcomingType));
-                u.ReleaseAt = row.UpcomingReleaseAt;
-                upcoming.MarkDirty();
-                t.Flags[slot] = (t.Flags[slot] & ~(uint)ArtistFlags.PreReleaseMask)
-                              | (row.Flags & (uint)ArtistFlags.PreReleaseMask);
+                if (!HasPreReleaseContent(in row))
+                {
+                    // Same rule as the pick: "nothing upcoming" is an answer, and it owns no side row.
+                    if (pre > 0) { upcoming.ReleaseRow(pre); t.PreRelease[slot] = 0; upcoming.MarkDirty(); }
+                    t.Flags[slot] &= ~(uint)ArtistFlags.PreReleaseMask;
+                }
+                else
+                {
+                    if (pre <= 0) { pre = upcoming.Alloc(); t.PreRelease[slot] = pre; }
+                    ref var u = ref upcoming.Row[pre];
+                    Entities.RetainText(ref u.Uri, s.Intern(row.UpcomingUri));
+                    Entities.RetainText(ref u.Name, s.Intern(row.UpcomingName));
+                    Entities.RetainText(ref u.Cover, s.Intern(row.UpcomingCover));
+                    Entities.RetainText(ref u.Type, s.Intern(row.UpcomingType));
+                    u.ReleaseAt = row.UpcomingReleaseAt;
+                    upcoming.MarkDirty();
+                    t.Flags[slot] = (t.Flags[slot] & ~(uint)ArtistFlags.PreReleaseMask)
+                                  | (row.Flags & (uint)ArtistFlags.PreReleaseMask);
+                }
                 t.Applied(slot, (uint)ArtistFields.PreRelease, auth, ref t.OverviewAuthority);
             }
             if ((overview & (uint)ArtistFields.Chart) != 0
@@ -576,5 +631,248 @@ public static partial class Entities
                 t.Applied(slot, (uint)ArtistFields.Chart, auth, ref t.OverviewAuthority);
             }
         }
+    }
+
+    /// <summary>Does the staged pick say anything? A pinned item is addressed by its uri and labelled by its title;
+    /// either alone is a pick, neither is "none".</summary>
+    internal static bool HasPickContent(in StagedArtist row)
+        => !row.PickUri.IsEmpty || !row.PickItemUri.IsEmpty || !row.PickTitle.IsEmpty || !row.PickComment.IsEmpty;
+
+    /// <summary>Does the staged upcoming release say anything? (0.2.9 <c>MapPreRelease</c> required a uri and a name;
+    /// the decoder applies that gate, and the commit accepts either so a seeded row cannot be half-dropped.)</summary>
+    internal static bool HasPreReleaseContent(in StagedArtist row) => !row.UpcomingUri.IsEmpty || !row.UpcomingName.IsEmpty;
+}
+
+// ── persistence (Store.cs's per-kind seam) ───────────────────────────────────────────────────────────────────────────
+
+/// <summary>How an artist survives a restart. Persists <see cref="ArtistFields.Identity"/> plus three of the
+/// overview's sub-groups that are plain answered scalars: <see cref="ArtistFields.Header"/>,
+/// <see cref="ArtistFields.Stats"/> and <see cref="ArtistFields.Bio"/> (the raw HTML only, not
+/// <see cref="ArtistTable.BioLead"/> — the decoder's own stripped first sentence, which this shape leaves to
+/// re-derive with the next overview answer, same reasoning as <c>TrackTable.ArtistLine</c>).
+///
+/// <para><b>Deliberately NOT persisted:</b> <see cref="ArtistFields.Pick"/> and <see cref="ArtistFields.PreRelease"/>
+/// — both are sparse SIDE-TABLE rows (<see cref="ArtistPickTable"/>, <see cref="ArtistPreReleaseTable"/>) with their
+/// own bump-allocated identity that this schema has no column for; <see cref="ArtistFields.Latest"/> — an album
+/// cross-reference that is cheap to re-ask and, unlike the six columns above, would need its own persisted side
+/// state to survive meaningfully; <see cref="ArtistFields.Tour"/> — derived at commit from the concert list, which
+/// this shape does not persist either; and <see cref="ArtistFields.Chart"/> — a marker bit with no column at all
+/// (the rows are <c>Edges.ArtistPopular</c>). A cold-started artist page re-asks the overview for all of these, same
+/// as any row this store has never seen.</para>
+///
+/// <para>STORE THREAD (both halves) — see <see cref="ShowShape"/>'s note.</para></summary>
+public sealed class ArtistShape : KindShape
+{
+    static readonly StoreColumn[] Cols =
+    [
+        new("name", StoreType.Text, StoreColumnFlags.Title),
+        new("image", StoreType.Text),
+        new("header", StoreType.Text),
+        new("header_accent", StoreType.Int),
+        new("bio", StoreType.Text),
+        new("monthly", StoreType.Int),
+        new("followers", StoreType.Int),
+        new("world_rank", StoreType.Int),
+        new("identity_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("overview_auth", StoreType.Int, StoreColumnFlags.Authority),
+    ];
+
+    const uint OverviewFields = (uint)(ArtistFields.Header | ArtistFields.Stats | ArtistFields.Bio);
+    const uint PersistedFields = (uint)ArtistFields.Identity | OverviewFields;
+
+    public override EntityKind Kind => EntityKind.Artist;
+    public override string Table => "artist";
+    public override ReadOnlySpan<StoreColumn> Columns => Cols;
+
+    public override void Save(Staging s, RowWriter w)
+    {
+        var rows = s.ArtistsOrNull;
+        if (rows is null) return;
+        var span = rows.Span;
+        for (int i = 0; i < span.Length; i++)
+        {
+            ref readonly var row = ref span[i];
+            uint known = row.Known & PersistedFields;
+            bool identity = (known & (uint)ArtistFields.Identity) != 0;
+            bool overview = (known & OverviewFields) != 0;
+
+            if (identity)
+            {
+                w.Text(0, row.Name);
+                w.Text(1, row.Image);
+                w.Int(8, (int)row.Authority);
+            }
+            else { w.Null(0); w.Null(1); w.Null(8); }
+
+            if ((known & (uint)ArtistFields.Header) != 0)
+            {
+                w.Text(2, row.Header);
+                w.Int(3, row.HeaderAccent);
+            }
+            else { w.Null(2); w.Null(3); }
+
+            if ((known & (uint)ArtistFields.Bio) != 0) w.Text(4, row.Bio); else w.Null(4);
+
+            if ((known & (uint)ArtistFields.Stats) != 0)
+            {
+                w.Int(5, row.Monthly);
+                w.Int(6, row.Followers);
+                w.Int(7, row.WorldRank);
+            }
+            else { w.Null(5); w.Null(6); w.Null(7); }
+
+            if (overview) w.Int(9, (int)row.Authority); else w.Null(9);
+
+            w.Emit(row.Id, known, Entities.Now, Entities.Now);
+        }
+    }
+
+    public override void Load(RowReader r, Staging into)
+    {
+        ref var row = ref into.Artists.Add();
+        row.Id = r.Uri;
+        row.Name = r.Text(0);
+        row.Image = r.Text(1);
+        row.Header = r.Text(2);
+        row.HeaderAccent = (uint)r.Int(3);
+        row.Bio = r.Text(4);
+        row.Monthly = (uint)r.Int(5);
+        row.Followers = (uint)r.Int(6);
+        row.WorldRank = (ushort)r.Int(7);
+        row.Known = r.Known & PersistedFields;
+        row.Authority = (Authority)Math.Max(r.Int(8), r.Int(9));
+    }
+}
+
+// ── the overview's payload edges, staged (ch 08 GAP 9-14) ────────────────────────────────────────────────────────────
+//
+// SIX PAYLOAD RELATIONS HAVE NO `Relation` MEMBER: their payloads carry text the generic staged edge has one slot for,
+// and their commit owns that text (Edges.cs header: "the rule is on the WRITER"). So they cross the thread boundary in
+// their OWN lists, exactly like the rootlist and the traits, and `Entities.CommitArtistExtras` (Artist.Rules.cs) lands
+// them inside `CommitArtists`. Every run is a WHOLE-LIST rewrite, Complete — an empty answer lands Complete-and-empty,
+// which is what renders "no gallery" instead of a skeleton forever.
+
+/// <summary>Which artist payload relation a <see cref="StagedArtistExtraRun"/> rewrites.</summary>
+public enum ArtistExtraKind : byte
+{
+    /// <summary><c>Edges.ArtistGallery</c>: T0 = the image url. No target.</summary>
+    Gallery,
+    /// <summary><c>Edges.ArtistPlaylists</c>: Target = the playlist, T0 = the subtitle.</summary>
+    Playlists,
+    /// <summary><c>Edges.ArtistVideos</c>: Target = the track, T0 = the 16:9 thumb, I0 = duration ms.</summary>
+    Videos,
+    /// <summary><c>Edges.ArtistMerch</c> → <c>Edges.Merch</c> rows: T0 name, T1 price, T2 image, T3 shop url. No target.</summary>
+    Merch,
+    /// <summary><c>Edges.ArtistCities</c>: T0 city, T1 country, U0 listeners. No target.</summary>
+    Cities,
+    /// <summary><c>Edges.ArtistLinks</c>: T0 name, T1 url, B0 <see cref="ArtistCatalog.LinkKind"/>. No target.</summary>
+    Links,
+}
+
+/// <summary>One staged payload edge — a union read by its run's <see cref="ArtistExtraKind"/> (the field map is on each
+/// member). Text is a <see cref="TextRef"/>: the decoder cannot intern (C1).</summary>
+public struct StagedArtistExtra
+{
+    public StagedId Target;
+    public TextRef T0, T1, T2, T3;
+    public uint U0;
+    public int I0;
+    public byte B0;
+}
+
+/// <summary>One artist's rewritten payload relation: a slice of <see cref="Staging.ArtistExtraRows"/>.</summary>
+public struct StagedArtistExtraRun
+{
+    public StagedId Parent;
+    public ArtistExtraKind Kind;
+    public int Start, Length;
+}
+
+/// <summary>One artist's staged chart list — the overview's SEED run or the extended list's EXTENSION run — a slice of
+/// <see cref="Staging.PopularTracks"/>. Neither is an edge run: the commit MERGES them (Artist.Rules.cs,
+/// <see cref="ArtistPopularTracks.Merge"/>) against each other and against the committed chart, so the order contract
+/// holds whichever answer lands first and whether they share a batch or not.</summary>
+public struct StagedPopularRun
+{
+    public StagedId Parent;
+    public int Start, Length;
+    public bool Extension;
+}
+
+public sealed partial class Staging
+{
+    StagedList<StagedArtistExtra>? _artistExtraRows;
+    StagedList<StagedArtistExtraRun>? _artistExtraRuns;
+    StagedList<StagedId>? _popularTracks;
+    StagedList<StagedPopularRun>? _popularRuns;
+
+    /// <inheritdoc cref="StagedArtistExtra"/>
+    public StagedList<StagedArtistExtra> ArtistExtraRows => _artistExtraRows ??= Register(new StagedList<StagedArtistExtra>());
+    /// <inheritdoc cref="StagedArtistExtraRun"/>
+    public StagedList<StagedArtistExtraRun> ArtistExtraRuns => _artistExtraRuns ??= Register(new StagedList<StagedArtistExtraRun>());
+    /// <inheritdoc cref="StagedPopularRun"/>
+    public StagedList<StagedId> PopularTracks => _popularTracks ??= Register(new StagedList<StagedId>());
+    /// <inheritdoc cref="StagedPopularRun"/>
+    public StagedList<StagedPopularRun> PopularRuns => _popularRuns ??= Register(new StagedList<StagedPopularRun>());
+
+    internal StagedList<StagedArtistExtra>? ArtistExtraRowsOrNull => _artistExtraRows;
+    internal StagedList<StagedArtistExtraRun>? ArtistExtraRunsOrNull => _artistExtraRuns;
+    internal StagedList<StagedId>? PopularTracksOrNull => _popularTracks;
+    internal StagedList<StagedPopularRun>? PopularRunsOrNull => _popularRuns;
+
+    /// <summary>Begin one artist payload relation (see <see cref="ArtistExtraRun"/>).</summary>
+    public ArtistExtraRun RunArtistExtra(ArtistExtraKind kind) => new(this, kind);
+
+    /// <summary>Where the next chart list starts — take it before the walk, hand it to <see cref="EndPopular"/>.</summary>
+    public int PopularMark => PopularTracks.Count;
+
+    /// <summary>Close the chart list appended since <paramref name="mark"/> as the artist's SEED
+    /// (<paramref name="extension"/> false, the overview's top tracks) or its EXTENSION (the extended list). An empty list
+    /// is recorded too: "the chart is empty" is an answer (finding 27).</summary>
+    public void EndPopular(in StagedId parent, int mark, bool extension)
+    {
+        if (parent.IsEmpty || mark < 0 || mark > PopularTracks.Count) return;
+        ref var run = ref PopularRuns.Add();
+        run.Parent = parent;
+        run.Start = mark;
+        run.Length = PopularTracks.Count - mark;
+        run.Extension = extension;
+    }
+}
+
+/// <summary>ONE artist payload relation being appended, as a cursor (the <see cref="EdgeRun"/> shape): members go to
+/// <see cref="Staging.ArtistExtraRows"/>, <see cref="End"/> records the run. A ref struct over the pooled lists — no
+/// allocation, and it cannot outlive the decode.</summary>
+public ref struct ArtistExtraRun
+{
+    readonly Staging _s;
+    readonly ArtistExtraKind _kind;
+    readonly int _start;
+
+    public ArtistExtraRun(Staging s, ArtistExtraKind kind)
+    {
+        _s = s;
+        _kind = kind;
+        _start = s.ArtistExtraRows.Count;
+    }
+
+    /// <summary>How many members this run has taken.</summary>
+    public readonly int Count => _s.ArtistExtraRows.Count - _start;
+
+    /// <summary>Append one member by reference, zeroed.</summary>
+    public ref StagedArtistExtra Add() => ref _s.ArtistExtraRows.Add();
+
+    /// <summary>Undo the last <see cref="Add"/> (the wire named a member and then failed to identify it).</summary>
+    public void DropLast() { if (Count > 0) _s.ArtistExtraRows.Drop(); }
+
+    /// <summary>Close as a whole-list rewrite — Complete, EVEN IF EMPTY. A parentless run is thrown away.</summary>
+    public void End(in StagedId parent)
+    {
+        if (parent.IsEmpty) { _s.ArtistExtraRows.Rewind(_start); return; }
+        ref var run = ref _s.ArtistExtraRuns.Add();
+        run.Parent = parent;
+        run.Kind = _kind;
+        run.Start = _start;
+        run.Length = Count;
     }
 }

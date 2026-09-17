@@ -303,4 +303,147 @@ public class UserTests
         Assert.Equal(0, t.FilterCount[slot]);
         Assert.NotEqual(title, Uri("UserTests/chipsFreed/label"));
     }
+
+    // ── WP-4.5 gap 1: an edge instant is UNIX seconds (Wave 5, owner O) ─────────────────────────────────────────────
+
+    [Fact]
+    public void An_optimistic_like_is_dated_in_unix_seconds_not_app_seconds()
+    {
+        // Every decoder stages LibraryEdge.AddedAt as unix seconds and the wire writes it back that way; `Entities.Now`
+        // is APP seconds. Before the fix the optimistic row stored app seconds and dated itself to January 1970 beside
+        // rows the sync had dated today.
+        TestScope.Fresh(now: 1_000_000);
+        var me = Entities.User(EntityUri.Parse("spotify:user:UserTests-unix".AsSpan()));
+        var target = EntityId.Parse($"spotify:track:{Gid(302)}".AsSpan());
+        int trackSlot = Entities.Current.Tracks.Slot(target);
+
+        me.Add(LibraryEdgeKind.Liked, trackSlot, target);
+
+        int stamp = me.AddedAt(LibraryEdgeKind.Liked, trackSlot);
+        Assert.Equal((int)Store.ToUnix(1_000_000), stamp);
+        Assert.Equal(stamp, me.LikedEdges[0].AddedAt);
+        Assert.NotEqual(1_000_000, stamp);
+    }
+
+    [Fact]
+    public void AddedNow_is_the_app_clock_converted_once_through_the_store_epoch()
+    {
+        TestScope.Fresh(now: 42);
+        Assert.Equal((int)Store.ToUnix(42), User.AddedNow());
+        Assert.Equal((int)(Store.Epoch + 42), User.AddedNow());       // the epoch, not the raw app clock
+    }
+
+    // ── the curated chip set: staging, commit and the seed's direct writer (ch 07 §7 G4/G10) ───────────────────────
+
+    [Fact]
+    public void A_staged_chip_run_commits_whole_in_server_order_and_a_missing_token_falls_back_to_the_title()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var owner = s.Text("spotify:user:UserTests-staged-chips");
+        AddChip(s, owner, "K-Pop", "k-pop");
+        AddChip(s, owner, "Chill", "");
+        AddChip(s, owner, "Rock", "rock");
+        TestScope.CommitAndPublish(s);
+
+        var me = Entities.User(EntityUri.Parse("spotify:user:UserTests-staged-chips".AsSpan()));
+        Assert.True(me.Knows(UserFields.ContentFilters));
+        Assert.Equal(new[] { "K-Pop", "Chill", "Rock" }, Texts(me.ContentFilterTitles));
+        Assert.Equal(new[] { "k-pop", "Chill", "rock" }, Texts(me.ContentFilterTokens));
+    }
+
+    [Fact]
+    public void A_single_empty_staged_row_is_a_known_empty_set_that_replaces_the_previous_one()
+    {
+        TestScope.Fresh();
+        var first = Staging.Rent();
+        var owner = first.Text("spotify:user:UserTests-empty-chips");
+        AddChip(first, owner, "Jazz", "jazz");
+        TestScope.CommitAndPublish(first);
+
+        var empty = Staging.Rent();
+        AddChip(empty, empty.Text("spotify:user:UserTests-empty-chips"), "", "");
+        TestScope.CommitAndPublish(empty);
+
+        var me = Entities.User(EntityUri.Parse("spotify:user:UserTests-empty-chips".AsSpan()));
+        Assert.True(me.Knows(UserFields.ContentFilters));             // an EMPTY answer is a publish (G10) …
+        Assert.Equal(0, me.ContentFilterTitles.Length);               // … that leaves no stale curated bar behind
+    }
+
+    [Fact]
+    public void The_seed_writer_sets_the_whole_chip_set_and_its_known_bit()
+    {
+        TestScope.Fresh();
+        var me = Entities.User(EntityUri.Parse("spotify:user:UserTests-seed-chips".AsSpan()));
+        Assert.False(me.Knows(UserFields.ContentFilters));
+
+        me.SetContentFilters(["Pop", "Jazz"], ["pop", "jazz"]);
+
+        Assert.True(me.Knows(UserFields.ContentFilters));
+        Assert.Equal(new[] { "Pop", "Jazz" }, Texts(me.ContentFilterTitles));
+        Assert.Equal(new[] { "pop", "jazz" }, Texts(me.ContentFilterTokens));
+    }
+
+    static void AddChip(Staging s, TextRef owner, string title, string token)
+    {
+        ref var row = ref s.ContentFilters.Add();
+        row.Owner = owner;
+        row.Title = s.Text(title);
+        row.Token = s.Text(token);
+    }
+
+    // ══ W3-A3 (the value gates): the blend card's labels are minted once per list, not once per render ═══════════════
+
+    [Fact]
+    public void Blend_labels_format_each_slice_once_with_its_share_of_the_tagged_likes()
+    {
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        LikedFactsRules.TagShare[] shares = [new("Pop", 6, 6 / 12f), new("Jazz", 3, 3 / 12f), new("Folk", 1, 1 / 12f)];
+        var labels = User.BlendLabels.ForShares(shares, culture);
+
+        Assert.Equal(3, labels.Share.Length);
+        Assert.Equal(3, labels.Tip.Length);
+        Assert.Empty(labels.TailTip);
+        Assert.Equal((6 / 12f).ToString("P0", culture), labels.Share[0]);
+        Assert.Equal((1 / 12f).ToString("P0", culture), labels.Share[2]);
+        // The SAME typed Strings call the card makes (DetailTextTests' convention): the tip carries the title, count and share.
+        Assert.Equal(Strings.Detail.LikedFacts.ShareTip("Jazz", 3, labels.Share[1]), labels.Tip[1]);
+        // The header counts the TAGGED population recovered from the shares (12), not the slices shown (10).
+        Assert.Equal(Strings.Detail.SongCount(LikedFactsRules.TaggedTotal(shares)), labels.Total);
+        Assert.Equal(12, LikedFactsRules.TaggedTotal(shares));
+    }
+
+    [Fact]
+    public void Blend_tail_labels_say_the_share_of_the_tail_and_count_the_unnamed_rest()
+    {
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        LikedFactsRules.TagShare[] named = [new("Soul", 2, 2 / 20f), new("Funk", 1, 1 / 20f)];
+        var tail = new LikedFactsRules.BlendTail(Count: 4, Fraction: 4 / 20f, Named: named, MoreTags: 3);
+        var labels = User.BlendLabels.ForTail(in tail, culture);
+
+        Assert.Equal(2, labels.TailTip.Length);
+        Assert.Equal((2 / 20f).ToString("P0", culture), labels.Share[0]);                       // of the tagged likes
+        Assert.Equal(Strings.Detail.LikedFacts.ShareTip("Soul", 2, labels.Share[0]), labels.Tip[0]);
+        Assert.Equal(Strings.Detail.LikedFacts.TailShareTip("Soul", 2, (2 / 4f).ToString("P0", culture)), labels.TailTip[0]);   // of the TAIL
+        Assert.Equal(Strings.Detail.LikedFacts.MoreTags(2 + 3), labels.Total);                  // named + the unnamed remainder
+    }
+
+    [Fact]
+    public void An_empty_tail_yields_empty_labels_without_dividing_by_zero()
+    {
+        // `default(BlendTail)` is BlendOther's legitimate "no tail" answer (its Named reads as an empty list).
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var empty = default(LikedFactsRules.BlendTail);
+        var labels = User.BlendLabels.ForTail(in empty, culture);
+        Assert.Empty(labels.Share);
+        Assert.Empty(labels.TailTip);
+        Assert.Equal(Strings.Detail.LikedFacts.MoreTags(0), labels.Total);
+    }
+
+    static string[] Texts(ReadOnlySpan<StringId> ids)
+    {
+        var texts = new string[ids.Length];
+        for (int i = 0; i < ids.Length; i++) texts[i] = Entities.Strings.Resolve(ids[i]);
+        return texts;
+    }
 }
