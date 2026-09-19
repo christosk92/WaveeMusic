@@ -250,7 +250,7 @@ try {
 $propsPath = Join-Path $root 'src\apps\Wavee\Wavee.Version.props'
 $packScript = Join-Path $root 'ops\build\pack-wavee-msix.ps1'
 $releaseToolProject = Join-Path $root 'src\apps\Wavee.ReleaseTool'
-$playPlayProbe = Join-Path $root 'src\apps\Wavee.PlayPlay\Client\InProcessPlayPlayKeyDeriver.cs'
+$playPlayProbe = Join-Path $root 'src\apps\Wavee.PlayPlay\Client\PlayPlayHost.cs'
 $onboardingDoc = 'docs\guide\microsoft-store-onboarding.md'
 
 $props = Get-WaveeVersionProps $propsPath
@@ -560,7 +560,10 @@ if (-not (Test-PhaseDone 'preflight')) {
     }
     Add-Check 'engine source provenance' 'hard' {
         if ($PackageDir) { return 'SKIP: archived binaries include their original engine; no rebuild' }
-        $enginePath = [IO.Path]::GetFullPath((Join-Path $root '..\fluent-gpu'))
+        # Resolved like the build itself (G-237): -Override, then this worktree's EngineRoot.local.props pin, then
+        # the sibling checkout - a Store submission must record the SAME engine commit the pack actually built.
+        # GetFullPath normalizes the ".." the sibling-fallback case carries (Resolve-EngineRoot itself does not).
+        $enginePath = [IO.Path]::GetFullPath((Resolve-EngineRoot -RepoRoot $root -Override $env:EngineRoot))
         $engineHead = Invoke-Native 'git' @('-C', $enginePath, 'rev-parse', 'HEAD')
         $engineDirty = Invoke-Native 'git' @('-C', $enginePath, 'status', '--porcelain')
         if (@($engineDirty.Output | Where-Object { "$($_)".Trim() }).Count) { throw 'Engine checkout has outstanding changes; use verified archived packages or a clean engine checkout' }

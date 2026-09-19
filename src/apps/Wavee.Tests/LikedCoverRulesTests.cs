@@ -1,29 +1,25 @@
-using System;
-using System.Collections.Generic;
-using Wavee.Core;
+// ── Wavee.Tests/LikedCoverRulesTests.cs — the Liked Songs dynamic cover's pure rules (Entities/User.Liked.cs) ──────────
+//
+// A VERBATIM port of 0.2.9's LikedCoverRulesTests: which treatment survives contact with the user's actual library,
+// which artwork feeds it, and how a grid is filled or ordered. The one input change is the tile rule's row shape — a
+// `LikedTileInput(Url, AlbumKey)` record where 0.2.9 built a `Track` record — plus one 0.3 fact over liked HANDLES
+// (dedupe by album SLOT + image id), which is the path the cover actually runs.
+//
+// The rule worth pinning hardest is the DEGRADE LADDER. Everything about this feature is "made from your own music", so
+// the only honest answer when the library cannot feed a treatment is the bundled stock PNG — which is also exactly what
+// the app painted before the feature existed.
+
+using System.Runtime.InteropServices;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>The Liked Songs dynamic cover's PURE rules (<c>Features/Detail/LikedCoverRules.cs</c>, source-included
-/// here because it is engine-free): which treatment survives contact with the user's actual library, which artwork
-/// feeds it, and how a grid is filled or ordered.
-///
-/// <para>The rule worth pinning hardest is the DEGRADE LADDER. Everything about this feature is "made from your own
-/// music", so the only honest answer when the library cannot feed a treatment is the bundled stock PNG — which is also
-/// exactly what the app painted before the feature existed. A half-empty grid, a repeated cover reading as a bug, or a
-/// throw on a hand-edited registry value are all failures of the same rule.</para></summary>
+[Collection(EntitiesCollection.Name)]
 public class LikedCoverRulesTests
 {
-    static Track T(string? url, string albumUri = "", string id = "t")
-        => new(id, "spotify:track:" + id, id,
-            Array.Empty<ArtistRef>(), new AlbumRef("", albumUri, ""),
-            180_000, false, url is null ? null : new Image(url));
+    static LikedTileInput T(string? url, string albumUri = "", string id = "t") => new(url, albumUri);
 
-    static Track NoAlbum(string url, string id = "t")
-        => new(id, "spotify:track:" + id, id,
-            Array.Empty<ArtistRef>(), null!,
-            180_000, false, new Image(url));
+    static LikedTileInput NoAlbum(string url, string id = "t") => new(url, null);
 
     // ── FromSetting: the persisted int, clamped (E11) ───────────────────────────────────────────────────────────────
 
@@ -66,6 +62,7 @@ public class LikedCoverRulesTests
         Assert.Equal(0, (int)LikedCoverStyle.Stock);
         Assert.Equal(8, (int)LikedCoverStyle.Stack);
         Assert.Equal(9, Enum.GetValues<LikedCoverStyle>().Length);
+        Assert.Equal(LikedCoverRules.StyleCount, Enum.GetValues<LikedCoverStyle>().Length);   // Prefs clamps against it
     }
 
     // ── MinTiles + Effective: the degrade ladder (E1/E3/E9/E22) ─────────────────────────────────────────────────────
@@ -111,10 +108,8 @@ public class LikedCoverRulesTests
             Assert.Equal(LikedCoverStyle.Stock, LikedCoverRules.Effective(style, 0));
     }
 
-    /// <summary>Lens is the SHIPPED DEFAULT, so its rung is the one a fresh install actually walks: under four
-    /// distinct covers it paints the stock PNG — the pre-feature look, with no setting written — and at four it
-    /// composes, by itself, the moment the library gets there (E3/E21). Its own no-fallback rule is pinned alongside:
-    /// there is no tile count at which a stored Lens renders as some OTHER treatment.</summary>
+    /// <summary>Lens is the SHIPPED DEFAULT, so its rung is the one a fresh install actually walks: under four distinct
+    /// covers it paints the stock PNG and at four it composes, by itself, the moment the library gets there (E3/E21).</summary>
     [Theory]
     [InlineData(0, LikedCoverStyle.Stock)]
     [InlineData(3, LikedCoverStyle.Stock)]
@@ -142,7 +137,7 @@ public class LikedCoverRulesTests
     public void TilesKeepTheNewestFirstInputOrder()
     {
         var tiles = LikedCoverRules.Tiles([T("u1", "al:1"), T("u2", "al:2"), T("u3", "al:3")]);
-        Assert.Equal(["u1", "u2", "u3"], tiles);
+        Assert.Equal(new[] { "u1", "u2", "u3" }, tiles);
     }
 
     /// <summary>Two tracks off the same release contribute ONE tile — the 2x2 rule Wavee already uses for cover-less
@@ -151,17 +146,16 @@ public class LikedCoverRulesTests
     public void TilesDedupeByAlbumUri()
     {
         var tiles = LikedCoverRules.Tiles([T("u1", "al:1"), T("u2", "al:1"), T("u3", "al:2")]);
-        Assert.Equal(["u1", "u3"], tiles);
+        Assert.Equal(new[] { "u1", "u3" }, tiles);
     }
 
     /// <summary>And two DIFFERENT releases that happen to share one rendition — a single and its parent album, a
-    /// re-issue — also contribute one tile. Album-uri dedupe alone lets that pair through, where the same picture twice
-    /// in a 3x3 reads as a rendering bug.</summary>
+    /// re-issue — also contribute one tile.</summary>
     [Fact]
     public void TilesAlsoDedupeByUrlAcrossDifferentAlbums()
     {
         var tiles = LikedCoverRules.Tiles([T("same", "al:1"), T("same", "al:2"), T("other", "al:3")]);
-        Assert.Equal(["same", "other"], tiles);
+        Assert.Equal(new[] { "same", "other" }, tiles);
     }
 
     /// <summary>A duplicated url must not burn its album's slot: the NEXT track off that album still gets to
@@ -170,7 +164,7 @@ public class LikedCoverRulesTests
     public void ADuplicateUrlDoesNotConsumeItsAlbumSlot()
     {
         var tiles = LikedCoverRules.Tiles([T("a", "al:1"), T("a", "al:2"), T("b", "al:2")]);
-        Assert.Equal(["a", "b"], tiles);
+        Assert.Equal(new[] { "a", "b" }, tiles);
     }
 
     [Fact]
@@ -180,10 +174,10 @@ public class LikedCoverRulesTests
         [
             T(null, "al:1"),        // no Image at all
             T("", "al:2"),          // an Image whose url is blank
-            T("   ", "al:3"),       // whitespace, which Image normalization trims to blank
+            T("   ", "al:3"),       // whitespace, which normalization trims to blank
             T("real", "al:4"),
         ]);
-        Assert.Equal(["real"], tiles);
+        Assert.Equal(new[] { "real" }, tiles);
     }
 
     /// <summary>A track with no album reference at all still contributes, deduped on its url alone.</summary>
@@ -191,7 +185,7 @@ public class LikedCoverRulesTests
     public void AMissingAlbumRefFallsBackToUrlDedupe()
     {
         var tiles = LikedCoverRules.Tiles([NoAlbum("a"), NoAlbum("a"), NoAlbum("b")]);
-        Assert.Equal(["a", "b"], tiles);
+        Assert.Equal(new[] { "a", "b" }, tiles);
     }
 
     /// <summary>An album-less track carries an EMPTY album uri, which must not be treated as one shared album that
@@ -200,13 +194,13 @@ public class LikedCoverRulesTests
     public void AnEmptyAlbumUriIsNotAnAlbumKey()
     {
         var tiles = LikedCoverRules.Tiles([T("a"), T("b"), T("c")]);
-        Assert.Equal(["a", "b", "c"], tiles);
+        Assert.Equal(new[] { "a", "b", "c" }, tiles);
     }
 
     [Fact]
     public void TilesAreCappedAndStopScanningOnceFull()
     {
-        var tracks = new List<Track>();
+        var tracks = new List<LikedTileInput>();
         for (int i = 0; i < 200; i++) tracks.Add(T("u" + i, "al:" + i, "t" + i));
 
         Assert.Equal(LikedCoverRules.MaxTiles, LikedCoverRules.Tiles(tracks).Count);
@@ -218,26 +212,62 @@ public class LikedCoverRulesTests
     [Fact]
     public void TilesOfNothingIsNothing()
     {
-        Assert.Empty(LikedCoverRules.Tiles(Array.Empty<Track>()));
-        Assert.Empty(LikedCoverRules.Tiles(null!));
+        Assert.Empty(LikedCoverRules.Tiles(Array.Empty<LikedTileInput>()));
+        Assert.Empty(LikedCoverRules.Tiles((IReadOnlyList<LikedTileInput>)null!));
     }
 
     [Fact]
     public void ToneAnchorIsTheNewestTileOrNothing()
     {
-        Assert.Equal("first", LikedCoverRules.ToneAnchorUrl(["first", "second"]));
+        Assert.Equal("first", LikedCoverRules.ToneAnchorUrl(new[] { "first", "second" }));
         Assert.Null(LikedCoverRules.ToneAnchorUrl(Array.Empty<string>()));
+    }
+
+    /// <summary>0.3: the rule over liked HANDLES — newest-first edge order, the album SLOT as the album key (dedupe by
+    /// slot, never by a string), the IMAGE ID as the url identity, an image-less row skipped, and an album-less row
+    /// (slot 0) deduped on its image alone.</summary>
+    [Fact]
+    public void TilesOverLikedHandles_DedupeByAlbumSlotAndImageId()
+    {
+        TestScope.Fresh();
+        var scope = Entities.Current;
+        int al1 = scope.Albums.Slot("spotify:album:cover-tiles-1".AsSpan());
+        int al2 = scope.Albums.Slot("spotify:album:cover-tiles-2".AsSpan());
+
+        int Row(string id, string? image, int album)
+        {
+            int slot = scope.Tracks.Slot(("spotify:track:cover-tiles-" + id).AsSpan());
+            if (image is not null) scope.Tracks.SetText(ref scope.Tracks.Image, slot, Entities.Strings.Intern(image));
+            scope.Tracks.Album[slot] = album;
+            return slot;
+        }
+
+        int[] liked =
+        [
+            Row("a", "https://i.test/a.jpg", al1),
+            Row("b", "https://i.test/b.jpg", al1),     // same album as a → skipped
+            Row("c", "https://i.test/a.jpg", al2),     // same picture as a → skipped, and does NOT burn al2
+            Row("d", null, al2),                        // no artwork
+            Row("e", "https://i.test/e.jpg", al2),     // al2's first real contribution
+            Row("f", "https://i.test/f.jpg", 0),       // no album: image dedupe only
+        ];
+        var into = new string[LikedCoverRules.MaxTiles];
+        int n = LikedCoverRules.Tiles(MemoryMarshal.Cast<int, Track>(liked), into);
+
+        Assert.Equal(new[] { "https://i.test/a.jpg", "https://i.test/e.jpg", "https://i.test/f.jpg" }, into[..n]);
+        Assert.Equal(LikedCoverStyle.Stock, LikedCoverRules.Effective(LikedCoverStyle.Lens, n));   // three is under Lens's floor
+        Assert.Equal(LikedCoverStyle.Stack, LikedCoverRules.Effective(LikedCoverStyle.Stack, n));
     }
 
     // ── FillCells ───────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void FillCellsCyclesTheTilesInOrder()
-        => Assert.Equal(["a", "b", "c", "d", "a", "b", "c", "d", "a"], LikedCoverRules.FillCells(["a", "b", "c", "d"], 9));
+        => Assert.Equal(new[] { "a", "b", "c", "d", "a", "b", "c", "d", "a" }, LikedCoverRules.FillCells(new[] { "a", "b", "c", "d" }, 9));
 
     [Fact]
     public void FillCellsIsExactWhenTheTilesAlreadyFit()
-        => Assert.Equal(["a", "b", "c"], LikedCoverRules.FillCells(["a", "b", "c"], 3));
+        => Assert.Equal(new[] { "a", "b", "c" }, LikedCoverRules.FillCells(new[] { "a", "b", "c" }, 3));
 
     /// <summary>Determinism is load-bearing: a re-render of an unchanged library must produce the identical cell list
     /// so the url-keyed mosaic cells never re-decode.</summary>
@@ -253,8 +283,8 @@ public class LikedCoverRulesTests
     {
         Assert.Empty(LikedCoverRules.FillCells(Array.Empty<string>(), 9));
         Assert.Empty(LikedCoverRules.FillCells(null!, 9));
-        Assert.Empty(LikedCoverRules.FillCells(["a"], 0));
-        Assert.Empty(LikedCoverRules.FillCells(["a"], -3));
+        Assert.Empty(LikedCoverRules.FillCells(new[] { "a" }, 0));
+        Assert.Empty(LikedCoverRules.FillCells(new[] { "a" }, -3));
     }
 
     // ── WallCellIndex ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -317,7 +347,7 @@ public class LikedCoverRulesTests
     public void RainbowSortsByHueAscendingWithinTheFirstRow()
     {
         var order = LikedCoverRules.RainbowOrder(Hues(300f, 10f, 200f, 120f));
-        Assert.Equal([1, 3, 2, 0], order);
+        Assert.Equal(new[] { 1, 3, 2, 0 }, order);
     }
 
     /// <summary>Every second row runs right-to-left, so the ramp is continuous across the row break instead of
@@ -327,7 +357,7 @@ public class LikedCoverRulesTests
     {
         // Eight already-ascending hues: row 0 keeps 0..3, row 1 becomes 7,6,5,4.
         var order = LikedCoverRules.RainbowOrder(Hues(0f, 40f, 80f, 120f, 160f, 200f, 240f, 280f));
-        Assert.Equal([0, 1, 2, 3, 7, 6, 5, 4], order);
+        Assert.Equal(new[] { 0, 1, 2, 3, 7, 6, 5, 4 }, order);
     }
 
     [Fact]
@@ -335,7 +365,7 @@ public class LikedCoverRulesTests
     {
         // Six ascending hues: row 0 keeps 0..3, the two-cell row 1 becomes 5,4.
         var order = LikedCoverRules.RainbowOrder(Hues(0f, 40f, 80f, 120f, 160f, 200f));
-        Assert.Equal([0, 1, 2, 3, 5, 4], order);
+        Assert.Equal(new[] { 0, 1, 2, 3, 5, 4 }, order);
     }
 
     /// <summary>An ungraded cover has no hue and no place on the ramp: it goes last, keeping its original relative
@@ -345,12 +375,12 @@ public class LikedCoverRulesTests
     {
         // Rows before the serpentine: [1, 3, 0, 2] then [4, 5]; row 1 reverses to [5, 4].
         var order = LikedCoverRules.RainbowOrder(Hues(200f, 10f, null, 100f, null, null));
-        Assert.Equal([1, 3, 0, 2, 5, 4], order);
+        Assert.Equal(new[] { 1, 3, 0, 2, 5, 4 }, order);
     }
 
     [Fact]
     public void EqualHuesKeepTheirOriginalOrder()
-        => Assert.Equal([0, 1, 2, 3], LikedCoverRules.RainbowOrder(Hues(90f, 90f, 90f, 90f)));
+        => Assert.Equal(new[] { 0, 1, 2, 3 }, LikedCoverRules.RainbowOrder(Hues(90f, 90f, 90f, 90f)));
 
     /// <summary>Whatever the input, the answer is a permutation — every tile is placed exactly once, so no cell is
     /// blank and no cover is drawn twice.</summary>
@@ -433,29 +463,21 @@ public class LikedCoverRulesTests
         }
     }
 
-    // -- Identity: which uris ARE the liked collection ----------------------------------------------------------------
+    // ── Identity: which uris ARE the liked collection ───────────────────────────────────────────────────────────────
 
     /// <summary>THE bug this predicate exists for: Spotify's recents feed spells Liked Songs more than one way, and a
     /// string compare against the canonical form alone answered NO for the very cards the dynamic cover exists to
-    /// dress -- so a 150-DIP recents tile kept painting the stock purple heart (served, to add insult, from
-    /// <c>misc.scdn.co/liked-songs/liked-songs-300.png</c>) while the detail page showed the chosen treatment.
-    ///
-    /// <para>The negative rows matter as much: the SIBLING collections are separate surfaces, and dressing
-    /// <c>spotify:collection:albums</c> in the liked cover would be a different, louder bug.</para></summary>
+    /// dress. The negative rows matter as much: the SIBLING collections are separate surfaces.</summary>
     [Theory]
-    // the canonical spelling
     [InlineData("spotify:collection:tracks", true)]
-    // the user-namespaced spelling Home / recents section items carry (measured in assets/spotify/home.json)
     [InlineData("spotify:user:@:collection", true)]
     [InlineData("spotify:user:abc123:collection", true)]
     [InlineData("spotify:user:abc123:collection:tracks", true)]
-    // sibling collections -- real, separate surfaces
     [InlineData("spotify:collection:albums", false)]
     [InlineData("spotify:collection:artists", false)]
     [InlineData("spotify:collection:shows", false)]
     [InlineData("spotify:collection:episodes", false)]
     [InlineData("spotify:user:abc123:collection:albums", false)]
-    // not a collection at all
     [InlineData("spotify:playlist:37i9dQZF1DXcBWIGoYBM5M", false)]
     [InlineData("spotify:album:1", false)]
     [InlineData("spotify:user:abc123", false)]
@@ -466,8 +488,7 @@ public class LikedCoverRulesTests
         => Assert.Equal(expected, LikedCoverRules.IsLikedCollection(uri));
 
     /// <summary>Canonical folds every liked spelling to ONE string so the artwork, the nav dispatcher and the
-    /// now-playing match cannot disagree about which entity a card stands for. Anything else passes through
-    /// untouched -- canonicalization is not a place to normalize other uris.</summary>
+    /// now-playing match cannot disagree about which entity a card stands for. Anything else passes through untouched.</summary>
     [Theory]
     [InlineData("spotify:collection:tracks", "spotify:collection:tracks")]
     [InlineData("spotify:user:@:collection", "spotify:collection:tracks")]
@@ -478,47 +499,39 @@ public class LikedCoverRulesTests
     public void Canonical_FoldsLikedAndPassesEverythingElse(string? uri, string expected)
         => Assert.Equal(expected, LikedCoverRules.Canonical(uri));
 
-    // -- The site ladder: what a cover of size s actually paints ------------------------------------------------------
+    // ── The site ladder: what a cover of size s actually paints ─────────────────────────────────────────────────────
 
-    /// <summary><c>LikedCoverTreatments.BadgeMinSize</c>, restated because that file is engine-bound and cannot enter
-    /// this assembly. It is INJECTED into <c>Site</c> for exactly that reason -- the composition owns the floor, the
-    /// rules own the ladder -- so this constant is a test fixture, not a second definition.</summary>
+    /// <summary>The composition's treatment floor (User.Cover.cs <c>BadgeMinSize</c>), restated because it is INJECTED
+    /// into <c>Site</c> — the composition owns the floor, the rules own the ladder — so this is a fixture, not a second
+    /// definition.</summary>
     const float Floor = 140f;
 
     [Theory]
-    // Stock is Stock at every size: it composes nothing, so there is nothing to collapse.
     [InlineData(LikedCoverStyle.Stock, 304f, 16, LikedCoverSite.Stock)]
     [InlineData(LikedCoverStyle.Stock, 20f, 16, LikedCoverSite.Stock)]
-    // At or above the floor every art-backed style paints its full treatment.
     [InlineData(LikedCoverStyle.Wall, 304f, 16, LikedCoverSite.Treatment)]
     [InlineData(LikedCoverStyle.Wall, 140f, 8, LikedCoverSite.Treatment)]
     [InlineData(LikedCoverStyle.Lens, 172f, 8, LikedCoverSite.Treatment)]
-    // The recents rail's own range straddles the floor: cardW 148..188 minus 2*Pad(8) is 132..172.
     [InlineData(LikedCoverStyle.Wall, 172f, 16, LikedCoverSite.Treatment)]
     [InlineData(LikedCoverStyle.Wall, 132f, 16, LikedCoverSite.MiniMosaic)]
-    // Below the floor: the app's ordinary 2x2 collection mosaic ...
     [InlineData(LikedCoverStyle.Wall, 48f, 4, LikedCoverSite.MiniMosaic)]
     [InlineData(LikedCoverStyle.Rainbow, 38f, 16, LikedCoverSite.MiniMosaic)]
-    // ... unless even four distinct covers are not there yet, which is Stock.
     [InlineData(LikedCoverStyle.Wall, 48f, 3, LikedCoverSite.Stock)]
     [InlineData(LikedCoverStyle.Wall, 48f, 0, LikedCoverSite.Stock)]
-    // Tone carries no art at all and reads perfectly small, so it keeps its own gradient below the floor.
     [InlineData(LikedCoverStyle.Tone, 20f, 1, LikedCoverSite.MiniTone)]
     [InlineData(LikedCoverStyle.Tone, 20f, 0, LikedCoverSite.MiniTone)]
     [InlineData(LikedCoverStyle.Tone, 304f, 1, LikedCoverSite.Treatment)]
     public void Site_LaddersBySizeAndArtOnHand(LikedCoverStyle effective, float size, int tiles, LikedCoverSite expected)
         => Assert.Equal(expected, LikedCoverRules.Site(effective, size, tiles, Floor));
 
-    /// <summary>An unmeasured slot (a responsive cell before its first bounds report) must take the FULL treatment
-    /// rather than silently collapsing to a mosaic -- the comparison in <c>Site</c> is written so NaN falls
-    /// through.</summary>
+    /// <summary>An unmeasured slot must take the FULL treatment rather than silently collapsing to a mosaic — the
+    /// comparison in <c>Site</c> is written so NaN falls through.</summary>
     [Fact]
     public void Site_NonFiniteSize_TakesTheTreatment()
-        => Assert.Equal(LikedCoverSite.Treatment,
-                        LikedCoverRules.Site(LikedCoverStyle.Wall, float.NaN, 16, Floor));
+        => Assert.Equal(LikedCoverSite.Treatment, LikedCoverRules.Site(LikedCoverStyle.Wall, float.NaN, 16, Floor));
 
-    /// <summary>Every style below its own <c>MinTiles</c> has already become Stock by the time <c>Site</c> is asked,
-    /// so the two ladders compose: Effective decides WHETHER, Site decides WHAT.</summary>
+    /// <summary>Every style below its own <c>MinTiles</c> has already become Stock by the time <c>Site</c> is asked, so
+    /// the two ladders compose: Effective decides WHETHER, Site decides WHAT.</summary>
     [Fact]
     public void Site_ComposesWithEffective_AtEverySize()
     {
@@ -532,20 +545,16 @@ public class LikedCoverRulesTests
                     var site = LikedCoverRules.Site(effective, size, tiles, Floor);
                     if (effective == LikedCoverStyle.Stock)
                         Assert.Equal(LikedCoverSite.Stock, site);
-                    // A mosaic is only ever offered when there is enough art to fill its four cells.
                     if (site == LikedCoverSite.MiniMosaic)
                         Assert.True(tiles >= LikedCoverRules.MosaicCells, $"{style} @{size} with {tiles} tiles");
-                    // A full treatment is only ever offered at or above the floor.
                     if (site == LikedCoverSite.Treatment)
                         Assert.True(size >= Floor, $"{style} @{size}");
                 }
             }
     }
 
-    // -- Aspect: what a NON-square slot does --------------------------------------------------------------------------
+    // ── Aspect: what a NON-square slot does ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Half a DIP of tolerance, because a responsive card width arrives as 149.9997 and must still read as
-    /// square.</summary>
     [Theory]
     [InlineData(150f, 150f, true)]
     [InlineData(149.9997f, 150f, true)]
@@ -555,9 +564,6 @@ public class LikedCoverRulesTests
     public void IsSquare_ToleratesSubDipDrift(float w, float h, bool expected)
         => Assert.Equal(expected, LikedCoverRules.IsSquare(w, h));
 
-    /// <summary>A letterbox slot COVER-fits the square treatment (compose at the longer edge, centre-crop) rather than
-    /// letterboxing it inside bands: that is what <c>Surfaces.Artwork</c> already does to every other cover in a
-    /// non-square frame, and the liked collection must not be the one card whose art does not fill its slot.</summary>
     [Theory]
     [InlineData(56f, 32f, 56f)]
     [InlineData(300f, 260f, 300f)]

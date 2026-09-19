@@ -1,0 +1,151 @@
+<!doctype html>
+<!--
+  ops/tools/scroll-reference.html — the REFERENCE half of a scroll-feel comparison (2026-09-16).
+
+  Open this file in Edge (Chromium) on the same machine, same mouse, same 120 Hz panel as Wavee, and scroll the list
+  the way you scroll Wavee. Every animation frame the page records Chromium's own scroll offset delta and the frame
+  interval, and when the wheel goes quiet it prints the same verdict figures Wavee's always-on `scroll.trace` log line
+  prints (Screens/Diagnostics.ScrollTrace.cs): live frames, held refreshes inside motion, zero-motion frames, dips,
+  late frames, the step-jitter median, the wheel cadence, and the per-frame shift sequence. Put the two side by side
+  and the difference between "the browser's smooth" and ours is a number, not a feeling.
+
+  Nothing leaves the page: no network, no storage. The list is 40 px rows like Wavee's track table at 100 %.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scroll reference</title>
+<style>
+  :root { color-scheme: dark; --bg: #121214; --fg: #e8e8ea; --dim: #9a9aa0; --row: #1c1c20; --alt: #202026; --acc: #4cc2ff; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif; }
+  body { display: grid; grid-template-columns: 1fr 380px; height: 100vh; }
+  #list { overflow-y: scroll; height: 100vh; }
+  .row { height: 40px; box-sizing: border-box; padding: 0 16px; display: grid; grid-template-columns: 32px 1fr 120px 60px; align-items: center; gap: 12px; background: var(--row); border-bottom: 1px solid #000; }
+  .row:nth-child(odd) { background: var(--alt); }
+  .row .n { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .row .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .a { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .d { color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
+  #panel { padding: 16px; overflow: auto; border-left: 1px solid #2a2a30; font-variant-numeric: tabular-nums; }
+  h1 { font-size: 16px; margin: 0 0 8px; }
+  p { margin: 0 0 8px; color: var(--dim); }
+  #verdict { font-size: 20px; margin: 8px 0; }
+  #verdict.smooth { color: #6ee7a5; } #verdict.bad { color: #ff7a7a; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0; }
+  dt { color: var(--dim); } dd { margin: 0; }
+  #shifts { font: 12px/1.5 Consolas, monospace; white-space: pre-wrap; word-break: break-word; color: var(--fg); background: #0c0c0e; padding: 8px; border-radius: 6px; max-height: 40vh; overflow: auto; }
+  button { background: #26262c; color: var(--fg); border: 1px solid #3a3a42; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  button:hover { background: #30303a; }
+  .hz { color: var(--acc); }
+</style>
+</head>
+<body>
+<div id="list" tabindex="0"></div>
+<aside id="panel">
+  <h1>Scroll reference (Chromium)</h1>
+  <p>Scroll the list on the left with the same wheel you use in Wavee. When the wheel goes quiet for half a second the burst is analysed. Panel refresh: <span class="hz" id="hz">measuring…</span></p>
+  <div id="verdict">waiting for a scroll…</div>
+  <dl>
+    <dt>frames</dt><dd id="frames">–</dd>
+    <dt>live</dt><dd id="live">–</dd>
+    <dt>liveMissed</dt><dd id="liveMissed">–</dd>
+    <dt>liveZero</dt><dd id="liveZero">–</dd>
+    <dt>dips</dt><dd id="dips">–</dd>
+    <dt>late</dt><dd id="late">–</dd>
+    <dt>jitter</dt><dd id="jitter">–</dd>
+    <dt>notches</dt><dd id="notches">–</dd>
+    <dt>notchGapMs</dt><dd id="notchGap">–</dd>
+    <dt>dtP95 / dtMax</dt><dd id="dt">–</dd>
+  </dl>
+  <p><button id="copy">Copy verdict + shifts</button> <button id="reset">Reset</button></p>
+  <p>Shifts (px per frame; <code>*</code> wheel event landed this frame, <code>!</code> a refresh passed with no frame, <code>~</code> frame later than 1.5 refreshes, <code>.</code> no motion):</p>
+  <div id="shifts"></div>
+</aside>
+<script>
+(() => {
+  // ── the list: 2000 rows at 40 px, like the track table ─────────────────────────────────────────────────────────
+  const list = document.getElementById('list');
+  const words = ['Thunder', 'Highway', 'Back in', 'Shot of', 'Razors', 'Moneytalks', 'Fire Your', 'Mistress', 'Rock Your', 'Are You', 'Let There', 'Hells', 'Jailbreak', 'Powerage', 'Riff Raff', 'Sin City'];
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < 2000; i++) {
+    const r = document.createElement('div'); r.className = 'row';
+    const w = words[i % words.length], w2 = words[(i * 7 + 3) % words.length];
+    r.innerHTML = `<span class="n">${i + 1}</span><span class="t">${w} ${w2} ${i}</span><span class="a">Reference artist</span><span class="d">${3 + (i % 4)}:${String(10 + (i * 13) % 50).padStart(2, '0')}</span>`;
+    frag.appendChild(r);
+  }
+  list.appendChild(frag);
+
+  // ── the refresh interval: the median rAF period over the first second ─────────────────────────────────────────
+  let refreshMs = 8.333;
+  { const ts = []; let last = 0;
+    const probe = (t) => { if (last) ts.push(t - last); last = t; if (ts.length < 90) requestAnimationFrame(probe); else { ts.sort((a, b) => a - b); refreshMs = ts[ts.length >> 1]; document.getElementById('hz').textContent = (1000 / refreshMs).toFixed(0) + ' Hz (' + refreshMs.toFixed(2) + ' ms)'; } };
+    requestAnimationFrame(probe); }
+
+  // ── the trace: one sample per animation frame while the burst is live ─────────────────────────────────────────
+  const CAP = 400, QUIET = 500;
+  let samples = [];            // {dt, delta, missed, notches, live}
+  let lastT = 0, lastY = list.scrollTop, notchesPending = 0, lastMotionT = 0, running = false, quietTimer = 0;
+  list.addEventListener('wheel', () => { notchesPending++; if (!running) start(); }, { passive: true });
+  function start() { running = true; samples = []; lastT = performance.now(); lastY = list.scrollTop; requestAnimationFrame(tick); }
+  function tick(t) {
+    if (!running) return;
+    const dt = lastT ? t - lastT : 0; lastT = t;
+    const y = list.scrollTop, delta = y - lastY; lastY = y;
+    const live = Math.abs(delta) >= 0.05;
+    if (live) lastMotionT = t;
+    // Chromium does not expose "a refresh passed with no frame" directly: a rAF period over 1.5 refreshes IS that.
+    const missed = dt > refreshMs * 1.5 ? Math.round(dt / refreshMs) - 1 : 0;
+    samples.push({ dt, delta, missed, notches: notchesPending, live });
+    notchesPending = 0;
+    if (samples.length > CAP) samples.shift();
+    if (t - lastMotionT > QUIET && samples.length > 8) { running = false; report(); return; }
+    requestAnimationFrame(tick);
+  }
+
+  // ── the same figures as Wavee's ScrollTraceRules.Analyse (Screens/Diagnostics.ScrollTrace.cs) ───────────────────
+  const ZERO = 0.25, DIP = 0.55, LATE = 1.5, JIT = 0.15, MINLIVE = 8;
+  const med = (a) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); const n = s.length; return n & 1 ? s[n >> 1] : 0.5 * (s[n / 2 - 1] + s[n / 2]); };
+  const med3 = (a, b, c) => Math.max(Math.min(a, b), Math.min(Math.max(a, b), c));
+  function analyse(s) {
+    let live = 0, liveMissed = 0, liveZero = 0, dips = 0, late = 0, notches = 0; const jit = [], dts = [], gaps = []; let since = 0, saw = false;
+    const lateAfter = refreshMs * LATE;
+    for (let i = 0; i < s.length; i++) {
+      const f = s[i], prevLive = i > 0 && s[i - 1].live;
+      if (f.notches > 0) { notches += f.notches; if (saw) gaps.push(since + f.dt); saw = true; since = 0; } else if (saw) since += f.dt;
+      if (!f.live) continue;
+      if (prevLive && f.missed > 0) liveMissed += f.missed;
+      live++; dts.push(f.dt);
+      if (prevLive && f.dt > lateAfter) late++;
+      const nextLive = i + 1 < s.length && s[i + 1].live, a = Math.abs(f.delta);
+      if (a < ZERO && nextLive && f.notches === 0) liveZero++;
+      if (prevLive && f.notches === 0) { const b = Math.abs(s[i - 1].delta), hi = Math.max(a, b); if (a >= 0.5 && b >= 0.5) jit.push(Math.abs(a - b) / hi); }
+      if (i >= 3 && nextLive && f.notches === 0 && s[i - 1].notches === 0 && s[i - 1].live && s[i - 2].live && s[i - 3].live) {
+        const m = med3(Math.abs(s[i - 1].delta), Math.abs(s[i - 2].delta), Math.abs(s[i - 3].delta));
+        if (m >= 1 && a < DIP * m && Math.abs(s[i + 1].delta) > a * 1.2) dips++;
+      }
+    }
+    const sorted = [...dts].sort((x, y) => x - y);
+    const p95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(0.95 * sorted.length) - 1))] : 0;
+    const grade = live < MINLIVE ? 'short' : liveMissed > 0 ? 'present-hitch' : liveZero > 0 ? 'stalled-frames' : dips > 0 ? 'velocity-dips' : late > 0 ? 'late-frames' : med(jit) > JIT ? 'uneven' : 'smooth';
+    return { grade, frames: s.length, live, liveMissed, liveZero, dips, late, jitter: med(jit), notches, notchGap: med(gaps), p95, max: sorted.length ? sorted[sorted.length - 1] : 0 };
+  }
+  function format(s) {
+    const lateAfter = refreshMs * LATE;
+    return s.map((f, i) => (!f.live && Math.abs(f.delta) < ZERO ? '.' : f.delta.toFixed(1)) + (f.notches ? '*' : '') + (f.missed ? '!' : '') + (i > 0 && f.dt > lateAfter ? '~' : '')).join(' ');
+  }
+  let lastReport = '';
+  function report() {
+    const v = analyse(samples), shifts = format(samples);
+    const el = document.getElementById('verdict'); el.textContent = 'verdict=' + v.grade; el.className = v.grade === 'smooth' ? 'smooth' : 'bad';
+    const set = (id, t) => document.getElementById(id).textContent = t;
+    set('frames', v.frames); set('live', v.live); set('liveMissed', v.liveMissed); set('liveZero', v.liveZero); set('dips', v.dips); set('late', v.late);
+    set('jitter', v.jitter.toFixed(2)); set('notches', v.notches); set('notchGap', v.notchGap.toFixed(0)); set('dt', v.p95.toFixed(1) + ' / ' + v.max.toFixed(1));
+    document.getElementById('shifts').textContent = shifts;
+    lastReport = `reference(chromium) refreshMs=${refreshMs.toFixed(2)} verdict=${v.grade} frames=${v.frames} live=${v.live} liveMissed=${v.liveMissed} liveZero=${v.liveZero} dips=${v.dips} late=${v.late} jitter=${v.jitter.toFixed(2)} notches=${v.notches} notchGapMs=${v.notchGap.toFixed(0)} dtP95=${v.p95.toFixed(1)} dtMax=${v.max.toFixed(1)} shifts=${shifts}`;
+  }
+  document.getElementById('copy').addEventListener('click', () => { if (lastReport) navigator.clipboard?.writeText(lastReport); });
+  document.getElementById('reset').addEventListener('click', () => { running = false; samples = []; document.getElementById('verdict').textContent = 'waiting for a scroll…'; document.getElementById('verdict').className = ''; document.getElementById('shifts').textContent = ''; });
+})();
+</script>
+</body>
+</html>

@@ -1,17 +1,19 @@
-using System;
+// ── Wavee.Tests/ConcertDetailModelTests.cs — offers and detail facts (ch 17 §8), ported from 0.2.9 ────────────────────
+//
+// Ported VERBATIM from `_old/Wavee.Tests/ConcertDetailModelTests.cs` (13 facts). The offer is now a set of values
+// (prices, currency, sale window) instead of 0.2.9's `ConcertOffer` record — the stored `OfferEdge` form is a thin
+// adapter over the same functions; the assertions are unchanged.
+
 using System.Globalization;
-using Wavee.Core;
-using Wavee.Features.Concerts;
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
 public sealed class ConcertDetailModelTests
 {
-    static ConcertOffer Offer(decimal? min = null, decimal? max = null, string? currency = null,
-        DateTimeOffset? saleStart = null, DateTimeOffset? saleEnd = null) =>
-        new("Provider", null, MinPrice: min, MaxPrice: max, Currency: currency,
-            SaleStartsAt: saleStart, SaleEndsAt: saleEnd);
+    static string? Price(decimal? min = null, decimal? max = null, string? currency = null) =>
+        ConcertOffers.PriceLabel(min, max, currency);
 
     // ── ticket-URL validation ────────────────────────────────────────────────────────────────────────────────────────
     [Theory]
@@ -36,28 +38,28 @@ public sealed class ConcertDetailModelTests
     [Fact]
     public void PriceLabel_RangeUsesInvariantDigitsAndCurrencyCode()
     {
-        Assert.Equal("45 - 75 EUR", ConcertOffers.PriceLabel(Offer(min: 45m, max: 75m, currency: "EUR")));
-        Assert.Equal("45.5 - 75.25 EUR", ConcertOffers.PriceLabel(Offer(min: 45.5m, max: 75.25m, currency: "EUR")));
+        Assert.Equal("45 - 75 EUR", Price(min: 45m, max: 75m, currency: "EUR"));
+        Assert.Equal("45.5 - 75.25 EUR", Price(min: 45.5m, max: 75.25m, currency: "EUR"));
     }
 
     [Fact]
     public void PriceLabel_SinglePriceCollapsesToOneValue()
     {
-        Assert.Equal("45 EUR", ConcertOffers.PriceLabel(Offer(min: 45m, max: 45m, currency: "EUR")));
-        Assert.Equal("45 EUR", ConcertOffers.PriceLabel(Offer(min: 45m, currency: "EUR")));
-        Assert.Equal("75 EUR", ConcertOffers.PriceLabel(Offer(max: 75m, currency: "EUR")));
+        Assert.Equal("45 EUR", Price(min: 45m, max: 45m, currency: "EUR"));
+        Assert.Equal("45 EUR", Price(min: 45m, currency: "EUR"));
+        Assert.Equal("75 EUR", Price(max: 75m, currency: "EUR"));
     }
 
     [Fact]
     public void PriceLabel_NoPriceOrNoCurrency()
     {
-        Assert.Null(ConcertOffers.PriceLabel(Offer()));
-        Assert.Equal("45", ConcertOffers.PriceLabel(Offer(min: 45m)));   // priced but code-less: digits only, no symbol guess
+        Assert.Null(Price());
+        Assert.Equal("45", Price(min: 45m));
     }
 
     [Fact]
     public void PriceLabel_ReversedBoundsAreReordered() =>
-        Assert.Equal("45 - 75 EUR", ConcertOffers.PriceLabel(Offer(min: 75m, max: 45m, currency: "EUR")));
+        Assert.Equal("45 - 75 EUR", Price(min: 75m, max: 45m, currency: "EUR"));
 
     // ── availability ─────────────────────────────────────────────────────────────────────────────────────────────────
     [Fact]
@@ -76,11 +78,10 @@ public sealed class ConcertDetailModelTests
         var end = new DateTimeOffset(2030, 8, 31, 23, 30, 0, TimeSpan.FromHours(-4));
         var invariant = CultureInfo.InvariantCulture;
 
-        Assert.Equal("On sale 1 Jan 2030 - 31 Aug 2030",
-            ConcertOffers.SaleWindowLabel(Offer(saleStart: start, saleEnd: end), invariant));
-        Assert.Equal("On sale from 1 Jan 2030", ConcertOffers.SaleWindowLabel(Offer(saleStart: start), invariant));
-        Assert.Equal("On sale until 31 Aug 2030", ConcertOffers.SaleWindowLabel(Offer(saleEnd: end), invariant));
-        Assert.Null(ConcertOffers.SaleWindowLabel(Offer(), invariant));
+        Assert.Equal("On sale 1 Jan 2030 - 31 Aug 2030", ConcertOffers.SaleWindowLabel(start, end, invariant));
+        Assert.Equal("On sale from 1 Jan 2030", ConcertOffers.SaleWindowLabel(start, null, invariant));
+        Assert.Equal("On sale until 31 Aug 2030", ConcertOffers.SaleWindowLabel(null, end, invariant));
+        Assert.Null(ConcertOffers.SaleWindowLabel(null, null, invariant));
     }
 
     // ── status ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -120,10 +121,10 @@ public sealed class ConcertDetailModelTests
     [Fact]
     public void DetailWide_EntersAtEnterThreshold_LeavesBelowLeaveThreshold()
     {
-        Assert.True(ConcertLayout.DetailWide(920f, wasWide: false, initialized: true));    // hits enter → wide
-        Assert.False(ConcertLayout.DetailWide(919f, wasWide: false, initialized: true));   // below enter → narrow
-        Assert.True(ConcertLayout.DetailWide(860f, wasWide: true, initialized: true));      // in the band, was wide → stays
-        Assert.False(ConcertLayout.DetailWide(859f, wasWide: true, initialized: true));     // below leave → narrow
-        Assert.False(ConcertLayout.DetailWide(900f, wasWide: false, initialized: true));    // in the band, was narrow → stays
+        Assert.True(ConcertLayout.DetailWide(920f, wasWide: false, initialized: true));
+        Assert.False(ConcertLayout.DetailWide(919f, wasWide: false, initialized: true));
+        Assert.True(ConcertLayout.DetailWide(860f, wasWide: true, initialized: true));
+        Assert.False(ConcertLayout.DetailWide(859f, wasWide: true, initialized: true));
+        Assert.False(ConcertLayout.DetailWide(900f, wasWide: false, initialized: true));
     }
 }

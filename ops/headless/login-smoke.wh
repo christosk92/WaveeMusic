@@ -1,0 +1,15 @@
+# login-smoke.wh - the Wave 2 gate (plan section 5), rewritten for the headless host.
+# Resume the stored credential, decode one album through Ensure -> Fetch -> Api -> Decode -> Commit into a context
+# queue, and play its first track: a decoded album that produced a queue IS the row-count assertion, made audible.
+# Album: Pitbull - "Global Warming", the Web API docs example.
+#
+# The host holds a file script until the session is Online (exit 75 past --login-timeout, 77 on a rejected
+# credential - which is KEPT, 67 with none stored), so `wait online` below is the gate written down, not a race.
+volume 0.2
+wait online timeout 60000
+play spotify:album:4aawyAB9vmqN3uQ7FjRGTy
+wait playing timeout 20000
+expect track!=
+status
+stats
+quit

@@ -1,86 +1,58 @@
-using Wavee.Features.Detail;
+// ── Wavee.Tests/PlaylistListStateTests.cs — WP-5.O stream A ────────────────────────────────────────────────────────
+// 0.2.9's PlaylistListStateTests against 0.3's `Playlist.RowsStateOf` / `IsLoading` / `NameOf` (Playlist.cs §4 — the
+// existing member IS the port). The four 0.2.9 facts about a `Failed` arm are not ported: 0.3's list state has no Failed
+// value — a failed ask with nothing resident is the EDGE's `Readiness` (EdgeState.Failed, G-050), which the table reads
+// directly, and a failure with rows resident keeps the rows by construction (the state is computed from the rows).
+
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>
-/// The detail track list's empty branch. It used to have one input — the track count — so a Ready playlist whose
-/// membership had not been adopted yet (a rootlist-seeded thin header) read as an empty playlist and the page said
-/// "Nothing here yet" for the beat before the snapshot landed.
-/// </summary>
+/// <summary>The detail track list's empty branch: a thin header whose membership has not been adopted must shimmer, never
+/// say "Nothing here yet".</summary>
 public class PlaylistListStateTests
 {
     [Fact]
     public void AThinHeader_IsLoading_NotEmpty()
-        => Assert.Equal(PlaylistRowsState.Loading, PlaylistListState.For(membershipLoaded: false, membershipFailed: false, total: 0, visible: 0));
+        => Assert.Equal(PlaylistRowsState.Loading, Playlist.RowsStateOf(membershipKnown: false, total: 0, visible: 0));
 
     [Fact]
     public void AnAdoptedEmptyMembership_IsEmpty()
-        => Assert.Equal(PlaylistRowsState.Empty, PlaylistListState.For(membershipLoaded: true, membershipFailed: false, total: 0, visible: 0));
+        => Assert.Equal(PlaylistRowsState.Empty, Playlist.RowsStateOf(membershipKnown: true, total: 0, visible: 0));
 
     [Fact]
     public void AFilterThatHidesEveryRow_IsNoMatch()
-        => Assert.Equal(PlaylistRowsState.NoMatch, PlaylistListState.For(membershipLoaded: true, membershipFailed: false, total: 40, visible: 0));
+        => Assert.Equal(PlaylistRowsState.NoMatch, Playlist.RowsStateOf(membershipKnown: true, total: 40, visible: 0));
 
     [Fact]
     public void RowsAreRows()
-        => Assert.Equal(PlaylistRowsState.Rows, PlaylistListState.For(membershipLoaded: true, membershipFailed: false, total: 40, visible: 12));
+        => Assert.Equal(PlaylistRowsState.Rows, Playlist.RowsStateOf(membershipKnown: true, total: 40, visible: 12));
 
-    /// <summary>Rows are proof: a model that carries tracks is never "loading", whatever the flag says (the flag is read
-    /// from the store a moment after the rows were composed from it, so the two can disagree for one refresh).</summary>
+    /// <summary>Rows are proof: a model that carries tracks is never "loading", whatever the flag says.</summary>
     [Fact]
     public void ResidentRows_OutrankAnUnknownMembership()
     {
-        Assert.Equal(PlaylistRowsState.Rows, PlaylistListState.For(membershipLoaded: false, membershipFailed: false, total: 40, visible: 12));
-        Assert.Equal(PlaylistRowsState.NoMatch, PlaylistListState.For(membershipLoaded: false, membershipFailed: false, total: 40, visible: 0));
-        Assert.False(PlaylistListState.IsLoading(membershipLoaded: false, membershipFailed: false, total: 40));
+        Assert.Equal(PlaylistRowsState.Rows, Playlist.RowsStateOf(membershipKnown: false, total: 40, visible: 12));
+        Assert.Equal(PlaylistRowsState.NoMatch, Playlist.RowsStateOf(membershipKnown: false, total: 40, visible: 0));
+        Assert.False(Playlist.IsLoading(membershipKnown: false, total: 40));
     }
 
-    /// <summary>The whole cold-open sequence a thin header runs: shimmer → (the snapshot lands) rows, or shimmer →
-    /// (the snapshot lands empty) "Nothing here yet". Neither path ever passes through Empty before the snapshot.</summary>
+    /// <summary>The whole cold-open sequence: shimmer → rows, or shimmer → "Nothing here yet" — never Empty first.</summary>
     [Fact]
     public void AColdOpen_NeverSaysEmptyBeforeTheSnapshot()
     {
-        var thin = PlaylistListState.For(membershipLoaded: false, membershipFailed: false, total: 0, visible: 0);
-        Assert.Equal(PlaylistRowsState.Loading, thin);
-        Assert.Equal(PlaylistRowsState.Rows, PlaylistListState.For(membershipLoaded: true, membershipFailed: false, total: 75, visible: 75));
-        Assert.Equal(PlaylistRowsState.Empty, PlaylistListState.For(membershipLoaded: true, membershipFailed: false, total: 0, visible: 0));
+        Assert.Equal(PlaylistRowsState.Loading, Playlist.RowsStateOf(membershipKnown: false, total: 0, visible: 0));
+        Assert.Equal(PlaylistRowsState.Rows, Playlist.RowsStateOf(membershipKnown: true, total: 75, visible: 75));
+        Assert.Equal(PlaylistRowsState.Empty, Playlist.RowsStateOf(membershipKnown: true, total: 0, visible: 0));
     }
 
     [Fact]
     public void Names_AreTheDiagnosticsSpelling()
     {
-        Assert.Equal("Loading", PlaylistListState.Name(PlaylistRowsState.Loading));
-        Assert.Equal("Empty", PlaylistListState.Name(PlaylistRowsState.Empty));
-        Assert.Equal("NoMatch", PlaylistListState.Name(PlaylistRowsState.NoMatch));
-        Assert.Equal("Rows", PlaylistListState.Name(PlaylistRowsState.Rows));
-        Assert.Equal("Failed", PlaylistListState.Name(PlaylistRowsState.Failed));
+        Assert.Equal("Loading", Playlist.NameOf(PlaylistRowsState.Loading));
+        Assert.Equal("Empty", Playlist.NameOf(PlaylistRowsState.Empty));
+        Assert.Equal("NoMatch", Playlist.NameOf(PlaylistRowsState.NoMatch));
+        Assert.Equal("Rows", Playlist.NameOf(PlaylistRowsState.Rows));
     }
-
-    /// <summary>A dead fetch is its own state. This is the regression behind a playlist that sat in shimmer rows for
-    /// nine minutes: the membership fetch 400'd, every layer swallowed it, and with only "are rows resident" to go on
-    /// the list could not tell a failed fetch from one still in flight.</summary>
-    [Fact]
-    public void FailedFetch_WithNothingResident_IsFailedNotLoading()
-    {
-        Assert.Equal(PlaylistRowsState.Failed, PlaylistListState.For(membershipLoaded: false, membershipFailed: true, total: 0, visible: 0));
-        Assert.False(PlaylistListState.IsLoading(membershipLoaded: false, membershipFailed: true, total: 0));
-        Assert.True(PlaylistListState.IsFailed(membershipLoaded: false, membershipFailed: true, total: 0));
-    }
-
-    /// <summary>Rows beat a failure. A revalidate that dies against a baseline we already hold is a staleness problem,
-    /// never a reason to blank good rows into an error panel.</summary>
-    [Fact]
-    public void FailedFetch_WithResidentRows_StillShowsRows()
-    {
-        Assert.Equal(PlaylistRowsState.Rows, PlaylistListState.For(membershipLoaded: true, membershipFailed: true, total: 40, visible: 12));
-        Assert.Equal(PlaylistRowsState.Rows, PlaylistListState.For(membershipLoaded: false, membershipFailed: true, total: 40, visible: 12));
-        Assert.False(PlaylistListState.IsFailed(membershipLoaded: false, membershipFailed: true, total: 40));
-    }
-
-    /// <summary>An empty playlist that LANDED keeps saying "Nothing here yet" even if a later fetch failed — the
-    /// verdict already arrived, so the failure has nothing to add.</summary>
-    [Fact]
-    public void LandedEmpty_OutranksALaterFailure()
-        => Assert.Equal(PlaylistRowsState.Empty, PlaylistListState.For(membershipLoaded: true, membershipFailed: true, total: 0, visible: 0));
 }

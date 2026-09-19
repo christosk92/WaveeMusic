@@ -1,26 +1,26 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+// ── Wavee.Tests/ConcertSchedulePageTests.cs — the artist schedule's shaping (ch 17 §8), ported from 0.2.9 ────────────
+//
+// Ported VERBATIM from `_old/Wavee.Tests/ConcertSchedulePageTests.cs` (26 facts). The inputs are 0.3's `ConcertShow`
+// values; the assertions are 0.2.9's, English copy included (`ConcertCopy.English`, what a test without a culture table
+// reads). The last three facts were 0.2.9's service guards (`NullConcertService`, `SwitchableConcertService`); 0.3 has
+// no service classes, and the same three guarantees now belong to the hub's data seam: the offline host answers empty
+// and never saves, the installed host is a swappable identity, and a null host is refused.
+
 using FluentGpu.Pal;
-using Wavee.Core;
-using Wavee.Features.Concerts;
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
+[Collection(EntitiesCollection.Name)]
 public sealed class ConcertSchedulePageTests
 {
-    static Concert Show(string uri, int year, int month, int day, string venue = "Venue", string city = "City") =>
+    static ConcertShow Show(string uri, int year, int month, int day, string venue = "Venue", string city = "City") =>
         new(uri, null, venue, city, new DateTimeOffset(year, month, day, 20, 0, 0, TimeSpan.Zero));
 
-    static Concert LineupShow(string uri, string venue, string city, string? title, params string[] artistNames)
-    {
-        var artists = new ConcertArtist[artistNames.Length];
-        for (int i = 0; i < artistNames.Length; i++) artists[i] = new ConcertArtist(artistNames[i]);
-        return new Concert(uri, title, venue, city, new DateTimeOffset(2026, 9, 21, 19, 30, 0, TimeSpan.Zero),
-            Artists: artists.Length > 0 ? artists : null);
-    }
+    static ConcertShow LineupShow(string uri, string venue, string city, string? title, params string[] artistNames) =>
+        new(uri, title, venue, city, new DateTimeOffset(2026, 9, 21, 19, 30, 0, TimeSpan.Zero),
+            ArtistNames: artistNames.Length > 0 ? artistNames : null);
 
     // ── chronological sorting / dedup ────────────────────────────────────────────────────────────────────────────────
     [Fact]
@@ -35,8 +35,7 @@ public sealed class ConcertSchedulePageTests
 
         var sorted = ConcertSchedules.Chronological(input);
 
-        Assert.Equal(new[] { "c:1", "c:2", "c:3" }, System.Linq.Enumerable.ToArray(
-            System.Linq.Enumerable.Select(sorted, c => c.Uri)));
+        Assert.Equal(new[] { "c:1", "c:2", "c:3" }, sorted.Select(c => c.Uri).ToArray());
     }
 
     [Fact]
@@ -59,7 +58,7 @@ public sealed class ConcertSchedulePageTests
     public void Chronological_NullOrEmpty_IsEmpty()
     {
         Assert.Empty(ConcertSchedules.Chronological(null));
-        Assert.Empty(ConcertSchedules.Chronological(Array.Empty<Concert>()));
+        Assert.Empty(ConcertSchedules.Chronological(Array.Empty<ConcertShow>()));
     }
 
     // ── geolocation status → human message ───────────────────────────────────────────────────────────────────────────
@@ -91,11 +90,11 @@ public sealed class ConcertSchedulePageTests
     [Fact]
     public void ScheduleWide_EntersAtEnterThreshold_LeavesBelowLeaveThreshold()
     {
-        Assert.True(ConcertLayout.ScheduleWide(760f, wasWide: false, initialized: true));    // hits enter → wide
-        Assert.False(ConcertLayout.ScheduleWide(759f, wasWide: false, initialized: true));   // below enter → narrow
-        Assert.True(ConcertLayout.ScheduleWide(720f, wasWide: true, initialized: true));      // in the band, was wide → stays
-        Assert.False(ConcertLayout.ScheduleWide(719f, wasWide: true, initialized: true));     // below leave → narrow
-        Assert.False(ConcertLayout.ScheduleWide(740f, wasWide: false, initialized: true));    // in the band, was narrow → stays
+        Assert.True(ConcertLayout.ScheduleWide(760f, wasWide: false, initialized: true));
+        Assert.False(ConcertLayout.ScheduleWide(759f, wasWide: false, initialized: true));
+        Assert.True(ConcertLayout.ScheduleWide(720f, wasWide: true, initialized: true));
+        Assert.False(ConcertLayout.ScheduleWide(719f, wasWide: true, initialized: true));
+        Assert.False(ConcertLayout.ScheduleWide(740f, wasWide: false, initialized: true));
     }
 
     // ── R3 rework: month grouping ────────────────────────────────────────────────────────────────────────────────────
@@ -134,7 +133,7 @@ public sealed class ConcertSchedulePageTests
         Assert.Single(runs);
         Assert.True(runs[0].IsMultiNight);
         Assert.Equal(3, runs[0].NightCount);
-        Assert.Equal("c:1", runs[0].Uri);   // navigation identity = first night
+        Assert.Equal("c:1", runs[0].Uri);
     }
 
     [Fact]
@@ -144,7 +143,7 @@ public sealed class ConcertSchedulePageTests
         {
             Show("c:1", 2026, 9, 21, venue: "Arena", city: "Berlin"),
             Show("c:2", 2026, 9, 22, venue: "Arena", city: "Berlin"),
-            Show("c:3", 2026, 9, 24, venue: "Arena", city: "Berlin"),   // one-day gap → new run
+            Show("c:3", 2026, 9, 24, venue: "Arena", city: "Berlin"),
         };
 
         var runs = ConcertScheduleShaping.DetectRuns(input);
@@ -160,7 +159,7 @@ public sealed class ConcertSchedulePageTests
         var input = new[]
         {
             Show("c:1", 2026, 9, 21, venue: "Arena", city: "Berlin"),
-            Show("c:2", 2026, 9, 22, venue: "Club", city: "Berlin"),   // consecutive day, different venue
+            Show("c:2", 2026, 9, 22, venue: "Club", city: "Berlin"),
         };
 
         var runs = ConcertScheduleShaping.DetectRuns(input);
@@ -174,11 +173,10 @@ public sealed class ConcertSchedulePageTests
     [Fact]
     public void CapBoundary_SixTilesFit_SeventhOverflows()
     {
-        Concert[] Month(int count)
+        ConcertShow[] Month(int count)
         {
-            var xs = new Concert[count];
+            var xs = new ConcertShow[count];
             for (int i = 0; i < count; i++)
-                // distinct venues + a two-day gap between each → every concert is its own single tile (no run collapse)
                 xs[i] = Show("c:" + i, 2026, 9, 1 + i * 2, venue: "Venue" + i);
             return xs;
         }
@@ -199,7 +197,7 @@ public sealed class ConcertSchedulePageTests
         var withCities = new[]
         {
             Show("c:1", 2026, 3, 1, city: "Berlin"),
-            Show("c:2", 2026, 4, 1, city: "berlin"),   // same city, different case → one distinct
+            Show("c:2", 2026, 4, 1, city: "berlin"),
             Show("c:3", 2026, 5, 1, city: "Munich"),
         };
         var s = ConcertScheduleShaping.Stats(withCities);
@@ -218,7 +216,7 @@ public sealed class ConcertSchedulePageTests
         string line = ConcertScheduleShaping.StatsLine(e);
         Assert.DoesNotContain("cities", line);
         Assert.DoesNotContain("city", line);
-        Assert.StartsWith("2 shows · ", line);   // both shows in one month → single-month "MMM yyyy" span, no cities segment
+        Assert.StartsWith("2 shows · ", line);
         string march = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedMonthName(3);
         Assert.Contains(march + " 2026", line);
     }
@@ -228,11 +226,11 @@ public sealed class ConcertSchedulePageTests
     public void RelativeTime_DaysWeeksAndTomorrow()
     {
         var now = new DateTimeOffset(2026, 9, 1, 12, 0, 0, TimeSpan.Zero);
-        Concert At(int m, int d) => Show("x", 2026, m, d);
+        ConcertShow At(int m, int d) => Show("x", 2026, m, d);
 
         Assert.Equal("tomorrow", ConcertScheduleShaping.RelativeTime(At(9, 2).Date, now));
         Assert.Equal("in 5 days", ConcertScheduleShaping.RelativeTime(At(9, 6).Date, now));
-        Assert.Equal("in 6 weeks", ConcertScheduleShaping.RelativeTime(At(10, 13).Date, now));   // 42 days
+        Assert.Equal("in 6 weeks", ConcertScheduleShaping.RelativeTime(At(10, 13).Date, now));
         Assert.Equal("today", ConcertScheduleShaping.RelativeTime(At(9, 1).Date, now));
     }
 
@@ -253,7 +251,7 @@ public sealed class ConcertSchedulePageTests
         Assert.Equal("next", spot!.Uri);
 
         var board = ConcertScheduleShaping.BoardConcerts(chrono, spot);
-        Assert.DoesNotContain(board, c => c.Uri == "next");   // never appears twice
+        Assert.DoesNotContain(board, c => c.Uri == "next");
         Assert.Contains(board, c => c.Uri == "past");
         Assert.Contains(board, c => c.Uri == "later");
     }
@@ -277,13 +275,11 @@ public sealed class ConcertSchedulePageTests
     [Fact]
     public void NearIsInformative_MinoritySetsOnly()
     {
-        // 18 shows → threshold max(3, ceil(18/3)) = 6
-        Assert.False(ConcertScheduleShaping.NearIsInformative(18, 18));   // near-everything = information-free
-        Assert.False(ConcertScheduleShaping.NearIsInformative(7, 18));    // just over a third → off
-        Assert.True(ConcertScheduleShaping.NearIsInformative(6, 18));     // boundary → on
+        Assert.False(ConcertScheduleShaping.NearIsInformative(18, 18));
+        Assert.False(ConcertScheduleShaping.NearIsInformative(7, 18));
+        Assert.True(ConcertScheduleShaping.NearIsInformative(6, 18));
         Assert.True(ConcertScheduleShaping.NearIsInformative(1, 18));
-        Assert.False(ConcertScheduleShaping.NearIsInformative(0, 18));    // empty → off
-        // Small tour: the floor of 3 keeps a 2-of-4 near set usable.
+        Assert.False(ConcertScheduleShaping.NearIsInformative(0, 18));
         Assert.True(ConcertScheduleShaping.NearIsInformative(3, 4));
         Assert.False(ConcertScheduleShaping.NearIsInformative(4, 4));
     }
@@ -291,11 +287,11 @@ public sealed class ConcertSchedulePageTests
     [Fact]
     public void GuardedNearSet_EmptiesWhenNearCoversTheTour()
     {
-        var board = new Concert[12];
+        var board = new ConcertShow[12];
         for (int i = 0; i < 12; i++) board[i] = Show("c:" + i, 2026, 9, 1 + i);
 
-        var allNear = ConcertScheduleShaping.GuardedNearSet(board, board);   // Nearby branch = ALL shows
-        Assert.Empty(allNear);   // the blue wall never happens
+        var allNear = ConcertScheduleShaping.GuardedNearSet(board, board);
+        Assert.Empty(allNear);
 
         var fewNear = ConcertScheduleShaping.GuardedNearSet(board, new[] { board[0], board[1] });
         Assert.Equal(2, fewNear.Count);
@@ -318,7 +314,7 @@ public sealed class ConcertSchedulePageTests
         Assert.Contains("c:0", set);
     }
 
-    // ── R3.1 polish: tile text (venue-less events must not repeat the page artist's name) ───────────────────────────
+    // ── R3.1 polish: tile text ───────────────────────────────────────────────────────────────────────────────────────
     [Fact]
     public void TileText_VenuePrimary_CityAndTimeSecondary()
     {
@@ -336,7 +332,7 @@ public sealed class ConcertSchedulePageTests
         Assert.Equal("Berlin", t.Primary);
         Assert.True(t.CityIsPrimary);
         Assert.Contains("with Band of Silver", t.Secondary);
-        Assert.DoesNotContain("Artist Name", t.Secondary);   // the page artist is never a "support act"
+        Assert.DoesNotContain("Artist Name", t.Secondary);
     }
 
     [Fact]
@@ -354,7 +350,7 @@ public sealed class ConcertSchedulePageTests
         Assert.Equal("with One, Two +2 more", ConcertScheduleShaping.SupportActs(many, "Artist Name"));
 
         var solo = LineupShow("c:2", "", "Berlin", null, "Artist Name");
-        Assert.Null(ConcertScheduleShaping.SupportActs(solo, "Artist Name"));   // nothing informative left
+        Assert.Null(ConcertScheduleShaping.SupportActs(solo, "Artist Name"));
 
         Assert.Null(ConcertScheduleShaping.SupportActs(LineupShow("c:3", "", "Berlin", null), "Artist Name"));
     }
@@ -363,7 +359,6 @@ public sealed class ConcertSchedulePageTests
     [Fact]
     public void StatsLine_OmitsCities_WhenRedundantOrSingle()
     {
-        // 3 shows in 3 distinct cities → cities == shows → redundant, omitted
         var allDistinct = ConcertScheduleShaping.Stats(new[]
         {
             Show("c:1", 2026, 3, 1, city: "A"),
@@ -372,7 +367,6 @@ public sealed class ConcertSchedulePageTests
         });
         Assert.DoesNotContain("cities", ConcertScheduleShaping.StatsLine(allDistinct));
 
-        // 5 shows all in one city → single city is noise, omitted
         var oneCity = ConcertScheduleShaping.Stats(new[]
         {
             Show("c:1", 2026, 3, 1, city: "A"), Show("c:2", 2026, 3, 8, city: "A"),
@@ -383,7 +377,6 @@ public sealed class ConcertSchedulePageTests
         Assert.DoesNotContain("city", line);
         Assert.DoesNotContain("cities", line);
 
-        // 3 shows across 2 cities → informative, included
         var informative = ConcertScheduleShaping.Stats(new[]
         {
             Show("c:1", 2026, 3, 1, city: "A"),
@@ -393,80 +386,70 @@ public sealed class ConcertSchedulePageTests
         Assert.Contains("2 cities", ConcertScheduleShaping.StatsLine(informative));
     }
 
-    // ── null-service behaviour ───────────────────────────────────────────────────────────────────────────────────────
+    // ── the data seam (0.2.9's service guards) ───────────────────────────────────────────────────────────────────────
     [Fact]
-    public async Task NullConcertService_ReadsAreNullOrEmpty_AndSaveIsHonestFalse()
+    public void OfflineHost_ReadsAreEmpty_AndSaveIsHonestFalse()
     {
-        IConcertService svc = new NullConcertService();
+        TestScope.Fresh();
+        var host = ConcertHost.Offline;
+        bool? resolved = null, artistPage = null, saved = null;
+        ConcertPlaceAnswer search = default, reverse = default;
 
-        Assert.Null(await svc.GetArtistScheduleAsync("spotify:artist:x"));
-        Assert.Null(await svc.GetFeedAsync(new ConcertFeedQuery()));
-        Assert.Null(await svc.GetDetailsAsync("spotify:concert:x"));
-        Assert.Null(await svc.GetArtistPageLocationAsync());
-        Assert.Empty(await svc.GetConceptsAsync("geohash"));
-        Assert.Empty(await svc.SearchLocationsAsync("berlin"));
-        Assert.Empty(await svc.ReverseLocationAsync(new GeoCoordinates(52.5, 13.4)));
-        Assert.False(await svc.SaveLocationAsync("place-id"));   // no silent success when nothing is wired
+        host.ResolveLocation(ok => resolved = ok);
+        host.ResolveArtistPageLocation(ok => artistPage = ok);
+        host.SearchPlaces("berlin", a => search = a);
+        host.ReversePlaces(52.5, 13.4, a => reverse = a);
+        host.SavePlace(1, ok => saved = ok);
+
+        Assert.False(resolved);
+        Assert.False(artistPage);
+        Assert.True(search.Ok);
+        Assert.Empty(search.Places);
+        Assert.True(reverse.Ok);
+        Assert.Empty(reverse.Places);
+        Assert.False(saved);                                     // no silent success when nothing is wired
+
+        // A feed nobody can answer is an answered, empty, Complete list — a vacancy, never a skeleton.
+        int feed = ConcertPlaces.FeedSlot("place:nowhere|100");
+        host.Feed(feed, new ConcertFeedQuery(), append: false, done: null);
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.FeedSection.State(feed));
+        Assert.Equal(0, Entities.Current.Edges.FeedSection.Count(feed));
     }
 
     [Fact]
-    public async Task SwitchableConcertService_ForwardsToTheCurrentInner()
+    public void Host_ForwardsToTheCurrentImplementation()
     {
-        var switchable = new SwitchableConcertService(new NullConcertService());
-        Assert.Null(await switchable.GetArtistScheduleAsync("spotify:artist:x"));   // Null inner
+        var previous = ConcertHost.Current;
+        try
+        {
+            var stub = new StubHost();
+            ConcertHost.Current = stub;
+            ConcertHost.Current.ResolveArtistPageLocation(null);
+            Assert.Equal(1, stub.ArtistPageCalls);
 
-        var schedule = new ArtistConcertSchedule(
-            new ArtistRef("id", "spotify:artist:x", "Artist"), HeaderImage: null,
-            Concerts: new[] { Show("c:1", 2025, 5, 1) });
-        switchable.SetInner(new StubConcertService(schedule));
-
-        var result = await switchable.GetArtistScheduleAsync("spotify:artist:x");
-        Assert.NotNull(result);
-        Assert.Single(result!.Concerts);
-
-        switchable.SetInner(new NullConcertService());   // reset (the GoOffline path)
-        Assert.Null(await switchable.GetArtistScheduleAsync("spotify:artist:x"));
+            ConcertHost.Current = ConcertHost.Offline;           // reset (the sign-out path)
+            ConcertHost.Current.ResolveArtistPageLocation(null);
+            Assert.Equal(1, stub.ArtistPageCalls);
+        }
+        finally
+        {
+            ConcertHost.Current = previous;
+        }
     }
 
     [Fact]
-    public void SwitchableConcertService_RejectsNullInner()
+    public void Host_RejectsNull() => Assert.Throws<ArgumentNullException>(() => ConcertHost.Current = null!);
+
+    sealed class StubHost : ConcertHost
     {
-        var switchable = new SwitchableConcertService(new NullConcertService());
-        Assert.Throws<ArgumentNullException>(() => switchable.SetInner(null!));
-    }
-
-    // A minimal live-style adapter that only answers GetArtistScheduleAsync; every other member defers to Null semantics.
-    sealed class StubConcertService : IConcertService
-    {
-        readonly ArtistConcertSchedule _schedule;
-        readonly NullConcertService _rest = new();
-        public StubConcertService(ArtistConcertSchedule schedule) => _schedule = schedule;
-
-        public Task<ArtistConcertSchedule?> GetArtistScheduleAsync(string artistUri, string? geoHash = null,
-            bool includeNearby = true, CancellationToken cancellationToken = default) =>
-            Task.FromResult<ArtistConcertSchedule?>(_schedule);
-
-        public Task<IReadOnlyList<ConcertConcept>> GetConceptsAsync(string geoHash, string? selectedConceptUri = null,
-            CancellationToken cancellationToken = default) => _rest.GetConceptsAsync(geoHash, selectedConceptUri, cancellationToken);
-        public Task<ConcertFeedPage?> GetFeedAsync(ConcertFeedQuery query, CancellationToken cancellationToken = default) =>
-            _rest.GetFeedAsync(query, cancellationToken);
-        public Task<int?> GetFeedCountAsync(ConcertFeedQuery query, CancellationToken cancellationToken = default) =>
-            _rest.GetFeedCountAsync(query, cancellationToken);
-        public Task<ConcertDetails?> GetDetailsAsync(string concertUri, bool authenticated = true,
-            CancellationToken cancellationToken = default) => _rest.GetDetailsAsync(concertUri, authenticated, cancellationToken);
-        public Task<ConcertPlace?> GetUserLocationAsync(CancellationToken cancellationToken = default) =>
-            _rest.GetUserLocationAsync(cancellationToken);
-        public Task<ConcertPlace?> GetArtistPageLocationAsync(CancellationToken cancellationToken = default) =>
-            _rest.GetArtistPageLocationAsync(cancellationToken);
-        public Task<bool?> IsUserLocationInferredAsync(CancellationToken cancellationToken = default) =>
-            _rest.IsUserLocationInferredAsync(cancellationToken);
-        public Task<IReadOnlyList<ConcertPlace>> SearchLocationsAsync(string query, CancellationToken cancellationToken = default) =>
-            _rest.SearchLocationsAsync(query, cancellationToken);
-        public Task<IReadOnlyList<ConcertPlace>> ReverseLocationAsync(GeoCoordinates coordinates, CancellationToken cancellationToken = default) =>
-            _rest.ReverseLocationAsync(coordinates, cancellationToken);
-        public Task<ConcertLocationSnapshot?> GetLocationDetailsAsync(string? placeId, bool isAnonymous = false,
-            CancellationToken cancellationToken = default) => _rest.GetLocationDetailsAsync(placeId, isAnonymous, cancellationToken);
-        public Task<bool> SaveLocationAsync(string placeId, CancellationToken cancellationToken = default) =>
-            _rest.SaveLocationAsync(placeId, cancellationToken);
+        public int ArtistPageCalls;
+        public override void ResolveLocation(Action<bool>? done) => done?.Invoke(false);
+        public override void ResolveArtistPageLocation(Action<bool>? done) { ArtistPageCalls++; done?.Invoke(true); }
+        public override void Concepts(int placeSlot, string? biasConceptUri, Action<bool>? done) => done?.Invoke(false);
+        public override void Feed(int feedSlot, ConcertFeedQuery query, bool append, Action<bool>? done) => done?.Invoke(false);
+        public override void Count(int feedSlot, ConcertFeedQuery query, uint askVersion, Action<bool>? done) => done?.Invoke(false);
+        public override void SearchPlaces(string query, Action<ConcertPlaceAnswer> done) => done(ConcertPlaceAnswer.Empty);
+        public override void ReversePlaces(double latitude, double longitude, Action<ConcertPlaceAnswer> done) => done(ConcertPlaceAnswer.Empty);
+        public override void SavePlace(int placeSlot, Action<bool> done) => done(false);
     }
 }

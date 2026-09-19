@@ -1,0 +1,12 @@
+{ "data": { "searchV2": { "tracksV2": { "totalCount": 5, "items": [
+  { "item": { "data": {
+    "uri": "spotify:track:7qiZfU4dY1lWllzX7mPBI3",
+    "name": "Fourth",
+    "albumOfTrack": { "uri": "spotify:album:3T4tUhGYeRNVUGevb0wThu", "name": "Album B" }
+  } } },
+  { "matchedFields": [ "LYRICS" ], "item": { "data": {
+    "uri": "spotify:track:3n3Ppam7vgaVa1iaRUc9Lp",
+    "name": "Fifth",
+    "albumOfTrack": { "uri": "spotify:album:3T4tUhGYeRNVUGevb0wThu", "name": "Album B" }
+  } } }
+] } } } }

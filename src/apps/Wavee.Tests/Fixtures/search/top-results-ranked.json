@@ -1,0 +1,67 @@
+{ "data": { "searchV2": {
+  "chipOrder": { "items": [
+    { "typeName": "TRACKS" },
+    { "typeName": "ARTISTS" },
+    { "typeName": "ALBUMS" },
+    { "typeName": "PLAYLISTS", "totalCount": 7 },
+    { "typeName": "USERS" },
+    { "typeName": "TRACKS" }
+  ] },
+  "topResultsV2": { "itemsV2": [
+    { "matchedFields": [ "LYRICS" ], "item": { "__typename": "TrackResponseWrapper", "data": {
+      "__typename": "Track",
+      "uri": "spotify:track:0TDLuuLlV54CkRRUOahJb4",
+      "name": "BIRDS OF A FEATHER",
+      "trackMediaType": "VIDEO",
+      "albumOfTrack": { "uri": "spotify:album:4m2880jivSbbyEGAKfITCa", "name": "HIT ME HARD AND SOFT",
+        "coverArt": { "sources": [ { "url": "https://i.scdn.co/image/lyrics", "width": 300, "height": 300 } ] } },
+      "artists": { "items": [
+        { "uri": "spotify:artist:1Cs0zKBU1kc0i8ypK3B9ai", "profile": { "name": "Billie Eilish" } }
+      ] }
+    } } },
+    { "matchedFields": [ "NAME" ], "item": { "__typename": "ArtistResponseWrapper", "data": {
+      "__typename": "Artist",
+      "uri": "spotify:artist:5WUlDfRSoLAfcVSX1WnrxN",
+      "profile": { "name": "Sia" },
+      "visuals": { "avatarImage": { "sources": [ { "url": "https://i.scdn.co/image/sia", "width": 640, "height": 640 } ] } }
+    } } },
+    { "item": { "__typename": "AlbumResponseWrapper", "data": {
+      "__typename": "Album",
+      "uri": "spotify:album:2noRn2Aes5aoNVsU6iWThc",
+      "name": "Discovery",
+      "type": "ALBUM",
+      "coverArt": { "sources": [ { "url": "https://i.scdn.co/image/discovery", "width": 300, "height": 300 } ] },
+      "artists": { "items": [
+        { "uri": "spotify:artist:4tZwfgrHOc3mvqYlEYSvVi", "profile": { "name": "Daft Punk" } }
+      ] }
+    } } },
+    { "item": { "__typename": "AudiobookResponseWrapper", "data": {
+      "uri": "spotify:audiobook:7iHfbu1YPACw6oZPAFJtqe",
+      "name": "Summary of Goodbye, Things",
+      "authorsV2": { "items": [ { "name": "Abbey Beathan" } ] }
+    } } },
+    { "matchedFields": [ "LYRICS" ], "item": {
+      "__typename": "Playlist",
+      "uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M",
+      "name": "Direct Playlist",
+      "ownerV2": { "data": { "uri": "spotify:user:spotify", "name": "Spotify" } },
+      "images": { "items": [ { "sources": [ { "url": "https://i.scdn.co/image/pl", "width": 300, "height": 300 } ] } ] }
+    } },
+    { "item": { "__typename": "UserResponseWrapper", "data": {
+      "__typename": "User",
+      "uri": "spotify:user:smokeuser",
+      "displayName": "Smoke User",
+      "username": "smokeuser",
+      "avatar": { "sources": [ { "url": "https://i.scdn.co/image/user", "width": 64, "height": 64 } ] }
+    } } }
+  ] },
+  "tracksV2": { "totalCount": 120, "items": [
+    { "item": { "data": {
+      "uri": "spotify:track:7qiZfU4dY1lWllzX7mPBI3",
+      "name": "Shape of You",
+      "albumOfTrack": { "uri": "spotify:album:3T4tUhGYeRNVUGevb0wThu", "name": "Divide" }
+    } } }
+  ] },
+  "artists": { "totalCount": 40, "items": [] },
+  "podcasts": { "totalCount": 3, "items": [] }
+} } }

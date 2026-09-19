@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package spotify.resumption.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Wavee.Protocol.Resumption";
+option optimize_for = CODE_SIZE;
+
+// Field NUMBERS are wire facts; names are inferred. Settled against two Fiddler captures of the official desktop client
+// 1.2.96.518 (2026-09-19; C:\WAVEE\wavee-captures\fresh-client-2026-09-19\findings-podcast-wire.md §3.2, §4.1). Every
+// message keeps what it does not declare: proto3 C# round-trips unknown fields.
+
+message ListCurrentStatesRequest {
+  int32 limit = 2;    // official: 1000
+  string filter = 4;  // CEL over update_time; the official client omits it on a cold first sync
+}
+
+message ListCurrentStatesResponse {
+  repeated CurrentStateEntry states = 1;   // no page token; episodes, then albums, then playlists, each by uri
+}
+
+message CreateResumePointRevisionRequest {
+  string entity_uri = 2;
+  CurrentStateRevision revision = 4;       // {value, create_time}; the official write leaves value.entity_uri out
+}
+
+message CreateResumePointRevisionResponse {
+  repeated CurrentStateRevision revisions = 1;
+}
+
+message BatchCreateResumePointRevisionsRequest {
+  repeated CreateResumePointRevisionRequest requests = 2;
+}
+
+message BatchCreateResumePointRevisionsResponse {
+  repeated BatchCreateResult results = 1;  // grouped by entity; each result can contain multiple revisions (vc4 #410)
+}
+
+message BatchCreateResult {
+  string entity_uri = 1;
+  CreateResumePointRevisionResponse result = 2;
+}
+
+message ListResumePointRevisionsRequest {
+  string entity_uri = 2;
+  int32 limit = 3;
+  string page_token = 4;
+}
+
+message ListResumePointRevisionsResponse {
+  repeated CurrentStateRevision revisions = 1;
+  string next_page_token = 2;              // "500" after the play-history read's first 500
+}
+
+message CurrentStateEntry {
+  string entity_uri = 1;
+  // REPEATED: the CEL filter's own name for it is `cs.resume_point_revisions`, and the cold answer's 4FQr carried TWO
+  // (a newer position, an older marker 4). Declared singular, the parser MERGED them and the older marker won.
+  repeated CurrentStateRevision revisions = 2;
+}
+
+message CurrentStateRevision {
+  string revision_id = 1;                         // uuid, assigned by the server
+  CurrentStateValue value = 2;
+  google.protobuf.Timestamp create_time = 3;      // the writing client's clock
+  google.protobuf.Timestamp update_time = 4;      // the server's clock (may precede create_time)
+}
+
+message CurrentStateValue {
+  string entity_uri = 1;                          // the server fills it in; the official write omits it
+  oneof state {
+    // THE position: {seconds, nanos}, nanos a whole number of ms; `{}` = 0 = pathfinder NOT_STARTED. Proven by five
+    // exact matches against the official `showItemsPlayedState` ({141, 122000000} = 141 122 ms, {20} = 20 000 ms, …)
+    // and by the official video writes. It was never microseconds in field 2.
+    google.protobuf.Duration resume_point = 2;
+    // Empty. PROVISIONAL "started, no position yet": the official desktop wrote it for an episode the moment a fresh
+    // play of it began (vc2 #359). Not "completed".
+    StateMarker marker_3 = 3;
+    // Empty. PROVISIONAL "finished": its one sample (4FQr) is stamped exactly its duration after a plausible start.
+    // Neither marker is proven — a capture of mark played / mark unplayed / a natural end settles both.
+    StateMarker marker_4 = 4;
+    // An album/playlist context resume ({1 item uri, 2 item state, 3 = 1, 4 row uid}). Raw bytes: lossless, never read.
+    bytes context = 12;
+    // vc4 #312: paired with a markedasfinished collection add. Not independently a completion flag.
+    StateMarker marker_8 = 8;
+  }
+  string item_uri = 6;                            // the play-history head's item (its value carries only this)
+}
+
+// What markers 3 and 4 carry: nothing.
+message StateMarker {
+}

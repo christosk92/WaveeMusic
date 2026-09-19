@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wavee Podcast Reader</title>
+<style>
+  /* ───────── lab + Wavee tokens (light first, dark below) ───────── */
+  :root{
+    --lab-bg:#e8ebf1; --lab-grad:linear-gradient(160deg,#e6e2ee 0%,#eef0f5 45%,#e3e9f4 100%);
+    --lab-panel:rgba(255,255,255,.66); --lab-stroke:rgba(0,0,0,.08); --lab-text:#1b1f27; --lab-muted:#5a6270;
+    --mica:rgba(243,246,251,.88); --mica-edge:rgba(0,0,0,.10);
+    --layer:rgba(255,255,255,.55);      /* Tok.FillLayerDefault */
+    --card:rgba(255,255,255,.80);       /* Tok.FillCardDefault */
+    --card-2:rgba(255,255,255,.55);     /* Tok.FillCardSecondary */
+    --stroke-card:rgba(0,0,0,.09);      /* Tok.StrokeCardDefault */
+    --stroke-div:rgba(0,0,0,.07);       /* Tok.StrokeDividerDefault */
+    --ctrl:rgba(0,0,0,.045); --ctrl-hover:rgba(0,0,0,.08); --ctrl-on:rgba(0,0,0,.11);   /* Tok.FillSubtle* */
+    --text-1:#1b1b1b; --text-2:#5d6470; --text-3:#8a919c;
+    --accent:#0f6cbd; --accent-text:#0a5aa0; --on-accent:#fff;
+    --shadow:0 18px 44px rgba(20,30,50,.20); --card-shadow:0 2px 8px rgba(0,0,0,.14);
+    --shimmer-a:rgba(0,0,0,.06); --shimmer-b:rgba(0,0,0,.12);
+    --tint-mix:62%;                      /* how much of the show tone survives on this ground */
+    --wash-a:.20; --t1:#b26a00; --t2:#7a3fd0; --tw:#c42b1c;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --lab-bg:#0e1014; --lab-grad:linear-gradient(160deg,#1a1626 0%,#111520 45%,#0e1219 100%);
+      --lab-panel:rgba(27,30,37,.82); --lab-stroke:rgba(255,255,255,.09); --lab-text:#f5f6f8; --lab-muted:#9da4b0;
+      --mica:rgba(32,32,36,.92); --mica-edge:rgba(255,255,255,.10);
+      --layer:rgba(255,255,255,.035); --card:rgba(255,255,255,.055); --card-2:rgba(255,255,255,.03);
+      --stroke-card:rgba(255,255,255,.09); --stroke-div:rgba(255,255,255,.08);
+      --ctrl:rgba(255,255,255,.055); --ctrl-hover:rgba(255,255,255,.10); --ctrl-on:rgba(255,255,255,.14);
+      --text-1:#ffffff; --text-2:rgba(255,255,255,.77); --text-3:rgba(255,255,255,.53);
+      --accent:#60cdff; --accent-text:#a6d8ff; --on-accent:#000;
+      --shadow:0 20px 50px rgba(0,0,0,.55); --card-shadow:0 2px 8px rgba(0,0,0,.30);
+      --shimmer-a:rgba(255,255,255,.06); --shimmer-b:rgba(255,255,255,.12);
+      --tint-mix:100%; --wash-a:.26; --t1:#ffc466; --t2:#c9a6ff; --tw:#ff9d9d;
+    }
+  }
+  :root[data-theme="dark"]{
+    --lab-bg:#0e1014; --lab-grad:linear-gradient(160deg,#1a1626 0%,#111520 45%,#0e1219 100%);
+    --lab-panel:rgba(27,30,37,.82); --lab-stroke:rgba(255,255,255,.09); --lab-text:#f5f6f8; --lab-muted:#9da4b0;
+    --mica:rgba(32,32,36,.92); --mica-edge:rgba(255,255,255,.10);
+    --layer:rgba(255,255,255,.035); --card:rgba(255,255,255,.055); --card-2:rgba(255,255,255,.03);
+    --stroke-card:rgba(255,255,255,.09); --stroke-div:rgba(255,255,255,.08);
+    --ctrl:rgba(255,255,255,.055); --ctrl-hover:rgba(255,255,255,.10); --ctrl-on:rgba(255,255,255,.14);
+    --text-1:#ffffff; --text-2:rgba(255,255,255,.77); --text-3:rgba(255,255,255,.53);
+    --accent:#60cdff; --accent-text:#a6d8ff; --on-accent:#000;
+    --shadow:0 20px 50px rgba(0,0,0,.55); --card-shadow:0 2px 8px rgba(0,0,0,.30);
+    --shimmer-a:rgba(255,255,255,.06); --shimmer-b:rgba(255,255,255,.12);
+    --tint-mix:100%; --wash-a:.26; --t1:#ffc466; --t2:#c9a6ff; --tw:#ff9d9d;
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0; padding-block:28px 80px; padding-inline:20px; color:var(--lab-text);
+    background:var(--lab-bg) var(--lab-grad) fixed;
+    font-family:"Segoe UI Variable Text","Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif; font-size:14px; line-height:1.45}
+  h1,h2,h3,h4{font-family:"Segoe UI Variable Display","Segoe UI Variable","Segoe UI",system-ui,sans-serif; margin:0; text-wrap:balance}
+  .wrap{max-width:1500px; margin:0 auto}
+  .intro h1{font-size:30px; font-weight:600; letter-spacing:-.015em}
+  .intro p{color:var(--lab-muted); max-width:80ch; margin:8px 0 0}
+  .eyebrow{font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--lab-muted); font-weight:600}
+  code{background:rgba(127,127,127,.14); padding:1px 5px; border-radius:4px; font-size:12.5px}
+  a{color:var(--accent-text)}
+
+  /* lab bar */
+  .bar{display:flex; flex-wrap:wrap; gap:10px 20px; align-items:center; margin:18px 0 14px; padding:12px 14px;
+    background:var(--lab-panel); border:1px solid var(--lab-stroke); border-radius:10px; backdrop-filter:blur(20px)}
+  .grp{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .grp .lbl{font-size:12px; color:var(--lab-muted)}
+  .seg{display:inline-flex; gap:2px; padding:2px; border-radius:6px; background:var(--ctrl); border:1px solid var(--stroke-card); flex-wrap:wrap}
+  .seg button{all:unset; cursor:pointer; font:inherit; font-size:12.5px; padding:4px 10px; border-radius:4px; color:var(--lab-muted)}
+  .seg button:hover{background:var(--ctrl-hover); color:var(--lab-text)}
+  .seg button:focus-visible{outline:2px solid var(--accent)}
+  .seg button[aria-pressed="true"]{background:var(--ctrl-on); color:var(--lab-text); font-weight:600}
+  .key{display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--lab-muted); margin:0 2px 12px}
+  .key i{display:inline-block; width:14px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px; border:1.5px dashed}
+
+  /* ───────── the window ───────── */
+  .stage{overflow-x:auto; padding-bottom:6px}
+  .win{--show:#d99a3c; --show-2:#7a3d12; --show-on:#1c1000;
+    --tone:color-mix(in srgb, var(--show) var(--tint-mix), var(--text-1));
+    margin:0 auto; border-radius:10px; overflow:hidden; position:relative; isolation:isolate; color:var(--text-1);
+    background:var(--mica); border:1px solid var(--mica-edge); box-shadow:var(--shadow);
+    -webkit-backdrop-filter:blur(30px) saturate(1.4); backdrop-filter:blur(30px) saturate(1.4);
+    display:grid; grid-template-rows:48px 1fr 72px; width:1440px; height:900px;
+    transition:width .35s cubic-bezier(.2,.7,.2,1)}
+  .win::before{content:""; position:absolute; inset:0; z-index:-1; opacity:var(--wash-a); transition:background .5s;
+    background:radial-gradient(70% 60% at 12% 0%, var(--show), transparent 70%), radial-gradient(50% 45% at 100% 100%, var(--show-2), transparent 70%)}
+  .win.w-md{width:1120px} .win.w-sm{width:760px} .win.w-xs{width:480px}
+  .win svg{width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; flex:none}
+  .win button{font:inherit; color:inherit}
+  @media (prefers-reduced-motion: reduce){ .win, .win::before, .win *{transition:none!important; animation:none!important} }
+
+  /* data tiers: what the app can honestly draw */
+  .win[data-tier="0"] [data-t="1"], .win[data-tier="0"] [data-t="2"], .win[data-tier="1"] [data-t="2"]{display:none!important}
+  .win.annot [data-t="1"]{outline:1.5px dashed var(--t1); outline-offset:2px}
+  .win.annot [data-t="2"]{outline:1.5px dashed var(--t2); outline-offset:2px}
+  .win.annot [data-w]{outline:1.5px dashed var(--tw); outline-offset:2px}
+
+  .titlebar{display:flex; align-items:center; gap:4px; padding:0 6px 0 10px}
+  .tb{all:unset; width:40px; height:34px; border-radius:6px; display:grid; place-items:center; color:var(--text-2); cursor:pointer}
+  .tb:hover{background:var(--ctrl-hover); color:var(--text-1)}
+  .crumb{display:flex; align-items:center; gap:6px; min-width:0; font-size:13px; color:var(--text-3); padding-left:6px}
+  .crumb button{all:unset; cursor:pointer; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px}
+  .crumb button:hover{color:var(--text-1)} .crumb button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .crumb b{color:var(--text-1); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px}
+  .omni{margin-left:auto; width:380px; max-width:30%; height:32px; border-radius:6px; background:var(--ctrl); border:1px solid var(--stroke-card);
+    display:flex; align-items:center; gap:8px; padding:0 10px; color:var(--text-3); font-size:13.5px; white-space:nowrap; overflow:hidden}
+  .win.w-xs .omni, .win.w-sm .omni{display:none}
+  .winbtns{margin-left:auto; display:flex}
+  .omni + .winbtns{margin-left:8px}
+
+  .body{display:grid; grid-template-columns:56px 1fr; min-height:0}
+  .win.w-xs .body{grid-template-columns:1fr} .win.w-xs .side{display:none}
+  .side{display:flex; flex-direction:column; align-items:center; gap:10px; padding:10px 0}
+  .side i{width:34px; height:34px; border-radius:6px; display:block; opacity:.85}
+  .side i.on{outline:2px solid var(--tone); outline-offset:2px}
+  .content{min-width:0; min-height:0; background:var(--layer); border-radius:8px 0 0 0; border:1px solid var(--stroke-card); border-right:0; border-bottom:0;
+    display:grid; grid-template-columns:var(--railW,296px) 1fr}
+  .win.w-md .content{--railW:248px} .win.w-sm .content{--railW:212px}
+  .win.w-xs .content{grid-template-columns:1fr; grid-template-rows:auto 1fr; border-radius:0; border-left:0}
+
+  /* ── identity rail ── */
+  .pane{min-height:0; overflow:auto; scrollbar-width:thin; padding:24px 12px 24px 20px; display:flex; flex-direction:column; gap:14px; border-right:1px solid var(--stroke-div)}
+  .win.w-xs .pane{flex-direction:row; flex-wrap:wrap; gap:12px 14px; padding:14px 16px; border-right:0; border-bottom:1px solid var(--stroke-div); overflow:visible}
+  .win.w-xs .pane .cover{width:112px; flex:none} .win.w-xs .pane .idtext{flex:1; min-width:0} .win.w-xs .pane .blurb, .win.w-xs .pane .topics{display:none}
+  .win.w-xs .pane .cta, .win.w-xs .pane .ledger{flex-basis:100%}
+  .cover{aspect-ratio:1; width:100%; border-radius:8px; box-shadow:var(--card-shadow); position:relative; overflow:hidden; color:#fff; flex:none;
+    background:linear-gradient(140deg, var(--c1), var(--c2)); display:grid; align-content:end; padding:9%}
+  .cover::before{content:""; position:absolute; inset:0; background:radial-gradient(90% 70% at 85% 10%, rgba(255,255,255,.28), transparent 60%)}
+  .cover span{position:relative; font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-weight:300; text-transform:lowercase; line-height:.95; letter-spacing:-.03em; font-size:var(--cf,34px); overflow-wrap:anywhere}
+  .cover em{position:absolute; top:7%; right:9%; font-style:normal; font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-weight:300; font-size:calc(var(--cf,34px)*1.5); opacity:.85; font-variant-numeric:tabular-nums}
+  .badges{display:flex; flex-wrap:wrap; gap:6px; align-items:center}
+  .kicker{font-size:12px; font-weight:600; color:var(--text-2); letter-spacing:.02em}
+  .chip{font-size:11px; font-weight:600; line-height:16px; padding:0 6px; border-radius:3px; background:var(--ctrl-on); color:var(--text-2); display:inline-flex; align-items:center; gap:4px; white-space:nowrap}
+  .chip svg{width:11px; height:11px} .chip.tone{background:color-mix(in srgb, var(--show) 22%, transparent); color:var(--tone)}
+  .pane h2{font-size:28px; line-height:34px; font-weight:600; letter-spacing:-.02em; text-transform:lowercase; overflow-wrap:anywhere}
+  .win.tall .pane h2{font-size:36px; line-height:42px; font-weight:300; letter-spacing:-.03em}
+  .pane.ep h2{font-size:22px; line-height:28px; text-transform:none; font-weight:600; letter-spacing:-.01em}
+  .idtext{display:flex; flex-direction:column; gap:6px}
+  .by{font-size:13px; color:var(--text-2)} .meta{font-size:12px; color:var(--text-3); font-variant-numeric:tabular-nums}
+  .showlink{all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--tone)}
+  .showlink i{width:24px; height:24px; border-radius:4px; background:linear-gradient(140deg,var(--c1),var(--c2))}
+  .showlink:hover{text-decoration:underline} .showlink:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .ratewrap{position:relative; align-self:flex-start}
+  .rating{all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-2); border-radius:4px; padding:2px 4px; margin-left:-4px; position:relative; font-variant-numeric:tabular-nums}
+  .rating:hover{background:var(--ctrl-hover)} .rating:focus-visible{outline:2px solid var(--accent)}
+  .rating svg{width:13px; height:13px; fill:var(--tone); stroke:none}
+  .flyout{position:absolute; top:26px; left:0; z-index:5; width:230px; padding:12px; border-radius:8px; background:var(--mica); border:1px solid var(--stroke-card); box-shadow:var(--shadow); cursor:default; color:var(--text-1)}
+  .flyout .stars{display:flex; gap:4px; margin:8px 0} .flyout .stars button{all:unset; cursor:pointer; padding:2px; border-radius:4px}
+  .flyout .stars svg{width:22px; height:22px; stroke:var(--tone); fill:none} .flyout .stars button.on svg{fill:var(--tone)}
+  .flyout small{color:var(--text-3); display:block; line-height:1.35}
+  .ledger{display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--text-2); font-variant-numeric:tabular-nums}
+  .ledger .lbar{display:flex; height:4px; gap:2px; border-radius:2px; overflow:hidden}
+  .ledger .lbar i{display:block; height:100%; border-radius:2px; min-width:2px}
+  .ledger .lbar .p{background:var(--tone)} .ledger .lbar .g{background:color-mix(in srgb, var(--show) 45%, transparent)} .ledger .lbar .u{background:var(--ctrl-on)}
+  .ledger b{color:var(--text-1); font-weight:600}
+  .topics{display:flex; flex-wrap:wrap; gap:4px 12px}
+  .topics button{all:unset; cursor:pointer; font-size:13px; color:var(--text-2); text-transform:lowercase; border-radius:3px}
+  .topics button:hover{color:var(--tone); text-decoration:underline} .topics button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .cta{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+  .pill{all:unset; cursor:pointer; height:36px; padding:0 18px 0 14px; border-radius:999px; display:inline-flex; align-items:center; gap:8px; font-weight:600; font-size:13.5px;
+    background:var(--show); color:var(--show-on); white-space:nowrap; transition:transform .12s}
+  .pill:hover{filter:brightness(1.07)} .pill:active{transform:scale(.97)} .pill:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .pill svg{fill:currentColor; stroke:none} .pill.ghost{background:var(--ctrl-on); color:var(--text-1)}
+  .pill.ghost svg{fill:none; stroke:currentColor}
+  .fab{all:unset; cursor:pointer; width:36px; height:36px; border-radius:50%; display:grid; place-items:center; color:var(--text-2); background:var(--ctrl); transition:transform .12s}
+  .fab:hover{background:var(--ctrl-hover); color:var(--text-1); transform:scale(1.07)} .fab:active{transform:scale(.92)}
+  .fab:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .fab[aria-pressed="true"]{color:var(--tone)} .fab[aria-pressed="true"] svg.fillable{fill:currentColor}
+  .blurb{font-size:12.5px; line-height:1.5; color:var(--text-2); display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden}
+  .textlink{all:unset; cursor:pointer; font-size:12.5px; color:var(--tone); font-weight:600; border-radius:3px}
+  .textlink:hover{text-decoration:underline} .textlink:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* ── reader column ── */
+  .reader{min-width:0; min-height:0; overflow:auto; scrollbar-width:thin; padding:14px 24px 40px 24px; display:flex; flex-direction:column; gap:26px; scroll-behavior:smooth}
+  .win.w-xs .reader, .win.w-sm .reader{padding-inline:16px}
+  .sec{display:flex; flex-direction:column; gap:12px; min-width:0}
+  .sechead{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap}
+  .sechead h3{font-size:24px; line-height:30px; font-weight:300; letter-spacing:-.02em; text-transform:lowercase; color:var(--text-1)}
+  .sechead h3 small{font-size:13px; font-weight:400; color:var(--text-3); letter-spacing:0; margin-left:6px; font-variant-numeric:tabular-nums}
+  .sechead .sub{font-size:12.5px; color:var(--text-3)} .sechead .push{margin-left:auto}
+  .wordrail{display:flex; align-items:center; gap:16px; min-height:34px; font-size:14px; overflow-x:auto; scrollbar-width:none; white-space:nowrap;
+    position:sticky; top:-14px; z-index:3; margin:-14px -24px 0; padding:12px 24px 8px; background:color-mix(in srgb, var(--mica) 92%, transparent); backdrop-filter:blur(16px)}
+  .win.w-xs .wordrail, .win.w-sm .wordrail{margin-inline:-16px; padding-inline:16px; -webkit-mask-image:linear-gradient(90deg,#000 88%,transparent)}
+  .wordrail button.w{all:unset; cursor:pointer; color:var(--text-1); opacity:.5; text-transform:lowercase; padding:2px 0; position:relative; border-radius:3px}
+  .wordrail button.w:hover{opacity:.85} .wordrail button.w:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .wordrail button.w[aria-pressed="true"]{opacity:1; font-weight:600}
+  .wordrail button.w[aria-pressed="true"]::after{content:""; position:absolute; left:0; right:0; bottom:-3px; height:2px; border-radius:1px; background:var(--tone)}
+  .wordrail button.w small{font-size:11px; opacity:.7; margin-left:3px; font-variant-numeric:tabular-nums}
+  .wordrail .spacer{flex:1; min-width:12px} .wordrail .sep{width:1px; height:16px; background:var(--stroke-div)}
+  .wordrail.big{font-size:20px; gap:22px} .wordrail.big button.w{font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-weight:300} .wordrail.big button.w[aria-pressed="true"]{font-weight:400}
+  .find{display:flex; align-items:center; gap:6px; height:28px; padding:0 8px; border-radius:5px; background:var(--ctrl); border:1px solid var(--stroke-card); color:var(--text-3)}
+  .find input{all:unset; width:120px; font-size:12.5px; color:var(--text-1)} .find input::placeholder{color:var(--text-3)}
+  .find:focus-within{border-color:var(--tone)}
+  .summary{font-size:12.5px; color:var(--text-3); font-variant-numeric:tabular-nums} .summary b{color:var(--text-2); font-weight:600}
+
+  /* doors: the "start here" / prev-next cards */
+  .doors{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px}
+  .door{all:unset; cursor:pointer; box-sizing:border-box; display:flex; flex-direction:column; gap:8px; padding:14px; border-radius:8px; min-height:132px;
+    background:var(--card); border:1px solid var(--stroke-card); position:relative; overflow:hidden; transition:transform .15s, background .15s}
+  .door:hover{background:var(--ctrl-hover); transform:translateY(-1px)} .door:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .door.lead{background:linear-gradient(135deg, color-mix(in srgb, var(--show) 26%, transparent), var(--card) 70%)}
+  .door .lbl{font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--tone)}
+  .door .ttl{font-size:15px; font-weight:600; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .door .why{font-size:12px; color:var(--text-2); line-height:1.4}
+  .door .foot{margin-top:auto; display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-3); font-variant-numeric:tabular-nums}
+  .door .num{position:absolute; right:10px; top:-6px; font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-weight:300; font-size:64px; line-height:1; color:var(--text-1); opacity:.09; font-variant-numeric:tabular-nums; pointer-events:none}
+  .disc{width:32px; height:32px; border-radius:50%; background:var(--show); color:var(--show-on); display:grid; place-items:center; flex:none}
+  .disc svg{fill:currentColor; stroke:none; width:14px; height:14px}
+
+  /* continue hero */
+  .resume{display:grid; grid-template-columns:96px 1fr auto; gap:16px; align-items:center; padding:14px; border-radius:8px; cursor:pointer;
+    background:linear-gradient(100deg, color-mix(in srgb, var(--show) 30%, transparent), var(--card) 75%); border:1px solid var(--stroke-card)}
+  .resume:hover{filter:brightness(1.04)}
+  .resume .cover{--cf:15px} .resume .ttl{font-size:17px; font-weight:600; line-height:1.3}
+  .resume .left{font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-size:30px; font-weight:300; line-height:1; letter-spacing:-.02em; color:var(--tone); font-variant-numeric:tabular-nums}
+  .resume .left small{font-size:12.5px; font-weight:400; color:var(--text-2); letter-spacing:0; margin-left:6px}
+  .track{height:4px; border-radius:2px; background:var(--ctrl-on); overflow:hidden} .track i{display:block; height:100%; background:var(--tone); border-radius:2px}
+  .win.w-xs .resume{grid-template-columns:64px 1fr} .win.w-xs .resume .pill{grid-column:1/-1; justify-self:start}
+  .upnext{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px}
+  .mini{all:unset; cursor:pointer; box-sizing:border-box; display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:center; padding:8px 10px; border-radius:6px; background:var(--card-2); border:1px solid var(--stroke-div)}
+  .mini:hover{background:var(--ctrl-hover)} .mini:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .mini .n{font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-weight:300; font-size:22px; color:var(--text-3); min-width:34px; text-align:right; font-variant-numeric:tabular-nums}
+  .mini .t, .mini .m{display:block} .mini .t{font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis} .mini .m{font-size:11.5px; color:var(--text-3)}
+
+  /* episode rows — a reader, not boxed cards */
+  .group{font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-size:18px; font-weight:300; text-transform:lowercase; color:var(--text-3); letter-spacing:-.01em; padding:14px 0 4px}
+  .group:first-child{padding-top:0}
+  .erow{display:grid; grid-template-columns:auto 56px 1fr auto; gap:14px; align-items:start; padding:12px 8px; border-radius:6px; position:relative; cursor:pointer; border-top:1px solid var(--stroke-div)}
+  .group + .erow{border-top-color:transparent}
+  .erow:hover{background:var(--ctrl)} .erow:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+  .erow .num{width:46px; text-align:right; font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-weight:300; font-size:30px; line-height:56px; color:var(--text-3); font-variant-numeric:tabular-nums; letter-spacing:-.03em}
+  .erow .cover{--cf:10px; border-radius:6px; width:56px; padding:6px}
+  .erow .tx{min-width:0; display:flex; flex-direction:column; gap:3px}
+  .erow .ttl{font-size:14px; font-weight:600; line-height:1.35; display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center}
+  .erow .ttl span.name{display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .erow .desc{font-size:12.5px; color:var(--text-2); line-height:1.45; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .erow .mt{display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; font-size:12px; color:var(--text-3); font-variant-numeric:tabular-nums; margin-top:2px}
+  .erow .mt .prog{color:var(--tone); font-weight:600} .erow .mt .ok{display:inline-flex; gap:4px; align-items:center; color:var(--text-3)} .erow .mt .ok svg{width:12px; height:12px; color:var(--tone)}
+  .erow .mt .fresh{color:var(--tone); font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:10.5px}
+  .erow .track{height:3px; max-width:340px; margin-top:4px}
+  .erow.played .tx, .erow.played .num, .erow.played .cover{opacity:.58}
+  .erow.now .name{color:var(--tone)} .erow.now::before{content:""; position:absolute; left:0; top:12px; bottom:12px; width:3px; border-radius:2px; background:var(--tone)}
+  .acts{display:flex; gap:4px; align-items:center; opacity:0; transition:opacity .12s} .erow:hover .acts, .erow:focus-within .acts{opacity:1}
+  .acts .disc{all:unset; cursor:pointer; width:36px; height:36px; border-radius:50%; background:var(--show); color:var(--show-on); display:grid; place-items:center; opacity:1}
+  .erow .acts .disc{opacity:1} .acts.always{opacity:1}
+  .mini-ic{all:unset; cursor:pointer; width:30px; height:30px; border-radius:5px; display:grid; place-items:center; color:var(--text-2)}
+  .mini-ic:hover{background:var(--ctrl-hover); color:var(--text-1)} .mini-ic:focus-visible{outline:2px solid var(--accent)}
+  .win.w-xs .erow{grid-template-columns:48px 1fr auto} .win.w-xs .erow .num{display:none} .win.w-xs .erow .cover{width:48px} .win.w-xs .acts .mini-ic{display:none} .win.w-xs .acts{opacity:1}
+  .eq{display:inline-flex; gap:2px; align-items:flex-end; height:11px} .eq i{width:2.5px; background:var(--tone); border-radius:1px; animation:eq 1s ease-in-out infinite}
+  .eq i:nth-child(2){animation-delay:-.35s} .eq i:nth-child(3){animation-delay:-.7s} @keyframes eq{0%,100%{height:3px}50%{height:11px}}
+  .empty{padding:26px 8px; color:var(--text-2)} .empty b{display:block; font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-size:20px; font-weight:300; color:var(--text-1); text-transform:lowercase}
+  .caught{font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-size:24px; font-weight:300; letter-spacing:-.02em; text-transform:lowercase}
+  .caught small{display:block; font-family:"Segoe UI Variable Text","Segoe UI",sans-serif; font-size:12.5px; color:var(--text-3); letter-spacing:0; text-transform:none; margin-top:4px}
+
+  .about{font-size:14px; line-height:1.65; color:var(--text-2); max-width:68ch} .about p{margin:0 0 10px} .about b{color:var(--text-1)}
+  .facts{display:flex; flex-wrap:wrap; gap:8px 28px; margin-top:4px} .facts div{display:flex; flex-direction:column}
+  .facts dt{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-3); font-weight:600} .facts dd{margin:0; font-size:15px; color:var(--text-1)}
+  .ts{all:unset; cursor:pointer; color:var(--tone); font-weight:600; font-variant-numeric:tabular-nums; border-radius:3px} .ts:hover{text-decoration:underline} .ts:focus-visible{outline:2px solid var(--accent)}
+  .win[data-tier="0"] .ts, .win[data-tier="1"] .ts{color:inherit; font-weight:400; pointer-events:none}
+
+  .shelf{display:grid; grid-auto-flow:column; grid-auto-columns:148px; gap:14px; overflow-x:auto; scrollbar-width:thin; padding-bottom:6px}
+  .scard{all:unset; cursor:pointer; display:flex; flex-direction:column; gap:6px; border-radius:8px; padding:6px; margin:-6px}
+  .scard:hover{background:var(--ctrl)} .scard:focus-visible{outline:2px solid var(--accent)}
+  .scard .cover{--cf:18px} .scard .t{font-size:13px; font-weight:600; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .scard .m{font-size:12px; color:var(--text-3); font-variant-numeric:tabular-nums}
+
+  /* chapters */
+  .chap{all:unset; cursor:pointer; display:grid; grid-template-columns:54px 18px 1fr; gap:10px; border-radius:6px; padding:0 8px 0 0; width:100%; box-sizing:border-box}
+  .chap:hover{background:var(--ctrl)} .chap:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+  .chap .at{text-align:right; font-size:12.5px; color:var(--text-3); padding-top:13px; font-variant-numeric:tabular-nums}
+  .chap .rl{position:relative} .chap .rl::before{content:""; position:absolute; left:8px; top:0; bottom:0; width:2px; background:var(--ctrl-on)}
+  .chap .rl::after{content:""; position:absolute; left:4px; top:16px; width:10px; height:10px; border-radius:50%; background:var(--mica); border:2px solid var(--text-3)}
+  .chap.done .rl::before{background:var(--tone)} .chap.done .rl::after{background:var(--tone); border-color:var(--tone)}
+  .chap.live .rl::before{background:linear-gradient(var(--tone) 55%, var(--ctrl-on) 55%)} .chap.live .rl::after{border-color:var(--tone); box-shadow:0 0 0 5px color-mix(in srgb, var(--show) 25%, transparent)}
+  .chap .cx{padding:11px 0 13px; min-width:0} .chap .cx b{display:block; font-size:14px; font-weight:600} .chap.live .cx b{color:var(--tone)}
+  .chap .cx span{font-size:12.5px; color:var(--text-2)} .chap .cx em{font-style:normal; font-size:11px; color:var(--text-3); margin-left:8px; text-transform:lowercase}
+
+  /* transcript */
+  .tbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+  .tscript{max-width:66ch; display:flex; flex-direction:column; gap:16px}
+  .tscript h4{font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-3); display:flex; gap:10px; font-family:inherit}
+  .tscript p{margin:0; font-size:15.5px; line-height:1.75; color:var(--text-2)}
+  .tscript p span{cursor:pointer; border-radius:3px; padding:1px 0} .tscript p span:hover{background:var(--ctrl-hover); color:var(--text-1)}
+  .tscript p span.said{color:var(--text-1)} .tscript p span.saying{color:var(--text-1); background:color-mix(in srgb, var(--show) 24%, transparent)}
+
+  /* comments */
+  .composer{display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:8px; background:var(--card-2); border:1px dashed var(--stroke-card); color:var(--text-3); font-size:13px}
+  .composer span.grow{flex:1} .av{width:32px; height:32px; border-radius:50%; flex:none; background:linear-gradient(140deg,var(--a1,#8aa),var(--a2,#356)); display:grid; place-items:center; color:#fff; font-size:12px; font-weight:700}
+  .cmt{display:grid; grid-template-columns:32px 1fr; gap:12px; padding:12px 0; border-top:1px solid var(--stroke-div)}
+  .cmt .hd{font-size:12.5px; color:var(--text-3)} .cmt .hd b{color:var(--text-1); font-weight:600; margin-right:6px}
+  .cmt p{margin:3px 0 6px; font-size:14px; line-height:1.55; color:var(--text-2); max-width:66ch}
+  .cmt .ft{display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; font-size:12px; color:var(--text-3)}
+  .react{all:unset; cursor:pointer; display:inline-flex; gap:5px; align-items:center; padding:2px 8px; border-radius:999px; background:var(--ctrl); font-variant-numeric:tabular-nums}
+  .react:hover{background:var(--ctrl-hover)} .react:focus-visible{outline:2px solid var(--accent)}
+  .replies{grid-column:2; border-left:2px solid var(--stroke-div); padding-left:12px; margin-top:4px}
+  .replies .cmt{border-top:0; padding:8px 0}
+
+  /* your episodes */
+  .three{display:grid; grid-template-columns:232px 1fr 300px; min-height:0; grid-column:1/-1}
+  .win.w-md .three{grid-template-columns:200px 1fr 260px} .win.w-sm .three{grid-template-columns:180px 1fr} .win.w-xs .three{grid-template-columns:1fr}
+  .win.w-sm .three .detail, .win.w-xs .three .detail, .win.w-xs .three .shows{display:none}
+  .three > *{min-height:0; overflow:auto; scrollbar-width:thin; padding:16px}
+  .shows{border-right:1px solid var(--stroke-div); display:flex; flex-direction:column; gap:2px}
+  .shows h3, .three .mid h3{font-size:28px; font-weight:300; text-transform:lowercase; letter-spacing:-.02em; padding:2px 6px 10px}
+  .srow{all:unset; cursor:pointer; display:grid; grid-template-columns:36px 1fr auto; gap:10px; align-items:center; padding:6px; border-radius:6px; font-size:13px}
+  .srow:hover{background:var(--ctrl)} .srow[aria-pressed="true"]{background:var(--ctrl-on)} .srow:focus-visible{outline:2px solid var(--accent)}
+  .srow i{width:36px; height:36px; border-radius:5px; background:linear-gradient(140deg,var(--c1),var(--c2)); display:block}
+  .srow small{display:block; color:var(--text-3); font-size:11.5px} .srow b{font-weight:600} .srow .ct{color:var(--tone); font-weight:700; font-size:12px}
+  .detail{border-left:1px solid var(--stroke-div); display:flex; flex-direction:column; gap:12px} .detail .cover{--cf:22px}
+  /* browse */
+  .browse{grid-column:1/-1; min-height:0; overflow:auto; scrollbar-width:thin; padding:20px 28px 40px; display:flex; flex-direction:column; gap:24px}
+  .browse h2{font-size:64px; line-height:1; font-weight:200; letter-spacing:-.04em; text-transform:lowercase; white-space:nowrap; overflow:hidden}
+  .win.w-xs .browse h2{font-size:44px}
+  .hero3{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px}
+  .hero3 .door{min-height:150px}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:18px 14px}
+
+  /* skeleton */
+  .win.skel .sk{color:transparent!important; background:linear-gradient(90deg,var(--shimmer-a),var(--shimmer-b),var(--shimmer-a)) 0 0/200% 100%; border-radius:4px; animation:sh 1.4s linear infinite; box-shadow:none}
+  .win.skel .sk *{visibility:hidden} .win.skel .cover.sk{background:linear-gradient(90deg,var(--shimmer-a),var(--shimmer-b),var(--shimmer-a)) 0 0/200% 100%}
+  .win.skel [data-t], .win.skel .acts, .win.skel .doors, .win.skel .resume, .win.skel .upnext{display:none!important}
+  @keyframes sh{to{background-position:-200% 0}}
+
+  /* dock */
+  .dock{display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:16px; padding:0 16px; border-top:1px solid var(--stroke-div)}
+  .dock .np{display:flex; gap:12px; align-items:center; min-width:0} .dock .np .cover{width:48px; --cf:9px; padding:5px; border-radius:5px}
+  .dock .np b{display:block; font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis} .dock .np small{color:var(--text-3); font-size:12px}
+  .dock .tp{display:flex; align-items:center; gap:6px} .dock .tp .fab{background:none} .dock .tp .big{width:40px; height:40px; background:var(--text-1); color:var(--mica)} .dock .tp .big svg{fill:currentColor; stroke:none}
+  .dock .tp .fab:not(.big) svg{width:24px; height:24px; stroke-width:1.1} .dock .tp .fab span{font-size:8px; font-weight:700; position:absolute; margin-top:1px} .dock .tp .fab{position:relative}
+  .dock .rt{display:flex; justify-content:flex-end; align-items:center; gap:10px; color:var(--text-3); font-size:12px; font-variant-numeric:tabular-nums}
+  .speed{all:unset; cursor:pointer; font-size:12px; font-weight:700; padding:3px 8px; border-radius:999px; background:var(--ctrl-on); color:var(--text-1)}
+  .win.w-xs .dock{grid-template-columns:1fr auto} .win.w-xs .dock .rt{display:none} .win.w-sm .dock .rt .track{display:none}
+  .dock .rt .track{width:160px}
+
+  /* prose */
+  .notes{margin-top:34px; display:grid; gap:28px; color:var(--lab-text)}
+  .notes h2{font-size:22px; font-weight:600; letter-spacing:-.01em} .notes p, .notes li{color:var(--lab-muted); max-width:78ch} .notes li b, .notes p b{color:var(--lab-text)}
+  .notes ul{margin:8px 0 0; padding-left:18px; display:grid; gap:6px}
+  .tw{overflow-x:auto; margin-top:10px} table{border-collapse:collapse; font-size:13px; min-width:640px; width:100%}
+  th,td{text-align:left; padding:8px 12px 8px 0; border-bottom:1px solid var(--lab-stroke); vertical-align:top; color:var(--lab-muted)} th{color:var(--lab-text); font-weight:600} td b{color:var(--lab-text)}
+  .cols{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px 34px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="intro">
+    <div class="eyebrow">Wavee 0.3 · prototype · podcasts</div>
+    <h1>The podcast reader</h1>
+    <p>Same two panes as every detail page. The left rail is the show's identity and never moves; the right column is a reader whose first screen answers the question the visitor actually has — <b>"what is this and where do I start?"</b> for a new show, <b>"where was I and what's new?"</b> for one you follow. An episode gets its own page with chapters, a readable transcript and comments. Flip <em>visit</em> and <em>scene</em> below; <em>data</em> shows what 0.3 can draw today versus after the fetches listed at the bottom.</p>
+  </header>
+
+  <div class="bar" id="lab"></div>
+  <div class="key">
+    <span><i style="border-color:var(--t1)"></i>needs a decode of fields already in <code>metadata.proto</code></span>
+    <span><i style="border-color:var(--t2)"></i>needs a new fetch (pathfinder / spclient)</span>
+    <span><i style="border-color:var(--tw)"></i>no write path yet — designed, ships disabled-with-reason</span>
+    <span>outlines appear with <b>annotate</b> on</span>
+  </div>
+
+  <div class="stage"><div class="win" id="win" data-tier="2"></div></div>
+
+  <section class="notes">
+    <div class="cols">
+      <div><h2>The decisions</h2><ul>
+        <li><b>One frame, three visits.</b> <code>ShowVisit.Of(followed, anyProgress, newSinceLastPlay)</code> → New · Returning · CaughtUp, derived on the model. The rail's accent pill follows it: <b>Follow</b> → <b>Resume · 23 min left</b> → <b>Play latest</b>.</li>
+        <li><b>New: doors, not a wall.</b> Up to three "start here" cards — episode 1 leads for a serial, the latest leads for an episodic show, the trailer joins when one exists. The blurb moves right at full measure, with cadence and first-episode date as facts.</li>
+        <li><b>Returning: continue, then what's new.</b> One hero with time left in the Zune clock voice, the old app's listen-next walk (now honouring <code>consumption_order</code>), then episodes published since your last play.</li>
+        <li><b>A reader, not boxed cards.</b> Hairlines, month headers in Display Light, the episode number as a big light numeral. Played rows recede to 58 %; the playing row gets the tone bar and an equalizer.</li>
+        <li><b>Word rails, persisted per show.</b> Filter and sort are words; the rail sticks while you scroll and survives the narrow layout (today it vanishes under 540).</li>
+        <li><b>The show's own colour.</b> Wash, pills, progress and ticks take the cover's extracted tone — never brand green, the rule the WinUI app already learned.</li>
+        <li><b>Episode page = rail + reader.</b> about · chapters · transcript · comments as a Display word rail; timestamps in the description seek; below it prev/next doors, more from the show, and the recommendations the old app fetched but never mounted.</li>
+      </ul></div>
+      <div><h2>What a visitor wants</h2>
+        <div class="tw"><table><tr><th>Visitor</th><th>Question</th><th>First screen answers with</th></tr>
+        <tr><td><b>New</b></td><td>Is this for me? Where do I start?</td><td>rating · topics · cadence · start-here doors · full about</td></tr>
+        <tr><td><b>Returning</b></td><td>Where was I? What did I miss?</td><td>Resume pill with time left · continue hero · "new since you were here" · played ledger</td></tr>
+        <tr><td><b>Caught up</b></td><td>Anything new? When's the next one?</td><td>one quiet line with the usual release day, then the archive</td></tr>
+        <tr><td><b>Mid-episode</b></td><td>Where's the bit about X?</td><td>chapters rail · transcript search · timestamp links</td></tr>
+        <tr><td><b>Finished one</b></td><td>What next?</td><td>next-in-show door (order-aware) · more from the show · you might also like</td></tr></table></div>
+      </div>
+    </div>
+    <div><h2>Zune: taken, adapted, left</h2>
+      <div class="tw"><table><tr><th></th><th>What</th><th>Here</th></tr>
+      <tr><td><b>Taken</b></td><td>Words as navigation; lowercase Display Light; big numerals as content</td><td>word rails for filter/sort/tabs · section heads · episode numbers and "23 min left"</td></tr>
+      <tr><td><b>Taken</b></td><td>Type that runs to the edge and clips</td><td>the browse topic title; the word rail's fade at narrow widths</td></tr>
+      <tr><td><b>Adapted</b></td><td>The faded artist canvas behind the collection</td><td>a low-alpha wash of the show's palette over Mica — colour as atmosphere, not chrome</td></tr>
+      <tr><td><b>Adapted</b></td><td>Collection stats ("412 songs · 38 albums")</td><td>the played ledger: 84 played · 3 in progress · 5 new, with a three-part bar</td></tr>
+      <tr><td><b>Left</b></td><td>Horizontal panorama scrolling; all-caps tiles; zero chrome</td><td>Fluent keeps the pill, the 36-px round actions, cards where an object is genuinely separate, and visible focus</td></tr></table></div>
+    </div>
+    <div><h2>Where each element comes from</h2>
+      <p>Every read path below ran in the WinUI-era app (commit <code>0d0429a0</code>). Persisted-query hashes are from June and must be re-verified before building on them.</p>
+      <div class="tw"><table><tr><th>Tier</th><th>Elements</th><th>Source</th></tr>
+      <tr><td><b>today</b></td><td>cover, title, publisher, blurb, episode count, date, duration, device-local progress, follow, share</td><td><code>ShowV4</code> / <code>EpisodeV4</code> extended metadata</td></tr>
+      <tr><td><b>+ decode</b></td><td>explicit, episode number, trailer/bonus type, video flag, trailer uri, consumption order</td><td>same protos — fields 65/68/70/72/74/75/83/87, decoder change only</td></tr>
+      <tr><td><b>+ fetch</b></td><td>rating (+ yours, canRate), topics, palette, exclusive, HTML description</td><td>pathfinder <code>queryShowMetadataV2</code></td></tr>
+      <tr><td></td><td>resume points for every episode, across devices</td><td>spclient herodotus <code>ListCurrentStates</code> — one call, 2-min cache; write via <code>CreateResumePointRevision</code> (also gives mark played)</td></tr>
+      <tr><td></td><td>similar shows · recommended episodes</td><td><code>internalLinkRecommenderShow</code> · <code>internalLinkRecommenderEpisode</code></td></tr>
+      <tr><td></td><td>episode detail, transcript list, paywall, preview</td><td><code>getEpisodeOrChapter</code></td></tr>
+      <tr><td></td><td>chapters (paged 50) · transcript text</td><td><code>queryNpvEpisodeChapters</code> · <code>GET transcript-read-along/v2/episode/{id}</code></td></tr>
+      <tr><td></td><td>comments · replies · reactions</td><td><code>getCommentsForEntity</code> · <code>getReplies</code> · <code>getReactions</code></td></tr>
+      <tr><td><b>no write path</b></td><td>rate, post/reply/react, new-episode notifications, downloads</td><td>never existed (old app stubbed them) — drawn, outlined red with annotate on</td></tr></table></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const I = {
+    play:'<svg viewBox="0 0 16 16"><path d="M4.5 2.5v11l9-5.5z"/></svg>', pause:'<svg viewBox="0 0 16 16"><path d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/></svg>',
+    heart:'<svg class="fillable" viewBox="0 0 16 16"><path d="M8 13.5S2 10 2 5.8A3 3 0 0 1 8 4.6 3 3 0 0 1 14 5.8C14 10 8 13.5 8 13.5z"/></svg>',
+    plus:'<svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>', check:'<svg viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 4.8"/></svg>',
+    share:'<svg viewBox="0 0 16 16"><path d="M8 10V2.5M5 5l3-2.7L11 5M3 9v4h10V9"/></svg>', more:'<svg viewBox="0 0 16 16"><circle cx="3.5" cy="8" r=".8"/><circle cx="8" cy="8" r=".8"/><circle cx="12.5" cy="8" r=".8"/></svg>',
+    bell:'<svg class="fillable" viewBox="0 0 16 16"><path d="M4 11V7a4 4 0 0 1 8 0v4l1.2 1.5H2.8zM6.5 14h3"/></svg>', queue:'<svg viewBox="0 0 16 16"><path d="M2 4h8M2 8h8M2 12h5M12 9v5M9.5 11.5h5"/></svg>',
+    search:'<svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/></svg>', lock:'<svg viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>',
+    video:'<svg viewBox="0 0 16 16"><rect x="1.5" y="4" width="9" height="8" rx="1.2"/><path d="M10.5 7l4-2v6l-4-2z"/></svg>', doc:'<svg viewBox="0 0 16 16"><path d="M4 1.5h5.5L12.5 5v9.5h-8.5zM6 8h4.5M6 10.5h4.5"/></svg>',
+    back:'<svg viewBox="0 0 16 16"><path d="M9.5 3L4.5 8l5 5"/></svg>', chev:'<svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"/></svg>',
+    star:'<svg viewBox="0 0 16 16"><path d="M8 1.6l1.9 4 4.4.6-3.2 3 .8 4.4L8 11.5l-3.9 2.1.8-4.4-3.2-3 4.4-.6z"/></svg>',
+    trailer:'<svg viewBox="0 0 16 16"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M6.5 6v4l3.5-2z"/></svg>', pin:'<svg viewBox="0 0 16 16"><path d="M9.5 1.5l5 5-2 .5-2.5 2.5-.5 3L6 9 2 13M6 9L3.5 6.5l3-.5L9 3.5z"/></svg>',
+    b15:'<svg viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1.6-3.7M3 2v3h3"/></svg>', f30:'<svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2v3h-3"/></svg>',
+    min:'<svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg>', max:'<svg viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1"/></svg>', x:'<svg viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>'
+  };
+
+  const SHOWS = [
+    { id:0, name:'The Long Signal', pub:'Northlight Audio', c1:'#e0a23a', c2:'#6b2f12', tint:'#e6ac4c', on:'#1d1100', total:14, order:'sequential', cadence:'every Tuesday', day:'Tuesdays', since:'March 2026',
+      rating:4.8, votes:'12,431', topics:['documentary','history','radio','mystery','cold war','sound design'], excl:false, video:false, explicit:false, trailer:true,
+      blurb:['In 1983 a numbers station on the Baltic coast started reading out names instead of digits. Forty years later a sound archivist finds her grandfather\'s on the list.','A serial documentary in two seasons, told in order. <b>Start at episode 1</b> — every chapter leans on the one before it.'],
+      eps:[['What the archivist kept','The tapes go to auction, and one lot is missing from the catalogue.'],['A list of forty names','Reading the broadcast against the parish records of three villages.'],['Shortwave, long memory','How a hobbyist in Turku logged every transmission for six years.'],['The engineer\'s daughter','An interview that almost didn\'t happen, and the photograph she brought.'],['Tallinn, 1983','The week the station changed its voice.'],['Dead air','Eleven days of carrier tone — and what people heard inside it.'],['Numbers, then names','Episode one. A cassette arrives with no return address.']] },
+    { id:1, name:'Build Notes', pub:'Harbor & Vine', c1:'#2fb8a6', c2:'#0d3b52', tint:'#4fd0bd', on:'#00201c', total:128, order:'episodic', cadence:'weekly', day:'Thursdays', since:'2023',
+      rating:4.6, votes:'3,208', topics:['technology','software','startups','design','engineering culture'], excl:false, video:false, explicit:true, trailer:false,
+      blurb:['Two engineers who have shipped things that broke talk to people who are shipping things right now. Tooling, teams, the decisions nobody writes down.','Episodes stand alone — jump in anywhere. <b>The newest one is the best place to start.</b>'],
+      eps:[['The rewrite that paid for itself','A renderer thrown away twice, and the benchmark that finally justified the third.'],['Why your queue lies to you','Backpressure, fairness, and the dashboard that looked healthy during an outage.'],['Hiring for taste','Can you interview for judgement? Three people who tried.'],['Zero allocations, zero excuses','A frame budget, a profiler, and eleven stubborn bytes.'],['The on-call diaries','What a good handoff note looks like at 3 a.m.'],['Designing the settings page last','Every toggle is a decision you refused to make.'],['Postmortem of a postmortem','When the fix for the incident causes the next one.']] },
+    { id:2, name:'Night Shift Kitchen', pub:'Saffron Street Studios', c1:'#d6478a', c2:'#3a1140', tint:'#ee6aa6', on:'#25001a', total:61, order:'episodic', cadence:'twice a month', day:'Fridays', since:'2024',
+      rating:4.9, votes:'845', topics:['food','culture','interviews','restaurants','night work'], excl:true, video:true, explicit:false, trailer:true,
+      blurb:['Filmed after close. A chef cooks the staff meal and talks about the thing they would never put on the menu.','Video episodes with full audio. <b>Pick any guest you like</b> — no order to follow.'],
+      eps:[['Burnt rice, on purpose','A Persian grandmother\'s tahdig and a line cook who can\'t stop testing it.'],['The 4 a.m. bakery','Three hundred loaves before anyone else is awake.'],['Salt is a verb','Seasoning by hand, by ear and by argument.'],['One pot, nine people','The economics and etiquette of family meal.'],['Knives out (of the drawer)','A sharpening lesson that turns into a conversation about leaving.'],['Closing time','What a kitchen sounds like when service ends.'],['Pilot: eggs for forty','The first staff meal we ever filmed.']] }
+  ];
+  const S = { theme:'', width:'', scene:'show', visit:'returning', tab:'about', tier:2, show:0, filter:'all', sort:'newest', q:'', annot:false, skel:false, ep:3, tall:false, rate:false, myRating:0, follow:false, bell:false };
+  const marked = {};
+  const $ = (s, r=document) => r.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fmtMin = m => m >= 60 ? Math.floor(m/60)+' hr '+(m%60)+' min' : m+' min';
+  const MON = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+
+  function episodes(sh){
+    const n = 14, list = [], base = new Date(2026, 8, 15), step = sh.cadence.startsWith('twice') ? 14 : 7;
+    for (let i = 0; i < n; i++){
+      const src = sh.eps[i % sh.eps.length], d = new Date(base); d.setDate(d.getDate() - i*step);
+      const num = sh.total - i, dur = 28 + ((i*17 + sh.id*11) % 41);
+      list.push({ i, num, title: i < sh.eps.length ? src[0] : src[0]+', part two', desc:src[1], date:d, dur, pct:0, fresh:false,
+        type: (sh.id===0 && i===5) ? 'bonus' : '', paywall: sh.id===2 && i===2, transcript: i%3!==2, explicit: sh.explicit && i%2===0, video: sh.video });
+    }
+    if (sh.order==='sequential'){ list[n-1].num = 1; list[n-1].title = sh.eps[sh.eps.length-1][0]; list[n-1].desc = sh.eps[sh.eps.length-1][1]; for (let i=0;i<n;i++) list[i].num = n - i; }
+    if (S.visit==='returning'){
+      if (sh.order==='sequential'){ for (let i=0;i<n;i++){ const e=list[i]; e.pct = e.num<=8 ? 1 : e.num===9 ? .46 : 0; e.fresh = i<2; } }
+      else { list.forEach((e,i)=>{ e.pct = i<3 ? 0 : i===3 ? .42 : i===6 ? .12 : 1; e.fresh = i<3; }); }
+    } else if (S.visit==='caught'){ list.forEach(e=>e.pct=1); }
+    list.forEach(e=>{ const k = sh.id+':'+S.visit+':'+e.i; if (k in marked) e.pct = marked[k] ? 1 : 0; });
+    list.forEach(e=>{ e.played = e.pct>=.98; e.prog = e.pct>.01 && e.pct<.98; e.left = Math.max(1, Math.round(e.dur*(1-e.pct))); });
+    return list;
+  }
+  const dateTxt = d => MON[d.getMonth()].slice(0,3).replace(/^./,c=>c.toUpperCase())+' '+d.getDate();
+  const cover = (sh, label, cf, extra='', num='') => `<div class="cover sk ${extra}" style="--c1:${sh.c1};--c2:${sh.c2};${cf?`--cf:${cf}px`:''}"><span>${esc(label)}</span>${num!==''?`<em data-t="1">${num}</em>`:''}</div>`;
+
+  /* ── lab bar ── */
+  const LAB = [
+    ['scene','scene',[['show','show page'],['episode','episode page'],['yours','your episodes'],['browse','topic browse']]],
+    ['visit','visit',[['new','new to the show'],['returning','returning'],['caught','caught up']]],
+    ['show','show',[[0,'serial · amber'],[1,'episodic · teal'],[2,'video · rose']]],
+    ['tier','data',[[0,'today'],[1,'+ decode'],[2,'+ fetch']]],
+    ['width','width',[['','1440'],['w-md','1120'],['w-sm','760'],['w-xs','480']]],
+    ['theme','theme',[['','system'],['light','light'],['dark','dark']]],
+    ['annot','annotate',[[false,'off'],[true,'on']]],
+    ['skel','loading',[[false,'off'],[true,'skeleton']]],
+    ['tall','window',[[false,'≤ 900 tall'],[true,'tall (Display Light title)']]]
+  ];
+  function renderLab(){
+    $('#lab').innerHTML = LAB.map(([k,l,opts]) => `<div class="grp"><span class="lbl">${l}</span><div class="seg" role="group" aria-label="${l}">${opts.map(([v,t]) =>
+      `<button id="lab-${k}-${String(v)||'d'}" data-k="${k}" data-v="${v}" aria-pressed="${String(S[k])===String(v)}">${t}</button>`).join('')}</div></div>`).join('');
+  }
+  $('#lab').addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (!b) return;
+    let v = b.dataset.v; const k = b.dataset.k; if (v==='true') v = true; else if (v==='false') v = false; else if (k==='tier'||k==='show') v = +v;
+    S[k] = v; if (k==='show'||k==='visit'){ S.filter='all'; S.q=''; } render(); });
+
+  /* ── pieces ── */
+  function rail(sh, eps){
+    const played = eps.filter(e=>e.played).length, prog = eps.filter(e=>e.prog).length, fresh = eps.filter(e=>e.fresh&&!e.played&&!e.prog).length;
+    const unp = eps.filter(e=>!e.played&&!e.prog).length, P = S.visit==='caught' ? sh.total : sh.order==='sequential' ? played : sh.total - unp - prog, U = sh.total - P - prog;
+    const resume = eps.find(e=>e.prog);
+    const primary = S.visit==='new' ? (S.follow ? `<button class="pill" data-act="open-first">${I.play}${sh.order==='sequential'?'Play episode 1':'Play latest'}</button>` : `<button class="pill" data-act="follow">${I.plus}Follow</button>`)
+      : resume ? `<button class="pill" data-act="open" data-i="${resume.i}">${I.play}Resume · ${fmtMin(resume.left)} left</button>` : `<button class="pill" data-act="open" data-i="0">${I.play}Play latest</button>`;
+    const secondary = S.visit==='new' && !S.follow ? `<button class="pill ghost" data-act="open-first">${I.play}${sh.order==='sequential'?'Episode 1':'Latest'}</button>` : '';
+    return `<aside class="pane">
+      ${cover(sh, sh.name, 0)}
+      <div class="idtext">
+        <div class="badges"><span class="kicker">Podcast</span>${sh.excl?`<span class="chip tone" data-t="2">exclusive</span>`:''}${sh.explicit?`<span class="chip" data-t="1" title="Explicit">E</span>`:''}${sh.video?`<span class="chip" data-t="1">${I.video}video</span>`:''}</div>
+        <h2 class="sk">${esc(sh.name)}</h2>
+        <div class="by sk">${esc(sh.pub)}</div>
+        <div class="ratewrap" data-t="2"><button class="rating" id="rating" data-act="rate" aria-expanded="${S.rate}">${I.star}<b style="color:var(--text-1)">${sh.rating.toFixed(1)}</b><span>${sh.votes} ratings${S.myRating?` · yours ${S.myRating}★`:''}</span></button>
+          ${S.rate?`<div class="flyout" data-w role="dialog" aria-label="Rate this show"><b>Rate ${esc(sh.name)}</b><div class="stars">${[1,2,3,4,5].map(n=>`<button class="${n<=S.myRating?'on':''}" data-act="star" data-n="${n}" aria-label="${n} stars">${I.star}</button>`).join('')}</div><small>Your rating is shared with Spotify. Needs a write path — the read side (average, your rating, canRate) is already on the wire.</small></div>`:''}</div>
+        <div class="meta sk">${sh.total} episodes · ${sh.cadence} · since ${sh.since}</div>
+      </div>
+      ${S.visit!=='new'?`<div class="ledger"><div class="lbar"><i class="p" style="flex:${P}"></i><i class="g" style="flex:${Math.max(prog,0.001)}"></i><i class="u" style="flex:${Math.max(U,0.001)}"></i></div>
+        <div><b>${P}</b> played · <b>${prog}</b> in progress · <b>${U}</b> to go${fresh?` · <b style="color:var(--tone)">${fresh} new</b>`:''}</div></div>`:''}
+      <div class="cta">${primary}${secondary}
+        ${S.visit!=='new'||S.follow?`<button class="fab" data-act="follow" aria-pressed="true" title="Following">${I.heart}</button>`:''}
+        ${sh.trailer?`<button class="fab" data-t="1" title="Play trailer">${I.trailer}</button>`:''}
+        <button class="fab" data-w data-act="bell" aria-pressed="${S.bell}" title="Notify me about new episodes">${I.bell}</button>
+        <button class="fab" title="Share">${I.share}</button><button class="fab" title="More: pin, add to queue, mark all played">${I.more}</button></div>
+      <div class="topics" data-t="2">${sh.topics.map(t=>`<button data-act="topic" data-topic="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+      ${S.visit==='new'?'':`<div class="blurb sk">${sh.blurb[0]}</div>`}
+    </aside>`;
+  }
+
+  function erow(sh, e, now){
+    const cls = ['erow', e.played?'played':'', now?'now':''].join(' ');
+    const meta = e.prog ? `<span class="prog">${fmtMin(e.left)} left</span><span>${dateTxt(e.date)}</span>` : `<span>${dateTxt(e.date)}</span><span>${fmtMin(e.dur)}</span>`;
+    return `<div class="${cls}" tabindex="0" role="link" data-act="open" data-i="${e.i}" aria-label="${esc(e.title)}">
+      <div class="num sk" data-t="1">${e.num}</div>${cover(sh, sh.name, 10)}
+      <div class="tx"><div class="ttl">${now?`<span class="eq" aria-label="Now playing"><i></i><i></i><i></i></span>`:''}<span class="name sk">${esc(e.title)}</span>
+        ${e.type?`<span class="chip tone" data-t="1">${e.type}</span>`:''}${e.explicit?`<span class="chip" data-t="1">E</span>`:''}${e.video?`<span class="chip" data-t="1">${I.video}</span>`:''}${e.paywall?`<span class="chip" data-t="2">${I.lock}subscribers</span>`:''}</div>
+        <div class="desc sk">${esc(e.desc)}</div>
+        <div class="mt">${e.fresh&&!e.played&&!e.prog?`<span class="fresh">new</span>`:''}${meta}${e.played?`<span class="ok">${I.check}played</span>`:''}${e.transcript?`<span data-t="2" title="Transcript available" style="display:inline-flex">${I.doc}</span>`:''}</div>
+        ${e.prog?`<div class="track"><i style="width:${Math.round(e.pct*100)}%"></i></div>`:''}</div>
+      <div class="acts"><button class="mini-ic" title="Add to queue">${I.queue}</button><button class="mini-ic" data-act="mark" data-i="${e.i}" data-t="2" title="${e.played?'Mark as unplayed':'Mark as played'}">${I.check}</button>
+        <button class="mini-ic" title="Save to Your Episodes">${I.heart}</button><button class="mini-ic" title="More">${I.more}</button><button class="disc" title="${e.prog?'Resume':'Play'}">${I.play}</button></div></div>`;
+  }
+
+  function listenNext(sh, eps){
+    const chrono = [...eps].sort((a,b)=>a.date-b.date), resume = eps.find(e=>e.prog && e.pct<.9);
+    let next;
+    if (sh.order==='sequential'){ const anchor = chrono.map(e=>e.played||e.pct>=.9).lastIndexOf(true); next = chrono.slice(anchor+1).filter(e=>!e.played && e!==resume).slice(0,3); }
+    else next = eps.filter(e=>!e.played && e!==resume).slice(0,3);
+    return { resume, next };
+  }
+
+  function showReader(sh, eps){
+    const counts = { all:sh.total, unplayed:eps.filter(e=>!e.played&&!e.prog).length, progress:eps.filter(e=>e.prog).length, played:0 };
+    counts.played = sh.total - counts.unplayed - counts.progress;
+    let list = eps.filter(e => S.filter==='all' || (S.filter==='unplayed'&&!e.played&&!e.prog) || (S.filter==='progress'&&e.prog) || (S.filter==='played'&&e.played));
+    if (S.q) list = list.filter(e => (e.title+' '+e.desc).toLowerCase().includes(S.q.toLowerCase()));
+    if (S.sort==='oldest') list = [...list].reverse();
+    const railHtml = `<div class="wordrail" role="toolbar" aria-label="Filter and sort episodes">
+      ${[['all','all'],['unplayed','unplayed'],['progress','in progress'],['played','played']].map(([k,t])=>`<button class="w" id="f-${k}" data-act="filter" data-v="${k}" aria-pressed="${S.filter===k}">${t}<small>${counts[k]}</small></button>`).join('')}
+      <span class="spacer"></span><label class="find">${I.search}<input id="findbox" placeholder="Find in this show" value="${esc(S.q)}" aria-label="Find in this show"></label><span class="sep"></span>
+      ${['newest','oldest'].map(k=>`<button class="w" id="s-${k}" data-act="sort" data-v="${k}" aria-pressed="${S.sort===k}">${k}</button>`).join('')}</div>`;
+
+    let top = '';
+    const oldest = eps[eps.length-1], latest = eps[0];
+    if (S.visit==='new'){
+      const d1 = `<button class="door ${sh.order==='sequential'?'lead':''}" data-act="open" data-i="${oldest.i}"><span class="num" data-t="1">1</span><span class="lbl">${sh.order==='sequential'?'begin here':'where it began'}</span><span class="ttl">${esc(oldest.title)}</span><span class="why">${sh.order==='sequential'?'This show is told in order. Episode 1 sets up everything after it.':'The very first episode, for the completists.'}</span><span class="foot"><span class="disc">${I.play}</span>${fmtMin(oldest.dur)}</span></button>`;
+      const d2 = `<button class="door ${sh.order!=='sequential'?'lead':''}" data-act="open" data-i="0"><span class="num" data-t="1">${latest.num}</span><span class="lbl">latest</span><span class="ttl">${esc(latest.title)}</span><span class="why">${esc(latest.desc)}</span><span class="foot"><span class="disc">${I.play}</span>${dateTxt(latest.date)} · ${fmtMin(latest.dur)}</span></button>`;
+      const d3 = sh.trailer ? `<button class="door" data-t="1"><span class="lbl">trailer</span><span class="ttl">Hear what ${esc(sh.name)} sounds like</span><span class="why">Two minutes. The quickest way to know if it's for you.</span><span class="foot"><span class="disc">${I.play}</span>2 min</span></button>` : '';
+      top = `<section class="sec"><div class="sechead"><h3>start here</h3><span class="sub">${sh.order==='sequential'?'a serial — best heard in order':'episodes stand alone — start anywhere'}</span></div>
+        <div class="doors">${sh.order==='sequential'?d1+d3+d2:d2+d3+d1}</div></section>
+        <section class="sec"><div class="sechead"><h3>about</h3></div><div class="about sk"><p>${sh.blurb[0]}</p><p>${sh.blurb[1]}</p></div>
+        <dl class="facts"><div><dt>episodes</dt><dd>${sh.total}</dd></div><div><dt>new episodes</dt><dd>${sh.cadence}</dd></div><div><dt>running since</dt><dd>${sh.since}</dd></div><div data-t="1"><dt>listen</dt><dd>${sh.order==='sequential'?'in order':'any order'}</dd></div></dl></section>`;
+    } else if (S.visit==='returning'){
+      const { resume, next } = listenNext(sh, eps), fresh = eps.filter(e=>e.fresh&&!e.played&&!e.prog);
+      top = `<section class="sec"><div class="sechead"><h3>continue</h3><span class="sub summary">up next from your progress · <b>${counts.progress}</b> in progress · <b>${counts.unplayed}</b> unplayed · <b>${counts.played}</b> played</span></div>
+        ${resume?`<div class="resume" data-act="open" data-i="${resume.i}" tabindex="0" role="link">${cover(sh, sh.name, 15, '', resume.num)}
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:0"><div class="ttl">${esc(resume.title)}</div><div class="left">${fmtMin(resume.left)}<small>left of ${fmtMin(resume.dur)}</small></div><div class="track" style="max-width:420px"><i style="width:${Math.round(resume.pct*100)}%"></i></div></div>
+          <button class="pill">${I.play}Resume</button></div>`:''}
+        <div class="upnext">${next.map(e=>`<button class="mini" data-act="open" data-i="${e.i}"><span class="n" data-t="1">${e.num}</span><span style="min-width:0"><span class="t">${esc(e.title)}</span><span class="m">${e.prog?fmtMin(e.left)+' left':fmtMin(e.dur)} · ${dateTxt(e.date)}</span></span></button>`).join('')}</div></section>
+        ${fresh.length?`<section class="sec"><div class="sechead"><h3>new since you were here<small>${fresh.length}</small></h3><button class="textlink push" data-t="2" data-act="markall">mark all played</button></div><div>${fresh.map(e=>erow(sh,e,false)).join('')}</div></section>`:''}`;
+    } else {
+      top = `<section class="sec"><div class="caught">you're all caught up<small>New episodes usually land on ${sh.day}. ${S.bell?'We\'ll let you know.':'Turn on the bell to hear about the next one.'}</small></div></section>`;
+    }
+
+    let rows = '', lastG = '';
+    list.forEach(e => { const g = MON[e.date.getMonth()]+' '+e.date.getFullYear(); if (g!==lastG){ rows += `<div class="group">${g}</div>`; lastG = g; } rows += erow(sh, e, S.visit==='returning' && e.i===S.ep && e.prog); });
+    if (!list.length) rows = `<div class="empty"><b>nothing matches</b>Try another word, or switch the filter back to <button class="textlink" data-act="filter" data-v="all">all</button>.</div>`;
+    const like = SHOWS.filter(x=>x.id!==sh.id).concat([{name:'Carrier Wave',pub:'Northlight Audio',c1:'#5b7bd6',c2:'#151c45',rating:4.7},{name:'Field Recordings',pub:'Moss & Wire',c1:'#6fae52',c2:'#16301a',rating:4.5},{name:'The Second Draft',pub:'Harbor & Vine',c1:'#c9c1b2',c2:'#4a4034',rating:4.4},{name:'Afterhours',pub:'Saffron Street Studios',c1:'#9a5de0',c2:'#22103d',rating:4.8}]);
+    return `<main class="reader" id="reader">${railHtml}${top}
+      <section class="sec"><div class="sechead"><h3>episodes<small>${list.length===eps.length?sh.total:list.length+' of '+sh.total}</small></h3></div><div>${rows}</div>
+        ${list.length===eps.length?`<div><button class="pill ghost">Show ${Math.min(50, sh.total-eps.length)>0?Math.min(50, sh.total-eps.length):0} more</button></div>`:''}</section>
+      <section class="sec" data-t="2"><div class="sechead"><h3>more like this</h3><span class="sub">listeners of ${esc(sh.name)} also follow</span></div>
+        <div class="shelf">${like.map(x=>`<button class="scard" ${x.id!==undefined?`data-act="goshow" data-s="${x.id}"`:''}>${cover(x, x.name, 18)}<span class="t">${esc(x.name)}</span><span class="m">${esc(x.pub)} · ★ ${x.rating.toFixed(1)}</span></button>`).join('')}</div></section>
+    </main>`;
+  }
+
+  function episodeScene(sh, eps){
+    const e = eps.find(x=>x.i===S.ep) || eps[0], chrono = [...eps].sort((a,b)=>a.date-b.date), k = chrono.indexOf(e), prev = chrono[k-1], next = chrono[k+1];
+    const cta = e.paywall ? `<button class="pill" data-t="2">${I.play}Play preview</button>` : `<button class="pill">${I.play}${e.played?'Replay':e.prog?'Resume · '+fmtMin(e.left)+' left':'Play'}</button>`;
+    const railHtml = `<aside class="pane ep">${cover(sh, sh.name, 0, '', e.num)}
+      <div class="idtext"><button class="showlink" data-act="scene" data-v="show" style="--c1:${sh.c1};--c2:${sh.c2}"><i></i>${esc(sh.name)}</button>
+        <h2 class="sk">${esc(e.title)}</h2>
+        <div class="meta sk">${dateTxt(e.date)}, ${e.date.getFullYear()} · ${fmtMin(e.dur)}${e.prog?` · <span style="color:var(--tone);font-weight:600">${fmtMin(e.left)} left</span>`:e.played?' · played':''}</div>
+        <div class="badges"><span class="chip tone" data-t="1">episode ${e.num}</span>${e.type?`<span class="chip tone" data-t="1">${e.type}</span>`:''}${e.explicit?`<span class="chip" data-t="1">E</span>`:''}${e.video?`<span class="chip" data-t="1">${I.video}video</span>`:''}${e.paywall?`<span class="chip" data-t="2">${I.lock}subscribers only · preview available</span>`:''}</div></div>
+      ${e.prog?`<div class="ledger"><div class="track"><i style="width:${Math.round(e.pct*100)}%"></i></div><div>${fmtMin(e.dur-e.left)} in · <b>${fmtMin(e.left)}</b> left</div></div>`:''}
+      <div class="cta">${cta}<button class="fab" title="Save to Your Episodes">${I.heart}</button><button class="fab" title="Add to queue">${I.queue}</button>
+        <button class="fab" data-t="2" data-act="mark" data-i="${e.i}" aria-pressed="${e.played}" title="${e.played?'Mark as unplayed':'Mark as played'}">${I.check}</button><button class="fab" title="Share">${I.share}</button><button class="fab" title="More: play next, go to show, pin">${I.more}</button></div>
+      <div class="blurb sk">${esc(e.desc)}</div></aside>`;
+
+    const CH = [['0:00','Cold open','The tape, as it arrived','intro'],['3:12','Who kept the recordings','An auction catalogue with a gap in it','interview'],['11:40','The parish records','Forty names, three villages','research'],['19:05','What the engineer remembered','','interview'],['27:30','A second voice','The broadcast nobody logged','archive'],['34:48','Next time','','outro']];
+    const live = e.prog ? 2 : -1;
+    const tabs = [['about','about',0],['chapters','chapters',2],['transcript','transcript',2],['comments','comments',2]];
+    const tab = (S.tier<2 && S.tab!=='about') ? 'about' : S.tab;
+    let body = '';
+    if (tab==='about') body = `<div class="about sk"><p>${esc(e.desc)} ${sh.blurb[0]}</p>
+      <p>In this episode: the catalogue (<button class="ts" data-act="tab" data-v="chapters">3:12</button>), the parish records (<button class="ts" data-act="tab" data-v="chapters">11:40</button>), and a second voice on the tape (<button class="ts" data-act="tab" data-v="chapters">27:30</button>).</p>
+      <p data-t="2">Reported and produced by ${esc(sh.pub)}. Music by Ilse Varn. <a href="#" onclick="return false">Episode notes and sources</a>.</p></div>`;
+    else if (tab==='chapters') body = `<div>${CH.map((c,i)=>`<button class="chap ${i<live?'done':i===live?'live':''}"><span class="at">${c[0]}</span><span class="rl"></span><span class="cx"><b>${c[1]}</b><span>${c[2]}</span><em>${c[3]}</em></span></button>`).join('')}</div>`;
+    else if (tab==='transcript') body = `<div class="tbar"><label class="find">${I.search}<input id="tfind" placeholder="Search the transcript" aria-label="Search the transcript"></label><div class="seg"><button aria-pressed="true" id="tl-en">English</button><button aria-pressed="false" id="tl-fi">Suomi</button></div><span class="summary">follows playback · click a sentence to jump there</span></div>
+      <div class="tscript"><h4><span>0:00</span>Cold open</h4><p><span class="said">The cassette came in a padded envelope with no return address.</span> <span class="said">I almost didn't play it.</span> <span class="said">There's a hiss, and then a woman's voice, very calm, reading a list.</span></p>
+      <h4><span>3:12</span>Who kept the recordings</h4><p><span class="said">Most of what survives of the station is in private hands.</span> <span class="saying">One collector in Turku logged every transmission he could catch for six years, in pencil, in school notebooks.</span> <span>When he died the notebooks went to auction with the tapes — all but one lot.</span> <span>Lot forty-one is in the catalogue index, and nowhere else.</span></p>
+      <h4><span>11:40</span>The parish records</h4><p><span>We took the forty names to three village churches along the coast.</span> <span>Thirty-one of them were easy.</span> <span>The other nine are why this series exists.</span></p></div>`;
+    else body = `<div class="composer" data-w><span class="av" style="--a1:#7aa;--a2:#245">CK</span><span class="grow">Add a comment…</span><span>0 / 500</span><span class="chip">posting isn't available yet</span></div>
+      <div><div class="cmt"><span class="av" style="--a1:#e9a;--a2:#713">MR</span><div><div class="hd"><b>Marta R.</b>3 days ago · ${I.pin} pinned by the show</div><p>The pencil notebooks detail got me. My grandfather kept the same kind of log for weather. Is lot 41 ever coming back in season two?</p>
+        <div class="ft"><button class="react">❤️ 🔥 👏 <b>214</b></button><button class="textlink" data-w>React</button><button class="textlink" data-w>Reply</button><span>12 replies</span></div></div>
+        <div class="replies"><div class="cmt"><span class="av" style="--a1:${sh.c1};--a2:${sh.c2}">${sh.name[0]}</span><div><div class="hd"><b>${esc(sh.name)}</b>2 days ago</div><p>Episode 9. That's all we'll say.</p><div class="ft"><button class="react">😮 ❤️ <b>96</b></button></div></div></div><button class="textlink">Show 11 more replies</button></div></div>
+      <div class="cmt"><span class="av" style="--a1:#9c6;--a2:#142">JT</span><div><div class="hd"><b>Jonas T.</b>5 days ago</div><p>Sound design on the carrier tone at 27:30 is unreal on headphones.</p><div class="ft"><button class="react">🔥 👍 <b>58</b></button><button class="textlink" data-w>Reply</button></div></div></div>
+      <button class="pill ghost" style="margin-top:8px">Load more comments</button></div>`;
+
+    const door = (x, lbl, why) => x ? `<button class="door" data-act="open" data-i="${x.i}"><span class="num" data-t="1">${x.num}</span><span class="lbl">${lbl}</span><span class="ttl">${esc(x.title)}</span><span class="why">${why}</span><span class="foot"><span class="disc">${I.play}</span>${x.prog?fmtMin(x.left)+' left':fmtMin(x.dur)} · ${dateTxt(x.date)}</span></button>` : '';
+    const rec = [{name:'The woman who read the numbers',pub:'Carrier Wave',c1:'#5b7bd6',c2:'#151c45',m:'41 min'},{name:'Six years of pencil',pub:'Field Recordings',c1:'#6fae52',c2:'#16301a',m:'33 min'},{name:'What an archive forgets',pub:'The Second Draft',c1:'#c9c1b2',c2:'#4a4034',m:'52 min'},{name:'Listening to static',pub:'Afterhours',c1:'#9a5de0',c2:'#22103d',m:'27 min'}];
+    return railHtml + `<main class="reader" id="reader"><div class="wordrail big" role="tablist">${tabs.map(([k,t,tier])=>`<button class="w" role="tab" id="tab-${k}" ${tier?`data-t="${tier}"`:''} data-act="tab" data-v="${k}" aria-pressed="${tab===k}">${t}${k==='comments'?'<small>286</small>':''}</button>`).join('')}</div>
+      <section class="sec">${body}</section>
+      <section class="sec"><div class="sechead"><h3>${sh.order==='sequential'?'next in the story':'around this episode'}</h3></div><div class="doors">${door(next, sh.order==='sequential'?'next':'newer', sh.order==='sequential'?'Picks up where this one ends.':esc(next?next.desc:''))}${door(prev, sh.order==='sequential'?'previous':'older', esc(prev?prev.desc:''))}</div></section>
+      <section class="sec"><div class="sechead"><h3>more from this show</h3><button class="textlink push" data-act="scene" data-v="show">see all ${sh.total}</button></div><div>${eps.filter(x=>x!==e).slice(0,4).map(x=>erow(sh,x,false)).join('')}</div></section>
+      <section class="sec" data-t="2"><div class="sechead"><h3>you might also like</h3><span class="sub">episodes from other shows</span></div><div class="shelf">${rec.map(x=>`<button class="scard">${cover(x, x.pub, 16)}<span class="t">${esc(x.name)}</span><span class="m">${esc(x.pub)} · ${x.m}</span></button>`).join('')}</div></section></main>`;
+  }
+
+  function yoursScene(sh, eps){
+    const rows = [['all podcasts','12 shows',''],['recently played','last 7 days','']].map(([a,b],i)=>`<button class="srow" aria-pressed="${i===0&&false}" style="--c1:#888;--c2:#333"><i></i><span><b>${a}</b><small>${b}</small></span></button>`).join('')
+      + SHOWS.map(x=>`<button class="srow" data-act="pickshow" data-s="${x.id}" aria-pressed="${x.id===sh.id}" style="--c1:${x.c1};--c2:${x.c2}"><i></i><span><b>${esc(x.name)}</b><small>${esc(x.pub)}</small></span><span class="ct">${x.id===sh.id?eps.filter(e=>e.fresh).length||'':''}</span></button>`).join('');
+    const e = eps.find(x=>x.prog) || eps[0];
+    return `<div class="three"><nav class="shows"><h3>podcasts</h3>${rows}</nav>
+      <main class="mid" style="display:flex;flex-direction:column;gap:10px"><div class="wordrail" style="position:static;margin:0;padding:0;background:none"><button class="w" aria-pressed="true" id="ye-saved">saved</button><button class="w" aria-pressed="false" id="ye-latest">latest</button><button class="w" aria-pressed="false" id="ye-prog">in progress</button><span class="spacer"></span><button class="w" aria-pressed="true" id="ye-new">newest</button></div>
+        <div>${eps.slice(0,8).map(x=>erow(sh,x,false)).join('')}</div></main>
+      <aside class="detail">${cover(sh, sh.name, 22, '', e.num)}<h3 style="font-size:18px;font-weight:600;line-height:1.3">${esc(e.title)}</h3><div class="meta">${dateTxt(e.date)} · ${fmtMin(e.dur)} · saved 4 days ago</div>
+        ${e.prog?`<div class="ledger"><div class="track"><i style="width:${Math.round(e.pct*100)}%"></i></div><div><b>${fmtMin(e.left)}</b> left</div></div>`:''}
+        <div class="cta"><button class="pill">${I.play}${e.prog?'Resume':'Play'}</button><button class="pill ghost" data-act="open" data-i="${e.i}">Open episode</button></div><div class="blurb" style="-webkit-line-clamp:9">${esc(e.desc)} ${sh.blurb[0]}</div></aside></div>`;
+  }
+
+  function browseScene(){
+    const topic = S.topic || 'documentary';
+    const all = SHOWS.concat([{name:'Carrier Wave',pub:'Northlight Audio',c1:'#5b7bd6',c2:'#151c45',rating:4.7},{name:'Field Recordings',pub:'Moss & Wire',c1:'#6fae52',c2:'#16301a',rating:4.5},{name:'The Second Draft',pub:'Harbor & Vine',c1:'#c9c1b2',c2:'#4a4034',rating:4.4},{name:'Afterhours',pub:'Saffron Street Studios',c1:'#9a5de0',c2:'#22103d',rating:4.8},{name:'Low Tide',pub:'Moss & Wire',c1:'#3c93c8',c2:'#0c2740',rating:4.3},{name:'Paper Trail',pub:'Northlight Audio',c1:'#d8693a',c2:'#3b1408',rating:4.6}]);
+    return `<div class="browse"><h2>${esc(topic)} podcasts</h2>
+      <div class="wordrail" style="position:static;margin:0;padding:0;background:none">${['top shows','new & noteworthy','serials','short listens','video'].map((t,i)=>`<button class="w" id="br-${i}" aria-pressed="${i===0}">${t}</button>`).join('')}</div>
+      <div class="hero3">${all.slice(0,3).map((x,i)=>`<button class="door lead" ${x.id!==undefined?`data-act="goshow" data-s="${x.id}"`:''} style="--show:${x.c1}"><span class="num">${i+1}</span><span class="lbl">no. ${i+1} this week</span><span class="ttl">${esc(x.name)}</span><span class="why">${esc(x.pub)}</span><span class="foot">★ ${(x.rating||4.5).toFixed(1)}</span></button>`).join('')}</div>
+      <div class="sechead"><h3>everything in ${esc(topic)}</h3></div>
+      <div class="grid">${all.map(x=>`<button class="scard" ${x.id!==undefined?`data-act="goshow" data-s="${x.id}"`:''}>${cover(x, x.name, 18)}<span class="t">${esc(x.name)}</span><span class="m">${esc(x.pub)}</span></button>`).join('')}</div></div>`;
+  }
+
+  /* ── frame ── */
+  function render(){
+    const root = document.documentElement; if (S.theme) root.setAttribute('data-theme', S.theme); else root.removeAttribute('data-theme');
+    renderLab();
+    const sh = SHOWS[S.show], eps = episodes(sh), win = $('#win'), keep = $('#reader') ? $('#reader').scrollTop : 0, sceneWas = win.dataset.scene;
+    win.className = ['win', S.width, S.annot?'annot':'', S.skel?'skel':'', S.tall?'tall':''].join(' ');
+    win.dataset.tier = S.tier; win.dataset.scene = S.scene + S.ep + S.show;
+    win.style.setProperty('--show', sh.tint); win.style.setProperty('--show-2', sh.c2); win.style.setProperty('--show-on', sh.on);
+    win.style.height = S.tall ? '1000px' : '900px';
+    const np = eps.find(e=>e.prog) || eps[0], e = eps.find(x=>x.i===S.ep) || eps[0];
+    const crumb = S.scene==='show' ? `<button data-act="scene" data-v="yours">Podcasts</button>${I.chev}<b>${esc(sh.name)}</b>`
+      : S.scene==='episode' ? `<button data-act="scene" data-v="yours">Podcasts</button>${I.chev}<button data-act="scene" data-v="show">${esc(sh.name)}</button>${I.chev}<b>${esc(e.title)}</b>`
+      : S.scene==='yours' ? `<b>Your episodes</b>` : `<button data-act="scene" data-v="yours">Podcasts</button>${I.chev}<b>${esc(S.topic||'documentary')}</b>`;
+    const main = S.scene==='show' ? rail(sh, eps) + showReader(sh, eps) : S.scene==='episode' ? episodeScene(sh, eps) : S.scene==='yours' ? yoursScene(sh, eps) : browseScene();
+    win.innerHTML = `<div class="titlebar"><button class="tb" data-act="back" title="Back">${I.back}</button><div class="crumb">${crumb}</div>
+        <div class="omni">${I.search}Search podcasts, episodes, transcripts</div><div class="winbtns"><span class="tb">${I.min}</span><span class="tb">${I.max}</span><span class="tb">${I.x}</span></div></div>
+      <div class="body"><nav class="side" aria-hidden="true">${SHOWS.map(x=>`<i class="${x.id===sh.id?'on':''}" style="background:linear-gradient(140deg,${x.c1},${x.c2})"></i>`).join('')}<i style="background:var(--ctrl-on)"></i><i style="background:var(--ctrl-on)"></i></nav>
+        <div class="content">${main}</div></div>
+      <div class="dock"><div class="np">${cover(sh, sh.name, 9)}<span style="min-width:0"><b>${esc(np.title)}</b><small>${esc(sh.name)}</small></span></div>
+        <div class="tp"><button class="fab" title="Back 15 seconds">${I.b15}<span>15</span></button><button class="fab big" title="Pause">${I.pause}</button><button class="fab" title="Forward 30 seconds">${I.f30}<span>30</span></button></div>
+        <div class="rt"><span>${fmtMin(np.dur-np.left)}</span><div class="track"><i style="width:${Math.round((np.pct||.3)*100)}%"></i></div><span>−${fmtMin(np.left)}</span><button class="speed" title="Playback speed">1.2×</button></div></div>`;
+    const r = $('#reader'); if (r && sceneWas === win.dataset.scene) r.scrollTop = keep;
+    const fb = $('#findbox'); if (fb){ fb.addEventListener('input', ev => { S.q = ev.target.value; const pos = ev.target.selectionStart; render(); const n = $('#findbox'); n.focus(); n.setSelectionRange(pos,pos); }); }
+  }
+
+  $('#win').addEventListener('click', ev => {
+    const el = ev.target.closest('[data-act]'); if (!el) { if (S.rate){ S.rate=false; render(); } return; }
+    const a = el.dataset.act; ev.stopPropagation();
+    switch(a){
+      case 'mark': { const cur = episodes(SHOWS[S.show]).find(x=>x.i===+el.dataset.i); marked[S.show+':'+S.visit+':'+el.dataset.i] = !cur.played; break; }
+      case 'markall': episodes(SHOWS[S.show]).filter(x=>x.fresh).forEach(x=>{ marked[S.show+':'+S.visit+':'+x.i] = true; }); break;
+      case 'filter': S.filter = el.dataset.v; break;
+      case 'sort': S.sort = el.dataset.v; break;
+      case 'open': S.ep = +el.dataset.i; S.scene='episode'; S.tab='about'; break;
+      case 'open-first': S.ep = 13; S.scene='episode'; S.tab='about'; if (SHOWS[S.show].order!=='sequential') S.ep = 0; break;
+      case 'scene': S.scene = el.dataset.v; break;
+      case 'back': S.scene = S.scene==='episode' ? 'show' : S.scene==='show' ? 'yours' : 'show'; break;
+      case 'tab': S.tab = el.dataset.v; break;
+      case 'topic': S.topic = el.dataset.topic; S.scene='browse'; break;
+      case 'goshow': case 'pickshow': S.show = +el.dataset.s; if (a==='goshow') S.scene='show'; S.filter='all'; S.q=''; break;
+      case 'follow': S.follow = !S.follow; if (S.visit!=='new') S.visit='new', S.follow=false; break;
+      case 'bell': S.bell = !S.bell; break;
+      case 'rate': if (ev.target.closest('.flyout')) return; S.rate = !S.rate; break;
+      case 'star': S.myRating = +el.dataset.n; break;
+    }
+    render();
+  });
+  $('#win').addEventListener('keydown', ev => { if ((ev.key==='Enter'||ev.key===' ') && ev.target.matches('.erow,.resume')){ ev.preventDefault(); ev.target.click(); } if (ev.key==='Escape' && S.rate){ S.rate=false; render(); } });
+  render();
+})();
+</script>
+</body>
+</html>

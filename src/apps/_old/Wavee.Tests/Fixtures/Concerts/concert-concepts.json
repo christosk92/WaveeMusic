@@ -1,0 +1,11 @@
+{
+  "data": {
+    "concertConcepts": {
+      "items": [
+        { "data": { "name": "electronic", "uri": "spotify:concept:electronic" }, "weight": 3.0 },
+        { "data": { "name": "pop", "uri": "spotify:concept:pop" }, "weight": 2.0 },
+        { "data": { "name": "jazz", "uri": "spotify:concept:jazz" }, "weight": 0.0 }
+      ]
+    }
+  }
+}

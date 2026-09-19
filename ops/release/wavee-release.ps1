@@ -238,7 +238,7 @@ $packScript = Join-Path $root 'ops\build\pack-wavee-msix.ps1'
 $appInstallerTemplate = Join-Path $root 'ops\build\Wavee.AppInstaller.template.xml'
 $feedBodyFile = Join-Path $PSScriptRoot 'feed-release-body.md'
 $releaseToolProject = Join-Path $root 'src\apps\Wavee.ReleaseTool'
-$playPlayProbe = Join-Path $root 'src\apps\Wavee.PlayPlay\Client\InProcessPlayPlayKeyDeriver.cs'
+$playPlayProbe = Join-Path $root 'src\apps\Wavee.PlayPlay\Client\PlayPlayHost.cs'
 
 $props = Get-WaveeVersionProps $propsPath
 $semver = $props.Version
@@ -542,6 +542,30 @@ if (-not (Test-PhaseDone 'preflight')) {
         if ($PublicOnly) { return 'SKIP: -PublicOnly' }
         if (-not (Test-Path $playPlayProbe)) { throw 'src\apps\Wavee.PlayPlay junction missing; a release build is PlayPlay-inclusive (or pass -PublicOnly)' }
         'present'
+    }
+    Add-Check 'engine checkout' 'hard' {
+        # D1: the app is built against a sibling engine checkout, resolved exactly like Directory.Build.props
+        # resolves $(EngineRoot) - an env var override first, else ..\fluent-gpu next to this repo. A release is
+        # built from source, so what matters here is not a hardcoded commit (that would just go stale) but that
+        # the resolved checkout exists, is a git repository, and its commit is recorded in the release ledger for
+        # symbolication / provenance - the same reason the app's own commit is stamped into WaveeVersionInfo.
+        # Resolve-EngineRoot (Wavee.Build.psm1) mirrors Directory.Build.props's own precedence exactly - override,
+        # then this worktree's EngineRoot.local.props pin (D1), then the sibling checkout - so this check can never
+        # assert a different engine than the one the build actually used (G-022, G-205).
+        $engineRoot = Resolve-EngineRoot -RepoRoot $root -Override $env:EngineRoot
+        if (-not (Test-Path (Join-Path $engineRoot 'src\FluentGpu.Engine\FluentGpu.Engine.csproj'))) {
+            throw "no FluentGpu engine checkout at '$engineRoot' (set EngineRoot, or clone christosk92/fluent-gpu beside this repo)"
+        }
+        $engineRoot = (Resolve-Path $engineRoot).Path
+        $engineSha = (Invoke-Native 'git' @('-C', $engineRoot, 'rev-parse', '--short=7', 'HEAD') -AllowFailure)
+        if ($engineSha.ExitCode -ne 0) { throw "'$engineRoot' is not a git checkout (git rev-parse HEAD failed)" }
+        $engineDirty = (Invoke-Native 'git' @('-C', $engineRoot, 'status', '--porcelain') -AllowFailure)
+        $script:State.engineRoot = $engineRoot
+        $script:State.engineCommit = "$($engineSha.Output -join '')".Trim()
+        if ($engineDirty.ExitCode -eq 0 -and @($engineDirty.Output | Where-Object { "$_".Trim() }).Count -gt 0) {
+            Warn "engine checkout at $engineRoot has uncommitted changes; the release is built from a tree with no commit to record"
+        }
+        "$engineRoot @ $($script:State.engineCommit)"
     }
     Add-Check 'Windows SDK tools' 'hard' { "$((Get-Tools).Version)" }
     Add-Check 'x64 cross toolchain' 'hard' {
@@ -848,6 +872,36 @@ if (-not (Test-PhaseDone 'tag')) { Invoke-Tag } else { Note "tag $tag already cr
 if ($script:State.commit) { $commit = "$($script:State.commit)" }
 
 # ===============================================================================================================
+# PlayReady native DLL export check (video plan Q8 / G-152): a release must never ship a PlayReady CDM DLL that
+# fails to export FgPrRuntimeCreate for the architecture it was built for - that export is the only thing
+# DesktopProtectedVideoPlayer P/Invokes into, and a stale/missing one silently degrades DRM video for every
+# install of that arch until the NEXT release. The PE export-directory reader (Get-PeExportedNames) and the
+# predicate over it (Test-PeExport) live in Wavee.Build.psm1 - not here - so Pester can exercise the parser
+# against a fixture PE without dot-sourcing this script (G-205).
+# ===============================================================================================================
+
+function Assert-PlayReadyNativeExport {
+    param([Parameter(Mandatory = $true)][string]$MsixPath, [Parameter(Mandatory = $true)][string]$Arch)
+
+    $entryName = 'FluentGpu.PlayReady.Native.dll'
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($MsixPath)
+    try {
+        $entry = $zip.Entries | Where-Object { $_.FullName -eq $entryName }
+        if (-not $entry) {
+            throw "$(Split-Path -Leaf $MsixPath) ($Arch) ships no $entryName - DRM video would be unavailable for every $Arch install (rebuild ops/tools/playready-native for $Arch)"
+        }
+        $ms = New-Object System.IO.MemoryStream
+        $es = $entry.Open()
+        try { $es.CopyTo($ms) } finally { $es.Dispose() }
+        if (-not (Test-PeExport $ms.ToArray() 'FgPrRuntimeCreate')) {
+            throw "$entryName in $(Split-Path -Leaf $MsixPath) ($Arch) does not export FgPrRuntimeCreate - stale or mismatched native build; rebuild ops/tools/playready-native for $Arch"
+        }
+    }
+    finally { $zip.Dispose() }
+}
+
+# ===============================================================================================================
 # 3 / 4  pack
 # ===============================================================================================================
 
@@ -903,6 +957,7 @@ function Invoke-Pack {
     if ($id.Publisher -ne $Publisher) {
         throw "publisher mismatch in $(Split-Path -Leaf $msix): '$($id.Publisher)' != '$Publisher' (signing would fail with 0x8007000B)"
     }
+    Assert-PlayReadyNativeExport -MsixPath $msix -Arch $A
     Good "$(Split-Path -Leaf $msix)  $([math]::Round((Get-Item $msix).Length / 1MB, 2)) MB"
     if (Test-Path $symbols) { Good "$(Split-Path -Leaf $symbols)  $([math]::Round((Get-Item $symbols).Length / 1MB, 2)) MB" }
 }

@@ -125,7 +125,7 @@ Describe 'Archived package provenance' {
         } finally { $zip.Dispose() }
         if ($WrongHash) { $hash = '0' * 64 }
         [IO.File]::WriteAllText((Join-Path $symbols 'SYMBOLS.txt'), "quad=1.2.809.0`nchannel=$Channel`ncommit=38df212`nrid=win-x64`narch=x64`nconfiguration=Release`naot=True`nexe=Wavee.exe size=$size sha256=$hash`n")
-        $map = '<NativeMap>InProcessPlayPlayKeyDeriver</NativeMap>'
+        $map = '<NativeMap>PlayPlayHost</NativeMap>'
         if ($NoPlayPlay) { $map = '<NativeMap />' }
         [IO.File]::WriteAllText((Join-Path $symbols 'Wavee.map.xml'), $map)
         @{ Msix = $msix; SymbolsDir = $symbols; Commit = '38df2120150311b685696c22ea4b919c089f5555'; Architecture = 'x64' }

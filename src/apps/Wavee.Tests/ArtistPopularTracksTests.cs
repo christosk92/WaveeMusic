@@ -1,115 +1,190 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
+// ── Wavee.Tests/ArtistPopularTracksTests.cs — the chart's ORDER contract, and the commit that keeps it ───────────────
+//
+// Ported from 0.2.9 `Wavee.Tests/ArtistPopularTracksTests.cs` (ArtistPopularMergeTests, 7 facts) over SLOTS: the merge
+// is now `Entities.CommitPopular`'s rewrite of `Edges.ArtistPopular`, and the rule it must keep is the same — the seed
+// keeps its order at the head, extension-only tracks append, duplicates collapse with the seed winning, cap 50. The
+// commit facts pin the reason the rule moved into the commit: the overview (seed) and the extended list (extension) can
+// share one batch or land in either order, and `CommitEdges` rides after `CommitArtists`.
+// `WithPlayCounts`' "returns the same instance" became "reports no change": a span has no identity to compare.
+
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using Wavee.Backend;
-using Wavee.Backend.Metadata;
-using Wavee.Backend.Spotify;
-using Wavee.Core;
-using Wavee.SpotifyLive;
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-// The artist chart's PURE fold (merge + play-count top-up + the shared caps). The fetch half moved into the artist
-// ladder's Full rung (ArtistHydrationTests); what stays here is what must hold with no transport at all.
-public class ArtistPopularMergeTests
+public class ArtistPopularTracksTests
 {
-    static Track T(string id, long plays = 0) =>
-        new(id, "spotify:track:" + id, "T" + id, [], new AlbumRef("", "", ""), 1000, false, null, PlayCount: plays);
-
     [Fact]
-    public void Merge_KeepsTheSeedHeadAndItsPlayCounts()
+    public void Merge_keeps_the_seed_head()
     {
-        // The extension endpoint carries uris only — every play count in the chart comes from the overview seed. If the
-        // extension copy of a shared uri won, the top rows would silently lose their "N plays" subline.
-        var seed = new[] { T("a", 500), T("b", 400) };
-        var ext = new[] { T("b"), T("a"), T("c") };
-
-        var merged = ArtistPopularTracks.Merge(seed, ext);
-
-        Assert.Equal(["spotify:track:a", "spotify:track:b", "spotify:track:c"], merged.Select(t => t.Uri));
-        Assert.Equal(500, merged[0].PlayCount);
-        Assert.Equal(400, merged[1].PlayCount);
-        Assert.Equal(0, merged[2].PlayCount);   // no invented play count for tracks 11+
+        Span<int> into = stackalloc int[ArtistPopularTracks.ExtendedCap];
+        int n = ArtistPopularTracks.Merge([1, 2], [2, 1, 3], into);
+        Assert.Equal(new[] { 1, 2, 3 }, into[..n].ToArray());
     }
 
     [Fact]
-    public void Merge_AppendsExtensionOnlyTracksInExtensionOrder()
+    public void Merge_appends_extension_only_tracks_in_extension_order()
     {
-        var merged = ArtistPopularTracks.Merge([T("a")], [T("z"), T("y")]);
-        Assert.Equal(["spotify:track:a", "spotify:track:z", "spotify:track:y"], merged.Select(t => t.Uri));
+        Span<int> into = stackalloc int[ArtistPopularTracks.ExtendedCap];
+        int n = ArtistPopularTracks.Merge([1], [26, 25], into);
+        Assert.Equal(new[] { 1, 26, 25 }, into[..n].ToArray());
     }
 
     [Fact]
-    public void Merge_EmptyExtension_ReturnsTheSeedUntouched()
+    public void Merge_with_an_empty_extension_copies_the_seed_untouched()
     {
-        var seed = new[] { T("a", 9), T("b") };
-        Assert.Same(seed, ArtistPopularTracks.Merge(seed, Array.Empty<Track>()));
-        Assert.Same(seed, ArtistPopularTracks.Merge(seed, null));
+        Span<int> into = stackalloc int[ArtistPopularTracks.ExtendedCap];
+        int n = ArtistPopularTracks.Merge([9, 4, 9], [], into);
+        Assert.Equal(new[] { 9, 4, 9 }, into[..n].ToArray());       // verbatim: a failed step two must never reorder the chart
     }
 
     [Fact]
-    public void Merge_DropsDuplicateAndUriLessEntries()
+    public void Merge_drops_duplicate_and_unidentified_entries()
     {
-        var blank = new Track("x", "", "X", [], new AlbumRef("", "", ""), 0, false, null);
-        var merged = ArtistPopularTracks.Merge([T("a")], [T("a"), blank, T("a"), T("b")]);
-        Assert.Equal(["spotify:track:a", "spotify:track:b"], merged.Select(t => t.Uri));
+        Span<int> into = stackalloc int[ArtistPopularTracks.ExtendedCap];
+        int n = ArtistPopularTracks.Merge([1], [1, 0, 1, 2], into);
+        Assert.Equal(new[] { 1, 2 }, into[..n].ToArray());
     }
 
     [Fact]
-    public void Merge_CapsAtTheExtendedCeiling()
+    public void Merge_caps_at_the_extended_ceiling_and_the_seed_survives_the_cap()
     {
-        var ext = Enumerable.Range(0, 200).Select(i => T("e" + i)).ToArray();
-        var merged = ArtistPopularTracks.Merge([T("a")], ext);
-        Assert.Equal(ArtistPopularTracks.ExtendedCap, merged.Count);
-        Assert.Equal("spotify:track:a", merged[0].Uri);   // the seed head survives the cap
+        var extension = new int[200];
+        for (int i = 0; i < extension.Length; i++) extension[i] = 1000 + i;
+        Span<int> into = stackalloc int[ArtistPopularTracks.ExtendedCap];
+        int n = ArtistPopularTracks.Merge([7], extension, into);
+        Assert.Equal(ArtistPopularTracks.ExtendedCap, n);
+        Assert.Equal(7, into[0]);
     }
 
     [Fact]
-    public void WithPlayCounts_FillsOnlyTheCountlessRows_AndKeepsTheHead()
+    public void WithPlayCounts_fills_only_the_countless_rows_and_keeps_the_head()
     {
-        // Step three: the overview head is authoritative (a kind-185 count for a head uri is ignored), the tail takes its
-        // count, a non-positive count is never applied, and a uri the wire did not answer stays 0.
-        var chart = new[] { T("a", 500), T("b"), T("c"), T("d") };
-        var counts = new Dictionary<string, long> { ["spotify:track:a"] = 1, ["spotify:track:b"] = 300, ["spotify:track:c"] = 0 };
+        uint[] chart = [500, 0, 0, 0];
+        uint[] incoming = [1, 300, 0, 0];                     // a count for the head is ignored; 0 is never applied
+        var into = new uint[4];
+        Assert.True(ArtistPopularTracks.WithPlayCounts(chart, incoming, into));
+        Assert.Equal(new uint[] { 500, 300, 0, 0 }, into);
 
-        var counted = ArtistPopularTracks.WithPlayCounts(chart, counts);
-
-        Assert.NotSame(chart, counted);
-        Assert.Equal([500, 300, 0, 0], counted.Select(t => t.PlayCount));
-        Assert.Same(chart[0], counted[0]);   // untouched rows keep their identity (the caller diffs by reference)
-        Assert.Equal(["spotify:track:c", "spotify:track:d"], ArtistPopularTracks.UrisWithoutPlayCount(counted));
+        Span<int> need = stackalloc int[4];
+        int n = ArtistPopularTracks.WithoutPlayCount([11, 12, 13, 14], into, need);
+        Assert.Equal(new[] { 13, 14 }, need[..n].ToArray());
     }
 
     [Fact]
-    public void WithPlayCounts_NothingToApply_ReturnsTheSameInstance()
+    public void WithPlayCounts_with_nothing_to_apply_reports_no_change()
     {
-        var chart = new[] { T("a", 500), T("b") };
-        Assert.Same(chart, ArtistPopularTracks.WithPlayCounts(chart, new Dictionary<string, long>()));
-        Assert.Same(chart, ArtistPopularTracks.WithPlayCounts(chart, new Dictionary<string, long> { ["spotify:track:z"] = 9 }));
-        Assert.Same(chart, ArtistPopularTracks.WithPlayCounts(chart, new Dictionary<string, long> { ["spotify:track:a"] = 9 }));
+        var into = new uint[2];
+        Assert.False(ArtistPopularTracks.WithPlayCounts([500, 0], [], into));
+        Assert.False(ArtistPopularTracks.WithPlayCounts([500, 0], [9, 0], into));
     }
 
+    [Fact]
+    public void TopByPlays_ranks_by_plays_and_dedupes_by_title()
+    {
+        Span<int> into = stackalloc int[3];
+        int n = ArtistPopularTracks.TopByPlays([10, 90, 50, 90], [1, 2, 3, 2], 3, into);
+        Assert.Equal(new[] { 1, 2, 0 }, into[..n].ToArray());         // the second "title 2" (90) collapses into the first
+    }
 }
 
-// SpotifyArtistPopularTracksServiceTests is DELETED with the service (hydration-facade-plan.md 1.6). The chart is now
-// the artist ladder's FULL rung, so its cases live in ArtistHydrationTests:
-//   Ensure_FetchesEnrichesAndMergesIntoTheStore / _FillsTheExtensionTailWithKind185Counts
-//     -> Full_ChartGetThenIdentityBatchThenMerge_SeedHeadKeepsItsCounts + Full_AwaitsTheChartTraitPass_ThenReadsTheCountsOffTheRowsItWrote
-//   Ensure_AlreadyExtendedAndFresh_SkipsTheNetwork / _ButCountless_TopsUpWithoutTheGet / _ExtendedButStale_Refetches
-//     -> Full_AlreadyExtendedAndFreshButCountless_TopsUpWithoutTheGet (+ Rich_StaleStamp_RefetchesEvenThoughTheArtistIsAlreadyRich)
-//   Ensure_HttpFailure_KeepsTheSeedAndTheStoredList / _MalformedBody_DegradesToTheSeed / _PlayCountFailure_KeepsTheMergedChart
-//     -> Full_ChartFailure_KeepsTheOverviewSeed + Full_EmptyChart_LeavesTheSeedAndAsksForNothingElse
-//   Ensure_UnresolvableUris_AreSkippedNotPlaceheld -> Full_ChartGetThenIdentityBatchThenMerge (a uri the Identity batch
-//     never lands stays out of the chart projection rather than becoming a placeholder row)
-//   Ensure_NonSpotifyArtist_NeverCallsOut -> HydrationRouterTests (owner routing is the router's job, not a per-service prefix test)
-//   Ensure_ConcurrentCalls_ShareOneRequest -> HydrationLedgerTests.RunOnce_CoalescesConcurrentCallers
-//   Ensure_CancelledCaller_Throws_WithoutKillingTheSharedLoad -> HydrationLedgerTests.RunOnce_AbandonedCaller_DoesNotKillTheSharedRun
-//   Ensure_UsesTheRequestedUrl -> SpclientArtistChartFetch owns the url; ArtistHydrationTests pins the ladder's ONE call to it
+/// <summary>The merge at COMMIT: both answers, both orders, one batch or two.</summary>
+[Collection(EntitiesCollection.Name)]
+public class ArtistPopularCommitTests
+{
+    const string ArtistUri = "spotify:artist:popular-merge";
 
-// FakePlayCounts (the ITrackPlayCountSource double) is GONE with the seam: kind 185 is a trait projector now,
-// so both halves of the 185 story are pinned against the pipeline instead — PlayCountProjectorTests (the fill rules and
-// the decoder) and ArtistHydrationTests.Full_AwaitsTheChartTraitPass_ThenReadsTheCountsOffTheRowsItWrote (the chart).
+    static StagedId Id(Staging s, string uri) => new(s.Text(uri));
+    static int SlotOf(string uri) => Entities.Current.Tracks.Slot(uri.AsSpan());
+    static Artist ArtistOf() => Entities.Artist(EntityUri.Parse(ArtistUri.AsSpan()));
+
+    static void StageList(Staging s, bool extension, params string[] tracks)
+    {
+        int mark = s.PopularMark;
+        foreach (var t in tracks) s.PopularTracks.Add() = Id(s, t);
+        s.EndPopular(Id(s, ArtistUri), mark, extension);
+        if (extension) s.Artists.RowFor(Id(s, ArtistUri), Authority.Full, (uint)ArtistFields.Chart);
+    }
+
+    [Fact]
+    public void A_seed_and_an_extension_in_ONE_batch_merge_seed_first()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        StageList(s, extension: true, "spotify:track:c", "spotify:track:a", "spotify:track:d");
+        StageList(s, extension: false, "spotify:track:a", "spotify:track:b");
+        TestScope.CommitAndPublish(s);
+
+        var artist = ArtistOf();
+        Assert.Equal(new[] { SlotOf("spotify:track:a"), SlotOf("spotify:track:b"), SlotOf("spotify:track:c"), SlotOf("spotify:track:d") },
+                     artist.PopularSlots.ToArray());
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.ArtistPopular.State(artist.Slot));
+        Assert.True(artist.Knows(ArtistFields.Chart));
+    }
+
+    [Fact]
+    public void An_extension_that_lands_AFTER_the_seed_appends_behind_the_committed_head()
+    {
+        TestScope.Fresh();
+        var seed = Staging.Rent();
+        StageList(seed, extension: false, "spotify:track:a", "spotify:track:b");
+        TestScope.CommitAndPublish(seed);
+
+        var ext = Staging.Rent();
+        StageList(ext, extension: true, "spotify:track:b", "spotify:track:z");
+        TestScope.CommitAndPublish(ext);
+
+        Assert.Equal(new[] { SlotOf("spotify:track:a"), SlotOf("spotify:track:b"), SlotOf("spotify:track:z") },
+                     ArtistOf().PopularSlots.ToArray());
+    }
+
+    [Fact]
+    public void A_re_answered_overview_over_an_extended_chart_keeps_its_tail()
+    {
+        TestScope.Fresh();
+        var first = Staging.Rent();
+        StageList(first, extension: true, "spotify:track:a", "spotify:track:x", "spotify:track:y");
+        TestScope.CommitAndPublish(first);
+
+        var overview = Staging.Rent();
+        StageList(overview, extension: false, "spotify:track:b", "spotify:track:a");
+        TestScope.CommitAndPublish(overview);
+
+        Assert.Equal(new[] { SlotOf("spotify:track:b"), SlotOf("spotify:track:a"), SlotOf("spotify:track:x"), SlotOf("spotify:track:y") },
+                     ArtistOf().PopularSlots.ToArray());
+    }
+
+    [Fact]
+    public void A_seed_over_an_UNEXTENDED_chart_replaces_it()
+    {
+        TestScope.Fresh();
+        var first = Staging.Rent();
+        StageList(first, extension: false, "spotify:track:old");
+        TestScope.CommitAndPublish(first);
+
+        var second = Staging.Rent();
+        StageList(second, extension: false, "spotify:track:new");
+        TestScope.CommitAndPublish(second);
+
+        Assert.Equal(new[] { SlotOf("spotify:track:new") }, ArtistOf().PopularSlots.ToArray());
+    }
+
+    [Fact]
+    public void The_extended_list_decoder_stages_an_extension_not_a_replacing_run()
+    {
+        // B1b's `Decode.ArtistTopTracks`, after its Decode.Entry patch: the extended list merges behind the seed.
+        TestScope.Fresh();
+        var seed = Staging.Rent();
+        StageList(seed, extension: false, "spotify:track:1XGmzt0PVuFgQYYnV2It7A");
+        TestScope.CommitAndPublish(seed);
+
+        var s = Staging.Rent();
+        string json = "{\"tracks\":[{\"uri\":\"spotify:track:2bL2gyO6kBdLkNSkxXNh6x\"},{\"uri\":\"spotify:track:1XGmzt0PVuFgQYYnV2It7A\"}]}";
+        Spotify.Decode.ArtistTopTracks(Encoding.UTF8.GetBytes(json), Encoding.UTF8.GetBytes(ArtistUri), s);
+        TestScope.CommitAndPublish(s);
+
+        Assert.Equal(new[] { SlotOf("spotify:track:1XGmzt0PVuFgQYYnV2It7A"), SlotOf("spotify:track:2bL2gyO6kBdLkNSkxXNh6x") },
+                     ArtistOf().PopularSlots.ToArray());
+    }
+}

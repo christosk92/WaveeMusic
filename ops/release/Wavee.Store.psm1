@@ -34,8 +34,9 @@ Import-Module $script:BuildModulePath -Force -DisableNameChecking -Global
 function ConvertTo-WaveeStoreQuad {
     <#
     .SYNOPSIS
-      stable semver + build counter -> the Store package quad: (M+1).m.(p*100+build).0. Mirrors
-      src\apps\Wavee.Core\Versioning\StoreVersion.Quad and the -Channel store branch of
+      stable semver + build counter -> the Store package quad: (M+1).m.(p*100+build).0. Same rule as the retired
+      0.2.x app's src\apps\_old\Wavee.Core\Versioning\StoreVersion.Quad (0.3 has no live app-side twin yet - this
+      module is the one place the rule is enforced today) and the -Channel store branch of
       ops\build\pack-wavee-msix.ps1: the Store owns the 4th part (must be 0 on upload) and refuses a major of 0,
       so the build counter folds into the 3rd part and the major is lifted by one. 0.2.1 build 2 -> 1.2.102.0.
     .DESCRIPTION
@@ -258,7 +259,7 @@ function Get-WaveeStorePackageEvidence {
     $map = Join-Path $SymbolsDir 'Wavee.map.xml'
     $hasPlayPlay = $false
     foreach ($line in [IO.File]::ReadLines($map)) {
-        if ($line.Contains('InProcessPlayPlayKeyDeriver')) { $hasPlayPlay = $true; break }
+        if ($line.Contains('PlayPlayHost')) { $hasPlayPlay = $true; break }
     }
     if (-not $hasPlayPlay) { throw 'Archived native map does not prove PlayPlay is included.' }
     [pscustomobject]@{ Path = (Resolve-Path -LiteralPath $Msix).Path; Architecture = $Architecture

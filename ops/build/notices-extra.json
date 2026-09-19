@@ -1,10 +1,17 @@
 [
   {
-    "name": "NVorbis",
-    "version": "vendored (src/apps/vendor/NVorbis)",
-    "license": "MIT",
-    "url": "https://github.com/NVorbis/NVorbis",
-    "note": "Pure-managed Ogg Vorbis decoder. Copyright (c) Andrew Ward and contributors. Vendored as source so it can be NativeAOT-published with the app."
+    "name": "stb_vorbis",
+    "version": "1.22 (algorithms transliterated, not vendored)",
+    "license": "MIT (dual-licensed MIT or public domain; used under MIT)",
+    "url": "https://github.com/nothings/stb",
+    "note": "Wavee's Ogg Vorbis decoder (src/apps/Wavee/Playback/Playback.Audio.Vorbis.cs) transliterates parts of stb_vorbis.c where the Vorbis I specification leaves the implementation open. Copyright (c) 2017 Sean Barrett."
+  },
+  {
+    "name": "libFLAC",
+    "version": "algorithms followed, not vendored",
+    "license": "BSD-3-Clause",
+    "url": "https://github.com/xiph/flac",
+    "note": "Wavee's FLAC decoder kernels (src/apps/Wavee/Playback/Playback.Audio.Flac.Kernels.cs) follow libFLAC's bit reader, Rice residual, LPC restoration and CRC routines. Copyright (C) 2000-2009 Josh Coalson, Copyright (C) 2011- Xiph.Org Foundation."
   },
   {
     "name": "Microsoft.UI.Reactor (Element/Component/hooks model + the pure-C# Yoga flexbox port)",

@@ -34,7 +34,8 @@
     "addToQueue": "Add to queue",
     "playNext": "Play next",
     "cantMoveAcrossSections": "Can’t move across sections",
-    "reorderHint": "Drag to reorder"
+    "reorderHint": "Drag to reorder",
+    "libraryUnavailable": "Can’t change your library right now"
   },
   "detail": {
     "play": "Play",
@@ -123,7 +124,8 @@
       "dateAdded": "Date added",
       "duration": "Duration",
       "ascending": "Ascending",
-      "descending": "Descending"
+      "descending": "Descending",
+      "menu": "Sort"
     },
     "filter": {
       "title": "Filter tracks",
@@ -265,7 +267,7 @@
       "explicit": "Explicit",
       "video": "Music video",
       "localFile": "Local file",
-      "unavailable": "Unavailable",
+      "unavailable": "Audio unavailable",
       "$comment2": "Camelot encodes mode in its own suffix — the B ring is major, the A ring minor — so these two words are the only key wording we can state honestly. They are lowercase because they follow a tonic: \"8B · C major\".",
       "major": "major",
       "minor": "minor"
@@ -357,6 +359,7 @@
     },
     "aboutRelease": "About this release",
     "factSongs": "Songs",
+    "factSong": "Song",
     "factLength": "Length",
     "factLabel": "Label",
     "factOfCount": "{n} of {total}",
@@ -367,7 +370,13 @@
     "goToAlbum": "Go to album",
     "collabOpen": "Open to collaboration",
     "collabCount": "{n, plural, one {# collaborator} other {# collaborators}}",
-    "collabView": "View collaborators"
+    "collabView": "View collaborators",
+    "queueUnavailable": "Can’t add to queue right now",
+    "row": {
+      "chartNew": "NEW",
+      "playsFull": "{count} plays",
+      "moreArtists": "+{count}"
+    }
   },
   "artist": {
     "popular": "Popular",
@@ -421,7 +430,15 @@
     "galleryImages": "Images",
     "galleryAllFiles": "All files",
     "galleryExported": "Image exported",
-    "galleryExportFailed": "Image export failed: {error}"
+    "galleryExportFailed": "Image export failed: {error}",
+    "tour": {
+      "upcomingShow": "Upcoming show",
+      "upcomingDates": "Upcoming dates",
+      "onTourNow": "On tour now",
+      "upcomingTour": "Upcoming tour",
+      "headline": "{name} — on tour",
+      "subline": "Next: {date} · {venue} · {city} · {count, plural, one {# date} other {# dates}} total"
+    }
   },
   "concerts": {
     "liveMusic": "Live music",
@@ -455,7 +472,8 @@
       "weekend": "Weekend",
       "custom": "Custom",
       "showEvents": "Show events",
-      "clear": "Clear"
+      "clear": "Clear",
+      "whereRadius": "{place} · {km} km"
     },
     "location": {
       "set": "Set location",
@@ -484,7 +502,21 @@
       "viewEvent": "View event",
       "tourDates": "Tour dates",
       "showCount": "{count, plural, one {# show} other {# shows}}",
-      "showAll": "Show all {count}"
+      "showAll": "Show all {count}",
+      "relative": {
+        "today": "today",
+        "tomorrow": "tomorrow",
+        "days": "{count, plural, one {in # day} other {in # days}}",
+        "weeks": "{count, plural, one {in # week} other {in # weeks}}",
+        "months": "{count, plural, one {in # month} other {in # months}}"
+      },
+      "cityCount": "{count, plural, one {# city} other {# cities}}",
+      "nights": "{count, plural, one {# night} other {# nights}}",
+      "support": {
+        "one": "with {first}",
+        "two": "with {first}, {second}",
+        "more": "{count, plural, one {with {first}, {second} +# more} other {with {first}, {second} +# more}}"
+      }
     },
     "detail": {
       "notAvailable": "Concert not available",
@@ -499,7 +531,10 @@
       "lineup": "Lineup",
       "artistCount": "{count, plural, one {# artist} other {# artists}}",
       "artistFallback": "Artist",
-      "relatedConcerts": "Related concerts"
+      "relatedConcerts": "Related concerts",
+      "onSaleFrom": "On sale from {start}",
+      "onSaleUntil": "On sale until {end}",
+      "onSaleRange": "On sale {start} - {end}"
     },
     "setLocation": "Set location",
     "nearApproximate": "Near {place} (approximate)",
@@ -551,6 +586,7 @@
     "yourDaylist": "your daylist",
     "heroEyebrow": "{greeting}, {name} · {what}",
     "nextUpdateAt": "Next update at {time}",
+    "daylistUpdating": "Updating your daylist…",
     "editorial": "Editorial",
     "oneSeries": "One series, {count} mixes",
     "mixesFromArtists": "{count} mixes built from artists you play",
@@ -591,7 +627,13 @@
         "show": "Show module",
         "move": "Reorder module",
         "reset": "Reset Home layout"
-      }
+      },
+      "dragCaption": "Reorder",
+      "position": "{index} of {count}",
+      "reorderGrabbed": "Picked up {name}. {position}.",
+      "reorderMoved": "{name}. {position}.",
+      "reorderDropped": "Moved {name}. {position}.",
+      "reorderCancelled": "Cancelled. {name} stayed where it was."
     }
   },
   "search": {
@@ -655,7 +697,147 @@
       "newest": "Newest",
       "oldest": "Oldest"
     },
-    "minutes": "{n} min"
+    "minutes": "{n} min",
+    "empty": "This podcast doesn't have any episodes yet",
+    "startHere": "start here",
+    "beginHere": "begin here",
+    "whereItBegan": "where it began",
+    "latest": "latest",
+    "trailer": "trailer",
+    "serialHint": "a serial — best heard in order",
+    "episodicHint": "episodes stand alone — start anywhere",
+    "about": "about",
+    "continue": "continue",
+    "upNextFromProgress": "up next from your progress",
+    "startFromBeginning": "start from the beginning",
+    "newSince": "new since you were here",
+    "markAllPlayed": "mark all played",
+    "caughtUp": "you're all caught up",
+    "caughtUpNext": "New episodes usually land {day, select, monday {on Mondays} tuesday {on Tuesdays} wednesday {on Wednesdays} thursday {on Thursdays} friday {on Fridays} saturday {on Saturdays} sunday {on Sundays} other {on a regular day}}.",
+    "episodesCount": "episodes {count}",
+    "countOf": "{shown} of {total}",
+    "left": "{time} left",
+    "leftOf": "{left} left of {total}",
+    "played": "played",
+    "new": "new",
+    "ledger": "{played} played · {progress} in progress · {togo} to go",
+    "ledgerNew": "{count} new",
+    "cadence": {
+      "daily": "daily",
+      "weekly": "weekly",
+      "fortnightly": "every two weeks",
+      "monthly": "monthly"
+    },
+    "since": "since {when}",
+    "ratings": "{count, plural, one {# rating} other {# ratings}}",
+    "yours": "yours {stars}★",
+    "rate": {
+      "title": "Rate {name}",
+      "unavailable": "Rating isn't available in Wavee yet — the average and your own rating are shown as Spotify has them.",
+      "stars": "{count, plural, one {# star} other {# stars}}"
+    },
+    "notify": {
+      "unavailable": "New-episode notifications aren't available in Wavee yet."
+    },
+    "find": "Find in this show",
+    "nothingMatches": "nothing matches",
+    "nothingMatchesHint": "Try another word, or switch the filter back to all.",
+    "moreLikeThis": "more like this",
+    "alsoFollow": "listeners of {name} also follow",
+    "tabs": {
+      "about": "about",
+      "chapters": "chapters",
+      "transcript": "transcript",
+      "comments": "comments"
+    },
+    "nextInStory": "next in the story",
+    "aroundThisEpisode": "around this episode",
+    "next": "next",
+    "previous": "previous",
+    "newer": "newer",
+    "older": "older",
+    "moreFromShow": "more from this show",
+    "seeAll": "see all {count}",
+    "alsoLike": "you might also like",
+    "chapter": "Chapter {n}",
+    "transcript": {
+      "search": "Search the transcript",
+      "follows": "follows playback · click a sentence to jump there",
+      "none": "This episode has no transcript"
+    },
+    "comments": {
+      "count": "{count, plural, one {# comment} other {# comments}}",
+      "add": "Add a comment…",
+      "postingUnavailable": "posting isn't available yet",
+      "pinned": "pinned by the show",
+      "replies": "{count, plural, one {# reply} other {# replies}}",
+      "loadMore": "Load more comments",
+      "none": "No comments yet"
+    },
+    "badge": {
+      "exclusive": "exclusive",
+      "video": "video",
+      "bonus": "bonus",
+      "trailer": "trailer",
+      "subscribers": "subscribers",
+      "previewAvailable": "subscribers only · preview available",
+      "episode": "episode {n}"
+    },
+    "menu": {
+      "markPlayed": "Mark as played",
+      "markUnplayed": "Mark as unplayed",
+      "goToShow": "Go to show"
+    },
+    "progressUnavailable": "Listening progress isn't available right now",
+    "reader": {
+      "about": "About this episode",
+      "chapters": "Chapters",
+      "transcript": "Transcript",
+      "comments": "Comments",
+      "related": "More like this",
+      "showAll": "Show all",
+      "showLess": "Show less",
+      "retry": "Try again",
+      "unavailable": "This section is unavailable. Try again.",
+      "empty": "Nothing to show yet.",
+      "noChapters": "No chapters are available for this episode.",
+      "noTranscript": "No transcript is available for this episode.",
+      "noComments": "Be the first to join the conversation.",
+      "beginning": "Play from beginning",
+      "speed": "Playback speed",
+      "follow": "Follow playback",
+      "following": "Following playback",
+      "submit": "Post comment",
+      "reply": "Reply",
+      "postReply": "Post reply",
+      "commentPlaceholder": "Write a comment",
+      "replyPlaceholder": "Write a reply",
+      "pending": "Awaiting review",
+      "sensitive": "Sensitive comment",
+      "reveal": "Show comment",
+      "pinned": "Pinned",
+      "eligibility": "Comments are not available for your account on this episode.",
+      "oneComment": "You have already commented on this episode.",
+      "mutationFailed": "The change could not be confirmed. Refresh before trying again.",
+      "ratingSaved": "Your rating was saved.",
+      "loadMore": "Load more",
+      "reactions": "Reactions",
+      "paywall": "This episode requires access through Spotify.",
+      "preview": "Only a preview is available for this episode.",
+      "video": "Video episode",
+      "save": "Save to Your Episodes",
+      "removeSaved": "Remove from Your Episodes",
+      "saved": "Saved to Your Episodes",
+      "unsaved": "Removed from Your Episodes",
+      "saveUnavailable": "Your Episodes is unavailable. Try again.",
+      "anonymous": "Spotify listener",
+      "yourEpisodes": "Your Episodes",
+      "followedShows": "Followed shows",
+      "savedEmpty": "Episodes you save will appear here.",
+      "play": "Play",
+      "pause": "Pause",
+      "consent": "I understand that comments are posted publicly under my Spotify profile name."
+    }
   },
   "recents": {
     "itemCount": "{count, plural, one {# item} other {# items}}",
@@ -686,10 +868,29 @@
     "matchedSong": "Matched · song ‘{name}’",
     "noMatch": "Nothing matches your filter",
     "viewFullAlbum": "View full album",
-    "selectAlbum": "Select an album to see its tracks",
-    "selectArtist": "Select an artist to see their discography",
+    "selectAlbum": "Pick an album",
+    "selectArtist": "Pick an artist",
     "selectShow": "Select a show to see its episodes",
     "selectAlbumTracks": "Select a release",
+    "openAlbum": "Open album",
+    "playAll": "Play all",
+    "playAlbum": "Play {name}",
+    "alsoBy": "Also by {name} in your library",
+    "inYourLibrary": "In your library: {albums}{songs}",
+    "oneAlbum": "1 album",
+    "nAlbums": "{n, plural, one {# album} other {# albums}}",
+    "nSongs": " · {n, plural, one {# song} other {# songs}}",
+    "savedIn": "saved {year}",
+    "songsFailed": "Couldn’t load the songs.",
+    "fetchingMore": "Fetching {n} more releases…",
+    "fetchingReleases": "Fetching releases…",
+    "allInLibrary": "Everything {name} has released is already in your library.",
+    "oneSong": "1 song",
+    "nSongsOnly": "{n, plural, one {# song} other {# songs}}",
+    "oneLikedSong": "1 liked song",
+    "nLikedSongs": "{n, plural, one {# liked song} other {# liked songs}}",
+    "emptyLibraryTitle": "Nothing from {name} in your library yet",
+    "emptyLibraryAction": "Show all releases",
     "sortBy": "Sort by",
     "viewAs": "View as",
     "size": "Size",
@@ -700,12 +901,35 @@
       "creator": "Creator",
       "releaseDate": "Release date"
     },
+    "rail": {
+      "recents": "recents",
+      "alphabetical": "a–z",
+      "creator": "artist",
+      "recentlyAdded": "added",
+      "releaseDate": "year",
+      "albums": "albums"
+    },
+    "scope": {
+      "inLibrary": "in your library",
+      "allReleases": "all releases",
+      "allShort": "all"
+    },
+    "readerSort": {
+      "newest": "newest",
+      "oldest": "oldest",
+      "alphabetical": "a–z"
+    },
     "view": {
       "compactList": "Compact list",
       "list": "List",
       "compactGrid": "Compact grid",
       "grid": "Grid"
-    }
+    },
+    "writeFailed": "Couldn’t update your library. Try again.",
+    "moveFailed": "Couldn’t save that change to your library. Try again.",
+    "conflict": "Your library changed while that was saving — try again.",
+    "deleteFolderConfirmBody": "Delete this folder? The playlists inside will move up a level. Playlists are not deleted.",
+    "nothingToAdd": "There’s nothing here to add"
   },
   "settings": {
     "title": "Settings",
@@ -824,6 +1048,13 @@
       "marqueeSub": "Scroll overflowing titles instead of truncating them",
       "colorWashes": "Color washes",
       "colorWashesSub": "Tint the shell and page surfaces from artwork",
+      "pageMotion": "Page motion",
+      "pageMotionSub": "How pages animate when you navigate",
+      "pageMotionFluent": "Fluent",
+      "pageMotionSpatial": "Spatial",
+      "pageMotionWinUi": "WinUI",
+      "pageMotionClassic": "Classic",
+      "pageMotionNone": "None",
       "zoom": "Zoom",
       "zoomSub": "Scale the whole app, like Ctrl + and Ctrl − in a browser",
       "zoomAuto": "Auto ({percent}%)",
@@ -898,6 +1129,8 @@
       "videoMeteredQuality": "Video Auto on metered connections",
       "videoMeteredQualitySub": "Maximum resolution used by Auto when Windows reports a metered network",
       "videoQualityUnlimited": "Unlimited",
+      "videoPrepareAhead": "Prepare videos ahead of time",
+      "videoPrepareAheadSub": "Fetch video licences before you switch, so opening a music video is near-instant. Uses a little extra data for videos you may not watch.",
       "qualityNormal": "Normal",
       "qualityNormalSub": "96 kbps - about 0.04 GB/hour",
       "qualityHigh": "High",
@@ -916,7 +1149,8 @@
       "outputDevice": "Output device",
       "outputDeviceSub": "Where local playback is heard",
       "normalization": "Audio normalization",
-      "normalizationSub": "Play every track at a similar loudness (applies from the next song)"
+      "normalizationSub": "Play every track at a similar loudness (applies from the next song)",
+      "runtimeDiagnostics": "Diagnostics"
     },
     "sound": {
       "title": "Sound",
@@ -1029,7 +1263,8 @@
       "factoryResetRowSub": "Signs you out and deletes login, library, metadata, settings, caches, and history. Wavee stays installed.",
       "factoryResetAction": "Reset Wavee",
       "factoryResetConfirmTitle": "Reset Wavee to a fresh install?",
-      "factoryResetConfirmBody": "This signs you out and permanently deletes all local Wavee data on this PC — login, library, metadata, settings, playback cache, and history. Wavee will restart on the first-launch screen. The app itself is not uninstalled."
+      "factoryResetConfirmBody": "This signs you out and permanently deletes all local Wavee data on this PC — login, library, metadata, settings, playback cache, and history. Wavee will restart on the first-launch screen. The app itself is not uninstalled.",
+      "factoryResetFailed": "Couldn't start the factory reset. Nothing was deleted."
     },
     "about": {
       "licenses": "Licenses",
@@ -1108,7 +1343,28 @@
       "startOnLogin": "Open Wavee when you sign in to Windows",
       "startOnLoginSub": "Starts in the background so playback is ready",
       "spotifyLinksPackagedSub": "Managed by Windows for installed apps",
-      "restartForLanguage": "Language changes apply after Wavee restarts"
+      "restartForLanguage": "Language changes apply after Wavee restarts",
+      "tray": {
+        "title": "Notification area",
+        "subtitle": "Wavee in the corner of the taskbar",
+        "iconMode": "Show Wavee's icon",
+        "iconModeSub": "Windows keeps new icons behind the arrow in the taskbar corner until you drag them out",
+        "iconAlways": "Always",
+        "iconWhileHidden": "Only while Wavee is hidden",
+        "iconNever": "Never",
+        "iconNeverSub": "With no icon, closing or minimizing Wavee never hides it",
+        "closeToTray": "Closing hides Wavee",
+        "closeToTraySub": "Keep playing from the icon when you close the window",
+        "minimizeToTray": "Minimizing hides Wavee",
+        "minimizeToTraySub": "The taskbar button goes away; the icon brings Wavee back",
+        "startHidden": "Start hidden at sign-in",
+        "startHiddenSub": "Only when Wavee starts with Windows",
+        "needsIcon": "Turned off while the icon is set to Never",
+        "needsStartOnLogin": "Turn on opening Wavee when you sign in first"
+      }
+    },
+    "logs": {
+      "unavailable": "The log viewer isn't available in this build."
     }
   },
   "shell": {
@@ -1166,7 +1422,7 @@
       "offline": "Sign in to see notifications from Spotify."
     },
     "update": {
-      "$comment": "Only the ROW TITLES live here. The buttons under them are update.action.* \u2014 the row used to carry its own retry/dismiss strings beside identical ones in update.action, which is two owners for one label.",
+      "$comment": "Only the ROW TITLES live here. The buttons under them are update.action.* — the row used to carry its own retry/dismiss strings beside identical ones in update.action, which is two owners for one label.",
       "availableTitle": "An update is available",
       "completedTitle": "Wavee was updated",
       "failedTitle": "Update failed",
@@ -1318,6 +1574,9 @@
     "thisComputer": "This computer",
     "spotifyConnect": "Spotify Connect",
     "systemDefault": "System default",
+    "qualityPlaying": "Playing at {quality}",
+    "qualityIdle": "Nothing playing",
+    "qualityBelowSetting": "Playing at {quality} — {asked} unavailable",
     "deviceLost": "{device} disconnected — playback paused",
     "deviceSwitched": "Audio moved to {device}",
     "deviceRestored": "Reconnected to {device}",
@@ -1429,7 +1688,16 @@
       "fast": "Fast",
       "soft": "Soft",
       "strong": "Strong"
-    }
+    },
+    "fault": {
+      "network": "Can’t play — check your connection",
+      "unavailable": "This track isn’t available",
+      "drmRequired": "This track can’t play here",
+      "decodeFailed": "This track couldn’t be played",
+      "runtimeMissing": "Local playback needs a one-time setup",
+      "unknown": "Can’t play this track"
+    },
+    "videoUnavailable": "Couldn’t play the video — playing the song instead"
   },
   "playback": {
     "runtime": {
@@ -1503,6 +1771,7 @@
     "artist": "Artist",
     "podcast": "Podcast",
     "show": "Podcast",
+    "episode": "Episode",
     "yourLibrary": "Your Library",
     "comingSoon": "This view arrives in a later pass.",
     "viewAllHistory": "View all history",
@@ -1567,7 +1836,9 @@
     "concerts": "Concerts",
     "artistConcerts": "{artist} concerts",
     "artistConcertsGeneric": "Artist concerts",
-    "concertDetails": "Concert details"
+    "concertDetails": "Concert details",
+    "discography": "Discography",
+    "connectDiagnostics": "Connect diagnostics"
   },
   "sidebar": {
     "pinned": "Pinned",
@@ -1861,7 +2132,9 @@
         "content": "Content",
         "appearance": "Appearance",
         "behavior": "Behavior"
-      }
+      },
+      "tooNew": "This sidebar layout belongs to a newer Wavee",
+      "tooNewSub": "The file at {path} was saved by a newer version of Wavee, so it is left untouched and Wavee Curated is shown instead. Changes made here are not saved until you update."
     },
     "recents": {
       "sourceVisited": "Recently visited",
@@ -2091,7 +2364,10 @@
     "filter": "Audio and video",
     "rejected": "That file can’t be played. Wavee plays .mp3, .ogg, .flac and .mp4 files.",
     "notReady": "Local playback isn’t ready yet.",
-    "dropHint": "Drop a file to play it"
+    "dropHint": "Drop a file to play it",
+    "playlistTitle": "Local Files",
+    "playlistDescription": "Music imported from this computer.",
+    "onThisDevice": "On this device"
   },
   "play": {
     "menu": "Play",
@@ -2174,7 +2450,14 @@
       "notMe": "Not me",
       "free": "Spotify Free",
       "noAccount": "Don't have a Spotify account? Sign up",
-      "premiumNote": "Wavee needs Spotify Premium."
+      "premiumNote": "Wavee needs Spotify Premium.",
+      "rejected": "Spotify didn't accept that sign-in. Sign in again to keep listening.",
+      "refused": "Spotify couldn't sign you in right now. Try again in a moment.",
+      "denied": "Sign-in was cancelled.",
+      "browserUnavailable": "Wavee couldn't open your browser. Scan the code with your phone, or go to spotify.com/pair.",
+      "browserTimedOut": "The browser didn't come back to Wavee in time. Try again, or use the code instead.",
+      "codeUnavailable": "We couldn't get a code. Check your connection and try again.",
+      "openPairPage": "Open spotify.com/pair"
     },
     "localPlayback": {
       "header": "Set up local playback",
@@ -2249,7 +2532,11 @@
     "play": "Play",
     "updateAvailable": "Wavee {version} is available",
     "updateReady": "Wavee {version} is ready to install",
-    "updated": "Wavee updated to {version}"
+    "updated": "Wavee updated to {version}",
+    "daylistTitle": "Your daylist has refreshed",
+    "daylistMovedOn": "It moved on from {window}",
+    "daylistGeneric": "A new mix is waiting.",
+    "newReleaseTitle": "New release"
   },
   "jumplist": {
     "pause": "Pause",
@@ -2296,7 +2583,8 @@
       "notTrustedOverride": "Signature not trusted; manual override",
       "checkUnavailable": "Signature check unavailable on this platform",
       "signatureUnknown": "Signature unknown",
-      "packLabel": "Spotify {version} · {arch}"
+      "packLabel": "Spotify {version} · {arch}",
+      "title": "Digital signature"
     }
   },
   "crash": {
@@ -2353,12 +2641,14 @@
     "openButton": "Open",
     "aboutReportProblem": "Report a problem…",
     "aboutSuggestFeature": "Suggest a feature…",
-    "aboutAllIssues": "All issues on GitHub"
+    "aboutAllIssues": "All issues on GitHub",
+    "saveFilterText": "Text files",
+    "saveFilterAll": "All files"
   },
   "whatsNew": {
     "$comment": "The What's-new page, its rail and the after-update dialog. Wavee already uses \"whatsNew\" for Spotify's new-releases feed in the notification centre (notifications.filter.new); these keys are the APP's own release notes.",
     "title": "What's new",
-    "headline": "Wavee {version} \u201C{name}\u201D",
+    "headline": "Wavee {version} “{name}”",
     "headlineBare": "Wavee {version}",
     "dateFormat": "d MMM yyyy",
     "since": "Since you last looked: {count} releases — {from} → {to}. Showing everything new.",
@@ -2445,7 +2735,7 @@
     },
     "installOnQuit": {
       "title": "Install a waiting update when I quit Wavee",
-      "hint": "Wavee downloads it as it closes; Windows restarts nothing \u2014 the new version opens next time."
+      "hint": "Wavee downloads it as it closes; Windows restarts nothing — the new version opens next time."
     },
     "metered": {
       "title": "Download on metered connections",
@@ -2490,8 +2780,8 @@
       "built": "Built {date}",
       "lastChecked": "last checked {when}",
       "neverChecked": "not checked yet",
-      "display": "Wavee {version} \u201C{name}\u201D",
-      "displayBeta": "Wavee {version} \u201C{name}\u201D \u00B7 Beta {beta}",
+      "display": "Wavee {version} “{name}”",
+      "displayBeta": "Wavee {version} “{name}” · Beta {beta}",
       "displayBare": "Wavee {version}",
       "whatsNewIn": "What’s new in {name}",
       "openWhatsNew": "Open What's new",
@@ -2529,7 +2819,145 @@
       "notesBudget": "GitHub issue budget",
       "notesBudgetValue": "{spent} lookups this session · {remaining} requests left on this IP (−1 = unknown)",
       "repair": "Repair auto-update",
-      "repairHint": "Downloads the .appinstaller file through your browser. Open it once it has downloaded \u2014 Windows App Installer takes it from there, and installing from the feed is what re-registers the auto-update association."
+      "repairHint": "Downloads the .appinstaller file through your browser. Open it once it has downloaded — Windows App Installer takes it from there, and installing from the feed is what re-registers the auto-update association."
+    },
+    "inspector": {
+      "noTrack": "Nothing is playing. Start a track and reopen this dialog.",
+      "tabProviders": "Providers",
+      "tabRaw": "Raw response",
+      "tabParsed": "Parsed",
+      "parsedNone": "Parsed (none)",
+      "copyReport": "Copy full report",
+      "saveBundle": "Save bundle…",
+      "working": "Working…",
+      "refresh": "Refresh",
+      "refetch": "Re-fetch from providers",
+      "refetching": "Re-fetching…",
+      "nothingToSave": "Nothing to save — no search has been recorded for this track.",
+      "savedNoPayloads": "Saved to {folder} — but with NO provider payloads: the answer still came from a cache.",
+      "savedPayloads": "Saved {count} payload(s) to {folder}",
+      "saveFailed": "The evidence bundle could not be written — {error}",
+      "refetchingFirst": "Nothing cached to save — re-fetching from the providers first…",
+      "noRefetch": "This session has no re-fetchable lyrics provider (offline / not logged in).",
+      "refetchFailed": "Re-fetch failed — {error}",
+      "noReport": "No lyrics search has been recorded for this track yet — the fetch may still be in flight, or this is a local/fake track. Hit Refresh, or Re-fetch to force one.",
+      "noTitle": "(no title)",
+      "titleLine": "“{title}” — {artist}",
+      "noSourceRan": "No source ran for this track.",
+      "noPayload": "No provider payload was captured for this track.",
+      "nothingRecorded": "Nothing has been recorded yet — hit Refresh.",
+      "copy": "Copy",
+      "payloadCopied": "{source} payload copied",
+      "noParsed": "No parsed document has been recorded for this track.",
+      "finalChip": "Final (what the UI got)",
+      "noDocument": "That provider produced no document.",
+      "finalDescription": "The document handed to the lyrics view — the winner AFTER the reranker's offset correction.",
+      "candidateDescription": "“{source}” as parsed, BEFORE the reranker's offset correction.",
+      "showSyllables": "Show syllables",
+      "hideSyllables": "Hide syllables",
+      "copyParsed": "Copy parsed",
+      "blankLine": "(blank)",
+      "moreLines": "…{count} more lines — use Copy parsed to see them all."
+    },
+    "runtime": {
+      "noSessionTitle": "No playback session yet",
+      "noSessionBody": "Local playback is provisioned by the live Spotify session. Sign in (and let the session start) to see the runtime search this page reports on.",
+      "compiledInTitle": "Local playback support is compiled into this build",
+      "compiledInBody": "The app can search for and load a local Spotify.dll. Anything below is about that search.",
+      "notCompiledTitle": "This build has no local-playback support",
+      "currentStatus": "Current status",
+      "outcome": "Outcome",
+      "detail": "Detail",
+      "pack": "Pack",
+      "spotifyVersion": "Spotify version",
+      "architecture": "Architecture",
+      "runtimePath": "Runtime path",
+      "signatureTrust": "Signature trust",
+      "locate": "Locate",
+      "reason": "Reason",
+      "candidates": "Candidates",
+      "noCandidates": "No candidate locations were probed.",
+      "noPath": "(no path)",
+      "verify": "Verify",
+      "verifyNeverReached": "Verification was never reached — the search ended before a candidate could be checked.",
+      "publisher": "Publisher",
+      "issuer": "Issuer",
+      "thumbprint": "Thumbprint",
+      "valid": "Valid",
+      "file": "File",
+      "modules": "Playback modules",
+      "noModuleHost": "This build has no playback-module host (the fake backend).",
+      "noModules": "No playback modules are installed. Bundled modules live in {bundled}; installed ones in {user}.",
+      "bundled": "bundled",
+      "installed": "installed",
+      "moduleId": "Id",
+      "moduleVersion": "Version",
+      "moduleVersionValue": "{version}  ·  protocol {protocol}",
+      "directory": "Directory",
+      "process": "Process",
+      "processPid": "pid {pid}",
+      "notRunning": "not running",
+      "capabilities": "Capabilities",
+      "requests": "Requests",
+      "requestsValue": "{requests}  ·  {failures} failed  ·  {restarts} restarts",
+      "latency": "Latency",
+      "latencyValue": "p50 {p50} ms  ·  p95 {p95} ms",
+      "lastError": "Last error",
+      "statusRow": "Status",
+      "retry": "Retry",
+      "refused": "Refused",
+      "copy": "Copy diagnostics",
+      "copied": "Diagnostics copied",
+      "caption": "This report is what the provisioner already computed while resolving a runtime — reading it changes nothing. Attach it (or the log folder) to a bug report."
+    },
+    "connect": {
+      "owner": "Owner",
+      "noSession": "No live Connect session yet.",
+      "state": "State",
+      "claimPhase": "Claim phase",
+      "claimId": "Claim id",
+      "startedAt": "Started at",
+      "fenceServerTs": "Fence server ts",
+      "lastServerTs": "Last server ts",
+      "lastSeen": "Last seen (unconfirmed)",
+      "lastCluster": "Last cluster",
+      "noCluster": "No cluster has folded yet.",
+      "activeIdRaw": "Active id (raw)",
+      "origin": "Origin",
+      "updateReason": "Update reason",
+      "changedDevices": "Changed devices",
+      "serverTs": "Server ts",
+      "trackUri": "Track uri",
+      "playingPaused": "Playing / paused",
+      "position": "Position",
+      "lastPut": "Last put-state",
+      "msgId": "Msg id",
+      "reason": "Reason",
+      "sentAt": "Sent at",
+      "lastEcho": "Last put-state response",
+      "activeId": "Active id",
+      "clusterStartedAt": "Cluster started_at",
+      "adopted": "Adopted",
+      "receivedAt": "Received at",
+      "host": "Host",
+      "noHost": "No local audio stack — a pure Connect viewer, or nothing has loaded yet.",
+      "playing": "Playing",
+      "clockValid": "Clock valid",
+      "caption": "This report is a direct read of the owner state, the last folded cluster and the last put-state round trip — reading it changes nothing. Attach it (or the log folder) to a bug report."
+    },
+    "podcastWire": {
+      "title": "Podcast wire check",
+      "body": "Fires each podcast endpoint once for the show and episode below and lists what came back. Nothing is written to your library.",
+      "showUri": "Show URI",
+      "episodeUri": "Episode URI",
+      "run": "Run",
+      "running": "Running…",
+      "saveCaptures": "Save captures",
+      "saved": "Saved to {path}",
+      "colOp": "Operation",
+      "colStatus": "Status",
+      "colBytes": "Bytes",
+      "colRoot": "Root found"
     }
   },
   "lyrics": {
@@ -2541,6 +2969,31 @@
       "raw": "Raw ({n})",
       "rawNone": "Raw (none)",
       "payloadsNote": "Payloads are only captured when a fan-out actually runs; cached answers have none."
+    },
+    "noLyrics": "No lyrics available",
+    "debug": {
+      "pill": "lyrics debug",
+      "title": "Lyrics search",
+      "close": "close ✕",
+      "noReport": "No search recorded for this track yet — it may be a local/fake track, or the fetch is still in flight. Close and reopen to refresh.",
+      "noSources": "(no sources ran)",
+      "noArtist": "(no artist)",
+      "winner": "★ winner"
     }
+  },
+  "tray": {
+    "openWavee": "Open Wavee",
+    "hideWavee": "Hide Wavee",
+    "quit": "Quit Wavee",
+    "hideIcon": "Hide icon",
+    "devices": "Devices…",
+    "saveToLiked": "Save to Liked Songs",
+    "nothingPlaying": "Nothing playing",
+    "signedOut": "Signed out",
+    "offline": "Offline",
+    "paused": "Paused",
+    "live": "LIVE",
+    "updateReady": "Update ready",
+    "onDevice": "on {device}"
   }
 }

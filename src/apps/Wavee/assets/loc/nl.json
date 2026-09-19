@@ -1,7 +1,6 @@
 {
   "$culture": "nl",
   "$comment": "Nederlandse overrides. Ontbrekende sleutels vallen per sleutel terug op en-US.",
-
   "detail": {
     "play": "Afspelen",
     "likedSongs": "Nummers die je leuk vindt",
@@ -14,7 +13,6 @@
     "today": "Vandaag",
     "yesterday": "Gisteren"
   },
-
   "home": {
     "goodMorning": "Goedemorgen",
     "goodAfternoon": "Goedemiddag",
@@ -35,10 +33,10 @@
     "becauseYouListened": "Omdat je luisterde naar",
     "topMixes": "Jouw topmixen",
     "sections": "Secties voor jou",
-      "sectionItems": "{count} items",
-      "podcasts": "Podcasts voor jou",
-      "inYourTop": "In jouw top {count}",
-      "mixview": "Mixview",
+    "sectionItems": "{count} items",
+    "podcasts": "Podcasts voor jou",
+    "inYourTop": "In jouw top {count}",
+    "mixview": "Mixview",
     "topTracks": "Populairste nummers",
     "showAll": "Alles tonen",
     "showAllCount": "Alle {count} tonen",
@@ -49,6 +47,7 @@
     "yourDaylist": "jouw daylist",
     "heroEyebrow": "{greeting}, {name} · {what}",
     "nextUpdateAt": "Volgende update om {time}",
+    "daylistUpdating": "Je daylist wordt bijgewerkt…",
     "editorial": "Redactie",
     "oneSeries": "Één serie, {count} mixen",
     "mixesFromArtists": "{count} mixen op basis van artiesten die je speelt",
@@ -72,7 +71,169 @@
     "pause": "Pauzeren",
     "album": "Album"
   },
-
+  "podcast": {
+    "episodes": "Afleveringen",
+    "show": "Podcast",
+    "inProgress": "Bezig",
+    "episodeCount": "{count, plural, one {# aflevering} other {# afleveringen}}",
+    "listenNext": "Hierna luisteren",
+    "continueListening": "VERDER LUISTEREN",
+    "resume": "Hervatten",
+    "noEpisodes": "Geen afleveringen voor dit filter",
+    "loadMore": "Meer afleveringen laden",
+    "loadingMore": "Laden…",
+    "filter": {
+      "all": "Alle",
+      "unplayed": "Niet beluisterd",
+      "inProgress": "Bezig",
+      "played": "Beluisterd"
+    },
+    "sort": {
+      "newest": "Nieuwste",
+      "oldest": "Oudste"
+    },
+    "minutes": "{n} min",
+    "empty": "Deze podcast heeft nog geen afleveringen",
+    "startHere": "begin hier",
+    "beginHere": "begin hier",
+    "whereItBegan": "waar het begon",
+    "latest": "nieuwste",
+    "trailer": "trailer",
+    "serialHint": "een serie — het best op volgorde te beluisteren",
+    "episodicHint": "losse afleveringen — begin waar je wilt",
+    "about": "over",
+    "continue": "verder luisteren",
+    "upNextFromProgress": "hierna, op basis van je voortgang",
+    "startFromBeginning": "begin bij het begin",
+    "newSince": "nieuw sinds je laatste bezoek",
+    "markAllPlayed": "alles als beluisterd markeren",
+    "caughtUp": "je bent helemaal bij",
+    "caughtUpNext": "Nieuwe afleveringen verschijnen meestal {day, select, monday {op maandag} tuesday {op dinsdag} wednesday {op woensdag} thursday {op donderdag} friday {op vrijdag} saturday {op zaterdag} sunday {op zondag} other {op een vaste dag}}.",
+    "episodesCount": "afleveringen {count}",
+    "countOf": "{shown} van {total}",
+    "left": "nog {time}",
+    "leftOf": "nog {left} van {total}",
+    "played": "beluisterd",
+    "new": "nieuw",
+    "ledger": "{played} beluisterd · {progress} bezig · nog {togo} te gaan",
+    "ledgerNew": "{count} nieuw",
+    "cadence": {
+      "daily": "dagelijks",
+      "weekly": "wekelijks",
+      "fortnightly": "om de twee weken",
+      "monthly": "maandelijks"
+    },
+    "since": "sinds {when}",
+    "ratings": "{count, plural, one {# beoordeling} other {# beoordelingen}}",
+    "yours": "jouw score {stars}★",
+    "rate": {
+      "title": "{name} beoordelen",
+      "unavailable": "Beoordelen kan nog niet in Wavee — het gemiddelde en je eigen score worden getoond zoals Spotify ze heeft.",
+      "stars": "{count, plural, one {# ster} other {# sterren}}"
+    },
+    "notify": {
+      "unavailable": "Meldingen over nieuwe afleveringen zijn nog niet beschikbaar in Wavee."
+    },
+    "find": "Zoeken in deze podcast",
+    "nothingMatches": "niets gevonden",
+    "nothingMatchesHint": "Probeer een ander woord, of zet het filter terug op alle.",
+    "moreLikeThis": "meer zoals dit",
+    "alsoFollow": "luisteraars van {name} volgen ook",
+    "tabs": {
+      "about": "over",
+      "chapters": "hoofdstukken",
+      "transcript": "transcript",
+      "comments": "reacties"
+    },
+    "nextInStory": "volgende in het verhaal",
+    "aroundThisEpisode": "rond deze aflevering",
+    "next": "volgende",
+    "previous": "vorige",
+    "newer": "nieuwer",
+    "older": "ouder",
+    "moreFromShow": "meer van deze podcast",
+    "seeAll": "alle {count} bekijken",
+    "alsoLike": "misschien vind je dit ook leuk",
+    "chapter": "Hoofdstuk {n}",
+    "transcript": {
+      "search": "Zoeken in het transcript",
+      "follows": "volgt het afspelen · klik op een zin om erheen te springen",
+      "none": "Deze aflevering heeft geen transcript"
+    },
+    "comments": {
+      "count": "{count, plural, one {# reactie} other {# reacties}}",
+      "add": "Reactie toevoegen…",
+      "postingUnavailable": "reageren is nog niet beschikbaar",
+      "pinned": "vastgezet door de podcast",
+      "replies": "{count, plural, one {# antwoord} other {# antwoorden}}",
+      "loadMore": "Meer reacties laden",
+      "none": "Nog geen reacties"
+    },
+    "badge": {
+      "exclusive": "exclusief",
+      "video": "video",
+      "bonus": "bonus",
+      "trailer": "trailer",
+      "subscribers": "abonnees",
+      "previewAvailable": "alleen voor abonnees · voorproefje beschikbaar",
+      "episode": "aflevering {n}"
+    },
+    "menu": {
+      "markPlayed": "Markeren als beluisterd",
+      "markUnplayed": "Markeren als niet beluisterd",
+      "goToShow": "Naar podcast"
+    },
+    "progressUnavailable": "Je luistervoortgang is nu niet beschikbaar",
+    "reader": {
+      "about": "Over deze aflevering",
+      "chapters": "Hoofdstukken",
+      "transcript": "Transcript",
+      "comments": "Reacties",
+      "related": "Vergelijkbare podcasts",
+      "showAll": "Alles tonen",
+      "showLess": "Minder tonen",
+      "retry": "Opnieuw proberen",
+      "unavailable": "Dit onderdeel is niet beschikbaar. Probeer het opnieuw.",
+      "empty": "Er is nog niets om te tonen.",
+      "noChapters": "Er zijn geen hoofdstukken voor deze aflevering.",
+      "noTranscript": "Er is geen transcript voor deze aflevering.",
+      "noComments": "Begin het gesprek.",
+      "beginning": "Vanaf het begin afspelen",
+      "speed": "Afspeelsnelheid",
+      "follow": "Afspelen volgen",
+      "following": "Afspelen wordt gevolgd",
+      "submit": "Reactie plaatsen",
+      "reply": "Antwoorden",
+      "postReply": "Antwoord plaatsen",
+      "commentPlaceholder": "Schrijf een reactie",
+      "replyPlaceholder": "Schrijf een antwoord",
+      "pending": "Wacht op beoordeling",
+      "sensitive": "Gevoelige reactie",
+      "reveal": "Reactie tonen",
+      "pinned": "Vastgemaakt",
+      "eligibility": "Je kunt met dit account niet reageren op deze aflevering.",
+      "oneComment": "Je hebt al op deze aflevering gereageerd.",
+      "mutationFailed": "De wijziging kon niet worden bevestigd. Vernieuw voordat je het opnieuw probeert.",
+      "ratingSaved": "Je beoordeling is opgeslagen.",
+      "loadMore": "Meer laden",
+      "reactions": "Reacties",
+      "paywall": "Voor deze aflevering is toegang via Spotify vereist.",
+      "preview": "Alleen een voorproefje is beschikbaar.",
+      "video": "Video-aflevering",
+      "save": "Opslaan in Jouw afleveringen",
+      "removeSaved": "Verwijderen uit Jouw afleveringen",
+      "saved": "Opgeslagen in Jouw afleveringen",
+      "unsaved": "Verwijderd uit Jouw afleveringen",
+      "saveUnavailable": "Jouw afleveringen is niet beschikbaar. Probeer het opnieuw.",
+      "anonymous": "Spotify-luisteraar",
+      "yourEpisodes": "Jouw afleveringen",
+      "followedShows": "Gevolgde podcasts",
+      "savedEmpty": "Afleveringen die je opslaat verschijnen hier.",
+      "play": "Afspelen",
+      "pause": "Pauzeren",
+      "consent": "Ik begrijp dat reacties openbaar onder mijn Spotify-profielnaam worden geplaatst."
+    }
+  },
   "recents": {
     "itemCount": "{count, plural, one {# item} other {# items}}",
     "playedCount": "{count, plural, one {# nummer afgespeeld} other {# nummers afgespeeld}}",
@@ -96,7 +257,47 @@
       "busier": "Drukker"
     }
   },
-
+  "library": {
+    "selectAlbum": "Pick an album",
+    "selectArtist": "Pick an artist",
+    "openAlbum": "Open album",
+    "playAll": "Play all",
+    "playAlbum": "Play {name}",
+    "alsoBy": "Also by {name} in your library",
+    "inYourLibrary": "In your library: {albums}{songs}",
+    "oneAlbum": "1 album",
+    "nAlbums": "{n, plural, one {# album} other {# albums}}",
+    "nSongs": " · {n, plural, one {# song} other {# songs}}",
+    "savedIn": "saved {year}",
+    "songsFailed": "Couldn’t load the songs.",
+    "fetchingMore": "Fetching {n} more releases…",
+    "fetchingReleases": "Fetching releases…",
+    "allInLibrary": "Everything {name} has released is already in your library.",
+    "oneSong": "1 song",
+    "nSongsOnly": "{n, plural, one {# song} other {# songs}}",
+    "oneLikedSong": "1 liked song",
+    "nLikedSongs": "{n, plural, one {# liked song} other {# liked songs}}",
+    "emptyLibraryTitle": "Nothing from {name} in your library yet",
+    "emptyLibraryAction": "Show all releases",
+    "rail": {
+      "recents": "recents",
+      "alphabetical": "a–z",
+      "creator": "artist",
+      "recentlyAdded": "added",
+      "releaseDate": "year",
+      "albums": "albums"
+    },
+    "scope": {
+      "inLibrary": "in your library",
+      "allReleases": "all releases",
+      "allShort": "all"
+    },
+    "readerSort": {
+      "newest": "newest",
+      "oldest": "oldest",
+      "alphabetical": "a–z"
+    }
+  },
   "settings": {
     "title": "Instellingen",
     "sidebar": {
@@ -167,7 +368,6 @@
       "comfortable": "Comfortabel"
     }
   },
-
   "nav": {
     "home": "Start",
     "forward": "Vooruit",
@@ -183,6 +383,7 @@
     "artist": "Artiest",
     "podcast": "Podcast",
     "show": "Podcast",
+    "episode": "Aflevering",
     "yourLibrary": "Jouw bibliotheek",
     "comingSoon": "Deze weergave komt in een latere versie.",
     "viewAllHistory": "Volledige geschiedenis bekijken",
@@ -238,7 +439,6 @@
       }
     }
   },
-
   "sidebar": {
     "pinned": "Vastgemaakt",
     "yourLibrary": "Jouw bibliotheek",
@@ -558,11 +758,24 @@
         "excludeUris": "Uitsluiten",
         "maxItems": "Maximum aantal items"
       },
-      "recents": { "maxItems": "Maximum aantal items" },
-      "newReleases": { "maxItems": "Maximum aantal items" },
-      "concerts": { "maxItems": "Maximum aantal evenementen", "radiusKm": "Zoekradius (km)" },
-      "artistTopTracks": { "artist": "Artiest", "maxItems": "Maximum aantal nummers", "unset": "Kies een artiest" },
-      "queue": { "maxItems": "Maximum aantal items" }
+      "recents": {
+        "maxItems": "Maximum aantal items"
+      },
+      "newReleases": {
+        "maxItems": "Maximum aantal items"
+      },
+      "concerts": {
+        "maxItems": "Maximum aantal evenementen",
+        "radiusKm": "Zoekradius (km)"
+      },
+      "artistTopTracks": {
+        "artist": "Artiest",
+        "maxItems": "Maximum aantal nummers",
+        "unset": "Kies een artiest"
+      },
+      "queue": {
+        "maxItems": "Maximum aantal items"
+      }
     },
     "v3": {
       "title": "Jouw bibliotheek",
@@ -609,7 +822,6 @@
       "sortView": "Sorteer- en weergaveopties"
     }
   },
-
   "common": {
     "less": "Minder",
     "more": "Meer",
@@ -621,7 +833,6 @@
     "errorTitle": "Er is iets misgegaan.",
     "errorSubtitle": "Controleer je verbinding en probeer het opnieuw."
   },
-
   "player": {
     "nothingPlaying": "Er wordt niets afgespeeld",
     "loading": "Laden…",
@@ -748,7 +959,6 @@
       "strong": "Sterk"
     }
   },
-
   "menu": {
     "artistUnavailable": "De artiest van dit album is niet gevonden",
     "moveManyToFolder": "{count} verplaatsen naar map…",
@@ -757,7 +967,6 @@
     "saveToLiked": "Opslaan in Nummers die je leuk vindt",
     "saveToLibrary": "Opslaan in je bibliotheek"
   },
-
   "videoOverride": {
     "menuTitle": "Video",
     "attach": "Videobestand koppelen…",

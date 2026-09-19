@@ -1,3 +1,10 @@
+// ── Wavee.Tests/HomeHeroLayoutTests.cs — the hero's one geometry contract (Wave 5, owner P; ported from 0.2.9) ─────
+//
+// 0.2.9's facts, verbatim in shape. ONE NUMBER MOVED ON PURPOSE (ch 11 §9.2): the hero's action row is built from the
+// media pill, whose height is `Controls.PillHeight` = 36, and 0.2.9's estimator reserved 32 (`Spacing.XXXL`) for it —
+// so every tier grew by 4 DIP: 384/344/336 → 388/348/340. The renderer and the estimator now state the same row.
+
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -5,13 +12,12 @@ namespace Wavee.Tests;
 public class HomeHeroLayoutTests
 {
     [Theory]
-    // 384/344/336 = the pre-daylist 344/304/296 plus the 40-DIP pulse block (the 28-DIP flip-countdown digit row +
-    // its 12 margin) that HeroBand now reserves for every hero — the slot is always present so the virtual estimator
-    // and the renderer state the same geometry; non-daylist heroes collapse it to an empty BoxEl.
-    [InlineData(699.9f, (byte)0, 336f, true)]
-    [InlineData(700f, (byte)1, 344f, false)]
-    [InlineData(979.9f, (byte)1, 344f, false)]
-    [InlineData(980f, (byte)2, 384f, false)]
+    // 388/348/340 (0.2.9: 384/344/336) — the 40-DIP pulse block is reserved for every hero, and the actions block is the
+    // 36-DIP pill row (Controls.PillHeight), not 0.2.9's 32.
+    [InlineData(699.9f, (byte)0, 340f, true)]
+    [InlineData(700f, (byte)1, 348f, false)]
+    [InlineData(979.9f, (byte)1, 348f, false)]
+    [InlineData(980f, (byte)2, 388f, false)]
     public void TierGeometry_IsExact(float width, byte tier, float height, bool stacked)
     {
         var metrics = HomeHeroLayout.For(width);
@@ -25,21 +31,17 @@ public class HomeHeroLayoutTests
     }
 
     [Fact]
-    public void FlattenedSurface_PreservesThePreviousRendererEstimatorArithmetic()
+    public void FlattenedSurface_PreservesTheRendererEstimatorArithmetic()
     {
-        Assert.Equal(384f, HomeHeroLayout.ContentHeight(HomeHeroTier.Wide));
-        Assert.Equal(344f, HomeHeroLayout.ContentHeight(HomeHeroTier.Medium));
-        Assert.Equal(336f, HomeHeroLayout.ContentHeight(HomeHeroTier.Narrow));
+        // 0.2.9: 384 / 344 / 336. +4 each: the pill row is 36, not 32 (file header).
+        Assert.Equal(388f, HomeHeroLayout.ContentHeight(HomeHeroTier.Wide));
+        Assert.Equal(348f, HomeHeroLayout.ContentHeight(HomeHeroTier.Medium));
+        Assert.Equal(340f, HomeHeroLayout.ContentHeight(HomeHeroTier.Narrow));
         Assert.Equal(96f, HomeHeroLayout.ArtworkFade);
     }
 
-    /// <summary>The tier heights are not a magic table: each is the sum of the SAME blocks the renderer stacks, and
-    /// each block is a ramp line height plus a Spacing rung. If someone re-hand-picks a size in HomeCards.HeroBand and
-    /// forgets this file, the renderer and the virtual estimator disagree and the feed re-pins its scroll anchor
-    /// mid-scroll — so the arithmetic is pinned here explicitly rather than only as a total.</summary>
+    /// <summary>The tier heights are not a magic table: each is the sum of the SAME blocks the renderer stacks.</summary>
     [Theory]
-    // HomeHeroTier is internal to the source-included app file, so the theory takes the ordinal (xunit theories must
-    // be public and CS0051 forbids an internal parameter type).
     [InlineData((int)HomeHeroTier.Wide, 2f * 60f)]
     [InlineData((int)HomeHeroTier.Medium, 2f * 40f)]
     [InlineData((int)HomeHeroTier.Narrow, 2f * 36f)]
@@ -51,9 +53,10 @@ public class HomeHeroLayoutTests
         const float titleMargin = 12f;
         const float tagsBlock = 20f + 12f;   // Caption 12/16 + 2x2 padding, + a 12 margin
         const float metaBlock = 20f + 16f;   // Body 14/20 + a 16 margin
-        const float pulseBlock = 28f + 12f;  // the flip-countdown digit row (FlipCountdown.HeroRowHeight) + a 12 margin
-        const float actionsBlock = 32f;      // the hero button row
+        const float pulseBlock = 28f + 12f;  // the flip-countdown digit row + a 12 margin
+        float actionsBlock = Controls.PillHeight;   // CHANGED (0.2.9: 32f) — the media pill the row is built from
 
+        Assert.Equal(36f, actionsBlock);
         Assert.Equal(
             2f * copyPaddingY + eyebrowBlock + titleBlock + titleMargin + tagsBlock + metaBlock + pulseBlock + actionsBlock,
             HomeHeroLayout.ContentHeight(tier));

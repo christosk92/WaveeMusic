@@ -1,10 +1,16 @@
-using Wavee;
+// ── Wavee.Tests/LibrarySelectionCommitTests.cs — the library search select-in-place rule (Entities/User.cs §8) ────────
+//
+// A VERBATIM port of 0.2.9's LibrarySelectionCommitTests: an artist/album hit commits into the BROWSE selection (the
+// persisted selected/album key pair) instead of navigating away from the master-detail panes.
+//
+// CHANGED by the 2026-09-17 library rework: the artists page has TWO rungs, not three — the three-column
+// navigator/grid/tracks layout is gone and `Artist.Reader` is the second rung whole — so an album hit in the artists
+// view drills to depth 1, not 2. The album KEY is still written: the reader reads it once as its initial spine target.
+
 using Xunit;
 
 namespace Wavee.Tests;
 
-// The select-in-place rule behind "Your Library" search: an artist/album hit commits into the BROWSE selection
-// (the persisted _selectedKey/_albumKey pair) instead of navigating away from the master-detail panes.
 public class LibrarySelectionCommitTests
 {
     [Fact]
@@ -28,7 +34,7 @@ public class LibrarySelectionCommitTests
     }
 
     [Fact]
-    public void Album_InArtistsView_IsTheDiscographyPickAndCarriesItsArtist()
+    public void Album_InArtistsView_IsTheAlbumPickAndCarriesItsArtist()
     {
         var c = LibrarySelectionCommit.ForAlbum(artistsView: true, collapsed: false, "al1", ownerArtistUri: "a1");
         Assert.Equal("artist:a1", c.SelectedKey);
@@ -47,10 +53,22 @@ public class LibrarySelectionCommitTests
     [Fact]
     public void Collapsed_DrillsToTheLevelTheHitBelongsTo()
     {
-        // artist → its discography; album in the albums view → the detail pane; album in the artists view → the tracks.
+        // Every hit on this surface drills exactly ONE rung: artist → its reader; album in the albums view → the album
+        // pane; album in the artists view → the owning artist's reader, scrolled to that album.
         Assert.Equal(1, LibrarySelectionCommit.ForArtist(true, collapsed: true, "a1").Depth);
         Assert.Equal(1, LibrarySelectionCommit.ForAlbum(false, collapsed: true, "al1", "").Depth);
-        Assert.Equal(2, LibrarySelectionCommit.ForAlbum(true, collapsed: true, "al1", "a1").Depth);
+        Assert.Equal(1, LibrarySelectionCommit.ForAlbum(true, collapsed: true, "al1", "a1").Depth);
+    }
+
+    [Fact]
+    public void Album_InArtistsView_Collapsed_DrillsToTheReader_AndStillWritesTheAlbumKey()
+    {
+        // The rework's one changed fact (was depth 2, the deleted tracks column). The album key survives the change
+        // because the reader uses it as its initial spine target and then clears it — a depth is not a selection.
+        var c = LibrarySelectionCommit.ForAlbum(artistsView: true, collapsed: true, "al1", ownerArtistUri: "a1");
+        Assert.Equal(1, c.Depth);
+        Assert.Equal("artist:a1", c.SelectedKey);
+        Assert.Equal("album:al1", c.AlbumKey);
     }
 
     [Fact]

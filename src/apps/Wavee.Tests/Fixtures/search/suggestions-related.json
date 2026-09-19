@@ -1,0 +1,21 @@
+{ "data": { "searchV2": { "topResultsV2": { "itemsV2": [
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "a ha", "uri": "spotify:search:a+ha" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "A HA", "uri": "spotify:search:A+HA" } } },
+  { "item": { "__typename": "TrackResponseWrapper", "data": {
+    "__typename": "Track",
+    "uri": "spotify:track:0TDLuuLlV54CkRRUOahJb4",
+    "name": "Take On Me",
+    "artists": { "items": [ { "profile": { "name": "a-ha" }, "uri": "spotify:artist:2jzc5TC5TVFLXQlBNiIUzE" } ] }
+  } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "adele" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "ariana grande" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "arctic monkeys" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "avicii" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "abba" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "ac/dc" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "aerosmith" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "alicia keys" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "anne-marie" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "aurora" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity", "data": { "text": "alan walker" } } }
+] } } } }

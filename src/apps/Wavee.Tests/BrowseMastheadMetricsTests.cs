@@ -1,7 +1,11 @@
+// ── Wavee.Tests/BrowseMastheadMetricsTests.cs — the overlay masthead's constant reserve (ch 13 §8) ─────────────────
+//
+// Ported verbatim from 0.2.9 `BrowseMastheadMetricsTests`. `DetailVerticalLayout.StickyFadeBand` is
+// `Detail.VerticalLayout.StickyFadeBand` in 0.3; everything else keeps its name.
+
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using Wavee.Features.Browse;
-using Wavee.Features.Detail;
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -14,6 +18,8 @@ public class BrowseMastheadMetricsTests
         Assert.Equal(52f, Ui.TitleLarge("x").LineHeight);
         Assert.Equal(BrowseMastheadMetrics.TitleLine, Ui.TitleLarge("x").LineHeight);
         Assert.Equal(BrowseMastheadMetrics.Reserve, Spacing.XXXL + Ui.TitleLarge("x").LineHeight);
+        // 0.3: the masthead's title IS the SurfaceDisplay face, which keeps the TitleLarge line.
+        Assert.Equal(BrowseMastheadMetrics.TitleLine, Design.Type.SurfaceDisplay("x").LineHeight);
     }
 
     [Fact]
@@ -33,7 +39,7 @@ public class BrowseMastheadMetricsTests
     public void ClipInset_IsTheReserve_AndTheFadeIsTheSharedStickyBand()
     {
         Assert.Equal(BrowseMastheadMetrics.Reserve, BrowseMastheadMetrics.ClipInset);
-        Assert.Equal(DetailVerticalLayout.StickyFadeBand, BrowseMastheadMetrics.ClipFadeBand);
+        Assert.Equal(Detail.VerticalLayout.StickyFadeBand, BrowseMastheadMetrics.ClipFadeBand);
         Assert.True(BrowseMastheadMetrics.ClipFadeBand > 0f);
     }
 
@@ -48,5 +54,16 @@ public class BrowseMastheadMetricsTests
         Assert.Equal(Spacing.PageWide, pad.Right);
         Assert.Equal(Spacing.XXL, pad.Bottom);
         Assert.Equal(BrowseMastheadMetrics.FamilyBodyPad(Spacing.XXL).Top, BrowseMastheadMetrics.BodyTop + pad.Top);
+    }
+
+    [Fact]
+    public void TheContractNumbers_Reserve84_BodyTop100_ClipInset84_FadeBand24()
+    {
+        // WP-5.P contract §4 pins these as numbers: a token re-point that moved them would re-pad every parked page.
+        Assert.Equal(84f, BrowseMastheadMetrics.Reserve);
+        Assert.Equal(100f, BrowseMastheadMetrics.BodyTop);
+        Assert.Equal(84f, BrowseMastheadMetrics.ClipInset);
+        Assert.Equal(24f, BrowseMastheadMetrics.ClipFadeBand);
+        Assert.Equal(BrowseMastheadMetrics.Reserve, BrowseLayout.MastheadReserve);
     }
 }

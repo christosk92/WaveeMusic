@@ -1,11 +1,11 @@
 {
   "profiles": {
     "Wavee (live)": {
-      "commandName": "Project",
-      "commandLineArgs": "--real-backend"
+      "commandName": "Project"
     },
     "Wavee (demo)": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": "--fake"
     },
     "Wavee (screenshot)": {
       "commandName": "Project",

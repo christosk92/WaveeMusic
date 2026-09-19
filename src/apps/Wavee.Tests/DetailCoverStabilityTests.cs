@@ -1,17 +1,22 @@
-using System.Collections.Generic;
-using Wavee.Core;
-using Wavee.Features.Detail;
+// ── Wavee.Tests/DetailCoverStabilityTests.cs — the hero-artwork-flicker fix's pure half ─────────────────────────────
+//
+// Ported from _old/Wavee.Tests/DetailCoverStabilityTests.cs. The page-width estimate and the decode bucket stay on
+// `Detail.Breakpoints` / `Detail.VerticalLayout`; the cover identity rules move from Wavee.Core's `ImageSource`
+// (over an `Image` record) to `Detail.CoverLatch` (over url strings). Two rewrites of the 0.2.9 input, assertions kept:
+//   · a MOSAIC is `CoverLatch.Reduce(coverUrl: "", leadTile)` — the same reduction `ImageSource.ReducedUrl` applied
+//     before comparing, so every mosaic fact survives as a fact about the lead tile's url;
+//   · `Image` records became urls, so `Assert.Same`/`.Url` compare the url strings.
+// One assertion could not survive: `PreferVisible_NoPreviewFallback…`'s `chosen.LargestUrl == loaded.Url` — the 0.2.9
+// latch ENRICHED the kept record with the incoming's largest rendition, and a 0.3 cover is one url in one column, so
+// there is nothing to enrich (the decode bucket, not the url, now picks the rendition).
+
 using Xunit;
+using Breakpoints = Wavee.Detail.Breakpoints;
+using CoverLatch = Wavee.Detail.CoverLatch;
+using VerticalLayout = Wavee.Detail.VerticalLayout;
 
 namespace Wavee.Tests;
 
-/// <summary>
-/// The hero-artwork-flicker fix's PURE half: the page-width estimate a detail page's pre-measure mode/hero geometry
-/// seeds from instead of the raw window viewport, the unmeasured-vs-measured hero decode bucket, and the
-/// <see cref="ImageSource"/> identity rules the cover-handoff latch (<c>DetailPage</c>'s <c>PreferVisible</c> calls)
-/// relies on. The engine-bound renderers that consume these (<c>DetailShell</c>, <c>DetailVerticalHero</c>,
-/// <c>DetailPage</c>) are deliberately NOT included here — this file drives the same production arithmetic they call.
-/// </summary>
 public class DetailCoverStabilityTests
 {
     // ── 2a: the page-width estimate the pre-measure mode seed uses instead of the raw window viewport ───────────────
@@ -19,41 +24,40 @@ public class DetailCoverStabilityTests
     [Fact]
     public void EstimatePageWidthFromViewport_SubtractsTheShellChromeAllowance()
     {
-        Assert.Equal(560f, DetailLayoutBreakpoints.EstimatePageWidthFromViewport(560f + DetailLayoutBreakpoints.ShellChromeAllowanceDip));
-        // Never negative — a tiny/snapped window still yields a usable (zero-floor) estimate.
-        Assert.Equal(0f, DetailLayoutBreakpoints.EstimatePageWidthFromViewport(0f));
-        Assert.Equal(0f, DetailLayoutBreakpoints.EstimatePageWidthFromViewport(DetailLayoutBreakpoints.ShellChromeAllowanceDip - 10f));
+        Assert.Equal(560f, Breakpoints.EstimatePageWidthFromViewport(560f + Breakpoints.ShellChromeAllowanceDip));
+        Assert.Equal(0f, Breakpoints.EstimatePageWidthFromViewport(0f));
+        Assert.Equal(0f, Breakpoints.EstimatePageWidthFromViewport(Breakpoints.ShellChromeAllowanceDip - 10f));
     }
+
+    /// <summary>The allowance is the nav pane's own token (240), not a restated literal.</summary>
+    [Fact]
+    public void ShellChromeAllowance_IsTheNavPaneToken()
+        => Assert.Equal(Design.Size.NavPaneW, Breakpoints.ShellChromeAllowanceDip);
 
     [Fact]
     public void InitialModeForViewport_WindowWidthAndPageWidthDisagree_StraddlingTheVerticalBreakpoint()
     {
-        // A window at 799 DIP: the RAW viewport reading seeds mode 1 (two-column, narrow variant — 799 is in the
-        // [660,820) band) — but this page's own content column is ~240 DIP narrower (the shell's nav pane), landing
-        // at 559: below the 560 vertical threshold. Composing mode 1 against a 559-DIP page is exactly the wrong-wide
-        // first frame that remounts (and re-decodes) the hero the instant the real Measure callback corrects it.
+        // A 799-DIP window seeds mode 1 from the raw viewport, but the page is ~240 narrower (559): below the 560
+        // vertical threshold. Composing mode 1 there is the wrong-wide first frame that remounts the hero.
         const float windowWidth = 799f;
-        float pageWidthEstimate = DetailLayoutBreakpoints.EstimatePageWidthFromViewport(windowWidth);
+        float pageWidthEstimate = Breakpoints.EstimatePageWidthFromViewport(windowWidth);
         Assert.Equal(559f, pageWidthEstimate);
 
-        int fromWindow = DetailLayoutBreakpoints.InitialModeForViewport(windowWidth);
-        int fromPage = DetailLayoutBreakpoints.InitialModeForViewport(pageWidthEstimate);
+        int fromWindow = Breakpoints.InitialModeForViewport(windowWidth);
+        int fromPage = Breakpoints.InitialModeForViewport(pageWidthEstimate);
 
         Assert.Equal(1, fromWindow);
-        Assert.Equal(DetailLayoutBreakpoints.VerticalMode, fromPage);
-        Assert.NotEqual(fromWindow, fromPage);   // the disagreement this estimate exists to resolve
+        Assert.Equal(Breakpoints.VerticalMode, fromPage);
+        Assert.NotEqual(fromWindow, fromPage);
     }
 
     [Fact]
     public void InitialModeForViewport_PageWidthEstimate_NeverPicksAWiderModeThanTheWindowReading()
     {
-        // The allowance is a SUBTRACTION, so for every window width the page-derived seed is always at least as
-        // narrow (numerically ≥) as the raw-viewport seed would have been — it can never accidentally compose a
-        // WIDER arm than the naive (bug) reading did.
         for (float w = 300f; w <= 1400f; w += 4f)
         {
-            int fromWindow = DetailLayoutBreakpoints.InitialModeForViewport(w);
-            int fromPage = DetailLayoutBreakpoints.InitialModeForViewport(DetailLayoutBreakpoints.EstimatePageWidthFromViewport(w));
+            int fromWindow = Breakpoints.InitialModeForViewport(w);
+            int fromPage = Breakpoints.InitialModeForViewport(Breakpoints.EstimatePageWidthFromViewport(w));
             Assert.True(fromPage >= fromWindow, $"w={w}: page-derived mode {fromPage} was WIDER than the window reading {fromWindow}");
         }
     }
@@ -66,12 +70,7 @@ public class DetailCoverStabilityTests
     [InlineData(240f)]
     [InlineData(280f)]
     public void ArtworkDecodePx_Unmeasured_AlwaysRequests256_RegardlessOfTheGuessedArtSize(float artSize)
-    {
-        // Unmeasured geometry is itself only a guess (FallbackW / a page-width estimate, never the page's real
-        // bounds) — so the decode bucket must not chase it. 256 matches the grid tiles / DetailRail hero / the
-        // Home shelf card, so first frame is a cache hit instead of a probably-wrong bucket.
-        Assert.Equal(256, DetailVerticalLayout.ArtworkDecodePx(artSize, widthMeasured: false));
-    }
+        => Assert.Equal(256, VerticalLayout.ArtworkDecodePx(artSize, widthMeasured: false));
 
     [Theory]
     [InlineData(1f, 256)]
@@ -82,14 +81,13 @@ public class DetailCoverStabilityTests
     [InlineData(1024f, 1024)]
     public void ArtworkDecodePx_Measured_UsesTheUnchangedSizeLadder(float artSize, int expected)
     {
-        Assert.Equal(expected, DetailVerticalLayout.ArtworkDecodePx(artSize, widthMeasured: true));
-        // The gated overload must never diverge from the plain one it wraps for the measured case.
-        Assert.Equal(DetailVerticalLayout.ArtworkDecodePx(artSize), DetailVerticalLayout.ArtworkDecodePx(artSize, widthMeasured: true));
+        Assert.Equal(expected, VerticalLayout.ArtworkDecodePx(artSize, widthMeasured: true));
+        Assert.Equal(VerticalLayout.ArtworkDecodePx(artSize), VerticalLayout.ArtworkDecodePx(artSize, widthMeasured: true));
     }
 
-    // ── 2d.1: ImageSource.SameArt / PreferVisible over mosaics + the no-preview fallback latch ─────────────────────
+    // ── 2d.1: SameArt / PreferVisible over mosaics + the no-preview fallback latch ─────────────────────────────────
 
-    // Real id shapes (mirrors ImageSourceTests): 40 hex = 16-char size/kind marker + 24-char art identity.
+    // Real id shapes: 40 hex = 16-char size/kind marker + 24-char art identity.
     const string Art = "a149cc5f2c8074884fc06a80";
     const string Card300 = "https://i.scdn.co/image/ab67616d00001e02" + Art;
     const string Hero640 = "https://i.scdn.co/image/ab67616d0000b273" + Art;
@@ -98,104 +96,163 @@ public class DetailCoverStabilityTests
     [Fact]
     public void SameArt_MosaicToMosaic_MatchesTheIdenticalTileSet()
     {
-        var tiles = new List<string> { Card300, Hero640, "https://i.scdn.co/image/tile3", "https://i.scdn.co/image/tile4" };
-        var a = new Image("", MosaicTiles: tiles);
-        var b = new Image("", MosaicTiles: new List<string>(tiles));   // a distinct list instance, same urls
-        Assert.True(ImageSource.SameArt(a, b));
+        string[] tiles = [Card300, Hero640, "https://i.scdn.co/image/tile3", "https://i.scdn.co/image/tile4"];
+        string[] copy = [.. tiles];   // a distinct array instance, same urls
+        Assert.True(CoverLatch.SameArt(CoverLatch.Reduce("", tiles[0]), CoverLatch.Reduce("", copy[0])));
     }
 
     [Fact]
     public void SameArt_MosaicToMosaic_DifferentTileSetsDoNotMatch()
     {
-        var a = new Image("", MosaicTiles: new List<string> { Card300, Hero640 });
-        var b = new Image("", MosaicTiles: new List<string> { OtherArt, Hero640 });
-        Assert.False(ImageSource.SameArt(a, b));
+        string[] a = [Card300, Hero640];
+        string[] b = [OtherArt, Hero640];
+        Assert.False(CoverLatch.SameArt(CoverLatch.Reduce("", a[0]), CoverLatch.Reduce("", b[0])));
     }
 
     [Fact]
     public void SameArt_MosaicReducesToItsLeadTile_MatchesASingleCoverOfThatTile()
     {
-        // Surfaces.Artwork renders a 1-3-tile mosaic as a single cover of tiles[0] (`image = new Image(tiles[0])`);
-        // the identity comparison must agree, or a nav-preview card that already reduced to a single Url can never
-        // latch against the full model's still-mosaic Image (or vice versa) — exactly the H-class flicker this file
-        // is about, just on the mosaic path instead of the plain-cover one.
-        var mosaic = new Image("", MosaicTiles: new List<string> { Card300, Hero640 });
-        var single = new Image(Card300, 300, 300);
-        Assert.True(ImageSource.SameArt(mosaic, single));
-        Assert.True(ImageSource.SameArt(single, mosaic));   // symmetric
+        string[] tiles = [Card300, Hero640];
+        string? mosaic = CoverLatch.Reduce("", tiles[0]);
+        const string single = Card300;
+        Assert.True(CoverLatch.SameArt(mosaic, single));
+        Assert.True(CoverLatch.SameArt(single, mosaic));   // symmetric
     }
 
     [Fact]
     public void SameArt_MosaicLeadTile_MatchesADifferentSizeRenditionOfThatTile()
     {
-        // The single-cover side can also be a DIFFERENT size hash of the mosaic's lead tile — the same size-agnostic
-        // asymmetry SameArt already grants two plain covers.
-        var mosaic = new Image("", MosaicTiles: new List<string> { Card300 });
-        var singleAtHeroSize = new Image(Hero640, 640, 640);
-        Assert.True(ImageSource.SameArt(mosaic, singleAtHeroSize));
+        string? mosaic = CoverLatch.Reduce("", Card300);
+        Assert.True(CoverLatch.SameArt(mosaic, Hero640));
     }
 
     [Fact]
     public void SameArt_MosaicLeadTile_DoesNotMatchAnUnrelatedCover()
     {
-        var mosaic = new Image("", MosaicTiles: new List<string> { Card300 });
-        Assert.False(ImageSource.SameArt(mosaic, new Image(OtherArt)));
+        string? mosaic = CoverLatch.Reduce("", Card300);
+        Assert.False(CoverLatch.SameArt(mosaic, OtherArt));
+    }
+
+    /// <summary>A cover's own url wins over its lead tile; a blank url falls to the tile.</summary>
+    [Fact]
+    public void Reduce_PrefersTheCoverUrlAndFallsToTheLeadTile()
+    {
+        Assert.Equal(OtherArt, CoverLatch.Reduce(OtherArt, Card300));
+        Assert.Equal(Card300, CoverLatch.Reduce("", Card300));
+        Assert.Equal(Card300, CoverLatch.Reduce("  ", Card300));
+        Assert.Equal(Card300, CoverLatch.Reduce(null, Card300));
+    }
+
+    /// <summary>Null or blank on either side is never the same art; a <c>spotify:image:</c> token normalizes to its CDN url.</summary>
+    [Fact]
+    public void SameArt_BlankIsNeverTheSameArt_AndProviderTokensNormalize()
+    {
+        Assert.False(CoverLatch.SameArt(null, Card300));
+        Assert.False(CoverLatch.SameArt("", ""));
+        Assert.False(CoverLatch.SameArt(null, null));
+        Assert.True(CoverLatch.SameArt("spotify:image:ab67616d00001e02" + Art, Hero640));
     }
 
     [Fact]
     public void PreferVisible_MosaicVsSingleTile_KeepsVisible_ForTheSameLeadArt()
     {
-        var visibleSingle = new Image(Card300, 300, 300);
-        var incomingMosaic = new Image("", MosaicTiles: new List<string> { Hero640 });
+        const string visibleSingle = Card300;
+        string? incomingMosaic = CoverLatch.Reduce("", Hero640);
 
-        Image? chosen = ImageSource.PreferVisible(incomingMosaic, visibleSingle);
+        string? chosen = CoverLatch.PreferVisible(incomingMosaic, visibleSingle);
 
-        // Same art (the mosaic's lead tile is the visible cover at another size) → keep the already-shown rendition.
         Assert.NotNull(chosen);
-        Assert.Equal(visibleSingle.Url, chosen!.Url);
+        Assert.Equal(visibleSingle, chosen);
     }
 
     [Fact]
     public void PreferVisible_NoPreviewFallback_LatchesAgainstTheLastPublishedCover()
     {
-        // DetailPage's no-preview cover latch (deep link / search hit): `preview?.Cover ?? _lastCover`. With no
-        // preview, the last cover THIS page instance actually published must still be honoured for the same-art
-        // case, exactly like the live-refresh latch already does.
-        Image? preview = null;
-        var lastPublished = new Image(Card300, 300, 300);
-        Image? fallback = preview ?? lastPublished;
-        var loaded = new Image(Hero640, 640, 640);
+        // The no-preview cover latch (deep link / search hit): `previewCover ?? lastPublished`.
+        string? preview = null;
+        const string lastPublished = Card300;
+        string? fallback = preview ?? lastPublished;
+        const string loaded = Hero640;
 
-        Image? chosen = ImageSource.PreferVisible(loaded, fallback);
+        string? chosen = CoverLatch.PreferVisible(loaded, fallback);
 
         Assert.NotNull(chosen);
-        Assert.Equal(lastPublished.Url, chosen!.Url);     // same art → keep the visible rendition, not the fresh hash
-        Assert.Equal(loaded.Url, chosen.LargestUrl);       // still enriched with the incoming's largest known url
+        Assert.Equal(lastPublished, chosen);   // same art → keep the visible rendition, not the fresh hash
     }
 
     [Fact]
     public void PreferVisible_NoPreviewAndNoLastCover_TakesTheLoadedCoverOutright()
     {
-        // First-ever load of a route (nothing published yet, no preview either): nothing to latch against, so the
-        // freshly loaded cover simply wins — unchanged from before this fix.
-        Image? preview = null;
-        Image? lastPublished = null;
-        Image? fallback = preview ?? lastPublished;
-        var loaded = new Image(Card300, 300, 300);
+        string? preview = null;
+        string? lastPublished = null;
+        string? fallback = preview ?? lastPublished;
+        string loaded = Card300;
 
-        Assert.Same(loaded, ImageSource.PreferVisible(loaded, fallback));
+        Assert.Same(loaded, CoverLatch.PreferVisible(loaded, fallback));
     }
 
     [Fact]
     public void PreferVisible_NoPreviewFallback_StillTakesIncoming_WhenItIsGenuinelyDifferentArt()
     {
-        // A genuinely new cover (an edit, a daylist rollover) must not be suppressed just because SOME cover was
-        // published before — PreferVisible's same-art gate is what protects against over-latching.
-        Image? preview = null;
-        var lastPublished = new Image(Card300, 300, 300);
-        Image? fallback = preview ?? lastPublished;
-        var loaded = new Image(OtherArt, 640, 640);
+        string? preview = null;
+        const string lastPublished = Card300;
+        string? fallback = preview ?? lastPublished;
+        string loaded = OtherArt;
 
-        Assert.Same(loaded, ImageSource.PreferVisible(loaded, fallback));
+        Assert.Same(loaded, CoverLatch.PreferVisible(loaded, fallback));
+    }
+
+    /// <summary>Only one side usable ⇒ that side; an unresolved provider token is not usable.</summary>
+    [Fact]
+    public void PreferVisible_OnlyOneSideUsable_TakesThatSide()
+    {
+        Assert.Equal(Card300, CoverLatch.PreferVisible(null, Card300));
+        Assert.Equal(Card300, CoverLatch.PreferVisible("spotify:image:unresolved", Card300));
+        Assert.Equal(Hero640, CoverLatch.PreferVisible(Hero640, "  "));
+        Assert.False(CoverLatch.IsUsable("spotify:image:" + Art));
+        Assert.True(CoverLatch.IsUsable(Card300));
+    }
+
+    // ── 2e: the artist hero's avatar → header hand-off (ch 08 BUG E) ────────────────────────────────────────────────
+    //
+    // The card that launched the navigation carries the avatar (`Image`) first; once the artist's own overview lands,
+    // `HeroImageId` (Header ?? Image) may swap to the HEADER. The page latches whichever url is on screen through
+    // `Detail.CoverLatch.PreferVisible`, exactly like Playlist.Page.cs's `_visibleCover` — these pin the three outcomes
+    // that latch must produce for the hero specifically.
+
+    [Fact]
+    public void ArtistHero_ImageThenHeader_SameArtIdentity_KeepsTheVisibleImage()
+    {
+        string? visible = CoverLatch.PreferVisible(Card300, null);   // the avatar (Image) mounts first
+        Assert.Equal(Card300, visible);
+
+        // The overview lands and offers Hero640 — the SAME 24-char identity, just another rendition — so the hero
+        // must keep painting the image it already decoded rather than re-fade the identical photo.
+        visible = CoverLatch.PreferVisible(Hero640, visible);
+        Assert.Equal(Card300, visible);
+    }
+
+    [Fact]
+    public void ArtistHero_ImageThenHeader_GenuinelyDifferentIdentity_TakesTheIncomingHeader()
+    {
+        string? visible = CoverLatch.PreferVisible(Card300, null);
+        Assert.Equal(Card300, visible);
+
+        // The header is a real, different banner photo (a distinct 24-char identity) — the hero must update.
+        visible = CoverLatch.PreferVisible(OtherArt, visible);
+        Assert.Equal(OtherArt, visible);
+    }
+
+    [Fact]
+    public void ArtistHero_EmptyIncoming_KeepsTheVisibleImage()
+    {
+        string? visible = CoverLatch.PreferVisible(Card300, null);
+        Assert.Equal(Card300, visible);
+
+        // The overview lands but this artist carries no header image (HeaderId empty ⇒ HeroImageId falls back to the
+        // same Image again, or the field simply is not known yet) — an EMPTY incoming must never blank a photo that
+        // is already on screen (the "unmount to a flat placeholder" half of the bug).
+        visible = CoverLatch.PreferVisible(null, visible);
+        Assert.Equal(Card300, visible);
     }
 }

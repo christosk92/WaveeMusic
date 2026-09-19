@@ -1,313 +1,350 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Runtime.CompilerServices;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using FluentGpu.Controls;
-using Wavee.Backend;
-using Wavee.Backend.Library;
-using Wavee.Core;
+// ── Wavee.Tests/DiscographyPaginationTests.cs — the discography's route, facet filter and paging (ch 08 §8) ─────────
+//
+// 0.2.9's `DiscographyPaginationTests.cs` held 13 facts over four seams. In 0.3 three of those seams are gone, so the
+// facts map like this:
+//
+//   1  MapArtist_Fixture_CarriesPerFacetTotals          → KEPT as The_overview_states_each_facets_total (the decoder
+//                                                          stages 18 / 46 / 2 on the three edges, not on a record).
+//   2  Aggregate_RoutesToOwningSource_AndEmptyForUnowned → KEPT as A_facet_page_answers_only_its_own_artist (routing by
+//                                                          owner is the planner's; the fact that survives is that a page
+//                                                          lands on the named artist and nobody else).
+//   3  Dim_Probe_ReturnsEmptyWindow_WithTotal            → ADAPTED as The_first_page_is_the_total_probe: there is no
+//                                                          limit-0 probe — the overview's first page STATES the total, so
+//                                                          the grid sizes the whole facet (shimmer-up-to-N) with no extra ask.
+//   4  KindMatches_SinglesFacet_IncludesSingleAndEp       → KEPT verbatim over ArtistCatalog.KindMatches.
+//   5  Dim_SinglesFacet_SurfacesSinglesAndEps_NotAlbums   → ADAPTED as A_singles_page_keeps_eps_and_coerces_a_contradiction.
+//   6  Probe_TotalIsInMemoryFilteredCount                → DIED: StoreLibrarySource's in-memory slice is gone; the total
+//                                                          is the server's, carried by the edge (fact 3 covers it).
+//   7  OffsetWindow_SlicesInMemory                       → ADAPTED as A_later_page_lands_at_its_offset_and_completes.
+//   8  SinglesFacet_SurfacesSinglesAndEps_NotAlbums (store) → DIED with StoreLibrarySource (fact 5 is the one filter).
+//   9-13 VirtualCollectionSeedTests (5 facts)             → DIED: `VirtualCollection<T>` and its provisional seed are
+//                                                          deleted (ch 08 §1.2). The edge's Total/State replace the seed;
+//                                                          `EdgeTable.ReplacePage`'s own paging facts live in EdgesTests.
+//
+// Plus the route helpers 0.2.9 kept untested (DiscographyRoute.Make/Parse), now pinned.
+//
+// W2-A5 (scroll-feel defects, 2026-09-16): the grid subscribes to its facet's TOTAL alone and every realized cell
+// follows its OWN row. The cell's decision is a value (DiscoCellStamp) a memo gates on, and the cell's props gate on
+// data — DiscoCellRulesTests / DiscoCellStampTests / DiscoCellPropsTests pin exactly when each of those moves.
+
+using System.Text;
+using FluentGpu.Foundation;
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-// ── Artist discography pagination ───────────────────────────────────────────────────────────────────────────────────
-// Coverage for the data layer that serves the artist page's discography. Since the move OFF the queryArtistDiscography*
-// GraphQL onto the extended-metadata (V4) pipeline, the whole discography lives in Artist.TopAlbums and paging is a pure
-// in-memory slice. Split across the boundaries it touches:
-//   • the JSON ACL (SpotifyExportMapper) — MapArtist still carries discography.<facet>.totalCount from the overview;
-//   • the source seam (AggregateCatalog routing + ICatalogSource DIM probe semantics + StoreLibrarySource's in-memory
-//     slice: probe/offset windows/Singles-plus-EP grouping); and
-//   • the virtualization primitive (VirtualCollection<T>'s provisional-seed reconciliation).
-
-public class DiscographyMapperTests
+public class DiscographyRouteTests
 {
-    // The captured artist-maroon5.json overview (data.artistUnion.discography.<facet>.{items,totalCount}). Located
-    // relative to THIS source file so it resolves regardless of the test host's working directory.
-    static string FixturePath([CallerFilePath] string? here = null)
-        => Path.Combine(Path.GetDirectoryName(here!)!, "..", "Wavee", "assets", "spotify", "artist-maroon5.json");
-
-    // ── 1. MapArtist carries the per-facet totals (the number the pre-fix mapper dropped) ──
-    [Fact]
-    public void MapArtist_Fixture_CarriesPerFacetTotals()
+    [Theory]
+    [InlineData(DiscoFacet.Albums, "disco:0:spotify:artist:04gDigrS5kc9YWfZHwBETP")]
+    [InlineData(DiscoFacet.Singles, "disco:1:spotify:artist:04gDigrS5kc9YWfZHwBETP")]
+    [InlineData(DiscoFacet.Compilations, "disco:2:spotify:artist:04gDigrS5kc9YWfZHwBETP")]
+    public void The_key_is_one_digit_then_the_whole_uri_and_it_round_trips(DiscoFacet facet, string key)
     {
-        using var doc = JsonDocument.Parse(File.ReadAllText(FixturePath()));
-        var au = doc.RootElement.GetProperty("data").GetProperty("artistUnion");
-
-        var artist = SpotifyExportMapper.MapArtist(au);
-
-        // The fixture's own discography.<facet>.totalCount values (verified against the JSON): 18 / 46 / 2.
-        Assert.Equal(18, artist.AlbumsTotal);
-        Assert.Equal(46, artist.SinglesTotal);
-        Assert.Equal(2, artist.CompilationsTotal);
-        // …while the overview still only carries the first window (≤10 albums, ≤10 singles) — the total ≠ the slice.
-        Assert.Equal(18, artist.FacetTotal(DiscographyKind.Albums));
-        Assert.Equal(46, artist.FacetTotal(DiscographyKind.Singles));
-        Assert.Equal(2, artist.FacetTotal(DiscographyKind.Compilations));
+        Assert.Equal(key, DiscoRoute.Key(facet, "spotify:artist:04gDigrS5kc9YWfZHwBETP"));
+        Assert.True(DiscoRoute.TryParseKey(key, out var parsed, out var uri));
+        Assert.Equal(facet, parsed);
+        Assert.Equal("spotify:artist:04gDigrS5kc9YWfZHwBETP", uri.ToString());
     }
 
-}
+    [Theory]
+    [InlineData("disco:")]
+    [InlineData("disco:1")]
+    [InlineData("disco:1:")]
+    [InlineData("disco:9:spotify:artist:x")]
+    [InlineData("disco:x:spotify:artist:x")]
+    [InlineData("album:1:spotify:artist:x")]
+    public void A_key_without_a_facet_digit_and_a_uri_is_not_a_route(string key)
+        => Assert.False(DiscoRoute.TryParseKey(key, out _, out _));
 
-public class DiscographyRoutingTests
-{
-    // A minimal catalog source: it answers GetArtistAsync (so the ICatalogSource default GetDiscographyAsync can serve
-    // the overview slice) and declares ownership of one URI; everything else is out of scope for these tests.
-    sealed class FakeArtistSource(string ownedUri, Artist artist) : ICatalogSource
-    {
-        public string Id => "fake";
-        public bool Owns(string uri) => uri == ownedUri;
-        public SourceCapabilities Capabilities => SourceCapabilities.Catalog;
-
-        public Task<Artist?> GetArtistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default)
-            => Task.FromResult<Artist?>(uri == ownedUri ? artist : null);
-
-        // Unused by discography routing / DIM probe — deliberately unsupported so a stray call is loud.
-        public Task<Playlist?> GetPlaylistAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<Album?> GetAlbumAsync(string uri, HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
-        public IAsyncEnumerable<TrackPage> StreamTracksAsync(string contextUri, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<IReadOnlyList<LibraryItem>> GetLibraryAsync(CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<IReadOnlyList<PlaylistSummary>> GetPlaylistsAsync(CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<IReadOnlyList<Album>> GetAlbumsAsync(CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<IReadOnlyList<Artist>> GetArtistsAsync(CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<IReadOnlyList<Track>> GetLikedSongsAsync(HydrationLevel level = HydrationLevel.Open, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<SearchResults> SearchAsync(string query, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<HomeContribution> GetHomeAsync(string? facet, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<LibraryStats> GetStatsAsync(CancellationToken ct = default) => throw new NotSupportedException();
-    }
-
-    static Album Alb(string id, AlbumKind kind = AlbumKind.Album)
-        => new(id, "spotify:album:" + id, "N" + id, null, Array.Empty<ArtistRef>(), 2020, 10, null, kind);
-
-    static Artist ArtistWith(string uri, params Album[] topAlbums)
-        => new(uri.Substring(uri.LastIndexOf(':') + 1), uri, "Name", null, topAlbums);
-
-    // ── 3. AggregateCatalog routes discography to the owning source; a non-owned URI → (empty, 0) ──
-    [Fact]
-    public async Task Aggregate_RoutesToOwningSource_AndEmptyForUnowned()
-    {
-        const string owned = "spotify:artist:owned";
-        var artist = ArtistWith(owned, Alb("a1"), Alb("a2"), Alb("a3"));
-        var reg = new SourceRegistry(new ISource[] { new FakeArtistSource(owned, artist) });
-        var cat = new AggregateCatalog(reg);
-
-        var mine = await cat.GetDiscographyAsync(owned, DiscographyKind.Albums, 0, 60);
-        Assert.Equal(3, mine.Total);                 // served via the owning source's DIM over the 3-album slice
-        Assert.Equal(3, mine.Items.Count);
-
-        var theirs = await cat.GetDiscographyAsync("spotify:artist:nobody", DiscographyKind.Albums, 0, 60);
-        Assert.Empty(theirs.Items);                  // no owner → clean empty, total 0
-        Assert.Equal(0, theirs.Total);
-    }
-
-    // ── 4a. Probe (limit <= 0) through the ICatalogSource DIM → (empty, total), no window materialized ──
-    [Fact]
-    public async Task Dim_Probe_ReturnsEmptyWindow_WithTotal()
-    {
-        const string uri = "spotify:artist:x";
-        var artist = ArtistWith(uri, Alb("a1"), Alb("a2"), Alb("a3"), Alb("a4"), Alb("a5"));
-        ICatalogSource src = new FakeArtistSource(uri, artist);   // does NOT override GetDiscographyAsync → the DIM runs
-
-        var probe = await src.GetDiscographyAsync(uri, DiscographyKind.Albums, 0, 0);
-
-        Assert.Empty(probe.Items);   // limit <= 0 → no window materialized (never the whole list as a bogus page)
-        Assert.Equal(5, probe.Total);
-    }
-
-    // ── 9. The shared kind filter groups Singles with EPs (matches Spotify's `singles` facet) ──
     [Fact]
     public void KindMatches_SinglesFacet_IncludesSingleAndEp_ExcludesAlbum()
     {
-        Assert.True(AggregateCatalog.KindMatches(AlbumKind.Single, DiscographyKind.Singles));
-        Assert.True(AggregateCatalog.KindMatches(AlbumKind.EP, DiscographyKind.Singles));
-        Assert.False(AggregateCatalog.KindMatches(AlbumKind.Album, DiscographyKind.Singles));
-        Assert.False(AggregateCatalog.KindMatches(AlbumKind.Compilation, DiscographyKind.Singles));
+        Assert.True(ArtistCatalog.KindMatches(AlbumKind.Single, DiscoFacet.Singles));
+        Assert.True(ArtistCatalog.KindMatches(AlbumKind.EP, DiscoFacet.Singles));
+        Assert.False(ArtistCatalog.KindMatches(AlbumKind.Album, DiscoFacet.Singles));
+        Assert.False(ArtistCatalog.KindMatches(AlbumKind.Compilation, DiscoFacet.Singles));
 
-        Assert.True(AggregateCatalog.KindMatches(AlbumKind.Album, DiscographyKind.Albums));
-        Assert.True(AggregateCatalog.KindMatches(AlbumKind.Compilation, DiscographyKind.Compilations));
+        Assert.True(ArtistCatalog.KindMatches(AlbumKind.Album, DiscoFacet.Albums));
+        Assert.True(ArtistCatalog.KindMatches(AlbumKind.Compilation, DiscoFacet.Compilations));
+    }
+
+    [Theory]
+    [InlineData("SINGLE", 1, AlbumKind.Single)]
+    [InlineData("SINGLE", 4, AlbumKind.EP)]
+    [InlineData("single", 3, AlbumKind.Single)]
+    [InlineData("EP", 2, AlbumKind.EP)]
+    [InlineData("COMPILATION", 20, AlbumKind.Compilation)]
+    [InlineData("ALBUM", 12, AlbumKind.Album)]
+    [InlineData("", 12, AlbumKind.Album)]
+    public void The_wire_type_word_maps_like_the_0_2_9_mapper(string type, int tracks, AlbumKind expected)
+        => Assert.Equal(expected, ArtistCatalog.KindOf(Encoding.UTF8.GetBytes(type), tracks));
+}
+
+[Collection(EntitiesCollection.Name)]
+public class DiscographyPaginationTests
+{
+    const string ArtistUri = "spotify:artist:04gDigrS5kc9YWfZHwBETP";
+
+    static byte[] Fixture(string name) => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "spotify", name));
+    static byte[] Utf8(string s) => Encoding.UTF8.GetBytes(s);
+    static Artist ArtistOf(string uri = ArtistUri) => Entities.Artist(EntityUri.Parse(uri.AsSpan()));
+
+    static string Release(string uri, string type, int tracks, int year)
+        => "{\"releases\":{\"items\":[{\"uri\":\"" + uri + "\",\"name\":\"N\",\"type\":\"" + type + "\",\"tracks\":{\"totalCount\":"
+           + tracks + "},\"date\":{\"year\":" + year + ",\"month\":3,\"day\":4,\"precision\":\"DAY\"}}]}}";
+
+    static string FacetPage(string facet, int total, params string[] items)
+        => "{\"data\":{\"artistUnion\":{\"discography\":{\"" + facet + "\":{\"totalCount\":" + total + ",\"items\":["
+           + string.Join(",", items) + "]}}}}}";
+
+    [Fact]
+    public void The_overview_states_each_facets_total()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.ArtistPage(Fixture("artist-maroon5.json"), Utf8(ArtistUri), s);
+        TestScope.CommitAndPublish(s);
+
+        var artist = ArtistOf();
+        Assert.Equal(18, Artist.FacetTotal(artist, DiscoFacet.Albums));
+        Assert.Equal(46, Artist.FacetTotal(artist, DiscoFacet.Singles));
+        Assert.Equal(2, Artist.FacetTotal(artist, DiscoFacet.Compilations));
+        // …while the overview carries only the first window — the total is not the slice.
+        Assert.Equal(10, Entities.Current.Edges.ArtistAlbums.Count(artist.Slot));
+        Assert.Equal(10, Entities.Current.Edges.ArtistSingles.Count(artist.Slot));
     }
 
     [Fact]
-    public async Task Dim_SinglesFacet_SurfacesSinglesAndEps_NotAlbums()
+    public void The_first_page_is_the_total_probe()
     {
-        const string uri = "spotify:artist:y";
-        var artist = ArtistWith(uri,
-            Alb("single", AlbumKind.Single), Alb("ep", AlbumKind.EP),
-            Alb("album", AlbumKind.Album), Alb("comp", AlbumKind.Compilation));
-        ICatalogSource src = new FakeArtistSource(uri, artist);
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.ArtistPage(Fixture("artist-maroon5.json"), Utf8(ArtistUri), s);
+        TestScope.CommitAndPublish(s);
 
-        var page = await src.GetDiscographyAsync(uri, DiscographyKind.Singles, 0, 60);
+        var artist = ArtistOf();
+        var albums = Entities.Current.Edges.ArtistAlbums;
+        Assert.Equal(EdgeState.Partial, albums.State(artist.Slot));        // more pages to come …
+        Assert.True(Artist.HasFacet(artist, DiscoFacet.Albums));            // … and the section is present at its total
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.ArtistCompilations.State(artist.Slot));   // 2 of 2
+    }
 
-        Assert.Equal(2, page.Total);                                  // the Single + the EP (offline count == Spotify grouping)
-        var uris = new HashSet<string>();
-        foreach (var a in page.Items) uris.Add(a.Uri);
-        Assert.Contains("spotify:album:single", uris);
-        Assert.Contains("spotify:album:ep", uris);
-        Assert.DoesNotContain("spotify:album:album", uris);
+    [Fact]
+    public void A_later_page_lands_at_its_offset_and_completes()
+    {
+        TestScope.Fresh();
+        var first = Staging.Rent();
+        Spotify.Decode.DiscographyFacet(Utf8(FacetPage("albums", 3,
+            Release("spotify:album:p1", "ALBUM", 10, 2020), Release("spotify:album:p2", "ALBUM", 10, 2019))),
+            Utf8(ArtistUri), DiscoFacet.Albums, 0, first);
+        TestScope.CommitAndPublish(first);
+
+        var artist = ArtistOf();
+        var edge = Entities.Current.Edges.ArtistAlbums;
+        Assert.Equal(EdgeState.Partial, edge.State(artist.Slot));
+        Assert.Equal(3, edge.Total(artist.Slot));
+
+        var second = Staging.Rent();
+        Spotify.Decode.DiscographyFacet(Utf8(FacetPage("albums", 3, Release("spotify:album:p3", "ALBUM", 10, 2018))),
+            Utf8(ArtistUri), DiscoFacet.Albums, 2, second);
+        TestScope.CommitAndPublish(second);
+
+        Assert.Equal(EdgeState.Complete, edge.State(artist.Slot));
+        Assert.Equal(Entities.Current.Albums.Slot("spotify:album:p3".AsSpan()), edge.Targets(artist.Slot)[2]);
+    }
+
+    [Fact]
+    public void A_singles_page_keeps_eps_and_coerces_a_contradiction()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.DiscographyFacet(Utf8(FacetPage("singles", 3,
+            Release("spotify:album:s1", "SINGLE", 1, 2021), Release("spotify:album:s2", "SINGLE", 6, 2020),
+            Release("spotify:album:s3", "ALBUM", 2, 2019))), Utf8(ArtistUri), DiscoFacet.Singles, 0, s);
+        TestScope.CommitAndPublish(s);
+
+        Assert.Equal(AlbumKind.Single, Entities.Album(EntityUri.Parse("spotify:album:s1".AsSpan())).Kind);
+        Assert.Equal(AlbumKind.EP, Entities.Album(EntityUri.Parse("spotify:album:s2".AsSpan())).Kind);
+        // The server listed it under Singles: the facet wins, so the facet's count and its cards agree.
+        Assert.Equal(AlbumKind.Single, Entities.Album(EntityUri.Parse("spotify:album:s3".AsSpan())).Kind);
+    }
+
+    [Fact]
+    public void A_facet_page_answers_only_its_own_artist()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.DiscographyFacet(Utf8(FacetPage("albums", 1, Release("spotify:album:mine", "ALBUM", 9, 2020))),
+            Utf8(ArtistUri), DiscoFacet.Albums, 0, s);
+        TestScope.CommitAndPublish(s);
+
+        Assert.Equal(1, Entities.Current.Edges.ArtistAlbums.Count(ArtistOf().Slot));
+        Assert.Equal(EdgeState.Unknown, Entities.Current.Edges.ArtistAlbums.State(ArtistOf("spotify:artist:someone-else").Slot));
+        Assert.Equal(EdgeState.Unknown, Entities.Current.Edges.ArtistSingles.State(ArtistOf().Slot));   // one facet per answer
+    }
+
+    [Fact]
+    public void An_empty_facet_is_complete_and_absent_not_partial_forever()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.DiscographyFacet(Utf8(FacetPage("compilations", 0)), Utf8(ArtistUri), DiscoFacet.Compilations, 0, s);
+        TestScope.CommitAndPublish(s);
+
+        var artist = ArtistOf();
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.ArtistCompilations.State(artist.Slot));
+        Assert.False(Artist.HasFacet(artist, DiscoFacet.Compilations));
+    }
+
+    [Fact]
+    public void A_parsed_disco_route_names_the_facet_and_the_artist()
+    {
+        TestScope.Fresh();
+        var route = Shell.Parse("disco:1:" + ArtistUri);
+        Assert.Equal(Shell.RouteKind.Discography, route.Kind);
+        Assert.True(DiscoRoute.TryParse(route, out var facet, out var artist));
+        Assert.Equal(DiscoFacet.Singles, facet);
+        Assert.Equal(ArtistUri, artist.Text);
+
+        var back = DiscoRoute.For(ArtistOf(), DiscoFacet.Compilations);
+        Assert.Equal("disco:2:" + ArtistUri, Shell.NameOf(back));
     }
 }
 
-public class StoreLibraryDiscographyTests
+/// <summary>W2-A5: which album a grid position paints, pure over the edge's state and its targets. The edge decides the
+/// grid's EXTENT (its total); this rule decides, per cell, whether there is a row to paint at all.</summary>
+public class DiscoCellRulesTests
 {
-    const string ArtistUri = "spotify:artist:ar";
-
-    static Album Alb(string id, AlbumKind kind = AlbumKind.Album, int year = 2020)
-        => new(id, "spotify:album:" + id, "N" + id, null, Array.Empty<ArtistRef>(), year, 10, null, kind);
-    static Track Trk(string id) => new(id, "spotify:track:" + id, "T" + id, Array.Empty<ArtistRef>(),
-        new AlbumRef("", "", ""), 1000, false, null);
-
-    // The facade every StoreLibrarySource read goes through. Offline = store-only, never networks (design 1.3).
-    static SwitchableEntityHydrator Offline(IStore store) => new(new Wavee.Backend.Hydration.OfflineEntityHydrator(store));
-
-
-    // Seed an artist into an InMemoryStore whose TopAlbums IS the whole discography (V4 groups → resident cards).
-    static (StoreLibrarySource Src, InMemoryStore Store) SourceWith(params Album[] topAlbums)
-    {
-        var store = new InMemoryStore();
-        store.UpsertArtist(new Artist("ar", ArtistUri, "Ar", null, topAlbums));
-        return (new StoreLibrarySource(store, Offline(store), OfflineOnlineCatalog.Instance), store);
-    }
-
-    // ── Probe (limit <= 0) → (empty window, in-memory filtered count). No network; TopAlbums holds the whole facet. ──
     [Fact]
-    public async Task Probe_TotalIsInMemoryFilteredCount()
-    {
-        var (src, _) = SourceWith(Alb("a1"), Alb("a2"), Alb("a3"));
+    public void An_unanswered_facet_paints_no_card_whatever_the_edge_lists()
+        => Assert.Equal(Table.None, DiscoCellRules.TargetAt(EdgeState.Unknown, [5, 6, 7], 0));
 
-        var probe = await src.GetDiscographyAsync(ArtistUri, DiscographyKind.Albums, 0, 0);
+    [Theory]
+    [InlineData(EdgeState.Partial)]
+    [InlineData(EdgeState.Complete)]
+    public void A_position_inside_what_landed_names_its_album(EdgeState state)
+        => Assert.Equal(6, DiscoCellRules.TargetAt(state, [5, 6, 7], 1));
 
-        Assert.Empty(probe.Items);   // limit <= 0 → total-only probe
-        Assert.Equal(3, probe.Total);
-    }
-
-    // ── Offset windows slice the in-memory filtered list. ──
     [Fact]
-    public async Task OffsetWindow_SlicesInMemory()
+    public void A_position_past_what_landed_is_a_placeholder_for_the_page_still_to_come()
     {
-        var (src, _) = SourceWith(Alb("a1"), Alb("a2"), Alb("a3"), Alb("a4"), Alb("a5"));
-
-        var page = await src.GetDiscographyAsync(ArtistUri, DiscographyKind.Albums, 2, 2);
-
-        Assert.Equal(5, page.Total);                          // total is always the in-memory filtered count
-        Assert.Equal(2, page.Items.Count);
-        Assert.Equal("spotify:album:a3", page.Items[0].Uri);
-        Assert.Equal("spotify:album:a4", page.Items[1].Uri);
+        Assert.Equal(Table.None, DiscoCellRules.TargetAt(EdgeState.Partial, [5, 6, 7], 3));
+        Assert.Equal(Table.None, DiscoCellRules.TargetAt(EdgeState.Partial, [5, 6, 7], -1));
+        Assert.Equal(Table.None, DiscoCellRules.TargetAt(EdgeState.Partial, default, 0));
     }
 
-    // ── The Singles facet surfaces Singles AND EPs (Spotify's `singles` grouping), never Albums/Compilations. ──
     [Fact]
-    public async Task SinglesFacet_SurfacesSinglesAndEps_NotAlbums()
-    {
-        var (src, _) = SourceWith(
-            Alb("single", AlbumKind.Single), Alb("ep", AlbumKind.EP),
-            Alb("album", AlbumKind.Album), Alb("comp", AlbumKind.Compilation));
-
-        var page = await src.GetDiscographyAsync(ArtistUri, DiscographyKind.Singles, 0, 60);
-
-        Assert.Equal(2, page.Total);   // the Single + the EP
-        var uris = new HashSet<string>();
-        foreach (var a in page.Items) uris.Add(a.Uri);
-        Assert.Contains("spotify:album:single", uris);
-        Assert.Contains("spotify:album:ep", uris);
-        Assert.DoesNotContain("spotify:album:album", uris);
-    }
-
-    // The album on-open gate (AlbumGate_OpensOnNamedV4Tracks_FullUpgradeIsBelowTheFold) and its two predicates
-    // (IsAlbumOpenReady_NamedTracklistIsEnough_UnnamedAndEmptyAreNot / IsAlbumComplete) lived here because this source
-    // owned them. They are now ONE thing in ONE place: HydrationLevels.Of(Album) -- Identity = named header,
-    // Open = a named Tracks-level list (the old IsAlbumOpenReady), Rich = + publishing, Full = the getAlbum envelope.
-    // Replaced by HydrationLevelsTests.Album_* (the predicate, every state) and AlbumHydrationTests.Open_*/Rich_*/Full_*
-    // (what the ladder actually does at each rung, including the V4-empty getAlbum fallback these pinned indirectly).
+    public void A_none_target_inside_the_list_is_a_placeholder()
+        => Assert.Equal(Table.None, DiscoCellRules.TargetAt(EdgeState.Complete, [5, Table.None, 7], 1));
 }
 
-// ── 8. VirtualCollection<T> provisional-seed reconciliation (the Phase-2 regression, both directions) ──
-public class VirtualCollectionSeedTests
+/// <summary>W2-A5: the cell's stamp is the value its memo gates on, so these facts ARE the cell's re-render rule — it
+/// moves when the row gains its card group or is written while it paints a card, and stays equal for a write to a row
+/// that is still shimmering (an Identity-only landing) or to any other row.</summary>
+[Collection(EntitiesCollection.Name)]
+public class DiscoCellStampTests
 {
-    // A synchronous fetch that reports a fixed total and fills each page with ascending ints (item value == index).
-    static VirtualCollection<int>.Fetch AscendingWithTotal(int total) => (offset, count, ct) =>
+    static int Stage(string uri, AlbumFields groups, string title)
     {
-        var items = new int[count];
-        for (int i = 0; i < count; i++) items[i] = offset + i;
-        return new ValueTask<PageResult<int>>(new PageResult<int>(total, items));
-    };
-
-    static VirtualCollection<int> Vc(int total, int pageSize = 10)
-        => new(AscendingWithTotal(total), pageSize: pageSize);   // post == null → inline (synchronous) fill
-
-    // (a) seed-too-HIGH: Seed(N, provisional) then a real page reporting M < N → converge DOWN to M.
-    [Fact]
-    public void ProvisionalSeed_HigherThanLivePage_ConvergesDown()
-    {
-        var vc = Vc(total: 30);
-        vc.Seed(100, ReadOnlySpan<int>.Empty, provisional: true);
-        Assert.Equal(100, vc.CountOr0);   // renders as N up front (shimmer-to-N)
-
-        vc.EnsureRange(0, 9);             // page 0 lands with the authoritative total 30
-
-        Assert.Equal(30, vc.CountOr0);    // corrected DOWN — no permanent trailing shimmer
-        for (int i = 0; i < 10; i++) { Assert.True(vc.IsLoaded(i)); Assert.Equal(i, vc[i]); }   // no null slots in the loaded range
-        Assert.False(vc.IsLoaded(35));    // an index beyond M is never exposed as a ghost slot
-        Assert.Equal(default, vc[35]);
+        var s = Staging.Rent();
+        ref var row = ref s.Albums.RowFor(s.Text(uri), Authority.Full, (uint)groups);
+        row.Title = s.Text(title);
+        TestScope.CommitAndPublish(s);
+        return Entities.Current.Albums.Slot(uri.AsSpan());
     }
 
-    // (b) seed-too-LOW: Seed(N, provisional) then a real page reporting M > N → grow to M, [N, M) reachable.
     [Fact]
-    public void ProvisionalSeed_LowerThanLivePage_GrowsAndKeepsUpperItemsReachable()
+    public void None_and_an_unallocated_slot_are_the_placeholder()
     {
-        var vc = Vc(total: 50);
-        vc.Seed(10, ReadOnlySpan<int>.Empty, provisional: true);
-        Assert.Equal(10, vc.CountOr0);
-
-        vc.EnsureRange(0, 9);             // page 0 → learns the true total 50 (grows _chunks, un-truncates)
-        Assert.Equal(50, vc.CountOr0);
-
-        vc.EnsureRange(40, 49);           // a page well above the seeded N must be loadable (the seed didn't truncate it)
-        Assert.True(vc.IsLoaded(45));
-        Assert.Equal(45, vc[45]);
+        TestScope.Fresh();
+        var albums = Entities.Current.Albums;
+        Assert.Equal(DiscoCellStamp.Placeholder, DiscoCellRules.StampOf(albums, Table.None));
+        Assert.Equal(DiscoCellStamp.Placeholder, DiscoCellRules.StampOf(albums, albums.Count + 10));
+        Assert.False(DiscoCellStamp.Placeholder.Ready);
     }
 
-    // (c) Seed AFTER a real page already set the count → no-op on the count.
     [Fact]
-    public void Seed_AfterRealPage_DoesNotOverrideCount()
+    public void A_row_without_its_card_group_shimmers_and_a_further_thin_write_leaves_the_stamp_equal()
     {
-        var vc = Vc(total: 40);
-        vc.EnsureRange(0, 9);             // a real (non-provisional) page sets count = 40
-        Assert.Equal(40, vc.CountOr0);
+        TestScope.Fresh();
+        int slot = Stage("spotify:album:stamp-thin", AlbumFields.Identity, "Half a card");
+        var albums = Entities.Current.Albums;
+        var thin = DiscoCellRules.StampOf(albums, slot);
+        Assert.Equal(new DiscoCellStamp(slot, 0, false), thin);   // names the row, carries no version, not ready
 
-        vc.Seed(999, ReadOnlySpan<int>.Empty, provisional: true);   // too late — a real total already spoke
-
-        Assert.Equal(40, vc.CountOr0);
+        // The row is written again (its own version climbs) but still lacks DiscoCard: the cell's value does not move.
+        uint before = albums.Version[slot];
+        Stage("spotify:album:stamp-thin", AlbumFields.Identity, "Still half");
+        Assert.True(albums.Version[slot] >= before);
+        Assert.Equal(thin, DiscoCellRules.StampOf(albums, slot));
     }
 
-    // (d) non-provisional Seed keeps existing semantics: the seeded count sticks even when a live page disagrees.
     [Fact]
-    public void NonProvisionalSeed_CountSticks_EvenIfLivePageDiffers()
+    public void The_card_group_landing_moves_the_stamp_and_so_does_a_later_write_to_a_ready_row()
     {
-        var vc = Vc(total: 99);
-        vc.Seed(20, ReadOnlySpan<int>.Empty, provisional: false);   // firm seed
-        Assert.Equal(20, vc.CountOr0);
+        TestScope.Fresh();
+        int slot = Stage("spotify:album:stamp-card", AlbumFields.DiscoCard, "Whole card");
+        var albums = Entities.Current.Albums;
+        var ready = DiscoCellRules.StampOf(albums, slot);
+        Assert.True(ready.Ready);
+        Assert.Equal(slot, ready.Slot);
+        Assert.Equal(albums.Version[slot], ready.Version);
+        Assert.NotEqual(new DiscoCellStamp(slot, 0, false), ready);
 
-        vc.EnsureRange(0, 9);             // page 0 reports 99 — but a firm (non-provisional) count is NOT corrected
-        Assert.Equal(20, vc.CountOr0);
-        Assert.True(vc.IsLoaded(5));
-        Assert.Equal(5, vc[5]);
+        // Another group lands on the SAME row: the version climbs, so the card re-reads its title/meta/cover.
+        var s = Staging.Rent();
+        ref var row = ref s.Albums.RowFor(s.Text("spotify:album:stamp-card"), Authority.Full, (uint)AlbumFields.Publishing);
+        row.Label = s.Text("A label");
+        TestScope.CommitAndPublish(s);
+        var later = DiscoCellRules.StampOf(albums, slot);
+        Assert.True(later.Ready);
+        Assert.NotEqual(ready, later);
+        Assert.True(later.Version > ready.Version);
     }
 
-    // (e) seed corrected DOWN so far the arriving page falls out of range (live facet actually EMPTY): no chunk is stored
-    // (cap == 0), so the correction itself MUST bump Version — a grid watching it re-windows away from the seeded shimmer
-    // slots instead of showing them forever.
     [Fact]
-    public void ProvisionalSeed_CorrectedToEmpty_StillBumpsVersion()
+    public void A_write_to_another_row_leaves_this_rows_stamp_equal()
     {
-        var vc = Vc(total: 0);
-        vc.Seed(46, ReadOnlySpan<int>.Empty, provisional: true);
-        Assert.Equal(46, vc.CountOr0);    // shimmer-to-N up front
-        int before = vc.Version.Value;
+        TestScope.Fresh();
+        int mine = Stage("spotify:album:stamp-mine", AlbumFields.DiscoCard, "Mine");
+        var albums = Entities.Current.Albums;
+        var before = DiscoCellRules.StampOf(albums, mine);
+        Stage("spotify:album:stamp-other", AlbumFields.DiscoCard, "Somebody else");
+        Assert.Equal(before, DiscoCellRules.StampOf(albums, mine));
+    }
+}
 
-        vc.EnsureRange(0, 9);             // page 0 reports total 0 → count corrects to 0, page 0 now out of range
+/// <summary>W2-A5: the grid re-pushes a <see cref="Artist.DiscoCellProps"/> per realized cell on every grid render; its
+/// equality is the cell's re-render gate, so it must hold across fresh delegate closures and break on any datum the
+/// cell paints from.</summary>
+public class DiscoCellPropsTests
+{
+    static readonly Func<ColorF> s_accentA = static () => default, s_accentB = static () => default;
+    static readonly Action<int> s_toggleA = static _ => { }, s_toggleB = static _ => { };
 
-        Assert.Equal(0, vc.CountOr0);     // corrected to empty
-        Assert.True(vc.Version.Value > before);   // and the grid was told — no permanent shimmer
+    static Artist.DiscoCellProps Props() => new(new Artist(3), DiscoFacet.Albums, 4, 200f, false, s_accentA, s_toggleA);
+
+    [Fact]
+    public void Fresh_delegates_over_the_same_data_are_equal_and_hash_alike()
+    {
+        var a = Props();
+        var b = new Artist.DiscoCellProps(new Artist(3), DiscoFacet.Albums, 4, 200f, false, s_accentB, s_toggleB);
+        Assert.Equal(a, b);
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+        Assert.NotSame(a.Accent, b.Accent);                    // the delegates really differ — they are just not data
+        Assert.NotSame(a.OnToggle, b.OnToggle);
+    }
+
+    [Fact]
+    public void Every_painted_datum_breaks_the_gate()
+    {
+        var p = Props();
+        Assert.NotEqual(p, p with { Expanded = true });        // the accent border + fill
+        Assert.NotEqual(p, p with { CardW = 201f });           // the card height
+        Assert.NotEqual(p, p with { Index = 5 });              // a different position → a different row
+        Assert.NotEqual(p, p with { Facet = DiscoFacet.Singles });
+        Assert.NotEqual(p, p with { A = new Artist(4) });
     }
 }

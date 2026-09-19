@@ -1,0 +1,49 @@
+{
+  "data": {
+    "whatsNewFeedItems": {
+      "items": [
+        {
+          "state": { "state": "SEEN" },
+          "timestamp": { "isoString": "2024-01-15T00:00:00Z" },
+          "content": {
+            "data": {
+              "__typename": "Album",
+              "uri": "spotify:album:fakealb1",
+              "name": "Fake Album One",
+              "type": "ALBUM",
+              "artists": { "items": [ { "profile": { "name": "Fake Artist" } }, { "profile": { "name": "Guest" } } ] },
+              "coverArt": { "sources": [ { "url": "https://i.example/alb1.jpg" } ] },
+              "date": { "isoString": "2024-01-14T00:00:00Z" }
+            }
+          }
+        },
+        {
+          "state": { "state": "NONE" },
+          "timestamp": { "isoString": "2024-02-01T00:00:00Z" },
+          "content": {
+            "data": {
+              "__typename": "Episode",
+              "uri": "spotify:episode:fakeep1",
+              "name": "Fake Episode One",
+              "coverArt": { "sources": [ { "url": "https://i.example/ep1.jpg" } ] },
+              "podcastV2": { "data": { "name": "Fake Podcast" } },
+              "playedState": { "state": "FULLY_PLAYED" },
+              "releaseDate": { "isoString": "2024-01-31T00:00:00Z" }
+            }
+          }
+        },
+        {
+          "state": { "state": "NONE" },
+          "timestamp": { "isoString": "2024-03-01T00:00:00Z" },
+          "content": {
+            "data": {
+              "__typename": "Chapter",
+              "uri": "spotify:chapter:fakec1",
+              "name": "Should be skipped"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

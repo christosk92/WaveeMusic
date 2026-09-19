@@ -1,0 +1,16 @@
+{
+  "uri":"spotify:user:x:collection",
+  "url":"context://spotify:user:x:collection",
+  "metadata":{"sorting.criteria":"added_at DESC","context_owner":"x"},
+  "pages":[
+    {"page_url":"hm://context/page/1","next_page_url":"hm://context/page/2",
+     "tracks":[
+       {"uri":"spotify:track:7idegBIikag5rTZP4WZihP","uid":"uidA","provider":"context",
+        "metadata":{"title":"Cold Brew Chapters","artist_name":"roti.","album_uri":"spotify:album:1I80HwIDdWXtmA3Fqsbqnl","image_url":"https:\/\/i.scdn.co\/image\/small","image_large_url":"https://i.scdn.co/image/large","duration":"234959"}},
+       {"uid":"no-uri","metadata":{"title":"dropped"}},
+       {"uri":"spotify:track:1111111111111111111111","uid":"uidB","provider":"autoplay","metadata":{"autoplay.is_autoplay":"true"}}
+     ]},
+    {"page_url":"hm://context/page/2","next_page_url":"hm://context/page/3","tracks":[
+       {"uri":"spotify:track:2222222222222222222222","uid":"uidC"}]}
+  ]
+}

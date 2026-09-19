@@ -1,171 +1,171 @@
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using Wavee.Backend;
-using Wavee.Core;
+// ── Wavee.Tests/SidebarPinSyncTests.cs — the ylpin ↔ sidebar pin bridge (restored from 0.2.9) ──────────────────────
+//
+// Gap batch B2 (G-049). 0.2.9's `SidebarPinSyncTests` drove `App/SidebarPinSync.cs` over an `InMemoryStore` and a
+// recording `IPinMutations`. The 0.3 bridge is `LibraryPinSync` (Spotify/Spotify.Encode.cs): the server set arrives as
+// `PinWire`s read off the `Pins` edge instead of a store change, "converged" is the edge having landed whole, and the
+// write seam is a delegate. The facts are the same twelve, restated over that shape: remote adds pin locally with zero
+// writes, a local pin of a syncable kind is pushed once, the first converged walk migrates instead of sweeping, a pending
+// write shields its pin, and a shape the sidebar cannot represent never becomes a pin and never causes a write.
+// UI-thread-only by contract, so every call here is synchronous. `EntitiesCollection`: the pin-id map parses uris, which
+// interns into the process-wide table.
+
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>The App/SidebarPinSync.cs bridge (§1.5/§1.6/§1.7 of
-/// docs/plans/wavee/pin-spotify-sync-implementation.md): drives the real bridge over an <see cref="InMemoryStore"/> and
-/// a recording <see cref="IPinMutations"/> fake, with a synchronous "post" so every assertion runs deterministically.</summary>
+[Collection(EntitiesCollection.Name)]
 public class SidebarPinSyncTests
 {
-    sealed class RecordingPinMutations : IPinMutations
+    sealed class Rig
     {
-        public readonly List<(string Uri, bool Pinned)> Calls = new();
-        public Task SetPinnedAsync(string wireUri, bool pinned, CancellationToken ct = default)
+        public readonly SidebarPinStore Pins = new();
+        public readonly MemoryAppSettings Settings = new();
+        public readonly List<(string Uri, bool Pinned)> Writes = new();
+        public readonly LibraryPinSync Sync;
+
+        public Rig(bool migrated, Func<string, bool>? hasPending = null)
         {
-            Calls.Add((wireUri, pinned));
-            return Task.CompletedTask;
+            Settings.Set(Platform.Keys.PinsMigratedToServer, migrated);
+            Sync = new LibraryPinSync(Pins, Settings, (uri, pinned) => Writes.Add((uri, pinned)), hasPending ?? (_ => false),
+                id => id == "liked" ? "Liked Songs" : "");
+        }
+
+        public void Server(bool converged, params string[] uris)
+        {
+            var wires = new PinWire[uris.Length];
+            for (int i = 0; i < uris.Length; i++) wires[i] = new PinWire(uris[i], 1000 + i);
+            Sync.ApplyServer(wires, converged);
         }
     }
 
-    const string User = "bob";
-    static SidebarPin Pin(string id, SidebarEntryKind kind, string uri = "", string name = "")
-        => new(id, kind, uri, name, 0);
-
-    static (InMemoryStore Store, SidebarPinStore Pins, RecordingPinMutations Mutations, MemoryAppSettings Settings, SidebarPinSync Sync)
-        Rig(bool converged, bool migrated, System.Func<string, bool>? hasPending = null,
-            System.Func<string, string>? routeTitle = null)
-    {
-        var store = new InMemoryStore();
-        var pins = new SidebarPinStore();
-        var mutations = new RecordingPinMutations();
-        var settings = new MemoryAppSettings();
-        settings.Set(SidebarKeys.PinsMigratedToServer, migrated);
-        var sync = new SidebarPinSync(store, pins, mutations, settings,
-            () => User, () => converged, hasPending ?? (_ => false),
-            routeTitle ?? (id => id == "liked" ? "Liked Songs" : ""));
-        sync.Activate(a => a());   // synchronous post — every assertion below runs deterministically
-        return (store, pins, mutations, settings, sync);
-    }
+    static SidebarPin Pin(string id, SidebarEntryKind kind, string uri = "", string name = "") => new(id, kind, uri, name, 0);
 
     [Fact]
     public void RemoteAdd_PinsLocally_WithZeroWrites()
     {
-        var (store, pins, mutations, _, _) = Rig(converged: false, migrated: false);
-        store.SetSaved("pins", "spotify:playlist:new", true, SyncState.Confirmed, 1000);
+        var rig = new Rig(migrated: false);
+        rig.Server(converged: false, "spotify:playlist:new");
 
-        Assert.True(pins.IsPinned("pl:spotify:playlist:new"));
-        Assert.Empty(mutations.Calls);
+        Assert.True(rig.Pins.IsPinned("pl:spotify:playlist:new"));
+        Assert.Empty(rig.Writes);
     }
 
     [Fact]
     public void RemoteAdd_OfATrackUri_IsIgnored()
     {
-        var (store, pins, mutations, _, _) = Rig(converged: false, migrated: false);
-        store.SetSaved("pins", "spotify:track:t1", true, SyncState.Confirmed, 1000);
+        TestScope.Fresh();
+        var rig = new Rig(migrated: false);
+        rig.Server(converged: false, "spotify:track:t1");
 
-        Assert.Empty(pins);
-        Assert.Empty(mutations.Calls);
+        Assert.Empty(rig.Pins);
+        Assert.Empty(rig.Writes);
     }
 
     [Fact]
     public void LocalPin_OfASpotifyPlaylist_IsPushedOnce()
     {
-        var (_, pins, mutations, _, _) = Rig(converged: false, migrated: false);
-        Assert.True(pins.Pin(Pin("pl:spotify:playlist:x", SidebarEntryKind.Playlist, "spotify:playlist:x")));
+        var rig = new Rig(migrated: false);
+        Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:x", SidebarEntryKind.Playlist, "spotify:playlist:x")));
 
-        Assert.Equal(new[] { ("spotify:playlist:x", true) }, mutations.Calls);
+        Assert.Equal(new[] { ("spotify:playlist:x", true) }, rig.Writes);
     }
 
     [Fact]
     public void LocalPin_OfAFolder_IsPushedOnce()
     {
-        var (_, pins, mutations, _, _) = Rig(converged: false, migrated: false);
-        Assert.True(pins.Pin(Pin("folder:x", SidebarEntryKind.Folder, "", "F")));
+        var rig = new Rig(migrated: false);
+        Assert.True(rig.Pins.Pin(Pin("folder:ab12", SidebarEntryKind.Folder, "", "F")));
 
-        Assert.Equal(new[] { ("spotify:folder:x", true) }, mutations.Calls);
+        Assert.Equal(new[] { ("spotify:folder:ab12", true) }, rig.Writes);
     }
 
     [Fact]
     public void RemoteAdd_OfAFolder_PinsLocally_AsAFolderKind()
     {
-        var (store, pins, mutations, _, _) = Rig(converged: false, migrated: false);
-        store.SetSaved("pins", "spotify:folder:abc", true, SyncState.Confirmed, 1000);
+        var rig = new Rig(migrated: false);
+        rig.Server(converged: false, "spotify:folder:abc");
 
-        Assert.True(pins.IsPinned("folder:abc"));
-        var pin = pins[pins.IndexOf("folder:abc")];
+        Assert.True(rig.Pins.IsPinned("folder:abc"));
+        var pin = rig.Pins[rig.Pins.IndexOf("folder:abc")];
         Assert.Equal(SidebarEntryKind.Folder, pin.Kind);
         Assert.Equal("", pin.Uri);
-        Assert.Empty(mutations.Calls);
+        Assert.Empty(rig.Writes);
     }
 
     [Fact]
     public void UnpinThenUndo_IssuesTwoWrites_EndingPinned()
     {
-        var (_, pins, mutations, _, _) = Rig(converged: false, migrated: false);
+        var rig = new Rig(migrated: false);
         var pin = Pin("pl:spotify:playlist:x", SidebarEntryKind.Playlist, "spotify:playlist:x");
-        Assert.True(pins.Pin(pin));
-        mutations.Calls.Clear();   // isolate the unpin/undo pair from the initial pin's write
+        Assert.True(rig.Pins.Pin(pin));
+        rig.Writes.Clear();
 
-        int at = pins.Unpin("pl:spotify:playlist:x");
-        Assert.True(pins.Insert(pin, at));   // the toast's undo
+        int at = rig.Pins.Unpin("pl:spotify:playlist:x");
+        Assert.True(rig.Pins.Insert(pin, at));                         // the toast's undo
 
-        Assert.Equal(new[] { ("spotify:playlist:x", false), ("spotify:playlist:x", true) }, mutations.Calls);
+        Assert.Equal(new[] { ("spotify:playlist:x", false), ("spotify:playlist:x", true) }, rig.Writes);
     }
 
     [Fact]
     public void NotConverged_WithAnEmptyMirror_NeverRemovesLocalPins()
     {
-        var (store, pins, mutations, _, _) = Rig(converged: false, migrated: true);
-        Assert.True(pins.Pin(Pin("pl:spotify:playlist:a", SidebarEntryKind.Playlist, "spotify:playlist:a")));
-        Assert.True(pins.Pin(Pin("pl:spotify:playlist:b", SidebarEntryKind.Playlist, "spotify:playlist:b")));
-        mutations.Calls.Clear();
+        var rig = new Rig(migrated: true);
+        Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:a", SidebarEntryKind.Playlist, "spotify:playlist:a")));
+        Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:b", SidebarEntryKind.Playlist, "spotify:playlist:b")));
+        rig.Writes.Clear();
 
-        store.Bump("anything", CollectionKind.Pins);   // a Pins-kind change with an empty server mirror
+        rig.Server(converged: false);                                  // an empty, not-yet-walked server set
 
-        Assert.Equal(2, pins.Count);
-        Assert.Empty(mutations.Calls);
+        Assert.Equal(2, rig.Pins.Count);
+        Assert.Empty(rig.Writes);
     }
 
     [Fact]
     public void Converged_NotYetMigrated_PushesEveryLocalSyncablePin_ButRemovesNothing()
     {
-        var (store, pins, mutations, settings, _) = Rig(converged: true, migrated: false);
-        Assert.True(pins.Pin(Pin("pl:spotify:playlist:a", SidebarEntryKind.Playlist, "spotify:playlist:a")));
-        Assert.True(pins.Pin(Pin("pl:spotify:playlist:b", SidebarEntryKind.Playlist, "spotify:playlist:b")));
-        Assert.True(pins.Pin(Pin("folder:x", SidebarEntryKind.Folder, "", "F")));
-        mutations.Calls.Clear();
+        var rig = new Rig(migrated: false);
+        Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:a", SidebarEntryKind.Playlist, "spotify:playlist:a")));
+        Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:b", SidebarEntryKind.Playlist, "spotify:playlist:b")));
+        Assert.True(rig.Pins.Pin(Pin("folder:ab12", SidebarEntryKind.Folder, "", "F")));
+        rig.Writes.Clear();
 
-        store.Bump("anything", CollectionKind.Pins);   // triggers the first converged walk → migration
+        rig.Server(converged: true);                                   // the first converged walk → migration
 
-        Assert.Equal(3, pins.Count);   // no removals — migration only ever ADDS to the server
-        Assert.Equal(3, mutations.Calls.Count);   // folders are syncable too, so the folder pin migrates as well
-        Assert.Contains(("spotify:playlist:a", true), mutations.Calls);
-        Assert.Contains(("spotify:playlist:b", true), mutations.Calls);
-        Assert.Contains(("spotify:folder:x", true), mutations.Calls);
-        Assert.True(settings.Get(SidebarKeys.PinsMigratedToServer));
+        Assert.Equal(3, rig.Pins.Count);                               // migration only ever ADDS to the server
+        Assert.Equal(3, rig.Writes.Count);                             // folders are syncable too
+        Assert.Contains(("spotify:playlist:a", true), rig.Writes);
+        Assert.Contains(("spotify:playlist:b", true), rig.Writes);
+        Assert.Contains(("spotify:folder:ab12", true), rig.Writes);
+        Assert.True(rig.Settings.Get(Platform.Keys.PinsMigratedToServer));
+        Assert.True(rig.Sync.Migrated);
     }
 
     [Fact]
     public void Migrated_AMissingSyncablePinIsRemoved_WhileAPendingOneIsKept()
     {
-        var (store, pins, mutations, _, _) = Rig(converged: true, migrated: true,
-            hasPending: uri => uri == "spotify:playlist:pending");
-        Assert.True(pins.Pin(Pin("pl:spotify:playlist:missing", SidebarEntryKind.Playlist, "spotify:playlist:missing")));
-        Assert.True(pins.Pin(Pin("pl:spotify:playlist:pending", SidebarEntryKind.Playlist, "spotify:playlist:pending")));
-        Assert.True(pins.Pin(Pin("home", SidebarEntryKind.AppRoute, "", "Home")));
-        mutations.Calls.Clear();
+        var rig = new Rig(migrated: true, hasPending: uri => uri == "spotify:playlist:pending");
+        Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:missing", SidebarEntryKind.Playlist, "spotify:playlist:missing")));
+        Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:pending", SidebarEntryKind.Playlist, "spotify:playlist:pending")));
+        Assert.True(rig.Pins.Pin(Pin("home", SidebarEntryKind.AppRoute, "", "Home")));
+        rig.Writes.Clear();
 
-        store.Bump("anything", CollectionKind.Pins);   // empty server mirror; both playlist pins are "missing"
+        rig.Server(converged: true);                                   // both playlist pins are "missing"
 
-        Assert.False(pins.IsPinned("pl:spotify:playlist:missing"));   // syncable + missing + not pending → removed
-        Assert.True(pins.IsPinned("pl:spotify:playlist:pending"));    // shielded by the pending-op check → kept
-        Assert.True(pins.IsPinned("home"));                           // never syncable (app route) → always kept
-        Assert.Empty(mutations.Calls);                                 // ApplyRemote never writes back
+        Assert.False(rig.Pins.IsPinned("pl:spotify:playlist:missing"));
+        Assert.True(rig.Pins.IsPinned("pl:spotify:playlist:pending")); // shielded by the in-flight write
+        Assert.True(rig.Pins.IsPinned("home"));                        // never syncable — always kept
+        Assert.Empty(rig.Writes);                                      // ApplyServer never writes back
     }
 
     [Fact]
     public void RemoteAdd_OfTheLikedRoute_CarriesTheRouteTitle()
     {
-        var (store, pins, _, _, _) = Rig(converged: false, migrated: false);
-        store.SetSaved("pins", "spotify:collection", true, SyncState.Confirmed, 1000);
+        var rig = new Rig(migrated: false);
+        rig.Server(converged: false, "spotify:collection");
 
-        Assert.True(pins.IsPinned("liked"));
-        var pin = pins[pins.IndexOf("liked")];
+        Assert.True(rig.Pins.IsPinned("liked"));
+        var pin = rig.Pins[rig.Pins.IndexOf("liked")];
         Assert.Equal(SidebarEntryKind.AppRoute, pin.Kind);
         Assert.Equal("Liked Songs", pin.Name);
     }
@@ -173,17 +173,15 @@ public class SidebarPinSyncTests
     [Fact]
     public void RemoteAdd_OfAnEntity_LeavesNameEmpty_ForTouchToFill()
     {
-        var (store, pins, _, _, _) = Rig(converged: false, migrated: false);
-        store.SetSaved("pins", "spotify:playlist:new", true, SyncState.Confirmed, 1000);
+        var rig = new Rig(migrated: false);
+        rig.Server(converged: false, "spotify:playlist:new");
 
-        Assert.True(pins.IsPinned("pl:spotify:playlist:new"));
-        var pin = pins[pins.IndexOf("pl:spotify:playlist:new")];
-        Assert.Equal("", pin.Name);
+        Assert.Equal("", rig.Pins[rig.Pins.IndexOf("pl:spotify:playlist:new")].Name);
     }
 
-    // §3 — the preservation invariant: a shape this client cannot represent as a local pin must never become one, and
-    // must never trigger a write, so a foreign pin (added by another Spotify client) survives on the server untouched
-    // across both an initial convergence AND the one-time local-pin migration.
+    // The preservation invariant: a shape this client cannot represent as a local pin never becomes one and never causes
+    // a write, so a foreign client's pin survives on the server — across an initial convergence AND the one-time
+    // migration walk.
     [Theory]
     [InlineData("spotify:collection:your-episodes")]
     [InlineData("spotify:user:bob:collection:your-episodes")]
@@ -195,17 +193,34 @@ public class SidebarPinSyncTests
     [InlineData("spotify:station:x")]
     public void UnrepresentableRemotePins_ProduceNoLocalPinAndNoWrite_EvenAfterMigrationAndConvergence(string uri)
     {
-        var (store, pins, mutations, _, _) = Rig(converged: true, migrated: false);
-        // InMemoryStore bypasses CollectionSets.AcceptsUri, so seeding the raw "pins" set directly also proves
-        // PinSyncRules.TryPinId is a second, independent fence — not merely relying on the write-side filter.
-        store.SetSaved("pins", uri, true, SyncState.Confirmed, 1000);
+        TestScope.Fresh();
+        var rig = new Rig(migrated: false);
+        rig.Server(converged: true, uri);
 
-        Assert.Equal(0, pins.Count);
-        Assert.Empty(mutations.Calls);
+        Assert.Empty(rig.Pins);
+        Assert.Empty(rig.Writes);
 
-        store.Bump("anything", CollectionKind.Pins);   // a second bump, now past the first-converged migration walk
+        rig.Server(converged: true, uri);                              // again, now past the migration walk
 
-        Assert.Equal(0, pins.Count);
-        Assert.Empty(mutations.Calls);
+        Assert.Empty(rig.Pins);
+        Assert.Empty(rig.Writes);
+    }
+
+    [Fact]
+    public void ServerPins_AreAppendedOldestFirst()
+    {
+        var rig = new Rig(migrated: false);
+        rig.Sync.ApplyServer([new PinWire("spotify:playlist:new", 3000), new PinWire("spotify:playlist:old", 1000)], converged: false);
+
+        Assert.Equal(new[] { "pl:spotify:playlist:old", "pl:spotify:playlist:new" }, rig.Pins.Select(p => p.Id).ToArray());
+    }
+
+    [Fact]
+    public void Dispose_HandsTheLocalChangeHookBack()
+    {
+        var rig = new Rig(migrated: false);
+        rig.Sync.Dispose();
+        Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:x", SidebarEntryKind.Playlist, "spotify:playlist:x")));
+        Assert.Empty(rig.Writes);
     }
 }

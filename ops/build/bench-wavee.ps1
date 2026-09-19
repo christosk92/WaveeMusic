@@ -3,8 +3,9 @@
   Run Wavee CPU + memory benchmarks and write JSON results.
 
 .DESCRIPTION
-  Launches Wavee with --fake --perf-bench (offline, deterministic). Samples process CPU% and working set
-  (Task-Manager-style) plus per-frame engine work time across idle, home, artist-detail, and nav-burst scenarios.
+  Launches Wavee with --fake --perf-bench --probe-out <dir> (offline, deterministic; Screens/Diagnostics.Probe.cs's
+  probe arm). Samples process CPU% and working set (Task-Manager-style) plus per-frame engine work time across
+  idle, home, artist-detail, and nav-burst scenarios.
 
 .EXAMPLE
   ops\build\bench-wavee.cmd
@@ -37,14 +38,15 @@ if (-not (Test-Path $Exe)) {
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-$env:WAVEE_BENCH_OUT = $OutputDir
 
 Step "Running perf bench: $Exe"
 $log = Join-Path $OutputDir 'wavee-perf-run.log'
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
 try {
-  & $Exe --fake --perf-bench *>&1 | Tee-Object -FilePath $log | Out-Host
+  # No env-var switch (CLAUDE.md): the output directory is an explicit CLI arg to the probe arm, same as every
+  # other Diagnostics.Probe arm (Screens/Diagnostics.Probe.cs).
+  & $Exe --fake --perf-bench --probe-out $OutputDir *>&1 | Tee-Object -FilePath $log | Out-Host
 } finally {
   $ErrorActionPreference = $prevEap
 }

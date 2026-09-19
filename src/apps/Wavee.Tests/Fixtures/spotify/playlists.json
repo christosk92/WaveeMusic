@@ -1,0 +1,2067 @@
+{
+    "data": {
+        "me": {
+            "libraryV3": {
+                "__typename": "LibraryPage",
+                "availableFilters": [
+                    {
+                        "id": "By Spotify",
+                        "name": "By Spotify"
+                    },
+                    {
+                        "id": "By you",
+                        "name": "By you"
+                    },
+                    {
+                        "id": "Writable",
+                        "name": "Writable"
+                    }
+                ],
+                "availableSortOrders": [
+                    {
+                        "id": "Recents",
+                        "name": "Recents"
+                    },
+                    {
+                        "id": "Recently Added",
+                        "name": "Recently Added"
+                    },
+                    {
+                        "id": "Alphabetical",
+                        "name": "Alphabetical"
+                    },
+                    {
+                        "id": "Creator",
+                        "name": "Creator"
+                    },
+                    {
+                        "id": "Custom Order",
+                        "name": "Custom Order"
+                    }
+                ],
+                "breadcrumbs": [],
+                "items": [
+                    {
+                        "addedAt": {
+                            "isoString": "2026-06-18T14:53:43Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "LibraryPseudoPlaylistResponseWrapper",
+                            "_uri": "spotify:collection:tracks",
+                            "data": {
+                                "__typename": "PseudoPlaylist",
+                                "count": 166,
+                                "image": {
+                                    "extractedColors": {
+                                        "colorDark": {
+                                            "hex": "#5018F0",
+                                            "isFallback": false
+                                        }
+                                    },
+                                    "sources": [
+                                        {
+                                            "height": 64,
+                                            "url": "https://misc.scdn.co/liked-songs/liked-songs-64.png",
+                                            "width": 64
+                                        },
+                                        {
+                                            "height": 300,
+                                            "url": "https://misc.scdn.co/liked-songs/liked-songs-300.png",
+                                            "width": 300
+                                        },
+                                        {
+                                            "height": 640,
+                                            "url": "https://misc.scdn.co/liked-songs/liked-songs-640.png",
+                                            "width": 640
+                                        }
+                                    ]
+                                },
+                                "name": "Liked Songs",
+                                "uri": "spotify:collection:tracks"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-19T08:20:33.094Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-29T09:16:49.153Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1E38wY9VFrwrWy",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "canContainArtists.uris",
+                                        "value": "spotify:artist:6RHTUrRF63xao58xh9FXYJ,spotify:artist:1dOMFM5wDNsENQQW0nl0K8,spotify:artist:6zn0ihyAApAYV51zpXxdEp,spotify:artist:72nLe76yBFSlP6VBzME358,spotify:artist:7bWYN0sHvyH7yv1uefX07U"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "temporary_hack_prefer_linear_playback",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be3a5208dcaf3666081eaf9f39cf"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "IVE, Urban Zakapa, 10CM and more",
+                                "format": "daily-mix",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#008585",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/daily/1/ab6761610000e5ebe9134cc9371327f8238b1840/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Daily Mix 1",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAB38jy0yDSV8HQVYpl6DxO+4eexj",
+                                "uri": "spotify:playlist:37i9dQZF1E38wY9VFrwrWy"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-19T07:22:12.572Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-06-02T09:50:13.913Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:0dijb70Boi9TIdmiLLq13V",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [],
+                                "currentUserCapabilities": {
+                                    "canEditItems": true,
+                                    "canView": true
+                                },
+                                "description": "아이스아메리카노 나왔습니다 !",
+                                "format": "",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#401818",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://image-cdn-ak.spotifycdn.com/image/ab67706c0000d72cbc073772d64537d9b174d9af",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Iced Americano",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": null,
+                                        "id": "31unjfmo3oefvlz36ef3eb6kj5tq",
+                                        "name": "Christos",
+                                        "uri": "spotify:user:31unjfmo3oefvlz36ef3eb6kj5tq",
+                                        "username": "31unjfmo3oefvlz36ef3eb6kj5tq"
+                                    }
+                                },
+                                "revisionId": "AAAAyWA5R9cyNGhP9Gawaga6sRSNObrx",
+                                "uri": "spotify:playlist:0dijb70Boi9TIdmiLLq13V"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-17T13:41:12.507Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-06-05T12:22:23.833Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1EP6YuccBxUcC1",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "request_id",
+                                        "value": "ssp~0654ab91be3a7ed85e6b909493375ee2f3c3"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "concepts",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "localized_terms",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "seed_concepts",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "seed_localized_terms",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "anti_seed_concepts",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "anti_seed_localized_terms",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "nicheMixLinks",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "locale",
+                                        "value": "en-GB"
+                                    },
+                                    {
+                                        "key": "timestamp",
+                                        "value": "2026-06-20T10:55:21.593046817+02:00[Europe/Amsterdam]"
+                                    },
+                                    {
+                                        "key": "local_timezone",
+                                        "value": "Europe/Amsterdam"
+                                    },
+                                    {
+                                        "key": "daypart",
+                                        "value": "morning"
+                                    },
+                                    {
+                                        "key": "dayofweek",
+                                        "value": "Saturday"
+                                    },
+                                    {
+                                        "key": "created",
+                                        "value": "2026-06-20T08:55:21.594453858Z"
+                                    },
+                                    {
+                                        "key": "expires",
+                                        "value": "2026-06-20T11:55:21.594453858Z"
+                                    },
+                                    {
+                                        "key": "media_list_config_uri",
+                                        "value": "spotify:medialistconfig:daylist:default"
+                                    },
+                                    {
+                                        "key": "image_url",
+                                        "value": "https://daylist.spotifycdn.com/headers/mobile/morning.jpg"
+                                    },
+                                    {
+                                        "key": "header_image_url_desktop",
+                                        "value": "https://daylist.spotifycdn.com/headers/desktop/morning.jpg"
+                                    },
+                                    {
+                                        "key": "title_concepts",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "title_localized_terms",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "description_concepts",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "description_localized_terms",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "recsplanation_concepts",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "recsplanation_localized_terms",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "negsplanation_concepts",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "negsplanation_localized_terms",
+                                        "value": ""
+                                    },
+                                    {
+                                        "key": "share_image_url_1",
+                                        "value": "https://shareables.spotify.com/publish/play-something-playlist/10:55/daylist?descriptors=&playlistTrackCount=0&username=31unjfmo3oefvlz36ef3eb6kj5tq&shareCardId=2&locale=en-GB"
+                                    },
+                                    {
+                                        "key": "share_data",
+                                        "value": "IlEKG2RheWxpc3QtaGVhZGVyLXNoYXJlLWJ1dHRvbhIUZGF5bGlzdC1jb250ZXh0LW1lbnUaHGRheWxpc3Qtc2NyZWVuc2hvdC1kZXRlY3Rpb24="
+                                    },
+                                    {
+                                        "key": "sticker_background_color",
+                                        "value": "#FCE54F"
+                                    },
+                                    {
+                                        "key": "daylist_pretitle",
+                                        "value": "daylist"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be3a7ed85e6b909493375ee2f3c3"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "Your day in a playlist.",
+                                "format": "daylist",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#517AA8",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://daylist.spotifycdn.com/playlist-covers-mix/en/morning_default.jpg",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "daylist",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAKtd5kXMoWaGwLUm1VNB58pO8AVb",
+                                "uri": "spotify:playlist:37i9dQZF1EP6YuccBxUcC1"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-16T22:58:48.272Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-29T09:08:11.499Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1EIXGra9DhHCqh",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "request_id",
+                                        "value": "ssp~0654ab91be47c4b821fa88adb2162e59cfd7"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be47c4b821fa88adb2162e59cfd7"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "<a href=spotify:playlist:37i9dQZF1EIZjqd8fFrYpm>vaultboy</a>, <a href=spotify:playlist:37i9dQZF1EIV8FVobercpQ>Troye Sivan</a> and <a href=spotify:playlist:37i9dQZF1EIWJxY7zGZo1C>Etham</a>",
+                                "format": "artist-mix-reader",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#D93F2A",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/artistmix/7hr9W3IjXcm3UlLY7guLk5/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Henry Moodie Mix",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAEiElAZYa6h4A47Xwgjl0czXSaiQ",
+                                "uri": "spotify:playlist:37i9dQZF1EIXGra9DhHCqh"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-16T21:42:40.602Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-06-03T20:40:39.234Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:4VC1Y6RR3cjZnSUgCfQ9qn",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [],
+                                "currentUserCapabilities": {
+                                    "canEditItems": true,
+                                    "canView": true
+                                },
+                                "description": "",
+                                "format": "",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#947228",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://i.scdn.co/image/ab67616d00001e029474419f15773875a495eed3",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "My Playlist #6",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": null,
+                                        "id": "31unjfmo3oefvlz36ef3eb6kj5tq",
+                                        "name": "Christos",
+                                        "uri": "spotify:user:31unjfmo3oefvlz36ef3eb6kj5tq",
+                                        "username": "31unjfmo3oefvlz36ef3eb6kj5tq"
+                                    }
+                                },
+                                "revisionId": "AAAAAgYQL3GidSrLinDpCxnNyUl0YIKg",
+                                "uri": "spotify:playlist:4VC1Y6RR3cjZnSUgCfQ9qn"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-16T09:07:04.239Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-06-02T23:43:57.984Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:284sizy9BLThJBjc0JQypw",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [],
+                                "currentUserCapabilities": {
+                                    "canEditItems": true,
+                                    "canView": true
+                                },
+                                "description": "",
+                                "format": "",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#B00010",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://image-cdn-ak.spotifycdn.com/image/ab67706c0000d72c3f82ade10f1c0d961072ad75",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "우울해",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": null,
+                                        "id": "31unjfmo3oefvlz36ef3eb6kj5tq",
+                                        "name": "Christos",
+                                        "uri": "spotify:user:31unjfmo3oefvlz36ef3eb6kj5tq",
+                                        "username": "31unjfmo3oefvlz36ef3eb6kj5tq"
+                                    }
+                                },
+                                "revisionId": "AAAAHGly2ybXrUPksXVvcuUBWwTyOyBH",
+                                "uri": "spotify:playlist:284sizy9BLThJBjc0JQypw"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-13T17:58:54.945Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-30T19:55:23.796Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1EIdh6MgVIhb8B",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be35ad6ea2bab88d38b6af10e5b7"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "Nostalgia 2000s music for you. Also try <a href=\"spotify:playlist:37i9dQZF1EQncLwOalG3K7\">pop</a>, <a href=\"spotify:playlist:37i9dQZF1EIfkXslOKa2RE\">easy listening</a>, <a href=\"spotify:playlist:37i9dQZF1EIg8gaQu6WVuc\">kayōkyoku</a>, <a href=\"spotify:playlist:37i9dQZF1EIcAWhv7dIhQs\">crunk</a>, <a href=\"spotify:playlist:37i9dQZF1EIhIsNBs86Fmu\">dance</a>",
+                                "format": "descripto",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#481800",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://seed-mix-image.spotifycdn.com/v6/img/desc/Nostalgia%202000s/en/default",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Nostalgia 2000s Mix",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAG7JA9zSgCrXuAXTWFZ9NDFcgezz",
+                                "uri": "spotify:playlist:37i9dQZF1EIdh6MgVIhb8B"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-13T15:42:03.091Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-29T09:16:53.356Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1EIZDxu28y8bpW",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "request_id",
+                                        "value": "ssp~0654ab91be47c4b821fa88adb2162e59cfd7"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be47c4b821fa88adb2162e59cfd7"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "<a href=spotify:playlist:37i9dQZF1EIWNXYCEwrtPK>JISOO</a>, <a href=spotify:playlist:37i9dQZF1EIVNsGbEqyF9o>ILLIT</a> and <a href=spotify:playlist:37i9dQZF1EIWFDQAabSscc>YENA</a>",
+                                "format": "artist-mix-reader",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#C03048",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/artistmix/4SpbR6yFEvexJuaBpgAU5p/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "LE SSERAFIM Mix",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAADLpVRbGoTSMA0l9bVc163GX+J70",
+                                "uri": "spotify:playlist:37i9dQZF1EIZDxu28y8bpW"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-05T19:39:34.425Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-31T15:58:57.974Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1DX5g856aiKiDS",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "uri",
+                                        "value": "spotify:user:spotify:playlist:37i9dQZF1DX5g856aiKiDS"
+                                    },
+                                    {
+                                        "key": "status",
+                                        "value": "PUBLISHED"
+                                    },
+                                    {
+                                        "key": "isAlgotorial",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "moveFollowersJobId",
+                                        "value": "f45ef320-caae-4645-b209-f73dcb209f27"
+                                    },
+                                    {
+                                        "key": "primary_color",
+                                        "value": "#ffffff"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "is_video_first",
+                                        "value": "false"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be36292ef5b50eac895495b46d0f"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "Chill Korean tunes that's perfect with your latte or americano. (카페와 어울리는 편안한 음악들을 감상하세요.)",
+                                "format": "editorial",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#483840",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://i.scdn.co/image/ab67706f000000029dd728e50045942b894f0d35",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Dalkom Cafe",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAHwf7XDgWmFM1o3VFpvojxtW49uv",
+                                "uri": "spotify:playlist:37i9dQZF1DX5g856aiKiDS"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-05T14:29:55.330Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-15T01:38:29.839Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1EQnsJ0xmvpihE",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "request_id",
+                                        "value": "ssp~0654ab91be504483d2e6aba81fd3021e9e11"
+                                    },
+                                    {
+                                        "key": "cloud_artists_uris",
+                                        "value": "spotify:artist:7hr9W3IjXcm3UlLY7guLk5,spotify:artist:2ra3quFhImLyv0c9XTnWFl,spotify:artist:0K87f3owemzI8NUCoEIXOB"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be504483d2e6aba81fd3021e9e11"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "<a href=spotify:playlist:37i9dQZF1EIXGra9DhHCqh>Henry Moodie</a>, <a href=spotify:playlist:37i9dQZF1EIVQZd1fiSJIB>Melisses</a>, <a href=spotify:playlist:37i9dQZF1EIZjqd8fFrYpm>vaultboy</a> and more",
+                                "format": "topic-mix",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#D93F2A",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/topic/twenty_twenties/7hr9W3IjXcm3UlLY7guLk5/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "2020s Mix",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAMBL/pJpVCmUz5UU5exJRM8wRNAN",
+                                "uri": "spotify:playlist:37i9dQZF1EQnsJ0xmvpihE"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-03T18:48:30.062Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-29T07:16:25.129Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1EVCqfmnWEJPpr",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "request_id",
+                                        "value": "ssp~0654ab91be47f6aac8f56ac730b0e9cd0959"
+                                    },
+                                    {
+                                        "key": "cloud_artists_uris",
+                                        "value": "spotify:artist:0K87f3owemzI8NUCoEIXOB,spotify:artist:7hr9W3IjXcm3UlLY7guLk5,spotify:artist:49vOeJAPxAz6YmVZPNM7ys"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be47f6aac8f56ac730b0e9cd0959"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "<a href=spotify:playlist:37i9dQZF1EIZjqd8fFrYpm>vaultboy</a>, <a href=spotify:playlist:37i9dQZF1EIXGra9DhHCqh>Henry Moodie</a>, <a href=spotify:playlist:37i9dQZF1EIXT08EpzLAzK>Huh Gak</a> and more",
+                                "format": "topic-mix",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#3C8186",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/topic/heartbreak/0K87f3owemzI8NUCoEIXOB/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Heartbreak Mix",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAABdgzbPXiH3/D+b8HbJ9Mw8iX+V1",
+                                "uri": "spotify:playlist:37i9dQZF1EVCqfmnWEJPpr"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-03T12:26:01.236Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-29T09:40:02.185Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1E37Yqr2urjnJt",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "canContainArtists.uris",
+                                        "value": "spotify:artist:1MicVtcHS3vuNVCrd1un7s,spotify:artist:152y903Cqyk9GVl6amOtuD,spotify:artist:2ra3quFhImLyv0c9XTnWFl,spotify:artist:77YRvt1TuxpCmW4Ydrx69A,spotify:artist:6BOprAXvUTWZjImX2dFdEa"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "temporary_hack_prefer_linear_playback",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be3a5208dcaf3666081eaf9f39cf"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "Nikos Oikonomopoulos, Giannis Ploutarhos, Melisses and more",
+                                "format": "daily-mix",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#777B28",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/daily/2/ab6761610000e5eba7bf86f2528d52be77324833/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Daily Mix 2",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAADzPelOyLH2sKZgxswlwn/jcDZHT",
+                                "uri": "spotify:playlist:37i9dQZF1E37Yqr2urjnJt"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-06-01T18:51:03.209Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-29T09:08:30.058Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1E39B2ECSfJBmK",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "canContainArtists.uris",
+                                        "value": "spotify:artist:4rxWm4OrS8IRQ3YxDUwnJA,spotify:artist:7l8rOFwZFQ3G0sgZ7gjGng,spotify:artist:7jFUYMpMUBDL4JQtMZ5ilc,spotify:artist:2CQZr2RPZmrcvDnaod1ldC,spotify:artist:37ZY7eIcTT28id2jfq8WYw"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "temporary_hack_prefer_linear_playback",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be3a5208dcaf3666081eaf9f39cf"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "KyoungSeo, Jung Seung Hwan, Sung Si Kyung and more",
+                                "format": "daily-mix",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#D93F2A",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/daily/3/ab6761610000e5eb6dc0adba16902afb5f63060e/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Daily Mix 3",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAH0oZlihHhPIICgnnvj/OGFs9h/2",
+                                "uri": "spotify:playlist:37i9dQZF1E39B2ECSfJBmK"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-05-29T17:13:08.367Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-22T14:08:24.495Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:4zUvMwXnqXb3n8kdZTncCQ",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "one of the Best music eras ever. 2016 has a special place in my heart.",
+                                "format": "",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#B82028",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://image-cdn-fa.spotifycdn.com/image/ab67706c0000d72cdeb32554917d4dbe08d76d48",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Summer 2016 vibes \uD83C\uDF0A\uD83C\uDFD6️\uD83C\uDF05",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b822584280d88cfdabdb841b077",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee852584280d88cfdabdb841b077",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "f13l66oxfkogx8haz4a6wl6xr",
+                                        "name": "#Catherine\uD83C\uDF1E",
+                                        "uri": "spotify:user:f13l66oxfkogx8haz4a6wl6xr",
+                                        "username": "f13l66oxfkogx8haz4a6wl6xr"
+                                    }
+                                },
+                                "revisionId": "AAACJB9uwk4ynOe9i69n4H/7mJIWvv1U",
+                                "uri": "spotify:playlist:4zUvMwXnqXb3n8kdZTncCQ"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": {
+                            "isoString": "2026-05-28T13:14:34.321Z"
+                        }
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-19T16:47:02.774Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1E8MvHHuqOl20Z",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "request_id",
+                                        "value": "ssp~0654ab91be5514af98a47bb3098c63ac0f70"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be5514af98a47bb3098c63ac0f70"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "With Henry Moodie, elijah woods, vaultboy and more",
+                                "format": "inspiredby-mix",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#A3694F",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/track/48FfsXjz8rd8CLhnIwWQNw/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "MISS U Radio",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAKa0SeN7tTW/yOajqkiEoTK+5ZVt",
+                                "uri": "spotify:playlist:37i9dQZF1E8MvHHuqOl20Z"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": null
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-16T22:59:49.857Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1E8OZPGpAlguGW",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "request_id",
+                                        "value": "ssp~0654ab91be5514af98a47bb3098c63ac0f70"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be5514af98a47bb3098c63ac0f70"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "With Wonstein, Kim Min Seok (MeloMance), So Soo Bin and more",
+                                "format": "inspiredby-mix",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#8E69A3",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/track/6PYyVPaD3pzSbrdQKEDHm6/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Promise Radio",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAH+OrCIrVwLiiP1wiGexRmKjxZei",
+                                "uri": "spotify:playlist:37i9dQZF1E8OZPGpAlguGW"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": null
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-16T16:19:43.109Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:0DfpcAsO3AGFVQ0UbKLyyO",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [],
+                                "currentUserCapabilities": {
+                                    "canEditItems": true,
+                                    "canView": true
+                                },
+                                "description": "",
+                                "format": "",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#C04040",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": 640,
+                                                    "url": "https://mosaic.scdn.co/640/ab67616d00001e02758b33594e96cbf1a5a16363ab67616d00001e0294ae7adcaa0a26f4c7acba86ab67616d00001e02e80e9bcf83cd4f3313cd3abcab67616d00001e02fbcb59071e40163ffc25b6f9",
+                                                    "width": 640
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://mosaic.scdn.co/300/ab67616d00001e02758b33594e96cbf1a5a16363ab67616d00001e0294ae7adcaa0a26f4c7acba86ab67616d00001e02e80e9bcf83cd4f3313cd3abcab67616d00001e02fbcb59071e40163ffc25b6f9",
+                                                    "width": 300
+                                                },
+                                                {
+                                                    "height": 60,
+                                                    "url": "https://mosaic.scdn.co/60/ab67616d00001e02758b33594e96cbf1a5a16363ab67616d00001e0294ae7adcaa0a26f4c7acba86ab67616d00001e02e80e9bcf83cd4f3313cd3abcab67616d00001e02fbcb59071e40163ffc25b6f9",
+                                                    "width": 60
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "new list",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": null,
+                                        "id": "31unjfmo3oefvlz36ef3eb6kj5tq",
+                                        "name": "Christos",
+                                        "uri": "spotify:user:31unjfmo3oefvlz36ef3eb6kj5tq",
+                                        "username": "31unjfmo3oefvlz36ef3eb6kj5tq"
+                                    }
+                                },
+                                "revisionId": "AAAAK4P+2QUr8tj+5YrvliCQ/JRpZdOp",
+                                "uri": "spotify:playlist:0DfpcAsO3AGFVQ0UbKLyyO"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": null
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-14T22:08:46.023Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1EIfTluUEcRFrT",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be35ad6ea2bab88d38b6af10e5b7"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "Eurodance music for you. Also try <a href=\"spotify:playlist:37i9dQZF1EIhEPfUXAzGww\">europop</a>, <a href=\"spotify:playlist:37i9dQZF1EQvUtXaHaHpw2\">techno</a>, <a href=\"spotify:playlist:37i9dQZF1EIfZPAAQqxYAV\">italo dance</a>, <a href=\"spotify:playlist:37i9dQZF1EIdmU9iNLzi3f\">hip house</a>, <a href=\"spotify:playlist:37i9dQZF1EIds1ovIspC1Z\">happy hardcore</a>",
+                                "format": "descripto",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#108038",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://seed-mix-image.spotifycdn.com/v6/img/desc/Eurodance/en/default",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Eurodance Mix",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAB2x6SJZ/hyEEUOn8fnlf0zO4HEe",
+                                "uri": "spotify:playlist:37i9dQZF1EIfTluUEcRFrT"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": null
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-11T20:38:36.892Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1E4vagdqTWAjCj",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "request_id",
+                                        "value": "ssp~0654ab91be4055df0c0eb1920bc083e84581"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be4055df0c0eb1920bc083e84581"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "With Christos Mastoras, Ilias Kampakakis, Eleana Vrachali and more",
+                                "format": "inspiredby-mix",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#4F7F77",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/artist/6ZGwdAmu91r8mpA6SXodzd/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Giorgos Sabanis Radio",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAADbv6mzFcJtMhtz+rfZfe9JS9DYe",
+                                "uri": "spotify:playlist:37i9dQZF1E4vagdqTWAjCj"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": null
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-10T21:36:32Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "LibraryFolderResponseWrapper",
+                            "_uri": "spotify:user:31unjfmo3oefvlz36ef3eb6kj5tq:folder:bf9e64dce09a1afc",
+                            "data": {
+                                "__typename": "Folder",
+                                "folderCount": 0,
+                                "name": "New Folder",
+                                "playlistCount": 1,
+                                "uri": "spotify:user:31unjfmo3oefvlz36ef3eb6kj5tq:folder:bf9e64dce09a1afc"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": null
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-16T23:12:47.359Z"
+                        },
+                        "depth": 1,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1DX3bSdu6sAEDF",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "uri",
+                                        "value": "spotify:user:spotify:playlist:37i9dQZF1DX3bSdu6sAEDF"
+                                    },
+                                    {
+                                        "key": "status",
+                                        "value": "PUBLISHED"
+                                    },
+                                    {
+                                        "key": "isAlgotorial",
+                                        "value": "false"
+                                    },
+                                    {
+                                        "key": "primary_color",
+                                        "value": "#ffffff"
+                                    },
+                                    {
+                                        "key": "recs.hasArtists",
+                                        "value": "spotify:artist:0nnYdIpahs41QiZ9MWp5Wx,spotify:artist:6XwbawUNwNcZ7OXtvMVyKK,spotify:artist:4z0EquFxDCtiHuPGiWDCq1,spotify:artist:34A8vV1MCxGpA14KspqQuC,spotify:artist:6sFIWsNpZYqfjUpaCgueju"
+                                    },
+                                    {
+                                        "key": "is_video_first",
+                                        "value": "false"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654ab91be36292ef5b50eac895495b46d0f"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "Let this smooth mix carry you home in style.",
+                                "format": "editorial",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#B1630E",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://i.scdn.co/image/ab67706f0000000238bdba450ff93ac0b96fb291",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Evening Commute",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAM6iB2TP42pK71d3+5gn8H6/O5eD",
+                                "uri": "spotify:playlist:37i9dQZF1DX3bSdu6sAEDF"
+                            }
+                        },
+                        "pinnable": false,
+                        "pinned": false,
+                        "playedAt": null
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-01T20:16:12.871Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1E8PhWBcL7WFAK",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "request_id",
+                                        "value": "ssp~0654abb5ecf9db2704c78b1f6d55b36303c3"
+                                    },
+                                    {
+                                        "key": "madeFor.username",
+                                        "value": "Christos"
+                                    },
+                                    {
+                                        "key": "should_show_promo_disclosure",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "send-impression-for-rows",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "key": "correlation-id",
+                                        "value": "ssp~0654abb5ecf9db2704c78b1f6d55b36303c3"
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": false,
+                                    "canView": true
+                                },
+                                "description": "With IVE, BABYMONSTER, MEOVV and more",
+                                "format": "inspiredby-mix",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#857827",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/radio/track/0qdPpfbrgdBs6ie9bTtQ1d/en-GB",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "REBEL HEART Radio",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": {
+                                            "sources": [
+                                                {
+                                                    "height": 64,
+                                                    "url": "https://i.scdn.co/image/ab67757000003b8255c25988a6ac314394d3fbf5",
+                                                    "width": 64
+                                                },
+                                                {
+                                                    "height": 300,
+                                                    "url": "https://i.scdn.co/image/ab6775700000ee8555c25988a6ac314394d3fbf5",
+                                                    "width": 300
+                                                }
+                                            ]
+                                        },
+                                        "id": "spotify",
+                                        "name": "Spotify",
+                                        "uri": "spotify:user:spotify",
+                                        "username": "spotify"
+                                    }
+                                },
+                                "revisionId": "AAAAAG0oVCb2sjOhQfijj5coKqRgqIyR",
+                                "uri": "spotify:playlist:37i9dQZF1E8PhWBcL7WFAK"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": null
+                    },
+                    {
+                        "addedAt": {
+                            "isoString": "2026-05-01T16:34:08Z"
+                        },
+                        "depth": 0,
+                        "item": {
+                            "__typename": "PlaylistResponseWrapper",
+                            "_uri": "spotify:playlist:37i9dQZF1FgnTBfUlzkeKt",
+                            "data": {
+                                "__typename": "Playlist",
+                                "attributes": [
+                                    {
+                                        "key": "reporting.uri",
+                                        "value": "spotify:playlist:37i9dQZF1FgnTBfUlzkeKt"
+                                    },
+                                    {
+                                        "key": "owner_username",
+                                        "value": "31unjfmo3oefvlz36ef3eb6kj5tq"
+                                    },
+                                    {
+                                        "key": "shuffle.algorithm",
+                                        "value": "none"
+                                    },
+                                    {
+                                        "key": "player.restrictions",
+                                        "value": "UhdwbGF5ZXJfY29udGV4dF9kaXNhbGxvdw=="
+                                    }
+                                ],
+                                "currentUserCapabilities": {
+                                    "canEditItems": true,
+                                    "canView": true
+                                },
+                                "description": "",
+                                "format": "listen-later",
+                                "images": {
+                                    "items": [
+                                        {
+                                            "extractedColors": {
+                                                "colorDark": {
+                                                    "hex": "#006050",
+                                                    "isFallback": false
+                                                }
+                                            },
+                                            "sources": [
+                                                {
+                                                    "height": null,
+                                                    "url": "https://misc.spotifycdn.com/your-episodes/SE-300.png",
+                                                    "width": null
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "name": "Your Episodes",
+                                "ownerV2": {
+                                    "data": {
+                                        "__typename": "User",
+                                        "avatar": null,
+                                        "id": "31unjfmo3oefvlz36ef3eb6kj5tq",
+                                        "name": "Christos",
+                                        "uri": "spotify:user:31unjfmo3oefvlz36ef3eb6kj5tq",
+                                        "username": "31unjfmo3oefvlz36ef3eb6kj5tq"
+                                    }
+                                },
+                                "revisionId": "ZGPxEAAAAAAAAAAAAAAAAAAAAAAAAAM7",
+                                "uri": "spotify:playlist:37i9dQZF1FgnTBfUlzkeKt"
+                            }
+                        },
+                        "pinnable": true,
+                        "pinned": false,
+                        "playedAt": null
+                    }
+                ],
+                "pagingInfo": {
+                    "limit": 50,
+                    "offset": 0
+                },
+                "selectedFilters": [
+                    {
+                        "id": "Playlists",
+                        "name": "Playlists"
+                    }
+                ],
+                "selectedSortOrder": {
+                    "id": "Recents",
+                    "name": "Recents"
+                },
+                "totalCount": 24
+            }
+        }
+    }
+}

@@ -1,4 +1,8 @@
-using Wavee;
+// ── Wavee.Tests/LibraryLayoutBreakpointTests.cs — the library master-detail collapse rule (Entities/User.cs §8) ────────
+//
+// A VERBATIM port of 0.2.9's LibraryLayoutBreakpointTests: 640 DIP enters the single-column drill-in, 664 leaves it,
+// and an unmeasured width keeps the previous answer.
+
 using Xunit;
 
 namespace Wavee.Tests;

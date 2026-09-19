@@ -1,0 +1,84 @@
+{
+  "data": {
+    "artistUnion": {
+      "headerImage": {
+        "data": {
+          "sources": [
+            { "url": "https://example.invalid/images/artist-header.jpg" }
+          ]
+        }
+      },
+      "profile": { "name": "Example Artist" },
+      "uri": "spotify:artist:example-artist",
+      "visuals": {
+        "avatarImage": {
+          "sources": [
+            { "url": "https://example.invalid/images/artist-avatar.jpg" }
+          ]
+        }
+      }
+    },
+    "nearby": {
+      "locationName": "Example City",
+      "concerts": {
+        "items": [
+          {
+            "data": {
+              "artists": {
+                "items": [
+                  {
+                    "data": {
+                      "profile": { "name": "Example Artist" },
+                      "uri": "spotify:artist:example-artist",
+                      "visuals": {
+                        "avatarImage": {
+                          "sources": [
+                            { "url": "https://example.invalid/images/artist-avatar.jpg" }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "location": { "city": "Example City", "name": "Example Hall" },
+              "startDateIsoString": "2030-08-20T19:30:00+02:00",
+              "title": "Example Artist",
+              "uri": "spotify:concert:nearby-example"
+            }
+          }
+        ]
+      }
+    },
+    "concerts": {
+      "concerts": {
+        "items": [
+          {
+            "data": {
+              "artists": {
+                "items": [
+                  {
+                    "data": {
+                      "profile": { "name": "Example Artist" },
+                      "uri": "spotify:artist:example-artist"
+                    }
+                  },
+                  {
+                    "data": {
+                      "profile": { "name": "Guest Artist" },
+                      "uri": "spotify:artist:guest-artist"
+                    }
+                  }
+                ]
+              },
+              "location": { "city": "Second City" },
+              "startDateIsoString": "2030-09-02T19:30:00-04:00",
+              "title": "Example Artist, Guest Artist",
+              "uri": "spotify:concert:tour-example"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
