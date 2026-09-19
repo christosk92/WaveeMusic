@@ -12,7 +12,7 @@
 //  1. THE PUMP. `Palette.cs` (CORE) queues a slot on every render-path MISS and calls the erased `PalettePump()` hook.
 //     This file implements it as a DEBOUNCE ARM and nothing more: a grid realize produces dozens of misses in one frame
 //     and they must coalesce into ONE request. The actual send rides the shell's frame tick, exactly like
-//     `Fetch.Pump()` — P10: timers are named, few, and owned by the shell, and the palette is not allowed a second
+//     `Fetch.Drain()` — P10: timers are named, few, and owned by the shell, and the palette is not allowed a second
 //     clock of its own. A landed batch re-arms the pump for the rows behind it ONLY when no scroll is live
 //     (`PublishCadence.PalettePumpAllowed`); the shell re-arms it on the scroll-end edge via `ResumeIfPending` (W2-A1).
 //
@@ -76,7 +76,7 @@ public static partial class Palette
     /// uses it too, to force a grading pass without waiting out the debounce.</para></summary>
     public static void ForceDue() => s_dueMs = 0;
 
-    /// <summary>THE shell's frame tick calls this (beside `Fetch.Pump()`), and it is the only clock this layer has.
+    /// <summary>THE shell's frame tick calls this (beside `Fetch.Drain()`), and it is the only clock this layer has.
     /// Idempotent and cheap: two comparisons when nothing is due.
     /// <para>ONE request at a time. The rows stay marked <c>Queued</c> until an answer clears them, which is what stops
     /// a second batch re-asking the same covers while the first is in flight; a second concurrent request would buy

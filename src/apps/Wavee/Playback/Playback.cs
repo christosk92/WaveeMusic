@@ -220,9 +220,9 @@ public static partial class Playback
         }
 
         /// <summary>Within this much of a KNOWN duration, a resume means "start the next row" rather than reload an
-        /// instant nobody will hear. A tighter number than <c>Playback.Transitions.ResumeTailMs</c> (an EPISODE'S
-        /// saved resume point, found and applied automatically): a resume PRESS is the listener acting now, on
-        /// whatever the deck shows now, not a stale point picked up later.</summary>
+        /// instant nobody will hear. Far tighter than an EPISODE's saved resume point gets (THE completion rule,
+        /// <see cref="Episode.Rules.Completed"/>: 30 s or the last 2 % start over, <see cref="EpisodeProgress.ResumeFromMs"/>):
+        /// a resume PRESS is the listener acting now, on whatever the deck shows now, not a stale point picked up later.</summary>
         public const int ResumeEndEpsilonMs = 1_500;
 
         static readonly ResumeStart Next = new(VerdictKind.StartNext, 0);
@@ -1001,6 +1001,8 @@ public static partial class Playback
         public uint TransferEpoch;
         /// <summary>How many claims/announces this session has minted. Diagnostics; the wire's message id is the
         /// host's, because the glue owns the debounce that decides how many PUTs actually go out.</summary>
+        public float EpisodeRate;
+        public readonly float ContentRate => CurrentId.Kind == EntityKind.Episode && EpisodeRate > 0 ? EpisodeRate : 1f;
         public uint PublishSeq;
 
         // ── the connect bookkeeping the PUT body carries ──
@@ -1096,7 +1098,7 @@ public static partial class Playback
         public readonly int Position(long nowMs)
         {
             if (Phase != Phase.Playing) return PosMs;
-            long p = PosMs + (nowMs - PosQpc);
+            long p = PosMs + (long)((nowMs - PosQpc) * ContentRate);
             if (p < 0) p = 0;
             if (DurationMs > 0 && p > DurationMs) p = DurationMs;
             return (int)p;
@@ -1138,6 +1140,7 @@ public static partial class Playback
         Cluster,
         /// <summary>A controller's verb addressed to us.</summary>
         RemoteCommand,
+        SetSpeed,
         /// <summary>The pump reporting. <c>IntArg</c> = <see cref="AudioSignal"/>, <c>Epoch</c> = its load epoch.</summary>
         AudioSignal,
         /// <summary>The stream ran out (<c>Epoch</c> = its load epoch).</summary>
@@ -1186,8 +1189,6 @@ public static partial class Playback
         VideoOffer,
         /// <summary>Put the last session back on the deck at launch (<c>IntArg</c> = position, <c>LongArg</c> = duration).</summary>
         Restore,
-        /// <summary>An episode's saved resume point for load <c>Epoch</c> (<c>IntArg</c> = ms).</summary>
-        ResumeAt,
         /// <summary>The autoplay answer for <see cref="Input.Context"/> (<c>IntArg</c> = rows appended; <c>LongArg</c> bit 0 =
         /// a page follows, bit 1 = the ask should be retried once the session is online).</summary>
         Autoplayed,
@@ -1254,12 +1255,13 @@ public static partial class Playback
         /// context post. <c>LongArg</c> packs the cause (low byte) and <see cref="PausedBit"/>; a plain
         /// <see cref="Play"/> is <see cref="ClaimCause.UserPlay"/>, playing.</summary>
         public static Input PlayFrom(EntityRef row, EntityId id, EntityId context, QueueCursor cursor, PlayableKind kind,
-            int fromMs, long nowMs, ClaimCause cause, bool paused)
-            => new(InputKind.Play, row, id, context, cursor, fromMs, (long)cause | (paused ? PausedBit : 0L),
+            int fromMs, long nowMs, ClaimCause cause, bool paused, bool explicitPosition = false)
+            => new(InputKind.Play, row, id, context, cursor, fromMs, (long)cause | (paused ? PausedBit : 0L) | (explicitPosition ? ExplicitPositionBit : 0L),
                 nowMs: nowMs, playKind: kind);
 
         /// <summary>The bit of a Play's <c>LongArg</c> that asks for a paused start.</summary>
         public const long PausedBit = 1L << 8;
+        public const long ExplicitPositionBit = 1L << 9;
 
         /// <summary>The bit of a SetShuffle's <c>IntArg</c> that says the queue is ALREADY in the asked order (a load that
         /// built it shuffled), so no reorder effect follows.</summary>
@@ -1312,8 +1314,6 @@ public static partial class Playback
         public static Input Restore(EntityRef row, EntityId id, EntityId context, QueueCursor cursor, int positionMs,
             int durationMs, long nowMs = 0)
             => new(InputKind.Restore, row, id, context, cursor, positionMs, durationMs, nowMs: nowMs);
-        public static Input ResumeAt(uint epoch, int positionMs, long nowMs = 0)
-            => new(InputKind.ResumeAt, intArg: positionMs, epoch: epoch, nowMs: nowMs);
         public static Input Autoplayed(EntityId context, int appended, bool morePages = false, bool retry = false, long nowMs = 0)
             => new(InputKind.Autoplayed, context: context, intArg: appended,
                 longArg: (morePages ? AutoplayMorePagesBit : 0L) | (retry ? AutoplayRetryBit : 0L), nowMs: nowMs);
@@ -1507,6 +1507,12 @@ public static partial class Playback
             case InputKind.Next: Advance(ref s, in i, ref fx, forward: true, PlayReason.ForwardButton); break;
             case InputKind.Prev: Advance(ref s, in i, ref fx, forward: false, PlayReason.BackButton); break;
             case InputKind.Pause: DoPause(ref s, in i, ref fx); break;
+            case InputKind.SetSpeed:
+                s.PosMs = s.Position(i.NowMs);
+                s.PosQpc = i.NowMs;
+                s.EpisodeRate = ValidEpisodeSpeed(BitConverter.Int32BitsToSingle(i.IntArg));
+                Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+                break;
             case InputKind.Resume: DoResume(ref s, in i, ref fx); break;
             case InputKind.Seek: DoSeek(ref s, in i, ref fx); break;
             case InputKind.SetVolume: DoVolume(ref s, in i, ref fx); break;
@@ -1536,7 +1542,6 @@ public static partial class Playback
             case InputKind.VideoPlacement: DoVideoPlacement(ref s, in i, ref fx); break;
             case InputKind.VideoOffer: DoVideoOffer(ref s, in i, ref fx); break;
             case InputKind.Restore: DoRestore(ref s, in i, ref fx); break;
-            case InputKind.ResumeAt: DoResumeAt(ref s, in i, ref fx); break;
             case InputKind.Autoplayed: DoAutoplayed(ref s, in i, ref fx); break;
             case InputKind.AutoplayPaged: DoAutoplayPaged(ref s, in i, ref fx); break;
             case InputKind.SessionOnline: DoSessionOnline(ref s, ref fx); break;
@@ -1596,17 +1601,18 @@ public static partial class Playback
         bool takeover = s.Cursor.IsNone && !id.IsEmpty && id.Equals(s.CurrentId);
         EntityId context = takeover && !s.MirrorContext.IsEmpty ? s.MirrorContext : i.Context;
 
-        Ownership.Claim(ref s.Own, cause, ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
+        long activeSince = s.Own.Kind == Owner.Us && s.StartedPlayingAtMs > 0 ? s.StartedPlayingAtMs : i.NowMs;
+        Ownership.Claim(ref s.Own, cause, ++s.PublishSeq, activeSince, i.NowMs, acknowledged: true);
         ReportEnd(ref s, ref fx, inbound ? PlayReason.Remote : PlayReason.ClickRow, s.Position(i.NowMs));
         if (!context.Equals(s.Context)) ResetRefill(ref s);
         s.Context = context;
-        s.StartedPlayingAtMs = i.NowMs;
+        s.StartedPlayingAtMs = activeSince;
         s.HasBeenPlayingForMs = 0;
         s.AutoSkips = 0;                                  // a chosen row is a fresh intent: the guard starts over
         PlayableKind kind = i.PlayKind == PlayableKind.Audio ? KindOfRow(row, s.VideoWanted) : i.PlayKind;
         PutOnDeck(ref s, in i, row, id, cursor, kind, fromMs, paused);
         s.StartReason = inbound ? PlayReason.Remote : PlayReason.ClickRow;
-        EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused);
+        EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused, (i.LongArg & Input.ExplicitPositionBit) != 0);
         if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
         if (takeover) fx.TakeoverSeed = true;
         fx.Snapshot = true;
@@ -1727,8 +1733,8 @@ public static partial class Playback
     static void DoResume(ref State s, in Input i, ref Effects fx)
     {
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.Resume, ref fx, 0, false); return; }
-        if (!s.HasCurrent || s.Error != Fault.None) return;
-        if (s.Parked || s.Phase == Phase.Ended)
+        if (!s.HasCurrent) return;
+        if (s.Parked || s.Phase == Phase.Ended || s.Error != Fault.None)
         {
             // No host holds this row (a restore, a stop, a lost ownership, the end): resuming it is LOADING it — a
             // new playback as far as the newest-starter rule goes, so it restamps.
@@ -1739,8 +1745,9 @@ public static partial class Playback
             bool takeover = s.Cursor.IsNone;
             if (takeover && !s.MirrorContext.IsEmpty) s.Context = s.MirrorContext;
 
-            Ownership.Claim(ref s.Own, ClaimCause.UserPlay, ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
-            s.StartedPlayingAtMs = i.NowMs;
+            long activeSince = s.Own.Kind == Owner.Us && s.StartedPlayingAtMs > 0 ? s.StartedPlayingAtMs : i.NowMs;
+            Ownership.Claim(ref s.Own, ClaimCause.UserPlay, ++s.PublishSeq, activeSince, i.NowMs, acknowledged: true);
+            s.StartedPlayingAtMs = activeSince;
             s.HasBeenPlayingForMs = 0;
 
             // A3: a row parked within ResumeStart.ResumeEndEpsilonMs of its own end resumes into the NEXT row
@@ -1780,14 +1787,15 @@ public static partial class Playback
 
     static void DoSeek(ref State s, in Input i, ref Effects fx)
     {
-        if (s.NoSeek) return;
+        if (!s.HasCurrent || (s.NoSeek && !s.Parked && s.Error == Fault.None)) return;
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.SeekTo, ref fx, i.IntArg, false); return; }
         int ms = SeekTarget.Clamp(i.IntArg, s.DurationMs);
-        if (s.Parked)
+        if (s.Parked || s.Error != Fault.None)
         {
             // Nothing live to seek: the parked deck just moves where its eventual load will start.
             s.PosMs = ms;
             s.PosQpc = i.NowMs;
+            Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
             fx.SmtcTimeline = true;
             fx.Snapshot = true;
             return;
@@ -1887,6 +1895,9 @@ public static partial class Playback
                 s.PosMs = (int)i.LongArg;
                 s.PosQpc = i.NowMs;
                 fx.SmtcTimeline = true;
+                if (s.CurrentId.Kind == EntityKind.Episode && s.DurationMs > 0
+                    && (s.DurationMs - s.PosMs) / s.ContentRate <= 30_000)
+                    DoEndingSoon(ref s, ref fx);
                 break;
 
             case AudioSignal.Buffering:
@@ -2173,6 +2184,8 @@ public static partial class Playback
             s.LastCommandSender = c.SenderHash;
         }
 
+        // A command is owed a correlated state even if its requested value already holds.
+        Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
         switch (c.Kind)
         {
             case RemoteCmd.Play:
@@ -2212,6 +2225,12 @@ public static partial class Playback
                     DoSeek(ref s, in seek, ref fx);
                     break;
                 }
+
+            case RemoteCmd.SetPlaybackSpeed:
+                s.PosMs = s.Position(i.NowMs);
+                s.PosQpc = i.NowMs;
+                s.EpisodeRate = ValidEpisodeSpeed(BitConverter.Int32BitsToSingle((int)c.SeekToMs));
+                break;
 
             case RemoteCmd.SetShufflingContext:
                 {

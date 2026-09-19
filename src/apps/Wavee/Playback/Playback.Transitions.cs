@@ -18,7 +18,7 @@
 // contract as the parent file, and nothing looser: no clock (every input carries its frame stamp), no I/O, no
 // allocation after warm-up, no LINQ and no closures, UI thread only (C1). Every arm here mutates `State` in place and
 // fills effect SLOTS; `Playback.Host.cs` executes them. The only table reads are the ones `Queue` already makes plus
-// a row's flag word (`KindOfRow`), both UI-thread column loads.
+// a row's flag word (`KindOfRow`) and an episode row's progress (`EpisodeStartOf`), all UI-thread column loads.
 //
 // THE TRACK BOUNDARY, AS ONE PICTURE (D4 — the pump's butt-join is kept; the reducer follows it):
 //
@@ -603,18 +603,6 @@ public static partial class Playback
         /// <summary>An intake arrived with <paramref name="pending"/> mailbox items already waiting.</summary>
         public void Arrive(in Intake intake, int pending)
         {
-            if (intake.Kind == IntakeKind.Load)
-            {
-                int w = 0;
-                for (int i = 0; i < _count; i++)
-                {
-                    ref Intake item = ref _items[(_head + i) % Depth];
-                    if (item.Kind == IntakeKind.Load) { Release(ref item); continue; }
-                    if (w != i) { _items[(_head + w) % Depth] = item; item = default; }
-                    w++;
-                }
-                _count = w;
-            }
             if (_count == Depth)
             {
                 Release(ref _items[_head]);
@@ -689,7 +677,10 @@ public static partial class Playback
     /// foreign device's track not fetched yet — is audio.</summary>
     public static PlayableKind KindOfRow(EntityRef row, bool videoWanted)
     {
-        if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return PlayableKind.Audio;
+        if (row.IsNone || Entities.Current is null) return PlayableKind.Audio;
+        if (row.Kind == EntityKind.Episode)
+            return videoWanted && (new Episode(row.Slot).Flags & EpisodeFlags.Video) != 0 ? PlayableKind.Video : PlayableKind.Audio;
+        if (row.Kind != EntityKind.Track) return PlayableKind.Audio;
         TrackTable t = Entities.Current.Tracks;
         if ((uint)row.Slot >= (uint)t.Count) return PlayableKind.Audio;
         uint flags = t.Flags[row.Slot];
@@ -708,7 +699,10 @@ public static partial class Playback
     public static bool RowPlayable(EntityRef row)
     {
         if (row.IsNone) return false;
-        if (row.Kind != EntityKind.Track || Entities.Current is null) return true;
+        if (Entities.Current is null) return true;
+        if (Spotify.Library.IsBanned(row.Id)) return false;
+        if (row.Kind == EntityKind.Episode) return (new Episode(row.Slot).Flags & EpisodeFlags.Unplayable) == 0;
+        if (row.Kind != EntityKind.Track) return true;
         var t = new Track(row.Slot);
         return !t.IsValid || !t.Unplayable();
     }
@@ -754,7 +748,9 @@ public static partial class Playback
         // The row after the next one is warmed too, forward only (a wrap row's successor is never past the deck row).
         EntityRef next2 = default;
         EntityId id2 = default;
-        if (!id.IsEmpty)
+        bool podcast = s.CurrentId.Kind == EntityKind.Episode;
+        if (podcast && !s.EndingSoon) id = default;
+        if (!podcast && !id.IsEmpty)
         {
             int at = Queue.NextPlayable(Queue.Rows, default(LiveRows), nextCursor.Index, forward: true, wrap: false);
             if (at >= 0 && at != s.Cursor.Index)
@@ -764,7 +760,7 @@ public static partial class Playback
             }
         }
         // A parked deck (a restore, a stop) warms what follows it but prepares nothing: there is no voice to join.
-        bool prepare = s.EndingSoon && !s.Parked && !id.IsEmpty;
+        bool prepare = !podcast && s.EndingSoon && !s.Parked && !id.IsEmpty;
         bool next2Changed = !id2.Equals(s.Next2Id);
         if (id.Equals(s.NextId) && prepare == s.NextArmed && !next2Changed) return;
 
@@ -987,9 +983,15 @@ public static partial class Playback
     }
 
     /// <summary>THE load tail: bump, mark the new load epoch, fill the Load slot, re-arm the next row, announce, and
-    /// refresh the card. The pump's prepared slot dies with the session a Load replaces, so the arm resets first.</summary>
-    static void EmitLoad(ref State s, ref Effects fx, LoadOrigin why, bool paused)
+    /// refresh the card. The pump's prepared slot dies with the session a Load replaces, so the arm resets first.
+    /// <para>An EPISODE a Claim or an Advance starts "from the top" starts where it was left (<see cref="EpisodeStartOf"/>)
+    /// — decided HERE, on the deck, so the position is the published one from the first frame: a paused load (a paused
+    /// transfer, a restored context) paints 12:34 before any audio exists, where the host-side resolution painted 0:00
+    /// until playback began. The host opens the stream at the same number (<see cref="Effects.LoadFromMs"/>). A reload
+    /// (device, media kind, video recovery) is not a start and keeps its own position, 0 included.</para></summary>
+    static void EmitLoad(ref State s, ref Effects fx, LoadOrigin why, bool paused, bool explicitPosition = false)
     {
+        if (!explicitPosition && s.PosMs == 0 && why is LoadOrigin.Claim or LoadOrigin.Advance) s.PosMs = EpisodeStartOf(s.CurrentId);
         Bump(ref s);
         s.LoadEpoch = s.Epoch;
         s.LoadWhy = why;
@@ -1012,6 +1014,20 @@ public static partial class Playback
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
         fx.Smtc = true;
         fx.SmtcEpoch = s.Epoch;
+    }
+
+    /// <summary>Where an episode load that named no position starts (G-076, podcast plan §5.8, D-8): the row's own
+    /// progress — hydrated at login, mirrored by this player, set by a mark — through
+    /// <see cref="EpisodeProgress.ResumeFromMs"/>, so a finished episode starts over and an unknown one at 0 (§6.1: no
+    /// state, never a guess). A TABLE READ on the UI thread, never a wire one (0.3 used to ask herodotus per load and
+    /// seek once the answer came, after audio had begun). 0 for anything that is not a resident episode row, and without
+    /// a scope.</summary>
+    public static int EpisodeStartOf(EntityId id)
+    {
+        if (id.Kind != EntityKind.Episode || Entities.Current is null) return 0;
+        EpisodeTable t = Entities.Current.Episodes;
+        if (!t.TryGetSlot(id, out int slot)) return 0;
+        return new Episode(slot).Completed ? 0 : EpisodeProgress.ResumeFromMs(t.Knows(slot, (uint)EpisodeFields.Progress), t.ProgressMs[slot], t.DurationMs[slot]);
     }
 
     /// <summary>Reload the row on the deck on <paramref name="kind"/>'s host at the current position, play intent kept:
@@ -1083,7 +1099,7 @@ public static partial class Playback
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
     }
 
-    // ── 9. restore, remote volume, resume points, autoplay ─────────────────────────────────────────────────────────
+    // ── 9. restore, remote volume, autoplay ────────────────────────────────────────────────────────────────────────
 
     /// <summary>Put the last session back on the deck at launch (G-078): PAUSED, PARKED (no host holds it until the
     /// first Resume loads it at the saved position), AUDIO-FIRST and WITHOUT CLAIMING. Refused over a live deck and
@@ -1133,21 +1149,6 @@ public static partial class Playback
         Announce(ref s, ref fx, PublishReason.VolumeChanged);
         fx.Snapshot = true;
     }
-
-    /// <summary>An episode's saved resume point arrived for the load it was asked for (G-076). Taken only while the
-    /// listener has not already moved past it, and never within the last seconds (a finished episode starts over).</summary>
-    static void DoResumeAt(ref State s, in Input i, ref Effects fx)
-    {
-        if (i.Epoch != s.LoadEpoch || !s.RoutesLocal || s.Parked) return;
-        int ms = i.IntArg;
-        if (ms <= 0 || s.Position(i.NowMs) >= ms) return;
-        if (s.DurationMs > 0 && ms >= s.DurationMs - ResumeTailMs) return;
-        var seek = new Input(InputKind.Seek, intArg: ms, nowMs: i.NowMs);
-        DoSeek(ref s, in seek, ref fx);
-    }
-
-    /// <summary>A resume point this close to an episode's end is "finished": it starts over rather than resuming.</summary>
-    public const int ResumeTailMs = 5_000;
 
     /// <summary>The autoplay answer for <see cref="Input.Context"/> (G-080): rows were appended as
     /// <see cref="QueueProvider.Autoplay"/> NextUp, or none were. A deck waiting at the end advances into them. An

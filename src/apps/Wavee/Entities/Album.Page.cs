@@ -116,6 +116,10 @@ public readonly partial struct Album
         Shell.SetPage(Shell.RouteKind.Album, Page);
         Shell.SetPage(Shell.RouteKind.Prerelease, PreReleasePage);
         Shell.SetPage(Shell.RouteKind.Show, Show.Page);
+        // Podcast rework wave P2 (owner S): a PLACEHOLDER only — wave P5 (owner Q) replaces this with the real
+        // Episode.Page/Reader. Registered here because Episode joins the shared-detail-surface family this group
+        // already installs (gate P2: the route resolves to a named surface, never a play or a not-found).
+        Shell.SetPage(Shell.RouteKind.Episode, Episode.Page);
         Controls.PreSave = Spotify.Api.ResolvePreRelease;
         Track.MenuSeams.ViewCredits = static t => Track.OpenCredits(t);
     }

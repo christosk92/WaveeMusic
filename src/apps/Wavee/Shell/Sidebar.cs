@@ -4162,11 +4162,13 @@ public static class SidebarProjection
 {
     static readonly StringBuilder s_join = new(64);
 
-    // E3/Bug A1: reused across rebuilds (single-writer, UI thread, C1) — `WalkRootlist` collects the playlist SLOTS
+    // E3: reused across rebuilds (single-writer, UI thread, C1) — `WalkRootlist` collects the playlist SLOTS
     // that need an ask into these instead of calling `Entities.Ensure`/`EnsureEdge` per row, and `Build` issues at
-    // most ONE span-form call of each after the walk. Before this, an un-identified/un-counted rootlist rented two
+    // most ONE span-form call of each after the walk. Before this, an un-identified rootlist rented two
     // pooled Fetch buffers and pumped the network once PER ROW.
     static readonly List<int> s_ensureIdentitySlots = new(32);
+    // D2: only ever holds a cover-less row's mosaic-membership ask now — the count-driven ask (bug A1's
+    // `ShouldEnsureCount`) is deleted outright; `Build` flushes this at `FetchPriority.Prefetch`, never `Visible`.
     static readonly List<int> s_ensureTracksSlots = new(32);
     // The member TRACK slots (not playlists) a cover-less row's mosaic still needs the album/image of — see
     // `ShouldWarmMosaicTracks`. Flushed as one span-form `Entities.Ensure` on the Tracks table at Prefetch.
@@ -4253,9 +4255,11 @@ public static class SidebarProjection
         if (s_ensureIdentitySlots.Count > 0)
             Entities.Ensure(Entities.Current.Playlists, CollectionsMarshal.AsSpan(s_ensureIdentitySlots),
                 (uint)PlaylistFields.Identity, FetchPriority.Visible);
+        // D2: a cover-less row's mosaic wants its member tracks (never a count any more — see `WalkRootlist`'s
+        // playlist branch) — a tile, not a page, so it never competes with the pane's own visible asks.
         if (s_ensureTracksSlots.Count > 0)
             Entities.EnsureEdge(FetchEdge.PlaylistTracks, CollectionsMarshal.AsSpan(s_ensureTracksSlots),
-                priority: FetchPriority.Visible);
+                priority: FetchPriority.Prefetch);
         // The mosaic's own data: the leading member tracks' album + image, one batched ask at Prefetch (a tile, not
         // a page). `Fetch.Plan` reads the store before the network, so on a relaunch a track that ever answered
         // fills from disk with no request at all; only genuinely never-seen tracks ride a TrackV4 batch.
@@ -4457,14 +4461,23 @@ public static class SidebarProjection
                     bool hasCover = !p.ImageId.IsEmpty;
                     if (!hasCover) mosaic = PlaylistMosaicTiles(in p);
 
-                    // Bug A1: the count is asked regardless of cover — the subtitle needs it on EVERY playlist, not
-                    // just a cover-less one. Bug H's membership ensure stays cover-gated (only a cover-less row's
-                    // mosaic needs it at all); both route through the same `PlaylistTracks` edge/answer, so a row
-                    // that needs either is queued once. Collected, never asked here — see `s_ensureTracksSlots`.
-                    bool countKnown = p.Knows(PlaylistFields.TrackCount);
-                    bool needsCount = ShouldEnsureCount(ensureIdentity, countKnown, p.MembershipState);
+                    // D2 (issue #4): the count is a ROW fact (`PlaylistFields.TrackCount`, persisted with the list
+                    // from this wave on) — it is never asked for on its own any more. The deleted `ShouldEnsureCount`
+                    // (bug A1) used to force a full `PlaylistTracks` read of every un-counted VISIBLE playlist just
+                    // to learn a number — the ~30 full `GET /playlist/v2/playlist/{id}` reads proven at every boot.
+                    // A playlist whose count has not landed shows none. One fallback costs nothing: when membership
+                    // is ALREADY resident for some other reason (a cover-less row's own mosaic ask, or the page
+                    // having been opened) its `Total` IS the real count — bug A1's own proven shape (Identity landed
+                    // off a thin ListMetadataV2 answer that never carries a length) is exactly the case this
+                    // recovers for free, with no second ask.
+                    bool trackCountKnown = p.Knows(PlaylistFields.TrackCount);
+                    bool membershipResident = p.MembershipState != EdgeState.Unknown;
+                    bool countKnown = trackCountKnown || membershipResident;
+                    int trackCount = trackCountKnown || !membershipResident ? p.TrackCount : p.MembershipTotal;
+                    // Bug H's membership ensure stays cover-gated — only a cover-less row's mosaic still needs the
+                    // member list at all; a covered row's subtitle never asks for anything any more.
                     bool needsMembership = mosaic is null && ShouldEnsureMembership(ensureIdentity, hasCover, p.MembershipState);
-                    if (needsCount || needsMembership) s_ensureTracksSlots.Add(p.Slot);
+                    if (needsMembership) s_ensureTracksSlots.Add(p.Slot);
                     // Once membership HAS landed the tiles still need the leading tracks' own album/image (the
                     // answer lands bare uri-only slots) — collected here, asked once by `Build` at Prefetch.
                     if (ShouldWarmMosaicTracks(ensureIdentity, hasCover, p.MembershipState, mosaic?.Count ?? 0))
@@ -4472,7 +4485,7 @@ public static class SidebarProjection
 
                     into.Add(new SidebarLibraryEntry(
                         id, SidebarEntryKind.Playlist, uri, Entities.Strings.Resolve(p.TitleId), OwnerNameOf(in p),
-                        p.ImageId, mosaic, p.TrackCount, added,
+                        p.ImageId, mosaic, trackCount, added,
                         SortStamp: added > 0 ? added : seen.Stamp(id),
                         LastVisitedTicksUtc: rec.LastVisitedTicks(id),
                         SourceOrder: order++, Depth: edge.Depth, Circular: false, Flavor: flavor)
@@ -4517,16 +4530,6 @@ public static class SidebarProjection
     /// for every cover-less playlist in a large rootlist.</summary>
     public static bool ShouldEnsureMembership(bool ensureIdentity, bool hasCover, EdgeState membershipState)
         => ensureIdentity && !hasCover && membershipState == EdgeState.Unknown;
-
-    /// <summary>Bug A1, the pure half of "ask for a visible playlist row's real count": only when the caller says
-    /// these rows are genuinely visible, the count has not landed, and membership is still Unknown — once it moves
-    /// (Partial/Complete), the SAME answer that moved it (`PlaylistRevision` is the only route that ever fills
-    /// <see cref="FetchEdge.PlaylistTracks"/>) would already have set <see cref="PlaylistFields.TrackCount"/> too,
-    /// so re-asking here would be a pure no-op. Unlike <see cref="ShouldEnsureMembership"/>, deliberately NOT
-    /// gated on <paramref name="countKnown"/>'s cover — a covered row's subtitle needs the real count exactly as
-    /// much as a cover-less one's mosaic needs membership.</summary>
-    public static bool ShouldEnsureCount(bool ensureIdentity, bool countKnown, EdgeState membershipState)
-        => ensureIdentity && !countKnown && membershipState == EdgeState.Unknown;
 
     /// <summary>The mosaic warm's pure half: a genuinely visible row (<paramref name="ensureIdentity"/>), with no
     /// cover of its own, whose membership HAS landed (before that there are no member slots to ask about — that
@@ -4839,6 +4842,13 @@ public static class SidebarLibraryFingerprint
             var members = new Playlist(slot).TrackSlots;
             int n = members.Length < MosaicFoldCap ? members.Length : MosaicFoldCap;
             for (int i = 0; i < n; i++) h = Row(h, tracks, members[i]);
+        }
+        else if (!new Playlist(slot).Knows(PlaylistFields.TrackCount))
+        {
+            // D2: a covered row whose count never landed reads it off resident membership (`WalkRootlist`'s
+            // fallback), so the edge's version must move this row too — else the count appears only on an unrelated
+            // rebuild.
+            h = Mix(h, Entities.Current.Edges.PlaylistTracks.Version(slot));
         }
         return h;
     }

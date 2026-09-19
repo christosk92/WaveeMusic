@@ -1,17 +1,15 @@
-// ── Wavee.Tests/PlaylistPersistenceTests.cs — bug A1 regression: a persisted zero track count must not be trusted
-// as count-known ──────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Wavee.Tests/PlaylistPersistenceTests.cs — the playlist row across a restart: the count is authoritative ─────────
 //
-// A build shipped before the resync-flagged-answer gate existed (Spotify.Decode.cs's PlaylistRevision,
-// `changes_require_resync`) could commit `PlaylistFields.TrackCount` known alongside a bogus `TrackCount == 0` — a
-// revision-gated `/diff` re-ask answering "resync needed" with a `contents` block anyway, decoded as if it were a
-// trustworthy full read (see SidebarProjectionTests.cs's `AResyncFlaggedDiffAnswer_*` facts, which pin the DECODE
-// half of the fix). That shape survives to disk exactly as staged, so `PlaylistShape.Load` must not trust it back
-// on the next launch — masking the bit whenever the persisted count is 0 heals the row on its NEXT real answer
-// instead of a permanent, restart-proof "0 songs".
+// Wave D2 (docs/plans/wavee/cache-integrity-and-playlist-diff-implementation.md §3.2) makes the persisted count the
+// truth: `track_count` is rewritten, with the count-known bit, in the SAME transaction as a settled membership list
+// (Store.Lists.cs), so a stored 0 is a real, empty playlist. The load-time mask that used to read every persisted 0 as
+// "unknown" (bug A1's heal for rows a pre-fix decoder corrupted) is gone — those rows live in a file this schema never
+// opens (the file's name carries the schema) — and these facts pin what replaced it: a real zero loads known, a real
+// count loads trusted, and the count saved with a list becomes the row's count on the next read even when the row never
+// carried one of its own.
 //
 // This needs a REAL Store round trip (a temp sqlite file, WriteBehind → Read), not the in-memory Staging shortcut —
-// StoreTests.cs's own fixture shape and `Playlist_ddl_round_trip_and_owner_uri_cross_reference` are the pattern
-// this file repeats (a second fixture rather than adding to that file, which this task does not own).
+// StoreTests.cs's own fixture shape and `Playlist_ddl_round_trip_and_owner_uri_cross_reference` are the pattern.
 
 using System;
 using System.Collections.Concurrent;
@@ -71,11 +69,11 @@ public class PlaylistPersistenceTests : IDisposable
         return "spotify:playlist:" + new string(buf);
     }
 
-    /// <summary>THE HEAL: a row written to disk with the corrupted shape (the `TrackCount` bit known, value 0 —
-    /// exactly what the pre-fix decoder could commit off a resync-flagged answer) reads back with the bit MASKED,
-    /// never trusted — so the next real fetch re-verifies instead of the row being stuck at "0 songs" forever.</summary>
+    /// <summary>A genuinely EMPTY playlist: the full read said `length: 0` (count known) and the row persisted it. It
+    /// reads back as a KNOWN zero — "0 songs", an answer — never as "unknown", which is what re-asked every empty
+    /// playlist on every launch while the load-time mask stood.</summary>
     [Fact]
-    public void ARowPersistedWithTheCorruptedZeroShape_LoadsWithTheCountBitMasked()
+    public void AGenuinelyEmptyPlaylistsPersistedZero_LoadsAsAKnownZero()
     {
         Scope scope = Boot();
         PlaylistTable playlists = scope.Playlists;
@@ -86,10 +84,8 @@ public class PlaylistPersistenceTests : IDisposable
         Staging s = Staging.Rent();
         ref var row = ref s.Playlists.Add();
         row.Id = id;
-        row.Title = s.AddText("Eurodance Mix"u8);
+        row.Title = s.AddText("Empty on purpose"u8);
         row.TrackCount = 0;
-        // Exactly the corrupted shape found in a real library.db: Identity known, TrackCount ALSO known, but the
-        // value is the bogus zero a resync-flagged diff answer left behind.
         row.Known = (uint)(PlaylistFields.Identity | PlaylistFields.TrackCount);
         row.Authority = Authority.Full;
         Assert.True(Store.WriteBehind(s));
@@ -100,12 +96,11 @@ public class PlaylistPersistenceTests : IDisposable
         DrainPosts();
 
         Assert.Equal(0, playlists.TrackCount[slot]);
-        Assert.False(playlists.Knows(slot, (uint)PlaylistFields.TrackCount));   // masked — never trusted
-        Assert.True(playlists.Knows(slot, (uint)PlaylistFields.Identity));      // Identity itself is untouched
+        Assert.True(playlists.Knows(slot, (uint)PlaylistFields.TrackCount));    // an answer, not a hole
+        Assert.True(playlists.Knows(slot, (uint)PlaylistFields.Identity));
     }
 
-    /// <summary>The control: a row persisted with a REAL, nonzero count survives the round trip fully trusted — the
-    /// heal targets a persisted zero specifically, never a legitimate count.</summary>
+    /// <summary>The control: a row persisted with a REAL, nonzero count survives the round trip fully trusted.</summary>
     [Fact]
     public void ARowPersistedWithARealNonzeroCount_LoadsWithTheCountBitTrusted()
     {
@@ -130,6 +125,36 @@ public class PlaylistPersistenceTests : IDisposable
         DrainPosts();
 
         Assert.Equal(50, playlists.TrackCount[slot]);
+        Assert.True(playlists.Knows(slot, (uint)PlaylistFields.TrackCount));
+    }
+
+    /// <summary>THE COUNT SAVED WITH THE LIST IS THE ROW'S COUNT. The batch's header row carried no count at all (only
+    /// the revision — the shape of an answer whose Identity came from elsewhere), yet the settled two-row list it
+    /// landed rewrote the row's `track_count` and count-known bit in the list's own transaction — so the next read of
+    /// the ROW, with no list in sight, knows the playlist has two tracks. The commit's count group lands its own value
+    /// for exactly this row: one that knows its count and nothing else.</summary>
+    [Fact]
+    public void TheCountSavedWithTheList_IsTheRowsCountOnTheNextRead()
+    {
+        Scope scope = Boot();
+        PlaylistTable playlists = scope.Playlists;
+        string uri = GidUri(4);
+
+        Staging s = ListAnswers.FullRead(uri, ListAnswers.RevisionA,
+                                         [ListAnswers.Member(ListAnswers.TrackUri(41), "0a41"), ListAnswers.Member(ListAnswers.TrackUri(42), "0a42")],
+                                         headerKnown: 0);
+        Entities.Commit(s);
+        Assert.True(Store.WriteBehind(s));
+        Store.Flush();
+
+        int slot = playlists.Slot(uri.AsSpan());
+        Assert.False(playlists.Knows(slot, (uint)PlaylistFields.TrackCount));     // the answer itself said nothing
+
+        Assert.True(Store.Read(scope, playlists, new[] { slot }, (uint)PlaylistFields.All, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+
+        Assert.Equal(2, playlists.TrackCount[slot]);
         Assert.True(playlists.Knows(slot, (uint)PlaylistFields.TrackCount));
     }
 

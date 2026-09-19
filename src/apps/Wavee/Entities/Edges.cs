@@ -100,12 +100,21 @@ public enum EdgePending : byte
 /// (so the next mount really retries) AND records the status (so the mount that is showing right now can say so):
 /// 0.2.9's Loadable carried both halves, and the V3 error banner, the Retry vacancy and parity item 73 read them.</para>
 ///
+/// <para><b>DISK-ASKED</b> (wave D2, docs/plans/wavee/cache-integrity-and-playlist-diff-implementation.md §3.2) is "the
+/// edge door has offered this parent's list to the DISK this scope" (0 = never). The disk leg reads a persisted list
+/// ONCE per parent per session — found or not — exactly as the row door's <c>FetchedAt</c> stamp runs the row's disk
+/// leg once (Fetch.cs's header): a list the disk does not have is a list the disk has answered about, and asking it
+/// again on every mount is a query that cannot answer. Beside <c>_asked</c> and with its lifetime: it dies with the
+/// scope's table set, so a scope switch clears it without anyone having to. A refresh never forgets it — a refresh is a
+/// question for the network.</para>
+///
 /// <para>Single writer, UI thread (C1). A mark is not a structural write: it bumps no version — but a failure DOES mark
 /// the relation dirty, because <see cref="Readiness"/> changed and a bound surface has to re-read it.</para></summary>
 public abstract class EdgeTableBase : Publishable
 {
     Column<int> _asked;
     Column<int> _failure;          // status + FailureBias; 0 = none (a zeroed column reads as "never failed")
+    Column<byte> _diskAsked;       // 1 = the disk leg has been offered this parent's list this scope
     int _marked;
 
     /// <summary>The stored failure is <c>status + 2</c>, so the three non-HTTP codes below survive a zeroed column.</summary>
@@ -193,12 +202,25 @@ public abstract class EdgeTableBase : Publishable
         _asked[parent] = 0;
     }
 
+    /// <summary>Has the edge door already offered this parent's list to the disk this scope (class summary)?</summary>
+    public bool WasDiskAsked(int parent) => (uint)parent < (uint)_marked && _diskAsked[parent] != 0;
+
+    /// <summary>The edge door offered this parent's list to the disk. Set BEFORE the read is queued, so a second ask in
+    /// the same drain — or a refused read falling through to the network — never offers it twice.</summary>
+    public void MarkDiskAsked(int parent)
+    {
+        if (parent < 0) return;
+        EnsureMarks(parent);
+        _diskAsked[parent] = 1;
+    }
+
     void EnsureMarks(int parent)
     {
         if (parent < _marked) return;
         int capacity = Math.Max(parent + 1, Math.Max(16, _marked * 2));
         _asked.EnsureCapacity(capacity);
         _failure.EnsureCapacity(capacity);
+        _diskAsked.EnsureCapacity(capacity);
         _marked = parent + 1;
     }
 }
@@ -692,7 +714,11 @@ public readonly record struct FormatEdge(byte FormatId, ushort Kbps);
 /// playlists containing the same track disagree about all of it (D10).
 /// <para><paramref name="Flags"/> is for WIRE flags only; optimistic state is the table's
 /// <see cref="EdgePending"/> column (file header). The chart triple is written by the seed today and by the live chart
-/// decode when it lands (ch 31 GAP 12).</para></summary>
+/// decode when it lands (ch 31 GAP 12).</para>
+/// <para>ON DISK every field is a <c>list_item</c> column (Store.Lists.cs) and the two identities travel as TEXT:
+/// <paramref name="ItemId"/> as its hex, <paramref name="AddedBy"/> as the adder's user URI — a slot and a
+/// <see cref="StringId"/> both mean nothing after a restart. The disk read stages them back exactly as the wire decoder
+/// does, so the commit interns the item id and allocates the adder's row the same way for both.</para></summary>
 public readonly record struct PlaylistTrackEdge(
     StringId ItemId, int AddedAt, int AddedBy, byte ChartStatus, ushort ChartPos, ushort ChartPrev, byte Flags);
 
@@ -713,7 +739,11 @@ public readonly record struct LibraryEdge(int AddedAt, byte Flags);
 /// (<c>+</c> is a space, then percent-unescaped) and is set on the START marker only.</para>
 ///
 /// <para>Both strings are OWNED by the edge (the file header's rule): <c>Entities.CommitRootlist</c> AddRefs them and
-/// releases the list it replaces, and <see cref="Edges.ReleaseText"/> gives the whole relation back with its scope.</para></summary>
+/// releases the list it replaces, and <see cref="Edges.ReleaseText"/> gives the whole relation back with its scope.
+/// On disk (Store.Lists.cs) they are TEXT columns, never a <see cref="StringId"/> value, and the warm stages them back
+/// through that same <c>CommitRootlist</c> — one ownership discipline whether the stream came off the wire or the
+/// file. <paramref name="Position"/> is kept in its own column (<c>wire_pos</c>): a skipped non-playlist item still
+/// counts a wire position, so it is not always the row's index.</para></summary>
 public readonly record struct RootlistEdge(ushort Position, byte Depth, byte Kind, StringId FolderName, int AddedAt,
                                            StringId FolderId = default);
 
@@ -785,7 +815,8 @@ public sealed class MerchTable
 public sealed partial class Edges
 {
     // identity relations
-    public readonly EdgeTable<NoEdge> TrackArtists = new(), AlbumArtists = new(), ArtistRelated = new(), ShowEpisodes = new();
+    public readonly EdgeTable<NoEdge> TrackArtists = new(), AlbumArtists = new(), ArtistRelated = new();
+    public readonly EdgeTable<PlaylistTrackEdge> ShowEpisodes = new();
     /// <summary>Payload IS the tag id; targets are unused (the "the row is the payload" pattern, also used by credits
     /// and top-cities in later waves).</summary>
     public readonly EdgeTable<StringId> TrackTags = new();
@@ -850,7 +881,8 @@ public sealed partial class Edges
     int _rootlistRevisionCount;
 
     /// <summary>The revision the parent's rootlist was answered at, or <see cref="StringId.Empty"/> — the base revision
-    /// a rootlist write and a <c>/diff</c> read send.</summary>
+    /// a rootlist write and a <c>/diff</c> read send. Restored with the list at boot (<c>Store.Warm</c>), so the login
+    /// sync's first rootlist ask is a <c>/diff</c>, not a full read.</summary>
     public StringId RootlistRevision(int parent)
         => (uint)parent >= (uint)_rootlistRevisionCount ? StringId.Empty : _rootlistRevision[parent];
 
@@ -907,6 +939,38 @@ public sealed partial class Edges
         _rootlistRevisionCount = 0;
         for (int p = 0; p < _recentsRevisionCount; p++) Entities.ReleaseText(ref _recentsRevision[p]);
         _recentsRevisionCount = 0;
+    }
+}
+
+public static partial class Entities
+{
+    /// <summary>FORGET a list's held revision — IN MEMORY ONLY — because its rows are about to stop being (or have just
+    /// stopped being) the rows it describes. Since wave D3 a held revision is a BASELINE CONTRACT
+    /// (docs/plans/wavee/cache-integrity-and-playlist-diff-implementation.md §2, §3.3): <c>Fetch.FillRevisions</c> sends it,
+    /// <c>Fetch.FillBaselines</c> snapshots the held rows beside it, the provider replays the <c>/diff</c>'s ops over that
+    /// snapshot, and a dealer push is applied in place when it names it as its parent. An OPTIMISTIC ROW EDIT that left
+    /// it standing — a remove, a move, the revert of either, any rootlist gesture — would have the server's positional
+    /// echo of our own edit (a MOV carries nothing to refuse it by) replayed over rows that already hold it, and the
+    /// wrong list written to disk at the new head, for good. Forgotten, the next ask is a FULL read (no revision ⇒ no
+    /// baseline ⇒ no replay) and a push can only dirty the list.
+    /// <para>The DISK copy is left alone on purpose: it still holds the consistent pre-edit pair (only SETTLED
+    /// membership is ever written), so the next launch's <c>/diff</c> replays the edit over the rows it was made against,
+    /// and the full read that follows the edit overwrites it with the settled result. A HEADER-only edit (rename,
+    /// description, collaborative) keeps its revision: a header op replays onto rows nobody touched.</para>
+    /// <para><paramref name="relation"/> is <see cref="EdgeRelation.PlaylistTracks"/> (parent = a playlist slot: its
+    /// <see cref="PlaylistTable.Revision"/> column) or <see cref="EdgeRelation.Rootlist"/> (parent = the account's user
+    /// slot: <see cref="Edges.RootlistRevision"/>); the owned string is released either way. Any other relation holds
+    /// no revision and is left alone. UI thread (C1).</para></summary>
+    public static void ForgetListRevision(Scope scope, EdgeRelation relation, int parent)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        if (relation == EdgeRelation.PlaylistTracks)
+        {
+            PlaylistTable playlists = scope.Playlists;
+            if (parent > Table.None && parent < playlists.Count) playlists.ClearText(ref playlists.Revision, parent);
+        }
+        else if (relation == EdgeRelation.Rootlist && !scope.Edges.RootlistRevision(parent).IsEmpty)
+            scope.Edges.SetRootlistRevision(parent, StringId.Empty);
     }
 }
 

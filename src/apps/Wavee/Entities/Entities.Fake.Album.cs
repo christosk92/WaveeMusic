@@ -28,8 +28,10 @@
 //   · al3 the short release with a video: track 0 `HasVideo` + its video counterpart row; related artists for its rows.
 //   · al4 the compilation: a different artist on every row, two discs.
 //   · al13 the UPCOMING prerelease (`spotify:prerelease:pr13`), al14 the WATERFALL ("3 of 12", one dateless pending row).
-//   · every show: its blurb, `8 + s % 5` episodes newest first, one in progress at a third; sh3's two degraded cards;
-//     sh7 PARTIAL (the load-more pill); sh8 a new, unsaved, EMPTY show.
+//   · every show: its blurb, `8 + s % 5` episodes newest first (sh0: 14), its podcast facts and rating; sh3's two
+//     degraded cards; sh7 PARTIAL (the load-more pill); sh8 a new, unsaved, EMPTY show. The podcast half — sh0/sh1/sh2 as
+//     the three VISITS (returning serial · new · caught up), the numbers, kinds, flags, progress and last-play stamps —
+//     lives in `Entities.Fake.Podcast.cs`, a partial of this class that `StageShows` calls into.
 //
 // THE CLOCK TRAP (reported as a gap): `Platform.Clock.FixedSeedEpoch` (1,788,000,000 = 2026-08-29) is already in the PAST
 // against the wall clock `Shell.Host` publishes into `Entities.Now`, so ch 31 W16's `now0 + 9 d 4 h` countdown would be
@@ -47,8 +49,8 @@ public static partial class Entities
 
     /// <summary>The album/show seed, namespaced so its helpers cannot collide with the other owners' seed partials.
     /// Inside it `Album`, `Track`, `Show` … are Entities' FACTORY METHODS, so the handle types are spelled
-    /// <c>global::Wavee.*</c>.</summary>
-    static class AlbumSeed
+    /// <c>global::Wavee.*</c>. Partial: the podcast visits are <c>Entities.Fake.Podcast.cs</c>.</summary>
+    static partial class AlbumSeed
     {
         // ── fixture constants (the WP-5.M contract §4; ch 31 §3.1) ──────────────────────────────────────────────────
 
@@ -357,6 +359,7 @@ public static partial class Entities
                     show.Image = Text(s, Cover(10));
                     show.Publisher = Text(s, "Wavee Podcasts");
                 }
+                StagePodcastFacts(s, ref show, sh);                     // Facts + Rating: every show answers both
 
                 int total = TotalEpisodes(sh);
                 for (int i = 0; i < n; i++)
@@ -371,14 +374,15 @@ public static partial class Entities
                         : Text(s, "In this episode of " + name + ": notes, tangents and a few hard-won lessons.");
                     ep.DurationMs = duration;
                     ep.PublishedAt = (int)(now0 - (i * 7 * Day + sh * Day));
-                    ep.ProgressMs = i == 1 ? duration / 3 : 0;          // exactly one "continue listening" card
                     ep.ShowUri = Text(s, ShowUri(sh));
+                    StagePodcastEpisode(s, ref ep, sh, i, total, now0);    // number · kind · flags · progress · last play
                 }
             }
+            StageTrailer(s, now0);
         }
 
-        /// <summary>Resident episodes: <c>8 + s % 5</c> (FakeData.cs:408); none on the empty show.</summary>
-        static int EpisodesIn(int sh) => sh == EmptyShow ? 0 : 8 + sh % 5;
+        /// <summary>Resident episodes: <c>8 + s % 5</c> (FakeData.cs:408); fourteen on the serial; none on the empty show.</summary>
+        static int EpisodesIn(int sh) => sh == EmptyShow ? 0 : sh == SerialShow ? SerialEpisodes : 8 + sh % 5;
 
         /// <summary>The membership's stated total: sh7 has twelve more than it holds (the load-more pill).</summary>
         static int TotalEpisodes(int sh) => EpisodesIn(sh) + (sh == PartialShow ? 12 : 0);

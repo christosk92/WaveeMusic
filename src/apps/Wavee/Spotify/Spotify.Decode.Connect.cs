@@ -392,6 +392,7 @@ public static partial class Spotify
             /// decodes as <see cref="Play"/>; a bare outbound <see cref="Play"/> is a resume, which is why a local row click
             /// while a phone owned playback used to do nothing visible (2026-09-16).</summary>
             PlayContext,
+            SetPlaybackSpeed,
         }
 
         /// <summary>One decoded remote command — a pure value, no strings (ported from `ConnectCommand.TryParse`).

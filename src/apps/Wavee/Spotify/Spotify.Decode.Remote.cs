@@ -63,7 +63,7 @@ public static partial class Spotify
             public sbyte Shuffle;
             /// <summary>-1 unstated, else a <see cref="RepeatMode"/> (track wins over context).</summary>
             public sbyte Repeat;
-            public TextRef FeatureIdentifier, ViewUri;
+            public TextRef FeatureIdentifier, ViewUri, FeatureVersion, ReferrerIdentifier, DeviceIdentifier, ExternalReferrer, CommandId, ContextMetadata, ResolvedMetadata;
             /// <summary>The rows the body carried: a play's embedded pages (play them as sent, no resolve), or a transfer's
             /// queue.</summary>
             public int TrackStart, TrackCount;
@@ -125,7 +125,19 @@ public static partial class Spotify
                             for (int o = Fields(ref r); Next(ref r, o);)
                             {
                                 if (r.ValueTextEquals("feature_identifier"u8)) { r.Read(); load.FeatureIdentifier = Text(ref r, into); }
+                                else if (r.ValueTextEquals("feature_version"u8)) { r.Read(); load.FeatureVersion = Text(ref r, into); }
+                                else if (r.ValueTextEquals("referrer_identifier"u8)) { r.Read(); load.ReferrerIdentifier = Text(ref r, into); }
+                                else if (r.ValueTextEquals("device_identifier"u8)) { r.Read(); load.DeviceIdentifier = Text(ref r, into); }
+                                else if (r.ValueTextEquals("external_referrer"u8)) { r.Read(); load.ExternalReferrer = Text(ref r, into); }
                                 else if (r.ValueTextEquals("view_uri"u8)) { r.Read(); load.ViewUri = Text(ref r, into); }
+                                else SkipValue(ref r);
+                            }
+                        }
+                        else if (r.ValueTextEquals("logging_params"u8))
+                        {
+                            for (int l = Fields(ref r); Next(ref r, l);)
+                            {
+                                if (r.ValueTextEquals("command_id"u8)) { r.Read(); load.CommandId = Text(ref r, into); }
                                 else SkipValue(ref r);
                             }
                         }
@@ -149,6 +161,7 @@ public static partial class Spotify
             {
                 if (r.ValueTextEquals("uri"u8)) { r.Read(); load.ContextUri = Text(ref r, into); }
                 else if (r.ValueTextEquals("url"u8)) { r.Read(); load.ContextUrl = Text(ref r, into); }
+                else if (r.ValueTextEquals("metadata"u8)) load.ContextMetadata = MetadataJson(ref r, into);
                 else if (r.ValueTextEquals("pages"u8) && EnterArray(ref r))
                 {
                     for (int pages = r.CurrentDepth; Element(ref r, pages);)
@@ -160,6 +173,13 @@ public static partial class Spotify
                 }
                 else SkipValue(ref r);
             }
+        }
+
+        static TextRef MetadataJson(ref Utf8JsonReader r, ClusterBuffer into)
+        {
+            r.Read();
+            using JsonDocument json = JsonDocument.ParseValue(ref r);
+            return into.AddText(System.Text.Encoding.UTF8.GetBytes(json.RootElement.GetRawText()));
         }
 
         static void PlayOptions(ref Utf8JsonReader r, ClusterBuffer into, ref RemoteLoad load)
@@ -353,7 +373,7 @@ public static partial class Spotify
         /// <c>ContextResolver</c>).</summary>
         public struct ContextPage
         {
-            public TextRef Uri, NextPageUrl, SortingCriteria;
+            public TextRef Uri, NextPageUrl, SortingCriteria, Metadata;
             public int TrackStart, TrackCount;
             public bool Infinite;
         }
@@ -377,11 +397,14 @@ public static partial class Spotify
                 else if (r.ValueTextEquals("tracks"u8)) JsonTracks(ref r, into);
                 else if (r.ValueTextEquals("metadata"u8))
                 {
-                    for (int m = Fields(ref r); Next(ref r, m);)
-                    {
-                        if (r.ValueTextEquals("sorting.criteria"u8)) { r.Read(); page.SortingCriteria = Text(ref r, into); }
-                        else SkipValue(ref r);
-                    }
+                    page.Metadata = MetadataJson(ref r, into);
+                    var metadata = new Utf8JsonReader(into.Utf8(page.Metadata));
+                    if (metadata.Read())
+                        for (int m = metadata.CurrentDepth; Next(ref metadata, m);)
+                        {
+                            if (metadata.ValueTextEquals("sorting.criteria"u8)) { metadata.Read(); page.SortingCriteria = Text(ref metadata, into); }
+                            else SkipValue(ref metadata);
+                        }
                 }
                 else if (r.ValueTextEquals("pages"u8) && EnterArray(ref r))
                 {
@@ -490,6 +513,14 @@ public static partial class Spotify
         /// newest first, <c>is_video</c> false (0.2.9). <paramref name="recent"/> must be catalog (gid-form) tracks: they
         /// format with no interner, so this runs on the api thread. Returns the bytes written into
         /// <paramref name="into"/> (size it at 64 + 64 per recent track).</summary>
+        public static int AutopodcastRequest(ReadOnlySpan<EntityId> recent, Span<byte> into)
+        {
+            var w = new ProtoWriter(into);
+            for (int i = 0; i < recent.Length; i++)
+                if (recent[i].Kind == EntityKind.Episode && recent[i].Form == EntityForm.Gid) w.Id(1, recent[i]);
+            return w.Length;
+        }
+
         public static int AutoplayRequest(ReadOnlySpan<byte> contextUri, ReadOnlySpan<EntityId> recent, Span<byte> into)
         {
             var w = new ProtoWriter(into);

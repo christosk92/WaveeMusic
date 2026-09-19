@@ -1,11 +1,12 @@
 // ── Spotify/Spotify.Api.Library.cs ──────────────────────────────────────────────────────────────────────────────────
 // the playlist4 lists (playlist, rootlist, recents), the collection, and the edge half of the fetch provider
 //
-// Role: SHELL (the sends, the edge walk) + CORE (the route values, the diff verdict, the bodies)
-// Owner: F
-// Wave: gap batch B1b (G-042 routes, G-043 CollectionAdd/Remove, G-054 zstd)
-// Budget: 620 lines
-// Spec: gap register G-042/G-043/G-054 — a named partial of Spotify.Api.cs, which this would have taken past its budget
+// Role: SHELL (the sends, the edge walk) + CORE (the route values, the replay decision, the bodies)
+// Owner: F (L2 for the revision-gated read and `ListReplay`, wave D3)
+// Wave: gap batch B1b (G-042 routes, G-043 CollectionAdd/Remove, G-054 zstd); D3 (the replay arm)
+// Budget: 1100 lines
+// Spec: gap register G-042/G-043/G-054 — a named partial of Spotify.Api.cs, which this would have taken past its budget;
+//       docs/plans/wavee/cache-integrity-and-playlist-diff-implementation.md §3.3 (the replay arm)
 //
 // THE LIST ROUTES, AS CAPTURED. `Spotify.Build`'s kinds for these (owner D) predate the captures and miss what the
 // gateway keys on — the playlist read's `decorate` list, the `/diff` query's `handlesContent` and `hint_revision`, the
@@ -18,13 +19,23 @@
 //     GET <any of the three>/diff?revision=<n%2Chex>&handlesContent=&hint_revision=<n%2Chex>
 //                                                                           (recents diff: CAEQAQ== · applied-lenses)
 //
-// THE HELD REVISION (G-042). An edge batch carries the revision each parent's list was last answered at
-// (`FetchBatch.Revisions`, filled on the UI thread). With one, the read is the /diff and it branches like 0.2.9's
-// `PlaylistFetcher`/`RecentsFetcher`: 304, `up_to_date`, or a diff with NO ops → unchanged (nothing staged, the list
-// stands); a diff WITH ops, OR `changes_require_resync` (field 20 — "cannot be expressed as a diff against our
-// base, refetch instead"; bug A1's Eurodance Mix regression was this flag's `contents` block trusted as a real
-// snapshot) → the full read (0.3 has no op replayer; a full read converges either way); `contents` in the answer
-// with NEITHER of those set → that answer; 509 (a revision too stale) or any other status → the full read.
+// THE HELD REVISION (G-042) AND THE REPLAY ARM (wave D3, plan §3.3). An edge batch carries the revision each parent's
+// list was last answered at (`FetchBatch.Revisions`) and, for a playlist or the rootlist, the settled list that
+// revision describes (`FetchBatch.Baselines`) — both snapshotted on the UI thread at send, because this thread never
+// reads a table. With a revision the read is the /diff, decoded by the finished pure core (`PlaylistOps.DecodeDiff`,
+// field 20 read FIRST — bug A1's Eurodance Mix was a resync-flagged `contents` block trusted as a snapshot) and decided
+// by `ListReplay.Decide`:
+//
+//     304 · empty · up_to_date · 0-op diff naming the held rev    → UNCHANGED: nothing staged, the held list stands
+//     contents (and a revision), no diff                          → CONTENTS: decoded as a full read
+//     ops, baseline held, from == held, to well-formed, TryApply  → APPLIED: the replayed WHOLE list staged + `to` +
+//       ok, adds − removes reconcile, header op fully stated        the count (+ the renamed header) — lands like a
+//                                                                   disk read, written behind like a full read
+//     anything else — resync, a misfit, no baseline, 509, …       → FULL READ, in the same call (it replaces the
+//                                                                   revision, so nothing re-asks)
+//
+// One always-on line per revision-gated read says which, and why: `list.replay list= ops= kinds= verdict= ms=` — how
+// the still-unobserved op shapes (plan §3.9/§3.10) get observed in the field. It never names a uri or a title.
 //
 // ZSTD (G-054). The list reads and the playlist mutations can answer `Content-Encoding: zstd`, which .NET's automatic
 // decompression does not cover. The frame magic `28 B5 2F FD` IS the guard (the runner never sees the header), and the
@@ -41,6 +52,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Google.Protobuf;
 using Col = Wavee.Protocol.Collection;
+using Pl = Wavee.Protocol.Playlist;
 
 namespace Wavee;
 
@@ -57,24 +69,20 @@ public static partial class Spotify
             RequestKind Kind = RequestKind.Custom, string SyncReason = "", bool Zstd = false);
 
         /// <summary>The three playlist4 lists the provider reads.</summary>
-        public enum ListKind : byte { Playlist, Rootlist, Recents }
+        public enum ListKind : byte { Playlist, Rootlist, Recents, Show }
 
-        /// <summary>What a list answer says about the list the caller holds.</summary>
-        public enum ListDiff : byte
+        static readonly System.Collections.Concurrent.ConcurrentDictionary<(uint Epoch, ListKind Kind, string Id), byte> s_pushReads = new();
+        public static void NoteListPush(ListKind kind, string id)
         {
-            /// <summary>304, <c>up_to_date</c>, a diff with no ops, or nothing actionable: the held list stands.</summary>
-            Unchanged,
-            /// <summary>A diff WITH ops (the list moved), OR <c>changes_require_resync</c> (field 20: "the accepted
-            /// delta cannot be expressed as a diff against our base — do NOT advance the stored revision in place,
-            /// refetch instead") — either way a full read converges. <see cref="ReadList"/> is what actually issues
-            /// it; this verdict alone is just "do not trust this body".</summary>
-            Changed,
-            /// <summary>The answer carries <c>contents</c>: decode it as the list.</summary>
-            Contents,
+            if (s_pushReads.Count >= 512) s_pushReads.Clear();
+            s_pushReads[(Current.Epoch, kind, id)] = 0;
         }
+        static Route WithPushReason(Route route, ListKind kind, string id)
+            => s_pushReads.TryRemove((Current.Epoch, kind, id), out _) ? route with { SyncReason = "CAI=" } : route;
+
 
         const string ListDecorations = "?decorate=revision,attributes,length,owner,capabilities,picture";
-        const HeaderSet RecentsHeaders = CommonProtobuf | HeaderSet.ApplyLenses | HeaderSet.AcceptListItems;
+        const HeaderSet RecentsHeaders = CommonProtobuf | HeaderSet.ApplyLenses | HeaderSet.AcceptListItems | HeaderSet.AcceptGeoblock | HeaderSet.DsaMode;
 
         /// <summary>The FULL read of a list. <paramref name="id"/> is the playlist id or the username; recents has none.
         /// PURE.</summary>
@@ -82,10 +90,11 @@ public static partial class Spotify
         {
             ListKind.Recents => new Route(Verb.Get, ApiHost.Spclient, "/playlist/v2/list/recents/page", RecentsHeaders,
                 RequestKind.RecentsPage, "CAwQAQ==", Zstd: true),
+            ListKind.Show => new Route(Verb.Get, ApiHost.Spclient, "/playlist/v2/show/" + Escaped(id), RecentsHeaders, RequestKind.PlaylistRead, "CAwQAQ==", Zstd: true),
             ListKind.Rootlist => new Route(Verb.Get, ApiHost.Spclient,
-                "/playlist/v2/user/" + Escaped(id) + "/rootlist" + ListDecorations, CommonProtobuf, RequestKind.RootlistRead, Zstd: true),
+                "/playlist/v2/user/" + Escaped(id) + "/rootlist" + ListDecorations + "&length=120", RecentsHeaders, RequestKind.RootlistRead, "CAU=", Zstd: true),
             _ => new Route(Verb.Get, ApiHost.Spclient,
-                "/playlist/v2/playlist/" + Escaped(id) + ListDecorations, CommonProtobuf, RequestKind.PlaylistRead, Zstd: true),
+                "/playlist/v2/playlist/" + Escaped(id) + ListDecorations, RecentsHeaders, RequestKind.PlaylistRead, "CAwQAQ==", Zstd: true),
         };
 
         /// <summary>The revision-gated /diff read of a list. <paramref name="revision"/> is the wire spelling
@@ -98,50 +107,13 @@ public static partial class Spotify
             {
                 ListKind.Recents => new Route(Verb.Get, ApiHost.Spclient, "/playlist/v2/list/recents/page/diff" + gate,
                     RecentsHeaders | HeaderSet.AppliedLenses, RequestKind.RecentsDiff, "CAEQAQ==", Zstd: true),
+                ListKind.Show => new Route(Verb.Get, ApiHost.Spclient, "/playlist/v2/show/" + Escaped(id) + "/diff" + gate,
+                    RecentsHeaders | HeaderSet.AppliedLenses, RequestKind.PlaylistDiff, "CAEQAQ==", Zstd: true),
                 ListKind.Rootlist => new Route(Verb.Get, ApiHost.Spclient,
-                    "/playlist/v2/user/" + Escaped(id) + "/rootlist/diff" + gate, CommonProtobuf, RequestKind.PlaylistDiff, Zstd: true),
+                    "/playlist/v2/user/" + Escaped(id) + "/rootlist/diff" + gate, RecentsHeaders | HeaderSet.AppliedLenses, RequestKind.PlaylistDiff, "CAw=", Zstd: true),
                 _ => new Route(Verb.Get, ApiHost.Spclient,
-                    "/playlist/v2/playlist/" + Escaped(id) + "/diff" + gate, CommonProtobuf, RequestKind.PlaylistDiff, Zstd: true),
+                    "/playlist/v2/playlist/" + Escaped(id) + "/diff" + gate, RecentsHeaders | HeaderSet.AppliedLenses, RequestKind.PlaylistDiff, "CAEQAQ==", Zstd: true),
             };
-        }
-
-        /// <summary>Read a <c>SelectedListContent</c> for the one question a revalidation asks (see the header). PURE:
-        /// <c>changes_require_resync</c> (20) wins outright — the server is saying this body is not a trustworthy
-        /// snapshot, full stop, so no other field gets a vote; then <c>up_to_date</c> (10); then a <c>diff</c> (6) —
-        /// no ops is unchanged, ops is changed; then <c>contents</c> (5); anything else, the empty body included,
-        /// is unchanged.</summary>
-        public static ListDiff DiffVerdict(ReadOnlySpan<byte> selectedListContent)
-        {
-            bool upToDate = false, diff = false, ops = false, contents = false, resyncRequired = false;
-            var r = new Decode.ProtoReader(selectedListContent);
-            while (r.Next())
-            {
-                if (r.Field == 5 && r.Wire == 2) { r.Skip(); contents = true; }
-                else if (r.Field == 10 && r.Wire == 0) upToDate |= r.Bool();
-                else if (r.Field == 6 && r.Wire == 2)
-                {
-                    diff = true;
-                    var d = r.Message();                               // Diff { from_revision = 1, ops = 2, to_revision = 3 }
-                    while (d.Next())
-                    {
-                        if (d.Field == 2 && d.Wire == 2) ops = true;
-                        d.Skip();
-                    }
-                }
-                // changes_require_resync (playlist4_external.proto:225): "the accepted delta cannot be expressed
-                // as a diff against our base — do NOT advance the stored revision in place, refetch instead."
-                // Regression: a diff response can set this AND still attach a `contents` block, which `ReadList`
-                // used to hand straight to the decoder as if it were a trustworthy full-read body (bug A1's
-                // Eurodance Mix defect — a stale/zeroed `length` overwriting a real count). Never reached before
-                // this fix: the decoder's own `resyncRequired` guard (Spotify.Decode.cs's `PlaylistRevision`) is
-                // now defence in depth, not the only line.
-                else if (r.Field == 20 && r.Wire == 0) resyncRequired |= r.Bool();
-                else r.Skip();
-            }
-            if (resyncRequired) return ListDiff.Changed;   // ignore every other field — ReadList falls through to the full read
-            if (upToDate) return ListDiff.Unchanged;
-            if (diff) return ops ? ListDiff.Changed : ListDiff.Unchanged;
-            return contents ? ListDiff.Contents : ListDiff.Unchanged;
         }
 
         /// <summary>A <c>SelectedListContent</c>'s own revision (field 1) in its wire spelling, written into
@@ -155,7 +127,7 @@ public static partial class Spotify
         public static int FormatRevision(ReadOnlySpan<byte> revision, Span<char> into)
         {
             if (revision.Length < 5) return 0;
-            int counter = (revision[0] << 24) | (revision[1] << 16) | (revision[2] << 8) | revision[3];
+            uint counter = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(revision);
             if (!counter.TryFormat(into, out int written)) return 0;
             if (written + 1 + (revision.Length - 4) * 2 > into.Length) return 0;
             into[written++] = ',';
@@ -175,15 +147,6 @@ public static partial class Spotify
         public static byte[]? Unzstd(byte[] body)
         {
             if (!IsZstd(body)) return body;
-            try
-            {
-                using (var oneShot = new ZstdSharp.Decompressor())
-                {
-                    Span<byte> unwrapped = oneShot.Unwrap(body);
-                    if (unwrapped.Length > 0) return unwrapped.ToArray();
-                }
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException) { /* no content size, or multi-frame: stream it */ }
             try
             {
                 using var source = new MemoryStream(body);
@@ -238,59 +201,120 @@ public static partial class Spotify
                     continue;
                 }
                 string? revision = i < batch.Revisions.Length ? batch.Revisions[i] : null;
+                ListRow[]? baseline = i < batch.Baselines.Length ? batch.Baselines[i] : null;
                 switch (route.Rest)
                 {
-                    case SpclientRoute.Rootlist: RootlistEdge(parent, revision, s, ref outcome); break;
+                    case SpclientRoute.ShowRead: ShowEdge(parent, revision, baseline, s, ref outcome); break;
+                    case SpclientRoute.Rootlist: RootlistEdge(parent, revision, baseline, s, ref outcome); break;
                     case SpclientRoute.Recents: RecentsEdge(parent, revision, s, ref outcome); break;
                     case SpclientRoute.CollectionPage: CollectionEdge(edge, parent, i, batch, s, ref outcome); break;
-                    case SpclientRoute.PlaylistRead: PlaylistEdge(parent, revision, s, ref outcome); break;   // revision-gated (B1b gap 8)
+                    case SpclientRoute.PlaylistRead: PlaylistEdge(parent, revision, baseline, s, ref outcome); break;   // revision-gated (B1b gap 8), replayed (D3)
                     default: AnswerRest(route.Rest, parent, s, ref outcome); break;
                 }
             }
         }
 
-        /// <summary>The revision-gated read (see the header): the list's bytes to decode, or null when the held list
-        /// stands or the read failed (the outcome holds which).</summary>
-        static byte[]? ReadList(ListKind kind, string id, string? revision, ref FetchOutcome outcome)
+        /// <summary>What one list read hands its decoder: a <see cref="Body"/> to decode as a read (a full read, or a
+        /// <c>/diff</c> answered with <c>contents</c>), OR the replayed whole list (<see cref="Rows"/>) with the revision
+        /// it is true at and the header change that rode it — or neither, when the held list stands or the read failed
+        /// (the outcome holds which).</summary>
+        readonly record struct ListRead(byte[]? Body, ListRow[]? Rows = null, string? Revision = null,
+                                        PlaylistOps.ListAttributeChange Attrs = default);
+
+        /// <summary>THE REVISION-GATED READ (see the header): the <c>/diff</c> against the held
+        /// <paramref name="revision"/>, decided by <see cref="ListReplay.Decide(bool,ReadOnlySpan{byte},string,ListRow[])"/>
+        /// over <paramref name="baseline"/> — unchanged, contents, applied, or the full read in the same call (a 509, a
+        /// resync, a misfit, no baseline: never a re-ask loop, because the full read replaces the revision). Recents is
+        /// never replayed (its snapshot is grouped, not a playlist4 list a baseline can hold), so its ops read in full.
+        /// No revision is the plain full read. One always-on <c>list.replay</c> line per revision-gated read.</summary>
+        static ListRead ReadList(ListKind kind, string id, string? revision, ListRow[]? baseline, ref FetchOutcome outcome)
         {
-            CancellationToken ct = CancellationToken.None;
-            if (revision is { Length: > 0 })
+            if (revision is not { Length: > 0 }) return new ListRead(FullRead(kind, id, ref outcome));
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            Result diff = Send(WithPushReason(ListDiffRoute(kind, id, revision), kind, id), [], CancellationToken.None);
+            ListReplay.Outcome decided = diff.Ok || diff.NotModified
+                ? ListReplay.Decide(kind == ListKind.Rootlist, diff.Body, revision, kind == ListKind.Recents ? null : baseline)
+                : ListReplay.Refused(ListReplay.StatusReason(diff.Status));          // a 509 (too stale), a failure
+            ListRead read;
+            switch (decided.Verdict)
             {
-                Result diff = Send(ListDiffRoute(kind, id, revision), [], ct);
-                if (diff.NotModified) { outcome.Note(in diff); return null; }
-                if (diff.Ok)
-                {
-                    ListDiff verdict = DiffVerdict(diff.Body);
-                    if (verdict != ListDiff.Changed)
+                case ListReplay.Verdict.Unchanged:
+                    outcome.Note(in diff);
+                    read = default;
+                    break;
+                case ListReplay.Verdict.Contents:
+                    outcome.Note(in diff);
+                    if (kind == ListKind.Rootlist)
                     {
-                        outcome.Note(in diff);
-                        return verdict == ListDiff.Contents ? diff.Body : null;
+                        var root = Pl.SelectedListContent.Parser.ParseFrom(diff.Body);
+                        read = root.Contents is { } contents && (contents.Truncated || (root.HasLength && contents.Items.Count < root.Length))
+                            ? new ListRead(FullRead(kind, id, ref outcome)) : new ListRead(diff.Body);
                     }
-                }
-                // Ops this client does not replay, a 509 (the revision is too stale), anything else: the full read.
+                    else read = new ListRead(diff.Body);
+                    break;
+                case ListReplay.Verdict.Applied:
+                    outcome.Note(in diff);
+                    read = new ListRead(null, decided.Rows, decided.Answer.To, decided.Attrs);
+                    break;
+                default:
+                    read = new ListRead(FullRead(kind, id, ref outcome));
+                    break;
             }
-            Result full = Send(ListRoute(kind, id), [], ct);
+            LogReplay(kind, in decided, started);
+            return read;
+        }
+
+        /// <summary>The list's full read: its bytes, or null when it failed (noted) or answered nothing.</summary>
+        static byte[]? FullRead(ListKind kind, string id, ref FetchOutcome outcome)
+        {
+            Result full = kind == ListKind.Rootlist ? Rootlist(id, CancellationToken.None) : Send(WithPushReason(ListRoute(kind, id), kind, id), [], CancellationToken.None);
             outcome.Note(in full);
             if (full.Ok && full.Body.Length > 0) return full.Body;
             if (!full.Ok) Log.Warn("library", "list read failed (" + kind + ", status " + full.Status + ")");
             return null;
         }
 
-        static void RootlistEdge(string meUri, string? revision, Staging s, ref FetchOutcome outcome)
+        /// <summary>The always-on <c>list.replay list= ops= kinds= verdict= ms=</c> line (plan §3.9): which list, how many
+        /// ops of which kinds the answer carried, what became of them, and how long the whole read took (the fallback full
+        /// read included). Never a uri, never a name.</summary>
+        static void LogReplay(ListKind kind, in ListReplay.Outcome decided, long started)
         {
-            byte[]? body = ReadList(ListKind.Rootlist, UsernameOf(meUri), revision, ref outcome);
+            if (!Log.IsEnabled(WaveeLogLevel.Info)) return;
+            PlaylistOps.Batch batch = decided.Answer.Batch ?? PlaylistOps.Batch.Empty;
+            Log.Event(WaveeLogLevel.Info, "library", "list.replay", "", null, -1, null,
+                WaveeLogField.Of("list", kind switch { ListKind.Rootlist => "rootlist", ListKind.Recents => "recents", _ => "playlist" }),
+                WaveeLogField.Of("ops", batch.Ops.Length),
+                WaveeLogField.Of("kinds", ListReplay.Kinds(batch)),
+                WaveeLogField.Of("verdict", ListReplay.VerdictText(in decided)),
+                WaveeLogField.Of("ms", (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds));
+        }
+
+        /// <summary>The account's rootlist: a replayed stream lands through <c>Decode.RootlistReplay</c> (markers, depths
+        /// and positions recomputed by <see cref="ListReplay"/>), anything to decode through <c>Decode.Rootlist</c>. A
+        /// replay the staging refuses — which the decision's own checks make unreachable — is read in full.</summary>
+        static void RootlistEdge(string meUri, string? revision, ListRow[]? baseline, Staging s, ref FetchOutcome outcome)
+        {
+            string username = UsernameOf(meUri);
+            ListRead read = ReadList(ListKind.Rootlist, username, revision, baseline, ref outcome);
+            byte[]? body = read.Body;
+            if (read.Rows is { } rows && !Decode.RootlistReplay(rows, meUri, read.Revision!, s))
+            {
+                Log.Warn("library", "a replayed rootlist did not stage; reading it in full");
+                body = FullRead(ListKind.Rootlist, username, ref outcome);
+            }
             if (body is not null) Decode.Rootlist(body, Encoding.UTF8.GetBytes(meUri), s);
         }
 
         static void RecentsEdge(string meUri, string? revision, Staging s, ref FetchOutcome outcome)
         {
-            byte[]? body = ReadList(ListKind.Recents, "", revision, ref outcome);
+            byte[]? body = ReadList(ListKind.Recents, "", revision, null, ref outcome).Body;
             // 0.2.9's invariant: rows come ONLY from a body that carried contents. Mapping one that did not yields zero
-            // items, and staging that is how 1,708 resident rows once became none.
-            if (body is null || DiffVerdict(body) != ListDiff.Contents) return;
-            Span<char> chars = stackalloc char[128];
+            // items, and staging that is how 1,708 resident rows once became none. The same strict reading the /diff
+            // arm uses (resync first, a truncated frame refused) decides it.
+            if (body is null || PlaylistOps.DecodeDiff(body).Answer != PlaylistOps.Answer.Contents) return;
+            Span<char> chars = stackalloc char[160];
             int n = RevisionOf(body, chars);
-            Span<byte> ascii = stackalloc byte[128];
+            Span<byte> ascii = stackalloc byte[160];
             for (int i = 0; i < n; i++) ascii[i] = (byte)chars[i];
             Decode.Recents(body, Encoding.UTF8.GetBytes(meUri), ascii[..n], s);
         }
@@ -481,16 +505,16 @@ public static partial class Spotify
         }
 
         /// <summary>The playlist's decorated v2 read: header, capabilities and the membership, unwrapped.</summary>
-        public static Result Playlist(string playlistId, CancellationToken ct) => Send(ListRoute(ListKind.Playlist, playlistId), [], ct);
+        public static Result Playlist(string playlistId, CancellationToken ct) => Send(WithPushReason(ListRoute(ListKind.Playlist, playlistId), ListKind.Playlist, playlistId), [], ct);
 
         /// <summary>The revision-gated diff. 304 means "you are current"; 509 means the revision is too stale and the
         /// caller must fall back to a full read. A revision too short to spell is the full read.</summary>
         public static Result PlaylistDiff(string playlistId, ReadOnlySpan<byte> revision, CancellationToken ct)
         {
-            Span<char> formatted = stackalloc char[128];
+            Span<char> formatted = stackalloc char[160];
             int length = FormatRevision(revision, formatted);
             if (length == 0) return Playlist(playlistId, ct);
-            return Send(ListDiffRoute(ListKind.Playlist, playlistId, new string(formatted[..length])), [], ct);
+            return Send(WithPushReason(ListDiffRoute(ListKind.Playlist, playlistId, new string(formatted[..length])), ListKind.Playlist, playlistId), [], ct);
         }
 
         public static Result PlaylistChanges(string playlistId, byte[] body, CancellationToken ct)
@@ -511,7 +535,36 @@ public static partial class Spotify
             return Unwrapped(Send(RequestKind.PlaylistSignals, args, ct));
         }
 
-        public static Result Rootlist(string username, CancellationToken ct) => Send(ListRoute(ListKind.Rootlist, username), [], ct);
+        public static Result Rootlist(string username, CancellationToken ct)
+        {
+            Route route = WithPushReason(ListRoute(ListKind.Rootlist, username), ListKind.Rootlist, username);
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                Result first = Send(route, [], ct);
+                if (!first.Ok || first.Body.Length == 0) return first;
+                var merged = Pl.SelectedListContent.Parser.ParseFrom(first.Body);
+                if (merged.Contents is not { } contents) return first;
+                bool retry = false;
+                while (contents.Truncated || (merged.HasLength && contents.Items.Count < merged.Length))
+                {
+                    int offset = contents.Items.Count;
+                    Route nextRoute = route with { Path = route.Path + "&from=" + offset.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+                    Result next = Send(nextRoute, [], ct);
+                    if (!next.Ok) return next;
+                    var page = Pl.SelectedListContent.Parser.ParseFrom(next.Body);
+                    if (!page.Revision.Equals(merged.Revision)) { retry = true; break; }
+                    if (page.Contents is not { } part || part.Pos != offset || part.Items.Count == 0) return Result.Transport;
+                    contents.Items.Add(part.Items);
+                    contents.MetaItems.Add(part.MetaItems);
+                    contents.Truncated = part.Truncated;
+                }
+                if (retry) continue;
+                contents.Pos = 0;
+                contents.Truncated = false;
+                return first.WithBody(merged.ToByteArray());
+            }
+            return Result.Transport;
+        }
 
         public static Result RootlistChanges(string username, byte[] body, CancellationToken ct)
         {
@@ -704,6 +757,353 @@ public static partial class Spotify
             byte[] body = CollectionWriteBody(username, set, uris, saved, DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Guid.NewGuid().ToString("N"));
             return body.Length == 0 ? new Result(204, []) : CollectionWrite(body, ct);
+        }
+    }
+}
+
+// ── the replay arm (wave D3, plan §3.3) ──────────────────────────────────────────────────────────────────────────────
+//
+// THE DECISION IS PURE, and it is here rather than inside `ReadList` so a test can drive it with the captured fixtures
+// and no transport: a `/diff` answer (the bytes) + the revision held + the baseline the batch carried → a verdict, and
+// for an APPLIED one the replayed whole list, ready for `Store.StageList` (through `Spotify.Decode.PlaylistReplay` /
+// `RootlistReplay`). The finished core does the hard part — `PlaylistOps.DecodeDiff` (field 20 first, strict frames)
+// and `PlaylistOps.TryApply` (sequential ops, pre-removal MOV, every REM's carried rows checked) — and this adds the
+// guards only the caller can make:
+//
+//   · a baseline at all (`Fetch.FillBaselines`: a settled whole, beside a held revision), and `from` == the revision it
+//     describes — else the ops describe another list;
+//   · `to` well-formed and moved (the one revision gate — plan §2), and adds − removes reconcile with the baseline;
+//   · a header op lands only when it states BOTH name and description (set, or unset): the full read's own staging
+//     writes the whole Identity group, and a rename alone would blank a description nobody changed — so a partial one
+//     is read in full rather than guessed (plan §7);
+//   · a ROOTLIST replays over its whole wire stream: every baseline row's wire position must be its index (a skipped
+//     non-playlist item makes them differ, and then the ops' indices are not ours), markers are identified by kind +
+//     folder id (+ name on a start marker), and depths and positions are RECOMPUTED after the replay by the rootlist
+//     decoder's own rule — a moved block carries its old depth otherwise.
+//
+// Any doubt is `FullRead` with its reason, which `ReadList` turns into the full read in the same call and the
+// `list.replay … verdict=fullread:<why>` line names. The replay allocates (a copy of the baseline, the mapped op rows);
+// a diff is rare and small, and nothing here runs per frame.
+
+/// <summary>THE REPLAY ARM'S DECISION (plan §3.3; the header above). PURE: bytes, strings and arrays in, a verdict and
+/// a list out — no table, no staging, no clock.</summary>
+public static class ListReplay
+{
+    /// <summary>What one revision-gated read comes to.</summary>
+    public enum Verdict : byte
+    {
+        /// <summary>The held list stands: stage nothing.</summary>
+        Unchanged,
+        /// <summary>The ops replayed: stage <see cref="Outcome.Rows"/> at the answer's <c>to</c> revision.</summary>
+        Applied,
+        /// <summary>The answer carries the list (and its revision): decode it as a full read.</summary>
+        Contents,
+        /// <summary>Read the list in full; <see cref="Outcome.Why"/> says why.</summary>
+        FullRead,
+    }
+
+    // The <why> of `verdict=fullread:<why>` when it is the arm's and not a `PlaylistOps.Refusal`.
+    public const string NoBaseline = "no-baseline";
+    public const string FromMismatch = "from-mismatch";
+    public const string ToRevision = "to-revision";
+    public const string NoRevision = "no-revision";
+    public const string Reconcile = "reconcile";
+    public const string Header = "header";
+    public const string RootlistPositions = "rootlist-positions";
+    public const string RootlistItem = "rootlist-item";
+
+    /// <summary>The decision. <see cref="Rows"/>, <see cref="Attrs"/> and <see cref="Tally"/> mean something only for
+    /// <see cref="Verdict.Applied"/>; <see cref="Answer"/> is the decoded answer (its batch feeds the log line).</summary>
+    public readonly record struct Outcome(Verdict Verdict, string Why, PlaylistOps.DiffAnswer Answer, ListRow[]? Rows,
+                                          PlaylistOps.ListAttributeChange Attrs, PlaylistOps.Tally Tally);
+
+    /// <summary>A <c>/diff</c> answer's bytes (a 304's empty body included) → the verdict. A <c>contents</c> answer must
+    /// name its revision: rows landed without one would sit under the OLD revision, and the next <c>/diff</c> would replay
+    /// someone else's ops over them.</summary>
+    public static Outcome Decide(bool rootlist, ReadOnlySpan<byte> answer, string held, ListRow[]? baseline)
+    {
+        PlaylistOps.DiffAnswer decoded = PlaylistOps.DecodeDiff(answer);
+        if (decoded.Answer == PlaylistOps.Answer.Contents)
+        {
+            Span<char> revision = stackalloc char[160];
+            if (Spotify.Api.RevisionOf(answer, revision) == 0) return Full(in decoded, NoRevision);
+        }
+        return Decide(rootlist, in decoded, held, baseline);
+    }
+
+    /// <summary>A decoded answer → the verdict (see the section header for every guard). <paramref name="held"/> is the
+    /// revision the batch sent (<c>FetchBatch.Revisions</c>); <paramref name="baseline"/> the list it describes
+    /// (<c>FetchBatch.Baselines</c>), never modified — the replay runs over a copy.</summary>
+    public static Outcome Decide(bool rootlist, in PlaylistOps.DiffAnswer answer, string held, ListRow[]? baseline)
+    {
+        switch (answer.Answer)
+        {
+            case PlaylistOps.Answer.Unchanged:
+                // A trivial diff names the revision it answered about; it vouches for the held list only if that is it.
+                return answer.From is not null && !string.Equals(answer.From, held, StringComparison.Ordinal)
+                    ? Full(in answer, FromMismatch)
+                    : new Outcome(Verdict.Unchanged, "", answer, null, default, default);
+            case PlaylistOps.Answer.Contents:
+                return new Outcome(Verdict.Contents, "", answer, null, default, default);
+            case PlaylistOps.Answer.Replay:
+                break;
+            default:
+                return Full(in answer, answer.Why.ToString());
+        }
+
+        if (baseline is null) return Full(in answer, NoBaseline);
+        if (!string.Equals(answer.From, held, StringComparison.Ordinal)) return Full(in answer, FromMismatch);
+        if (!ListWrite.IsWellFormedRevision(answer.To) || string.Equals(answer.To, held, StringComparison.Ordinal))
+            return Full(in answer, ToRevision);
+        if (rootlist && !WirePositional(baseline)) return Full(in answer, RootlistPositions);
+
+        PlaylistOps.Batch batch = answer.Batch;
+        var items = new ListRow[batch.Items.Length];
+        for (int i = 0; i < items.Length; i++)
+            if (!TryRow(rootlist, in batch.Items[i], out items[i])) return Full(in answer, RootlistItem);
+
+        var list = new List<ListRow>(baseline);
+        if (!PlaylistOps.TryApply<ListRow, RowAccess>(list, batch.Ops, items, batch.Lists, default,
+                out PlaylistOps.ListAttributeChange attrs, out PlaylistOps.Tally tally, out PlaylistOps.Misfit misfit))
+            return Full(in answer, misfit.Why.ToString());
+        if (!tally.Reconciles(baseline.Length, list.Count)) return Full(in answer, Reconcile);
+        if (!attrs.IsEmpty && (rootlist || !States(in attrs))) return Full(in answer, Header);
+
+        ListRow[]? rows = rootlist ? Restream(list) : list.ToArray();
+        if (rows is null) return Full(in answer, RootlistItem);
+        return new Outcome(Verdict.Applied, "", answer, rows, attrs, tally);
+    }
+
+    /// <summary>A read that never got an answer to decide on (a 509, a transport failure): the full read.</summary>
+    public static Outcome Refused(string why)
+        => new(Verdict.FullRead, why,
+               new PlaylistOps.DiffAnswer(PlaylistOps.Answer.FullRead, PlaylistOps.Refusal.None, null, null, PlaylistOps.Batch.Empty),
+               null, default, default);
+
+    /// <summary>The <c>&lt;why&gt;</c> of a <c>/diff</c> that answered neither 2xx nor 304 (<c>status-509</c>: too stale).</summary>
+    public static string StatusReason(int status)
+        => "status-" + status.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The log line's <c>verdict=</c>: <c>unchanged</c> · <c>applied</c> · <c>contents</c> · <c>fullread:&lt;why&gt;</c>.</summary>
+    public static string VerdictText(in Outcome outcome) => outcome.Verdict switch
+    {
+        Verdict.Unchanged => "unchanged",
+        Verdict.Applied => "applied",
+        Verdict.Contents => "contents",
+        _ => "fullread:" + outcome.Why,
+    };
+
+    /// <summary>The log line's <c>kinds=</c>: the op kinds a batch carried, each once, in first-seen order —
+    /// <c>ADD</c>, <c>REM</c>, <c>MOV</c>, <c>ITEM</c> (UPDATE_ITEM_ATTRIBUTES), <c>LIST</c> (UPDATE_LIST_ATTRIBUTES).</summary>
+    public static string Kinds(PlaylistOps.Batch batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        PlaylistOps.Op[] ops = batch.Ops;
+        if (ops.Length == 0) return "";
+        var text = new StringBuilder(24);
+        Span<bool> seen = stackalloc bool[8];
+        for (int i = 0; i < ops.Length; i++)
+        {
+            int k = (int)ops[i].Kind;
+            if ((uint)k >= (uint)seen.Length || seen[k]) continue;
+            seen[k] = true;
+            if (text.Length > 0) text.Append(',');
+            text.Append(ops[i].Kind switch
+            {
+                PlaylistOps.Kind.Add => "ADD",
+                PlaylistOps.Kind.Rem => "REM",
+                PlaylistOps.Kind.Mov => "MOV",
+                PlaylistOps.Kind.UpdateItemAttributes => "ITEM",
+                PlaylistOps.Kind.UpdateListAttributes => "LIST",
+                _ => "?",
+            });
+        }
+        return text.ToString();
+    }
+
+    static Outcome Full(in PlaylistOps.DiffAnswer answer, string why) => new(Verdict.FullRead, why, answer, null, default, default);
+
+    /// <summary>Does the header change state BOTH attributes — each set, or explicitly unset (<c>no_value</c>)? Only then
+    /// can it land as the full read's Identity group does, without guessing the one it did not name.</summary>
+    static bool States(in PlaylistOps.ListAttributeChange attrs)
+        => (attrs.Name is not null || (attrs.Unset & PlaylistOps.ListAttrs.Name) != 0)
+           && (attrs.Description is not null || (attrs.Unset & PlaylistOps.ListAttrs.Description) != 0);
+
+    /// <summary>Is every baseline row at its own wire position? A rootlist op addresses the WIRE stream; a skipped
+    /// non-playlist item (Spotify.Decode.Rootlist stages none, but counts its position) makes the two differ.</summary>
+    static bool WirePositional(ListRow[] baseline)
+    {
+        if (baseline.Length > ushort.MaxValue + 1) return false;
+        for (int i = 0; i < baseline.Length; i++)
+            if (baseline[i].WirePos != i) return false;
+        return true;
+    }
+
+    /// <summary>A replayed rootlist stream, re-derived exactly as <c>Spotify.Decode.Rootlist</c> derives a read one: a
+    /// start marker sits at its folder's depth and raises it, an end marker lowers it first, an item sits at the depth
+    /// around it (all clamped at <see cref="Spotify.Decode.MaxFolderDepth"/>), and the position is the index. Null when
+    /// the stream holds something the decoder would skip (an item that is not a playlist): its positions would no longer
+    /// be ours.</summary>
+    static ListRow[]? Restream(List<ListRow> list)
+    {
+        if (list.Count > ushort.MaxValue + 1) return null;
+        const int max = Spotify.Decode.MaxFolderDepth;
+        var rows = new ListRow[list.Count];
+        int depth = 0;
+        for (int i = 0; i < rows.Length; i++)
+        {
+            ListRow row = list[i];
+            int at;
+            switch (row.Kind)
+            {
+                case RootlistKind.FolderStart:
+                    at = Math.Min(depth, max);
+                    if (depth < max) depth++;
+                    break;
+                case RootlistKind.FolderEnd:
+                    depth = Math.Max(0, depth - 1);
+                    at = Math.Min(depth, max);
+                    break;
+                default:
+                    if (row.Uri.Length == 0 || EntityUri.KindOf(row.Uri.AsSpan()) != EntityKind.Playlist) return null;
+                    at = Math.Min(depth, max);
+                    break;
+            }
+            rows[i] = row with { Depth = (byte)at, WirePos = (ushort)i };
+        }
+        return rows;
+    }
+
+    const string StartGroup = "spotify:start-group:";
+    const string EndGroup = "spotify:end-group:";
+    /// <summary>The longest item id the full-read decoder stages (64 bytes as hex): a longer one it drops, and so do we.</summary>
+    const int MaxItemIdHex = 128;
+
+    /// <summary>One op row (<see cref="PlaylistOps.Batch.Items"/>, index for index — ADD rows, carried REM rows, anchors,
+    /// UPDATE_ITEM values) → a <see cref="ListRow"/>, mapped exactly as the full-read decoders map a wire item: a
+    /// playlist member's adder as <c>spotify:user:&lt;name&gt;</c>, its timestamp through <c>Spotify.Decode.Instant</c>,
+    /// its item id as hex, its chart triple; a rootlist row as the marker or item <c>Spotify.Decode.Rootlist</c> stages
+    /// (a start marker's name decoded by its rule, an end marker's instant dropped as it drops it). An empty uri is an
+    /// UPDATE_ITEM's values — never a member. False for a rootlist row the decoder would skip (not a playlist, a start
+    /// marker without an id).</summary>
+    static bool TryRow(bool rootlist, in PlaylistOps.WireItem item, out ListRow row)
+    {
+        int at = Spotify.Decode.Instant(item.Timestamp);
+        string uri = item.Uri;
+        if (!rootlist || uri.Length == 0)
+        {
+            string? itemId = !rootlist && item.ItemId is { Length: > 0 and <= MaxItemIdHex } id ? id : null;
+            row = new ListRow(uri, itemId, at, AdderUri(item.AddedBy), rootlist ? (byte)0 : item.ChartStatus,
+                              rootlist ? (ushort)0 : item.ChartPos, rootlist ? (ushort)0 : item.ChartPrev, 0,
+                              RootlistKind.Item, 0, 0, null, null);
+            return true;
+        }
+        if (uri.StartsWith(StartGroup, StringComparison.Ordinal))
+        {
+            ReadOnlySpan<char> rest = uri.AsSpan(StartGroup.Length);
+            int colon = rest.IndexOf(':');
+            ReadOnlySpan<char> group = colon < 0 ? rest : rest[..colon];
+            if (group.IsEmpty) { row = default; return false; }
+            row = new ListRow("", null, at, null, 0, 0, 0, 0, RootlistKind.FolderStart, 0, 0, group.ToString(),
+                              colon < 0 ? null : FolderName(rest[(colon + 1)..]));
+            return true;
+        }
+        if (uri.StartsWith(EndGroup, StringComparison.Ordinal))
+        {
+            ReadOnlySpan<char> rest = uri.AsSpan(EndGroup.Length);
+            int colon = rest.IndexOf(':');
+            ReadOnlySpan<char> group = colon < 0 ? rest : rest[..colon];
+            row = new ListRow("", null, 0, null, 0, 0, 0, 0, RootlistKind.FolderEnd, 0, 0, group.IsEmpty ? null : group.ToString(), null);
+            return true;
+        }
+        if (EntityUri.KindOf(uri.AsSpan()) != EntityKind.Playlist) { row = default; return false; }
+        row = new ListRow(uri, null, at, null, 0, 0, 0, 0, RootlistKind.Item, 0, 0, null, null);
+        return true;
+    }
+
+    /// <summary>The wire's bare username → the adder's user uri, <c>Spotify.Decode.UserUri</c>'s rule: a value already a
+    /// <c>spotify:</c> uri stands, an empty or over-long one is no adder.</summary>
+    static string? AdderUri(string? username)
+    {
+        if (string.IsNullOrEmpty(username)) return null;
+        if (username.StartsWith("spotify:", StringComparison.Ordinal)) return username;
+        if (Encoding.UTF8.GetByteCount(username) > 200) return null;
+        return "spotify:user:" + username;
+    }
+
+    /// <summary>A start marker's escaped name, <c>Spotify.Decode.FolderName</c>'s rule byte for byte: over the UTF-8,
+    /// <c>+</c> is a space FIRST, then each well-formed <c>%XX</c> is its byte, a malformed escape is kept verbatim, and at
+    /// most 512 bytes come out — so a replayed marker carries the very name a read of the same stream would.</summary>
+    static string? FolderName(ReadOnlySpan<char> escaped)
+    {
+        if (escaped.IsEmpty) return null;
+        byte[] utf8 = new byte[Encoding.UTF8.GetByteCount(escaped)];
+        Encoding.UTF8.GetBytes(escaped, utf8);
+        Span<byte> name = stackalloc byte[512];
+        int n = 0;
+        for (int i = 0; i < utf8.Length && n < name.Length; i++)
+        {
+            byte b = utf8[i];
+            if (b == (byte)'+') { name[n++] = (byte)' '; continue; }
+            if (b == (byte)'%' && i + 2 < utf8.Length && HexValue(utf8[i + 1]) is int hi and >= 0 && HexValue(utf8[i + 2]) is int lo and >= 0)
+            {
+                name[n++] = (byte)((hi << 4) | lo);
+                i += 2;
+                continue;
+            }
+            name[n++] = b;
+        }
+        return n == 0 ? null : Encoding.UTF8.GetString(name[..n]);
+
+        static int HexValue(byte c) => c is >= (byte)'0' and <= (byte)'9' ? c - '0'
+                                     : c is >= (byte)'a' and <= (byte)'f' ? c - 'a' + 10
+                                     : c is >= (byte)'A' and <= (byte)'F' ? c - 'A' + 10 : -1;
+    }
+
+    /// <summary>How the replayer reads a <see cref="ListRow"/> (<see cref="PlaylistOps.IRowAccess{TRow}"/>). IDENTITY:
+    /// by item id when both rows have one, else by uri — two spellings of one gid are one row, as the table folds them
+    /// (<see cref="EntityId.TryParseGid(ReadOnlySpan{char},out EntityId)"/>) — and a folder marker, whose uri was split
+    /// into columns, by kind + folder id, plus the decoded name on a start marker (the interface's own rule: "as if it
+    /// still carried its <c>spotify:start-group:…</c> uri"). A row holds only an adder and an added-at, so an
+    /// UPDATE_ITEM on the <c>public</c> bit cannot be held and refuses.</summary>
+    public readonly struct RowAccess : PlaylistOps.IRowAccess<ListRow>
+    {
+        public bool SameUri(in ListRow a, in ListRow b)
+        {
+            if (a.Kind != RootlistKind.Item || b.Kind != RootlistKind.Item)
+                return a.Kind == b.Kind && string.Equals(a.FolderId, b.FolderId, StringComparison.Ordinal)
+                       && (a.Kind != RootlistKind.FolderStart || string.Equals(a.FolderName, b.FolderName, StringComparison.Ordinal));
+            if (string.Equals(a.Uri, b.Uri, StringComparison.Ordinal)) return true;
+            return EntityId.TryParseGid(a.Uri.AsSpan(), out EntityId x) && EntityId.TryParseGid(b.Uri.AsSpan(), out EntityId y)
+                   && x == y;
+        }
+
+        public bool HasItemId(in ListRow row) => !string.IsNullOrEmpty(row.ItemId);
+
+        public bool SameItemId(in ListRow a, in ListRow b) => string.Equals(a.ItemId, b.ItemId, StringComparison.Ordinal);
+
+        public bool Holds(in ListRow row, in ListRow values, PlaylistOps.ItemAttrs set, PlaylistOps.ItemAttrs unset)
+        {
+            if (((set | unset) & PlaylistOps.ItemAttrs.Public) != 0) return false;
+            if ((set & PlaylistOps.ItemAttrs.AddedBy) != 0
+                && (row.AddedBy is null || !string.Equals(row.AddedBy, values.AddedBy, StringComparison.Ordinal))) return false;
+            if ((set & PlaylistOps.ItemAttrs.Timestamp) != 0 && (row.AddedAt == 0 || row.AddedAt != values.AddedAt)) return false;
+            if ((unset & PlaylistOps.ItemAttrs.AddedBy) != 0 && row.AddedBy is not null) return false;
+            if ((unset & PlaylistOps.ItemAttrs.Timestamp) != 0 && row.AddedAt != 0) return false;
+            return true;
+        }
+
+        public bool TryPatch(ref ListRow row, in ListRow values, PlaylistOps.ItemAttrs set, PlaylistOps.ItemAttrs unset)
+        {
+            if (((set | unset) & PlaylistOps.ItemAttrs.Public) != 0) return false;
+            string? addedBy = row.AddedBy;
+            int addedAt = row.AddedAt;
+            if ((set & PlaylistOps.ItemAttrs.AddedBy) != 0) addedBy = values.AddedBy;
+            if ((set & PlaylistOps.ItemAttrs.Timestamp) != 0) addedAt = values.AddedAt;
+            if ((unset & PlaylistOps.ItemAttrs.AddedBy) != 0) addedBy = null;
+            if ((unset & PlaylistOps.ItemAttrs.Timestamp) != 0) addedAt = 0;
+            row = row with { AddedBy = addedBy, AddedAt = addedAt };
+            return true;
         }
     }
 }

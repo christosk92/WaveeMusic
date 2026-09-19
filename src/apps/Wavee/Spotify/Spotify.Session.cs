@@ -18,13 +18,20 @@
 //       thread. Everything it learns becomes a `SessionEvent` handed to `Post`; `Apply` runs on the UI thread, folds
 //       it with `Step`, publishes the new session and writes the signals. The ONE place text is interned is inside a
 //       posted action — i.e. on the UI thread — which is why `PublishWelcome` takes `string`s and not `StringId`s.
-//   C4  every thread runs for ONE epoch. A drop bumps `Session.Epoch`, the epoch's `CancellationTokenSource` is
-//       cancelled and its sockets are closed; a late answer from the old epoch is dropped, never applied.
+//   C4  every thread runs for ONE epoch OF ITS OWN TRANSPORT (B4). The AP thread runs for `Session.ApEpoch` under the
+//       AP's `CancellationTokenSource`; the dealer thread and its keepalive for `Session.Epoch` under the dealer's. A drop
+//       bumps only its own transport's epoch, cancels only its own source and closes only its own socket; everything a
+//       thread publishes is stamped with its epoch, so a late word from an abandoned one is refused by the fold
+//       (`IsStale`) and never reaches the other transport. Only the END of the login (a sign-out, a disconnect, a
+//       refusal) closes both — and cancels the login's own source, which the token mints watch. Every thread exit is one
+//       always-on `ap.exit` / `dealer.exit` line naming its reason and epoch.
 //   C8  bounded everywhere: 32 audio-key slots (a full table refuses rather than queues), one dealer frame at a time,
 //       a fixed 256 KiB dealer scratch buffer.
 //   C9  no shell call ever blocks the UI thread. `Login`, `Logout` and `Reply` return immediately; `AccessToken` and
 //       `RequestAudioKey` BLOCK and are for shell threads only (their doc comments say so).
-//   P10 two timers, both named: the dealer keepalive (30 s) and the server-clock re-sync (10 min). Nothing polls.
+//   P10 three timers, all named: the dealer keepalive (30 s), the server-clock re-sync (10 min), and the AP keepalive's
+//       one-shot (B6, `ApPulse`), re-armed to the pure `ApKeepAlive` fold's next deadline — the held pong or a watchdog.
+//       Nothing polls.
 //
 // ASYNC IS NOT USED, ON PURPOSE. These threads exist to block: a socket read, a key wait, a 30 s tick. `HttpClient`
 // has a synchronous `Send`, and the one API that does not (`ClientWebSocket`) is awaited with `GetAwaiter().GetResult()`
@@ -121,6 +128,7 @@ public static partial class Spotify
         public const string ClientId = "65b708073fc0480ea92a077233ca87bd";
         public const string AppVersion = "129400583";
         public const string ClientVersion = "1.2.94.583.g60394bd5";
+        public const string DesktopSemver = "1.2.94.583";
         /// <summary>The web-player build token the two web-bundle pathfinder operations send. Not a semver, observed
         /// verbatim, and it does not move when the desktop pin moves.</summary>
         public const string WebPlayerAppVersion = "896000000";
@@ -134,7 +142,7 @@ public static partial class Spotify
         /// <summary>clienttoken.spotify.com uses a shorter OS stub.</summary>
         public static string ClientTokenUserAgent { get; } = "Spotify/" + AppVersion + " " + AppPlatform + "/0 (PC laptop)";
 
-        static string OsDescriptor()
+        public static string OsDescriptor()
         {
             if (!OperatingSystem.IsWindows()) return Environment.OSVersion.VersionString;
             var v = Environment.OSVersion.Version;
@@ -144,7 +152,7 @@ public static partial class Spotify
                 Architecture.X64 => "x64",
                 _ => RuntimeInformation.OSArchitecture.ToString(),
             };
-            return "Windows " + v.Major + " (" + v + "; " + arch + ")";
+            return "Windows " + v.Major + " (" + v.ToString(3) + "; " + arch + ")";
         }
     }
 
@@ -193,6 +201,18 @@ public static partial class Spotify
     /// not for a per-row path.</summary>
     public static string TextOf(TokenRef r) => r.IsEmpty ? string.Empty : Encoding.UTF8.GetString(Text.Span(r));
 
+    /// <summary>Do two arena slices hold the same BYTES? A slice is a position, not a value: the same text learnt twice — a
+    /// connection id redelivered by a second pusher hello — lands at two offsets, and comparing the <see cref="TokenRef"/>s
+    /// says "different". Safe from any thread and deterministic (an entry never moves or changes once written), which is
+    /// why the pure <see cref="Step"/> may call it. No allocation.</summary>
+    public static bool SameText(TokenRef a, TokenRef b)
+        => a == b || (a.Length == b.Length && Text.Span(a).SequenceEqual(Text.Span(b)));
+
+    /// <summary>Write <paramref name="s"/> into the session text arena and return its slice. Safe from any thread (see
+    /// <see cref="Text"/>). Public for the facts (this assembly has no <c>InternalsVisibleTo</c>): a fold that compares
+    /// arena TEXT (<see cref="SameText"/>) is pinned over real slices, not made-up offsets.</summary>
+    public static TokenRef AddSessionText(string s) => Text.Add(s);
+
     // ── 4. the published session ─────────────────────────────────────────────────────────────────────────────────────
 
     sealed class Box
@@ -221,17 +241,26 @@ public static partial class Spotify
     /// <para>Which effects are executed here and which are a RECORD: the AP thread is one straight-line procedure
     /// (resolve → connect → handshake → login → mint → pump), so <c>OpenAp</c> and <c>Mint*</c> describe what that
     /// procedure is already doing and are asserted by the tests rather than dispatched twice. Everything that
-    /// CROSSES a thread is executed: <c>ResolveHosts</c> starts the AP thread (one per session), <c>Backoff</c> arms
-    /// the one-shot retry timer, <c>OpenDealer</c> starts the websocket thread, <c>CloseAll</c> abandons the epoch (and
-    /// empties the Connect mailbox: every queued cluster describes a connection that no longer exists — G-036),
-    /// the two credential effects call the store seam, <c>SignedOut</c> tears the account's surfaces down,
-    /// <c>Welcome</c> adopts the account's market and catalog scope, and <c>AnnounceDevice</c> asks the Connect glue
-    /// for the hello PUT.</para>
+    /// CROSSES a thread is executed: <c>ResolveHosts</c> starts the AP thread (one per AP epoch), <c>ApBackoff</c> /
+    /// <c>DealerBackoff</c> arm that transport's one-shot retry timer, <c>OpenDealer</c> starts the websocket thread,
+    /// <c>CloseAp</c> abandons the AP epoch alone, <c>CloseDealer</c> the dealer epoch alone (and empties the Connect
+    /// mailbox: every queued cluster describes a connection that no longer exists — G-036), both at once (<c>CloseAll</c>,
+    /// the login ended) the login's token as well, the two credential effects call the store seam, <c>SignedOut</c> tears
+    /// the account's surfaces down, <c>Welcome</c> adopts the account's market and catalog scope, and
+    /// <c>AnnounceDevice</c> asks the Connect glue for the hello PUT.</para>
+    /// <para>A transport's word from an epoch it already abandoned (<see cref="IsStale"/>) folds to nothing — and says so
+    /// in one line, so a log shows the other transport was never touched by it (B4).</para>
     /// <para>The credential slot moves BEFORE the signals do: an observer folding "the phase" with "is a credential
     /// stored" (the shell's auth fold) must see the slot as of this transition, not the one before it.</para></summary>
     internal static void Apply(in SessionEvent e)
     {
         Session s = Current;
+        if (IsStale(in s, in e))
+        {
+            Log.Info("spotify", "session.stale kind=" + e.Kind + " epoch=" + e.Epoch
+                + " live=" + (LinkOf(e.Kind) == SessionLink.Ap ? s.ApEpoch : s.Epoch) + " — ignored");
+            return;
+        }
         SessionEffects fx = Step(ref s, e);
         Volatile.Write(ref s_box, new Box(s));
 
@@ -247,12 +276,15 @@ public static partial class Spotify
         Status.Value = s.Phase;
         Fault.Value = s.Fault;
 
-        if ((fx & SessionEffects.CloseAll) != 0) { CloseEpoch(); Connect.Clear(); }
+        if ((fx & SessionEffects.CloseAll) == SessionEffects.CloseAll) CloseLogin();
+        if ((fx & SessionEffects.CloseAp) != 0) CloseAp();
+        if ((fx & SessionEffects.CloseDealer) != 0) { CloseDealer(); Connect.Clear(); }
         if ((fx & SessionEffects.SignedOut) != 0) SignOutTeardown();
         if ((fx & SessionEffects.Welcome) != 0) AdoptWelcome(in s);
-        if ((fx & SessionEffects.ResolveHosts) != 0) StartAp(s.Epoch);
+        if ((fx & SessionEffects.ResolveHosts) != 0) StartAp(s.ApEpoch);
         if ((fx & SessionEffects.OpenDealer) != 0) StartDealer(s.Epoch);
-        if ((fx & SessionEffects.Backoff) != 0) ArmRetry(BackoffMs(s));
+        if ((fx & SessionEffects.ApBackoff) != 0) ArmApRetry(in s);
+        if ((fx & SessionEffects.DealerBackoff) != 0) ArmDealerRetry(in s);
         if ((fx & SessionEffects.AnnounceDevice) != 0) Connect.AnnounceDevice();
     }
 
@@ -299,9 +331,10 @@ public static partial class Spotify
         // another account) must not outlive the login that produced them (G-034).
         Audio.ResetKeyLatch();
 
-        string market = s.Country.IsEmpty ? "" : Entities.Strings.Resolve(s.Country);
-        Api.Market = market;
         string account = s.Username.IsEmpty ? "" : Entities.Strings.Resolve(s.Username);
+        string market = WelcomeMarket(s.Country.IsEmpty ? "" : Entities.Strings.Resolve(s.Country),
+                                      Entities.Current?.Key ?? default, account);
+        Api.Market = market;
         // `session.lastAccount` (G-031): the scope's fallback when the slot is empty, and the account-switch witness. The
         // library itself needs no reset here — the catalog scope is partitioned by account, so a switch below opens the
         // other account's table set.
@@ -317,6 +350,13 @@ public static partial class Spotify
         Log.Info("spotify", "catalog scope adopted (" + Platform.Redact(next.Account) + ", market " + next.Market
             + ", tier " + s.Tier + ")");
     }
+
+    /// <summary>The market a welcome settles on. PURE. A welcome whose country packet (0x1b) missed its window arrives with
+    /// no country; on a RECONNECT of the same account that must keep the market already held — adopting "" would switch the
+    /// catalog scope (and so the whole table set) because of a late packet, the same class of defect as a late ProductInfo
+    /// ending the login (B6 follow-up A). A first login, or another account, takes what arrived, empty included.</summary>
+    public static string WelcomeMarket(string arrived, CatalogScope held, string account)
+        => arrived.Length > 0 || account.Length == 0 || held.Account != account ? arrived : held.Market ?? "";
 
     // ── 5. boot, login, logout ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -402,36 +442,66 @@ public static partial class Spotify
     // ── 6. epochs and threads ────────────────────────────────────────────────────────────────────────────────────────
 
     static readonly Lock ThreadGate = new();
-    static CancellationTokenSource s_epochCts = new();
+
+    // THREE sources, one per lifetime (B4). The AP thread watches `s_apCts`; the dealer thread and its keepalive watch
+    // `s_dealerCts`; the token mints on api threads (and the dealer's own `AccessToken` call) watch `s_sessionCts` — a
+    // bearer belongs to the LOGIN, so neither transport's reset may cancel a re-mint in flight: on the old single source
+    // an AP reset cancelled a connecting dealer's bearer mint along with everything else.
+    static CancellationTokenSource s_sessionCts = new(), s_apCts = new(), s_dealerCts = new();
     static int s_apRunning, s_dealerRunning, s_keepaliveRunning;
-    /// <summary>An AP start that arrived while the previous epoch's thread was still unwinding (a re-login right after a
-    /// close): that thread starts it from its <c>finally</c>, so the request is deferred rather than lost. 0 = none.</summary>
-    static uint s_apRestartEpoch;
-    static Timer? s_retryTimer;
+    /// <summary>A start that arrived while that transport's previous thread was still unwinding (a re-login right after a
+    /// close, a retry racing a slow teardown): the unwinding thread starts it from its <c>finally</c>, so the request is
+    /// deferred rather than lost. 0 = none (an epoch is ≥ 1 once any login ran).</summary>
+    static uint s_apRestartEpoch, s_dealerRestartEpoch;
+    static Timer? s_apRetryTimer, s_dealerRetryTimer;
 
-    /// <summary>The token every thread of the CURRENT epoch watches. Replaced whole by <see cref="CloseEpoch"/>.</summary>
-    static CancellationToken EpochToken => Volatile.Read(ref s_epochCts).Token;
+    /// <summary>The token the LOGIN's work watches — the bearer and attestation mints (<see cref="AccessToken"/>,
+    /// <see cref="ClientToken"/>). Replaced whole by <see cref="CloseLogin"/>, never by a transport's drop.</summary>
+    static CancellationToken SessionToken => Volatile.Read(ref s_sessionCts).Token;
 
-    /// <summary>UI THREAD: abandon the epoch (C4). Cancels the token, closes the sockets (which unblocks the two
-    /// reading threads), and fails every pending audio-key waiter so its caller can retry on the next connection.</summary>
-    static void CloseEpoch()
+    /// <summary>What every thread exit that its own epoch's abandonment caused logs as its reason.</summary>
+    const string ExitEpochCancelled = "epoch-cancelled";
+
+    /// <summary>Swap <paramref name="slot"/> for a fresh source and cancel the old one. The old one is NOT disposed: the
+    /// threads of that epoch still hold its token, and <c>ct.WaitHandle</c> — which the keepalive tick waits on — throws
+    /// once the source is disposed. One dead source per epoch is cheaper than that race, and an epoch is a connection,
+    /// not a frame.</summary>
+    static void Abandon(ref CancellationTokenSource slot)
     {
         CancellationTokenSource old;
         lock (ThreadGate)
         {
-            old = s_epochCts;
-            s_epochCts = new CancellationTokenSource();
+            old = slot;
+            Volatile.Write(ref slot, new CancellationTokenSource());
         }
-        // NOT disposed: the threads of that epoch still hold its token, and `ct.WaitHandle` — which the keepalive
-        // tick waits on — throws once the source is disposed. One dead CTS per epoch is cheaper than that race, and
-        // an epoch is a login, not a frame.
         try { old.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>UI THREAD (<see cref="SessionEffects.CloseAp"/>): abandon the AP epoch (C4) — cancel its token, close its
+    /// socket (which unblocks the pump's read), and fail every pending audio-key waiter so its caller can retry on the
+    /// next channel. The dealer, its socket and the Connect mailbox are not touched (B4).</summary>
+    static void CloseAp()
+    {
+        Abandon(ref s_apCts);
         CloseApSocket();
-        CloseDealerSocket();
         FailAllKeys();
     }
 
-    /// <summary>Start the AP thread for this epoch, once. The guard is a flag the thread itself clears in its
+    /// <summary>UI THREAD (<see cref="SessionEffects.CloseDealer"/>): abandon the dealer epoch (C4) — cancel its token
+    /// (the dealer thread and its keepalive), close its socket (which unblocks the receive). The caller empties the
+    /// Connect mailbox. The AP channel is not touched (B4).</summary>
+    static void CloseDealer()
+    {
+        Abandon(ref s_dealerCts);
+        CloseDealerSocket();
+    }
+
+    /// <summary>UI THREAD (both close bits in ONE fold — the login ended: a sign-out, a disconnect, a refusal, a login over a
+    /// running one): the login's own token goes too, so a bearer or attestation mint in flight on an api thread stops
+    /// rather than landing on a login that is gone. A transport's drop never reaches here.</summary>
+    static void CloseLogin() => Abandon(ref s_sessionCts);
+
+    /// <summary>Start the AP thread for this AP epoch, once. The guard is a flag the thread itself clears in its
     /// <c>finally</c> rather than <c>Thread.IsAlive</c>, because a retry can arrive while the previous thread is
     /// still unwinding and "alive" would refuse exactly the restart the session is waiting for.</summary>
     static void StartAp(uint epoch)
@@ -440,29 +510,49 @@ public static partial class Spotify
         {
             if (Interlocked.CompareExchange(ref s_apRunning, 1, 0) != 0) { s_apRestartEpoch = epoch; return; }
             s_apRestartEpoch = 0;
-            var ct = s_epochCts.Token;
+            var ct = s_apCts.Token;
             new Thread(() => ApLoop(epoch, ct)) { IsBackground = true, Name = "wavee-spotify-ap" }.Start();
         }
     }
 
+    /// <summary>Start the dealer thread for this dealer epoch, once — deferred exactly like <see cref="StartAp"/> when the
+    /// previous one is still unwinding (it used to be DROPPED, which would now leave <see cref="Session.Dealer"/> Opening
+    /// with no thread behind it and the session never Online).</summary>
     static void StartDealer(uint epoch)
     {
         lock (ThreadGate)
         {
-            if (Interlocked.CompareExchange(ref s_dealerRunning, 1, 0) != 0) return;
-            var ct = s_epochCts.Token;
+            if (Interlocked.CompareExchange(ref s_dealerRunning, 1, 0) != 0) { s_dealerRestartEpoch = epoch; return; }
+            s_dealerRestartEpoch = 0;
+            var ct = s_dealerCts.Token;
             new Thread(() => DealerLoop(epoch, ct)) { IsBackground = true, Name = "wavee-spotify-dealer" }.Start();
         }
     }
 
-    /// <summary>UI THREAD: arm the one-shot reconnect. The ladder is <see cref="BackoffMs"/> — pure, and therefore
-    /// tested; this only holds the timer (P10: a named one-shot, never a polling loop).</summary>
-    static void ArmRetry(int delayMs)
+    /// <summary>UI THREAD (<see cref="SessionEffects.ApBackoff"/>): arm the AP's one-shot reconnect, stamped with the AP
+    /// epoch it was armed for, so a retry that outlives that epoch (a sign-out, a fresh login) folds to nothing. The
+    /// ladder is <see cref="BackoffMs"/> — pure, and therefore tested; this only holds the timer (P10: a named one-shot,
+    /// never a polling loop). The line names what the drop left standing: <c>session Online, dealer Up</c> is B4 working.</summary>
+    static void ArmApRetry(in Session s)
     {
-        s_retryTimer?.Dispose();
-        s_retryTimer = new Timer(static _ => Publish(new SessionEvent(SessionEventKind.Retry)), null,
-            delayMs, Timeout.Infinite);
-        Log.Info("spotify", "reconnecting in " + (delayMs / 1000) + "s");
+        int delayMs = BackoffMs(s.ApAttempt);
+        s_apRetryTimer?.Dispose();
+        s_apRetryTimer = new Timer(static state => Publish(new SessionEvent(SessionEventKind.ApRetry, Epoch: (uint)state!)),
+            s.ApEpoch, delayMs, Timeout.Infinite);
+        Log.Info("spotify", "ap reconnecting in " + (delayMs / 1000) + "s (attempt " + s.ApAttempt + ", epoch " + s.ApEpoch
+            + ", session " + s.Phase + ", dealer " + s.Dealer + ")");
+    }
+
+    /// <summary>UI THREAD (<see cref="SessionEffects.DealerBackoff"/>): the dealer's own one-shot reconnect, on its own
+    /// ladder, stamped with the dealer epoch it was armed for.</summary>
+    static void ArmDealerRetry(in Session s)
+    {
+        int delayMs = BackoffMs(s.DealerAttempt);
+        s_dealerRetryTimer?.Dispose();
+        s_dealerRetryTimer = new Timer(static state => Publish(new SessionEvent(SessionEventKind.DealerRetry, Epoch: (uint)state!)),
+            s.Epoch, delayMs, Timeout.Infinite);
+        Log.Info("spotify", "dealer reconnecting in " + (delayMs / 1000) + "s (attempt " + s.DealerAttempt + ", epoch " + s.Epoch
+            + ", ap " + s.Ap + ")");
     }
 
     // ── 7. HTTP (the three mints and the clock probe) ────────────────────────────────────────────────────────────────
@@ -515,24 +605,23 @@ public static partial class Spotify
         return buffer.ToArray();
     }
 
-    /// <summary>The access point pings its client every two minutes (librespot's observed cadence; the client answers
-    /// <c>CmdPong</c>). It is the ONLY traffic on an idle AP channel.</summary>
-    public const int ApPingIntervalMs = 120_000;
-
-    /// <summary>The AP socket's read timeout: TWO missed pings plus a minute, never less. The first cut used 90 s
-    /// ("longer than the AP's ping interval" — it was not), so an idle channel timed out about 90 s after the last
-    /// packet, every time: the session dropped, re-logged in, reconnected the dealer and re-announced the device
-    /// (<c>put-state NewDevice</c>) every two to three minutes — 199 and 188 drops in the two earlier logs of
-    /// 2026-09-16 alone — and every other Spotify client lost Wavee as the active device on each flap. A dead channel
-    /// is still detected, five minutes late instead of ninety seconds early.</summary>
-    public const int ApReadTimeoutMs = 2 * ApPingIntervalMs + 60_000;
+    /// <summary>The AP socket's read timeout — since B6 only the BACKSTOP behind the keepalive (<see cref="ApKeepAlive"/>,
+    /// run by <see cref="ApPulse"/>), which calls a silent channel dead at most <see cref="ApKeepAlive.PingTimeoutMs"/>
+    /// (80 s) into any one read: the longest of its windows (a held pong plus its ack window is the same 80 s). Twice that,
+    /// so it never fires while the keepalive works, and it still bounds a handshake that stalls before the keepalive
+    /// exists. History: the first cut used 90 s ("longer than the AP's ping interval" — it was not) and dropped an idle
+    /// channel ~90 s after its last packet, every time — 199 and 188 flaps in two logs of 2026-09-16, each a re-login, a
+    /// dealer reconnect and a <c>put-state NewDevice</c>; it then became two missed pings plus a minute (300 s), the only
+    /// watchdog until B6.</summary>
+    public const int ApReadTimeoutMs = 2 * ApKeepAlive.PingTimeoutMs;
 
     // ── 8. the AP thread ─────────────────────────────────────────────────────────────────────────────────────────────
     //
     // ONE socket serves login AND audio keys: the handshake's socket and its negotiated codec are kept and become the
     // persistent channel (0.2.9 opened a second one; the AP tracks connections per account and a second handshake is
-    // both slower and noisier). The pump answers the AP's pings, routes 0x0d/0x0e to the key table, and reads the two
-    // post-login trailers (0x1b country, 0x50 product).
+    // both slower and noisier). The login reads the welcome and the two post-login trailers (0x1b country, 0x50 product);
+    // the pump routes 0x0d/0x0e to the key table and hands the AP's pings and pong-acks to the keepalive (B6), which holds
+    // each pong 60 s the way librespot does rather than answering it on the spot.
 
     sealed class ApLogin
     {
@@ -541,6 +630,11 @@ public static partial class Spotify
         public string Product = "";
         public Tier Tier;
         public byte[] Reusable = [];
+        /// <summary>The AP's first Ping arrived inside the login's read loop (it rides right behind the welcome), at
+        /// <see cref="PingAtMs"/> (<c>Environment.TickCount64</c>). Not answered there: the pump's keepalive holds its pong
+        /// from that instant (B6).</summary>
+        public bool Pinged;
+        public long PingAtMs;
     }
 
     /// <summary>One AP AuthFailure (cmd 0xAD), with its <c>keyexchange.proto</c> error code (<c>-1</c> = unreadable). Not yet
@@ -560,6 +654,16 @@ public static partial class Spotify
     /// <summary>The AP asked us to connect elsewhere (login_failed = TryAnotherAP): retry the NEXT access point.</summary>
     sealed class ApTryAnotherException(string message) : Exception(message);
 
+    /// <summary>The keepalive called the channel dead (B6) — OUR verdict, not the server's reset. Thrown by
+    /// <see cref="PumpAp"/> (the fold's timer cannot throw into the pump's read, so it closes the socket and the pump
+    /// rethrows this) and mapped by <see cref="ApLoop"/> to <c>ap.exit reason=keepalive-timeout</c> and an epoch-stamped
+    /// <c>ApDropped</c>, which reconnects the AP alone (B4).</summary>
+    sealed class ApKeepAliveException(ApKeepAlive.DeadReason reason, Exception? inner)
+        : Exception("the AP keepalive expired (" + ApKeepAlive.Word(reason) + ")", inner)
+    {
+        public ApKeepAlive.DeadReason Reason { get; } = reason;
+    }
+
     static TcpClient? s_apSocket;
     static NetworkStream? s_apStream;
     static ApCodec s_apCodec;
@@ -574,41 +678,64 @@ public static partial class Spotify
         s_apSocket = null;
     }
 
-    /// <summary>ONE attempt, start to finish. It never loops: a failure is published as <c>Dropped</c>, the fold
-    /// answers <c>CloseAll | Backoff</c>, and the retry timer starts a fresh thread. That keeps the ladder in one
-    /// place (a pure function plus a timer) instead of two.</summary>
+    /// <summary>ONE attempt, start to finish, for ONE AP epoch. It never loops: a failure is published as
+    /// <c>ApDropped</c> stamped with this epoch, the fold answers <c>CloseAp | ApBackoff</c>, and the AP's own retry timer
+    /// starts a fresh thread — the dealer never hears of it (B4). That keeps the ladder in one place (a pure function plus
+    /// a timer) instead of two.
+    /// <para>Every exit is ONE always-on line, <c>ap.exit reason= epoch=</c>: <c>epoch-cancelled</c> (the epoch was
+    /// abandoned under the thread — its own drop's fold, a sign-out, a refusal; whatever the socket threw on the way down is
+    /// the teardown's echo, not a failure), <c>dropped</c> (the channel failed under us — a server reset, a read error),
+    /// <c>keepalive-timeout</c> (our own keepalive found it silent, B6), <c>refused</c>, <c>no-credential</c>. The old
+    /// <c>catch (OperationCanceledException) {}</c> / <c>catch (ObjectDisposedException) {}</c> left without a word — and
+    /// also swallowed an OperationCanceledException that was NOT the epoch's (an HttpClient timeout in apresolve or login5
+    /// is a TaskCanceledException), leaving a dead AP thread and no reconnect. Now only this epoch's own cancellation is
+    /// quiet; anything else is a drop.</para></summary>
     static void ApLoop(uint epoch, CancellationToken ct)
     {
+        string exit = "faulted";
         try
         {
             Credential cred = LoadCredential();
             if (cred.IsEmpty)
             {
+                exit = "no-credential";
                 Publish(new SessionEvent(SessionEventKind.Login, Flag: false));
                 return;
             }
 
-            ResolveAndPublishHosts(ct, out var accessPoints);
-            ConnectAndLogin(cred, accessPoints, ct);
+            ResolveAndPublishHosts(epoch, ct, out var accessPoints);
+            ApLogin login = ConnectAndLogin(cred, accessPoints, epoch, ct);
             MintTokens(ct);
-            PumpAp(ct);                                              // returns only when the channel drops
-            if (ct.IsCancellationRequested) return;
+            PumpAp(epoch, login, ct);                                // returns only when this epoch is cancelled
+            ct.ThrowIfCancellationRequested();
             throw new IOException("the AP channel closed");
         }
-        catch (OperationCanceledException) { }
-        catch (ObjectDisposedException) { }                          // the epoch closed the socket under us
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            exit = ExitEpochCancelled;
+        }
         catch (ApRefusedException ex)
         {
             Log.Warn("spotify", "the AP refused the login (" + ex.Verdict + "): " + ex.Message
                 + (ex.Verdict == RejectVerdict.Transient ? " — the credential is kept" : ""));
-            if (!ct.IsCancellationRequested)
-                Publish(new SessionEvent(SessionEventKind.AuthRejected, Number: (long)ex.Verdict));
+            exit = "refused";
+            Publish(new SessionEvent(SessionEventKind.AuthRejected, Number: (long)ex.Verdict, Epoch: epoch));
+        }
+        catch (ApKeepAliveException)
+        {
+            // B6: our own verdict (the pulse already said which window lapsed, `ap.keepalive dead`). The recovery is a
+            // reset's — the AP reconnects alone — but the exit names it, so the log keeps the server's resets (`dropped`,
+            // `ap channel failed`) and our timeouts apart.
+            exit = "keepalive-timeout";
+            Publish(new SessionEvent(SessionEventKind.ApDropped, Number: (long)SessionFault.Network, Epoch: epoch));
         }
         catch (Exception ex)
         {
+            // A cancellation that lands between the filter above and this post leaves an ApDropped stamped with an epoch
+            // the fold has already moved past: `IsStale` refuses it, which is exactly what the stamp is for.
             Log.Warn("spotify", "ap channel failed (epoch " + epoch + ")", ex);
-            if (!ct.IsCancellationRequested)
-                Publish(new SessionEvent(SessionEventKind.Dropped, Number: (long)SessionFault.Network));
+            exit = "dropped";
+            Publish(new SessionEvent(SessionEventKind.ApDropped, Number: (long)SessionFault.Network, Epoch: epoch));
         }
         finally
         {
@@ -620,15 +747,17 @@ public static partial class Spotify
                 restart = s_apRestartEpoch;
                 s_apRestartEpoch = 0;
             }
-            if (restart != 0 && restart != epoch && restart == Current.Epoch) StartAp(restart);
+            Log.Info("spotify", "ap.exit reason=" + exit + " epoch=" + epoch);
+            if (restart != 0 && restart != epoch && restart == Current.ApEpoch) StartAp(restart);
         }
     }
 
     /// <summary>apresolve, once per attempt: the access points to try (":4070 first", then the rest — the failover
-    /// order 0.2.9 settled on), plus the spclient and dealer hosts the session carries.</summary>
-    static void ResolveAndPublishHosts(CancellationToken ct, out List<(string Host, int Port)> accessPoints)
+    /// order 0.2.9 settled on), plus the spclient and dealer hosts the session carries. Published under this AP
+    /// <paramref name="epoch"/>.</summary>
+    static void ResolveAndPublishHosts(uint epoch, CancellationToken ct, out List<(string Host, int Port)> accessPoints)
     {
-        byte[] json = Get("https://apresolve.spotify.com/?type=accesspoint&type=spclient&type=dealer", ct);
+        byte[] json = Get("https://apresolve.spotify.com/?type=accesspoint&type=spclient&type=dealer-g2", ct);
         accessPoints = [];
         var rest = new List<(string, int)>();
         Span<Range> ranges = stackalloc Range[32];
@@ -646,9 +775,9 @@ public static partial class Spotify
 
         n = ParseHosts(json, "spclient"u8, ranges);
         TokenRef spclient = n > 0 ? Text.Add(FirstHost(json, ranges[0])) : default;
-        n = ParseHosts(json, "dealer"u8, ranges);
+        n = ParseHosts(json, "dealer-g2"u8, ranges);
         TokenRef dealer = n > 0 ? Text.Add(FirstHost(json, ranges[0])) : Text.Add("dealer.spotify.com");
-        Publish(new SessionEvent(SessionEventKind.Hosts, Text: spclient, Text2: dealer));
+        Publish(new SessionEvent(SessionEventKind.Hosts, Text: spclient, Text2: dealer, Epoch: epoch));
 
         static string FirstHost(byte[] json, Range r)
         {
@@ -661,8 +790,10 @@ public static partial class Spotify
     /// <summary>Walk the access points until one logs in. A refusal goes through the D24 ladder (<see cref="OnApReject"/>):
     /// the FIRST bad-credentials answer buys one more attempt against a fresh access point (the next one in the list,
     /// wrapping), the second is the definitive verdict; "try another AP" is plain failover; anything else stops with the
-    /// credential kept. A retry that then fails on transport is a network failure, never a verdict.</summary>
-    static void ConnectAndLogin(in Credential cred, List<(string Host, int Port)> accessPoints, CancellationToken ct)
+    /// credential kept. A retry that then fails on transport is a network failure, never a verdict. Every step is published
+    /// under this AP <paramref name="epoch"/>. Returns the login the channel now carries (the pump's keepalive reads its
+    /// first Ping from it).</summary>
+    static ApLogin ConnectAndLogin(in Credential cred, List<(string Host, int Port)> accessPoints, uint epoch, CancellationToken ct)
     {
         Exception? last = null;
         int badCredentials = 0;
@@ -677,11 +808,11 @@ public static partial class Spotify
                 tcp = new TcpClient { NoDelay = true };
                 tcp.Connect(host, port);
                 var stream = tcp.GetStream();
-                stream.ReadTimeout = ApReadTimeoutMs;                 // see the constant: two missed AP pings, not one
-                Publish(new SessionEvent(SessionEventKind.Connected));
+                stream.ReadTimeout = ApReadTimeoutMs;                 // the backstop behind the keepalive (see the constant)
+                Publish(new SessionEvent(SessionEventKind.Connected, Epoch: epoch));
 
                 var codec = Negotiate(stream, ct);
-                Publish(new SessionEvent(SessionEventKind.HandshakeOk));
+                Publish(new SessionEvent(SessionEventKind.HandshakeOk, Epoch: epoch));
 
                 var login = Authenticate(stream, ref codec, cred, ct);
                 s_apSocket = tcp;
@@ -689,9 +820,9 @@ public static partial class Spotify
                 s_apCodec = codec;
                 s_login = login;
                 tcp = null;                                           // the session owns it now
-                PublishWelcome(login);
+                PublishWelcome(login, epoch);
                 PublishPreferredLocale();
-                return;
+                return login;
             }
             catch (ApRejectedException ex)
             {
@@ -814,7 +945,9 @@ public static partial class Spotify
 
     /// <summary>Present the credential over the Shannon channel and read the welcome plus the two trailers the AP
     /// pushes on success. Bounded: a missing trailer must not hang the login, so the product/country wait is short and
-    /// a missing product reads as <see cref="Tier.Unknown"/> (treated as Free, never optimistically as Premium).</summary>
+    /// a missing product reads as <see cref="Tier.Unknown"/> — on a first login treated as Free, never optimistically as
+    /// Premium; on an AP reconnect the fold keeps the tier the login's first welcome settled. The AP's first Ping, which
+    /// rides behind the welcome, is only NOTED here (<see cref="ApLogin.Pinged"/>): its pong is the keepalive's (B6).</summary>
     static ApLogin Authenticate(NetworkStream stream, ref ApCodec codec, in Credential cred, CancellationToken ct)
     {
         var credentials = new Wavee.Protocol.LoginCredentials
@@ -889,7 +1022,9 @@ public static partial class Spotify
                         trailers++;
                         break;
                     case Handshake.CmdPing:
-                        SendAp(stream, ref codec, Handshake.CmdPong, [0, 0, 0, 0]);
+                        // B6: held, not answered — the pump's keepalive sends this ping's pong 60 s from NOW.
+                        result.Pinged = true;
+                        result.PingAtMs = Environment.TickCount64;
                         break;
                 }
             }
@@ -958,16 +1093,37 @@ public static partial class Spotify
         SendOnChannel(Handshake.CmdPreferredLocale, body[..n]);
     }
 
-    /// <summary>The persistent channel: answer pings, route key replies, ignore everything else (mercury and the
-    /// legacy packets are not used by this client). Returns when the channel drops.</summary>
-    static void PumpAp(CancellationToken ct)
+    /// <summary>The persistent channel, for ONE AP <paramref name="epoch"/>: route key replies, hand the AP's pings and
+    /// pong-acks to the keepalive (<see cref="ApPulse"/>, B6), ignore everything else (mercury and the legacy packets are
+    /// not used by this client). Returns only when this AP epoch is cancelled; a channel that drops THROWS — a reset, the
+    /// backstop read timeout, a failed MAC, or <see cref="ApKeepAliveException"/> when the keepalive called it dead — which
+    /// <see cref="ApLoop"/> publishes as <c>ApDropped</c>: the AP reconnects alone (B4).
+    /// <para>The keepalive starts HERE, when something reads the channel — not at the welcome: between the two the
+    /// thread mints tokens over HTTPS (seconds) and nothing could see an ack, so a window started at the welcome could
+    /// expire on a live channel. The Ping that rode behind the welcome (<see cref="ApLogin.Pinged"/>) is fed at the
+    /// instant it arrived, so its pong is still held from the ping.</para></summary>
+    static void PumpAp(uint epoch, ApLogin login, CancellationToken ct)
     {
         var stream = s_apStream ?? throw new IOException("no AP channel");
         byte[] buffer = new byte[64 * 1024];
         Span<byte> key = stackalloc byte[AudioKey.KeyLength];
+        using var pulse = new ApPulse(stream, s_apSocket, epoch, ct);
+        pulse.Feed(ApKeepAlive.Input.Connected, Environment.TickCount64);
+        if (login.Pinged) pulse.Feed(ApKeepAlive.Input.PingReceived, login.PingAtMs);
         while (!ct.IsCancellationRequested)
         {
-            byte cmd = ReadPacket(stream, ref s_apCodec, ref buffer, out int payloadLength);
+            // A verdict that landed while the last packet was being handled: the socket is already closed.
+            ApKeepAlive.DeadReason dead = pulse.Dead;
+            if (dead != ApKeepAlive.DeadReason.None) throw new ApKeepAliveException(dead, null);
+
+            byte cmd;
+            int payloadLength;
+            try { cmd = ReadPacket(stream, ref s_apCodec, ref buffer, out payloadLength); }
+            catch (Exception ex) when (pulse.Dead != ApKeepAlive.DeadReason.None)
+            {
+                // The pulse closed the socket under this read: what the read threw is that close's echo, the verdict is why.
+                throw new ApKeepAliveException(pulse.Dead, ex);
+            }
             var payload = buffer.AsSpan(0, payloadLength);
             switch (cmd)
             {
@@ -978,15 +1134,135 @@ public static partial class Spotify
                     if (AudioKey.TryReadError(payload, out uint badSeq, out int code)) CompleteKey(badSeq, default, code == 0 ? -1 : code);
                     break;
                 case Handshake.CmdPing:
-                    SendAp(stream, ref s_apCodec, Handshake.CmdPong, [0, 0, 0, 0]);   // librespot answers 0x00000000
+                    pulse.Feed(ApKeepAlive.Input.PingReceived, Environment.TickCount64);   // held 60 s, never answered here
                     break;
                 case Handshake.CmdPongAck:
+                    pulse.Feed(ApKeepAlive.Input.PongAckReceived, Environment.TickCount64);
                     break;
             }
         }
     }
 
-    static void PublishWelcome(ApLogin login)
+    /// <summary>THE AP KEEPALIVE'S SHELL HALF (B6), for ONE AP epoch: the pure <see cref="ApKeepAlive"/> fold, fed by the
+    /// pump (a Ping, a PongAck) and by ONE one-shot timer re-armed to the fold's next deadline after every step (P10: a
+    /// named timer, never a poll — per two-minute cycle it wakes once, to send the held pong). The tick is a timer and not
+    /// the socket's read timeout: a read that times out can land mid-packet, which a Shannon channel cannot survive, and
+    /// Winsock calls a socket whose <c>SO_RCVTIMEO</c> fired indeterminate.
+    /// <para>What it executes. <c>SendPong</c>: the HELD pong goes out on the stream this epoch's pump reads, under this
+    /// epoch's token, both captured at construction — never <see cref="SendOnChannel"/>'s <c>s_apStream</c> read at fire
+    /// time, which by then could be the next epoch's channel. The codec is <c>s_apCodec</c>, and it is this epoch's for as
+    /// long as the timer can fire: the next epoch's thread cannot install its own until this one has exited, and this one
+    /// exits only after <see cref="Dispose"/> returned — which takes the gate, so a callback mid-send finishes first and
+    /// every later one finds the pulse closed. <c>Dead</c>: the reason is latched and the socket closed, which unblocks the
+    /// pump's read; the pump then throws <see cref="ApKeepAliveException"/> (a timer cannot throw into another thread).</para>
+    /// <para>The always-on lines, three per two-minute cycle at Info: <c>ap.keepalive ping</c> (and the server's cadence),
+    /// <c>ap.keepalive pong</c> (how long it was held — the <c>wire.send channel=ap cmd=0x49</c> line follows it),
+    /// <c>ap.keepalive ack</c> (how fast the server answered); and <c>ap.keepalive dead</c> at Warn. A Ping or ack out of
+    /// turn says <c>unexpected</c>, as librespot warns.</para></summary>
+    sealed class ApPulse : IDisposable
+    {
+        readonly Lock _gate = new();
+        readonly NetworkStream _stream;
+        readonly TcpClient? _socket;
+        readonly uint _epoch;
+        readonly CancellationToken _ct;
+        readonly Timer _timer;
+        ApKeepAlive.State _state;
+        ApKeepAlive.DeadReason _dead;
+        bool _closed, _pinged, _ponged;
+        long _pingAtMs, _pongAtMs;
+
+        public ApPulse(NetworkStream stream, TcpClient? socket, uint epoch, CancellationToken ct)
+        {
+            _stream = stream;
+            _socket = socket;
+            _epoch = epoch;
+            _ct = ct;
+            _timer = new Timer(static self => ((ApPulse)self!).Feed(ApKeepAlive.Input.Tick, Environment.TickCount64),
+                this, Timeout.Infinite, Timeout.Infinite);
+        }
+
+        /// <summary>The fold's verdict, once it reached one (<see cref="ApKeepAlive.DeadReason.None"/> until then).</summary>
+        public ApKeepAlive.DeadReason Dead
+        {
+            get { lock (_gate) return _dead; }
+        }
+
+        /// <summary>Fold one input at <paramref name="nowMs"/> (<c>Environment.TickCount64</c>), run its effect, log the
+        /// transition, re-arm the timer. The pump thread and the timer both call it; the gate serialises them.</summary>
+        public void Feed(ApKeepAlive.Input input, long nowMs)
+        {
+            lock (_gate)
+            {
+                if (_closed) return;
+                ApKeepAlive.Phase was = _state.Phase;
+                var (next, effect) = ApKeepAlive.Step(in _state, input, nowMs);
+                _state = next;
+                string turn = ApKeepAlive.Expected(was, input) ? "" : " unexpected (was " + was + ")";
+                switch (input)
+                {
+                    case ApKeepAlive.Input.PingReceived when was != ApKeepAlive.Phase.Idle:
+                        Log.Info("spotify", "ap.keepalive ping epoch=" + _epoch
+                            + (_pinged ? " sinceLastPingMs=" + unchecked(nowMs - _pingAtMs) : " first")
+                            + " pongInMs=" + ApKeepAlive.DueInMs(in _state, Environment.TickCount64) + turn);
+                        _pinged = true;
+                        _pingAtMs = nowMs;
+                        break;
+                    case ApKeepAlive.Input.PongAckReceived when was != ApKeepAlive.Phase.Idle:
+                        Log.Info("spotify", "ap.keepalive ack epoch=" + _epoch
+                            + (_ponged ? " afterPongMs=" + unchecked(nowMs - _pongAtMs) : "") + turn);
+                        break;
+                }
+                switch (effect.Kind)
+                {
+                    case ApKeepAlive.EffectKind.SendPong:
+                        if (_ct.IsCancellationRequested) break;               // the epoch is going: its channel owes nothing
+                        try { SendAp(_stream, ref s_apCodec, Handshake.CmdPong, [0, 0, 0, 0]); }   // librespot's payload
+                        catch (Exception ex) when (ex is IOException or ObjectDisposedException or SocketException)
+                        {
+                            // The channel is already going down; the pump's read says so, and the ack window will too.
+                        }
+                        _ponged = true;
+                        _pongAtMs = nowMs;
+                        Log.Info("spotify", "ap.keepalive pong epoch=" + _epoch
+                            + (_pinged ? " heldMs=" + unchecked(nowMs - _pingAtMs) : "")
+                            + " ackWithinMs=" + ApKeepAlive.PongAckTimeoutMs);
+                        break;
+                    case ApKeepAlive.EffectKind.Dead:
+                        _dead = effect.Reason;
+                        Log.Warn("spotify", "ap.keepalive dead epoch=" + _epoch + " reason=" + ApKeepAlive.Word(effect.Reason)
+                            + " (was " + was + (_pinged ? ", last ping " + unchecked(nowMs - _pingAtMs) + "ms ago" : ", no ping yet")
+                            + ") — closing the channel; the AP reconnects alone");
+                        Abort();
+                        break;
+                }
+                _timer.Change(ApKeepAlive.DueInMs(in _state, nowMs), Timeout.Infinite);   // -1 while Idle: disarmed
+            }
+        }
+
+        /// <summary>Close this epoch's socket — the captured one, never whatever <c>s_apStream</c> holds by now — so the
+        /// pump's blocked read throws. Idempotent with <see cref="CloseApSocket"/>, which the AP thread runs on its way out.</summary>
+        void Abort()
+        {
+            try { _stream.Dispose(); } catch (IOException) { }
+            try { _socket?.Dispose(); } catch (SocketException) { }
+        }
+
+        /// <summary>PUMP THREAD, on its way out: no step runs after this returns (see the class).</summary>
+        public void Dispose()
+        {
+            lock (_gate)
+            {
+                if (_closed) return;
+                _closed = true;
+            }
+            _timer.Dispose();
+        }
+    }
+
+    /// <summary>The welcome, stamped with the AP <paramref name="epoch"/> that earned it: a welcome from a thread whose
+    /// epoch was abandoned while it walked the ladder is refused by the fold rather than signing anything in.</summary>
+    static void PublishWelcome(ApLogin login, uint epoch)
     {
         // The interning happens INSIDE the post — i.e. on the UI thread, the only thread that may touch the
         // interner (C1, and `Entities/Store.cs`'s "the store thread NEVER resolves").
@@ -996,11 +1272,13 @@ public static partial class Spotify
                 Id: Entities.Intern(Encoding.UTF8.GetBytes(login.Username)),
                 Id2: Entities.Intern(Encoding.UTF8.GetBytes(login.Country)),
                 Id3: Entities.Intern(Encoding.UTF8.GetBytes(login.Product)),
-                Number: (long)login.Tier);
+                Number: (long)login.Tier, Epoch: epoch);
             Apply(e);
         });
-        Log.Info("spotify", "logged in (" + Platform.Redact(login.Username) + ", " + login.Product + ", "
-            + login.Country + ", " + login.Reusable.Length + "-byte reusable credential)");
+        // An empty product is a 0x50 that missed its window: a first login is refused for it, a reconnect keeps its tier.
+        Log.Info("spotify", "logged in (" + Platform.Redact(login.Username) + ", "
+            + (login.Product.Length == 0 ? "product late" : login.Product) + ", "
+            + login.Country + ", " + login.Reusable.Length + "-byte reusable credential, ap epoch " + epoch + ")");
     }
 
     /// <summary>UI THREAD (a <see cref="SessionEffects.SaveCredential"/> effect): persist the reusable blob the welcome
@@ -1243,7 +1521,7 @@ public static partial class Spotify
         if (s_login is null) return null;
         try
         {
-            string token = MintAccessToken(force, EpochToken);
+            string token = MintAccessToken(force, SessionToken);
             if (force)
             {
                 Publish(new SessionEvent(SessionEventKind.AccessTokenMinted,
@@ -1278,8 +1556,8 @@ public static partial class Spotify
                 if (!TokenDue(NowMs, s_clientTokenExpiresAtMs)) return s_clientToken;
             }
             string? fresh = null;
-            try { fresh = MintClientToken(EpochToken); }
-            catch (OperationCanceledException) { }                   // the epoch closed mid-mint: the stale value stands
+            try { fresh = MintClientToken(SessionToken); }
+            catch (OperationCanceledException) { }                   // the login closed mid-mint: the stale value stands
             if (fresh is null)
             {
                 lock (TokenGate) s_clientTokenExpiresAtMs = NowMs + ClientTokenRetryMs + TokenRefreshLeadMs;
@@ -1428,13 +1706,34 @@ public static partial class Spotify
         ws?.Dispose();
     }
 
+    /// <summary>The dealer thread, for ONE dealer epoch (<see cref="Session.Epoch"/>). Every exit is one always-on line,
+    /// <c>dealer.exit reason= epoch=</c> — <c>epoch-cancelled</c> or <c>dropped</c> — and a start that arrived while it
+    /// was unwinding is honoured from here (<see cref="StartDealer"/>).</summary>
     static void DealerLoop(uint epoch, CancellationToken ct)
     {
-        try { DealerLoopCore(epoch, ct); }
-        finally { Volatile.Write(ref s_dealerRunning, 0); }
+        string exit = "faulted";
+        try { exit = DealerLoopCore(epoch, ct); }
+        finally
+        {
+            uint restart;
+            lock (ThreadGate)
+            {
+                Volatile.Write(ref s_dealerRunning, 0);
+                restart = s_dealerRestartEpoch;
+                s_dealerRestartEpoch = 0;
+            }
+            Log.Info("spotify", "dealer.exit reason=" + exit + " epoch=" + epoch);
+            if (restart != 0 && restart != epoch && restart == Current.Epoch) StartDealer(restart);
+        }
     }
 
-    static void DealerLoopCore(uint epoch, CancellationToken ct)
+    /// <summary>Connect, receive until the socket dies, and say why it ended. A drop is published as
+    /// <c>DealerDropped</c> stamped with this epoch: the fold answers <c>CloseDealer | DealerBackoff</c> and the dealer's
+    /// OWN retry timer starts the next thread — the AP channel never hears of it (B4). Only this epoch's own cancellation
+    /// ends the loop quietly; any other exception — an HttpClient timeout's TaskCanceledException out of a bearer re-mint
+    /// included, which the old <c>catch (OperationCanceledException) { return; }</c> swallowed into a dead dealer with no
+    /// reconnect — is a drop. Returns the exit reason.</summary>
+    static string DealerLoopCore(uint epoch, CancellationToken ct)
     {
         byte[] scratch = new byte[DealerScratchBytes];
         byte[] receive = new byte[64 * 1024];
@@ -1442,8 +1741,9 @@ public static partial class Spotify
         bool forceToken = false;
         bool retried = false;
 
-        while (!ct.IsCancellationRequested)
+        while (true)
         {
+            if (ct.IsCancellationRequested) return ExitEpochCancelled;
             try
             {
                 string? token = AccessToken(forceToken);
@@ -1469,31 +1769,38 @@ public static partial class Spotify
                 }
 
                 Volatile.Write(ref s_lastDealerTick, Environment.TickCount64);
-                Log.Info("spotify", "dealer connected (" + host + ")");
+                Log.Info("spotify", "dealer connected (" + host + ", epoch " + epoch + ")");
                 StartKeepalive(ws, ct);
-                Receive(ws, frame, receive, scratch, ct);
+                Receive(ws, frame, receive, scratch, epoch, ct);
                 throw new IOException("the dealer closed the socket");
             }
-            catch (OperationCanceledException) { return; }
+            catch (Exception) when (ct.IsCancellationRequested)
+            {
+                // The epoch was abandoned under this thread (its own drop's fold, a sign-out, a disconnect): whatever the
+                // socket threw on the way down is the teardown's echo. `CloseDealer` already closed it; this is idempotent.
+                CloseDealerSocket();
+                return ExitEpochCancelled;
+            }
             catch (Exception ex)
             {
                 Log.Warn("spotify", "dealer dropped (epoch " + epoch + ")", ex);
                 CloseDealerSocket();
-                if (ct.IsCancellationRequested) return;
                 if (forceToken && !retried)
                 {
                     // The wss handshake failed and the token is the likeliest reason: ONE retry with a force-minted
-                    // bearer before the whole epoch is torn down (0.2.9's G6 fix, kept).
+                    // bearer before the dealer epoch is given up (0.2.9's G6 fix, kept).
                     retried = true;
                     continue;
                 }
-                Publish(new SessionEvent(SessionEventKind.Dropped, Number: (long)SessionFault.Network));
-                return;   // the epoch closes; the AP loop's backoff owns the next attempt
+                // A cancellation landing between the filter above and this post leaves a drop stamped with an epoch the
+                // fold has already moved past: `IsStale` refuses it.
+                Publish(new SessionEvent(SessionEventKind.DealerDropped, Number: (long)SessionFault.Network, Epoch: epoch));
+                return "dropped";    // the dealer's own backoff owns the next attempt; the AP is untouched (B4)
             }
         }
     }
 
-    static void Receive(ClientWebSocket ws, MemoryStream frame, byte[] receive, byte[] scratch, CancellationToken ct)
+    static void Receive(ClientWebSocket ws, MemoryStream frame, byte[] receive, byte[] scratch, uint epoch, CancellationToken ct)
     {
         var segment = new ArraySegment<byte>(receive);
         while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
@@ -1510,14 +1817,15 @@ public static partial class Spotify
 
             Volatile.Write(ref s_lastDealerTick, Environment.TickCount64);   // any frame means the link is alive
             var utf8 = frame.GetBuffer().AsSpan(0, (int)frame.Length);
-            Dispatch(utf8, scratch);
+            Dispatch(utf8, scratch, epoch);
         }
     }
 
     /// <summary>Protocol frames are answered here; everything else goes to `Connect.OnDealer` (owner F), which parses
     /// it again with the same pure parser. The re-parse is deliberate: it keeps this loop ignorant of what a topic
-    /// means, and a frame the Connect glue cares about arrives a few times a second at most.</summary>
-    static void Dispatch(ReadOnlySpan<byte> utf8, byte[] scratch)
+    /// means, and a frame the Connect glue cares about arrives a few times a second at most. The pusher's hello is
+    /// stamped with this dealer <paramref name="epoch"/>: a dead connection's late hello is refused by the fold.</summary>
+    static void Dispatch(ReadOnlySpan<byte> utf8, byte[] scratch, uint epoch)
     {
         var message = DealerFrame.Parse(utf8, scratch);
         switch (message.Kind)
@@ -1534,7 +1842,7 @@ public static partial class Spotify
         {
             // The pusher's hello, and the ONE frame that carries the connection id a PutState must quote. It has no
             // payload anyone folds, so it never reaches the Connect glue.
-            Publish(new SessionEvent(SessionEventKind.DealerOnline, Text: Text.Add(message.ConnectionId)));
+            Publish(new SessionEvent(SessionEventKind.DealerOnline, Text: Text.Add(message.ConnectionId), Epoch: epoch));
             return;
         }
 
@@ -1555,7 +1863,7 @@ public static partial class Spotify
             try { ws.SendAsync(copy.AsMemory(), WebSocketMessageType.Text, true, CancellationToken.None).GetAwaiter().GetResult(); }
             catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException or OperationCanceledException)
             {
-                // A failed send drops the connection: the receive loop exits and the epoch reconnects.
+                // A failed send drops the connection: the receive loop exits and the dealer reconnects on its own (B4).
             }
         }
     }

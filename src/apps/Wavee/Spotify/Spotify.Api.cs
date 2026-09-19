@@ -83,13 +83,19 @@ public static partial class Spotify
             /// <c>{iso}#{int}#{int}#{int}</c>, which a typed header parse rejects), or null. Sent back as
             /// <c>If-None-Match</c> by the conditional reads that keep one (<see cref="LikedContentFilters"/>, G-053).</summary>
             public readonly string? ETag;
+            public readonly int CacheMaxAgeSeconds;
+            public readonly bool CacheNoStore;
+            public readonly bool CacheHasMaxAge;
 
-            public Result(int status, byte[] body, int retryAfterSeconds = 0, string? etag = null)
+            public Result(int status, byte[] body, int retryAfterSeconds = 0, string? etag = null, int cacheMaxAgeSeconds = 0, bool cacheNoStore = false, bool cacheHasMaxAge = false)
             {
                 Status = status;
                 Body = body;
                 RetryAfterSeconds = retryAfterSeconds;
                 ETag = etag;
+                CacheMaxAgeSeconds = Math.Max(0, cacheMaxAgeSeconds);
+                CacheNoStore = cacheNoStore;
+                CacheHasMaxAge = cacheHasMaxAge || cacheMaxAgeSeconds > 0;
             }
 
             public bool Ok => Status is >= 200 and < 300;
@@ -98,7 +104,7 @@ public static partial class Spotify
             public ReadOnlySpan<byte> Bytes => Body;
 
             /// <summary>The same answer with its body replaced — how a zstd frame becomes the message it wraps.</summary>
-            public Result WithBody(byte[] body) => new(Status, body, RetryAfterSeconds, ETag);
+            public Result WithBody(byte[] body) => new(Status, body, RetryAfterSeconds, ETag, CacheMaxAgeSeconds, CacheNoStore, CacheHasMaxAge);
 
             public static Result Transport => new(0, []);
         }
@@ -271,8 +277,10 @@ public static partial class Spotify
         {
             for (int attempt = 0; ; attempt++)
             {
+                if (!AccountRequestIsCurrent()) return new Result(409, []);
                 Result result = SendOnce(verb, url, headers, kind, body, syncReason, ct, contentType, contentEncoding, ifNoneMatch, identity);
                 if (result.Status != 401 || attempt > 0) return result;
+                if (!AccountRequestIsCurrent()) return new Result(409, []);
                 if (AccessToken(force: true) is null) return result;
             }
         }
@@ -297,8 +305,10 @@ public static partial class Spotify
                     if (contentType is not null) payload.Headers.ContentType = new MediaTypeHeaderValue(contentType);
                     if (contentEncoding is not null) payload.Headers.ContentEncoding.Add(contentEncoding);
                 }
+                // Stamp may mint credentials; re-check after that boundary before any authenticated bytes leave.
+                if (!AccountRequestIsCurrent()) return new Result(409, []);
                 using HttpResponseMessage response = Client.Send(message, HttpCompletionOption.ResponseHeadersRead, ct);
-                return new Result((int)response.StatusCode, ReadBody(response, ct), RetryAfter(response), ETagOf(response));
+                return new Result((int)response.StatusCode, ReadBody(response, ct), RetryAfter(response), ETagOf(response), (int)Math.Clamp(response.Headers.CacheControl?.MaxAge?.TotalSeconds ?? 0, 0, int.MaxValue), response.Headers.CacheControl?.NoStore == true, response.Headers.CacheControl?.MaxAge is not null);
             }
             catch (OperationCanceledException)
             {
@@ -377,7 +387,7 @@ public static partial class Spotify
             if (pathfinder)
             {
                 h.TryAddWithoutValidation("App-Platform", web ? "WebPlayer" : Identity.AppPlatform);
-                h.TryAddWithoutValidation("Spotify-App-Version", web ? Identity.WebPlayerAppVersion : Identity.ClientVersion);
+                h.TryAddWithoutValidation("Spotify-App-Version", web ? Identity.WebPlayerAppVersion : Identity.DesktopSemver);
                 h.TryAddWithoutValidation("User-Agent", web ? WebPlayerUserAgent : DesktopPathfinderUserAgent);
             }
             else if ((headers & HeaderSet.Identity) != 0)
@@ -394,7 +404,7 @@ public static partial class Spotify
                 h.TryAddWithoutValidation("X-Spotify-Connection-Id", connectionId);
             if ((headers & HeaderSet.NoStore) != 0) h.TryAddWithoutValidation("Cache-Control", "no-store");
             if ((headers & HeaderSet.ApplyLenses) != 0) h.TryAddWithoutValidation("spotify-apply-lenses", "auto");
-            if ((headers & HeaderSet.AppliedLenses) != 0) h.TryAddWithoutValidation("spotify-applied-lenses", "auto");
+            if ((headers & HeaderSet.AppliedLenses) != 0) h.TryAddWithoutValidation("spotify-applied-lenses", "auto: YXV0bw==");
             if ((headers & HeaderSet.AcceptListItems) != 0)
                 h.TryAddWithoutValidation("x-accept-list-items", "audio-track, audio-episode, video-episode, audiobook");
             if ((headers & HeaderSet.AcceptGeoblock) != 0) h.TryAddWithoutValidation("spotify-accept-geoblock", "dummy");
@@ -554,7 +564,10 @@ public static partial class Spotify
             Span<char> buffer = stackalloc char[64];
             Request request = Build(Current, RequestKind.ExtendedMetadata, args, buffer);
             string url = BaseUrl(request.Host) + new string(request.Path);
-            return SendAuthed(Verb.Post, url, request.Headers | HeaderSet.GzipBody, RequestKind.ExtendedMetadata, body, "", ct);
+            HeaderSet headers = request.Headers | HeaderSet.GzipBody;
+            return s_metadataCache.Execute(body, Current.Epoch.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), payload =>
+                    SendAuthed(Verb.Post, url, headers, RequestKind.ExtendedMetadata, payload, "", ct));
         }
 
         /// <summary>One entity, one trait — the door every "extra" below goes through.</summary>
@@ -670,13 +683,13 @@ public static partial class Spotify
         public static bool Serves(in FetchRoute route) => route.Transport switch
         {
             RouteTransport.Metadata => route.Extension > 0,
-            RouteTransport.Pathfinder => route.Op is PathfinderOp.GetAlbum or PathfinderOp.GetTrack
+            RouteTransport.Pathfinder => route.Op is PathfinderOp.EpisodeDetail or PathfinderOp.GetAlbum or PathfinderOp.GetTrack
                 or PathfinderOp.ArtistOverview or PathfinderOp.Discography or PathfinderOp.Home or PathfinderOp.HomeSection
                 or PathfinderOp.BrowseAll or PathfinderOp.BrowsePage or PathfinderOp.BrowseSection or PathfinderOp.Search or PathfinderOp.SearchGenres or PathfinderOp.SearchSuggestions
                 or PathfinderOp.AlbumMerch or PathfinderOp.SimilarAlbums
                 or PathfinderOp.DiscographyAlbums or PathfinderOp.DiscographySingles or PathfinderOp.DiscographyCompilations
                 or PathfinderOp.Concert or PathfinderOp.ArtistConcerts,
-            RouteTransport.Spclient => route.Rest is SpclientRoute.PlaylistRead or SpclientRoute.LikedContentFilters or SpclientRoute.PermissionBase
+            RouteTransport.Spclient => route.Rest is SpclientRoute.ShowRead or SpclientRoute.PlaylistRead or SpclientRoute.LikedContentFilters or SpclientRoute.PermissionBase
                 or SpclientRoute.Popcount or SpclientRoute.ArtistTopTracksExtended or SpclientRoute.Rootlist
                 or SpclientRoute.CollectionPage or SpclientRoute.Recents,
             _ => false,
@@ -962,6 +975,10 @@ public static partial class Spotify
             Result result;
             switch (op)
             {
+                case PathfinderOp.EpisodeDetail:
+                    result = PodcastQueries.EpisodeQuery(uri, ct);
+                    if (result.Ok) Decode.EpisodeDetail(result.Body, uri, s);
+                    break;
                 case PathfinderOp.GetAlbum:
                     // NEVER lands the offset-0 tracklist. `FetchRoutes.ForEdge` sends AlbumTracks at offset <= 0 to
                     // Metadata(AlbumV4), so getAlbum reaching here at offset 0 can only be the AlbumMoreBy prefetch —
@@ -1104,7 +1121,11 @@ public static partial class Spotify
         /// Spotify itself serves from the web bundle); everything else is the desktop client.</summary>
         public readonly record struct Query(string Op, string Hash, bool Web);
 
-        /// <summary>The persisted-query table, verbatim from the captured 1.2.94 client.</summary>
+        /// <summary>The persisted-query table. Verified 2026-09-19 against the official 1.2.96.518 client's own table (152
+        /// declarations extracted from its xpui bundle; every hash its captured traffic sent matched it byte-for-byte). Rotated
+        /// then vs the 1.2.94 capture: home + homeSection (one document), searchPlaylists, searchUsers, queryNpvArtist,
+        /// getTrack — the old documents still answered 200 that day but are no longer what the client sends. Audit:
+        /// wavee-captures/fresh-client-2026-09-19/findings-pathfinder.md (outside every repo).</summary>
         public static class Queries
         {
             public static readonly Query ArtistOverview = new("queryArtistOverview",
@@ -1112,13 +1133,13 @@ public static partial class Spotify
             public static readonly Query Album = new("getAlbum",
                 "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10", true);
             public static readonly Query Track = new("getTrack",
-                "612585ae06ba435ad26369870deaae23b5c8800a256cd8a57e08eddc25a37294", true);
+                "1a2f0cce77c90a4a5b1730beecc4da7e34290d684324c16663bf09a268ebce48", true);
             public static readonly Query Home = new("home",
-                "9052ac65ff42aefe6d39c45c184d9144cf8dbcc233ea1a76f8649264ad3e7896", false);
+                "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a", false);
             /// <summary>The section query rides the SAME persisted hash as <see cref="Home"/> — the gateway keys on
             /// the operation NAME, and the two share a document.</summary>
             public static readonly Query HomeSection = new("homeSection",
-                "9052ac65ff42aefe6d39c45c184d9144cf8dbcc233ea1a76f8649264ad3e7896", false);
+                "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a", false);
             public static readonly Query BrowseAll = new("browseAll",
                 "dbd8b55e09a58afc52eab438bc228ba28fd72ac2f2148c6c26354980e4579001", false);
             public static readonly Query BrowsePage = new("browsePage",
@@ -1126,7 +1147,7 @@ public static partial class Spotify
             public static readonly Query BrowseSection = new("browseSection",
                 "b13c1cccbfcb6947753c2613411b3566485c21fd5f36d80a80bb64be61ba2d51", false);
             public static readonly Query NpvArtist = new("queryNpvArtist",
-                "b2cedf7ed0f29c713567d97ed69b848c8387294edfe58a0e439a3a5669cc27bb", false);
+                "4ac064f555c9f57803a4e8c2e200cc9e2d3e942a3afdaca8884883a1051f695e", false);
             public static readonly Query AlbumMerch = new("queryAlbumMerch",
                 "3ef44ed6f17be67299538fe77faffab4075aeaf9e1085f10fc835592266711b5", false);
             public static readonly Query SimilarAlbums = new("similarAlbumsBasedOnThisTrack",
@@ -1154,11 +1175,11 @@ public static partial class Spotify
             public static readonly Query SearchArtists = new("searchArtists",
                 "270905851ba5c7faca81cfe053c2dbd8ceb4f156a0e0ef4b385af75ab69ffd13", true);
             public static readonly Query SearchPlaylists = new("searchPlaylists",
-                "af1730623dc1248b75a61a18bad1f47f1fc7eff802fb0676683de88815c958d8", true);
+                "d520014e748f9ea44f7707d8df1819867ac1205e8b7f3e28f22fe5fc858921b1", true);
             public static readonly Query SearchPodcasts = new("searchPodcasts",
                 "0195d9f61b43606d490bca64c3456e3593528cea6cc05c7e822c7c42beed0f4e", true);
             public static readonly Query SearchUsers = new("searchUsers",
-                "d3f7547835dc86a4fdf3997e0f79314e7580eaf4aaf2f4cb1e71e189c5dfcb1f", true);
+                "8f358dd82e62f61dd4ceaa9f8cd0889e644c9b707f1b724fbfb356a757cb7e5a", true);
             public static readonly Query SearchAuthors = new("searchAuthors",
                 "4a9d403a7cbc7e19da5520d619a865472b35382b043bfa458154e73a5c6f46bd", true);
             public static readonly Query SearchAudiobooks = new("searchAudiobooks",
@@ -1920,6 +1941,8 @@ public static partial class Spotify
         /// <summary>Autoplay for a context that ran out. <paramref name="podcast"/> picks the `/autopodcast` twin.</summary>
         public static Result Autoplay(byte[] body, bool podcast, CancellationToken ct)
         {
+            if (podcast) return PostEncoded("/context-resolve/v1/autopodcast", ApiHost.Spclient,
+                CommonProtobuf | HeaderSet.ContentForm, body, "application/x-www-form-urlencoded", null, ct);
             var args = new RequestArgs { Body = body, Flag = podcast };
             return Send(RequestKind.Autoplay, args, ct);
         }

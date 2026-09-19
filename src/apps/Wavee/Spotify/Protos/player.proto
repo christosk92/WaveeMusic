@@ -102,7 +102,7 @@ message Restrictions {
     map<string, RestrictionReasons> disallow_signals = 29;
     // UNNAMED (desktop 1.2.94.583): always exactly ["already_set"] in 24/24 captured PUTs, on PlayerState.restrictions only.
     // Neither defined nor reserved by librespot; the name here is a placeholder and the semantics are unknown.
-    repeated string unknown_disallow_reasons_31 = 31;
+    repeated string disallow_sleep_timer_clear_reasons = 31;
 }
 
 message RestrictionReasons {
@@ -124,6 +124,7 @@ message PlayOrigin {
 }
 
 message ContextPlayerOptions {
+    float playback_speed = 4;
     bool shuffling_context = 1;
     bool repeating_context = 2;
     bool repeating_track = 3;

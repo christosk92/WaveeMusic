@@ -19,8 +19,8 @@
 // the tick makes is in `Diagnostics.Headless.cs` (CORE) and is a unit test there.
 //
 // SAFETY (§2.8): settings writes land in an overlay and never reach HKCU; the credential blob can be refreshed but never
-// removed; the Connect device id is namespaced (`device.id.headless`); no library.db unless `--store`; `--profile`
-// redirects the whole profile (App.cs sets `Platform.ProfileRoot` from `ProfileArg` before `Platform.Boot`).
+// removed; the Connect device id is namespaced (`device.id.headless`); no library.<schema>.db unless `--store`;
+// `--profile` redirects the whole profile (App.cs sets `Platform.ProfileRoot` from `ProfileArg` before `Platform.Boot`).
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -57,7 +57,7 @@ public static partial class Diagnostics
         }
 
         /// <summary>`--profile &lt;dir&gt;`, or "" for the default profile. App.cs hands it to `Platform.ProfileRoot`
-        /// BEFORE `Platform.Boot` — every path (store.json, logs, library.db, cache/) hangs off it.</summary>
+        /// BEFORE `Platform.Boot` — every path (store.json, logs, the library file, cache/) hangs off it.</summary>
         public static string ProfileArg(string[] args)
         {
             int i = Array.IndexOf(args, "--profile");
@@ -96,7 +96,7 @@ public static partial class Diagnostics
             "  --script        run a command script; the exit code is its verdict (0 ok, 1 fault, 2 assertion)\n" +
             "  --pipe          read commands from \\\\.\\pipe\\<name> (one client); default: read commands from stdin\n" +
             "  --profile       use <dir> as the profile instead of %LOCALAPPDATA%\\Wavee\n" +
-            "  --store         open <profile>\\library.db (default: memory-only catalog)\n" +
+            "  --store         open <profile>\\library.<schema>.db (default: memory-only catalog)\n" +
             "  --silent        play through the silent endpoint instead of the default audio device\n" +
             "  --no-login      do not resume the stored credential (offline grammar runs)\n" +
             "  --connect       announce the Connect device once online\n" +
@@ -278,8 +278,10 @@ public static partial class Diagnostics
             WasapiAudioDevice.DiagSink = static s => Log.Info("audio", s);
             WasapiAudioDevice.FormatSink = static f => Log.Info("audio", "device format " + f);
 
-            // 4. boot (no Shell, no Modules, no Store unless asked)
-            Store.Use(o.Store ? Path.Combine(profile, "library.db") : null);
+            // 4. boot (no Shell, no Modules, no Store unless asked). The shapes first, unconditionally, exactly as the GUI
+            // does: they ARE the schema, so `Store.FileName` read before them names a near-empty schema's file.
+            App.RegisterShapes();
+            Store.Use(o.Store ? Path.Combine(profile, Store.FileName) : null);
             Entities.Boot(Platform.Scope);
             Spotify.Boot();
             Playback.Boot();

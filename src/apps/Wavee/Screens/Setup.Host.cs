@@ -23,21 +23,22 @@ public static partial class Setup
 
     /// <summary>Arm (or suppress) the first-run wizard for this install. Call ONCE per launch from the composition root,
     /// after <c>Platform.Boot</c> (it needs the settings store and the profile path) and BEFORE <c>Store.Use</c> opens
-    /// <c>library.db</c> or the shell writes its history — either would make every install look existing. Writes settings
-    /// only; the wizard itself is shown later, gated on <c>setup.pending</c>.</summary>
+    /// the store (<c>library.&lt;schema&gt;.db</c>) or the shell writes its history — either would make every install
+    /// look existing. Writes settings only; the wizard itself is shown later, gated on <c>setup.pending</c>.</summary>
     public static void BootstrapInstall()
     {
         InstallWitnesses disk = ProbeInstall(Platform.LocalFolder);
         Bootstrap.Run(Platform.Settings, in disk);
     }
 
-    /// <summary>The disk witnesses under <paramref name="dataRoot"/> (0.2.9's paths): <c>library.db</c>, a credential entry
-    /// in <c>store.json</c> (read raw — its presence is the witness, whether or not this machine can decrypt it), and the
-    /// navigation log <c>WaveeMusic\history.json</c>. READ-ONLY: nothing is created, opened for write or decrypted, and a
-    /// witness that cannot be inspected reads as absent (logged).</summary>
+    /// <summary>The disk witnesses under <paramref name="dataRoot"/>: the library file (0.2.9's plain <c>library.db</c>,
+    /// OR — since D1's schema-named file — any <c>library.*.db</c>; either alone is "this install has a library"), a
+    /// credential entry in <c>store.json</c> (read raw — its presence is the witness, whether or not this machine can
+    /// decrypt it), and the navigation log <c>WaveeMusic\history.json</c>. READ-ONLY: nothing is created, opened for
+    /// write or decrypted, and a witness that cannot be inspected reads as absent (logged).</summary>
     public static InstallWitnesses ProbeInstall(string dataRoot)
     {
-        bool library = Exists(Path.Combine(dataRoot, "library.db"), "library.db");
+        bool library = Exists(Path.Combine(dataRoot, "library.db"), "library.db") || AnySchemaLibrary(dataRoot);
         bool history = Exists(Path.Combine(dataRoot, "WaveeMusic", "history.json"), "history");
         bool credential = false;
         string store = Path.Combine(dataRoot, "store.json");
@@ -58,6 +59,23 @@ public static partial class Setup
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
             Log.Warn("setup", "install witness " + witness + " could not be inspected (" + ex.GetType().Name + ")");
+            return false;
+        }
+    }
+
+    /// <summary>D1's schema-named library file: any <c>library.*.db</c> (never a plain rename-tag leftover, which would
+    /// be <c>library.&lt;schema&gt;.db.dead-*</c> or carry a <c>-wal</c>/<c>-shm</c> suffix and so not match). Enumerated
+    /// defensively, like <see cref="Exists"/>: a directory that cannot be listed reads as no witness, logged, not thrown.</summary>
+    static bool AnySchemaLibrary(string dataRoot)
+    {
+        try
+        {
+            foreach (string _ in Directory.EnumerateFiles(dataRoot, "library.*.db")) return true;
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            Log.Warn("setup", "install witness library.*.db could not be inspected (" + ex.GetType().Name + ")");
             return false;
         }
     }

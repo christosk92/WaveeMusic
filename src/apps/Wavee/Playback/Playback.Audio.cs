@@ -234,6 +234,20 @@ public static partial class Playback
         /// <param name="Kind">The form factor, folded to the picker's glyph vocabulary.</param>
         public readonly record struct LocalAudioDevice(string Id, string Name, byte Kind, bool IsDefault);
 
+        public static LocalAudioDevice? CurrentEndpoint
+        {
+            get
+            {
+                lock (s_gate)
+                {
+                    if (s_session?.Sink is not WasapiAudioDevice { EndpointInfo: { } endpoint }) return null;
+                    const byte type = 0; // Form factor does not establish transport (a speaker may be Bluetooth).
+                    return new LocalAudioDevice(endpoint.Id, endpoint.Name, type, true);
+                }
+            }
+        }
+
+
         /// <summary>How the endpoint roster is read. A SEAM with a one-row default, and the reason is a verified
         /// engine fact rather than laziness: the engine's WASAPI leaf opens `GetDefaultAudioEndpoint` and FOLLOWS the
         /// default — there is no per-endpoint open anywhere in it, so a picker that let the user choose an endpoint
@@ -884,7 +898,7 @@ public static partial class Playback
                 }
             }
 
-            try { player.SetVolume(s_volume); player.SetMuted(Muted.Peek()); } catch { }
+            try { player.SetVolume(s_volume); player.SetMuted(Muted.Peek()); player.SetRate(RateFor(s_id)); } catch { }
 
             // The label and the real duration are facts about the OPENED file, so they are published from here rather
             // than guessed from the catalogue.
@@ -2654,6 +2668,12 @@ public static partial class Playback
 
         /// <summary>Position, in MS, relative to whatever is the active track right now. The engine's clock is
         /// session-relative and a hand-off rebases `_activeStartMs`, which is how a joined B reports from 0.</summary>
+        public static void SetRate(float rate)
+        {
+            try { Volatile.Read(ref s_player)?.SetRate(rate); }
+            catch (Exception ex) { Log.Warn("audio", "speed change failed", ex); }
+        }
+
         static long ActivePositionMs()
         {
             if (s_clockStale) return 0;
@@ -2661,6 +2681,11 @@ public static partial class Playback
             PcmAudioSession? sess;
             bool silent;
             lock (s_gate) { sess = s_session; silent = s_silent; }
+            if (s_id.Kind == EntityKind.Episode && sess is not null && !silent)
+            {
+                long content = sess.ContentPositionFrames * 1000L / Math.Max(1, sess.Format.SampleRate);
+                return SeekGate.ReportedPositionMs(Volatile.Read(ref s_pendingSeekMs), Math.Max(0, content));
+            }
             long raw = !silent && p is not null ? (long)p.Position.Peek().TotalMilliseconds
                      : sess is not null ? sess.PlayedFrames * 1000L / Math.Max(1, sess.Format.SampleRate)
                      : 0;

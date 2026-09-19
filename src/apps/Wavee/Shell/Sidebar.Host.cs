@@ -2690,6 +2690,11 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
     readonly List<int> _pinEnsureTracksSlots = new(8);
     // The unlisted cover-less pins' leading member tracks (`SidebarProjection.CollectMosaicTrackSlots`), one ask.
     readonly List<int> _pinEnsureMosaicTrackSlots = new(16);
+    // D4 (F2): the same idiom for an UNLISTED pin's non-playlist identity — `ResolveLivePin` used to fire one
+    // `Entities.Ensure` per pin per kind; collected here instead and flushed once per kind after the loop.
+    readonly List<int> _pinEnsureAlbumSlots = new(4);
+    readonly List<int> _pinEnsureArtistSlots = new(4);
+    readonly List<int> _pinEnsureShowSlots = new(4);
     FeedDemand _demand;
     int _demandLayoutVersion = int.MinValue;
     SidebarCustomLayout? _demandLayout;
@@ -3037,6 +3042,9 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
         _pinEnsureIdentitySlots.Clear();
         _pinEnsureTracksSlots.Clear();
         _pinEnsureMosaicTrackSlots.Clear();
+        _pinEnsureAlbumSlots.Clear();
+        _pinEnsureArtistSlots.Clear();
+        _pinEnsureShowSlots.Clear();
         var pins = Sidebar.Pins.Items;
         for (int i = 0; i < pins.Count; i++)
         {
@@ -3062,38 +3070,55 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
             _pinRows.Add(SidebarBinderPipeline.ResolveUnlistedPin(pin, i, hydrated, rootlistState));
         }
 
-        // E3/Bug A1: ONE span-form ask per group for the whole pin band, after the loop — never one
+        // E3: ONE span-form ask per group for the whole pin band, after the loop — never one
         // `Entities.Ensure`/`EnsureEdge` call per pin.
         if (_pinEnsureIdentitySlots.Count > 0)
             Entities.Ensure(Entities.Current.Playlists,
                 System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pinEnsureIdentitySlots),
                 (uint)PlaylistFields.Identity, FetchPriority.Visible);
+        // D2: a cover-less pin's mosaic warm — a tile, not a page — never `Visible` any more (the count-driven ask
+        // this list used to also carry, bug A1's `ShouldEnsureCount`, is deleted from `CollectListedPinAsks`).
         if (_pinEnsureTracksSlots.Count > 0)
             Entities.EnsureEdge(FetchEdge.PlaylistTracks,
                 System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pinEnsureTracksSlots),
-                priority: FetchPriority.Visible);
+                priority: FetchPriority.Prefetch);
         if (_pinEnsureMosaicTrackSlots.Count > 0)
             Entities.Ensure(Entities.Current.Tracks,
                 System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pinEnsureMosaicTrackSlots),
                 (uint)SidebarProjection.MosaicTrackFields, FetchPriority.Prefetch);
+        // D4 (F2): an UNLISTED Album/Artist/Show pin's identity — one span ask per kind, not one per pin.
+        if (_pinEnsureAlbumSlots.Count > 0)
+            Entities.Ensure(Entities.Current.Albums,
+                System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pinEnsureAlbumSlots),
+                (uint)AlbumFields.Identity, FetchPriority.Visible);
+        if (_pinEnsureArtistSlots.Count > 0)
+            Entities.Ensure(Entities.Current.Artists,
+                System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pinEnsureArtistSlots),
+                (uint)ArtistFields.Identity, FetchPriority.Visible);
+        if (_pinEnsureShowSlots.Count > 0)
+            Entities.Ensure(Entities.Current.Shows,
+                System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_pinEnsureShowSlots),
+                (uint)ShowFields.Identity, FetchPriority.Visible);
     }
 
-    /// <summary>Bug H/A1 companion to <see cref="ResolveLivePin"/>: a LISTED pin (already found in the projection
-    /// index) whose identity, count or cover has not landed yet. Playlist-only — Album/Artist/Show listed pins are
-    /// unaffected by this bug and read their fields directly off the edge, never gated on a Knows() check. Collects
-    /// into <see cref="_pinEnsureIdentitySlots"/>/<see cref="_pinEnsureTracksSlots"/> — <see cref="ResolvePins"/>
-    /// issues the batched asks once, after its loop.</summary>
+    /// <summary>Bug H companion to <see cref="ResolveLivePin"/>: a LISTED pin (already found in the projection
+    /// index) whose identity or cover has not landed yet, or whose cover-less mosaic still needs its member tracks.
+    /// Playlist-only — Album/Artist/Show listed pins are unaffected and read their fields directly off the edge,
+    /// never gated on a Knows() check. D2 (issue #4): a count is never asked for on its own any more — the deleted
+    /// bug A1 `ShouldEnsureCount` used to force this same full read just to learn a number;
+    /// <see cref="SidebarLibraryEntry.CountKnown"/> is now a passive read of <see cref="PlaylistFields.TrackCount"/>
+    /// (see `SidebarProjection.WalkRootlist`'s doc), never a reason to warm anything here. Collects into
+    /// <see cref="_pinEnsureIdentitySlots"/>/<see cref="_pinEnsureTracksSlots"/> — <see cref="ResolvePins"/> issues
+    /// the batched asks once, after its loop (the tracks ask at Prefetch).</summary>
     void CollectListedPinAsks(in SidebarLibraryEntry entry)
     {
         if (entry.Kind != SidebarEntryKind.Playlist) return;
-        if (entry.IdentityKnown && entry.CountKnown && !entry.Cover.IsEmpty) return;   // nothing to warm
+        if (entry.IdentityKnown && !entry.Cover.IsEmpty) return;   // no cover-less mosaic, no count ask — nothing to warm
         if (entry.Uri.Length == 0 || !EntityId.TryParse(entry.Uri, out var id)) return;
         var p = new Playlist(Entities.Current.Playlists.Slot(id));
         if (!p.Knows(PlaylistFields.Identity)) _pinEnsureIdentitySlots.Add(p.Slot);
-        // Bug A1: the count is asked regardless of cover, same rule as the rootlist walk's `ShouldEnsureCount`.
-        bool needsCount = !p.Knows(PlaylistFields.TrackCount) && p.MembershipState == EdgeState.Unknown;
         bool needsMembership = p.ImageId.IsEmpty && p.MembershipState == EdgeState.Unknown;
-        if (needsCount || needsMembership) _pinEnsureTracksSlots.Add(p.Slot);
+        if (needsMembership) _pinEnsureTracksSlots.Add(p.Slot);
     }
 
     // The entity a pin the library projection does not know (an editorial/Spotify-owned playlist, or any other row
@@ -3114,17 +3139,21 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 // G-059: an unlisted pin (the library projection does not carry it) gets the same cover-less mosaic
                 // fallback as a rootlist row — else a Pinned tile for it blanks out while its detail page mosaics fine.
                 var mosaic = p.ImageId.IsEmpty ? SidebarProjection.PlaylistMosaicTiles(in p) : null;
-                bool countKnown = p.Knows(PlaylistFields.TrackCount);
-                // Bug A1: the count is asked regardless of cover — a covered pin's subtitle needs it exactly as
-                // much as a cover-less pin's mosaic needs membership; both route through the same edge/answer.
-                bool needsCount = !countKnown && p.MembershipState == EdgeState.Unknown;
+                // The same count rule as the rootlist walk (`SidebarProjection.WalkRootlist`): the row fact first, then —
+                // free — the resident membership's Total, so a pin and its rootlist row never disagree about a count.
+                bool trackCountKnown = p.Knows(PlaylistFields.TrackCount);
+                bool membershipResident = p.MembershipState != EdgeState.Unknown;
+                bool countKnown = trackCountKnown || membershipResident;
+                int trackCount = trackCountKnown || !membershipResident ? p.TrackCount : p.MembershipTotal;
+                // D2 (the cache plan §3.4): a count is a ROW fact and never a reason to read the list — only a
+                // cover-less mosaic asks the membership edge, at Prefetch (`ResolvePins`' flush), same as a listed pin.
                 bool needsMembership = mosaic is null && p.ImageId.IsEmpty && p.MembershipState == EdgeState.Unknown;
-                if (needsCount || needsMembership) _pinEnsureTracksSlots.Add(p.Slot);
+                if (needsMembership) _pinEnsureTracksSlots.Add(p.Slot);
                 // A pin is always visible, so the rootlist walk's `ensureIdentity` gate is simply true here.
                 if (SidebarProjection.ShouldWarmMosaicTracks(true, !p.ImageId.IsEmpty, p.MembershipState, mosaic?.Count ?? 0))
                     SidebarProjection.CollectMosaicTrackSlots(p.TrackSlots, _pinEnsureMosaicTrackSlots);
                 return new SidebarLibraryEntry("", SidebarEntryKind.Playlist, "", Entities.Strings.Resolve(p.TitleId),
-                    Entities.Strings.Resolve(p.Owner.NameId), p.ImageId, mosaic, ChildCount: p.TrackCount, AddedAtMs: 0,
+                    Entities.Strings.Resolve(p.Owner.NameId), p.ImageId, mosaic, ChildCount: trackCount, AddedAtMs: 0,
                     SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0, Circular: false,
                     Flavor: SidebarPlaylistFlavor.None)
                 {
@@ -3141,7 +3170,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 var a = new Album(Entities.Current.Albums.Slot(id));
                 row = new EntityRef(EntityKind.Album, a.Slot);
                 if (!a.Knows(AlbumFields.Identity))
-                { Entities.Ensure(a, AlbumFields.Identity, FetchPriority.Visible); return null; }
+                { _pinEnsureAlbumSlots.Add(a.Slot); return null; }
                 var artistSlots = a.ArtistSlots;
                 return new SidebarLibraryEntry("", SidebarEntryKind.Album, "", a.Title, "", a.ImageId, null,
                     ChildCount: a.TrackCount, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0,
@@ -3161,7 +3190,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 var ar = new Artist(Entities.Current.Artists.Slot(id));
                 row = new EntityRef(EntityKind.Artist, ar.Slot);
                 if (!ar.Knows(ArtistFields.Identity))
-                { Entities.Ensure(ar, ArtistFields.Identity, FetchPriority.Visible); return null; }
+                { _pinEnsureArtistSlots.Add(ar.Slot); return null; }
                 return new SidebarLibraryEntry("", SidebarEntryKind.Artist, "", ar.Name, "", ar.ImageId, null,
                     ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0,
                     Circular: true, Flavor: SidebarPlaylistFlavor.None)
@@ -3172,7 +3201,7 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 var s = new Show(Entities.Current.Shows.Slot(id));
                 row = new EntityRef(EntityKind.Show, s.Slot);
                 if (!s.Knows(ShowFields.Identity))
-                { Entities.Ensure(s, ShowFields.Identity, FetchPriority.Visible); return null; }
+                { _pinEnsureShowSlots.Add(s.Slot); return null; }
                 return new SidebarLibraryEntry("", SidebarEntryKind.Show, "", s.Title, "", s.ImageId, null,
                     ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0,
                     Circular: false, Flavor: SidebarPlaylistFlavor.None)

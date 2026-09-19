@@ -1,0 +1,37 @@
+{
+  "data": {
+    "commentReplies": [
+      {
+        "__typename": "CommentReplyPage",
+        "items": [
+          {
+            "author": {
+              "__typename": "UserResponseWrapper",
+              "data": {
+                "name": "Listener",
+                "uri": "spotify:user:fixture",
+                "avatar": null
+              }
+            },
+            "createDate": {
+              "isoString": "2026-01-01T00:00:00Z",
+              "precision": "SECOND"
+            },
+            "isPendingReview": false,
+            "isSensitive": false,
+            "reactionsMetadata": {
+              "highlightedReactions": [],
+              "numberOfReactions": 2,
+              "topReactionUnicode": [],
+              "usersReactionUnicode": ""
+            },
+            "replyString": "A fixture reply.",
+            "uri": "spotify:comment:fixture-reply"
+          }
+        ],
+        "nextPageToken": "",
+        "totalCount": 1
+      }
+    ]
+  }
+}

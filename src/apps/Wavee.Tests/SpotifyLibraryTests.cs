@@ -8,7 +8,7 @@
 //   · G-043  the live rootlist edge ↔ marker stream round trip a rootlist write indexes into (`RootlistEntries`,
 //            `LandRootlist`), position gaps included;
 //   · G-049  the Pins edge read back as wire uris (`PinWires`);
-//   · G-042  when a login syncs (`LibrarySyncRules`) and which relation a dealer push names (`LibraryPushRules`);
+//   · G-042  when a login syncs (`LibrarySyncRules`) — which relation a dealer push names is LibraryPushRulesTests';
 //   · G-048  the owned rootlist rows' capability block (`LibraryCaps`);
 //   · G-089  a saved prerelease as a drop link (`LibraryDrops`).
 // Every class here touches `Entities`, so it joins `EntitiesCollection`.
@@ -249,18 +249,7 @@ public class SpotifyLibraryTests
                      LibrarySyncRules.Decide(ref memo, true, true, 3, 1, 1_000 + LibrarySyncRules.ReconnectWindowMs));
     }
 
-    [Theory]
-    [InlineData("hm://collection/collection/bob/json", LibraryPush.Liked | LibraryPush.SavedAlbums)]
-    [InlineData("hm://collection/artist/bob", LibraryPush.FollowedArtists)]
-    [InlineData("hm://collection/show/bob/json", LibraryPush.SavedShows)]
-    [InlineData("hm://collection/ylpin/bob", LibraryPush.Pins)]
-    [InlineData("hm://collection/listenlater/bob", LibraryPush.None)]
-    [InlineData("hm://playlist/v2/user/bob/rootlist", LibraryPush.Rootlist)]
-    [InlineData("hm://playlist/user/bob/rootlist/", LibraryPush.Rootlist)]
-    [InlineData("hm://playlist/v2/playlist/37i9dQZF1DXcBWIGoYBM5M", LibraryPush.None)]
-    [InlineData("hm://connect-state/v1/cluster", LibraryPush.None)]
-    public void A_dealer_push_names_its_relations(string topic, LibraryPush expected)
-        => Assert.Equal(expected, LibraryPushRules.Classify(System.Text.Encoding.UTF8.GetBytes(topic)));
+    // Which relation a dealer push names (`LibraryPushRules`) is LibraryPushRulesTests'.
 
     // ── G-048: the owned rows' capabilities ──────────────────────────────────────────────────────────────────────────
 

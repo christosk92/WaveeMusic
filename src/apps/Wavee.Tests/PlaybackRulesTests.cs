@@ -665,8 +665,8 @@ public class PutStateEncodeTests
     [Fact]
     public void The_desktop_parity_capabilities_survive_the_round_trip()
     {
-        // These are anti-fraud and feature-eligibility surface, proven byte-exact over 24 captured desktop PUTs.
-        // `license = premium` is Recently-Played eligibility; `needs_full_player_state` is why we get whole clusters.
+        // Retain the desktop protocol capabilities while advertising only features this runtime implements.
+        // `needs_full_player_state` remains required by Wavee's whole-cluster ingestion.
         var state = Playing();
         var identity = Identity();
         var snapshot = Playback.Snapshot.Of(in state, in identity, Playback.PublishReason.PlayerStateChanged, 1, 1, 0);
@@ -692,9 +692,22 @@ public class PutStateEncodeTests
         Assert.Contains("audio/track", c.SupportedTypes);
         Assert.Contains("video/track", c.SupportedTypes);
         Assert.Equal(Wavee.Protocol.Media.AudioQuality.VeryHigh, c.SupportedAudioQuality);
-        Assert.True(c.SupportsHifi.FullySupported);
+        Assert.False(c.SupportsHifi.FullySupported);
+        Assert.False(c.SupportsDj);
         Assert.True(c.UnknownCapability33);
         Assert.True(c.UnknownCapability38);
+    }
+
+    [Fact]
+    public void Lossless_capability_is_advertised_only_when_the_runtime_can_open_it()
+    {
+        var state = Playing();
+        var identity = Identity() with { SupportsLossless = true };
+        var snapshot = Playback.Snapshot.Of(in state, in identity, Playback.PublishReason.PlayerStateChanged, 1, 1, 0);
+        var capabilities = Encode(in snapshot).Device.DeviceInfo.Capabilities;
+        Assert.Equal(Wavee.Protocol.Media.AudioQuality.Hifi, capabilities.SupportedAudioQuality);
+        Assert.True(capabilities.SupportsHifi.FullySupported);
+        Assert.False(capabilities.SupportsDj);
     }
 
     [Fact]

@@ -6,6 +6,11 @@
 // The show page is the shared detail frame with EPISODES where the tracks go, so this table is deliberately thin: the
 // episode SET is `Edges.ShowEpisodes` (parent = the show slot), its count is that edge's `Total`, and the load-more
 // gate is a CURSOR — see `EpisodesAsked` for the one column here that is not a chapter field but a chapter DEFECT FIX.
+//
+// PODCAST REWORK, wave P1 (owner A; docs/plans/wavee/podcast-show-rework-implementation.md §5.1): two more groups, each
+// under its own authority — `Facts` (what `ShowV4` carries beside the identity: flags, consumption order, trailer) and
+// `Rating` (the pathfinder-only facts: stars, the listener's own rating, the palette tone, exclusive). Both write the
+// ONE `Flags` column, each only its own mask (the `ArtistFlags` precedent), so neither answer can clear the other's bits.
 
 using FluentGpu.Foundation;
 
@@ -27,13 +32,57 @@ public enum ShowFields : uint
     /// <summary>The rail description, which fades in late and must never hold the page (ch 09 §7).</summary>
     About = 1 << 8,
 
-    All = Identity | About,
+    /// <summary>What <c>ShowV4</c> also carries: the <see cref="ShowFlags.FactsMask"/> bits, the
+    /// <see cref="ConsumptionOrder"/> and the trailer uri. One group, one authority — one answer fills all, and an
+    /// ABSENT field is a real "false" (proto2 omits a false bool), so the decoder claims the group whole.</summary>
+    Facts = 1 << 9,
+    /// <summary>The pathfinder-only facts: the average and its count, the listener's own stars, the palette tone and the
+    /// <see cref="ShowFlags.RatingMask"/> bits. Its own group because its own ROUTE (<c>queryShowMetadataV2</c>, wave P4):
+    /// a dead hash seals this group alone while <c>ShowV4</c> still serves the rest (the <c>ArtistFields.Chart</c>
+    /// precedent). Readiness: absent until known — the tone falls back to the cover palette (plan §6.1).</summary>
+    Rating = 1 << 10,
+
+    Appearance = 1 << 11,
+    Topics = 1 << 12,
+    Html = 1 << 13,
+    All = Identity | About | Facts | Rating | Appearance | Topics | Html,
 }
+
+/// <summary>Show booleans as bits (P3). TWO groups write the one column, each only its own mask, so a <c>ShowV4</c>
+/// answer landing after the pathfinder one cannot clear <see cref="Exclusive"/>, nor the reverse.</summary>
+[Flags]
+public enum ShowFlags : uint
+{
+    None = 0,
+    /// <summary><c>Show.explicit</c> (metadata.proto field 68).</summary>
+    Explicit = 1 << 0,
+    /// <summary><c>media_type == VIDEO</c> (field 74).</summary>
+    Video = 1 << 1,
+    /// <summary><c>media_type == MIXED</c> — set only when the wire STATES it; an absent field is neither.</summary>
+    Mixed = 1 << 2,
+    /// <summary>A platform exclusive (pathfinder <c>showTypes[] ∋ *EXCLUSIVE*</c>, wave P4).</summary>
+    Exclusive = 1 << 3,
+    /// <summary><c>music_and_talk</c> (field 85).</summary>
+    MusicAndTalk = 1 << 4,
+    /// <summary>The account may rate this show (pathfinder <c>rating.canRate</c>, wave P4).</summary>
+    CanRate = 1 << 5,
+
+    /// <summary>The bits <see cref="ShowFields.Facts"/> owns.</summary>
+    FactsMask = Explicit | Video | Mixed | MusicAndTalk,
+    /// <summary>The bits <see cref="ShowFields.Rating"/> owns.</summary>
+    RatingMask = Exclusive | CanRate,
+}
+
+/// <summary>How a show means to be heard (<c>Show.consumption_order</c>, field 75). The numbers ARE the wire's —
+/// metadata.proto numbers the enum from 1 (SEQUENTIAL) — so the decoder stores what came and 0 is "the show did not
+/// say". <c>Show.Rules</c> (listen-next, the ledger, neighbours) reads it: a serial walks forward from the newest
+/// finished episode, everything else takes the newest unplayed.</summary>
+public enum ConsumptionOrder : byte { Unknown = 0, Sequential = 1, Episodic = 2, Recent = 3 }
 
 /// <summary>Every show in one scope, as columns.</summary>
 public sealed class ShowTable : Table
 {
-    public Column<StringId> Title, Image, Publisher, Description;
+    public Column<StringId> Title, Image, Publisher, Description, ListRevision, Topics, HtmlDescription;
 
     /// <summary>THE PAGING CURSOR: how far into the episode membership the source has already ASKED — advanced whether
     /// or not the page came back with rows, so a withdrawn or region-locked member cannot pin the "Load more" pill on
@@ -46,20 +95,54 @@ public sealed class ShowTable : Table
     /// The gate itself is <c>max(edgeAsked, localAsked) &lt; total</c> either way (ch 09 §8's <c>Episode.Rules</c>).</para></summary>
     public Column<int> EpisodesAsked;
 
+    // ── facts (ShowFields.Facts) ──
+    /// <summary><see cref="ShowFlags"/>; Facts writes <see cref="ShowFlags.FactsMask"/>, Rating <see cref="ShowFlags.RatingMask"/>.</summary>
+    public Column<uint> Flags;
+    /// <summary><see cref="ConsumptionOrder"/> as a byte.</summary>
+    public Column<byte> Order;
+    /// <summary>The trailer episode's uri (<c>trailer_uri</c>, field 83) — TEXT, not a slot: naming a trailer must not
+    /// allocate an episode row per show visited; the door that plays it resolves it on the click.</summary>
+    public Column<StringId> Trailer;
+
+    // ── rating (ShowFields.Rating) ──
+    /// <summary>The average × 100 (4.8 → 480); 0 = the provider shows none (<c>showAverage</c> false).</summary>
+    public Column<ushort> RatingX100;
+    public Column<int> RatingCount;
+    /// <summary>The listener's own stars, 1-5; 0 = not rated.</summary>
+    public Column<byte> MyRating;
+    /// <summary>The provider's tone, 0xAARRGGBB (<c>backgroundTintedBase</c>, never <c>textBrightAccent</c> — plan D-7);
+    /// 0 = none, and the page falls back to the cover palette.</summary>
+    public Column<uint> Tone;
+
     // ── authority, per column GROUP (D16) ──
-    public Column<byte> IdentityAuthority, AboutAuthority;
+    public Column<byte> IdentityAuthority, AboutAuthority, FactsAuthority, RatingAuthority, AppearanceAuthority, TopicsAuthority, HtmlAuthority;
 
     public override EntityKind Kind => EntityKind.Show;
 
     protected override void GrowColumns(int capacity)
     {
+        ListRevision.EnsureCapacity(capacity);
+        Topics.EnsureCapacity(capacity);
+        HtmlDescription.EnsureCapacity(capacity);
+        AppearanceAuthority.EnsureCapacity(capacity);
+        TopicsAuthority.EnsureCapacity(capacity);
+        HtmlAuthority.EnsureCapacity(capacity);
         Title.EnsureCapacity(capacity);
         Image.EnsureCapacity(capacity);
         Publisher.EnsureCapacity(capacity);
         Description.EnsureCapacity(capacity);
         EpisodesAsked.EnsureCapacity(capacity);
+        Flags.EnsureCapacity(capacity);
+        Order.EnsureCapacity(capacity);
+        Trailer.EnsureCapacity(capacity);
+        RatingX100.EnsureCapacity(capacity);
+        RatingCount.EnsureCapacity(capacity);
+        MyRating.EnsureCapacity(capacity);
+        Tone.EnsureCapacity(capacity);
         IdentityAuthority.EnsureCapacity(capacity);
         AboutAuthority.EnsureCapacity(capacity);
+        FactsAuthority.EnsureCapacity(capacity);
+        RatingAuthority.EnsureCapacity(capacity);
     }
 
     /// <summary>Give back every string a show row owns (defect 1; the REF-COUNTING block on <see cref="Table"/>). One
@@ -68,10 +151,14 @@ public sealed class ShowTable : Table
     /// trim reclaimed the row's columns and none of it (doc §4.4).</summary>
     protected override void ReleaseText(int slot)
     {
+        ClearText(ref ListRevision, slot);
+        ClearText(ref Topics, slot);
+        ClearText(ref HtmlDescription, slot);
         ClearText(ref Title, slot);
         ClearText(ref Image, slot);
         ClearText(ref Publisher, slot);
         ClearText(ref Description, slot);
+        ClearText(ref Trailer, slot);
     }
 }
 
@@ -96,6 +183,21 @@ public readonly partial struct Show(int slot) : IEquatable<Show>
     public StringId ImageId => T.Image[Slot];
     public StringId PublisherId => T.Publisher[Slot];
     public StringId DescriptionId => T.Description[Slot];
+    public StringId TopicsId => T.Topics[Slot];
+    public StringId HtmlDescriptionId => T.HtmlDescription[Slot];
+
+    /// <summary>Both groups' bits (<see cref="ShowFields.Facts"/>, <see cref="ShowFields.Rating"/>).</summary>
+    public ShowFlags Flags => (ShowFlags)T.Flags[Slot];
+    public ConsumptionOrder Order => (ConsumptionOrder)T.Order[Slot];
+    /// <inheritdoc cref="ShowTable.Trailer"/>
+    public StringId TrailerId => T.Trailer[Slot];
+    /// <inheritdoc cref="ShowTable.RatingX100"/>
+    public int RatingX100 => T.RatingX100[Slot];
+    public int RatingCount => T.RatingCount[Slot];
+    /// <inheritdoc cref="ShowTable.MyRating"/>
+    public int MyRating => T.MyRating[Slot];
+    /// <inheritdoc cref="ShowTable.Tone"/>
+    public uint Tone => T.Tone[Slot];
 
     /// <summary>The resident episodes, in the provider's order.</summary>
     public ReadOnlySpan<int> EpisodeSlots => Entities.Current.Edges.ShowEpisodes.Targets(Slot);
@@ -124,6 +226,18 @@ public struct StagedShow : IStagedRow
     public TextRef Title, Image, Publisher, Description;
     /// <summary>The cursor AFTER this answer, or 0 when the answer says nothing about paging.</summary>
     public int EpisodesAsked;
+    /// <summary><see cref="ShowFlags"/> — the commit takes <see cref="ShowFlags.FactsMask"/> under Facts and
+    /// <see cref="ShowFlags.RatingMask"/> under Rating, so a writer sets only the bits of the groups it claims.</summary>
+    public uint Flags;
+    /// <summary><see cref="ConsumptionOrder"/> as a byte (Facts).</summary>
+    public byte Order;
+    /// <summary>The trailer uri (Facts).</summary>
+    public TextRef Trailer, ListRevision, Topics, HtmlDescription;
+    /// <summary>The Rating group: average × 100, its count, the listener's stars, the 0xAARRGGBB tone.</summary>
+    public ushort RatingX100;
+    public int RatingCount;
+    public byte MyRating;
+    public uint Tone;
     /// <summary><see cref="ShowFields"/>: which groups this row speaks for.</summary>
     public uint Known;
     public Authority Authority;
@@ -171,6 +285,7 @@ public static partial class Entities
             if (slot == Table.None) continue;   // a row with no identity is not a row
             var auth = row.Authority;
             uint known = row.Known;
+            if (!row.ListRevision.IsEmpty) t.SetText(ref t.ListRevision, slot, s.Intern(row.ListRevision));
 
             if ((known & (uint)ShowFields.Identity) != 0
                 && t.Accepts(slot, (uint)ShowFields.Identity, auth, in t.IdentityAuthority))
@@ -187,7 +302,40 @@ public static partial class Entities
                 t.SetText(ref t.Description, slot, s.Intern(row.Description));
                 t.Applied(slot, (uint)ShowFields.About, auth, ref t.AboutAuthority);
             }
+            if ((known & (uint)ShowFields.Facts) != 0
+                && t.Accepts(slot, (uint)ShowFields.Facts, auth, in t.FactsAuthority))
+            {
+                // Only this group's bits move; the Rating group's stay as its own answer left them.
+                t.Flags[slot] = (t.Flags[slot] & ~(uint)ShowFlags.FactsMask) | (row.Flags & (uint)ShowFlags.FactsMask);
+                t.Order[slot] = row.Order;
+                t.SetText(ref t.Trailer, slot, s.Intern(row.Trailer));
+                t.Applied(slot, (uint)ShowFields.Facts, auth, ref t.FactsAuthority);
+            }
+            if ((known & (uint)ShowFields.Rating) != 0
+                && t.Accepts(slot, (uint)ShowFields.Rating, auth, in t.RatingAuthority))
+            {
+                t.Flags[slot] = (t.Flags[slot] & ~(uint)ShowFlags.RatingMask) | (row.Flags & (uint)ShowFlags.RatingMask);
+                t.RatingX100[slot] = row.RatingX100;
+                t.RatingCount[slot] = row.RatingCount;
+                t.MyRating[slot] = row.MyRating;
+                t.Applied(slot, (uint)ShowFields.Rating, auth, ref t.RatingAuthority);
+            }
 
+            if ((known & (uint)ShowFields.Appearance) != 0 && t.Accepts(slot, (uint)ShowFields.Appearance, auth, in t.AppearanceAuthority))
+            {
+                t.Tone[slot] = row.Tone;
+                t.Applied(slot, (uint)ShowFields.Appearance, auth, ref t.AppearanceAuthority);
+            }
+            if ((known & (uint)ShowFields.Topics) != 0 && t.Accepts(slot, (uint)ShowFields.Topics, auth, in t.TopicsAuthority))
+            {
+                t.SetText(ref t.Topics, slot, s.Intern(row.Topics));
+                t.Applied(slot, (uint)ShowFields.Topics, auth, ref t.TopicsAuthority);
+            }
+            if ((known & (uint)ShowFields.Html) != 0 && t.Accepts(slot, (uint)ShowFields.Html, auth, in t.HtmlAuthority))
+            {
+                t.SetText(ref t.HtmlDescription, slot, s.Intern(row.HtmlDescription));
+                t.Applied(slot, (uint)ShowFields.Html, auth, ref t.HtmlAuthority);
+            }
             // The cursor only ever moves FORWARD, and outside the authority ladder: it is not a fact about the show,
             // it is how far this session has asked, and an out-of-order answer must not rewind it.
             if (row.EpisodesAsked > t.EpisodesAsked[slot])
@@ -201,8 +349,11 @@ public static partial class Entities
 
 // ── persistence (Store.cs's per-kind seam) ───────────────────────────────────────────────────────────────────────────
 
-/// <summary>How a show survives a restart (Store.cs §2). Persists <see cref="ShowFields.Identity"/> and
-/// <see cref="ShowFields.About"/> — the two groups this file's commit actually applies. <see cref="ShowTable.EpisodesAsked"/>
+/// <summary>How a show survives a restart (Store.cs §2). Persists <see cref="ShowFields.Identity"/>,
+/// <see cref="ShowFields.About"/>, <see cref="ShowFields.Facts"/> and <see cref="ShowFields.Rating"/> — the four groups
+/// this file's commit applies. The flags are TWO columns, one per group's mask: the upsert coalesces per column, so a
+/// shared one would let a Facts-only answer overwrite the Rating bits on disk. Appending the columns moved the DDL
+/// fingerprint, which is the schema bump (Store.cs: a new fingerprint names a new file). <see cref="ShowTable.EpisodesAsked"/>
 /// is NOT persisted: it is a paging cursor over <c>Edges.ShowEpisodes</c>, which this shape does not persist either
 /// (only the five <c>LibraryEdge</c> relations are), so a stale cursor with no membership behind it would just pin a
 /// wrong "load more" gate after a cold start — the cursor re-derives itself from the network the moment the page asks.
@@ -221,9 +372,25 @@ public sealed class ShowShape : KindShape
         new("description", StoreType.Text),
         new("identity_auth", StoreType.Int, StoreColumnFlags.Authority),
         new("about_auth", StoreType.Int, StoreColumnFlags.Authority),
+        // ── podcast rework P1 (appended: the indices above are stable) ──
+        new("flags", StoreType.Int),                    // 6  FactsMask bits
+        new("consumption_order", StoreType.Int),        // 7  (`order` is an sql keyword; the DDL does not quote)
+        new("trailer", StoreType.Text),                 // 8
+        new("facts_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("rating_x100", StoreType.Int),              // 10
+        new("rating_count", StoreType.Int),
+        new("my_rating", StoreType.Int),
+        new("tone", StoreType.Int),
+        new("rating_flags", StoreType.Int),             // 14 RatingMask bits
+        new("rating_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("appearance_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("topics", StoreType.Text),
+        new("topics_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("html_description", StoreType.Text),
+        new("html_auth", StoreType.Int, StoreColumnFlags.Authority),
     ];
 
-    const uint PersistedFields = (uint)(ShowFields.Identity | ShowFields.About);
+    const uint PersistedFields = (uint)ShowFields.All;
 
     public override EntityKind Kind => EntityKind.Show;
     public override string Table => "show";
@@ -240,6 +407,8 @@ public sealed class ShowShape : KindShape
             uint known = row.Known & PersistedFields;
             bool identity = (known & (uint)ShowFields.Identity) != 0;
             bool about = (known & (uint)ShowFields.About) != 0;
+            bool facts = (known & (uint)ShowFields.Facts) != 0;
+            bool rating = (known & (uint)ShowFields.Rating) != 0;
 
             if (identity)
             {
@@ -257,19 +426,63 @@ public sealed class ShowShape : KindShape
             }
             else { w.Null(3); w.Null(5); }
 
+            if (facts)
+            {
+                w.Int(6, row.Flags & (uint)ShowFlags.FactsMask);
+                w.Int(7, row.Order);
+                w.Text(8, row.Trailer);
+                w.Int(9, (int)row.Authority);
+            }
+            else { w.Null(6); w.Null(7); w.Null(8); w.Null(9); }
+
+            if (rating)
+            {
+                w.Int(10, row.RatingX100);
+                w.Int(11, row.RatingCount);
+                w.Int(12, row.MyRating);
+                w.Int(14, row.Flags & (uint)ShowFlags.RatingMask);
+                w.Int(15, (int)row.Authority);
+            }
+            else { w.Null(10); w.Null(11); w.Null(12); w.Null(14); w.Null(15); }
+            if ((known & (uint)ShowFields.Appearance) != 0) { w.Int(13, row.Tone); w.Int(16, (int)row.Authority); }
+            else { w.Null(13); w.Null(16); }
+            if ((known & (uint)ShowFields.Topics) != 0) { w.Text(17, row.Topics); w.Int(18, (int)row.Authority); }
+            else { w.Null(17); w.Null(18); }
+            if ((known & (uint)ShowFields.Html) != 0) { w.Text(19, row.HtmlDescription); w.Int(20, (int)row.Authority); }
+            else { w.Null(19); w.Null(20); }
+
             w.Emit(row.Id, known, Entities.Now, Entities.Now);
         }
     }
 
     public override void Load(RowReader r, Staging into)
     {
-        ref var row = ref into.Shows.Add();
-        row.Id = r.Uri;
+        var row = new StagedShow { Id = r.Uri };
         row.Title = r.Text(0);
         row.Image = r.Text(1);
         row.Publisher = r.Text(2);
         row.Description = r.Text(3);
+        row.Flags = ((uint)r.Int(6) & (uint)ShowFlags.FactsMask) | ((uint)r.Int(14) & (uint)ShowFlags.RatingMask);
+        row.Order = (byte)r.Int(7);
+        row.Trailer = r.Text(8);
+        row.RatingX100 = (ushort)r.Int(10);
+        row.RatingCount = (int)r.Int(11);
+        row.MyRating = (byte)r.Int(12);
+        row.Tone = (uint)r.Int(13);
         row.Known = r.Known & PersistedFields;
-        row.Authority = (Authority)Math.Max(r.Int(4), r.Int(5));
+        row.Topics = r.Text(17);
+        row.HtmlDescription = r.Text(19);
+        ReadOnlySpan<uint> groups = [(uint)ShowFields.Identity, (uint)ShowFields.About, (uint)ShowFields.Facts,
+            (uint)ShowFields.Rating, (uint)ShowFields.Appearance, (uint)ShowFields.Topics, (uint)ShowFields.Html];
+        ReadOnlySpan<int> authorities = [4, 5, 9, 15, 16, 18, 20];
+        for (int i = 0; i < groups.Length; i++)
+        {
+            uint known = row.Known & groups[i];
+            if (known == 0) continue;
+            ref var staged = ref into.Shows.Add();
+            staged = row;
+            staged.Known = known;
+            staged.Authority = (Authority)r.Int(authorities[i]);
+        }
     }
 }

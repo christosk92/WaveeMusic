@@ -95,8 +95,8 @@ public class DaylistCountdownTests
 
         // The machine sleeps: wall advances 3600 s but the frame clock only ticks 10 s (it stalled).
         long frameNow = 10_000;
-        long staleWallGap = frameNow - frameAnchor; // 10 s — looks fine to the frame clock alone
-        Assert.False(DaylistCountdown.NeedsReanchor(tick: 1, frameDeltaSinceLastTickMs: staleWallGap));
+        long staleWallGap = frameNow - frameAnchor; // Even this partial advance exceeds the 2.5 s gap trigger.
+        Assert.True(DaylistCountdown.NeedsReanchor(tick: 1, frameDeltaSinceLastTickMs: staleWallGap));
 
         // The real wall clock (read separately, e.g. from the OS) shows 3600 s passed.
         long realUnixNow = unixAnchor + 3_600_000;

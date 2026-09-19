@@ -1855,7 +1855,7 @@ public static partial class Spotify
 
             void AdoptLength(long total)
             {
-                if (total <= Skip || LengthKnown) return;
+                if (total <= Skip || (LengthKnown && total == FileLength)) return;
                 Interlocked.Exchange(ref _fileLength, total);
                 Volatile.Write(ref _lengthKnown, 1);
                 Log.Info("audio", $"audio.len file={FileIdHex} len={total} bps={BytesPerSecond} ms={ElapsedMs()}");

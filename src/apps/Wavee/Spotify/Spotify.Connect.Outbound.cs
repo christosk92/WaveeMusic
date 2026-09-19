@@ -83,6 +83,14 @@ public static partial class Spotify
                     if (endpoint.StartsWith("set_", StringComparison.Ordinal)) w.WriteBoolean(valueName, flag);
                     else w.WriteNumber(valueName, value);
                 }
+                if (endpoint == "seek_to") { w.WriteNumber("position", value); w.WriteString("relative", "beginning"); }
+                if (endpoint == "resume")
+                {
+                    w.WriteStartObject("options"); w.WriteEndObject();
+                    w.WriteStartObject("resume_origin");
+                    w.WriteString("feature_identifier", "npb");
+                    w.WriteEndObject();
+                }
                 w.WriteStartObject("logging_params");
                 w.WriteStartArray("interaction_ids");
                 w.WriteEndArray();
@@ -100,17 +108,17 @@ public static partial class Spotify
         /// <summary>"Play this context from this row" on the device that owns playback — the desktop `play` envelope
         /// (0.2.9 <c>OutboundEnvelope.Play</c>): an opaque, URI-only context, a play_origin, `prepare_play_options` with
         /// the skip_to track and the shuffle override, and `play_options` interactive/replace/immediately.</summary>
-        public static bool PlayContext(string targetDeviceId, string contextUri, string? trackUri, bool shuffle, CancellationToken ct)
+        public static bool PlayContext(string targetDeviceId, string contextUri, string? trackUri, bool shuffle, CancellationToken ct, int fromMs = -1)
         {
             var buffer = new ArrayBufferWriter<byte>(768);
-            PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs);
             return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
         }
 
         /// <summary>The `play` envelope body. PURE (SpotifyConnectTests). <paramref name="trackUri"/> null/empty plays the
         /// context from its head. `always_play_something` false and `license` premium as every desktop capture carries.</summary>
         public static void PlayBody(IBufferWriter<byte> into, string contextUri, string? trackUri, bool shuffle, string deviceId,
-            string commandId, string intentId, long nowMs)
+            string commandId, string intentId, long nowMs, int fromMs = -1)
         {
             using var w = new Utf8JsonWriter(into);
             w.WriteStartObject();
@@ -130,6 +138,7 @@ public static partial class Spotify
             w.WriteEndObject();
             w.WriteStartObject("prepare_play_options");
             w.WriteBoolean("always_play_something", false);
+            if (fromMs >= 0) w.WriteNumber("seek_to", fromMs);
             if (!string.IsNullOrEmpty(trackUri))
             {
                 w.WriteStartObject("skip_to");

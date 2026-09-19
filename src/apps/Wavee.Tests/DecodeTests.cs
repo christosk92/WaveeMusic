@@ -556,10 +556,9 @@ public class DecodeTests
     }
 
     [Fact]
-    public void ShowV4_fills_the_header_and_leaves_its_episode_list_partial()
+    public void ShowV4_fills_the_header_without_claiming_native_list_membership()
     {
-        // ch 09 §7: every transport that serves a show's episodes pages them, so one answer is a PAGE — never the
-        // whole list, which is what would stop the page asking for the rest.
+        // Metadata is not the authority for the native playlist4 show list.
         TestScope.Fresh();
         var proto = new Md.Show
         {
@@ -578,8 +577,8 @@ public class DecodeTests
         var show = ShowOf(100);
         Assert.True(show.Knows(ShowFields.Identity | ShowFields.About));
         Assert.Equal("Wavee", Entities.Strings.Resolve(show.PublisherId));
-        Assert.Equal(EdgeState.Partial, Entities.Current.Edges.ShowEpisodes.State(show.Slot));
-        Assert.Equal(2, Entities.Current.Edges.ShowEpisodes.Count(show.Slot));
+        Assert.Equal(EdgeState.Unknown, Entities.Current.Edges.ShowEpisodes.State(show.Slot));
+        Assert.Equal(0, Entities.Current.Edges.ShowEpisodes.Count(show.Slot));
     }
 
     [Fact]
@@ -607,6 +606,116 @@ public class DecodeTests
         Assert.Equal(Spotify.Decode.Seconds(2026, 1, 5), episode.PublishedAt);
         Assert.Equal(ShowOf(100).Slot, episode.Show.Slot);
         Assert.Equal("The Wavee Hour", ShowOf(100).Title);
+    }
+
+    // ── the podcast rework's decode-only fields (podcast plan §5.3; numbers from Protos/metadata.proto) ─────────────
+
+    static Show DecodeShow(Md.Show proto)
+    {
+        TestScope.Fresh();
+        proto.Gid = Bs(Gid(100));
+        proto.Name = "The Wavee Hour";
+        var s = Staging.Rent();
+        Spotify.Decode.ShowV4(proto.ToByteArray(), s);
+        TestScope.CommitAndPublish(s);
+        return ShowOf(100);
+    }
+
+    static Episode DecodeEpisode(Md.Episode proto)
+    {
+        TestScope.Fresh();
+        proto.Gid = Bs(Gid(110));
+        proto.Name = "Episode One";
+        var s = Staging.Rent();
+        Spotify.Decode.EpisodeV4(proto.ToByteArray(), s);
+        TestScope.CommitAndPublish(s);
+        return EpisodeOf(110);
+    }
+
+    [Fact]
+    public void ShowV4_lands_explicit_video_music_and_talk_the_order_and_the_trailer_as_the_facts_group()
+    {
+        // fields 68 (explicit), 74 (media_type), 75 (consumption_order), 83 (trailer_uri), 85 (music_and_talk)
+        var show = DecodeShow(new Md.Show
+        {
+            Explicit = true,
+            MediaType = Md.Show.Types.MediaType.Video,
+            ConsumptionOrder = Md.Show.Types.ConsumptionOrder.Sequential,
+            TrailerUri = UriOf(EntityKind.Episode, 130),
+            MusicAndTalk = true,
+        });
+
+        Assert.True(show.Knows(ShowFields.Facts));
+        Assert.Equal(ShowFlags.Explicit | ShowFlags.Video | ShowFlags.MusicAndTalk, show.Flags);
+        Assert.Equal(ConsumptionOrder.Sequential, show.Order);
+        Assert.Equal(UriOf(EntityKind.Episode, 130), Entities.Strings.Resolve(show.TrailerId));
+        Assert.False(show.Knows(ShowFields.Rating));                   // the pathfinder group is never ShowV4's to claim
+    }
+
+    [Fact]
+    public void ShowV4_claims_the_facts_group_even_when_the_wire_states_none_of_them()
+    {
+        // proto2 omits a false bool: an answer with none of the five fields is a real "no", not a hole to re-ask.
+        var show = DecodeShow(new Md.Show { Publisher = "Wavee" });
+
+        Assert.True(show.Knows(ShowFields.Facts));
+        Assert.Equal(ShowFlags.None, show.Flags);
+        Assert.Equal(ConsumptionOrder.Unknown, show.Order);
+        Assert.True(show.TrailerId.IsEmpty);
+    }
+
+    [Theory]
+    [InlineData(Md.Show.Types.ConsumptionOrder.Sequential, ConsumptionOrder.Sequential)]
+    [InlineData(Md.Show.Types.ConsumptionOrder.Episodic, ConsumptionOrder.Episodic)]
+    [InlineData(Md.Show.Types.ConsumptionOrder.Recent, ConsumptionOrder.Recent)]
+    public void ShowV4_consumption_order_is_the_wires_own_one_based_number(Md.Show.Types.ConsumptionOrder wire, ConsumptionOrder expected)
+        => Assert.Equal(expected, DecodeShow(new Md.Show { ConsumptionOrder = wire }).Order);
+
+    [Theory]
+    [InlineData(Md.Show.Types.MediaType.Mixed, ShowFlags.Mixed)]    // MIXED is 0 — stated on the wire, so it is a fact
+    [InlineData(Md.Show.Types.MediaType.Audio, ShowFlags.None)]
+    [InlineData(Md.Show.Types.MediaType.Video, ShowFlags.Video)]
+    public void ShowV4_media_type_sets_video_or_mixed(Md.Show.Types.MediaType wire, ShowFlags expected)
+        => Assert.Equal(expected, DecodeShow(new Md.Show { MediaType = wire }).Flags);
+
+    [Fact]
+    public void EpisodeV4_lands_number_kind_explicit_video_and_short_with_the_identity()
+    {
+        // Captured number89 and season88 are plain int32; explicit70, video72, type87.
+        var episode = DecodeEpisode(new Md.Episode
+        {
+            Number = 42, Season = 3,
+            Explicit = true,
+            Video = { new Md.VideoFile { FileId = Bs(Gid(140)) } },
+            Type = Md.Episode.Types.EpisodeType.Bonus,
+            IsPodcastShort = true,
+        });
+
+        Assert.True(episode.Knows(EpisodeFields.Identity));
+        Assert.Equal(42, episode.Number);
+        Assert.Equal(3, episode.Season);
+        Assert.Equal(EpisodeKind.Bonus, episode.Kind);
+        Assert.Equal(EpisodeFlags.Explicit | EpisodeFlags.Video | EpisodeFlags.Short, episode.Flags);
+    }
+
+    [Fact]
+    public void EpisodeV4_without_the_fields_is_a_full_unnumbered_plain_episode()
+    {
+        var episode = DecodeEpisode(new Md.Episode { Duration = 60_000 });
+
+        Assert.True(episode.Knows(EpisodeFields.Identity));
+        Assert.Equal(0, episode.Number);
+        Assert.Equal(EpisodeKind.Full, episode.Kind);
+        Assert.Equal(EpisodeFlags.None, episode.Flags);
+    }
+
+    [Fact]
+    public void EpisodeV4_a_trailer_is_kind_trailer_and_a_negative_number_is_unnumbered()
+    {
+        var episode = DecodeEpisode(new Md.Episode { Number = -3, Type = Md.Episode.Types.EpisodeType.Trailer });
+
+        Assert.Equal(EpisodeKind.Trailer, episode.Kind);
+        Assert.Equal(0, episode.Number);
     }
 
     // ── the trait projectors ────────────────────────────────────────────────────────────────────────────────────────

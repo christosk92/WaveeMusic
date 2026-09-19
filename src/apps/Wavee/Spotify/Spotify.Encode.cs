@@ -793,15 +793,28 @@ public enum LibraryPush : byte
     FollowedArtists = 1 << 3,
     SavedShows = 1 << 4,
     Pins = 1 << 5,
+    /// <summary>ONE playlist's own list (<c>hm://playlist/v2/playlist/{id}</c>, wave D3). Never folded with the others:
+    /// its body is a <c>PlaylistModificationInfo</c> whose ops apply in arrival order, so it is never settled into a
+    /// burst — <see cref="LibraryPushRules.PlaylistId"/> names which list.</summary>
+    Playlist = 1 << 6,
 }
 
-/// <summary>WHICH RELATION A DEALER PUSH TOUCHES (G-042 "dealer pushes → deltas"). <c>hm://collection/&lt;set&gt;/&lt;user&gt;</c>
-/// names a collection set — <c>collection</c> is ONE set holding liked tracks AND saved albums, so it names both —
-/// and <c>hm://playlist/…/rootlist</c> (both the v2 and the legacy spelling the dealer sends as a pair) names the
-/// rootlist. A delta is applied by asking the relation again (the provider's revision-gated read makes that a diff), so
-/// there is no op replayer to disagree with the server. PURE, allocation-free.</summary>
+/// <summary>WHICH RELATION A DEALER PUSH TOUCHES (G-042 "dealer pushes → deltas"; D3 for one playlist).
+/// <c>hm://collection/&lt;set&gt;/&lt;user&gt;</c> names a collection set — <c>collection</c> is ONE set holding liked
+/// tracks AND saved albums, so it names both; <c>hm://playlist/…/rootlist</c> (both the v2 and the legacy spelling the
+/// dealer sends as a pair) names the rootlist; <c>hm://playlist/v2/playlist/{id}</c> names ONE playlist — the only
+/// playlist topic in the four 2026-09 captures (149 pushes, every one of them this spelling with a 22-character base62
+/// id). The collections and the rootlist are applied by asking the relation again (the provider's revision-gated read
+/// makes that a diff); a playlist push carries its ops and is replayed in place when it can be
+/// (<c>Spotify.Library.Lists.cs</c>, <see cref="ListPush"/>). PURE, allocation-free.</summary>
 public static class LibraryPushRules
 {
+    /// <summary>The per-playlist topic's prefix.</summary>
+    public const string PlaylistTopicPrefix = "hm://playlist/v2/playlist/";
+
+    /// <summary>A Spotify base62 id's length (128 bits).</summary>
+    public const int PlaylistIdChars = 22;
+
     public static LibraryPush Classify(ReadOnlySpan<byte> topic)
     {
         ReadOnlySpan<byte> collection = "hm://collection/"u8;
@@ -820,8 +833,25 @@ public static class LibraryPushRules
         {
             var tail = topic.EndsWith("/"u8) ? topic[..^1] : topic;
             if (tail.EndsWith("/rootlist"u8)) return LibraryPush.Rootlist;
+            if (!PlaylistId(topic).IsEmpty) return LibraryPush.Playlist;
         }
         return LibraryPush.None;
+    }
+
+    /// <summary>The playlist a per-playlist push names: the base62 id of <c>hm://playlist/v2/playlist/{id}</c>, as a
+    /// slice of <paramref name="topic"/> — or EMPTY for any other topic. Strict, because nothing is guessed: exactly
+    /// <see cref="PlaylistIdChars"/> characters of <c>[0-9A-Za-z]</c> after the prefix and nothing after them (no
+    /// capture showed a trailing slash, a query or the legacy <c>hm://playlist/playlist/</c> spelling).</summary>
+    public static ReadOnlySpan<byte> PlaylistId(ReadOnlySpan<byte> topic)
+    {
+        ReadOnlySpan<byte> prefix = "hm://playlist/v2/playlist/"u8;
+        if (!topic.StartsWith(prefix)) return default;
+        var id = topic[prefix.Length..];
+        if (id.Length != PlaylistIdChars) return default;
+        foreach (byte b in id)
+            if (b is not ((>= (byte)'0' and <= (byte)'9') or (>= (byte)'A' and <= (byte)'Z') or (>= (byte)'a' and <= (byte)'z')))
+                return default;
+        return id;
     }
 }
 

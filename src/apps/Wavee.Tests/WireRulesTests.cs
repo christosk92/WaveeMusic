@@ -13,7 +13,7 @@ public class WireRulesTests
 {
     [Theory]
     [InlineData("POST", "gew4-spclient.spotify.com", "/collection/v2/delta", "POST gew4-spclient.spotify.com/collection/v2/delta")]
-    [InlineData("GET", "spclient.wg.spotify.com", "/metadata/4/track/0123456789abcdef0123456789abcdef", "GET spclient.wg.spotify.com/metadata/4/track/{id}")]
+    [InlineData("GET", "spclient.wg.spotify.com", "/metadata/4/track/0123456789abcdef0123456789abcdef", "GET spclient.wg.spotify.com/metadata/{id}/track/{id}")]
     [InlineData("GET", "audio-fa.spotifycdn.com", "/audio/dda38684833edaad028fbead1a75730e9c56777b", "GET audio-fa.spotifycdn.com/audio/{id}")]
     [InlineData("PUT", "h", "/connect-state/v1/devices/9cf0d968aabbccddeeff00112233445566778899", "PUT h/connect-state/v1/devices/{id}")]
     [InlineData("GET", "h", "/", "GET h/")]
@@ -21,7 +21,7 @@ public class WireRulesTests
         => Assert.Equal(expected, WireRules.EndpointOf(method, host, path));
 
     [Fact]
-    public void Short_words_and_version_numbers_are_not_ids()
+    public void Short_words_and_prefixed_version_numbers_are_not_ids()
         => Assert.Equal("GET h/pathfinder/v2/query", WireRules.EndpointOf("GET", "h", "/pathfinder/v2/query"));
 
     [Fact]

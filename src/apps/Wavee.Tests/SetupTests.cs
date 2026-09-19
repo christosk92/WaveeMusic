@@ -257,6 +257,24 @@ public class SetupInstallProbeTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "store.json"), "{\"device.id\":\"d\"}");
         Assert.False(Setup.ProbeInstall(_root).StoredCredential);
     }
+
+    /// <summary>D1: the cache file is now named after its schema fingerprint. A build that has only ever seen a
+    /// schema-named file (never the legacy plain `library.db`) still reads as "this install has a library".</summary>
+    [Fact]
+    public void A_schema_named_library_file_alone_counts_as_the_library_witness()
+    {
+        File.WriteAllText(Path.Combine(_root, "library.0123456789abcdef.db"), "sqlite");
+        Assert.True(Setup.ProbeInstall(_root).LibraryDb);
+    }
+
+    /// <summary>The glob is `library.*.db`, not "starts with library" — a file that merely shares the prefix must not
+    /// count, or every unrelated note dropped in the data root would look like an existing install.</summary>
+    [Fact]
+    public void An_unrelated_file_that_only_shares_the_library_prefix_is_not_the_library_witness()
+    {
+        File.WriteAllText(Path.Combine(_root, "library-notes.txt"), "not a database");
+        Assert.False(Setup.ProbeInstall(_root).LibraryDb);
+    }
 }
 
 public class SignInRulesTests

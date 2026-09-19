@@ -11,8 +11,18 @@
 // model was pending they did not exist, and several hundred DIP materialised above the rows when content landed. The
 // fix is arithmetic, not a second design: the skeleton reserves `HeroBandHeight`, the same function the loaded hero's
 // pre-measure collapse binds use.
+//
+// Podcast rework wave P2 (§5.4) — the two-column RAIL gets the same treatment: `Skeleton.RailPlanFor` (the skeleton's
+// prediction, now told which rail slots the page declared) and `RailLayout.RowsFor` (the loaded column's own row
+// decisions) are measured by ONE nominal height, `RailLayout.HeightOf`. Pinned here: without the podcast slots the plan
+// is exactly the pre-podcast one; with each slot a podcast page declares, the reservation IS the reveal; and each row
+// costs exactly its nominal plus one gap.
 
 using Xunit;
+using Config = Wavee.Detail.Config;
+using RailBadgeRow = Wavee.Detail.RailBadgeRow;
+using RailLayout = Wavee.Detail.RailLayout;
+using RailSlotSet = Wavee.Detail.RailSlotSet;
 using Skeleton = Wavee.Detail.Skeleton;
 using VerticalLayout = Wavee.Detail.VerticalLayout;
 
@@ -73,6 +83,218 @@ public class DetailSkeletonGeometryTests
         Assert.Equal(2, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 2).DescriptionLines);
         Assert.Equal(0, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 0).DescriptionLines);
         Assert.Equal(0, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: -1).DescriptionLines);
+    }
+
+    // ── the podcast seams (podcast rework §5.4): the rail's row model ────────────────────────────────────────────────
+
+    /// <summary>Declaring NO podcast slot leaves every kind's plan exactly what it was before the seams (the fields the
+    /// pre-podcast plan had, the new ones absent) — and an Attribution slot alone moves nothing outside an episode.</summary>
+    [Theory]
+    [InlineData(DetailKind.Album, BadgeStyle.TypeYear, true, 6)]
+    [InlineData(DetailKind.Album, BadgeStyle.TypeYear, true, 3)]
+    [InlineData(DetailKind.Playlist, BadgeStyle.OwnerRow, true, 6)]
+    [InlineData(DetailKind.Playlist, BadgeStyle.OwnerRow, false, 2)]
+    [InlineData(DetailKind.Liked, BadgeStyle.None, false, 6)]
+    [InlineData(DetailKind.Show, BadgeStyle.TypeYear, true, 3)]
+    [InlineData(DetailKind.Show, BadgeStyle.TypeYear, true, 6)]
+    public void RailPlan_WithoutPodcastSlots_IsThePrePodcastPlan(DetailKind kind, BadgeStyle badges, bool heart, int descMax)
+    {
+        bool typeYear = badges == BadgeStyle.TypeYear;
+        var before = new Skeleton.RailPlan(
+            Eyebrow: typeYear, Owner: badges == BadgeStyle.OwnerRow, Artists: typeYear,
+            Meta: !typeYear || kind == DetailKind.Show, TitleLines: Skeleton.RailTitleLines,
+            Fabs: (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0),
+            DescriptionLines: kind is DetailKind.Playlist or DetailKind.Show ? Math.Min(Skeleton.RailDescriptionLines, descMax) : 0);
+
+        Assert.Equal(before, Skeleton.RailPlanFor(kind, badges, heart, descMax));
+        Assert.Equal(before, Skeleton.RailPlanFor(kind, badges, heart, descMax, default));
+        Assert.Equal(before, Skeleton.RailPlanFor(kind, badges, heart, descMax, new RailSlotSet(Attribution: true)));
+        Assert.Equal(RailBadgeRow.None, before.Badges);
+        Assert.False(before.Rating || before.Ledger || before.Satellites || before.Topics);
+    }
+
+    /// <summary>The nominal height of the pre-podcast skeleton columns, by hand: 24 above, the rows, 14 between, 24 below —
+    /// the CTA line wrapping exactly as the engine's flex wrap wraps [Play 104][the FAB group].</summary>
+    [Fact]
+    public void RailHeight_OfThePrePodcastColumns_IsTheirRowSum()
+    {
+        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA 4 + 40 (Play
+        // 104 + 12 + [heart · Share] 88 = 204 ≤ 256: one line). Five rows, four gaps.
+        var album = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
+        Assert.Equal(24f + 256f + 16f + 72f + 16f + 44f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
+
+        // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped (104 + 12 + 136 > 216):
+        // 4 + 36 + 12 + 40 · blurb 3 × 18. Six rows, five gaps.
+        var playlist = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 6);
+        Assert.Equal(24f + 216f + 24f + 72f + 16f + 92f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
+    }
+
+    const int PodcastDescMax = 3;
+
+    /// <summary>A podcast page as waves P3 / P5 declare it: the Attribution slot always (a show's publisher line, an
+    /// episode's show link), plus the slot under test.</summary>
+    static RailSlotSet PodcastSlots(string slot) => slot switch
+    {
+        "badges" => new(Attribution: true, Badges: true),
+        "rating" => new(Attribution: true, Rating: true),
+        "ledger" => new(Attribution: true, Ledger: true),
+        "topics" => new(Attribution: true, Topics: true),
+        "satellites" => new(Attribution: true, Satellites: true, SatelliteCount: 5),
+        "all" => new(Attribution: true, Badges: true, Rating: true, Ledger: true, Topics: true, Satellites: true, SatelliteCount: 5),
+        _ => new(Attribution: true),
+    };
+
+    /// <summary>The revealed rail's rows for that page: its eyebrow text known ("Podcast" / "Episode"), no billed artists,
+    /// its meta line and blurb present, and the fixed FAB group the skeleton predicts (heart when the kind has one,
+    /// Share, ⋯) when it declares no satellites.</summary>
+    static Skeleton.RailPlan Revealed(DetailKind kind, RailSlotSet slots)
+    {
+        var cfg = Config.For(kind, AlbumKind.Album);
+        return RailLayout.RowsFor(kind, cfg.Badges, eyebrowText: true, ownerKnown: false, artists: false, metaShown: true,
+                                  fabs: (cfg.Heart != HeartMode.None ? 1 : 0) + 2, description: true, PodcastDescMax, slots);
+    }
+
+    static Skeleton.RailPlan Reserved(DetailKind kind, RailSlotSet slots)
+    {
+        var cfg = Config.For(kind, AlbumKind.Album);
+        return Skeleton.RailPlanFor(kind, cfg.Badges, cfg.Heart != HeartMode.None, PodcastDescMax, slots);
+    }
+
+    /// <summary>With each slot a podcast page declares, the skeleton RESERVES exactly the rows the loaded rail LAYS OUT:
+    /// the two plans are equal, and so is their nominal height at every rail width the grip allows (180…480).</summary>
+    [Theory]
+    [InlineData(DetailKind.Show, "")]
+    [InlineData(DetailKind.Show, "badges")]
+    [InlineData(DetailKind.Show, "rating")]
+    [InlineData(DetailKind.Show, "ledger")]
+    [InlineData(DetailKind.Show, "topics")]
+    [InlineData(DetailKind.Show, "satellites")]
+    [InlineData(DetailKind.Show, "all")]
+    [InlineData(DetailKind.Episode, "")]
+    [InlineData(DetailKind.Episode, "badges")]
+    [InlineData(DetailKind.Episode, "rating")]
+    [InlineData(DetailKind.Episode, "ledger")]
+    [InlineData(DetailKind.Episode, "topics")]
+    [InlineData(DetailKind.Episode, "satellites")]
+    [InlineData(DetailKind.Episode, "all")]
+    public void PodcastSlots_TheReservationIsTheReveal(DetailKind kind, string slot)
+    {
+        var slots = PodcastSlots(slot);
+        var reserved = Reserved(kind, slots);
+        var revealed = Revealed(kind, slots);
+        Assert.Equal(reserved, revealed);
+        for (float railW = Detail.RailPolicy.MinWidth; railW <= Detail.RailPolicy.MaxWidth; railW += 20f)
+        {
+            float cover = railW - 24f;
+            Assert.Equal(RailLayout.HeightOf(reserved, cover, 36f), RailLayout.HeightOf(revealed, cover, 36f));
+        }
+    }
+
+    /// <summary>Each single-line slot row costs exactly its nominal plus one gap — a show's badges nothing (they share the
+    /// eyebrow's 16 line), an episode's their own 16 under the meta line; rating 20, ledger 4 + 6 + 16, topics two 18
+    /// lines 4 apart.</summary>
+    [Theory]
+    [InlineData(DetailKind.Show, "badges", 0f)]
+    [InlineData(DetailKind.Episode, "badges", 16f + 14f)]
+    [InlineData(DetailKind.Show, "rating", 20f + 14f)]
+    [InlineData(DetailKind.Episode, "rating", 20f + 14f)]
+    [InlineData(DetailKind.Show, "ledger", 26f + 14f)]
+    [InlineData(DetailKind.Episode, "ledger", 26f + 14f)]
+    [InlineData(DetailKind.Show, "topics", 40f + 14f)]
+    [InlineData(DetailKind.Episode, "topics", 40f + 14f)]
+    public void PodcastSlots_EachRowCostsItsNominalPlusOneGap(DetailKind kind, string slot, float cost)
+    {
+        foreach (float cover in new[] { 156f, 216f, 256f, 456f })
+            Assert.Equal(cost,
+                RailLayout.HeightOf(Reserved(kind, PodcastSlots(slot)), cover, 36f)
+                - RailLayout.HeightOf(Reserved(kind, PodcastSlots("")), cover, 36f));
+
+        Assert.Equal(16f, RailLayout.BadgeHeight);
+        Assert.Equal(20f, RailLayout.RatingHeight);
+        Assert.Equal(26f, RailLayout.LedgerHeight);
+        Assert.Equal(40f, RailLayout.TopicsHeight);
+        Assert.Equal(14f, RailLayout.Gap);
+    }
+
+    /// <summary>Satellites wrap ONE BY ONE after the primary, 8 apart both ways, 36 each: at a 256 measure three fit beside
+    /// the 104 primary, the fourth opens a second line — and none at all leaves the primary alone.</summary>
+    [Theory]
+    [InlineData(0, 4f + 36f)]
+    [InlineData(1, 4f + 36f)]
+    [InlineData(3, 4f + 36f)]                 // 104 + 3 × (8 + 36) = 236 ≤ 256
+    [InlineData(4, 4f + 36f + 8f + 36f)]      // 280 > 256: the fourth wraps
+    [InlineData(9, 4f + 36f + 8f + 36f)]      // line two holds six: 36 + 5 × 44 = 256
+    [InlineData(10, 4f + 36f + 8f + 36f + 8f + 36f)]
+    public void Satellites_WrapOneByOneAfterThePrimary(int count, float cta)
+    {
+        var plan = Reserved(DetailKind.Episode, new RailSlotSet(Attribution: true, Satellites: true, SatelliteCount: count));
+        Assert.True(plan.Satellites);
+        Assert.Equal(count, plan.Fabs);
+        Assert.Equal(cta, RailLayout.CtaHeight(plan, 256f));
+    }
+
+    /// <summary>The loaded rail's lead and badge rows (<c>RowsFor</c>): an episode is led by its show link (the owner-row
+    /// shape) and has no eyebrow; without one it falls back to its eyebrow. A show's badges share the eyebrow's line, an
+    /// episode's sit under the meta, a kind with no eyebrow gets them on their own line. A podcast's Attribution slot is
+    /// its after-title row whatever the billed artists say; an album's is not (it still needs billed artists).</summary>
+    [Fact]
+    public void RowsFor_PodcastLeadsBadgesAndAttribution()
+    {
+        var episodeLed = RailLayout.RowsFor(DetailKind.Episode, BadgeStyle.TypeYear, true, false, false, true, 2, true, 3,
+                                            new RailSlotSet(Attribution: true, Badges: true));
+        Assert.True(episodeLed.Owner);
+        Assert.False(episodeLed.Eyebrow);
+        Assert.False(episodeLed.Artists);
+        Assert.Equal(RailBadgeRow.AfterMeta, episodeLed.Badges);
+
+        var episodeBare = RailLayout.RowsFor(DetailKind.Episode, BadgeStyle.TypeYear, true, false, false, true, 2, true, 3, default);
+        Assert.True(episodeBare.Eyebrow);
+        Assert.False(episodeBare.Owner);
+        Assert.True(episodeBare.Meta);
+
+        var show = RailLayout.RowsFor(DetailKind.Show, BadgeStyle.TypeYear, true, false, false, true, 2, true, 3,
+                                      new RailSlotSet(Attribution: true, Badges: true));
+        Assert.True(show.Eyebrow);
+        Assert.True(show.Artists);
+        Assert.Equal(RailBadgeRow.BesideEyebrow, show.Badges);
+        Assert.Equal(RailBadgeRow.OwnRow,
+            RailLayout.RowsFor(DetailKind.Show, BadgeStyle.TypeYear, false, false, false, true, 2, true, 3,
+                               new RailSlotSet(Badges: true)).Badges);
+        Assert.Equal(RailBadgeRow.OwnRow,
+            RailLayout.RowsFor(DetailKind.Playlist, BadgeStyle.OwnerRow, false, true, false, true, 3, true, 3,
+                               new RailSlotSet(Badges: true)).Badges);
+
+        Assert.False(RailLayout.RowsFor(DetailKind.Album, BadgeStyle.TypeYear, true, false, false, false, 2, false, 6,
+                                        new RailSlotSet(Attribution: true)).Artists);
+        Assert.True(RailLayout.RowsFor(DetailKind.Album, BadgeStyle.TypeYear, true, false, true, false, 2, false, 6,
+                                       new RailSlotSet(Attribution: true)).Artists);
+    }
+
+    /// <summary>The loaded rail's pre-podcast decisions, unchanged: the eyebrow needs its text, the owner row a name or
+    /// the slot, the album no meta, a TypeYear show its meta; satellites absent ⇒ the fixed group's own count.</summary>
+    [Fact]
+    public void RowsFor_WithoutPodcastSlots_KeepsThePrePodcastDecisions()
+    {
+        var album = RailLayout.RowsFor(DetailKind.Album, BadgeStyle.TypeYear, true, false, true, true, 2, false, 6, default);
+        Assert.True(album.Eyebrow);
+        Assert.True(album.Artists);
+        Assert.False(album.Meta);
+        Assert.Equal(2, album.Fabs);
+        Assert.Equal(0, album.DescriptionLines);
+        Assert.False(RailLayout.RowsFor(DetailKind.Album, BadgeStyle.TypeYear, false, false, true, true, 2, false, 6, default).Eyebrow);
+
+        var playlist = RailLayout.RowsFor(DetailKind.Playlist, BadgeStyle.OwnerRow, false, true, false, true, 3, true, 6, default);
+        Assert.True(playlist.Owner);
+        Assert.True(playlist.Meta);
+        Assert.Equal(3, playlist.DescriptionLines);
+        Assert.False(RailLayout.RowsFor(DetailKind.Playlist, BadgeStyle.OwnerRow, false, false, false, true, 3, true, 6, default).Owner);
+        Assert.True(RailLayout.RowsFor(DetailKind.Playlist, BadgeStyle.OwnerRow, false, false, false, true, 3, true, 6,
+                                       new RailSlotSet(Attribution: true)).Owner);
+
+        var show = RailLayout.RowsFor(DetailKind.Show, BadgeStyle.TypeYear, true, false, false, true, 2, true, 3, default);
+        Assert.True(show.Meta);
+        Assert.False(show.Artists);
+        Assert.False(RailLayout.RowsFor(DetailKind.Show, BadgeStyle.TypeYear, true, false, false, false, 2, true, 3, default).Meta);
     }
 
     // The hero emit predicates, as the two real pages present them.

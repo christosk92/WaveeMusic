@@ -1,12 +1,14 @@
 // ── Spotify/Spotify.Decode.Playlist.cs ─────────────────────────────────────────────────────────────────────────────────
 // the playlist page's three folds: the liked-songs content filters (JSON), the playlist4 format_attributes (daylist
-// window, chart facts, session-control tuning, the membership revision) and the playlist extender's recommendations
+// window, chart facts, session-control tuning, the membership revision) and the playlist extender's recommendations —
+// and, since wave D3, the landing of a /diff REPLAYED over the held list (§4)
 //
 // Role: CORE
-// Owner: O (WP-5.O stream A)
-// Wave: 5
+// Owner: O (WP-5.O stream A); L2 for the revision staging and §4 (wave D3)
+// Wave: 5; D3
 // Budget: 450 lines
-// Spec: ch 06 §7 DATA GAPS, ch 07 §7 G4, WP-5.O contract §2.4 / §2.5
+// Spec: ch 06 §7 DATA GAPS, ch 07 §7 G4, WP-5.O contract §2.4 / §2.5;
+//       docs/plans/wavee/cache-integrity-and-playlist-diff-implementation.md §3.3
 //
 // WHAT 0.2.9 USED INSTEAD OF A `fetchPlaylist` HASH. Nothing pathfinder-shaped at all: `PlaylistFetcher.HeaderOf` read the
 // daylist window, the chart facts and the Tune options out of the SAME playlist4 v2 read that carries the header and
@@ -120,32 +122,40 @@ public static partial class Spotify
         /// <summary>A <c>SelectedListContent</c> → one staged row speaking for <see cref="PlaylistFields.Daylist"/>,
         /// <see cref="PlaylistFields.Chart"/> and <see cref="PlaylistFields.Tuning"/> — ALWAYS all three, zeroed for a
         /// playlist of another format, because "not a daylist" is an answer (0.2.9 returned (0, 0)) — plus the membership
-        /// revision and the Tune option run. Called beside <see cref="PlaylistRevision"/> on every PlaylistRead answer.</summary>
+        /// revision and the Tune option run. Called beside <see cref="PlaylistRevision"/> on every PlaylistRead answer.
+        /// <para>THE REVISION RIDES THE ROWS (wave D3). It is staged whenever the answer carries <c>contents</c> — the
+        /// rows <see cref="PlaylistRevision"/> lands — and only then: a revision vouches for the list it came with. Until
+        /// D3 it rode the attributes instead, so a <c>/diff</c> answered with contents and NO attributes landed new rows
+        /// under the OLD revision (wave D2's finding), and the next <c>/diff</c> would have replayed someone else's ops
+        /// over them; and an answer with attributes but no rows moved a revision whose rows nobody had.</para></summary>
         public static void PlaylistFormatAttributes(ReadOnlySpan<byte> selectedListContent, ReadOnlySpan<byte> playlistUri, Staging s)
         {
             var id = Identity(s, playlistUri);
             if (id.IsEmpty) return;
             ReadOnlySpan<byte> revision = default, attributes = default, contents = default;
+            bool sawContents = false;
             for (var r = new ProtoReader(selectedListContent); r.Next();)
             {
                 if (r.Field == 1 && r.Wire == 2) revision = r.Bytes();
                 else if (r.Field == 3 && r.Wire == 2) attributes = r.Bytes();
-                else if (r.Field == 5 && r.Wire == 2) contents = r.Bytes();
+                else if (r.Field == 5 && r.Wire == 2) { contents = r.Bytes(); sawContents = true; }   // an empty list is a 0-byte message
                 else r.Skip();
             }
-            // A diff answer carries no attributes: it says nothing about these groups, so nothing is staged.
+            Span<char> text = stackalloc char[160];
+            int revisionChars = Api.FormatRevision(revision, text);
+            if (sawContents && revisionChars > 0)
+            {
+                // Its own row, speaking for no group: `CommitPlaylists` writes a staged revision whatever else it knows.
+                Span<byte> ascii = stackalloc byte[revisionChars];
+                for (int i = 0; i < revisionChars; i++) ascii[i] = (byte)text[i];
+                ref var head = ref s.Playlists.RowFor(id, Authority.Full, 0);
+                head.Revision = s.AddText(ascii);
+            }
+            // A diff answer carries no attributes: it says nothing about these groups, so nothing more is staged.
             if (attributes.IsEmpty) return;
 
             ref var row = ref s.Playlists.RowFor(id, Authority.Full,
                 (uint)(PlaylistFields.Daylist | PlaylistFields.Chart | PlaylistFields.Tuning));
-            Span<char> text = stackalloc char[128];
-            int revisionChars = Api.FormatRevision(revision, text);
-            if (revisionChars > 0)
-            {
-                Span<byte> ascii = stackalloc byte[revisionChars];
-                for (int i = 0; i < revisionChars; i++) ascii[i] = (byte)text[i];
-                row.Revision = s.AddText(ascii);
-            }
 
             ReadOnlySpan<byte> format = new ProtoReader(attributes).Bytes(11);
             bool daylist = Is(format, "daylist"), chart = Is(format, "chart");
@@ -165,7 +175,7 @@ public static partial class Spotify
             // Tuning: a 24-byte revision and at least one signal, or the playlist is not tunable (0.2.9 TuningOf).
             var tunings = s.PlaylistTuningOptions;
             int start = tunings.Count;
-            if (revision.Length == 24 && !contents.IsEmpty)
+            if (revisionChars > 0 && !contents.IsEmpty)
             {
                 var selected = FormatValue(attributes, SelectedSignalsKey);
                 if (!IsBlank(selected)) row.TuningSelected = s.AddText(selected);
@@ -322,5 +332,44 @@ public static partial class Spotify
             r.ValueSpan.CopyTo(uri[prefix.Length..]);
             return EntityId.TryParseGid(uri, out var id) ? new StagedId(id) : default;
         }
+
+        // ══ 4. the replay landing (wave D3, plan §3.3) ═══════════════════════════════════════════════════════════════
+
+        /// <summary>A <c>/diff</c>'s ops REPLAYED over the held list (<c>ListReplay.Decide</c>, Spotify.Api.Library.cs) →
+        /// the staging a read of the same revision would produce: the whole list as ONE Complete run, the
+        /// <paramref name="revision"/> it is true at and the count — through <c>Store.StageList</c>, the one list staging
+        /// the disk read shares, so the commit lands it exactly like a disk read and the write-behind persists it like a
+        /// full read (a whole run beside a staged revision; plan §3.2's gate). No row is re-marked: a member already
+        /// resident keeps every fact it has, and only the uris the diff ADDED are new rows for the planner to hydrate
+        /// ("after a diff, hydrate only the added uris", §2).
+        /// <para>A header op (UPDATE_LIST_ATTRIBUTES) lands in the SAME commit, through the staging the full read's
+        /// attributes use (<see cref="PlaylistRevision"/>): the <see cref="PlaylistFields.Identity"/> group at Full, its
+        /// title and description — and the decision only lets one through that states BOTH, so the group's write guesses
+        /// nothing. An attribute the op UNSET (<c>no_value</c>) lands as absent, never as an empty string (§3.10). The cover
+        /// and the owner are not the op's to say; the commit keeps what it holds for both.</para>
+        /// <para>False, staging nothing, when the list staging refuses (a malformed revision, a member with no uri) — the
+        /// caller then reads the list in full.</para></summary>
+        public static bool PlaylistReplay(ReadOnlySpan<ListRow> rows, string playlistUri, string revision,
+                                          in PlaylistOps.ListAttributeChange attrs, Staging s)
+        {
+            if (!Store.StageList(s, EdgeRelation.PlaylistTracks, playlistUri, rows, revision)) return false;
+            if (attrs.IsEmpty) return true;
+            var id = Identity(s, System.Text.Encoding.UTF8.GetBytes(playlistUri));
+            ref var row = ref s.Playlists.RowFor(id, Authority.Full, (uint)(PlaylistFields.Identity | PlaylistFields.TrackCount));
+            row.Title = (attrs.Unset & PlaylistOps.ListAttrs.Name) != 0 ? default : Utf8Text(s, attrs.Name);
+            row.Description = (attrs.Unset & PlaylistOps.ListAttrs.Description) != 0 ? default : Utf8Text(s, attrs.Description);
+            row.TrackCount = rows.Length;
+            return true;
+
+            static TextRef Utf8Text(Staging s, string? value)
+                => string.IsNullOrEmpty(value) ? default : s.AddText(System.Text.Encoding.UTF8.GetBytes(value));
+        }
+
+        /// <summary>A REPLAYED rootlist stream (markers, depths and wire positions already re-derived by the decision) →
+        /// the account's <see cref="StagedRootlist"/> with its <paramref name="revision"/>, through the same list staging
+        /// the disk warm lands through; <c>Entities.CommitRootlist</c> re-interns the folder ids and names exactly as it
+        /// does for a read. False, staging nothing, when the staging refuses.</summary>
+        public static bool RootlistReplay(ReadOnlySpan<ListRow> rows, string meUri, string revision, Staging s)
+            => Store.StageList(s, EdgeRelation.Rootlist, meUri, rows, revision);
     }
 }

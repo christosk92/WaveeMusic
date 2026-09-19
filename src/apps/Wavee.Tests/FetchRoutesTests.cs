@@ -156,7 +156,9 @@ public class FetchRoutesTests
     {
         var rows = new FetchBatch { Subject = FetchSubject.Entity, Kind = EntityKind.Show, Wanted = (uint)ShowFields.All };
         Span<FetchRoute> into = stackalloc FetchRoute[FetchRoutes.MaxRoutes];
-        Assert.Equal(1, FetchRoutes.For(rows, into, out _));
+        Assert.Equal(5, FetchRoutes.For(rows, into, out uint absent));
+        Assert.Equal(0u, absent);
+        Assert.Equal(new[] { 11, 37, 179, 3, 54 }, into[..5].ToArray().Select(x => x.Extension));
         Assert.Equal(FetchRoutes.ShowV4, into[0].Extension);
 
         var edge = new FetchBatch { Subject = FetchSubject.Edge, Edge = FetchEdge.Rootlist };

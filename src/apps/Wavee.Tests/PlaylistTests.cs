@@ -615,8 +615,8 @@ public class PlaylistTests
     {
         // The gate is the memo's value equality: two stamps over the same inputs must compare equal (the render is
         // skipped), and every field the page or its identity reads must move it.
-        var a = new Playlist.PageStamp(1, 7, 3, EdgeState.Complete, 5, RowFold.Add(RowFold.Seed, 9), 11, 2, EdgeState.Unknown, 1, false, true);
-        Assert.Equal(a, new Playlist.PageStamp(1, 7, 3, EdgeState.Complete, 5, RowFold.Add(RowFold.Seed, 9), 11, 2, EdgeState.Unknown, 1, false, true));
+        var a = new Playlist.PageStamp(1, 7, 3, EdgeState.Complete, 5, RowFold.Add(RowFold.Seed, 9), 11, 2, EdgeState.Unknown, 1, false, true, false);
+        Assert.Equal(a, new Playlist.PageStamp(1, 7, 3, EdgeState.Complete, 5, RowFold.Add(RowFold.Seed, 9), 11, 2, EdgeState.Unknown, 1, false, true, false));
         Assert.NotEqual(a, a with { Row = 4 });                                    // a rename, a new cover, new caps
         Assert.NotEqual(a, a with { Membership = EdgeState.Partial });             // "durations known" arm of the meta
         Assert.NotEqual(a, a with { MembersEdge = 6 });                            // a row landed / moved
@@ -625,6 +625,7 @@ public class PlaylistTests
         Assert.NotEqual(a, a with { Recommendations = EdgeState.Complete });       // the Recommended section's mount
         Assert.NotEqual(a, a with { Tuning = 2 });                                 // the Tune affordance
         Assert.NotEqual(a, a with { EditsLive = true });                           // the session came online
+        Assert.NotEqual(a, a with { Holding = true });
         Assert.NotEqual(a, a with { Facts = false });                              // the bento's presence
         Assert.NotEqual(a, a with { Epoch = 2 });                                  // a scope switch
     }

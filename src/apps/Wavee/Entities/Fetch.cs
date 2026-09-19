@@ -19,6 +19,25 @@
 //     UI thread through `Answer` / `Failed`. WHICH routes a provider sends for a batch is `FetchRoutes` (the named
 //     partial `Fetch.Routes.cs`), and the relation half of the door is `Fetch.Edges.cs`.
 //
+// THE DRAIN (wave D4, plan §3.5 — "the query layer batches", the half of P4 that never existed). A door never sends:
+// `Plan`, `Continue`, `PlanEdge` and the disk leg's `AfterDisk` bucket their rows and OWE a drain, and the host calls
+// `Drain()` once per UI tick — so every `Ensure` of a tick has landed in its bucket before the bucket leaves, as ONE
+// request of up to 300 uris. Until 2026-09-19 `Pump()` ran inline at the end of every door, and four one-row Ensures in
+// a tick were four one-uri POSTs (122 extended-metadata POSTs in 62 s, median body 107 B). Two doors still pump inline:
+// a PLAYBACK ask (the now-playing row must not wait a frame; whatever of its shape the tick already bucketed rides the
+// same request) and a SETTLE (`Answer`/`Failed` free an in-flight slot). The first owe of a tick wakes the host
+// (`WakeForDrain`), so an ask made outside a rendered frame — a posted answer's re-plan, a session event — never waits
+// for an unrelated repaint; `NextWakeAt` answers "now" while one is owed.
+//
+// THE ONLINE GATE (`CanSend`). A provider that may not send yet — the Spotify session before it is Online — has its
+// buckets HELD by `Pump`: never dropped, never un-asked, never re-planned. They leave on the first pump after the gate
+// opens (the session's Online transition pumps; so does every tick while anything is held), so the boot burst goes out
+// as a few full batches instead of as unauthenticated requests to the fallback spclient that 401 and retry. The disk
+// leg is NOT gated: disk before network, whatever the session is doing.
+//
+// Every request the runner sends writes one always-on `fetch.send` line and every settle one `fetch.answer` line — the
+// `wire.call` line (Platform.Wire.cs) says WHAT went out; these say WHY, and how long the rows waited for it.
+//
 // THE FIVE MARKS, and what each one means — they are the whole state machine, and there is no other:
 //   `Asked[slot] & group`      somebody asked for this GROUP of this row in this scope (G-040). Set when a plan marks
 //                              the row; it SURVIVES the answer — a group asked and not answered is the "exhausted"
@@ -48,9 +67,12 @@
 //                              lands. It is the ROLLOVER TWIN of `Refresh`: Refresh re-asks what is NOT known, Invalidate
 //                              re-asks what IS. Never persisted — a restart re-derives it from the clock.
 //
-// A BUCKET IS (provider, subject, kind, need, priority). `need` is the per-row `wanted & ~settled & ~asked` — not the
-// page's `wanted` — so a row whose Identity is already in flight and whose PlayCount is not asks for PlayCount alone,
-// and a partial answer never re-asks what it already answered. Rows of one `Ensure` nearly always share one need.
+// A BUCKET IS (provider, subject, kind, need). `need` is the per-row `wanted & ~settled & ~asked` — not the page's
+// `wanted` — so a row whose Identity is already in flight and whose PlayCount is not asks for PlayCount alone, and a
+// partial answer never re-asks what it already answered. Rows of one `Ensure` nearly always share one need. PRIORITY IS
+// NOT PART OF THE KEY (wave D4): a bucket carries the HIGHEST priority of the rows that joined it since it last emptied,
+// so the sidebar's Visible identity ask and `EnsureRootlistRows`' Prefetch ask of the same shape are one request, sent
+// at Visible — where a priority in the key made them two.
 //
 // SUBJECTS (G-041). A row of the eight entity tables is addressed by its kind. The four SYNTHETIC tables — Home feeds,
 // sections, search subjects, browse nodes — all answer `EntityKind.Unknown`, and their uris (`wavee:home`,
@@ -130,11 +152,21 @@ public sealed class FetchBatch
     /// lets a provider choose the <c>/diff</c> read over the full one without touching a table: the rootlist's
     /// (<c>Edges.RootlistRevision</c>) and the recents snapshot's (<c>Edges.RecentsRevision</c>). Null for a row batch.</summary>
     public string?[] Revisions = [];
+    /// <summary>For an EDGE batch of a persisted list (a playlist's membership, the rootlist): the settled list each
+    /// parent's held revision describes, as text, snapshotted on the UI thread at send (<c>Fetch.FillBaselines</c> →
+    /// <c>Store.SnapshotList</c>) — the baseline a <c>/diff</c>'s ops are replayed over on the provider's thread without
+    /// touching a table (wave D3). Null where no revision is held or the list is not a settled whole. Parallel to
+    /// <see cref="Ids"/>.</summary>
+    public ListRow[]?[] Baselines = [];
     /// <summary>The extended-metadata kind this batch asks for, or 0 for "the kind's own routes" (a provider maps that
     /// through <see cref="FetchRoutes"/>). Non-zero for exactly one group today: <see cref="Fetch.AudioFilesKind"/> = 5,
     /// the FLAC ladder, whose request is a <c>spotify:audio:</c> uri in <see cref="Text"/> and whose ANSWER is keyed by
     /// that same uri — so a provider maps the answer back to the row it asked for with <see cref="IdFor"/> (plan §5.2).</summary>
     public int Extension;
+
+    /// <summary>The <see cref="Stopwatch"/> timestamp the runner handed this batch to its provider at — what the
+    /// always-on <c>fetch.answer</c> line's <c>ms=</c> is measured from. The runner's bookkeeping, not the provider's.</summary>
+    internal long SentAt;
 
     /// <summary>The batch as identities — the span a provider builds its request from.</summary>
     public ReadOnlySpan<EntityId> Wire => Ids.AsSpan(0, Count);
@@ -303,9 +335,10 @@ public static partial class Fetch
 
     // ── state (SHELL) ───────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>One (provider, subject, kind, need, priority) bucket of rows waiting to go out — or, for an edge,
-    /// (provider, relation, offset, priority) of PARENTS. That tuple IS the "shape" of a request: everything in a
-    /// bucket can ride the same request, and nothing outside it can.</summary>
+    /// <summary>One (provider, subject, kind, need) bucket of rows waiting to go out — or, for an edge, (provider,
+    /// relation, offset) of PARENTS. That tuple IS the "shape" of a request: everything in a bucket can ride the same
+    /// request, and nothing outside it can. Urgency is not shape: <see cref="Priority"/> is the highest of the asks that
+    /// joined the bucket since it last emptied (<see cref="Bucket"/>).</summary>
     sealed class Demand
     {
         public EntityProvider Provider;
@@ -314,7 +347,12 @@ public static partial class Fetch
         public uint Wanted;
         public FetchEdge Edge;
         public int Offset;
+        /// <summary>The MAX priority of the rows waiting here — a Visible row joining a Prefetch bucket lifts the whole
+        /// request, and the next ask into an emptied bucket starts it again from its own.</summary>
         public FetchPriority Priority;
+        /// <summary>The <see cref="Stopwatch"/> timestamp the oldest row still waiting here joined at (the bucket went
+        /// from empty to not): the always-on <c>fetch.send</c> line's <c>waitedMs=</c>.</summary>
+        public long Since;
         public Table Table = null!;
         public int Count;
         public int[] Slots = new int[64];
@@ -349,7 +387,7 @@ public static partial class Fetch
     }
 
     // Keyed by the whole shape. A (long, long) pair because the edge half of the key does not fit beside the row half in
-    // one word: provider | subject | kind | priority | edge in the first, need-or-offset in the second.
+    // one word: provider | subject | kind | edge in the first, need-or-offset in the second. No priority (see the header).
     static readonly Dictionary<(long, long), Demand> s_buckets = new(16);
     static readonly List<Demand> s_order = new(16);                 // stable iteration; the dictionary is the index
     static readonly Dictionary<uint, FetchBatch> s_active = new(8);
@@ -358,6 +396,33 @@ public static partial class Fetch
     static uint s_ticket;
     static int s_inFlight;
     static uint s_scopeEpoch;
+
+    // ── the drain and the gate (wave D4; see the header) ────────────────────────────────────────────────────────────
+    //
+    // `s_drainOwed`: a row joined a bucket since the last `Pump` — the tick's `Drain` owes a pump. `s_held`: the last
+    // pump passed over a bucket `CanSend` refused — the tick's `Drain` pumps again, so the held rows leave on the first
+    // tick after the gate opens even if nothing else asks. Both are cleared at the top of every `Pump`, which sends
+    // everything that can go, so "owed" never outlives the pump that satisfied it.
+    static bool s_drainOwed;
+    static bool s_held;
+
+    /// <summary>May this provider send right now? A <c>false</c> HOLDS its buckets — never drops them, never un-asks a
+    /// row, never re-plans — so the boot burst leaves as a few full batches when the session comes Online instead of as
+    /// unauthenticated requests that 401 (plan §1.5: <c>AccessToken()</c> is null before the welcome, so the header was
+    /// simply omitted, against the fallback spclient). Consulted by <see cref="Pump"/> per bucket; the disk leg is never
+    /// gated. Null (the default, and every test that does not set it) lets everything send.
+    /// <para><c>Spotify.Library.Install</c> sets <c>CanSend = p =&gt; p != EntityProvider.Spotify || Spotify.Current.IsOnline</c>,
+    /// and the session's Online transition calls <see cref="Pump"/> so the held buckets leave at once; the per-tick
+    /// <see cref="Drain"/> re-tries a held bucket every tick besides, so a missed transition is a delay of one frame,
+    /// never a stranded ask. <see cref="Reset"/> clears it (the test seam).</para></summary>
+    public static Func<EntityProvider, bool>? CanSend { get; set; }
+
+    /// <summary>The host's wake for an owed drain: called ONCE when a drain becomes owed (the first ask of a tick), never
+    /// again until a pump has satisfied it. The GUI host posts its drain through the UI poster here, which wakes an idle
+    /// loop (the post runs before the engine's idle gate), so an ask made outside a rendered frame — a posted answer's
+    /// re-plan, a session event, a minimized window — leaves within one loop pass instead of waiting for an unrelated
+    /// repaint. Null in the headless host (its 100 ms tick pumps) and in tests (they call <see cref="Drain"/>). UI THREAD.</summary>
+    public static Action? WakeForDrain { get; set; }
 
     // ── the in-flight ROUTE index (request de-dupe across a row bucket and an edge bucket, see file header) ───────────
     //
@@ -468,19 +533,28 @@ public static partial class Fetch
         s_pendingEdges.Clear();
         s_refused.Clear();
         s_inFlight = 0;
+        s_drainOwed = s_held = false;          // nothing is bucketed, so nothing is owed or held
         // Boot may run before `Entities.Boot` has a scope (a test calling Reset): read defensively.
         Scope? current = Entities.Current;
         s_scopeEpoch = current is null ? 0u : current.Epoch;
     }
 
-    /// <summary>Attach a transport. One per provider; the last one wins, so a test can replace the live session.</summary>
-    public static void Register(FetchProvider provider) => s_providers[(byte)provider.Provider] = provider;
+    /// <summary>Attach a transport. One per provider; the last one wins, so a test can replace the live session. Rows
+    /// bucketed for a provider nobody had registered yet were waiting for exactly this: it owes a drain, so they leave on
+    /// the next tick.</summary>
+    public static void Register(FetchProvider provider)
+    {
+        s_providers[(byte)provider.Provider] = provider;
+        Owe();
+    }
 
-    /// <summary>Detach every transport and forget every pending row — the test seam, and what a sign-out runs.</summary>
+    /// <summary>Detach every transport, drop the send gate and forget every pending row — the test seam, and what a
+    /// sign-out runs. The host's <see cref="WakeForDrain"/> survives: it is the host's wiring, not a transport.</summary>
     public static void Reset()
     {
         Boot();
         Array.Clear(s_providers);
+        CanSend = null;
         s_planned = s_deduped = s_toDisk = s_toNetwork = s_answered = s_failed = s_retried = s_abandoned = s_resumed = 0;
     }
 
@@ -492,7 +566,8 @@ public static partial class Fetch
     /// <item>filter to the rows that NEED something — missing and not yet asked for (<see cref="Select"/>);</item>
     /// <item>mark those groups asked for this scope, so the other nine pages asking this drain ask for nothing (C7);</item>
     /// <item>split disk / network on "has anything ever answered about this row" and send the disk leg first;</item>
-    /// <item>bucket the rest by (provider, subject, kind, need, priority) and pump.</item>
+    /// <item>bucket the rest by (provider, subject, kind, need) and owe the tick's <see cref="Drain"/> — or, for a
+    /// <see cref="FetchPriority.Playback"/> ask, pump now (<see cref="SendOrOwe"/>).</item>
     /// </list>
     /// The disk leg answers through <see cref="Continue"/>, which is step 4 for whatever sqlite could not fill.</summary>
     public static void Plan(Scope scope, Table table, ReadOnlySpan<int> slots, uint wanted, FetchPriority priority)
@@ -543,16 +618,17 @@ public static partial class Fetch
 
             var span = scratch.AsSpan(0, need);
             var groupsOf = needs.AsSpan(0, need);
+            int queued;
             if (disk > 0 && Store.Read(scope, table, span[..disk], diskWanted, priority))
             {
                 s_toDisk += disk;
-                Queue(scope, table, span[disk..], groupsOf[disk..], priority);   // the rest do not wait for the disk
+                queued = Queue(scope, table, span[disk..], groupsOf[disk..], priority);   // the rest do not wait for the disk
             }
             else
             {
-                Queue(scope, table, span, groupsOf, priority);                   // no store (or it refused): straight out
+                queued = Queue(scope, table, span, groupsOf, priority);                   // no store (or it refused): straight out
             }
-            Pump();
+            if (queued > 0) SendOrOwe(priority);     // a plan the disk took whole owes nothing here: `Continue` owes
         }
         finally
         {
@@ -561,8 +637,9 @@ public static partial class Fetch
         }
     }
 
-    /// <summary>The disk answered; whatever it could not fill goes to the provider. Called by <c>Store</c> from the
-    /// cold read's completion, on the UI thread, with the same slots and groups the read was asked for.
+    /// <summary>The disk answered; whatever it could not fill goes to the provider — bucketed for the tick's drain like
+    /// any plan, so a burst of cold reads completing in one loop pass leaves as one request per shape. Called by
+    /// <c>Store</c> from the cold read's completion, on the UI thread, with the same slots and groups the read was asked for.
     /// <para>It re-derives <c>wanted &amp; ~known</c> rather than trusting the caller's list, so a batch the disk
     /// filled completely asks for nothing — and it does NOT subtract <c>Asked</c>, because those marks are this plan's
     /// own.</para></summary>
@@ -592,8 +669,7 @@ public static partial class Fetch
                 table.Inflight[slot] = stamp;
             }
             if (n == 0) return;
-            Queue(scope, table, scratch.AsSpan(0, n), needs.AsSpan(0, n), priority);
-            Pump();
+            if (Queue(scope, table, scratch.AsSpan(0, n), needs.AsSpan(0, n), priority) > 0) SendOrOwe(priority);
         }
         finally
         {
@@ -606,10 +682,13 @@ public static partial class Fetch
     /// Spotify track all live in the same <c>TrackTable</c> and cannot ride the same POST, and two rows of one page
     /// that need different groups cannot either.
     /// <para>The provider is a FIELD on the row's identity (<see cref="EntityId.Provider"/>), except for a synthetic
-    /// subject nobody owns, which is the scope's catalogue's (<see cref="ProviderFor"/>, G-041).</para></summary>
-    static void Queue(Scope scope, Table table, ReadOnlySpan<int> slots, ReadOnlySpan<uint> needs, FetchPriority priority)
+    /// subject nobody owns, which is the scope's catalogue's (<see cref="ProviderFor"/>, G-041).</para>
+    /// <para>Returns how many bucket entries it added — 0 when every row was unowned or premature, which is what lets a
+    /// door skip owing a drain that would send nothing.</para></summary>
+    static int Queue(Scope scope, Table table, ReadOnlySpan<int> slots, ReadOnlySpan<uint> needs, FetchPriority priority)
     {
         var tracks = table as TrackTable;
+        int queued = 0;
         for (int i = 0; i < slots.Length; i++)
         {
             int slot = slots[i];
@@ -635,6 +714,7 @@ public static partial class Fetch
             {
                 Bucket(table, subject, provider, plain, FetchEdge.None, 0, priority).Add(slot, id);
                 s_toNetwork++;
+                queued++;
             }
             if (derived == 0) continue;
 
@@ -642,6 +722,7 @@ public static partial class Fetch
             {
                 Bucket(table, subject, provider, derived, FetchEdge.None, 0, priority).Add(slot, id);
                 s_toNetwork++;
+                queued++;
             }
             else
             {
@@ -655,6 +736,7 @@ public static partial class Fetch
                 s_abandoned++;
             }
         }
+        return queued;
     }
 
     /// <summary>Which table a row lives in, beyond its kind (G-041). The four synthetic tables are told apart by
@@ -694,21 +776,37 @@ public static partial class Fetch
             _ => EntityProvider.None,
         };
 
+    /// <summary>The bucket for this shape, which every caller adds a row to next. The key is the SHAPE alone — provider,
+    /// subject, kind, relation and need-or-offset — and the ask's urgency is folded in: an EMPTY bucket is a new demand
+    /// (its priority, attempt count and wait clock start from this ask), a waiting one takes the MAX priority, so a
+    /// Prefetch ask and a Visible ask of one shape in one tick are one request at Visible.</summary>
     static Demand Bucket(Table table, FetchSubject subject, EntityProvider provider, uint wanted, FetchEdge edge, int offset,
                          FetchPriority priority)
     {
-        long shape = ((long)(byte)provider << 32) | ((long)(byte)subject << 24) | ((long)(byte)table.Kind << 16)
-                   | ((long)(byte)priority << 8) | (byte)edge;
+        long shape = ((long)(byte)provider << 32) | ((long)(byte)subject << 24) | ((long)(byte)table.Kind << 16) | (byte)edge;
         long payload = edge == FetchEdge.None ? wanted : offset;
         if (s_buckets.TryGetValue((shape, payload), out Demand? d))
         {
             Debug.Assert(ReferenceEquals(d.Table, table), "one bucket, one table: the key packs the subject and the kind, so this can only differ across a scope switch that was not dropped.");
+            if (d.Count == 0)
+            {
+                // Emptied since it last sent: whatever urgency and retry count the previous demand carried were ITS own.
+                // (A retry sets its attempt after this, in `Failed`; an empty bucket's backoff has always already expired,
+                // because only a send empties one and a send waits for it.)
+                d.Priority = priority;
+                d.Attempt = 0;
+                d.Since = Stopwatch.GetTimestamp();
+            }
+            else if (priority > d.Priority)
+            {
+                d.Priority = priority;
+            }
             return d;
         }
         d = new Demand
         {
             Provider = provider, Kind = table.Kind, Subject = subject, Wanted = edge == FetchEdge.None ? wanted : 0,
-            Edge = edge, Offset = offset, Priority = priority, Table = table,
+            Edge = edge, Offset = offset, Priority = priority, Table = table, Since = Stopwatch.GetTimestamp(),
         };
         s_buckets[(shape, payload)] = d;
         s_order.Add(d);
@@ -735,6 +833,7 @@ public static partial class Fetch
         s_routeIndex.Clear();
         s_pendingEdges.Clear();
         s_refused.Clear();            // every entry indexes the OLD table set; the new scope has no marks to resume
+        s_held = false;               // a HELD bucket is dropped with the rest: its slots index the old set too (C7)
         for (int i = 0; i < s_providers.Length; i++) s_providers[i]?.Abandon(scope.Epoch);
         // In-flight batches are NOT cancelled here: their answers are dropped by `Staging.Epoch` at the commit (C7),
         // and forgetting the tickets would leak the slots in `s_active`.
@@ -742,18 +841,47 @@ public static partial class Fetch
 
     // ── the runner (SHELL) ──────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Send what can be sent: at most <see cref="MaxInFlight"/> requests, highest priority first, at most
-    /// <see cref="MaxUrisPerRequest"/> uris each. Idempotent and cheap (one pass over at most a handful of buckets),
-    /// and called by every door in this file — a plan, an answer, a failure.
-    /// <para>A backoff that expires with nothing else happening has no timer of its own: the HOST calls this on its
-    /// frame tick, which is the only clock this layer is allowed to have (P10 — timers are named, few, and owned by
-    /// the shell). Without that call a sleeping bucket waits for the next plan, which is a delay, never a loss.</para></summary>
-    /// <summary>The earliest app second at which a backed-off bucket becomes sendable, or <see cref="int.MaxValue"/> when
-    /// nothing waits. The host arms its one idle wake timer to it (decision D23), so an expired backoff re-sends while the
-    /// window is idle, minimized or hidden. UI THREAD.</summary>
+    /// <summary>THE TICK'S DRAIN. Called ONCE per UI tick by the host (its frame tick, beside <see cref="NextWakeAt"/>'s
+    /// caller, and the posted wake <see cref="WakeForDrain"/> asks for). Every <c>Ensure</c> of the tick has landed in
+    /// its bucket by now, so each bucket leaves as ONE request of up to <see cref="MaxUrisPerRequest"/> uris — where
+    /// <see cref="Pump"/> at the end of every door made four one-row Ensures four one-uri POSTs. Pumps when a drain is
+    /// owed or a bucket is being held (<see cref="CanSend"/>), and is two bool compares otherwise: nothing allocates on
+    /// a tick with nothing to send. Adds at most one tick of latency to a non-Playback ask (8 ms at 120 Hz) and takes
+    /// away the queueing behind one-uri requests that <see cref="MaxInFlight"/> caused. UI THREAD.</summary>
+    public static void Drain()
+    {
+        if (!s_drainOwed && !s_held) return;
+        Pump();
+    }
+
+    /// <summary>A row just joined a bucket: the tick's drain owes a pump. The FIRST owe since the last pump wakes the host
+    /// (<see cref="WakeForDrain"/>); every later one in the same tick is one bool compare.</summary>
+    static void Owe()
+    {
+        if (s_drainOwed) return;
+        s_drainOwed = true;
+        WakeForDrain?.Invoke();
+    }
+
+    /// <summary>The end of every door that bucketed rows. THE NOW-PLAYING ROW DOES NOT WAIT A FRAME: a
+    /// <see cref="FetchPriority.Playback"/> ask pumps inline — and whatever of its shape this tick already bucketed rides
+    /// the same request, at Playback. Everything else owes the tick's <see cref="Drain"/>, where the whole tick's asks
+    /// leave together.</summary>
+    static void SendOrOwe(FetchPriority priority)
+    {
+        if (priority == FetchPriority.Playback) Pump();
+        else Owe();
+    }
+
+    /// <summary>The earliest app second at which something becomes sendable: <see cref="Entities.Now"/> while a drain is
+    /// owed (an idle window must still drain within one tick), otherwise the earliest backed-off bucket's deadline, or
+    /// <see cref="int.MaxValue"/> when nothing waits. The host arms its one idle wake timer to it (decision D23), so an
+    /// expired backoff re-sends while the window is idle, minimized or hidden. A HELD bucket is deliberately not a
+    /// deadline: it waits for the session, not the clock, and a wake per tick while offline would be a busy loop. UI THREAD.</summary>
     public static int NextWakeAt()
     {
         int now = Entities.Now, next = int.MaxValue;
+        if (s_drainOwed) return now;
         for (int i = 0; i < s_order.Count; i++)
         {
             Demand d = s_order[i];
@@ -762,10 +890,25 @@ public static partial class Fetch
         return next;
     }
 
+    /// <summary>Send what can be sent: at most <see cref="MaxInFlight"/> requests, highest priority first, at most
+    /// <see cref="MaxUrisPerRequest"/> uris each. Idempotent and cheap (one pass over at most a handful of buckets). Called
+    /// by the tick's <see cref="Drain"/>, by a Playback plan, by every settle (<see cref="Answer"/>/<see cref="Failed"/>
+    /// free an in-flight slot), by the host's idle wake, and by the session's Online transition (the held buckets leave).
+    /// Satisfies any owed drain: whatever it could not send waits on something that pumps again (an answer, the backoff
+    /// timer, the gate).
+    /// <para>ORDER: Playback beats Visible beats Prefetch. Within a priority a ROW bucket goes before an EDGE bucket — the
+    /// row batch is what indexes the routes an edge ask dedupes against (<see cref="DropBlocked"/>), so an album's row
+    /// and its tracks edge asked in one tick stay one request whichever was asked first — and then first-come: a bucket
+    /// that has been waiting is a page that has been showing skeletons.</para>
+    /// <para>THE GATE: a bucket whose provider <see cref="CanSend"/> refuses is passed over and stays exactly as it is —
+    /// rows, marks, attempt — and the pump remembers that it held something, so the next tick's drain looks again.</para></summary>
     public static void Pump()
     {
+        s_drainOwed = false;
+        s_held = false;
         Sync();
         int now = Entities.Now;
+        Func<EntityProvider, bool>? canSend = CanSend;
         while (s_inFlight < MaxInFlight)
         {
             Demand? best = null;
@@ -774,14 +917,21 @@ public static partial class Fetch
                 Demand d = s_order[i];
                 if (d.Count == 0 || d.ReadyAt > now) continue;
                 if (s_providers[(byte)d.Provider] is null) continue;
-                // Playback beats Visible beats Prefetch. Within a priority, first-come — a bucket that has been
-                // waiting is a page that has been showing skeletons.
-                if (best is null || d.Priority > best.Priority) best = d;
+                if (canSend is not null && !canSend(d.Provider)) { s_held = true; continue; }
+                if (best is null || Outranks(d, best)) best = d;
             }
             if (best is null) return;
             Send(best);
         }
     }
+
+    /// <summary>Does <paramref name="d"/> go before <paramref name="best"/>? Priority first; within one, a row bucket
+    /// before an edge bucket (see <see cref="Pump"/>); otherwise the one already chosen — the earlier in
+    /// <see cref="s_order"/> — keeps its place.</summary>
+    static bool Outranks(Demand d, Demand best)
+        => d.Priority != best.Priority
+            ? d.Priority > best.Priority
+            : best.Subject == FetchSubject.Edge && d.Subject != FetchSubject.Edge;
 
     static void Send(Demand d)
     {
@@ -804,6 +954,7 @@ public static partial class Fetch
             batch.Text = new string?[send];
             batch.Slots = new int[send];
             batch.Revisions = new string?[send];
+            batch.Baselines = new ListRow[send][];
         }
         Array.Copy(d.Ids, batch.Ids, send);
         Array.Copy(d.Slots, batch.Slots, send);
@@ -818,6 +969,7 @@ public static partial class Fetch
         batch.Extension = 0;
         if (IsAudioFiles(d.Subject, d.Kind, d.Wanted)) FillAudioUris(batch, (TrackTable)d.Table, send);
         if (d.Subject == FetchSubject.Edge) FillRevisions(batch, d.Edge, send);
+        if (d.Subject == FetchSubject.Edge) FillBaselines(batch, d.Edge, send);   // reads Revisions: after it (wave D3)
         batch.Count = send;
         batch.Provider = d.Provider;
         batch.Kind = d.Kind;
@@ -829,11 +981,14 @@ public static partial class Fetch
         batch.Epoch = s_scopeEpoch;
         batch.Attempt = d.Attempt;
         batch.Ticket = ++s_ticket;
+        long waitedMs = (long)Stopwatch.GetElapsedTime(d.Since).TotalMilliseconds;
         d.Drop(take);                      // the whole window: `send` went out, the rest is recorded in `s_pendingEdges`
 
         s_active[batch.Ticket] = batch;
         s_inFlight++;
         IndexRoute(batch);
+        batch.SentAt = Stopwatch.GetTimestamp();
+        LogSend(batch, waitedMs);          // before Start: a transport that throws settles inline, and send comes first
         FetchProvider provider = s_providers[(byte)d.Provider]!;
         try { provider.Start(batch); }
         catch (Exception)
@@ -843,6 +998,55 @@ public static partial class Fetch
             Failed(batch.Ticket, 0, 0);
         }
     }
+
+    // ── the two always-on lines (wave D4) ───────────────────────────────────────────────────────────────────────────
+    //
+    // `fetch.send ticket= provider= subject= kind= edge= offset= rows= need= prio= attempt= waitedMs=` per request the
+    // runner hands a provider, and `fetch.answer ticket= status= ms= rows= unfilled=` per settle (`retry=` on a failure).
+    // The `wire.call` line says WHAT went out; these say WHY — which shape, how urgent, how long its oldest row sat in the
+    // bucket — and the ticket joins the two. One entry per REQUEST, never per row, and built only when Info passes, so a
+    // filtered log costs one compare. The D4 gate reads them: rows per send ≫ 1, nothing Spotify before `logged in`.
+
+    static void LogSend(FetchBatch batch, long waitedMs)
+    {
+        if (!Log.IsEnabled(WaveeLogLevel.Info)) return;
+        Log.Event(WaveeLogLevel.Info, "fetch", "fetch.send", "", null, -1, null,
+            WaveeLogField.Of("ticket", (long)batch.Ticket),
+            WaveeLogField.Of("provider", batch.Provider.ToString()),
+            WaveeLogField.Of("subject", batch.Subject.ToString()),
+            WaveeLogField.Of("kind", batch.Kind.ToString()),
+            WaveeLogField.Of("edge", batch.Edge.ToString()),
+            WaveeLogField.Of("offset", batch.Offset),
+            WaveeLogField.Of("rows", batch.Count),
+            WaveeLogField.Of("need", Groups(batch.Wanted)),
+            WaveeLogField.Of("prio", batch.Priority.ToString()),
+            WaveeLogField.Of("attempt", batch.Attempt),
+            WaveeLogField.Of("waitedMs", waitedMs));
+    }
+
+    /// <summary>The <c>fetch.answer</c> line. <paramref name="status"/> is <c>"ok"</c> for an answer and the HTTP status
+    /// (0 = a transport error) for a failure, which also says whether it goes round again (<paramref name="retry"/>).
+    /// Written before the batch is recycled — it reads the batch's count and send stamp.</summary>
+    static void LogAnswer(FetchBatch batch, string status, uint unfilled, bool? retry)
+    {
+        if (!Log.IsEnabled(WaveeLogLevel.Info)) return;
+        long ms = (long)Stopwatch.GetElapsedTime(batch.SentAt).TotalMilliseconds;
+        if (retry is { } again)
+            Log.Event(WaveeLogLevel.Info, "fetch", "fetch.answer", "", null, -1, null,
+                WaveeLogField.Of("ticket", (long)batch.Ticket), WaveeLogField.Of("status", status),
+                WaveeLogField.Of("ms", ms), WaveeLogField.Of("rows", batch.Count),
+                WaveeLogField.Of("unfilled", Groups(unfilled)), WaveeLogField.Of("retry", again));
+        else
+            Log.Event(WaveeLogLevel.Info, "fetch", "fetch.answer", "", null, -1, null,
+                WaveeLogField.Of("ticket", (long)batch.Ticket), WaveeLogField.Of("status", status),
+                WaveeLogField.Of("ms", ms), WaveeLogField.Of("rows", batch.Count),
+                WaveeLogField.Of("unfilled", Groups(unfilled)));
+    }
+
+    /// <summary>A group mask as the log writes it: <c>0x</c> + lowercase hex, so a reader never mistakes the bits for a
+    /// count (<c>need=0x100</c> is PlayCount, not a hundred of anything).</summary>
+    static string Groups(uint mask)
+        => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{mask:x}");
 
     /// <summary>Partition an EDGE demand's next-to-send window: a parent whose (the edge's route, parent) pair is
     /// already in <see cref="s_routeIndex"/> — an in-flight ROW batch is already asking this exact transport for it —
@@ -988,6 +1192,7 @@ public static partial class Fetch
         }
         s_inFlight--;
         s_answered++;
+        LogAnswer(batch, "ok", unfilled & batch.Wanted, retry: null);
 
         if (staging is not null)
         {
@@ -1029,6 +1234,8 @@ public static partial class Fetch
         bool live = batch.Epoch == s_scopeEpoch;
         Table? table = live ? TableOf(Entities.Current, batch) : null;
         bool retry = table is not null && Retryable(status) && batch.Attempt + 1 < MaxAttempts;
+        if (Log.IsEnabled(WaveeLogLevel.Info))
+            LogAnswer(batch, status.ToString(System.Globalization.CultureInfo.InvariantCulture), batch.Wanted, retry);
         if (retry)
         {
             Demand d = Bucket(table!, batch.Subject, batch.Provider, batch.Wanted, batch.Edge, batch.Offset, batch.Priority);
@@ -1119,7 +1326,9 @@ public static partial class Fetch
     /// <c>Spotify.Library.SyncNow</c>'s Online path. An entry from a replaced scope, or whose slot has since been
     /// recycled to another identity, is dropped — the same guards <see cref="SettleTicket"/> applies to a pending edge.
     /// Entries recorded from one batch are contiguous and share a shape, so they go back through <see cref="Plan"/> /
-    /// <see cref="PlanEdge"/> a run at a time — one bucket, one request, not one request per row.</summary>
+    /// <see cref="PlanEdge"/> a run at a time — one bucket, one request, not one request per row. Like every plan they
+    /// owe the tick's drain rather than sending here; the caller's <see cref="Pump"/> (the Online transition's) sends
+    /// them together with whatever the gate was holding.</summary>
     public static void Resume()
     {
         Sync();
@@ -1218,7 +1427,12 @@ public static partial class Fetch
     };
 
     /// <summary>The held revision of each parent's list, for the relations that have one (UI thread, inside
-    /// <see cref="Send"/>, C1).</summary>
+    /// <see cref="Send"/>, C1). A playlist's and the rootlist's survive a restart WITH their lists (Store.Lists.cs):
+    /// the edge door's disk leg restores a playlist Complete with its revision before its network ask, and the warm
+    /// restores the rootlist's, so the first ask of a launch is the <c>/diff</c>. A playlist's is sent only while its
+    /// membership is Complete — a revision vouches for the rows it came with, never for a window. The rootlist's needs no
+    /// such guard: it is only ever set beside a Complete rewrite (<c>Entities.CommitRootlist</c>, wire or disk) or by a
+    /// confirmed write to a list that is already there.</summary>
     static void FillRevisions(FetchBatch batch, FetchEdge edge, int take)
     {
         Edges edges = Entities.Current.Edges;
@@ -1231,10 +1445,11 @@ public static partial class Fetch
                 continue;
             }
             // The five persisted library relations carry their collection-v2 SYNC TOKEN rather than a revision from a
-            // table: the token is durable across launches (a `meta` row, deliberately not a column — a new column
-            // changes the DDL fingerprint and that DELETES the whole library.db once), so it comes out of the store's
-            // warmed in-memory map. `MetaGet` is a plain dictionary lookup, never sqlite, so it is safe on this
-            // thread. A null answer is the default-safe branch: the provider then walks the set in full.
+            // table: the token is durable across launches (a `meta` row, deliberately not a column — a column is DDL,
+            // the DDL's fingerprint NAMES the file, and a new one moves every install onto a fresh, empty
+            // `library.<fingerprint>.db` once: `Store.FileName`), so it comes out of the store's warmed in-memory map.
+            // `MetaGet` is a plain dictionary lookup, never sqlite, so it is safe on this thread. A null answer is the
+            // default-safe branch: the provider then walks the set in full.
             if (FetchRoutes.LibrarySetOf(edge, out LibraryEdgeKind librarySet))
             {
                 batch.Revisions[i] = Store.MetaGet(Spotify.Api.CollectionMetaKey(Entities.Current.Key.Account, librarySet));
@@ -1243,6 +1458,7 @@ public static partial class Fetch
             StringId revision = edge switch
             {
                 FetchEdge.Rootlist => edges.RootlistRevision(batch.Slots[i]),
+                FetchEdge.ShowEpisodes when edges.ShowEpisodes.State(batch.Slots[i]) == EdgeState.Complete => Entities.Current.Shows.ListRevision[batch.Slots[i]],
                 FetchEdge.Recents => edges.RecentsRevision(batch.Slots[i]),
                 FetchEdge.PlaylistTracks when edges.PlaylistTracks.State(batch.Slots[i]) == EdgeState.Complete
                     => new global::Wavee.Playlist(batch.Slots[i]).RevisionId,
@@ -1260,6 +1476,7 @@ public static partial class Fetch
         batch.Offset = 0;
         Array.Clear(batch.Text);                 // do not pin interned strings in a pooled buffer (the ids are values)
         Array.Clear(batch.Revisions);
+        Array.Clear(batch.Baselines);             // a pooled batch pins no list
         if (s_pool.Count < 8) s_pool.Push(batch);
     }
 }

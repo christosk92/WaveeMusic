@@ -274,6 +274,8 @@ public static partial class Tray
             => s_icon is { } icon && IconShown(Mode(), windowVisible: false) && (icon.IsShown || icon.Show());
 
         /// <summary>E1: the caption ✕, Alt+F4, the system menu, <c>FluentApp.CloseWindow</c>. True keeps the window.</summary>
+        static bool s_retiring, s_retired;
+
         static bool OnClose(FluentGpu.Pal.CloseReason reason)
         {
             var cause = reason == FluentGpu.Pal.CloseReason.SessionEnding ? CloseCause.SessionEnding : CloseCause.User;
@@ -282,6 +284,22 @@ public static partial class Tray
             Log.Info("tray", "close requested reason=" + reason + " verdict=" + verdict);
             if (verdict == CloseVerdict.Quit)
             {
+                if (!s_retired && reason != FluentGpu.Pal.CloseReason.SessionEnding)
+                {
+                    if (!s_retiring)
+                    {
+                        s_retiring = true;
+                        // Keep the UI dispatcher alive until the bounded inactive PUT has completed.
+                        Spotify.Connect.RetireThen(() => Playback.ToUi(() =>
+                        {
+                            s_retired = true;
+                            s_quitRequested = true;
+                            FluentApp.CloseWindow();
+                        }));
+                    }
+                    return true;
+                }
+                if (!s_retired) Playback.RetireForSignOut(out _);
                 Shutdown();   // on the UI thread, in the message that ends the loop: no ghost icon after exit
                 return false;
             }

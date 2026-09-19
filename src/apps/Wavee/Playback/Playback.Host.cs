@@ -277,14 +277,16 @@ public static partial class Playback
     public static void Boot()
     {
         s_state = State.Initial;
+        s_state.EpisodeRate = ValidEpisodeSpeed(Platform.Settings.Get(s_episodeSpeedKey));
+        EpisodeSpeed.SetIfChanged(s_state.EpisodeRate);
         s_state.Us = DeviceHash(Platform.DeviceId);
         s_identity = new DeviceIdentity(
             Platform.DeviceId,
-            Environment.MachineName,                       // what every other client's picker shows for this box
+            Environment.MachineName + " - Wavee",                       // what every other client's picker shows for this box
             Spotify.Identity.ClientId,
-            Spotify.Identity.AppPlatform,                  // `PrivateDeviceInfo.platform`
+            System.Runtime.InteropServices.RuntimeInformation.OSDescription, // actual operating system
             Spotify.Identity.ClientVersion,                // `DeviceInfo.device_software_version`
-            SpircVersion);
+            SpircVersion, Spotify.Audio.CanDerive);
 
         if (Platform.Settings.Get(Platform.Keys.RememberVolume))
             s_state.Volume = Math.Clamp(Platform.Settings.Get(Platform.Keys.SavedVolume), 0f, 1f);
@@ -420,7 +422,18 @@ public static partial class Playback
         Owner ownerBefore = s_state.Own.Kind;
         ulong deviceBefore = s_state.Own.Device;
         ClaimPhase claimBefore = s_state.Own.Claim;
+        if (i.Kind == InputKind.Play && !i.Context.Equals(s_wireOriginContext)) s_wireOrigin = null;
+        uint loadBefore = s_state.LoadEpoch;
         Step(ref s_state, in i, ref s_fx);
+        if (s_state.LoadEpoch != loadBefore && (s_fx.Load || s_fx.Adopt))
+            WireStarted(s_state.Context, s_state.StartReason);
+        if (i.Kind == InputKind.SetSpeed || (i.Kind == InputKind.RemoteCommand && i.Command.Kind == RemoteCmd.SetPlaybackSpeed))
+        {
+            EpisodeSpeed.SetIfChanged(s_state.EpisodeRate);
+            if (s_registration.Open) Spotify.Telemetry.RateChanged(ref s_registration, s_state.PosMs, s_state.ContentRate);
+            Audio.SetRate(s_state.ContentRate);
+            Video.SetRate(s_state.ContentRate);
+        }
         LogOwnerTransition(ownerBefore, deviceBefore, claimBefore);
         if (s_fx.Play.Events == PlayEvents.None) return;
         PlayReport report = s_fx.Play;
@@ -562,7 +575,7 @@ public static partial class Playback
         // seed bumps the queue version, and the watch re-arms the next row inside this drain (A4).
         if (s_fx.TakeoverSeed) SeedQueueFromCluster(takeover: true);
         if (s_fx.Stop) StopHost();
-        if (s_fx.Load) LoadHost(s_fx.LoadRow, s_fx.LoadId, s_fx.LoadKind, s_fx.LoadEpoch, s_fx.LoadFromMs, s_fx.LoadPaused, s_fx.LoadWhy);
+        if (s_fx.Load) LoadHost(s_fx.LoadRow, s_fx.LoadId, s_fx.LoadKind, s_fx.LoadEpoch, s_fx.LoadFromMs, s_fx.LoadPaused);
         else if (s_fx.Adopt) PumpAdopt(s_fx.AdoptFrom, s_fx.AdoptTo);
         if (s_fx.CancelPrepared) PumpCancelPrepared();
         if (s_fx.PauseHost) { if (s_hostKind == PlayableKind.Video) Video.Pause(); else Audio.Pause(); }
@@ -617,8 +630,10 @@ public static partial class Playback
     }
 
     /// <summary>Route a load to the host its kind names, stopping the other host first when the kind crosses the video
-    /// line (G-140). A paused load is followed by the host's own pause in the same pass.</summary>
-    static void LoadHost(EntityRef row, EntityId id, PlayableKind kind, uint epoch, int fromMs, bool paused, LoadOrigin why)
+    /// line (G-140). A paused load is followed by the host's own pause in the same pass. <paramref name="fromMs"/> is
+    /// already the episode's resume point when a Claim or an Advance started one "from the top": the reducer's load tail
+    /// resolves it on the deck (<c>EpisodeStartOf</c> in <c>EmitLoad</c>), so a paused load shows it from the first frame.</summary>
+    static void LoadHost(EntityRef row, EntityId id, PlayableKind kind, uint epoch, int fromMs, bool paused)
     {
         Pending.Load.Value = true;
         if (MediaSwitch.HostChanges(s_hostKind, kind)) StopHost();
@@ -627,9 +642,6 @@ public static partial class Playback
         if (kind == PlayableKind.Video) { LoadVideo(row, id, epoch, fromMs, paused); return; }
         Audio.Load(row, id, kind, epoch, fromMs);
         if (paused) Audio.Pause();
-        if (id.Kind == EntityKind.Episode && id.Provider == EntityProvider.Spotify && fromMs == 0
-            && why is LoadOrigin.Claim or LoadOrigin.Advance)
-            LookUpResumePoint(id, epoch);
     }
 
     /// <summary>The video resolver: a row's manifest id (32 hex) → a playable source, or null for "no video". Blocks —
@@ -675,8 +687,17 @@ public static partial class Playback
     /// turn the surface off and say why.</summary>
     public static Action<Fault>? OnVideoDemoted { get; set; }
 
-    /// <summary>Make sure the identity the core is about to paint HAS a row, and ask the catalog for its hot group at
-    /// playback priority. Allocating the slot is what turns a foreign device's uri into a handle the bar can bind.</summary>
+    // D4 (F2): Playback priority bypasses F1's per-tick drain (it pumps INLINE, immediately) — so unlike a Visible/
+    // Prefetch ask, calling `Entities.Ensure` once per `EnsureRow` invocation is not coalesced for free downstream.
+    // One drain (`Drain()`'s single `Execute()` → `Publish()` pass, C3) can call `EnsureRow` more than once for the
+    // SAME or a different id — the Fetch effect, a Load's inbound-row correction, and Publish's own late-identity
+    // fix-up can all fire in one pass — so the ask is collected here and flushed exactly once, by `Publish()`.
+    static readonly List<int> s_ensureRowTrackSlots = new(4);
+    static readonly List<int> s_ensureRowEpisodeSlots = new(4);
+
+    /// <summary>Make sure the identity the core is about to paint HAS a row, and collect it for the catalog's hot
+    /// group at playback priority — <see cref="FlushRowEnsures"/> issues the one span ask per kind this drain owes.
+    /// Allocating the slot is what turns a foreign device's uri into a handle the bar can bind.</summary>
     static void EnsureRow(EntityId id)
     {
         if (id.IsEmpty || Entities.Current is null) return;
@@ -693,8 +714,30 @@ public static partial class Playback
                 Log.Info("playback", "deck row re-pointed to its identity (slot " + s_state.Current.Slot + " → " + slot + ")");
             s_state.Current = new EntityRef(id.Kind, slot);
         }
-        if (id.Kind == EntityKind.Track) Entities.Ensure(new Track(slot), TrackFields.Identity, FetchPriority.Playback);
-        else if (id.Kind == EntityKind.Episode) Entities.Ensure(new Episode(slot), EpisodeFields.Identity, FetchPriority.Playback);
+        if (id.Kind == EntityKind.Track) { if (!s_ensureRowTrackSlots.Contains(slot)) s_ensureRowTrackSlots.Add(slot); }
+        else if (id.Kind == EntityKind.Episode) { if (!s_ensureRowEpisodeSlots.Contains(slot)) s_ensureRowEpisodeSlots.Add(slot); }
+    }
+
+    /// <summary>The one span ask per kind this drain's <see cref="EnsureRow"/> calls owe, at Playback priority — called
+    /// once, at the end of <see cref="Publish"/>, after every `EnsureRow` this drain could reach (including Publish's
+    /// own late-identity correction, above) has had its say.</summary>
+    static void FlushRowEnsures()
+    {
+        if (Entities.Current is null) { s_ensureRowTrackSlots.Clear(); s_ensureRowEpisodeSlots.Clear(); return; }
+        if (s_ensureRowTrackSlots.Count > 0)
+        {
+            Entities.Ensure(Entities.Current.Tracks,
+                System.Runtime.InteropServices.CollectionsMarshal.AsSpan(s_ensureRowTrackSlots),
+                (uint)TrackFields.Identity, FetchPriority.Playback);
+            s_ensureRowTrackSlots.Clear();
+        }
+        if (s_ensureRowEpisodeSlots.Count > 0)
+        {
+            Entities.Ensure(Entities.Current.Episodes,
+                System.Runtime.InteropServices.CollectionsMarshal.AsSpan(s_ensureRowEpisodeSlots),
+                (uint)EpisodeFields.Identity, FetchPriority.Playback);
+            s_ensureRowEpisodeSlots.Clear();
+        }
     }
 
     /// <summary>Announce our state to the connect-state service. The SNAPSHOT is captured here, on the UI thread,
@@ -758,7 +801,9 @@ public static partial class Playback
     static bool CurrentHasVideo()
     {
         EntityRef row = s_state.Current;
-        if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return false;
+        if (row.IsNone || Entities.Current is null) return false;
+        if (row.Kind == EntityKind.Episode) return (new Episode(row.Slot).Flags & EpisodeFlags.Video) != 0;
+        if (row.Kind != EntityKind.Track) return false;
         return (uint)row.Slot < (uint)Entities.Current.Tracks.Count && new Track(row.Slot).HasVideo;
     }
 
@@ -767,6 +812,7 @@ public static partial class Playback
     static string CurrentVideoGid()
     {
         EntityRef row = s_state.Current;
+        if (row.Kind == EntityKind.Episode && !row.IsNone) return Video.KnownManifestId(s_state.CurrentId);
         if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null
             || (uint)row.Slot >= (uint)Entities.Current.Tracks.Count) return "";
         StringId gid = new Track(row.Slot).VideoGidId;
@@ -803,7 +849,7 @@ public static partial class Playback
         if (endpoint.Length == 0) return;
         string valueName = s_fx.RemoteCmd switch
         {
-            RemoteCmd.SeekTo => "position",
+            RemoteCmd.SeekTo => "value",
             RemoteCmd.SetShufflingContext or RemoteCmd.SetRepeatingContext or RemoteCmd.SetRepeatingTrack => "value",
             _ => "",
         };
@@ -886,6 +932,7 @@ public static partial class Playback
 
         WatchRow();
         Ticker(s_state.Phase == Phase.Playing || s_state.Own.Claim == ClaimPhase.Protected || AwaitsIdentity());
+        FlushRowEnsures();       // D4: the one span ask per kind every EnsureRow call this drain made owes
     }
 
     // ── 9a. the row on the deck, watched (G-084 late hydration, G-143 the video offer) ──────────────────────────────
@@ -984,6 +1031,22 @@ public static partial class Playback
 
     public static void PlayNow(EntityRef row, EntityId context, QueueCursor cursor, PlayableKind kind = PlayableKind.Audio, int fromMs = 0)
         => Post(Input.Play(row, row.Id, context, cursor, kind, fromMs, FrameNowMs()));
+
+    public enum EpisodeStartKind : byte { Resume, Beginning, Position }
+    public readonly record struct EpisodeStart(EpisodeStartKind Kind, int PositionMs = 0);
+
+    /// <summary>Resolve episode intent before loading, including an explicit zero position.</summary>
+    public static void PlayEpisode(EntityId id, EntityId context, EpisodeStart start)
+    {
+        if (id.Kind != EntityKind.Episode || Entities.Current is null) return;
+        EntityRef row = Entities.Ref(id);
+        if ((new Episode(row.Slot).Flags & EpisodeFlags.Unplayable) != 0) return;
+        int ms = start.Kind == EpisodeStartKind.Resume ? EpisodeStartOf(id) : Math.Max(0, start.PositionMs);
+        if (start.Kind == EpisodeStartKind.Beginning) ms = 0;
+        if (!context.IsEmpty) { PlayContext(context, id, ms); return; }
+        Post(new Input(InputKind.Play, row, id, context, QueueCursor.None, ms,
+            Input.ExplicitPositionBit, nowMs: FrameNowMs()));
+    }
 
     public static void Next() => Post(Input.Next(FrameNowMs()));
     public static void Previous() => Post(Input.Prev(FrameNowMs()));
@@ -1118,6 +1181,8 @@ public static partial class Playback
         s_videoHas = false;
         s_videoGid = StringId.Empty;
         s_videoFacts = new global::Wavee.Video.ConnectVideoFacts();
+        s_ensureRowTrackSlots.Clear();
+        s_ensureRowEpisodeSlots.Clear();
         ResetContextForTests();
         ResetRemoteForTests();
         ResetWireForTests();

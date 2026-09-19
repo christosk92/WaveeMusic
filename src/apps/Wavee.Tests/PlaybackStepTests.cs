@@ -296,6 +296,87 @@ public class PlaybackStepTests
         Assert.Equal(1, s.Cursor.Index);
     }
 
+    // ── podcast plan §5.8: an episode load that named no position starts at its row's progress — on the deck ────────
+
+    /// <summary>A real episode row: 30 minutes long, at <paramref name="progressMs"/> when given (null: progress unknown).</summary>
+    static EntityRef EpisodeRow(int n, int? progressMs)
+    {
+        var id = EntityId.ForGid(EntityKind.Episode, (UInt128)(ulong)(0x7000 + n));
+        Staging staging = Staging.Rent();
+        uint known = (uint)EpisodeFields.Identity | (progressMs is null ? 0u : (uint)EpisodeFields.Progress);
+        ref StagedEpisode row = ref staging.Episodes.RowFor(id, Authority.Full, known);
+        row.DurationMs = 1_800_000;
+        row.ProgressMs = progressMs ?? 0;
+        TestScope.CommitAndPublish(staging);
+        return new EntityRef(EntityKind.Episode, Entities.Current.Episodes.Slot(id));
+    }
+
+    /// <summary>The paused Claim (a paused transfer, a restored context) used to publish 0:00 until playback began: the
+    /// start was resolved by the host after the Step, and nothing told the deck. The load tail resolves it now, so the
+    /// bar paints the resume point from the first frame and the host opens the stream at the same number.</summary>
+    [Theory]
+    [InlineData(600_000, 0, 600_000)]        // in progress: 10:00 before any audio exists
+    [InlineData(null, 0, 0)]                 // progress unknown: no guess
+    [InlineData(1_790_000, 0, 1_790_000)]    // near the end remains an incomplete resume point
+    [InlineData(1_800_000, 0, 0)]            // actual end is complete and starts over
+    [InlineData(600_000, 45_000, 45_000)]    // a load that NAMED a position keeps it
+    public void A_paused_claim_of_an_episode_publishes_where_it_starts_from_the_first_frame(int? progressMs, int fromMs,
+                                                                                           int expected)
+    {
+        TestScope.Fresh();
+        EntityRef row = EpisodeRow(1, progressMs);
+        Queue.Replace(new[] { row }, new[] { Row(QueueBucket.NowPlaying, 1) });
+        var s = Playback.State.Initial;
+        s.Us = Playback.DeviceHash("wavee-device");
+        var fx = new Playback.Effects();
+
+        Playback.Step(ref s, Playback.Input.PlayFrom(row, row.Id, default, Queue.CursorOf(0), Playback.PlayableKind.Audio,
+            fromMs, 1_000, Playback.ClaimCause.InboundTransfer, paused: true), ref fx);
+
+        Assert.True(fx.Load);
+        Assert.True(fx.LoadPaused);
+        Assert.Equal(Playback.Phase.Paused, s.Phase);
+        Assert.Equal(expected, s.Position(5_000));   // what the bar paints — and a paused deck does not run
+        Assert.Equal(expected, fx.LoadFromMs);       // where the host opens the stream
+    }
+
+    [Fact]
+    public void An_advance_onto_an_episode_starts_at_its_progress_and_a_reload_keeps_its_own_position()
+    {
+        TestScope.Fresh();
+        EntityRef track = Track(0), episode = EpisodeRow(2, 600_000);
+        Queue.Replace(new[] { track, episode }, new[] { Row(QueueBucket.NowPlaying, 1), Row(QueueBucket.NextUp, 2) });
+        var s = Playback.State.Initial;
+        s.Us = Playback.DeviceHash("wavee-device");
+        s.Current = track;
+        s.CurrentId = track.Id;
+        s.Cursor = Queue.CursorOf(0);
+        s.Phase = Playback.Phase.Playing;
+        s.DurationMs = 180_000;
+        s.LoadEpoch = s.Epoch;
+        Playback.Ownership.Claim(ref s.Own, Playback.ClaimCause.UserPlay, 1, 0, 0, acknowledged: false);
+        var fx = new Playback.Effects();
+
+        Playback.Step(ref s, Playback.Input.Next(nowMs: 1_000), ref fx);
+
+        Assert.Equal(episode, s.Current);
+        Assert.Equal(Playback.LoadOrigin.Advance, fx.LoadWhy);
+        Assert.Equal(600_000, s.PosMs);
+        Assert.Equal(600_000, fx.LoadFromMs);
+
+        // A reload is not a start: the same episode reloaded at 0:00 (a device change) stays at 0:00, never its saved point.
+        s.PosMs = 0;
+        s.PosQpc = 2_000;
+        s.Phase = Playback.Phase.Paused;
+        fx.Clear();
+        Playback.Step(ref s, Playback.Input.Audio(Playback.AudioSignal.DeviceReload, s.LoadEpoch, nowMs: 2_000), ref fx);
+
+        Assert.True(fx.Load);
+        Assert.Equal(Playback.LoadOrigin.DeviceReload, fx.LoadWhy);
+        Assert.Equal(0, fx.LoadFromMs);
+        Assert.Equal(0, s.PosMs);
+    }
+
     // ── pause / resume / seek / volume ──────────────────────────────────────────────────────────────────────────────
 
     [Fact]

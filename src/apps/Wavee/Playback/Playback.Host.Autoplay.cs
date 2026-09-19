@@ -72,6 +72,16 @@ public static partial class Playback
         var recent = new EntityId[seeds];
         for (int k = 0; k < seeds; k++) recent[k] = Queue.RefAt(last - k).Id;
         bool podcast = context.Kind is EntityKind.Show or EntityKind.Episode;
+        if (podcast)
+        {
+            EntityId[] history = Spotify.Telemetry.RecentEpisodes();
+            var unique = new HashSet<EntityId>();
+            var all = new List<EntityId>();
+            if (s_state.CurrentId.Kind == EntityKind.Episode && unique.Add(s_state.CurrentId)) all.Add(s_state.CurrentId);
+            foreach (EntityId id in history) if (unique.Add(id)) all.Add(id);
+            foreach (EntityId id in recent) if (id.Kind == EntityKind.Episode && unique.Add(id)) all.Add(id);
+            recent = all.ToArray();
+        }
         string station = RemotePlan.StationUri(context);      // "" unless context is a bare track/artist seed
 
         bool queued = Spotify.Api.Run(() =>
@@ -83,7 +93,7 @@ public static partial class Playback
             try
             {
                 byte[] body = new byte[64 + 64 * recent.Length];
-                int written = Spotify.Decode.AutoplayRequest(contextUtf8, recent, body);
+                int written = podcast ? Spotify.Decode.AutopodcastRequest(recent, body) : Spotify.Decode.AutoplayRequest(contextUtf8, recent, body);
                 Spotify.Api.Result result = Spotify.Api.Autoplay(body.AsSpan(0, written).ToArray(), podcast, CancellationToken.None);
                 if (result.Ok && result.Body.Length > 0)
                 {
@@ -115,7 +125,7 @@ public static partial class Playback
             {
                 try
                 {
-                    int appended = AppendRows(context, buffer, start, count, QueueProvider.Autoplay);
+                    int appended = AppendRows(context, buffer, start, count, QueueProvider.Autoplay, recent);
                     if (context.Equals(s_state.Context))
                     {
                         s_autoplayPageContext = context;
@@ -172,7 +182,7 @@ public static partial class Playback
 
     /// <summary>Append a resolve's rows after the whole queue as NextUp of <paramref name="provider"/> — while the context
     /// is still the one on the deck. Answers how many landed.</summary>
-    static int AppendRows(EntityId context, ClusterBuffer buffer, int start, int count, QueueProvider provider)
+    static int AppendRows(EntityId context, ClusterBuffer buffer, int start, int count, QueueProvider provider, EntityId[]? excluded = null)
     {
         if (count <= 0 || !context.Equals(s_state.Context) || Entities.Current is null) return 0;
         Rebind();                                          // append to this scope's queue, never under a stale one (G-241)
@@ -191,7 +201,15 @@ public static partial class Playback
                 ReadOnlySpan<byte> uri = buffer.Utf8(tracks[k].Uri);
                 if (uri.IsEmpty) continue;
                 EntityId id = EntityId.Parse(uri);
-                if (!id.IsPlayable) continue;
+                if (!id.IsPlayable || Spotify.Library.IsBanned(id)) continue;
+                if (!tracks[k].ArtistUri.IsEmpty && Spotify.Library.IsBanned(id.Text,
+                    [System.Text.Encoding.UTF8.GetString(buffer.Utf8(tracks[k].ArtistUri))])) continue;
+                if (provider == QueueProvider.Autoplay)
+                {
+                    bool duplicate = id.Equals(s_state.CurrentId) || (excluded is not null && Array.IndexOf(excluded, id) >= 0);
+                    for (int j = 0; j < n && !duplicate; j++) duplicate = Queue.Unpack(packed[j]).Id.Equals(id);
+                    if (duplicate) continue;
+                }
                 int target = Queue.Pack(Entities.Ref(id));
                 if (target == 0) continue;
                 packed[n] = target;
@@ -199,7 +217,11 @@ public static partial class Playback
                 n++;
             }
             int appended = n - existing;
-            if (appended > 0) Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
+            if (appended > 0)
+            {
+                FillQueueIds(context, packed.AsSpan(0, n), rows.AsSpan(0, n));
+                Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
+            }
             s_uids.Retain(Queue.Rows);
             return appended;
         }

@@ -7,11 +7,20 @@
 // chosen" from "column 0".
 //
 // The sort-key facts parse an `EntityUri` (which interns), so the class joins EntitiesCollection.
+//
+// Podcast rework wave P2 (§5.4): `Config.Episode` — the show's frame with three knobs turned, fixed by route, sharing
+// the show's persisted rail pair — its eyebrow arm, and the `FrameSlots` contract the six appended podcast slots join:
+// equality is PRESENCE (a slot appearing or disappearing is a new spec; a new builder body is not), and the twelve older
+// slots keep their mask bits (the hash IS the mask).
 
 using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Localization;
 using Xunit;
 using Config = Wavee.Detail.Config;
+using FrameSlots = Wavee.Detail.FrameSlots;
 using SortKeys = Wavee.Detail.SortKeys;
+using Text = Wavee.Detail.Text;
 
 namespace Wavee.Tests;
 
@@ -138,8 +147,154 @@ public class DetailConfigTests
     [Fact]
     public void EveryConfig_OpensItsRailAtItsScopesDefault()
     {
-        foreach (var cfg in new[] { Config.Playlist, Config.Album, Config.Single, Config.Compilation, Config.Liked, Config.Show })
+        foreach (var cfg in new[] { Config.Playlist, Config.Album, Config.Single, Config.Compilation, Config.Liked, Config.Show, Config.Episode })
             Assert.Equal(Detail.RailPolicy.DefaultWidthFor(cfg.RailScope), cfg.RailWidth);
+    }
+
+    // ── Config.Episode (podcast rework §5.4) ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>An episode is the SHOW's frame with exactly three knobs turned: its own kind, no heart in the fixed FAB
+    /// group (its ♥ is a satellite), the show's rail scope. Everything else — episodes in the right column, the album-like
+    /// 280 rail, the TypeYear badge style, no selection, no trailing body — is the show's.</summary>
+    [Fact]
+    public void Episode_IsTheShowWithThreeKnobs()
+    {
+        var episode = Config.Episode;
+        Assert.Equal(Config.Show with { Kind = DetailKind.Episode, Heart = HeartMode.None, RailScope = RailScope.Show }, episode);
+        Assert.NotEqual(Config.Show, episode);
+
+        Assert.Equal(DetailKind.Episode, episode.Kind);
+        Assert.Equal(HeartMode.None, episode.Heart);
+        Assert.Equal(RailScope.Show, episode.RailScope);
+        Assert.Equal(DetailContent.Episodes, episode.Content);
+        Assert.Equal(BadgeStyle.TypeYear, episode.Badges);
+        Assert.Equal(Design.Size.RailAlbum, episode.RailWidth);
+        Assert.Equal(ItemsSelectionMode.None, episode.Selection);
+        Assert.True(episode.TwoColumn);
+        Assert.True(episode.RailResizable);
+        Assert.False(episode.HasTrailing);
+        Assert.False(episode.ShowPlays);
+        Assert.False(episode.ShowTrackArtist);
+    }
+
+    /// <summary>The episode route is fixed like the show's: no release kind reaches it.</summary>
+    [Theory]
+    [InlineData(AlbumKind.Single)]
+    [InlineData(AlbumKind.EP)]
+    [InlineData(AlbumKind.Album)]
+    [InlineData(AlbumKind.Compilation)]
+    public void For_TheEpisodeRoute_IsFixed(AlbumKind releaseKind)
+        => Assert.Equal(Config.Episode, Config.For(DetailKind.Episode, releaseKind));
+
+    /// <summary>The podcast family persists ONE rail: an episode page reads and writes the show's width/collapsed pair,
+    /// and "Keep left-rail same size" still folds it into Uniform like every other surface.</summary>
+    [Fact]
+    public void Episode_SharesTheShowsRailPair()
+    {
+        var scope = Detail.RailPolicy.ScopeFor(Config.Episode.RailScope, uniform: false);
+        Assert.Equal(RailScope.Show, scope);
+        Assert.Equal(Detail.RailPolicy.KeysFor(RailScope.Show), Detail.RailPolicy.KeysFor(scope));
+        Assert.Equal(Platform.Keys.DetailShowRailWidth, Detail.RailPolicy.KeysFor(scope).Width);
+        Assert.Equal(Platform.Keys.DetailShowRailCollapsed, Detail.RailPolicy.KeysFor(scope).Collapsed);
+        Assert.Equal(RailScope.Uniform, Detail.RailPolicy.ScopeFor(Config.Episode.RailScope, uniform: true));
+    }
+
+    /// <summary>An episode's TypeYear eyebrow is "Episode" (a show's is "Podcast"), with the year when one is known; any
+    /// other badge style forwards to the kind-free rule unchanged.</summary>
+    [Fact]
+    public void Eyebrow_AnEpisodeIsAnEpisode()
+    {
+        Assert.Equal(Loc.Get(Strings.Nav.Episode),
+            Text.Eyebrow(DetailKind.Episode, BadgeStyle.TypeYear, AlbumKind.Album, 0, false, true, true));
+        Assert.StartsWith(Loc.Get(Strings.Nav.Episode),
+            Text.Eyebrow(DetailKind.Episode, BadgeStyle.TypeYear, AlbumKind.Album, 2026, false, true, true));
+        Assert.Contains("2026", Text.Eyebrow(DetailKind.Episode, BadgeStyle.TypeYear, AlbumKind.Album, 2026, false, true, true));
+        Assert.NotEqual(Text.Eyebrow(DetailKind.Show, BadgeStyle.TypeYear, AlbumKind.Album, 0, false, true, true),
+            Text.Eyebrow(DetailKind.Episode, BadgeStyle.TypeYear, AlbumKind.Album, 0, false, true, true));
+        Assert.Equal(Text.Eyebrow(BadgeStyle.None, AlbumKind.Album, 0, false, true, true),
+            Text.Eyebrow(DetailKind.Episode, BadgeStyle.None, AlbumKind.Album, 0, false, true, true));
+    }
+
+    // ── FrameSlots: PRESENCE equality, appended bits (podcast rework §5.4) ─────────────────────────────────────────────
+
+    static Element Box() => new BoxEl();
+
+    /// <summary>The eighteen slots one at a time, in declaration order — the twelve older ones, then the six podcast seams.</summary>
+    static FrameSlots[] EachSlotAlone() =>
+    [
+        new() { Cover = _ => Box() },
+        new() { CompactCover = _ => Box() },
+        new() { Title = (_, _) => Box() },
+        new() { Attribution = _ => Box() },
+        new() { Description = _ => Box() },
+        new() { Pulse = () => Box() },
+        new() { Chart = () => Box() },
+        new() { PreRelease = () => Box() },
+        new() { ReleasePanel = _ => Box() },
+        new() { LikedFacts = _ => Box() },
+        new() { Trailing = () => Box() },
+        new() { Episodes = _ => Box() },
+        new() { Badges = () => Box() },
+        new() { Rating = _ => Box() },
+        new() { Ledger = _ => Box() },
+        new() { Primary = _ => Box() },
+        new() { Satellites = () => Array.Empty<Element>() },
+        new() { Topics = _ => Box() },
+    ];
+
+    /// <summary>Each new slot's PRESENCE changes equality — a slot appearing is a new spec the frame renders.</summary>
+    [Fact]
+    public void FrameSlots_ANewSlotsPresence_ChangesEquality()
+    {
+        var none = new FrameSlots();
+        foreach (var one in EachSlotAlone()[12..])
+        {
+            Assert.NotEqual(none, one);
+            Assert.NotEqual(none.GetHashCode(), one.GetHashCode());
+        }
+    }
+
+    /// <summary>…and its BODY does not: a re-push with a different builder (fresh closures, other output) is equal, so a
+    /// page re-rendering with the same slot set costs the frame nothing — values reach a slot body through its signals.</summary>
+    [Fact]
+    public void FrameSlots_ANewSlotsBody_DoesNotChangeEquality()
+    {
+        var pairs = new (FrameSlots A, FrameSlots B)[]
+        {
+            (new() { Badges = () => new BoxEl() }, new() { Badges = () => new BoxEl { Width = 1f } }),
+            (new() { Rating = _ => new BoxEl() }, new() { Rating = w => new BoxEl { Width = w } }),
+            (new() { Ledger = _ => new BoxEl() }, new() { Ledger = w => new BoxEl { Height = w } }),
+            (new() { Primary = _ => new BoxEl() }, new() { Primary = accent => new BoxEl { Fill = accent } }),
+            (new() { Satellites = () => Array.Empty<Element>() }, new() { Satellites = () => [new BoxEl(), new BoxEl()] }),
+            (new() { Topics = _ => new BoxEl() }, new() { Topics = w => new BoxEl { Width = w } }),
+        };
+        foreach (var (a, b) in pairs)
+        {
+            Assert.Equal(a, b);
+            Assert.Equal(a.GetHashCode(), b.GetHashCode());
+        }
+
+        // A full podcast set against the same set with every body swapped and an older slot added: only the added slot counts.
+        var podcast = new FrameSlots { Badges = () => Box(), Rating = _ => Box(), Ledger = _ => Box(), Primary = _ => Box(),
+                                       Satellites = () => Array.Empty<Element>(), Topics = _ => Box(), Episodes = _ => Box() };
+        var swapped = podcast with { Badges = () => new BoxEl { Width = 2f }, Topics = _ => new BoxEl { Width = 3f } };
+        Assert.Equal(podcast, swapped);
+        Assert.NotEqual(podcast, swapped with { Attribution = _ => Box() });
+        Assert.NotEqual(podcast, swapped with { Ledger = null });
+    }
+
+    /// <summary>The six are APPENDED: the twelve older slots keep bits 1…2048 (the hash is the presence mask), the new ones
+    /// take 4096…131072, and all eighteen are distinct.</summary>
+    [Fact]
+    public void FrameSlots_TheSixPodcastSlotsAreAppendedBits()
+    {
+        var each = EachSlotAlone();
+        Assert.Equal(18, each.Length);
+        for (int i = 0; i < each.Length; i++)
+        {
+            Assert.Equal(1 << i, each[i].GetHashCode());
+            for (int j = i + 1; j < each.Length; j++) Assert.NotEqual(each[i], each[j]);
+        }
     }
 
     // ── Detail.SortKeys (0.2.9 DetailShell.SortColKey / SortDescKey) ─────────────────────────────────────────────────

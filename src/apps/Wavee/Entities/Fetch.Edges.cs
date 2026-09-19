@@ -9,9 +9,13 @@
 //     Entities.EnsureEdge(FetchEdge.Rootlist, me)            ── one ask per (relation, parent, page) per scope
 //        │  WasAsked? → dedupe          (EdgeTableBase.Asked — the edge twin of Table.Asked)
 //        │  MarkAsked
+//        ├─ DISK FIRST (wave D2): a playlist's membership, first page, still Unknown, never offered to the disk this
+//        │  scope, store open ─→ MarkDiskAsked · Store.ReadList ─→ the persisted list lands through the wire's own
+//        │  commit, Complete, with its revision ─→ AfterDisk: THIS parent goes to its bucket below, found or not —
+//        │  and with a revision now held, `FillRevisions` makes that network ask the `/diff`
 //        ▼
-//     bucket (provider, Edge, parent kind, relation, offset, priority) → FetchBatch { Subject = Edge, Edge, Offset }
-//        │                                                              rows = the PARENTS (their ids, their text)
+//     bucket (provider, Edge, parent kind, relation, offset) → the tick's Drain (Playback: now) → FetchBatch
+//        │   { Subject = Edge, Edge, Offset }, rows = the PARENTS (their ids, their text); held while CanSend refuses
 //        ▼
 //     provider: FetchRoutes.ForEdge(edge, offset) → the endpoint → decode → Fetch.Answer / Fetch.Failed
 //        │
@@ -21,8 +25,10 @@
 //                   terminal → MarkFailed(status): un-asked (the next mount retries) and readable (G-050's banner)
 //
 // The same planner owns both doors because they share everything that matters: the four-request ceiling, priority,
-// the scope drop (C7) and the backoff. A relation is one parent per request on every route there is, so an edge bucket
-// is batched only to share that machinery; the provider walks the parents one request each.
+// the tick's drain, the online gate, the scope drop (C7) and the backoff. A relation is one parent per request on every
+// route there is, so an edge bucket is batched only to share that machinery; the provider walks the parents one request
+// each. Within one priority a ROW bucket leaves before an EDGE bucket (`Fetch.Pump`): the row batch is what indexes the
+// routes this door's dedupe reads, so a page asking its row and its relation in one tick sends the shared route once.
 
 namespace Wavee;
 
@@ -30,7 +36,16 @@ public static partial class Fetch
 {
     /// <summary>"This relation of these parents, this page." THE edge door (through <c>Entities.EnsureEdge</c>).
     /// Dedupes per (relation, parent, page) for the scope; <paramref name="refresh"/> forgets the parent's asks first —
-    /// what a dealer push, a pull-to-refresh or the login sync wants, and never what a page mount wants.</summary>
+    /// what a dealer push, a pull-to-refresh or the login sync wants, and never what a page mount wants.
+    /// <para><b>DISK BEFORE NETWORK, for a list</b> (wave D2, plan §3.2): a playlist's membership that nothing has
+    /// answered this scope is offered to the disk once (<see cref="EdgeTableBase.WasDiskAsked"/>) before anything goes
+    /// out. The parent is marked asked FIRST, so the dedupe holds while the read is out; its continuation
+    /// (<see cref="AfterDisk"/>) then buckets the parent for the network directly, at the original priority — past the
+    /// ask mark that is by then its own. A refresh never reads the disk: it is a question for the server. A refused read
+    /// (no store, a full queue) goes straight to its network bucket.</para>
+    /// <para>Nothing is SENT here: the parents owe the tick's <see cref="Drain"/> (a <see cref="FetchPriority.Playback"/>
+    /// ask pumps now), so a relation whose route its parent's row ask of the same tick already carries is sent once — the
+    /// row leaves first and the route index drops the edge (<see cref="Pump"/>'s order).</para></summary>
     public static void PlanEdge(Scope scope, FetchEdge edge, ReadOnlySpan<int> parents, int offset, FetchPriority priority,
                                 bool refresh = false)
     {
@@ -43,6 +58,7 @@ public static partial class Fetch
         if (FetchRoutes.ForEdge(edge, offset).Transport == RouteTransport.None) return;
         offset = Math.Max(0, offset);
 
+        bool queued = false;
         for (int i = 0; i < parents.Length; i++)
         {
             int parent = parents[i];
@@ -62,10 +78,43 @@ public static partial class Fetch
                 continue;
             }
             edges.MarkAsked(parent, offset);
+            if (!refresh && offset == 0 && edge is (FetchEdge.PlaylistTracks or FetchEdge.ShowEpisodes) && Store.IsOpen
+                && edges.State(parent) == EdgeState.Unknown && !edges.WasDiskAsked(parent))
+            {
+                edges.MarkDiskAsked(parent);
+                if (AskDisk(scope, edge, parent, id, priority)) { s_toDisk++; continue; }
+            }
             Bucket(table, FetchSubject.Edge, provider, 0, edge, offset, priority).Add(parent, id);
             s_toNetwork++;
+            queued = true;
         }
-        Pump();
+        if (queued) SendOrOwe(priority);        // the tick's drain sends it (Fetch.cs, "THE DRAIN"); Playback now
+    }
+
+    /// <summary>Offer one parent's persisted list to the disk (<see cref="Store.ReadList"/>). Its own method for the
+    /// reason <see cref="Store.Read"/>'s summary gives: the continuation's closure is built at the top of the method
+    /// that declares it, and here it is built only for a parent that really goes to the disk — once per playlist per
+    /// session — never on <see cref="PlanEdge"/>'s every call.</summary>
+    static bool AskDisk(Scope scope, FetchEdge edge, int parent, EntityId id, FetchPriority priority)
+        => Store.ReadList(scope, edge == FetchEdge.ShowEpisodes ? EdgeRelation.ShowEpisodes : EdgeRelation.PlaylistTracks, id, _ => AfterDisk(scope, edge, parent, id, priority));
+
+    /// <summary>The disk answered about one parent's list — it landed, or there was none (UI thread, from the store's
+    /// post). Either way THIS parent's network leg is bucketed now for the tick's drain, bypassing the ask mark
+    /// <see cref="PlanEdge"/> already set: with the list restored Complete and its revision held,
+    /// <see cref="FillRevisions"/> sends that revision and the provider reads the <c>/diff</c> (plan §3.2 — the first ask
+    /// after a launch revalidates); after a miss it is the full read it always was. A replaced scope or a recycled slot
+    /// continues nothing (C7).</summary>
+    static void AfterDisk(Scope scope, FetchEdge edge, int parent, EntityId id, FetchPriority priority)
+    {
+        if (!ReferenceEquals(scope, Entities.Current)) return;
+        DropStaleScope(scope);
+        Table? table = ParentTableOf(scope, edge);
+        if (table is null || parent <= Table.None || parent >= table.Count || table.Id[parent] != id) return;
+        EntityProvider provider = ProviderFor(scope, SubjectOf(scope, table, parent), id);
+        if (provider == EntityProvider.None) return;
+        Bucket(table, FetchSubject.Edge, provider, 0, edge, 0, priority).Add(parent, id);
+        s_toNetwork++;
+        SendOrOwe(priority);                    // disk reads landing in one loop pass leave as one request per shape
     }
 
     /// <summary>An edge batch was answered. Each parent whose list landed clears any old failure; a parent whose list is
@@ -78,14 +127,24 @@ public static partial class Fetch
         EdgeTableBase? edges = EdgeTableOf(scope, batch.Edge);
         Table? table = ParentTableOf(scope, batch.Edge);
         if (edges is null || table is null) return;
+        Action<FetchEdge, int, bool>? settled = ListSettled;
         for (int i = 0; i < batch.Count; i++)
         {
             int parent = batch.Slots[i];
             if (parent <= Table.None || parent >= table.Count || table.Id[parent] != batch.Ids[i]) continue;
             if (edges.State(parent) != EdgeState.Unknown) edges.MarkAnswered(parent);
             else edges.MarkUnanswered(parent, batch.Offset);
+            if (batch.Edge == FetchEdge.ShowEpisodes && edges.State(parent) == EdgeState.Complete)
+                ListStamps.MarkRevalidated(table.Id[parent].Text, ListStamps.NowMs());
+            settled?.Invoke(batch.Edge, parent, false);
         }
     }
+
+    /// <summary>The answer path's report to whoever tracks a list's REVALIDATION (wave D3: <c>ListOpen.Settled</c>,
+    /// installed by <c>Playlist.InstallPages</c>): (edge, parent, failed). An UNCHANGED <c>/diff</c> moves nothing in the
+    /// tables, so this is the only place it becomes visible — it is what lets a page's reveal hold go the moment the diff
+    /// says "unchanged" instead of at its 1 500 ms budget. UI thread; null = nobody listens (every unit test by default).</summary>
+    public static Action<FetchEdge, int, bool>? ListSettled { get; set; }
 
     /// <summary>A terminal edge failure: un-ask each parent's page so the next mount really retries, and record the
     /// status so the mount that is showing now can say so (G-050).</summary>
@@ -93,11 +152,13 @@ public static partial class Fetch
     {
         EdgeTableBase? edges = EdgeTableOf(Entities.Current, batch.Edge);
         if (edges is null) return;
+        Action<FetchEdge, int, bool>? settled = ListSettled;
         for (int i = 0; i < batch.Count; i++)
         {
             int parent = batch.Slots[i];
             if (parent <= Table.None || parent >= table.Count || table.Id[parent] != batch.Ids[i]) continue;
             edges.MarkFailed(parent, batch.Offset, status);
+            settled?.Invoke(batch.Edge, parent, true);
         }
     }
 

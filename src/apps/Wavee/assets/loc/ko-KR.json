@@ -1,7 +1,6 @@
 {
   "$culture": "ko-KR",
   "$comment": "한국어 재정의입니다. 누락된 키는 키별로 en-US로 대체됩니다.",
-
   "detail": {
     "play": "재생",
     "likedSongs": "좋아요 표시한 곡",
@@ -14,7 +13,6 @@
     "today": "오늘",
     "yesterday": "어제"
   },
-
   "home": {
     "goodMorning": "좋은 아침이에요",
     "goodAfternoon": "좋은 오후예요",
@@ -35,10 +33,10 @@
     "becauseYouListened": "들으신 음악을 바탕으로",
     "topMixes": "내 인기 믹스",
     "sections": "나를 위한 섹션",
-      "sectionItems": "항목 {count}개",
-      "podcasts": "추천 팟캐스트",
-      "inYourTop": "내 인기 {count}위",
-      "mixview": "믹스뷰",
+    "sectionItems": "항목 {count}개",
+    "podcasts": "추천 팟캐스트",
+    "inYourTop": "내 인기 {count}위",
+    "mixview": "믹스뷰",
     "topTracks": "인기 트랙",
     "showAll": "모두 보기",
     "showAllCount": "{count}개 모두 보기",
@@ -73,7 +71,169 @@
     "pause": "일시 정지",
     "album": "앨범"
   },
-
+  "podcast": {
+    "episodes": "에피소드",
+    "show": "팟캐스트",
+    "inProgress": "듣는 중",
+    "episodeCount": "{count, plural, other {에피소드 #개}}",
+    "listenNext": "다음에 들을 에피소드",
+    "continueListening": "이어 듣기",
+    "resume": "이어 듣기",
+    "noEpisodes": "이 필터에 맞는 에피소드가 없어요",
+    "loadMore": "에피소드 더 불러오기",
+    "loadingMore": "불러오는 중…",
+    "filter": {
+      "all": "전체",
+      "unplayed": "안 들음",
+      "inProgress": "듣는 중",
+      "played": "들음"
+    },
+    "sort": {
+      "newest": "최신순",
+      "oldest": "오래된순"
+    },
+    "minutes": "{n}분",
+    "empty": "이 팟캐스트에는 아직 에피소드가 없어요",
+    "startHere": "여기서 시작하기",
+    "beginHere": "여기서 시작",
+    "whereItBegan": "첫 에피소드",
+    "latest": "최신 에피소드",
+    "trailer": "예고편",
+    "serialHint": "연재물이에요 — 순서대로 들어 보세요",
+    "episodicHint": "에피소드마다 독립적이에요 — 어디서든 시작하세요",
+    "about": "소개",
+    "continue": "이어 듣기",
+    "upNextFromProgress": "진행 상황에 따른 다음 에피소드",
+    "startFromBeginning": "처음부터 시작",
+    "newSince": "마지막 방문 이후 새 에피소드",
+    "markAllPlayed": "모두 들음으로 표시",
+    "caughtUp": "모두 들었어요",
+    "caughtUpNext": "새 에피소드는 보통 {day, select, monday {월요일마다} tuesday {화요일마다} wednesday {수요일마다} thursday {목요일마다} friday {금요일마다} saturday {토요일마다} sunday {일요일마다} other {정기적으로}} 올라와요.",
+    "episodesCount": "에피소드 {count}",
+    "countOf": "{total}개 중 {shown}개",
+    "left": "{time} 남음",
+    "leftOf": "{total} 중 {left} 남음",
+    "played": "들음",
+    "new": "신규",
+    "ledger": "{played}개 들음 · {progress}개 듣는 중 · {togo}개 남음",
+    "ledgerNew": "새 에피소드 {count}개",
+    "cadence": {
+      "daily": "매일",
+      "weekly": "매주",
+      "fortnightly": "격주",
+      "monthly": "매월"
+    },
+    "since": "{when}부터",
+    "ratings": "{count, plural, other {평가 #개}}",
+    "yours": "내 평가 {stars}★",
+    "rate": {
+      "title": "{name} 평가하기",
+      "unavailable": "Wavee에서는 아직 평가할 수 없어요 — 평균 평점과 내 평가는 Spotify에 있는 그대로 표시돼요.",
+      "stars": "{count, plural, other {별 #개}}"
+    },
+    "notify": {
+      "unavailable": "Wavee에서는 아직 새 에피소드 알림을 받을 수 없어요."
+    },
+    "find": "이 팟캐스트에서 찾기",
+    "nothingMatches": "일치하는 항목 없음",
+    "nothingMatchesHint": "다른 단어로 찾아보거나 필터를 전체로 되돌려 보세요.",
+    "moreLikeThis": "비슷한 팟캐스트",
+    "alsoFollow": "{name} 청취자들이 함께 팔로우하는 팟캐스트",
+    "tabs": {
+      "about": "소개",
+      "chapters": "챕터",
+      "transcript": "스크립트",
+      "comments": "댓글"
+    },
+    "nextInStory": "이야기의 다음 편",
+    "aroundThisEpisode": "이 에피소드 전후",
+    "next": "다음",
+    "previous": "이전",
+    "newer": "더 최근",
+    "older": "더 이전",
+    "moreFromShow": "이 팟캐스트의 다른 에피소드",
+    "seeAll": "{count}개 모두 보기",
+    "alsoLike": "좋아할 만한 에피소드",
+    "chapter": "챕터 {n}",
+    "transcript": {
+      "search": "스크립트 검색",
+      "follows": "재생 위치를 따라가요 · 문장을 클릭하면 그 위치로 이동해요",
+      "none": "이 에피소드에는 스크립트가 없어요"
+    },
+    "comments": {
+      "count": "{count, plural, other {댓글 #개}}",
+      "add": "댓글 추가…",
+      "postingUnavailable": "아직 댓글을 게시할 수 없어요",
+      "pinned": "팟캐스트에서 고정함",
+      "replies": "{count, plural, other {답글 #개}}",
+      "loadMore": "댓글 더 불러오기",
+      "none": "아직 댓글이 없어요"
+    },
+    "badge": {
+      "exclusive": "독점",
+      "video": "동영상",
+      "bonus": "보너스",
+      "trailer": "예고편",
+      "subscribers": "구독자 전용",
+      "previewAvailable": "구독자 전용 · 미리 듣기 가능",
+      "episode": "에피소드 {n}"
+    },
+    "menu": {
+      "markPlayed": "들음으로 표시",
+      "markUnplayed": "안 들음으로 표시",
+      "goToShow": "팟캐스트로 이동"
+    },
+    "progressUnavailable": "지금은 청취 진행 상황을 불러올 수 없어요",
+    "reader": {
+      "about": "이 에피소드 정보",
+      "chapters": "챕터",
+      "transcript": "스크립트",
+      "comments": "댓글",
+      "related": "비슷한 콘텐츠",
+      "showAll": "모두 보기",
+      "showLess": "간단히 보기",
+      "retry": "다시 시도",
+      "unavailable": "이 섹션을 사용할 수 없습니다. 다시 시도해 주세요.",
+      "empty": "아직 표시할 항목이 없습니다.",
+      "noChapters": "이 에피소드에는 챕터가 없습니다.",
+      "noTranscript": "이 에피소드의 스크립트가 없습니다.",
+      "noComments": "첫 댓글을 남겨 보세요.",
+      "beginning": "처음부터 재생",
+      "speed": "재생 속도",
+      "follow": "재생 위치 따라가기",
+      "following": "재생 위치를 따라가는 중",
+      "submit": "댓글 게시",
+      "reply": "답글",
+      "postReply": "답글 게시",
+      "commentPlaceholder": "댓글 작성",
+      "replyPlaceholder": "답글 작성",
+      "pending": "검토 대기 중",
+      "sensitive": "민감한 댓글",
+      "reveal": "댓글 보기",
+      "pinned": "고정됨",
+      "eligibility": "이 계정으로는 이 에피소드에 댓글을 남길 수 없습니다.",
+      "oneComment": "이미 이 에피소드에 댓글을 남겼습니다.",
+      "mutationFailed": "변경 사항을 확인하지 못했습니다. 새로고침한 후 다시 시도해 주세요.",
+      "ratingSaved": "평점이 저장되었습니다.",
+      "loadMore": "더 보기",
+      "reactions": "반응",
+      "paywall": "이 에피소드에 접근하려면 Spotify 이용 권한이 필요합니다.",
+      "preview": "이 에피소드는 미리 듣기만 가능합니다.",
+      "video": "동영상 에피소드",
+      "save": "내 에피소드에 저장",
+      "removeSaved": "내 에피소드에서 삭제",
+      "saved": "내 에피소드에 저장됨",
+      "unsaved": "내 에피소드에서 삭제됨",
+      "saveUnavailable": "내 에피소드를 사용할 수 없습니다. 다시 시도해 주세요.",
+      "anonymous": "Spotify 청취자",
+      "yourEpisodes": "내 에피소드",
+      "followedShows": "팔로우한 팟캐스트",
+      "savedEmpty": "저장한 에피소드가 여기에 표시됩니다.",
+      "play": "재생",
+      "pause": "일시정지",
+      "consent": "댓글이 Spotify 프로필 이름으로 공개 게시되는 데 동의합니다."
+    }
+  },
   "recents": {
     "itemCount": "{count, plural, other {#개 항목}}",
     "playedCount": "{count, plural, other {#곡 재생}}",
@@ -97,7 +257,6 @@
       "busier": "많음"
     }
   },
-
   "library": {
     "selectAlbum": "Pick an album",
     "selectArtist": "Pick an artist",
@@ -139,7 +298,6 @@
       "alphabetical": "a–z"
     }
   },
-
   "settings": {
     "title": "설정",
     "sidebar": {
@@ -210,7 +368,6 @@
       "comfortable": "편안하게"
     }
   },
-
   "nav": {
     "home": "홈",
     "forward": "앞으로",
@@ -226,6 +383,7 @@
     "artist": "아티스트",
     "podcast": "팟캐스트",
     "show": "팟캐스트",
+    "episode": "에피소드",
     "yourLibrary": "내 라이브러리",
     "comingSoon": "이 화면은 다음 업데이트에서 제공됩니다.",
     "viewAllHistory": "전체 기록 보기",
@@ -281,7 +439,6 @@
       }
     }
   },
-
   "sidebar": {
     "pinned": "고정됨",
     "yourLibrary": "내 라이브러리",
@@ -601,11 +758,24 @@
         "excludeUris": "제외",
         "maxItems": "최대 항목 수"
       },
-      "recents": { "maxItems": "최대 항목 수" },
-      "newReleases": { "maxItems": "최대 항목 수" },
-      "concerts": { "maxItems": "최대 이벤트 수", "radiusKm": "검색 반경(km)" },
-      "artistTopTracks": { "artist": "아티스트", "maxItems": "최대 트랙 수", "unset": "아티스트 선택" },
-      "queue": { "maxItems": "최대 항목 수" }
+      "recents": {
+        "maxItems": "최대 항목 수"
+      },
+      "newReleases": {
+        "maxItems": "최대 항목 수"
+      },
+      "concerts": {
+        "maxItems": "최대 이벤트 수",
+        "radiusKm": "검색 반경(km)"
+      },
+      "artistTopTracks": {
+        "artist": "아티스트",
+        "maxItems": "최대 트랙 수",
+        "unset": "아티스트 선택"
+      },
+      "queue": {
+        "maxItems": "최대 항목 수"
+      }
     },
     "v3": {
       "title": "내 라이브러리",
@@ -652,7 +822,6 @@
       "sortView": "정렬 및 보기 옵션"
     }
   },
-
   "common": {
     "less": "접기",
     "more": "더 보기",
@@ -664,7 +833,6 @@
     "errorTitle": "문제가 발생했습니다.",
     "errorSubtitle": "연결을 확인하고 다시 시도하세요."
   },
-
   "player": {
     "nothingPlaying": "재생 중인 항목 없음",
     "loading": "불러오는 중…",
@@ -791,7 +959,6 @@
       "strong": "강함"
     }
   },
-
   "menu": {
     "artistUnavailable": "이 앨범의 아티스트를 찾지 못했습니다",
     "moveManyToFolder": "{count}개를 폴더로 이동…",
@@ -800,7 +967,6 @@
     "saveToLiked": "좋아요 표시한 곡에 저장",
     "saveToLibrary": "내 라이브러리에 저장"
   },
-
   "videoOverride": {
     "menuTitle": "비디오",
     "attach": "비디오 파일 체부…",

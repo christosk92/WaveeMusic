@@ -33,7 +33,7 @@ public class EpisodeRulesTests
     [InlineData(0.011f, true, false, true)]
     [InlineData(0.5f, true, false, true)]
     [InlineData(0.979f, true, false, true)]
-    [InlineData(0.98f, false, true, true)]    // exactly the ceiling is played
+    [InlineData(0.98f, true, false, true)]    // exactly the ceiling is played
     [InlineData(1f, false, true, true)]
     public void Thresholds_InProgress_Played_AndTheRule(float pct, bool inProgress, bool played, bool rule)
     {
@@ -46,7 +46,7 @@ public class EpisodeRulesTests
     public void Thresholds_AreZeroPointZeroOneAndZeroPointNineEight()
     {
         Assert.Equal(0.01f, Rules.InProgressFloor);
-        Assert.Equal(0.98f, Rules.PlayedCeiling);
+        Assert.Equal(1f, Rules.PlayedCeiling);
     }
 
     // ── the status filter (EpisodeList.cs:56) ───────────────────────────────────────────────────────────────────────
@@ -58,8 +58,8 @@ public class EpisodeRulesTests
     [InlineData(Status.Unplayed, 0.01f, true)]
     [InlineData(Status.Unplayed, 0.5f, false)]
     [InlineData(Status.InProgress, 0.5f, true)]
-    [InlineData(Status.InProgress, 0.99f, false)]
-    [InlineData(Status.Played, 0.98f, true)]
+    [InlineData(Status.InProgress, 0.99f, true)]
+    [InlineData(Status.Played, 0.98f, false)]
     [InlineData(Status.Played, 0.5f, false)]
     public void Matches_TheFourWayFilter(Status status, float pct, bool expected)
         => Assert.Equal(expected, Rules.Matches(status, pct));
@@ -109,7 +109,7 @@ public class EpisodeRulesTests
     [Fact]
     public void ResumePick_IgnoresPlayedAndUnplayed_AndTiesKeepTheNewer()
     {
-        Assert.Equal(-1, Rules.ResumePick([0f, 1f, 0.99f, 0.005f]));
+        Assert.Equal(2, Rules.ResumePick([0f, 1f, 0.99f, 0.005f]));
         Assert.Equal(1, Rules.ResumePick([0f, 0.4f, 0.4f]));
     }
 
@@ -195,6 +195,83 @@ public class EpisodeRulesTests
     [InlineData(0, 0, 50, 50)]         // no cursor yet: start after what is resident
     public void NextOffset_IsTheFurthestOfTheThree(int edgeAsked, int localAsked, int resident, int expected)
         => Assert.Equal(expected, Rules.NextOffset(edgeAsked, localAsked, resident));
+
+    // ── completion: ONE rule (podcast plan §5.1, D-5) ───────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(3_528_000, 3_600_000, false)]    // exactly the ceiling of an hour (98 %, 72 s left)
+    [InlineData(3_527_999, 3_600_000, false)]   // a millisecond under it, and 72 s left is not the tail
+    [InlineData(570_000, 600_000, false)]        // exactly 30 s left of ten minutes (95 %): the tail alone
+    [InlineData(569_999, 600_000, false)]       // 30.001 s left
+    [InlineData(600_000, 600_000, true)]
+    [InlineData(900_000, 600_000, true)]        // past the end
+    [InlineData(30_000, 0, false)]              // the duration is not known: never completed
+    [InlineData(0, 0, false)]
+    [InlineData(0, 20_000, false)]              // an unplayed 20-second short is inside the tail — and not finished
+    [InlineData(-5, 20_000, false)]
+    [InlineData(int.MaxValue, 600_000, true)]   // the fold's "completed, duration unknown then" value
+    public void Completed_RequiresTheKnownDuration(int progressMs, int durationMs, bool expected)
+        => Assert.Equal(expected, Rules.Completed(progressMs, durationMs));
+
+    [Fact]
+    public void CompletedTail_IsThirtySeconds()
+        => Assert.Equal(30_000, Rules.CompletedTailMs);
+
+    // ── the herodotus fold: one arm of the value's oneof (the 2026-09-19 capture; podcast plan §5.1, §5.8) ──────────
+    //
+    // 2 = a Duration position, 3 / 4 = empty markers (PROVISIONAL: started / finished), 12 = a context resume, none = an
+    // arm-less value. The retired rule read an arm-less value as COMPLETED; no captured episode state lacks an arm, so it
+    // now claims nothing at all.
+
+    [Theory]
+    [InlineData(Rules.ResumeArm.Position, 754_000L, 1_800_000, true, 754_000)]
+    [InlineData(Rules.ResumeArm.Position, 0L, 1_800_000, true, 0)]                    // {} = NOT_STARTED
+    [InlineData(Rules.ResumeArm.Position, -5L, 1_800_000, true, 0)]                   // a negative position clamps to the start
+    [InlineData(Rules.ResumeArm.Position, 5_000_000_000L, 1_800_000, true, int.MaxValue)]   // and an absurd one to the int range
+    [InlineData(Rules.ResumeArm.Position, 754_000L, 0, true, 754_000)]                // a position needs no duration
+    [InlineData(Rules.ResumeArm.Marker3, 0L, 1_800_000, true, 0)]                     // started: in progress at 0
+    [InlineData(Rules.ResumeArm.Marker3, 754_000L, 1_800_000, true, 0)]               // whatever position rides along, ignored
+    [InlineData(Rules.ResumeArm.Marker4, 0L, 1_800_000, true, 1_800_000)]             // finished: the full duration
+    [InlineData(Rules.ResumeArm.Marker4, 754_000L, 1_800_000, true, 1_800_000)]
+    [InlineData(Rules.ResumeArm.Marker4, 0L, 0, true, int.MaxValue)]                  // duration not resident: MaxValue, Pct clamps to 1
+    [InlineData(Rules.ResumeArm.Context, 754_000L, 1_800_000, false, 0)]              // an album/playlist resume: not the episode's
+    [InlineData(Rules.ResumeArm.None, 754_000L, 1_800_000, false, 0)]                 // no arm: claims nothing, NOT completed
+    public void ProgressOf_FoldsEachArm_AndClaimsNothingWithoutOne(Rules.ResumeArm arm, long positionMs, int durationMs,
+                                                                   bool expectedKnown, int expectedMs)
+    {
+        Assert.Equal(expectedKnown, Rules.ProgressOf(arm, positionMs, durationMs, out int progressMs));
+        Assert.Equal(expectedMs, progressMs);
+    }
+
+    [Theory]
+    [InlineData(Rules.ResumeArm.Position, 2)]
+    [InlineData(Rules.ResumeArm.Marker3, 3)]
+    [InlineData(Rules.ResumeArm.Marker4, 4)]
+    [InlineData(Rules.ResumeArm.Context, 12)]
+    public void ResumeArm_numbers_are_the_wire_field_numbers(Rules.ResumeArm arm, int field)
+        => Assert.Equal(field, (int)arm);
+
+    [Fact]
+    public void Marker_4_reads_played_whether_or_not_the_duration_was_resident()
+    {
+        // The fold and the one completion rule agree, and the duration landing AFTER the fold still reads played.
+        Assert.True(Rules.ProgressOf(Rules.ResumeArm.Marker4, 0, 1_800_000, out int known));
+        Assert.True(Rules.Completed(known, 1_800_000));
+        Assert.True(Rules.Played(Rules.Pct(known, 1_800_000)));
+
+        Assert.True(Rules.ProgressOf(Rules.ResumeArm.Marker4, 0, 0, out int early));
+        Assert.Equal(0f, Rules.Pct(early, 0));                            // no duration: no bar yet
+        Assert.True(Rules.Played(Rules.Pct(early, 1_800_000)));           // the duration lands: played, not unplayed
+        Assert.True(Rules.Completed(early, 1_800_000));
+    }
+
+    [Fact]
+    public void Marker_3_is_never_completed_and_reads_unplayed()
+    {
+        Assert.True(Rules.ProgressOf(Rules.ResumeArm.Marker3, 0, 1_800_000, out int started));
+        Assert.False(Rules.Completed(started, 1_800_000));
+        Assert.True(Rules.Matches(Status.Unplayed, Rules.Pct(started, 1_800_000)));
+    }
 }
 
 /// <summary>`PctOf` reads the row: an unknown position renders unplayed (ch 09 §7).</summary>

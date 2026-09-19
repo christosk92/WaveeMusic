@@ -18,6 +18,13 @@ message MetaItem {
     optional int64 timestamp = 4;
     optional string owner_username = 5;
     optional bool abuse_reporting_enabled = 6;
+    // Proven by C:\WAVEE\wavee-captures\playlist4-2026-09 (the rootlist full reads, e.g. saz\037 rev 134, saz3\036 rev 135,
+    // saz4\041 rev 137): the meta item of EVERY playlist entry carries both (169 of 169); a folder marker's meta item is
+    // empty. 7 is length-delimited and parses as the same message shape as SelectedListContent.capabilities (18); 9 is a
+    // varint, 400 on every entry seen. Semantics unproven, so neutral names and lossless types (bytes / uint64): nothing
+    // reads them, they are declared so the numbers are documented.
+    optional bytes unknown_7_capabilities_shape = 7;
+    optional uint64 unknown_9 = 9;
 }
 
 message ListItems {
@@ -64,6 +71,10 @@ message ListAttributes {
     optional string format = 11;
     repeated FormatListAttribute format_attributes = 12;
     repeated PictureSize picture_size = 13;
+    // Proven by C:\WAVEE\wavee-captures\playlist4-2026-09 (11 bodies across the four captures, e.g. saz4\055 and
+    // saz4\056): a varint, 1 on exactly the two collection-backed lists seen (formats 'listen-later' and 'liked-songs'),
+    // absent everywhere else. Semantics unproven: neutral name, lossless uint64.
+    optional uint64 unknown_16 = 16;
 }
 
 message ItemAttributes {
@@ -73,6 +84,10 @@ message ItemAttributes {
     optional bool public = 10;
     repeated FormatListAttribute format_attributes = 11;
     optional bytes item_id = 12;
+    // Proven by C:\WAVEE\wavee-captures\playlist4-2026-09 (96 items, all on the 'liked-songs' list, e.g. saz4\056):
+    // length-delimited, carrying a message whose field 2 is an uppercase UUID string. Semantics unproven, so it stays
+    // BYTES (round-trips any payload exactly); nothing reads it.
+    optional bytes unknown_17 = 17;
 }
 
 message Add {
@@ -80,6 +95,13 @@ message Add {
     repeated Item items = 2;
     optional bool add_last = 4;
     optional bool add_first = 5;
+    // UNOBSERVED — declared by symmetry with add_after_item (7) and Mov.add_before_item (5); no capture has shown it.
+    optional Item add_before_item = 6;
+    // Proven by C:\WAVEE\wavee-captures\playlist4-2026-09\saz (reorders.saz session 511, the desktop client's keyed
+    // 1-track ADD): an Item naming the row the new items land immediately AFTER — exactly like Mov.add_after_item. The
+    // service's dealer echo of that ADD was positional (ADD{from_index 123}); the anchor sat at index 122 of the
+    // rev-35 read (saz\500), and the rev-36 read (saz\514) confirms it.
+    optional Item add_after_item = 7;
     // WAVEE-LOCAL, NEVER SENT TO SPOTIFY. The durable outbox re-serializes queued domain ops through this same message
     // (PlaylistWireMapper.BuildOutboxBlob), and invariant I5 requires an index-based ADD to remember the item_id of the
     // row it was built to sit after so a replay against a moved base can recompute from_index. Empty string = "at the
@@ -225,6 +247,11 @@ message SelectedListContent {
     optional bool changes_require_resync = 20;
     optional int64 created_at = 21;
     optional AppliedLenses applied_lenses = 22;
+    // Proven by C:\WAVEE\wavee-captures\playlist4-2026-09 (morediffs.saz, 119 of 119 answers; the other three captures
+    // agree): a varint, 1 on every USER-OWNED playlist, 0 on every editorial/algorithmic list and on `recents`, absent
+    // on the rootlist. That is a correlation, not a definition — nothing may depend on it until a capture proves what it
+    // means. Neutral name, lossless uint64 (a bool would normalise any value other than 0/1).
+    optional uint64 unknown_23_user_owned_hint = 23;
 }
 
 // The lens state echoed back on a lens-applied read. Deliberately MINIMAL and inert: nothing in Wavee reads it, and

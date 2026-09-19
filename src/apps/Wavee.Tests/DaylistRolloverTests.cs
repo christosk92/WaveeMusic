@@ -63,13 +63,14 @@ public class DaylistRolloverTests
     }
 
     [Theory]
-    [InlineData(0, 30_000)]
-    [InlineData(1, 90_000)]
-    [InlineData(2, 210_000)]
-    [InlineData(3, 510_000)]
+    [InlineData(0, 0)]
+    [InlineData(1, 30_000)]
+    [InlineData(2, 90_000)]
+    [InlineData(3, 210_000)]
     public void Ladder_instants_are_cumulative(int attempts, long extraMsOverGrace)
     {
         int end = 2_000;
+        // Attempt zero is due after grace; later attempts add only the retry steps already spent.
         var v = DaylistRollover.Decide(end, attempts, 0, out var fireAt);
         Assert.Equal(DaylistRollover.Verdict.Arm, v);
         Assert.Equal((long)end * 1000 + DaylistRollover.GraceMs + extraMsOverGrace, fireAt);

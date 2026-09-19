@@ -1,5 +1,5 @@
 // ── Spotify/Spotify.cs ─────────────────────────────────────────────────────────────────────────────────────────────
-// Session struct, Shannon, DH, hashcash, PKCE, base62, dealer frame, request fold
+// Session struct, AP keepalive, Shannon, DH, hashcash, PKCE, base62, dealer frame, request fold
 //
 // Role: CORE
 // Owner: D
@@ -8,9 +8,9 @@
 // Spec: plan
 //
 // THE PROTOCOL, WITHOUT A SOCKET. Everything Spotify's wire demands that is a *decision* rather than an I/O call
-// lives here: the session state machine, the Shannon packet codec, the AP handshake fold, the two proof-of-work
-// puzzles, the dealer frame parse, the audio-key packet shapes, and the request fold that turns "I want the album
-// page" into (verb, host, path, header set, body). `Spotify.Session.cs` (SHELL) owns the threads and the sockets and
+// lives here: the session state machine, the AP keepalive (B6), the Shannon packet codec, the AP handshake fold, the
+// two proof-of-work puzzles, the dealer frame parse, the audio-key packet shapes, and the request fold that turns "I
+// want the album page" into (verb, host, path, header set, body). `Spotify.Session.cs` (SHELL) owns the threads and the sockets and
 // calls in here; `Spotify.Api.cs` (owner F) is one function per request over `Build`.
 //
 // The rules this file is written under (design record §5.11/§5.12, P1-P16 / C1-C10):
@@ -24,8 +24,10 @@
 //          posts; the UI drain is the only writer. `Session` is a VALUE — a shell reads a snapshot, never a field.
 //   C2     inputs are values. `Step(ref Session, in SessionEvent)` is the whole state machine, and every transition
 //          in it is a test in `SpotifyCoreTests`.
-//   C4     `Session.Epoch` bumps whenever a shell must abandon in-flight work; an answer stamped with an older epoch
-//          is dropped rather than applied.
+//   C4     an epoch bumps whenever a shell must abandon in-flight work; an answer stamped with an older epoch is
+//          dropped rather than applied. B4: the two transports have their OWN epochs — `Session.ApEpoch` for the AP
+//          channel, `Session.Epoch` for the dealer (and the login above both) — so one socket's reset abandons only that
+//          socket's work, and a stale word from one never touches the other (`IsStale`, checked first in `Step`).
 //
 // WHY THE TOKENS ARE SPANS AND NOT STRINGS. A session's secrets (the access token, the client token, the connection
 // id, the resolved hosts) are read by the HTTP and websocket shells, on their own threads. `StringId` cannot cross
@@ -49,8 +51,11 @@ public static partial class Spotify
 {
     // ── 1. the session as a value ────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Where the session is. The ladder is strictly ordered: every phase below <see cref="SessionPhase.Online"/>
-    /// has exactly one effect the shell must be running for it (see <see cref="Step"/>).</summary>
+    /// <summary>Where the session is. Until this login's welcome the ladder is strictly ordered and it is the AP's: every
+    /// phase from <see cref="SessionPhase.Resolving"/> to <see cref="SessionPhase.Authenticating"/> is one step of the AP
+    /// thread's procedure. From the welcome on, the phase follows the DEALER (B4) — <see cref="SessionPhase.Online"/> while
+    /// it holds a connection id, <see cref="SessionPhase.Reconnecting"/> while it does not — and an AP reset reconnects under
+    /// <see cref="Session.Ap"/> without moving it.</summary>
     public enum SessionPhase : byte
     {
         /// <summary>Nothing is running. The resting state, and the state a logout returns to.</summary>
@@ -63,14 +68,55 @@ public static partial class Spotify
         Handshaking = 3,
         /// <summary>The Shannon channel is up and the credential has been presented.</summary>
         Authenticating = 4,
-        /// <summary>Welcome received; the client-token and the login5 access token are being minted.</summary>
+        /// <summary>Welcome received; the client-token and the login5 access token are being minted and the dealer is
+        /// opening for the first time.</summary>
         Minting = 5,
-        /// <summary>Tokens held, dealer connected. The only phase in which requests may be built.</summary>
+        /// <summary>The account is signed in — this login's AP welcome was a Premium one and a bearer is held — AND the dealer
+        /// holds a connection id: this device is a Connect device, and requests may be built.
+        /// <para>B4: the AP is NOT part of it once the login is done. An AP reset (~29 a day, <c>SocketException 10054</c>)
+        /// leaves the session Online, because nothing that reads Online needs the AP — requests ride the bearer over HTTPS,
+        /// Connect rides the dealer — and the one thing that does, the audio key, answers <c>Offline</c> by itself while
+        /// <see cref="Session.Ap"/> is not <see cref="LinkPhase.Up"/>. A dealer drop DOES leave Online, because the
+        /// consumers keyed on Online's edge and on <see cref="Session.Epoch"/> (the library's reconnect sync, the feeds,
+        /// Playback's <c>SessionOnline</c>) are recovering exactly what a lost dealer connection may have carried.</para>
+        /// <para>The one Online with no transport at all is <c>--fake</c>'s (<see cref="SessionEventKind.FakeOnline"/>).</para></summary>
         Online = 6,
-        /// <summary>Something dropped and a backoff is being served before the next attempt.</summary>
+        /// <summary>Something the session needs dropped and is serving its backoff or retrying: the dealer (the session had
+        /// been, or was about to be, Online), or the AP while the session was not yet Online (the login ladder, or its first
+        /// mint). Each transport climbs its own ladder (<see cref="Session.Ap"/>, <see cref="Session.Dealer"/>).</summary>
         Reconnecting = 7,
         /// <summary>Terminal for this credential: see <see cref="Session.Fault"/>. Only a new login leaves it.</summary>
         Failed = 8,
+    }
+
+    /// <summary>One transport's own ladder (B4). The AP channel and the dealer websocket each have one: each drops, backs
+    /// off and reconnects on its own, and neither's reset moves the other.</summary>
+    public enum LinkPhase : byte
+    {
+        /// <summary>Not running and not owed: no session, a teardown, or (the dealer) not yet opened in this login.</summary>
+        Down = 0,
+        /// <summary>Its thread is opening it — the AP: apresolve, connect, handshake, login; the dealer: the wss handshake up
+        /// to the pusher's hello.</summary>
+        Opening = 1,
+        /// <summary>Open. The AP: logged in (the welcome arrived), its pump answering pings and routing audio keys. The
+        /// dealer: a connection id is held.</summary>
+        Up = 2,
+        /// <summary>It dropped; its OWN backoff is being served before its own retry.</summary>
+        Waiting = 3,
+    }
+
+    /// <summary>Which transport an event belongs to (B4) — and therefore which epoch it must carry to be folded
+    /// (<see cref="IsStale"/>).</summary>
+    public enum SessionLink : byte
+    {
+        /// <summary>Not a transport's event: a login, a sign-out, a disconnect, <c>--fake</c>, and the two token mints —
+        /// a bearer and an attestation belong to the LOGIN, not to a socket (an api thread's 401 re-mint posts one too).</summary>
+        None = 0,
+        /// <summary>The AP thread's: its ladder, its welcome or refusal, its drop, and its retry. Carries
+        /// <see cref="Session.ApEpoch"/>.</summary>
+        Ap = 1,
+        /// <summary>The dealer thread's: its hello, its drop, and its retry. Carries <see cref="Session.Epoch"/>.</summary>
+        Dealer = 2,
     }
 
     /// <summary>Why the session stopped. A fault is what the UI reports and what decides whether the stored credential
@@ -104,10 +150,29 @@ public static partial class Spotify
         public SessionPhase Phase;
         public SessionFault Fault;
         public Tier Tier;
-        /// <summary>Bumps whenever a shell must abandon in-flight work (C4): a drop, a logout, a scope switch.</summary>
+        /// <summary>THE session epoch (C4) — and the dealer's. It bumps when the login itself is abandoned (a new login, a
+        /// refusal, a sign-out, a disconnect) AND when the dealer drops; never when only the AP does (B4). Everything the
+        /// dealer delivered is stamped with it — the Connect mailbox (<c>Connect.Item.Epoch</c>, dropped by
+        /// <c>Playback.Host</c> once stale), and it keys the library's reconnect sync (<c>LibrarySyncRules</c>) and the
+        /// feeds' once-per-session refresh — because each of those describes, or must re-read, what that dealer connection
+        /// carried. The dealer thread's events (<see cref="SessionLink.Dealer"/>) carry it.</summary>
         public uint Epoch;
-        /// <summary>Consecutive failed attempts; the backoff ladder reads it (<see cref="BackoffMs"/>).</summary>
-        public uint Attempt;
+        /// <summary>The AP channel's epoch (B4): bumps with <see cref="Epoch"/> when the login is abandoned, and ALONE when
+        /// the AP drops. The AP thread's events (<see cref="SessionLink.Ap"/>) carry it; nothing above the shell reads it,
+        /// because nothing above the shell ever sees an AP frame.</summary>
+        public uint ApEpoch;
+        /// <summary>The AP channel's own ladder (B4).</summary>
+        public LinkPhase Ap;
+        /// <summary>The dealer websocket's own ladder (B4). <see cref="LinkPhase.Up"/> exactly while
+        /// <see cref="ConnectionId"/> is held.</summary>
+        public LinkPhase Dealer;
+        /// <summary>Consecutive failed attempts of each transport. Each climbs its own backoff ladder (<see cref="BackoffMs"/>)
+        /// and is reset by its own success — the AP's by a welcome, the dealer's by a hello.</summary>
+        public uint ApAttempt, DealerAttempt;
+        /// <summary>This login's AP welcome was a Premium one: the account is signed in. From here an AP drop is a transport
+        /// event that moves only <see cref="Ap"/> (B4) and the AP's ladder events stop walking <see cref="Phase"/>. Cleared
+        /// only by what ends the login — a new login, a refusal, a sign-out, a disconnect — never by a drop.</summary>
+        public bool LoggedIn;
 
         // identity the UI paints — interned on the UI thread, never resolved off it (C1).
         public StringId Username, Country, Product;
@@ -127,6 +192,8 @@ public static partial class Spotify
         /// <summary>A reusable credential is on disk for this account.</summary>
         public bool HasCredential;
 
+        /// <summary>Signed in with the dealer up — see <see cref="SessionPhase.Online"/>. The AP may be reconnecting (B4):
+        /// read <see cref="Ap"/> for that.</summary>
         public readonly bool IsOnline => Phase == SessionPhase.Online;
 
         /// <summary>Requests may be built: a bearer is held and has not expired as of <paramref name="nowMs"/>.</summary>
@@ -134,7 +201,7 @@ public static partial class Spotify
     }
 
     /// <summary>What happened, as a value (C2). Everything a shell learns becomes one of these and is folded on the
-    /// UI thread; nothing else writes a session field.</summary>
+    /// UI thread; nothing else writes a session field. Which transport owns each is <see cref="LinkOf"/>.</summary>
     public enum SessionEventKind : byte
     {
         None = 0,
@@ -147,7 +214,9 @@ public static partial class Spotify
         /// <summary>The Shannon channel is negotiated (gs verified, keys derived).</summary>
         HandshakeOk,
         /// <summary>APWelcome. <c>Id</c> = username, <c>Id2</c> = country, <c>Id3</c> = product, <c>Number</c> = tier.
-        /// Anything but a confirmed Premium tier is refused here (the Premium gate, D12).</summary>
+        /// Anything but a confirmed Premium tier is refused here (the Premium gate, D12) — on a login's FIRST welcome. An AP
+        /// reconnect's welcome whose product packet came late (tier Unknown) keeps the tier that first welcome settled; only
+        /// a Free verdict ends the login from a reconnect.</summary>
         Welcome,
         /// <summary>The AP refused the login. Terminal. <c>Number</c> = a <see cref="RejectVerdict"/>: only
         /// <see cref="RejectVerdict.Definitive"/> and <see cref="RejectVerdict.NotPremium"/> clear the stored credential;
@@ -159,10 +228,17 @@ public static partial class Spotify
         AccessTokenMinted,
         /// <summary>The dealer websocket is up and sent its connection id. <c>Text</c> = the id.</summary>
         DealerOnline,
-        /// <summary>Any socket dropped, or a token was refused. <c>Number</c> = a <see cref="SessionFault"/>.</summary>
-        Dropped,
-        /// <summary>The backoff elapsed; try again.</summary>
-        Retry,
+        /// <summary>The AP channel dropped (a reset, a timeout, a failed mint on its thread). <c>Number</c> = a
+        /// <see cref="SessionFault"/>. Reconnects the AP ALONE (B4): the dealer, its connection id and
+        /// <see cref="Session.Epoch"/> are untouched.</summary>
+        ApDropped,
+        /// <summary>The dealer websocket dropped. <c>Number</c> = a <see cref="SessionFault"/>. Reconnects the dealer ALONE
+        /// (B4); its connection id goes with its socket, so the next one owes a hello (B3).</summary>
+        DealerDropped,
+        /// <summary>The AP's backoff elapsed; try the AP again.</summary>
+        ApRetry,
+        /// <summary>The dealer's backoff elapsed; try the dealer again.</summary>
+        DealerRetry,
         /// <summary>The user signed out: close everything and WIPE the stored credential.</summary>
         Logout,
         /// <summary>Close the session and forget its tokens, but KEEP the stored credential — a shutdown, a headless run
@@ -175,7 +251,11 @@ public static partial class Spotify
         FakeOnline,
     }
 
-    /// <summary>One folded event. A value with no spans, so a shell can post it across a thread (C2).</summary>
+    /// <summary>One folded event. A value with no spans, so a shell can post it across a thread (C2).
+    /// <para><c>Epoch</c> is the epoch of the transport that produced it (B4, <see cref="LinkOf"/>): an AP event carries
+    /// <see cref="Session.ApEpoch"/> as its thread started with it, a dealer event <see cref="Session.Epoch"/>, a retry the
+    /// epoch its backoff was armed for. One whose transport has moved on since is folded to nothing
+    /// (<see cref="IsStale"/>). A session-level event leaves it 0 and it is never read.</para></summary>
     public readonly record struct SessionEvent(
         SessionEventKind Kind,
         StringId Id = default, StringId Id2 = default, StringId Id3 = default,
@@ -188,94 +268,164 @@ public static partial class Spotify
     public enum SessionEffects : uint
     {
         None = 0,
+        /// <summary>Start the AP thread for <see cref="Session.ApEpoch"/> — apresolve first, then the rest of its one
+        /// straight-line procedure. A login's first step, and the AP's retry.</summary>
         ResolveHosts = 1 << 0,
         OpenAp = 1 << 1,
         MintClientToken = 1 << 2,
         MintAccessToken = 1 << 3,
+        /// <summary>Start the dealer thread for <see cref="Session.Epoch"/>: once per login on its first bearer, and the
+        /// dealer's retry.</summary>
         OpenDealer = 1 << 4,
         /// <summary>Persist the reusable credential the welcome carried.</summary>
         SaveCredential = 1 << 5,
         /// <summary>Wipe the stored credential — ONLY on a sign-out, a confirmed bad-credentials verdict or a Free account.</summary>
         ClearCredential = 1 << 6,
-        /// <summary>Serve <see cref="BackoffMs"/> and then post <see cref="SessionEventKind.Retry"/>.</summary>
-        Backoff = 1 << 7,
-        /// <summary>Tear every socket down; the epoch has moved (C4).</summary>
-        CloseAll = 1 << 8,
+        /// <summary>Serve <see cref="BackoffMs"/> of <see cref="Session.ApAttempt"/>, then post
+        /// <see cref="SessionEventKind.ApRetry"/> stamped with the AP epoch it was armed for.</summary>
+        ApBackoff = 1 << 7,
+        /// <summary>Abandon the AP epoch (C4): cancel its thread, close its socket, fail its audio-key waiters. The dealer
+        /// is not touched (B4).</summary>
+        CloseAp = 1 << 8,
         /// <summary>The account is known: copy its market into <c>Api.Market</c> and switch the catalog to the signed-in
         /// scope (<see cref="WelcomeScope"/>) — the promise <c>Platform.Scope</c>'s doc makes (headless plan §1.6 item 2).</summary>
         Welcome = 1 << 9,
         /// <summary>A fresh dealer connection id: announce this device to connect-state (the hello PUT, headless plan §1.6
-        /// item 5). Once per transition into <see cref="SessionPhase.Online"/>, so a reconnect announces again.</summary>
+        /// item 5). Owed to every NEW connection id (B3) — a dealer reconnect announces again; an AP reconnect never
+        /// produces one (B4).</summary>
         AnnounceDevice = 1 << 10,
         /// <summary>The account is gone from this PC (a sign-out, a confirmed rejection, a Free account refused): release
         /// playback ownership and take the account's OS surfaces down — the jump-list recents and every scheduled toast
         /// (G-036/G-037). Always travels with <see cref="ClearCredential"/>.</summary>
         SignedOut = 1 << 11,
+        /// <summary>Abandon the dealer epoch (C4): cancel its thread and its keepalive, close its socket, and empty the Connect
+        /// mailbox — every queued cluster describes a connection that no longer exists (G-036). The AP is not touched (B4).</summary>
+        CloseDealer = 1 << 12,
+        /// <summary>Serve <see cref="BackoffMs"/> of <see cref="Session.DealerAttempt"/>, then post
+        /// <see cref="SessionEventKind.DealerRetry"/> stamped with the dealer epoch it was armed for.</summary>
+        DealerBackoff = 1 << 13,
+        /// <summary>The LOGIN ended — a sign-out, a disconnect, a refusal, a login over a running one: both transports go.
+        /// The fold only ever returns both close bits together for one of those, never for two drops (each drop is its own
+        /// event and its own fold), which is how the shell knows to cancel the login's token mints too.</summary>
+        CloseAll = CloseAp | CloseDealer,
     }
 
+    /// <summary>The transport <paramref name="kind"/> belongs to — the epoch it must carry (B4). PURE.</summary>
+    public static SessionLink LinkOf(SessionEventKind kind) => kind switch
+    {
+        SessionEventKind.Hosts or SessionEventKind.Connected or SessionEventKind.HandshakeOk or SessionEventKind.Welcome
+            or SessionEventKind.AuthRejected or SessionEventKind.ApDropped or SessionEventKind.ApRetry => SessionLink.Ap,
+        SessionEventKind.DealerOnline or SessionEventKind.DealerDropped or SessionEventKind.DealerRetry => SessionLink.Dealer,
+        _ => SessionLink.None,
+    };
+
+    /// <summary>Is <paramref name="e"/> a transport's word from an epoch of THAT transport the session has already
+    /// abandoned (B4)? A dead AP thread's late drop, welcome or refusal; a dead dealer's late hello or drop; a retry armed
+    /// before a sign-out. <see cref="Step"/> folds it to nothing, so the other transport never hears of it. PURE.</summary>
+    public static bool IsStale(in Session s, in SessionEvent e) => LinkOf(e.Kind) switch
+    {
+        SessionLink.Ap => e.Epoch != s.ApEpoch,
+        SessionLink.Dealer => e.Epoch != s.Epoch,
+        _ => false,
+    };
+
     /// <summary>THE state machine. Pure: same session + same event ⇒ same session + same effects, no clock, no socket,
-    /// no allocation. Every transition in it is a test.</summary>
+    /// no allocation. Every transition in it is a test. (Its one read outside its arguments, <see cref="SameText"/>, is of
+    /// the append-only text arena, where the bytes behind a slice never change once written.)
+    /// <para>B4, the two transports: the AP and the dealer each have their own <see cref="LinkPhase"/>, epoch and backoff.
+    /// An AP reset reconnects the AP only — the dealer, its connection id and <see cref="Session.Epoch"/> stay, so nothing
+    /// re-announces and nothing re-syncs; a dealer drop reconnects the dealer only, and its new connection id owes the hello
+    /// (B3). The login — the credential, the account, the bearer — is shared, and only what ends it closes both.</para></summary>
     public static SessionEffects Step(ref Session s, in SessionEvent e)
     {
+        if (IsStale(in s, in e)) return SessionEffects.None;
+
         switch (e.Kind)
         {
             case SessionEventKind.Login:
+            {
+                // A login over a session still running is a restart: its transports go first, or the old epochs' threads
+                // would go on holding sockets whose every later word this fold now refuses as stale.
+                bool resting = s.Phase is SessionPhase.Offline or SessionPhase.Failed;
+                SessionEffects close = resting ? SessionEffects.None : SessionEffects.CloseAll;
+                EndTransports(ref s);
+                s.ApAttempt = 0;
+                s.DealerAttempt = 0;
                 s.HasCredential = e.Flag;
-                if (!e.Flag) { s.Phase = SessionPhase.Failed; s.Fault = SessionFault.NoCredential; return SessionEffects.None; }
+                if (!e.Flag) { s.Phase = SessionPhase.Failed; s.Fault = SessionFault.NoCredential; return close; }
                 s.Phase = SessionPhase.Resolving;
                 s.Fault = SessionFault.None;
-                s.Epoch++;
-                return SessionEffects.ResolveHosts;
+                s.Ap = LinkPhase.Opening;
+                return close | SessionEffects.ResolveHosts;
+            }
 
             case SessionEventKind.Hosts:
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
                 s.SpclientHost = e.Text;
                 s.DealerHost = e.Text2;
-                s.Phase = SessionPhase.Connecting;
+                // Before this login's welcome the AP's ladder IS the session's; after it, an AP reconnect walks its own
+                // ladder under `s.Ap` and the session's phase does not move (B4).
+                if (!s.LoggedIn) s.Phase = SessionPhase.Connecting;
                 return SessionEffects.OpenAp;
 
             case SessionEventKind.Connected:
-                if (s.Phase != SessionPhase.Connecting) return SessionEffects.None;
+                if (s.LoggedIn || s.Phase != SessionPhase.Connecting) return SessionEffects.None;
                 s.Phase = SessionPhase.Handshaking;
                 return SessionEffects.None;
 
             case SessionEventKind.HandshakeOk:
-                if (s.Phase != SessionPhase.Handshaking) return SessionEffects.None;
+                if (s.LoggedIn || s.Phase != SessionPhase.Handshaking) return SessionEffects.None;
                 s.Phase = SessionPhase.Authenticating;
                 return SessionEffects.None;
 
             case SessionEventKind.Welcome:
             {
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
+                var tier = (Tier)(byte)e.Number;
+                // An AP RECONNECT (the account already signed in by this login's Premium welcome) whose ProductInfo (0x50)
+                // missed its 3 s trailer window reads Unknown. That is not a verdict on the account (D24's reason), and under
+                // the gate below it used to end the WHOLE login — the one way left, after B4, for an AP reset to take the
+                // session out of Online. The tier this login's first welcome settled stands, and with it the product the UI
+                // paints; only a first login needs the packet.
+                bool lateProduct = tier == Tier.Unknown && s.LoggedIn;
                 s.Username = e.Id;
                 s.Country = e.Id2;
-                s.Product = e.Id3;
-                s.Tier = (Tier)(byte)e.Number;
-                s.Attempt = 0;
+                if (!lateProduct)
+                {
+                    s.Product = e.Id3;
+                    s.Tier = tier;
+                }
+                s.ApAttempt = 0;
                 if (s.Tier != Tier.Premium)
                 {
                     // THE PREMIUM GATE (D12, 0.2.9 `LiveSessionHost`): only a CONFIRMED Premium product streams. A known
                     // Free account is refused and its credential wiped, so the next launch cannot resume straight back into
-                    // the wall. An UNKNOWN tier (the 0x50 trailer missed its window) is refused too — never optimistically
-                    // Premium — but its credential is KEPT: a late packet is not a verdict on the account (D24's reason).
+                    // the wall. An UNKNOWN tier on a FIRST login (the 0x50 trailer missed its window) is refused too — never
+                    // optimistically Premium — but its credential is KEPT: a late packet is not a verdict on the account
+                    // (D24's reason). A verdict (Free) ends the login whichever welcome carried it — a reconnect's included.
                     bool free = s.Tier == Tier.Free;
+                    EndTransports(ref s);
                     s.Phase = SessionPhase.Failed;
                     s.Fault = SessionFault.NotPremium;
-                    s.ConnectionId = default;
                     s.HasCredential = s.HasCredential && !free;
-                    s.Epoch++;
                     return SessionEffects.CloseAll
                          | (free ? SessionEffects.ClearCredential | SessionEffects.SignedOut : SessionEffects.None);
                 }
                 s.HasCredential = true;
-                s.Phase = SessionPhase.Minting;
+                s.Ap = LinkPhase.Up;
+                // The FIRST welcome of this login signs the account in and moves the ladder on; a reconnect's welcome (the
+                // AP came back under an account already signed in) moves only the AP (B4).
+                if (!s.LoggedIn)
+                {
+                    s.LoggedIn = true;
+                    s.Phase = SessionPhase.Minting;
+                }
                 return SessionEffects.SaveCredential | SessionEffects.MintClientToken | SessionEffects.Welcome;
             }
 
             case SessionEventKind.AuthRejected:
+                EndTransports(ref s);
                 s.Phase = SessionPhase.Failed;
-                s.ConnectionId = default;
-                s.Epoch++;
                 switch ((RejectVerdict)(byte)e.Number)
                 {
                     case RejectVerdict.Definitive:
@@ -304,38 +454,76 @@ public static partial class Spotify
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
                 s.AccessToken = e.Text;
                 s.AccessExpiresAtMs = e.Number;
-                // A refresh while already Online must not re-open the dealer: it holds a live socket on this token.
-                return s.Phase == SessionPhase.Online ? SessionEffects.None : SessionEffects.OpenDealer;
+                // The dealer opens ONCE per login, on the first bearer minted after this login's welcome. Every other mint
+                // is a refresh — a 401 re-mint on an api thread (which can land mid-ladder, before the welcome), the AP's
+                // re-login mint under an account already signed in — and must not open it: a live dealer holds its socket on
+                // this token, and a dropped one serves its OWN backoff (B4), which a second open here would race.
+                if (!s.LoggedIn || s.Dealer != LinkPhase.Down) return SessionEffects.None;
+                s.Dealer = LinkPhase.Opening;
+                return SessionEffects.OpenDealer;
 
             case SessionEventKind.DealerOnline:
             {
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
                 TokenRef previousConnectionId = s.ConnectionId;
                 s.ConnectionId = e.Text;
-                s.Phase = SessionPhase.Online;
-                s.Fault = SessionFault.None;
-                s.Attempt = 0;
+                s.Dealer = LinkPhase.Up;
+                s.DealerAttempt = 0;
+                if (s.LoggedIn)
+                {
+                    s.Phase = SessionPhase.Online;
+                    s.Fault = SessionFault.None;
+                }
                 // B3: the hello is owed to a NEW connection id, not a phase transition. The old rule (`wasOnline ?
                 // None : AnnounceDevice`) silently swallowed a genuinely new id that arrived while already Online —
                 // adopted into `s.ConnectionId`, never announced, so the picker kept showing a device that had
                 // quietly changed connections underneath it. An exact repeat of the id already held (idempotent
-                // redelivery) is the only case that announces nothing.
-                return previousConnectionId == e.Text ? SessionEffects.None : SessionEffects.AnnounceDevice;
+                // redelivery) is the only case that announces nothing — a repeat of its BYTES (`SameText`): the dealer
+                // thread writes every hello's id into the arena afresh, so a redelivered id arrives as a new slice, and the
+                // first cut's slice comparison (`==` on the `TokenRef`) announced it again every time.
+                return SameText(previousConnectionId, e.Text) ? SessionEffects.None : SessionEffects.AnnounceDevice;
             }
 
-            case SessionEventKind.Dropped:
+            case SessionEventKind.ApDropped:
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
-                s.Fault = (SessionFault)(byte)e.Number;
-                s.ConnectionId = default;
-                s.Epoch++;
-                s.Attempt++;
-                s.Phase = SessionPhase.Reconnecting;
-                return SessionEffects.CloseAll | SessionEffects.Backoff;
+                s.ApEpoch++;
+                s.ApAttempt++;
+                s.Ap = LinkPhase.Waiting;
+                // B4. Online is the account signed in with the dealer up, so an AP reset under it leaves the phase, the
+                // dealer, its connection id and the session epoch exactly where they were: no re-announce, no library resync,
+                // no chrome flicker — 29 a day of each, before this. Anything short of Online was waiting on the AP (the login
+                // ladder, or the first mint the dealer needs), so it says so.
+                if (s.Phase != SessionPhase.Online)
+                {
+                    s.Phase = SessionPhase.Reconnecting;
+                    s.Fault = (SessionFault)(byte)e.Number;
+                }
+                return SessionEffects.CloseAp | SessionEffects.ApBackoff;
 
-            case SessionEventKind.Retry:
-                if (s.Phase != SessionPhase.Reconnecting) return SessionEffects.None;
-                s.Phase = SessionPhase.Resolving;
+            case SessionEventKind.DealerDropped:
+                if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
+                // Everything the dealer delivered belonged to that connection: the session epoch moves (the Connect mailbox
+                // is emptied and anything still queued is stale), and the id goes with its socket — the next one owes a
+                // hello (B3). The AP, its epoch and its channel are untouched (B4).
+                s.Epoch++;
+                s.DealerAttempt++;
+                s.Dealer = LinkPhase.Waiting;
+                s.ConnectionId = default;
+                s.Phase = SessionPhase.Reconnecting;
+                s.Fault = (SessionFault)(byte)e.Number;
+                return SessionEffects.CloseDealer | SessionEffects.DealerBackoff;
+
+            case SessionEventKind.ApRetry:
+                if (s.Ap != LinkPhase.Waiting || s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
+                s.Ap = LinkPhase.Opening;
+                if (!s.LoggedIn) s.Phase = SessionPhase.Resolving;      // the login ladder starts again from the top
                 return SessionEffects.ResolveHosts;
+
+            case SessionEventKind.DealerRetry:
+                // The dealer's retry never waits on the AP: its bearer is the login's (login5 over HTTPS), not the AP socket's.
+                if (s.Dealer != LinkPhase.Waiting || s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
+                s.Dealer = LinkPhase.Opening;
+                return SessionEffects.OpenDealer;
 
             case SessionEventKind.Logout:
             {
@@ -344,6 +532,7 @@ public static partial class Spotify
                 Session kept = s;
                 s = default;
                 s.Epoch = kept.Epoch + 1;
+                s.ApEpoch = kept.ApEpoch + 1;
                 s.DeviceId = kept.DeviceId;
                 s.ClientId = kept.ClientId;
                 s.Locale = kept.Locale;
@@ -357,6 +546,7 @@ public static partial class Spotify
                 Session kept = s;
                 s = default;
                 s.Epoch = kept.Epoch + 1;
+                s.ApEpoch = kept.ApEpoch + 1;
                 s.HasCredential = kept.HasCredential;
                 s.DeviceId = kept.DeviceId;
                 s.ClientId = kept.ClientId;
@@ -368,8 +558,10 @@ public static partial class Spotify
                 // `--fake` (G-065): a pure fact, not a login — no epoch bump (nothing was ever in flight to abandon),
                 // no `SaveCredential`/`ClearCredential` (the slot is never touched) and no `Welcome`/`AnnounceDevice`
                 // effect (there is no catalog scope to adopt and no Connect device to announce; the offline seed and
-                // `Platform.Scope`'s fake arm already did the one thing a real welcome's effect would have done).
+                // `Platform.Scope`'s fake arm already did the one thing a real welcome's effect would have done). Both
+                // transports stay Down: the one Online that owns no socket.
                 s.HasCredential = true;
+                s.LoggedIn = true;
                 s.Username = e.Id;
                 s.Country = e.Id2;
                 s.Product = e.Id3;
@@ -381,6 +573,19 @@ public static partial class Spotify
             default:
                 return SessionEffects.None;
         }
+    }
+
+    /// <summary>The login itself is abandoned (a login over a running one, a refusal, a non-Premium welcome): BOTH epochs
+    /// move, both transports go Down, the dealer's connection id goes with its socket, and the account is no longer signed
+    /// in for this session. The caller answers <see cref="SessionEffects.CloseAll"/> when anything was running.</summary>
+    static void EndTransports(ref Session s)
+    {
+        s.Epoch++;
+        s.ApEpoch++;
+        s.Ap = LinkPhase.Down;
+        s.Dealer = LinkPhase.Down;
+        s.LoggedIn = false;
+        s.ConnectionId = default;
     }
 
     /// <summary>The catalog scope a welcome implies (D9): the signed-in account, its market and tier, over the locale and
@@ -395,11 +600,12 @@ public static partial class Spotify
             (byte)tier,
             current.AllowExplicit);
 
-    /// <summary>The reconnect ladder: 3, 6, 12, 24, capped at 30 s — 0.2.9's `LiveDealerTransport` ladder, folded so
-    /// the delay is a function of the session and not of a captured local.</summary>
-    public static int BackoffMs(in Session s)
+    /// <summary>The reconnect ladder: 3, 6, 12, 24, capped at 30 s — 0.2.9's `LiveDealerTransport` ladder. One ladder, two
+    /// climbers (B4): the AP passes <see cref="Session.ApAttempt"/>, the dealer <see cref="Session.DealerAttempt"/>, so a
+    /// flapping AP never lengthens the dealer's wait, or the reverse. PURE.</summary>
+    public static int BackoffMs(uint attempt)
     {
-        int shift = (int)Math.Min(s.Attempt == 0 ? 0u : s.Attempt - 1, 4u);
+        int shift = (int)Math.Min(attempt == 0 ? 0u : attempt - 1, 4u);
         return Math.Min(30, 3 * (1 << shift)) * 1000;
     }
 
@@ -461,6 +667,179 @@ public static partial class Spotify
         if (string.Equals(last, next, StringComparison.OrdinalIgnoreCase)) return AccountChange.Same;
         settings.Set(Platform.Keys.LastAccount, next);
         return last.Length == 0 ? AccountChange.First : AccountChange.Switched;
+    }
+
+    // ── 1c. the AP keepalive (B6) ────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>THE AP KEEPALIVE, as a value (B6): librespot's <c>KeepAliveState</c> + <c>DispatchTask</c>
+    /// (<c>core/src/session.rs:670-957</c>, librespot #1359 "Rework session keep-alive logic", 2024-10) ported as a pure
+    /// fold. The access point pings (0x04) right behind the welcome and then every two minutes — the only traffic on an idle
+    /// channel (2026-09-19: 120.00 s ± 30 ms between 106 pings over 3.6 hours). librespot does not answer at once: it
+    /// HOLDS the Pong (0x49) for <see cref="PongDelayMs"/>, then owes the server's PongAck (0x4a) within
+    /// <see cref="PongAckTimeoutMs"/>, then the next Ping within <see cref="PingTimeoutMs"/> — the server's same 120 s
+    /// period, seen from the other side of the held pong — and any of them missing means the channel died silently:
+    /// <code>
+    ///  Connected ─► AwaitingFirstPing ─Ping─► PendingPong ─60 s, SendPong─► AwaitingPongAck ─Ack─► AwaitingPing
+    ///                       │ 20 s                 ▲                               │ 20 s             │     │ 80 s
+    ///                       ▼                      └──────────── Ping ─────────────┼──────────────────┘     ▼
+    ///              Dead(no-first-ping)                                     Dead(no-pong-ack)          Dead(no-ping)
+    /// </code>
+    /// <para>WHY — the one hypothesis of the 09-18 Connect plan: until B6 Wavee ponged IMMEDIATELY and ignored the ack, and 8
+    /// of the 12 AP resets of 2026-09-19 (<c>SocketException 10054</c>) came 11-57 ms after that pong. Whether the held pong
+    /// lowers the reset rate is what the always-on <c>ap.keepalive</c> / <c>ap.exit</c> lines are for.</para>
+    /// <para>THE THREE PORTS DISAGREE, and this follows librespot. go-librespot (<c>ap/ap.go:29,350-357,416-438</c>) pongs at
+    /// once, echoing the ping's payload, and closes the channel when no PongAck arrived for 120 s (checked by a 120 s ticker,
+    /// so 120-240 s in practice). librespot-java (<c>core/Session.java:1460-1477</c>) pongs at once, echoing the payload,
+    /// ignores the ack, and reconnects when no Ping arrived for 120 s + <c>connectionTimeout</c> (10 s by default). librespot
+    /// is the one that holds the pong and the one whose watchdog reads the ack — exactly the two things the hypothesis is
+    /// about — and it ponged at once itself before #1359, so the delay is a deliberate change there, not an accident of
+    /// porting. The payload is librespot's too: four zero bytes (the other two echo the server's timestamp).</para>
+    /// <para>Out-of-turn inputs are obeyed the way librespot obeys them (it warns, then does the same thing): a Ping in any
+    /// phase re-arms the held pong from itself; a PongAck in any phase starts the wait for the next Ping. <see cref="Expected"/>
+    /// says which were in turn, for the shell's log line.</para>
+    /// <para>Times are the caller's monotonic milliseconds (<c>Environment.TickCount64</c> in the shell) and are compared by
+    /// DIFFERENCE, never by magnitude, so a clock that wraps still orders correctly. PURE: no clock, no socket, no
+    /// allocation; every transition is a fact in <c>ApKeepAliveTests</c>.</para></summary>
+    public static class ApKeepAlive
+    {
+        /// <summary>How long a Ping's Pong is HELD before it is sent. librespot <c>PONG_DELAY</c> = 60 s
+        /// (<c>core/src/session.rs:685</c>, armed on the Ping at <c>:761-764</c>). go-librespot and librespot-java: 0 — the
+        /// pong goes out as the ping is read, which is what Wavee did until B6.</summary>
+        public const int PongDelayMs = 60_000;
+
+        /// <summary>After our Pong, the server's PongAck is owed within this. librespot <c>PONG_ACK_TIMEOUT</c> = 20 s
+        /// (<c>:686</c>, armed as the pong is sent at <c>:946-949</c>). go-librespot: 120 s since the last ack, checked every
+        /// 120 s; librespot-java: the ack is ignored.</summary>
+        public const int PongAckTimeoutMs = 20_000;
+
+        /// <summary>After a PongAck, the next Ping is owed within this — librespot's own comment: "60s expected + 20s buffer",
+        /// since with the pong held 60 s the server's next ping of its 120 s period lands ~60 s after the ack. librespot
+        /// <c>PING_TIMEOUT</c> = 80 s (<c>:684</c>, armed on the ack at <c>:787-790</c>). librespot-java: 130 s since the last
+        /// Ping; go-librespot: no ping watchdog (its ack watchdog covers it).</summary>
+        public const int PingTimeoutMs = 80_000;
+
+        /// <summary>After <see cref="Input.Connected"/>, the first Ping is owed within this — the AP pings right behind the
+        /// welcome. librespot <c>INITIAL_PING_TIMEOUT</c> = 20 s (<c>:683</c>, armed in <c>DispatchTask::new</c> at
+        /// <c>:727-734</c>). Neither other port watches the first ping separately.</summary>
+        public const int FirstPingTimeoutMs = 20_000;
+
+        /// <summary>Where the keepalive is. <see cref="Idle"/> is "not running": before <see cref="Input.Connected"/> and after
+        /// a <see cref="EffectKind.Dead"/> verdict, and it ignores every input but a new <see cref="Input.Connected"/>.</summary>
+        public enum Phase : byte
+        {
+            Idle = 0,
+            /// <summary>Connected; the AP's first Ping is owed by <see cref="State.DeadlineMs"/>.</summary>
+            AwaitingFirstPing,
+            /// <summary>A Ping arrived; our Pong is held until <see cref="State.DeadlineMs"/>.</summary>
+            PendingPong,
+            /// <summary>Our Pong went out; the server's PongAck is owed by <see cref="State.DeadlineMs"/>.</summary>
+            AwaitingPongAck,
+            /// <summary>The PongAck arrived; the next Ping is owed by <see cref="State.DeadlineMs"/>.</summary>
+            AwaitingPing,
+        }
+
+        /// <summary>What happened.</summary>
+        public enum Input : byte
+        {
+            /// <summary>The channel is up and its pump is reading: (re)starts the machine from the top, whatever it was doing.</summary>
+            Connected = 0,
+            /// <summary>0x04 arrived.</summary>
+            PingReceived,
+            /// <summary>0x4a arrived.</summary>
+            PongAckReceived,
+            /// <summary>Time passed — the shell's one-shot timer, armed for <see cref="DueInMs"/>. Before the deadline it is a
+            /// no-op, so an early or spurious wake costs nothing.</summary>
+            Tick,
+        }
+
+        /// <summary>What the shell must do after a step.</summary>
+        public enum EffectKind : byte
+        {
+            None = 0,
+            /// <summary>Send the held Pong now, on this channel.</summary>
+            SendPong,
+            /// <summary>The channel is dead (<see cref="Effect.Reason"/>): end it; the AP reconnects alone (B4).</summary>
+            Dead,
+        }
+
+        /// <summary>Which of the three windows lapsed.</summary>
+        public enum DeadReason : byte { None = 0, NoFirstPing, NoPongAck, NoPing }
+
+        /// <summary>The machine: a phase and the one instant it is waiting for (the caller's clock). A value, so the shell
+        /// holds it in a field and a fact builds it by hand.</summary>
+        public readonly record struct State(Phase Phase, long DeadlineMs);
+
+        /// <summary>One step's effect: nothing, send the pong, or dead with its reason.</summary>
+        public readonly record struct Effect(EffectKind Kind, DeadReason Reason)
+        {
+            public static Effect None => default;
+            public static Effect SendPong => new(EffectKind.SendPong, DeadReason.None);
+            public static Effect Dead(DeadReason reason) => new(EffectKind.Dead, reason);
+        }
+
+        /// <summary>THE fold. <paramref name="nowMs"/> is when <paramref name="input"/> happened — which may be EARLIER than
+        /// the previous step's instant: the shell feeds the Ping that arrived with the welcome, at the time it arrived, right
+        /// after <see cref="Input.Connected"/> at the pump's start, so its pong is held from the ping and not from the pump.
+        /// A <see cref="EffectKind.Dead"/> verdict leaves the machine <see cref="Phase.Idle"/>: it is returned once.</summary>
+        public static (State Next, Effect Effect) Step(in State s, Input input, long nowMs)
+        {
+            switch (input)
+            {
+                case Input.Connected:
+                    return (Arm(Phase.AwaitingFirstPing, nowMs, FirstPingTimeoutMs), Effect.None);
+
+                case Input.PingReceived:
+                    return s.Phase == Phase.Idle ? (s, Effect.None) : (Arm(Phase.PendingPong, nowMs, PongDelayMs), Effect.None);
+
+                case Input.PongAckReceived:
+                    return s.Phase == Phase.Idle ? (s, Effect.None) : (Arm(Phase.AwaitingPing, nowMs, PingTimeoutMs), Effect.None);
+
+                case Input.Tick:
+                    if (!IsDue(in s, nowMs)) return (s, Effect.None);
+                    return s.Phase switch
+                    {
+                        // The ack window runs from the pong's actual send, not from when it was due (librespot `:949`).
+                        Phase.PendingPong => (Arm(Phase.AwaitingPongAck, nowMs, PongAckTimeoutMs), Effect.SendPong),
+                        Phase.AwaitingFirstPing => (default(State), Effect.Dead(DeadReason.NoFirstPing)),
+                        Phase.AwaitingPongAck => (default(State), Effect.Dead(DeadReason.NoPongAck)),
+                        Phase.AwaitingPing => (default(State), Effect.Dead(DeadReason.NoPing)),
+                        _ => (s, Effect.None),
+                    };
+
+                default:
+                    return (s, Effect.None);
+            }
+        }
+
+        static State Arm(Phase phase, long nowMs, int windowMs) => new(phase, unchecked(nowMs + windowMs));
+
+        /// <summary>Has <paramref name="s"/>'s deadline come at <paramref name="nowMs"/>? Never while Idle. By difference, so a
+        /// wrapped clock still answers right.</summary>
+        public static bool IsDue(in State s, long nowMs) => s.Phase != Phase.Idle && unchecked(nowMs - s.DeadlineMs) >= 0;
+
+        /// <summary>How long from <paramref name="nowMs"/> until the next <see cref="Input.Tick"/> can matter — what the shell
+        /// arms its one-shot timer for: 0 when already due, <c>-1</c> (<c>Timeout.Infinite</c>) while Idle.</summary>
+        public static long DueInMs(in State s, long nowMs)
+            => s.Phase == Phase.Idle ? -1 : Math.Max(0L, unchecked(s.DeadlineMs - nowMs));
+
+        /// <summary>Was <paramref name="input"/> in turn for <paramref name="phase"/>? A Ping is owed while awaiting one, an ack
+        /// while awaiting it; anything else out of turn is obeyed anyway (see the class) and the shell's line says
+        /// <c>unexpected</c> — librespot's <c>warn!("Received unexpected Ping/PongAck from server")</c>.</summary>
+        public static bool Expected(Phase phase, Input input) => input switch
+        {
+            Input.PingReceived => phase is Phase.AwaitingFirstPing or Phase.AwaitingPing,
+            Input.PongAckReceived => phase == Phase.AwaitingPongAck,
+            _ => true,
+        };
+
+        /// <summary>The log word for a verdict (<c>ap.keepalive dead reason=</c>).</summary>
+        public static string Word(DeadReason reason) => reason switch
+        {
+            DeadReason.NoFirstPing => "no-first-ping",
+            DeadReason.NoPongAck => "no-pong-ack",
+            DeadReason.NoPing => "no-ping",
+            _ => "none",
+        };
     }
 
     // ── 2. the server clock (ported from Backend/SpotifyServerClock.cs, folded into the session) ─────────────────────

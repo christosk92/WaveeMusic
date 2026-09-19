@@ -13,6 +13,17 @@
 //
 // Gap batch B5 added: the Premium gate (D12), the refusal verdicts (D24), the SignedOut effect (G-036/G-037), the
 // client-token refresh fold (G-035), `session.lastAccount` (G-031) and the sign-in request a resume-less login makes (G-030).
+//
+// B4 (the transports decoupled): the single `Dropped`/`Retry` became `ApDropped`/`DealerDropped` and `ApRetry`/`DealerRetry`,
+// each transport with its own `LinkPhase`, epoch and backoff. An AP reset keeps the dealer, its connection id and the
+// session epoch (no re-announce); a dealer drop owes the hello on its new id (B3); a stale epoch's word is refused without
+// touching the other transport; Online = signed in with the dealer up. The step helper stamps each event with the epoch a
+// LIVE thread of its transport would carry, so a fact that wants a stale word says so with `epoch:`.
+//
+// B6 (the AP keepalive, whose own fold is `ApKeepAliveTests`) closed two gaps B4 left in this fold: an AP reconnect whose
+// product packet came late keeps the known tier instead of ending the login, and "the same connection id" means the same
+// BYTES — so the facts that need two distinct ids write real text into the session arena (`Spotify.AddSessionText`) instead
+// of pointing at made-up offsets. The read timeout's rule became "the backstop outlasts every keepalive window".
 
 using FluentGpu.Foundation;
 using Wavee;
@@ -23,8 +34,19 @@ namespace Wavee.Tests;
 public class SessionStepTests
 {
     static Spotify.SessionEffects Step(ref Spotify.Session s, Spotify.SessionEventKind kind,
-        Spotify.TokenRef text = default, Spotify.TokenRef text2 = default, long number = 0, bool flag = false)
-        => Spotify.Step(ref s, new Spotify.SessionEvent(kind, Text: text, Text2: text2, Number: number, Flag: flag));
+        Spotify.TokenRef text = default, Spotify.TokenRef text2 = default, long number = 0, bool flag = false, uint? epoch = null)
+        => Spotify.Step(ref s, new Spotify.SessionEvent(kind, Text: text, Text2: text2, Number: number, Flag: flag,
+            Epoch: epoch ?? Live(in s, kind)));
+
+    /// <summary>The epoch a LIVE producer stamps on <paramref name="kind"/> (B4): the AP thread's words carry the AP epoch
+    /// it started under, the dealer's the session (dealer) epoch, a retry the epoch it was armed for — for a thread or a
+    /// timer that is still current, the session's own. The login's words carry none.</summary>
+    static uint Live(in Spotify.Session s, Spotify.SessionEventKind kind) => Spotify.LinkOf(kind) switch
+    {
+        Spotify.SessionLink.Ap => s.ApEpoch,
+        Spotify.SessionLink.Dealer => s.Epoch,
+        _ => 0u,
+    };
 
     /// <summary>The happy path, in the order the AP thread walks it.</summary>
     static Spotify.Session Online()
@@ -117,23 +139,57 @@ public class SessionStepTests
         Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium);
         Step(ref s, Spotify.SessionEventKind.ClientTokenMinted);
         Step(ref s, Spotify.SessionEventKind.AccessTokenMinted);
+        // Real ids in the session arena: "the same id" is compared by its bytes (B6's follow-up on B3).
+        Spotify.TokenRef first = Spotify.AddSessionText("conn-first-" + Guid.NewGuid().ToString("N"));
+        Spotify.TokenRef other = Spotify.AddSessionText("conn-other-" + Guid.NewGuid().ToString("N"));
+        Spotify.TokenRef next = Spotify.AddSessionText("conn-next--" + Guid.NewGuid().ToString("N"));
 
         // The first connection id: the hello (headless plan §1.6 item 5).
-        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(16, 4)));
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: first));
         // B3: an EXACT repeat of the id already held (idempotent redelivery) is the only silent case.
-        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(16, 4)));
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: first));
         // B3: a DIFFERENT connection id while already Online is adopted but was silently swallowed before this fix
         // (`wasOnline ? None : AnnounceDevice` — Spotify.cs:319, the "other devices do not show Wavee" bug) — the
         // hello is owed to the id, not the phase transition.
-        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(20, 4)));
-        Assert.Equal(new Spotify.TokenRef(20, 4), s.ConnectionId);
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: other));
+        Assert.Equal(other, s.ConnectionId);
 
-        // A drop and a reconnect is a new connection id, and a new hello.
-        Step(ref s, Spotify.SessionEventKind.Dropped, number: (long)Spotify.SessionFault.Network);
-        Step(ref s, Spotify.SessionEventKind.Retry);
-        Step(ref s, Spotify.SessionEventKind.Hosts);
-        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(24, 4)));
-        Assert.Equal(new Spotify.TokenRef(24, 4), s.ConnectionId);
+        // A DEALER drop and its reconnect is a new connection id, and a new hello. (B4 changed this leg: the old single
+        // `Dropped` → `Retry` → `Hosts` walk re-ran the whole AP ladder to get here; the dealer now reconnects alone, on
+        // its own retry, and B3's rule — the hello is owed to the new id — is what still announces.)
+        Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(Spotify.SessionEffects.OpenDealer, Step(ref s, Spotify.SessionEventKind.DealerRetry));
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: next));
+        Assert.Equal(next, s.ConnectionId);
+    }
+
+    /// <summary>B6's follow-up on B3: "an exact repeat of the id already held" is a repeat of its BYTES. The dealer thread
+    /// writes every pusher hello's id into the session arena afresh, so a redelivered identical id arrives as a NEW slice —
+    /// and the first cut compared the slices (<c>==</c> on the <c>TokenRef</c>), so it announced that repeat every time.</summary>
+    [Fact]
+    public void A_redelivered_connection_id_is_a_repeat_whatever_slice_carries_it()
+    {
+        string id = "conn-" + Guid.NewGuid().ToString("N");
+        Spotify.TokenRef held = Spotify.AddSessionText(id);
+        Spotify.TokenRef again = Spotify.AddSessionText(id);                       // the same text, learnt a second time
+        Spotify.TokenRef other = Spotify.AddSessionText("conn-" + Guid.NewGuid().ToString("N"));   // same length, other bytes
+        Assert.NotEqual(held, again);                                               // two slices…
+        Assert.True(Spotify.SameText(held, again));                                 // …one id
+        Assert.Equal(held.Length, other.Length);
+        Assert.False(Spotify.SameText(held, other));
+        Assert.False(Spotify.SameText(default, held));                             // no id held is never "the same"
+        Assert.True(Spotify.SameText(default, default));
+
+        var s = Handshaken();
+        Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium);
+        Step(ref s, Spotify.SessionEventKind.ClientTokenMinted);
+        Step(ref s, Spotify.SessionEventKind.AccessTokenMinted);
+
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: held));
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: again));
+        Assert.True(s.IsOnline);
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: other));
+        Assert.Equal(other, s.ConnectionId);
     }
 
     [Fact]
@@ -143,12 +199,16 @@ public class SessionStepTests
         s.DeviceId = new Spotify.TokenRef(100, 8);
         s.ClientId = new Spotify.TokenRef(108, 8);
         s.Locale = new Spotify.TokenRef(116, 2);
-        uint epoch = s.Epoch;
+        uint epoch = s.Epoch, apEpoch = s.ApEpoch;
         var fx = Step(ref s, Spotify.SessionEventKind.Disconnect);
 
         Assert.Equal(Spotify.SessionEffects.CloseAll, fx);                  // never ClearCredential: that is Logout's alone
         Assert.Equal(Spotify.SessionPhase.Offline, s.Phase);
         Assert.Equal(epoch + 1, s.Epoch);
+        Assert.Equal(apEpoch + 1, s.ApEpoch);                               // the login ended: BOTH transports' epochs move
+        Assert.Equal(Spotify.LinkPhase.Down, s.Ap);
+        Assert.Equal(Spotify.LinkPhase.Down, s.Dealer);
+        Assert.False(s.LoggedIn);
         Assert.True(s.HasCredential);
         Assert.True(s.AccessToken.IsEmpty);
         Assert.True(s.ClientToken.IsEmpty);
@@ -180,6 +240,9 @@ public class SessionStepTests
         Assert.Equal(Spotify.Tier.Premium, s.Tier);          // the demo previews every gated surface (D12 does not apply)
         Assert.True(s.HasCredential);                        // the auth fold (Shell.FoldAuth) must read this as signed in
         Assert.Equal(0u, s.Epoch);                            // nothing was abandoned — this never opened a socket
+        Assert.Equal(0u, s.ApEpoch);
+        Assert.Equal(Spotify.LinkPhase.Down, s.Ap);           // the one Online that owns no transport (B4)
+        Assert.Equal(Spotify.LinkPhase.Down, s.Dealer);
         Assert.Equal(new StringId(1), s.Username);
         Assert.Equal(new StringId(2), s.Country);
         Assert.Equal(new StringId(3), s.Product);
@@ -217,8 +280,9 @@ public class SessionStepTests
         Assert.False(s.HasCredential);
         Assert.Equal(Spotify.SessionEffects.ClearCredential | Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.SignedOut, fx);
 
-        // Terminal: nothing but a fresh Login moves it again.
-        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.Retry));
+        // Terminal: nothing but a fresh Login moves it again — neither transport's retry.
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.ApRetry));
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.DealerRetry));
         Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium));
         Assert.Equal(Spotify.SessionPhase.Failed, s.Phase);
     }
@@ -269,8 +333,9 @@ public class SessionStepTests
         Assert.Equal(Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.ClearCredential | Spotify.SessionEffects.SignedOut, fx);
     }
 
-    /// <summary>An UNKNOWN tier (the product packet missed its window) is refused too — never optimistically Premium — but
-    /// a late packet is not a verdict on the account: the credential stays, and the next attempt may well pass.</summary>
+    /// <summary>An UNKNOWN tier on a FIRST login (the product packet missed its window) is refused too — never optimistically
+    /// Premium — but a late packet is not a verdict on the account: the credential stays, and the next attempt may well
+    /// pass. (A reconnect's late packet is the fact below.)</summary>
     [Fact]
     public void An_unknown_tier_is_refused_but_its_credential_is_kept()
     {
@@ -283,13 +348,68 @@ public class SessionStepTests
         Assert.Equal(Spotify.SessionEffects.CloseAll, fx);
     }
 
+    /// <summary>B6's follow-up on B4: an AP RECONNECT's welcome whose ProductInfo (0x50) missed its 3 s trailer window
+    /// carries an Unknown tier, and under the D12 gate that ended the WHOLE login — after B4, the one way left for an AP
+    /// reset (~29 a day) to take the session out of Online. The account's tier was settled by this login's first welcome and
+    /// a late packet is no verdict, so the known tier stands, and with it the product the UI paints; nothing closes.</summary>
+    [Fact]
+    public void An_ap_reconnect_whose_product_packet_came_late_keeps_the_known_tier()
+    {
+        var s = Online();
+        var product = new StringId(7);
+        s.Product = product;                                                // what the first welcome's 0x50 said
+        uint epoch = s.Epoch;
+        Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network);
+        Step(ref s, Spotify.SessionEventKind.ApRetry);
+        Step(ref s, Spotify.SessionEventKind.Hosts, text: new(0, 4), text2: new(4, 4));
+        Step(ref s, Spotify.SessionEventKind.Connected);
+        Step(ref s, Spotify.SessionEventKind.HandshakeOk);
+
+        var fx = Spotify.Step(ref s, new Spotify.SessionEvent(Spotify.SessionEventKind.Welcome,
+            Id3: new StringId(9), Number: (long)Spotify.Tier.Unknown, Epoch: s.ApEpoch));
+
+        Assert.Equal(Spotify.SessionEffects.SaveCredential | Spotify.SessionEffects.MintClientToken | Spotify.SessionEffects.Welcome, fx);
+        Assert.Equal(Spotify.Tier.Premium, s.Tier);
+        Assert.Equal(product, s.Product);
+        Assert.Equal(Spotify.SessionPhase.Online, s.Phase);
+        Assert.Equal(Spotify.SessionFault.None, s.Fault);
+        Assert.True(s.LoggedIn);
+        Assert.True(s.HasCredential);
+        Assert.Equal(Spotify.LinkPhase.Up, s.Ap);
+        Assert.Equal(Spotify.LinkPhase.Up, s.Dealer);
+        Assert.Equal(epoch, s.Epoch);                                       // nothing re-syncs, nothing re-announces
+        Assert.Equal(new Spotify.TokenRef(16, 4), s.ConnectionId);
+    }
+
+    /// <summary>…but a VERDICT is a verdict whichever welcome carries it: a reconnect that says Free ends the login and wipes
+    /// the credential exactly as a first login's would (D12).</summary>
+    [Fact]
+    public void An_ap_reconnect_that_says_free_still_ends_the_login()
+    {
+        var s = Online();
+        Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network);
+        Step(ref s, Spotify.SessionEventKind.ApRetry);
+        Step(ref s, Spotify.SessionEventKind.Hosts);
+        Step(ref s, Spotify.SessionEventKind.Connected);
+        Step(ref s, Spotify.SessionEventKind.HandshakeOk);
+        var fx = Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Free);
+
+        Assert.Equal(Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.ClearCredential | Spotify.SessionEffects.SignedOut, fx);
+        Assert.Equal(Spotify.SessionPhase.Failed, s.Phase);
+        Assert.Equal(Spotify.SessionFault.NotPremium, s.Fault);
+        Assert.Equal(Spotify.Tier.Free, s.Tier);
+        Assert.False(s.LoggedIn);
+        Assert.False(s.HasCredential);
+    }
+
     [Fact]
     public void Only_a_lost_account_signs_out()
     {
         var online = Online();
         Assert.True(SignsOut(online, Spotify.SessionEventKind.Logout));
         Assert.False(SignsOut(online, Spotify.SessionEventKind.Disconnect));
-        Assert.False(SignsOut(online, Spotify.SessionEventKind.Dropped, (long)Spotify.SessionFault.Network));
+        Assert.False(SignsOut(online, Spotify.SessionEventKind.ApDropped, (long)Spotify.SessionFault.Network));
+        Assert.False(SignsOut(online, Spotify.SessionEventKind.DealerDropped, (long)Spotify.SessionFault.Network));
         Assert.False(SignsOut(Handshaken(), Spotify.SessionEventKind.AuthRejected, (long)Spotify.RejectVerdict.Transient));
         Assert.True(SignsOut(Handshaken(), Spotify.SessionEventKind.AuthRejected, (long)Spotify.RejectVerdict.Definitive));
 
@@ -310,42 +430,352 @@ public class SessionStepTests
         Assert.Equal(Spotify.SessionPhase.Online, s.Phase);
     }
 
+    /// <summary>Either transport's drop: never the credential, never a sign-out. (B4 split this fact in two: the old single
+    /// `Dropped` also asserted `CloseAll | Backoff` and an emptied connection id, which is now true of the DEALER's drop
+    /// only — see the two facts below.)</summary>
     [Fact]
     public void A_network_drop_never_clears_the_credential()
     {
-        var s = Online();
-        var fx = Step(ref s, Spotify.SessionEventKind.Dropped, number: (long)Spotify.SessionFault.Network);
+        foreach (var kind in new[] { Spotify.SessionEventKind.ApDropped, Spotify.SessionEventKind.DealerDropped })
+        {
+            var s = Online();
+            var fx = Step(ref s, kind, number: (long)Spotify.SessionFault.Network);
 
-        Assert.Equal(Spotify.SessionPhase.Reconnecting, s.Phase);
-        Assert.True(s.HasCredential);
-        Assert.Equal(0, (int)(fx & Spotify.SessionEffects.ClearCredential));
-        Assert.Equal(Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.Backoff, fx);
-        Assert.True(s.ConnectionId.IsEmpty);    // the id belonged to the socket that died
+            Assert.True(s.HasCredential);
+            Assert.True(s.LoggedIn);                                        // a drop never signs the account out
+            Assert.Equal(Spotify.SessionEffects.None, fx & (Spotify.SessionEffects.ClearCredential | Spotify.SessionEffects.SignedOut));
+        }
     }
 
+    /// <summary>B4, the headline: an AP reset (~29 a day, <c>SocketException 10054</c>) reconnects the AP ALONE. The dealer,
+    /// its connection id, the session epoch and the phase all stay — so no <c>NewDevice</c> re-announce, no library resync,
+    /// no chrome flicker — and the AP's whole re-login walks under <c>s.Ap</c> without touching any of them.</summary>
     [Fact]
-    public void Every_drop_bumps_the_epoch_so_in_flight_work_is_abandoned()
+    public void An_ap_drop_keeps_the_dealer_and_its_connection_id_and_owes_no_announce()
     {
         var s = Online();
-        uint epoch = s.Epoch;
-        Step(ref s, Spotify.SessionEventKind.Dropped, number: (long)Spotify.SessionFault.Network);
+        uint epoch = s.Epoch, apEpoch = s.ApEpoch;
+
+        var fx = Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(Spotify.SessionEffects.CloseAp | Spotify.SessionEffects.ApBackoff, fx);     // never CloseDealer
+        Assert.Equal(Spotify.SessionPhase.Online, s.Phase);
+        Assert.Equal(Spotify.SessionFault.None, s.Fault);
+        Assert.Equal(Spotify.LinkPhase.Waiting, s.Ap);
+        Assert.Equal(Spotify.LinkPhase.Up, s.Dealer);
+        Assert.Equal(new Spotify.TokenRef(16, 4), s.ConnectionId);
+        Assert.Equal(epoch, s.Epoch);                                       // the Connect mailbox and the library keep theirs
+        Assert.Equal(apEpoch + 1, s.ApEpoch);
+        Assert.Equal(1u, s.ApAttempt);
+
+        // The AP's retry re-runs its whole procedure; nothing in it re-opens the dealer or re-announces the device.
+        var all = Step(ref s, Spotify.SessionEventKind.ApRetry);
+        Assert.Equal(Spotify.SessionEffects.ResolveHosts, all);
+        all |= Step(ref s, Spotify.SessionEventKind.Hosts, text: new(0, 4), text2: new(4, 4));
+        all |= Step(ref s, Spotify.SessionEventKind.Connected);
+        all |= Step(ref s, Spotify.SessionEventKind.HandshakeOk);
+        Assert.Equal(Spotify.SessionPhase.Online, s.Phase);                 // the AP's ladder is its own now
+        all |= Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium);
+        all |= Step(ref s, Spotify.SessionEventKind.ClientTokenMinted, text: new(30, 4), number: 5_000);
+        all |= Step(ref s, Spotify.SessionEventKind.AccessTokenMinted, text: new(34, 4), number: 6_000);
+
+        Assert.Equal(Spotify.SessionEffects.None, all & (Spotify.SessionEffects.AnnounceDevice
+            | Spotify.SessionEffects.OpenDealer | Spotify.SessionEffects.CloseDealer));
+        Assert.Equal(Spotify.LinkPhase.Up, s.Ap);
+        Assert.Equal(0u, s.ApAttempt);                                      // its own success resets its own ladder
+        Assert.Equal(Spotify.SessionPhase.Online, s.Phase);
+        Assert.Equal(new Spotify.TokenRef(16, 4), s.ConnectionId);
+        Assert.Equal(epoch, s.Epoch);
+        Assert.Equal(new Spotify.TokenRef(34, 4), s.AccessToken);           // the re-login's bearer is the session's
+    }
+
+    /// <summary>B4 + B3: a dealer drop reconnects the dealer ALONE — the AP channel, its epoch and its keys stay up — and its
+    /// connection id goes with its socket, so the new one owes the hello. The session leaves Online for it: the consumers
+    /// keyed on Online's edge and on the (dealer) epoch re-sync what that connection may have carried.</summary>
+    [Fact]
+    public void A_dealer_drop_keeps_the_ap_and_owes_an_announce_on_the_new_connection_id()
+    {
+        var s = Online();
+        uint epoch = s.Epoch, apEpoch = s.ApEpoch;
+
+        var fx = Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(Spotify.SessionEffects.CloseDealer | Spotify.SessionEffects.DealerBackoff, fx);   // never CloseAp
+        Assert.Equal(Spotify.SessionPhase.Reconnecting, s.Phase);
+        Assert.False(s.IsOnline);
+        Assert.Equal(Spotify.SessionFault.Network, s.Fault);
+        Assert.True(s.ConnectionId.IsEmpty);                                // the id belonged to the socket that died
+        Assert.Equal(Spotify.LinkPhase.Waiting, s.Dealer);
+        Assert.Equal(Spotify.LinkPhase.Up, s.Ap);
         Assert.Equal(epoch + 1, s.Epoch);
-        Step(ref s, Spotify.SessionEventKind.Retry);
-        Step(ref s, Spotify.SessionEventKind.Dropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(apEpoch, s.ApEpoch);
+
+        Assert.Equal(Spotify.SessionEffects.OpenDealer, Step(ref s, Spotify.SessionEventKind.DealerRetry));
+        Assert.Equal(Spotify.LinkPhase.Opening, s.Dealer);
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(24, 4)));
+        Assert.Equal(Spotify.SessionPhase.Online, s.Phase);
+        Assert.Equal(Spotify.SessionFault.None, s.Fault);
+        Assert.Equal(new Spotify.TokenRef(24, 4), s.ConnectionId);
+        Assert.Equal(0u, s.DealerAttempt);
+        Assert.Equal(apEpoch, s.ApEpoch);
+    }
+
+    /// <summary>Both sockets down at once (the host's network blipped — 10:10:59 on 2026-09-19 dropped both in the same
+    /// millisecond): each reconnects on its own ladder, neither waits for the other, and the one that ends Online is the
+    /// dealer's hello.</summary>
+    [Fact]
+    public void Both_transports_dropping_reconnect_each_on_its_own_ladder()
+    {
+        var s = Online();
+        Assert.Equal(Spotify.SessionEffects.CloseDealer | Spotify.SessionEffects.DealerBackoff,
+            Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Network));
+        Assert.Equal(Spotify.SessionEffects.CloseAp | Spotify.SessionEffects.ApBackoff,
+            Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network));
+        Assert.Equal(Spotify.SessionPhase.Reconnecting, s.Phase);
+        Assert.Equal(Spotify.LinkPhase.Waiting, s.Ap);
+        Assert.Equal(Spotify.LinkPhase.Waiting, s.Dealer);
+        Assert.Equal(1u, s.ApAttempt);
+        Assert.Equal(1u, s.DealerAttempt);
+
+        // The dealer's retry does not wait on the AP (its bearer is the login's, not the AP socket's), and the AP's does
+        // not restart the login ladder (the account is still signed in).
+        Assert.Equal(Spotify.SessionEffects.OpenDealer, Step(ref s, Spotify.SessionEventKind.DealerRetry));
+        Assert.Equal(Spotify.SessionEffects.ResolveHosts, Step(ref s, Spotify.SessionEventKind.ApRetry));
+        Assert.Equal(Spotify.SessionPhase.Reconnecting, s.Phase);
+
+        Step(ref s, Spotify.SessionEventKind.Hosts);
+        Step(ref s, Spotify.SessionEventKind.Connected);
+        Step(ref s, Spotify.SessionEventKind.HandshakeOk);
+        Assert.Equal(Spotify.SessionPhase.Reconnecting, s.Phase);
+        Assert.Equal(Spotify.SessionEffects.SaveCredential | Spotify.SessionEffects.MintClientToken | Spotify.SessionEffects.Welcome,
+            Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium));
+        Step(ref s, Spotify.SessionEventKind.ClientTokenMinted);
+        // The dealer is Opening under its own retry: the re-login's bearer must not open a second one.
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.AccessTokenMinted));
+        Assert.Equal(Spotify.LinkPhase.Up, s.Ap);
+        Assert.False(s.IsOnline);
+
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(24, 4)));
+        Assert.True(s.IsOnline);
+        Assert.Equal(Spotify.LinkPhase.Up, s.Dealer);
+    }
+
+    /// <summary>B4, the epochs: each transport's words carry its own epoch, and a word from an epoch of THAT transport already
+    /// abandoned folds to nothing — the other transport never hears of it. (Replaces "every drop bumps the epoch": the one
+    /// shared epoch could not tell a dead AP thread's late drop from a live one, and every drop tore both sockets down.)</summary>
+    [Fact]
+    public void A_stale_epochs_words_are_ignored_without_touching_the_other_transport()
+    {
+        var s = Online();
+        uint deadAp = s.ApEpoch;
+        Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network);
+        Step(ref s, Spotify.SessionEventKind.ApRetry);
+        Spotify.Session before = s;
+
+        // The dead AP thread's late words — a second drop, a refusal, a Free welcome — each of which would end something.
+        Assert.Equal(Spotify.SessionEffects.None,
+            Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network, epoch: deadAp));
+        Assert.Equal(Spotify.SessionEffects.None,
+            Step(ref s, Spotify.SessionEventKind.AuthRejected, number: (long)Spotify.RejectVerdict.Definitive, epoch: deadAp));
+        Assert.Equal(Spotify.SessionEffects.None,
+            Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Free, epoch: deadAp));
+        Assert.Equal(before, s);                                            // not one field moved
+        Assert.True(s.IsOnline);
+        Assert.Equal(new Spotify.TokenRef(16, 4), s.ConnectionId);
+
+        // …and the mirror image: a dead dealer's late drop and late hello leave the live dealer and the AP alone.
+        uint deadDealer = s.Epoch;
+        Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Network);
+        Step(ref s, Spotify.SessionEventKind.DealerRetry);
+        Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(28, 4));
+        before = s;
+        Assert.Equal(Spotify.SessionEffects.None,
+            Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Network, epoch: deadDealer));
+        Assert.Equal(Spotify.SessionEffects.None,
+            Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(99, 4), epoch: deadDealer));
+        Assert.Equal(before, s);
+        Assert.Equal(new Spotify.TokenRef(28, 4), s.ConnectionId);
+
+        // A retry armed before a sign-out never outlives it, whichever transport armed it.
+        uint armedAp = s.ApEpoch, armedDealer = s.Epoch;
+        Step(ref s, Spotify.SessionEventKind.Logout);
+        Step(ref s, Spotify.SessionEventKind.Login, flag: true);
+        Assert.True(Spotify.IsStale(in s, new Spotify.SessionEvent(Spotify.SessionEventKind.ApRetry, Epoch: armedAp)));
+        Assert.True(Spotify.IsStale(in s, new Spotify.SessionEvent(Spotify.SessionEventKind.DealerRetry, Epoch: armedDealer)));
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.ApRetry, epoch: armedAp));
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.DealerRetry, epoch: armedDealer));
+    }
+
+    /// <summary>A drop moves its own transport's epoch and no other (C4, per transport).</summary>
+    [Fact]
+    public void Each_drop_bumps_only_its_own_transports_epoch()
+    {
+        var s = Online();
+        uint epoch = s.Epoch, apEpoch = s.ApEpoch;
+        Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(apEpoch + 1, s.ApEpoch);
+        Assert.Equal(epoch, s.Epoch);
+        Step(ref s, Spotify.SessionEventKind.ApRetry);
+        Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(apEpoch + 2, s.ApEpoch);
+        Assert.Equal(epoch, s.Epoch);
+
+        Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(epoch + 1, s.Epoch);
+        Assert.Equal(apEpoch + 2, s.ApEpoch);
+        Step(ref s, Spotify.SessionEventKind.DealerRetry);
+        Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Network);
         Assert.Equal(epoch + 2, s.Epoch);
+        Assert.Equal(apEpoch + 2, s.ApEpoch);
+    }
+
+    /// <summary>Which epoch each word must carry (B4): the AP thread's ladder, verdicts, drop and retry carry the AP epoch;
+    /// the dealer's hello, drop and retry the session (dealer) epoch; a login, a sign-out, a disconnect and the two token
+    /// mints — the login's, not a socket's — carry none and are never refused as stale.</summary>
+    [Fact]
+    public void Every_transport_word_carries_its_own_transports_epoch()
+    {
+        foreach (var kind in new[]
+                 {
+                     Spotify.SessionEventKind.Hosts, Spotify.SessionEventKind.Connected, Spotify.SessionEventKind.HandshakeOk,
+                     Spotify.SessionEventKind.Welcome, Spotify.SessionEventKind.AuthRejected, Spotify.SessionEventKind.ApDropped,
+                     Spotify.SessionEventKind.ApRetry,
+                 })
+            Assert.Equal(Spotify.SessionLink.Ap, Spotify.LinkOf(kind));
+        foreach (var kind in new[]
+                 {
+                     Spotify.SessionEventKind.DealerOnline, Spotify.SessionEventKind.DealerDropped, Spotify.SessionEventKind.DealerRetry,
+                 })
+            Assert.Equal(Spotify.SessionLink.Dealer, Spotify.LinkOf(kind));
+        foreach (var kind in new[]
+                 {
+                     Spotify.SessionEventKind.Login, Spotify.SessionEventKind.ClientTokenMinted, Spotify.SessionEventKind.AccessTokenMinted,
+                     Spotify.SessionEventKind.Logout, Spotify.SessionEventKind.Disconnect, Spotify.SessionEventKind.FakeOnline,
+                 })
+        {
+            Assert.Equal(Spotify.SessionLink.None, Spotify.LinkOf(kind));
+            Assert.False(Spotify.IsStale(default, new Spotify.SessionEvent(kind, Epoch: 99)));
+        }
+    }
+
+    /// <summary>What Online means now (B4, <c>SessionPhase.Online</c>'s doc): the account signed in — this login's Premium
+    /// welcome — AND the dealer holding a connection id. The AP is part of it only until the login is done.</summary>
+    [Fact]
+    public void Online_is_the_signed_in_account_with_the_dealer_up_not_the_ap()
+    {
+        var s = Handshaken();
+        Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium);
+        Step(ref s, Spotify.SessionEventKind.ClientTokenMinted);
+        Assert.Equal(Spotify.SessionEffects.OpenDealer, Step(ref s, Spotify.SessionEventKind.AccessTokenMinted));
+        Assert.True(s.LoggedIn);
+        Assert.Equal(Spotify.LinkPhase.Up, s.Ap);
+        Assert.Equal(Spotify.LinkPhase.Opening, s.Dealer);
+        Assert.Equal(Spotify.SessionPhase.Minting, s.Phase);
+        Assert.False(s.IsOnline);                                           // however far the AP got: no dealer, no Online
+
+        Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(16, 4));
+        Assert.True(s.IsOnline);
+
+        Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.True(s.IsOnline);                                            // the AP is not part of it once signed in…
+        Assert.Equal(Spotify.LinkPhase.Waiting, s.Ap);                      // …and `Ap` is where that shows
+
+        Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.False(s.IsOnline);                                           // the dealer is
+        Assert.Equal(Spotify.SessionPhase.Reconnecting, s.Phase);
+        Assert.True(s.LoggedIn);
+    }
+
+    /// <summary>Before this login's welcome the AP's ladder IS the session's: a drop there is the whole session
+    /// reconnecting, and its retry starts the ladder again from the top — the old single-transport behaviour, kept where it
+    /// is still true.</summary>
+    [Fact]
+    public void An_ap_drop_before_the_welcome_restarts_the_login_ladder()
+    {
+        var s = Handshaken();
+        var fx = Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(Spotify.SessionEffects.CloseAp | Spotify.SessionEffects.ApBackoff, fx);
+        Assert.Equal(Spotify.SessionPhase.Reconnecting, s.Phase);
+        Assert.Equal(Spotify.SessionFault.Network, s.Fault);
+        Assert.Equal(Spotify.LinkPhase.Down, s.Dealer);
+        Assert.False(s.LoggedIn);
+
+        Assert.Equal(Spotify.SessionEffects.ResolveHosts, Step(ref s, Spotify.SessionEventKind.ApRetry));
+        Assert.Equal(Spotify.SessionPhase.Resolving, s.Phase);
+        Assert.Equal(Spotify.SessionEffects.OpenAp, Step(ref s, Spotify.SessionEventKind.Hosts));
+        Assert.Equal(Spotify.SessionPhase.Connecting, s.Phase);
+    }
+
+    /// <summary>The dealer opens ONCE per login, on a bearer minted after this login's welcome. A 401 re-mint on an api
+    /// thread can land mid-ladder (the previous login's blob still mints) and must not open a dealer under a login the AP
+    /// has not welcomed; a re-mint under a dealer that is opening or serving its own backoff never opens a second one.</summary>
+    [Fact]
+    public void The_dealer_opens_only_on_the_first_bearer_after_this_logins_welcome()
+    {
+        var s = Handshaken();
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.AccessTokenMinted, text: new(12, 4), number: 2_000));
+        Assert.Equal(Spotify.LinkPhase.Down, s.Dealer);
+
+        Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium);
+        Assert.Equal(Spotify.SessionEffects.OpenDealer, Step(ref s, Spotify.SessionEventKind.AccessTokenMinted, text: new(12, 4), number: 2_000));
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.AccessTokenMinted, text: new(20, 4), number: 3_000));
+        Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(16, 4));
+        Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.AccessTokenMinted, text: new(24, 4), number: 4_000));
+        Assert.Equal(Spotify.LinkPhase.Waiting, s.Dealer);                  // its own retry owns the next open
+    }
+
+    /// <summary>A login over a session still running is a restart: both transports close first — their threads' later words
+    /// would be refused as stale, and a dealer left running would hold its socket with no fold listening to it.</summary>
+    [Fact]
+    public void A_login_over_a_running_session_closes_both_transports_first()
+    {
+        var s = Online();
+        uint epoch = s.Epoch, apEpoch = s.ApEpoch;
+        var fx = Step(ref s, Spotify.SessionEventKind.Login, flag: true);
+
+        Assert.Equal(Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.ResolveHosts, fx);
+        Assert.Equal(Spotify.SessionPhase.Resolving, s.Phase);
+        Assert.Equal(epoch + 1, s.Epoch);
+        Assert.Equal(apEpoch + 1, s.ApEpoch);
+        Assert.Equal(Spotify.LinkPhase.Opening, s.Ap);
+        Assert.Equal(Spotify.LinkPhase.Down, s.Dealer);
+        Assert.False(s.LoggedIn);
+        Assert.True(s.ConnectionId.IsEmpty);
     }
 
     [Fact]
     public void The_backoff_ladder_is_3_6_12_24_capped_at_30_seconds()
     {
-        var s = default(Spotify.Session);
-        Assert.Equal(3_000, Spotify.BackoffMs(s));       // no attempt yet
+        Assert.Equal(3_000, Spotify.BackoffMs(0));       // no attempt yet
         int[] expected = [3_000, 6_000, 12_000, 24_000, 30_000, 30_000];
         for (int i = 0; i < expected.Length; i++)
-        {
-            s.Attempt = (uint)(i + 1);
-            Assert.Equal(expected[i], Spotify.BackoffMs(s));
-        }
+            Assert.Equal(expected[i], Spotify.BackoffMs((uint)(i + 1)));
+    }
+
+    /// <summary>One ladder, two climbers (B4): a flapping AP never lengthens the dealer's wait, and each transport's own
+    /// success — the AP's welcome, the dealer's hello — resets its own attempt count only.</summary>
+    [Fact]
+    public void Each_transport_climbs_its_own_backoff_ladder()
+    {
+        var s = Online();
+        Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network);
+        Step(ref s, Spotify.SessionEventKind.ApRetry);
+        Step(ref s, Spotify.SessionEventKind.ApDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(2u, s.ApAttempt);
+        Assert.Equal(0u, s.DealerAttempt);
+        Assert.Equal(6_000, Spotify.BackoffMs(s.ApAttempt));
+
+        Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Network);
+        Assert.Equal(1u, s.DealerAttempt);
+        Assert.Equal(3_000, Spotify.BackoffMs(s.DealerAttempt));
+
+        Step(ref s, Spotify.SessionEventKind.DealerRetry);
+        Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(24, 4));
+        Assert.Equal(0u, s.DealerAttempt);
+        Assert.Equal(2u, s.ApAttempt);
+
+        Step(ref s, Spotify.SessionEventKind.ApRetry);
+        Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium);
+        Assert.Equal(0u, s.ApAttempt);
     }
 
     [Fact]
@@ -376,12 +806,13 @@ public class SessionStepTests
     {
         var s = Online();
         s.DeviceId = new Spotify.TokenRef(100, 8);
-        uint epoch = s.Epoch;
+        uint epoch = s.Epoch, apEpoch = s.ApEpoch;
         var fx = Step(ref s, Spotify.SessionEventKind.Logout);
 
         Assert.Equal(Spotify.SessionEffects.CloseAll | Spotify.SessionEffects.ClearCredential | Spotify.SessionEffects.SignedOut, fx);
         Assert.Equal(Spotify.SessionPhase.Offline, s.Phase);
         Assert.Equal(epoch + 1, s.Epoch);           // a monotonic epoch: nothing in flight may come back
+        Assert.Equal(apEpoch + 1, s.ApEpoch);       // …on either transport (B4)
         Assert.True(s.AccessToken.IsEmpty);
         Assert.True(s.ClientToken.IsEmpty);
         Assert.False(s.HasCredential);
@@ -475,6 +906,20 @@ public class AccountMemoryTests
         Assert.Equal(Spotify.AccountChange.Same, Spotify.RememberAccount(settings, ""));
         Assert.Equal(Spotify.AccountChange.Same, Spotify.RememberAccount(settings, null));
         Assert.False(settings.WasWritten(Platform.Keys.LastAccount));
+    }
+
+    /// <summary>A reconnect's late country packet keeps the held market (the scope must not switch over a late packet);
+    /// a first login, or another account, takes what arrived — empty included.</summary>
+    [Fact]
+    public void A_welcome_without_a_country_keeps_the_market_only_for_the_same_account()
+    {
+        var held = new CatalogScope("spotify", "alice", "en-US", "NL", 1, true);
+
+        Assert.Equal("NL", Spotify.WelcomeMarket("", held, "alice"));        // reconnect, packet late
+        Assert.Equal("DE", Spotify.WelcomeMarket("DE", held, "alice"));      // the country moved: take it
+        Assert.Equal("", Spotify.WelcomeMarket("", held, "bob"));            // another account: nothing to keep
+        Assert.Equal("", Spotify.WelcomeMarket("", default, "alice"));       // first login: nothing held
+        Assert.Equal("", Spotify.WelcomeMarket("", held, ""));               // no account: nothing to key on
     }
 }
 
@@ -758,14 +1203,17 @@ public class SessionCredentialTests : IDisposable
     }
 }
 
-/// <summary>The AP channel's keep-alive arithmetic (Spotify.Session.cs §8): the read timeout must outlast at least two
-/// of the access point's pings, or an idle channel is torn down and the device flaps on Connect (2026-09-16).</summary>
+/// <summary>The AP channel's read timeout (Spotify.Session.cs §7) is, since B6, only the backstop behind the keepalive: it
+/// must outlast every window the keepalive waits, or the read timeout — not the keepalive — tears a live idle channel down
+/// and the device flaps on Connect, as the first cut's 90 s did every two to three minutes (2026-09-16).</summary>
 public class ApChannelRulesTests
 {
     [Fact]
-    public void The_read_timeout_outlasts_two_missed_pings()
+    public void The_read_timeout_outlasts_every_keepalive_window()
     {
-        Assert.Equal(120_000, Spotify.ApPingIntervalMs);
-        Assert.True(Spotify.ApReadTimeoutMs >= 2 * Spotify.ApPingIntervalMs + 30_000, "timeout=" + Spotify.ApReadTimeoutMs);
+        Assert.True(Spotify.ApReadTimeoutMs > Spotify.ApKeepAlive.PingTimeoutMs, "timeout=" + Spotify.ApReadTimeoutMs);
+        Assert.True(Spotify.ApReadTimeoutMs > Spotify.ApKeepAlive.PongDelayMs + Spotify.ApKeepAlive.PongAckTimeoutMs,
+            "timeout=" + Spotify.ApReadTimeoutMs);
+        Assert.True(Spotify.ApReadTimeoutMs > Spotify.ApKeepAlive.FirstPingTimeoutMs, "timeout=" + Spotify.ApReadTimeoutMs);
     }
 }

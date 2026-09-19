@@ -175,9 +175,10 @@ public class PutStateWireTests
         Assert.Equal(5u, ps.Index.Track);
         Assert.Equal("playlist", ps.PlayOrigin.FeatureIdentifier);
         Assert.Equal("playlist", ps.PlayOrigin.ReferrerIdentifier);
-        Assert.Equal(Spotify.Decode.FeatureVersion, ps.PlayOrigin.FeatureVersion);
+        Assert.Empty(ps.PlayOrigin.FeatureVersion);
         Assert.Equal("17146072722624078579", ps.QueueRevision);
-        Assert.Equal("00000000000000000000000000001111", ps.SessionId);
+        Assert.True(Base62.TryDecode(ps.SessionId, out UInt128 session));
+        Assert.Equal(Ids.SessionId, session);
         Assert.Equal("00000000000000000000000000002222", ps.PlaybackId);
         Assert.Equal("00000000000000000000000000003333", ps.SessionCommandId);
         Assert.Equal("2", ps.ContextMetadata["player.arch"]);
@@ -207,7 +208,12 @@ public class PutStateWireTests
         Assert.Equal("5bd5aabfe4434940c96f", ps.PrevTracks[0].Uid);
         Assert.False(ps.PrevTracks[0].Metadata.ContainsKey("view_index"));
 
-        Assert.Equal(3, ps.NextTracks.Count);
+        Assert.Equal(4, ps.NextTracks.Count);
+        var delimiter = ps.NextTracks[3];
+        Assert.Equal("spotify:delimiter", delimiter.Uri);
+        Assert.Equal("delimiter0", delimiter.Uid);
+        Assert.Equal("true", delimiter.Metadata["hidden"]);
+        Assert.Equal("pause", delimiter.Metadata["actions.advancing_past_track"]);
         var queued = ps.NextTracks[0];
         Assert.Equal("queue", queued.Provider);
         Assert.Equal("q2", queued.Uid);
@@ -257,7 +263,7 @@ public class PutStateWireTests
     }
 
     [Fact]
-    public void A_window_keeps_the_newest_fifty_behind_and_the_first_fifty_ahead()
+    public void A_window_keeps_the_newest_ten_behind_and_the_first_fifty_ahead()
     {
         var prev = new Playback.WireRow[60];
         var next = new Playback.WireRow[70];
@@ -266,12 +272,12 @@ public class PutStateWireTests
 
         var window = Window(prev, next);
         Assert.Equal(Playback.WireWindow.MaxPrev, window.Prev.Length);
-        Assert.Equal(TrackId(10), window.Prev[0].Id);
+        Assert.Equal(TrackId(50), window.Prev[0].Id);
         Assert.Equal(Playback.WireWindow.MaxNext, window.Next.Length);
         Assert.Equal(TrackId(100), window.Next[0].Id);
 
         var ps = Player(Snap(window: window));
-        Assert.Equal(50, ps.PrevTracks.Count);
+        Assert.Equal(10, ps.PrevTracks.Count);
         Assert.Equal(50, ps.NextTracks.Count);
     }
 
@@ -357,7 +363,7 @@ public class PutStateWireTests
         var ps = Player(Snap());
 
         Assert.Equal(new[] { "not_supported_by_content_type" },ps.Restrictions.DisallowSettingPlaybackSpeedReasons);
-        Assert.Equal(new[] { "already_set" }, ps.Restrictions.UnknownDisallowReasons31);
+        Assert.Equal(new[] { "already_set" }, ps.Restrictions.DisallowSleepTimerClearReasons);
         Assert.Empty(ps.Restrictions.DisallowAddToQueueReasons);
         Assert.NotNull(ps.ContextRestrictions);
         Assert.NotNull(ps.Suppressions);
@@ -440,7 +446,7 @@ public class PutStateWireTests
         Assert.Equal(0L, after - before);
         var ps = P.PutStateRequest.Parser.ParseFrom(buffer, 0, Spotify.Decode.PutState(in snapshot, buffer, 1_700_000_000_000))
             .Device.PlayerState;
-        Assert.Equal(50, ps.PrevTracks.Count);
+        Assert.Equal(10, ps.PrevTracks.Count);
         Assert.Equal(50, ps.NextTracks.Count);
     }
 }

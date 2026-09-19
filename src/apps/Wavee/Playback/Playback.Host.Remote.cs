@@ -110,15 +110,29 @@ public static partial class Playback
                     else hasIntake = s_intakes.TryTake(mailboxEmpty: true, out intake);
                 }
             }
-            if (hasIntake) RunIntake(in intake, now);
+            if (hasIntake)
+            {
+                RunIntake(in intake, now);
+                if (intake.Epoch == Spotify.Current.Epoch && intake.Command.Ok)
+                    PublishCommandOutcome(in intake.Command);
+            }
             else if (hasItem)
             {
                 FoldItem(in item, now);
+                if (item.Epoch == Spotify.Current.Epoch && item.Kind == Spotify.Connect.ItemKind.RemoteCommand && item.Command.Ok)
+                    PublishCommandOutcome(in item.Command);
                 // Bug I: a mirrored cluster can leave a real current row next to a queue nobody ever `Replace`d.
                 if (item.Kind == Spotify.Connect.ItemKind.Cluster) SeedQueueFromCluster();
             }
             else return;
         }
+    }
+
+    static void PublishCommandOutcome(in Spotify.Decode.RemoteCommand command)
+    {
+        Log.Info("connect", "cmd endpoint=" + command.Kind + " outcome=published phase=" + s_state.Phase
+            + " fault=" + s_state.Error + " messageId=" + command.MessageId);
+        Spotify.Connect.PublishCommand(SnapshotForConnect(PublishReason.PlayerStateChanged));
     }
 
     /// <summary>An inbound context load's resolve answered (or was refused): the mailbox behind it may move again.</summary>

@@ -11,8 +11,11 @@
 //
 // THE COMPOSITION ROOT'S SECOND HALF. `Platform.Boot()` already opened the settings store, the log, the credential
 // slot and the locale — everything that must exist BEFORE there is a window. This file owns everything from the window
-// outwards: the crash net, the single-instance gate, the `wavee://` registration, the activation intake, the theme
-// seed, the engine loop, and the three documents the shell persists.
+// outwards: the crash net, the `wavee://` registration, the activation intake, the theme seed, the engine loop, and
+// the three documents the shell persists. THE SINGLE-INSTANCE GATE ITSELF moved earlier (D1, 2026-09-19):
+// `AcquireInstance` is called by `App.Main`, right after `InstallMarshallers` and BEFORE `RegisterShapes`/`Store.Use`/
+// `Entities.Boot` — a second launch's own boot must never open (and, on a schema change, delete/recreate) the running
+// instance's cache file. `Run` merely takes the gate `AcquireInstance` already holds.
 //
 // THE ROOT SEAM. `Shell.UI.cs` (stage 2) owns the frame component; this file must run the loop before that file
 // exists. The seam is the FIELD `RootFactory`, not a `static partial Element Root()`: a partial method with a return
@@ -121,15 +124,64 @@ public static partial class Shell
         Log.Event(WaveeLogLevel.Info, "app", "boot.firstframe", "", null, Log.SinceStartMs);
     }
 
-    // ══ 2. RUN — the window and the engine loop ═════════════════════════════════════════════════════════════════════
+    // ══ 2. THE GATE, THEN RUN — the window and the engine loop ══════════════════════════════════════════════════════
 
-    /// <summary>Everything from the window outwards. NEVER RETURNS until exit.
+    /// <summary>Held between a successful <see cref="AcquireInstance"/> and <see cref="Run"/>'s exit tail — the SAME
+    /// gate, never recreated in between. Null on the harness arms (`--frames` / `--screenshot`), which skip it
+    /// entirely, same as before this was split out of <see cref="Run"/>.</summary>
+    static SingleInstanceGate? s_gate;
+
+    /// <summary>This process's own activation, computed once by <see cref="AcquireInstance"/>. <see cref="Run"/> reads
+    /// it to finish what a successful acquire started (the first activation payload, the tray start-hidden decision).
+    /// Meaningless while <see cref="s_gate"/> is null.</summary>
+    static ActivationArgs s_activation;
+
+    /// <summary>Set by <see cref="AcquireInstance"/>, whichever way it returned. <see cref="Run"/> asserts this before
+    /// doing anything else: it must never run without the composition root having made the gate decision first, or a
+    /// launch that skipped it could open the store — and, on a schema change, delete/recreate it — out from under a
+    /// running instance (the 2026-09-18 corruption).</summary>
+    static bool s_instanceAcquired;
+
+    /// <summary>THE SINGLE-INSTANCE GATE (D1). Called ONCE by the composition root (<c>App.Main</c>), immediately
+    /// after <c>Shell.InstallMarshallers()</c> and BEFORE <c>App.RegisterShapes</c> / <c>Store.Use</c> /
+    /// <c>Entities.Boot</c> — a second launch's own boot must never touch the running instance's cache file. Reads the
+    /// process's own command line through the SAME <see cref="ParseArgs"/> <see cref="Run"/> uses, so the harness arms
+    /// (`--frames` / `--screenshot`) make exactly one gate decision, not two: they skip the gate here, and
+    /// <see cref="Run"/> later finds <see cref="s_gate"/> null — unchanged from before this method existed.
+    /// <para>Returns false when a running instance took the launch — it already has this process's activation payload
+    /// through the gate, so the caller's whole job is to shut down at once: no <c>RegisterShapes</c>, no
+    /// <c>Store.Use</c>, no <c>Entities.Boot</c>, no setting written.</para></summary>
+    public static bool AcquireInstance()
+    {
+        var args = Environment.GetCommandLineArgs();
+        ParseArgs(args, out int frames, out string? screenshot, out _, out _);
+        s_instanceAcquired = true;
+        if (screenshot is not null || frames >= 0) return true;   // the harness arms: no gate, same as always
+
+        s_gate = new SingleInstanceGate();
+        s_activation = ActivationArgs.FromCurrentProcess("wavee");
+        // A sign-in StartupTask carries its task id, not a deep link: to a running instance it is a bare relaunch.
+        string payload = s_activation.Kind is ActivationKind.Launch or ActivationKind.StartupTask ? "" : s_activation.Argument;
+        if (s_gate.TryAcquire("Wavee", "FluentGpuWindow", payload)) return true;
+
+        // A second launch handed its payload to the running instance through the gate; leaving is the whole point —
+        // nothing after this call may open a store or write a setting.
+        s_gate.Dispose();
+        s_gate = null;
+        Log.Event(WaveeLogLevel.Info, "app", "boot.handoff", "a running instance took the launch", null, Log.SinceStartMs);
+        return false;
+    }
+
+    /// <summary>Everything from the window outwards. NEVER RETURNS until exit. Requires <see cref="AcquireInstance"/>
+    /// to have already run (the composition root's job, before the store opens) — throws otherwise.
     /// <para>ORDER IS THE CONTRACT, and every step names what breaks without it:</para>
     /// <list type="number">
-    /// <item>the CLI/harness args, because the single-instance gate and the window size read them;</item>
+    /// <item>the CLI/harness args, because the window size reads them (the gate decision was already made, by
+    /// <see cref="AcquireInstance"/>, off the SAME parse);</item>
     /// <item>the crash net, BEFORE the window — a crash during device init must still leave a report;</item>
-    /// <item>the single-instance gate + <c>wavee://</c> registration + the first activation payload, because a second
-    /// launch must hand its deep link to the running instance and exit rather than opening a second window;</item>
+    /// <item>finishing what a successful <see cref="AcquireInstance"/> started — <c>wavee://</c> registration + the
+    /// first activation payload — because a second launch must hand its deep link to the running instance and exit
+    /// rather than opening a second window;</item>
     /// <item>the theme seed, BEFORE the window comes up, or the first frame flashes the wrong palette;</item>
     /// <item>the three documents, because the first render reads the restored route;</item>
     /// <item>the loop;</item>
@@ -139,31 +191,24 @@ public static partial class Shell
     /// </list></summary>
     public static void Run()
     {
+        if (!s_instanceAcquired)
+            throw new InvalidOperationException(
+                "Shell.Run called without Shell.AcquireInstance — the composition root must acquire the single-instance gate before opening the store.");
+
         var args = Environment.GetCommandLineArgs();
         ParseArgs(args, out int frames, out string? screenshot, out int winW, out int winH);
 
         InstallCrashNet();
         InstallMarshallers();
 
-        // The harness arms (`--frames` / `--screenshot`) skip the gate so a visual-diff loop can spawn freely.
-        SingleInstanceGate? gate = null;
+        // The gate itself was already acquired by AcquireInstance, before RegisterShapes/Store.Use/Entities.Boot ran;
+        // this just finishes what a successful acquire started. s_gate is null on the harness arms, which never held one.
         bool startHidden = false;
-        if (screenshot is null && frames < 0)
+        if (s_gate is not null)
         {
-            gate = new SingleInstanceGate();
-            var activation = ActivationArgs.FromCurrentProcess("wavee");
-            // A sign-in StartupTask carries its task id, not a deep link: to a running instance it is a bare relaunch.
-            string payload = activation.Kind is ActivationKind.Launch or ActivationKind.StartupTask ? "" : activation.Argument;
-            if (!gate.TryAcquire("Wavee", "FluentGpuWindow", payload))
-            {
-                // A second launch handed its payload to the running instance through the gate; leaving is the whole
-                // point. Nothing below runs.
-                gate.Dispose();
-                return;
-            }
             RegisterProtocols();
-            if (activation.Kind is ActivationKind.Protocol or ActivationKind.File or ActivationKind.ToastActivated)
-                s_pendingActivation = activation.Argument;
+            if (s_activation.Kind is ActivationKind.Protocol or ActivationKind.File or ActivationKind.ToastActivated)
+                s_pendingActivation = s_activation.Argument;
             FluentApp.ActivationRedirected += OnActivationRedirected;
 
             // The notification area (Platform/Tray.Host.cs). Start hidden ONLY for the launch the user did not click: the
@@ -172,7 +217,7 @@ public static partial class Shell
             startHidden = Tray.StartHidden(
                 Platform.Settings.Get(Platform.Keys.TrayStartHidden),
                 Tray.ModeFrom(Platform.Settings.Get(Platform.Keys.TrayIconMode)),
-                activation.Kind == ActivationKind.StartupTask,
+                s_activation.Kind == ActivationKind.StartupTask,
                 Tray.HasTrayArg(args));
             Tray.Host.Arm(startHidden);
         }
@@ -250,7 +295,8 @@ public static partial class Shell
             s_fetchWake?.Dispose();
             s_audioWarm?.Dispose();
             s_memoryPoll?.Dispose();   // RECURRING (unlike the one-shots above): must stop, not just have already fired
-            gate?.Dispose();
+            s_gate?.Dispose();
+            s_gate = null;
         }
     }
 
@@ -317,18 +363,29 @@ public static partial class Shell
         Sidebar.Activate(post);          // the sidebar store's write completions and the binder's publishes land on the UI thread
         Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe
 
-        // THE frame tick. `Fetch.Pump()` is how an expired backoff re-sends with nothing else happening, and
-        // `Palette.Tick()` is how the grading debounce fires; both are two comparisons when idle. It rides the host's
-        // per-RENDERED-frame relay, so an idle window (no frames) ticks nothing — a deadline that lands while idle is
-        // served on the next frame, which both layers document as a delay, never a loss. The lambda is static: zero
-        // allocation per frame. The payload is the engine's `FrameStats` (`Action<FrameStats>`), read here for ONE bit:
-        // `ScrollActive` — did this frame drive a scroll, or sit inside the engine's 120 ms post-scroll hold.
+        // THE planner's wake for an owed drain (wave D4). `Fetch.Drain()` below sends what a tick's `Ensure`s bucketed —
+        // but it rides the RENDERED frame, and an ask made outside one (a posted answer's re-plan, a session event, a
+        // minimized window) would wait for an unrelated repaint. So the first owe of a tick posts one drain through the
+        // UI poster: the engine drains posts before its idle and minimize gates, so the loop wakes for it, and it runs
+        // after everything already queued — every ask of the pass is in its bucket by then. A tick whose frame renders
+        // anyway drains at `FrameCompleted` first and the posted drain finds nothing owed (two bool compares). The
+        // lambda is static and `s_drainWake` is one cached delegate; the post reuses the pooled `PublishAfter` wrapper.
+        Fetch.WakeForDrain = static () => s_marshal?.Invoke(s_drainWake);
+
+        // THE frame tick. `Fetch.Drain()` sends the tick's buckets — one request per shape, however many `Ensure`s
+        // filled it — and re-tries a bucket the online gate is holding; `Palette.Tick()` is how the grading debounce
+        // fires; both are two comparisons when idle. An expired fetch backoff re-sends through the idle wake below
+        // (`ArmFetchWake`, re-armed at the end of every tick), rendering or not. It rides the host's per-RENDERED-frame
+        // relay, so an idle window (no frames) ticks nothing — a palette deadline that lands while idle is served on the
+        // next frame, which that layer documents as a delay, never a loss. The lambda is static: zero allocation per
+        // frame. The payload is the engine's `FrameStats` (`Action<FrameStats>`), read here for ONE bit: `ScrollActive` —
+        // did this frame drive a scroll, or sit inside the engine's 120 ms post-scroll hold.
         FluentApp.FrameCompleted += static stats =>
         {
             // The planner's clock (app seconds) FIRST: nothing else in the GUI moves `Entities.Now`, so without this a
             // fetch backoff never expires in the app (the headless host's tick does the same, Diagnostics.Probe.cs).
             Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            Fetch.Pump();
+            Fetch.Drain();
             // The scroll bit, and its FALLING edge: the palette pump does not re-arm itself while a scroll is live
             // (PublishCadence.PalettePumpAllowed), so the rows it left queued are picked up here, once, when the
             // scroll ends. Read before the publish so the edge frame publishes as a non-scroll frame.
@@ -442,9 +499,9 @@ public static partial class Shell
         }
     }
 
-    /// <summary>The one idle wake (decision D23): a one-shot timer armed to the earliest fetch backoff deadline, which
-    /// posts the pump through the UI poster when no frame would. Re-armed only when the deadline moves, so a rendered
-    /// frame costs one integer compare. UI THREAD.</summary>
+    /// <summary>The one idle wake (decision D23): a one-shot timer armed to the earliest fetch backoff deadline — or to
+    /// now, while a drain is owed (<see cref="Fetch.NextWakeAt"/>) — which posts the pump through the UI poster when no
+    /// frame would. Re-armed only when the deadline moves, so a rendered frame costs one integer compare. UI THREAD.</summary>
     static void ArmFetchWake()
     {
         int at = Fetch.NextWakeAt();
@@ -461,6 +518,19 @@ public static partial class Shell
         s_fetchWakeAt = int.MaxValue;
         Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         Fetch.Pump();
+        ArmFetchWake();
+    }
+
+    static readonly Action s_drainWake = OnDrainWake;
+
+    /// <summary>The posted half of <see cref="Fetch.WakeForDrain"/>: the tick's drain for asks made outside a rendered
+    /// frame (wave D4). The same three steps as the frame tick's fetch half — the planner's clock, the drain, the idle
+    /// wake re-armed to whatever deadline is left — so a drain posted from an idle or minimized window leaves exactly as
+    /// one from a rendered frame does. UI THREAD (it arrives through the poster).</summary>
+    static void OnDrainWake()
+    {
+        Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        Fetch.Drain();
         ArmFetchWake();
     }
 

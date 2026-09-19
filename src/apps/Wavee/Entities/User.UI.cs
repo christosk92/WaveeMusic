@@ -1,6 +1,7 @@
 // ── Entities/User.UI.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// the library's row shapes and small controls: the WORD RAILS (the navigator's sort rail, the reader's scope and sort
-// rails) + the view toggle and its trimmed panel, the letter header / sticky letter overlay / A-Z jump strip, the crumb
+// the library's row shapes and small controls: the WORD RAILS' library adapters (the navigator's sort rail, the reader's
+// scope and sort rails, over `Controls.Words.Rail`) + the view toggle and its trimmed panel, the letter header / sticky
+// letter overlay / A-Z jump strip, the crumb
 // bar, the column grip, the BOUND navigator rows and cards (and their grid selection chrome), the search-row shapes, and
 // the library mutation seam (`LibrarySeam`) the shared save/follow affordances read
 //
@@ -16,6 +17,10 @@
 // discography grid pane is gone; `Artist.Reader` stacks art + tracks blocks instead) and `GoToArtistLink` (the reader's
 // doorway is a `Controls.Named` icon button). `SortLabelKey` / `SortLabel` / `ViewGlyph` / `IsGridView` /
 // `IsCompactView` STAY: the sidebar's Library V3 shares the codes and `ViewPanel` still draws the view glyphs.
+//
+// MOVED IN PODCAST WAVE P1 (podcast-show-rework-implementation.md §5.5): the rail itself — `RailBar`, `RailWord`,
+// `RailInk`, `WordRailHost` and the RailWord* metrics — is `Controls.Words` now, shared with the podcast reader. Only
+// `RailHeight` stays here, as the alias `Artist.Reader`'s sub-rail arithmetic reads.
 //
 // ZERO ALLOCATION ON A SCROLL FRAME. Every navigator row is an `ItemsView.CreateBound` slot: the template runs ONCE per
 // slot and every per-item value is a bind over `BoundItemScope<LibraryNavItem>` (a slot + its row version), so a
@@ -78,49 +83,37 @@ public readonly partial struct User
     public static bool IsCompactView(int view) => view is 0 or 2;
 
     // ══ 2. THE WORD RAILS (W8 — Zune's text pivot; it REPLACED the sort pill, which is deleted) ═══════════════════════
+    //
+    // The rail itself is `Controls.Words.Rail` (promoted for the podcast reader, podcast plan §5.5 — the metrics, the two
+    // stacked runs and the underline moved with it). These three are the library's ADAPTERS: which words, which codes,
+    // what a re-tap means. Their signatures are unchanged.
 
-    internal const float RailWordSize = 13.5f;
-    internal const float RailWordLine = 18f;
-    internal const float RailWordGap = 14f;
-    internal const float RailHeight = 32f;
+    /// <summary>The rail's height, kept under its old name for <c>Artist.Reader</c>'s sticky sub-rail arithmetic.</summary>
+    internal const float RailHeight = Controls.Words.Height;
 
-    /// <summary>The ink/underline fade every rail word shares: the 83-ms WinUI BrushTransition (plan §7).</summary>
+    /// <summary>The ink/underline fade the A–Z strip shares with the rail words: the 83-ms WinUI BrushTransition.</summary>
     static readonly FluentGpu.Animation.MotionTokenDef RailInkFade = FluentGpu.Animation.MotionTok.ControlFaster;
 
-    /// <summary>The navigator's sort rail: the kind's words (<see cref="LibraryWordRail.WordsFor"/>) in rail order, the
-    /// active one 100 % ink / 600 over a 2-DIP accent underline, the rest 50 % (85 % on hover). Tapping the ACTIVE word
-    /// flips the direction and a 10-px chevron after it says which way. The rail holds the two Signal INSTANCES, so
-    /// nothing here is frozen at mount — the words themselves are a per-kind constant and are built once.</summary>
+    /// <summary>The navigator's sort rail: the kind's words (<see cref="LibraryWordRail.WordsFor"/>) in rail order, each
+    /// carrying its PERSISTED code (codes are not positions). Tapping the ACTIVE word flips the direction and a 10-px
+    /// chevron after it says which way; picking another word resets to ascending. The rail holds the two Signal
+    /// INSTANCES, so nothing here is frozen at mount — the words themselves are a per-kind constant and are built once.</summary>
     public static Element WordRail(EntityKind kind, Signal<int> sort, Signal<bool> desc)
-        => Embed.Comp(() => new WordRailHost(kind, sort, desc));
-
-    sealed class WordRailHost(EntityKind kind, Signal<int> sort, Signal<bool> desc) : Component
     {
-        Element[]? _words;   // built ONCE: every state rides a bind, so the rail never re-renders on a sort change
-
-        public override Element Render()
+        var codes = LibraryWordRail.WordsFor(kind);
+        var words = new Controls.Words.Word[codes.Length];
+        for (int i = 0; i < codes.Length; i++)
         {
-            if (_words is null)
-            {
-                var words = LibraryWordRail.WordsFor(kind);
-                _words = new Element[words.Length];
-                for (int i = 0; i < words.Length; i++) _words[i] = Word(words[i]);
-            }
-            return RailBar(_words);
+            int c = (int)codes[i];
+            words[i] = new Controls.Words.Word(Loc.Bind(LibraryWordRail.WordKey(codes[i])), Code: c,
+                                               Chevron: () => sort.Value == c && desc.Value);
         }
-
-        Element Word(LibraryNavSort code)
-        {
-            int c = (int)code;
-            Func<bool> isOn = () => sort.Value == c;
-            return RailWord(
-                Loc.Bind(LibraryWordRail.WordKey(code)), isOn,
-                () => { if (sort.Peek() == c) desc.Value = !desc.Peek(); else { sort.Value = c; desc.Value = false; } },
-                () => isOn() && desc.Value);
-        }
+        return Controls.Words.Rail(words, sort,
+            onReselect: _ => desc.Value = !desc.Peek(),
+            onSelect: _ => desc.Value = false);
     }
 
-    /// <summary>The reader's scope rail (W3/W4): "in your library" · "all releases · N" — the same word visuals with no
+    /// <summary>The reader's scope rail (W3/W4): "in your library" · "all releases · N" — the same words with no
     /// direction flip. The total rides a <see cref="Prop{T}"/> so the facets answering re-fires ONE text bind instead of
     /// re-rendering the rail, and the count is formatted through a hoisted cache (never inside the thunk).
     /// <para><paramref name="compact"/> is the narrow reader's word: "all · N" instead of "all releases · N" while it
@@ -129,7 +122,6 @@ public readonly partial struct User
     /// long word forever.</para></summary>
     public static Element ScopeRail(Signal<int> scope, Prop<int> total, Func<bool>? compact = null)
     {
-        Func<bool> inLibrary = () => scope.Value == 0;
         // TWO caches, one per word: ONE cache keyed on the count alone would rewrite its entry on every crossing of the
         // breakpoint (the same N, the other word), which is exactly the formatting the cache exists to avoid.
         Prop<string> all = compact is { } isCompact
@@ -137,11 +129,12 @@ public readonly partial struct User
                 ? s_allShort.Get(total.Current(), static n => AllShortText(n))
                 : s_allReleases.Get(total.Current(), static n => AllReleasesText(n)))
             : Prop.Of(() => s_allReleases.Get(total.Current(), static n => AllReleasesText(n)));
-        return RailBar(
+        // Positions ARE the scope codes: 0 = in your library, 1 = all releases.
+        return Controls.Words.Rail(
         [
-            RailWord(Loc.Bind(Strings.Library.Scope.InLibrary), inLibrary, () => scope.Value = 0),
-            RailWord(all, () => scope.Value != 0, () => scope.Value = 1),
-        ]);
+            new Controls.Words.Word(Loc.Bind(Strings.Library.Scope.InLibrary)),
+            new Controls.Words.Word(all),
+        ], scope);
     }
 
     static readonly FormatCache<int> s_allReleases = new(), s_allShort = new();
@@ -159,16 +152,12 @@ public readonly partial struct User
     }
 
     /// <summary>The reader's own sort rail: newest · oldest · a–z (the reader-local <c>Artist.ReaderSort</c> codes, NOT
-    /// <see cref="LibraryNavSort"/>) — no direction flip, so a word is a plain set.</summary>
+    /// <see cref="LibraryNavSort"/>, and they ARE positions) — no direction flip, so a word is a plain set.</summary>
     public static Element ReaderSortRail(Signal<int> sort)
     {
-        var words = new Element[3];
-        for (int i = 0; i < words.Length; i++)
-        {
-            int c = i;
-            words[i] = RailWord(Loc.Bind(ReaderSortKey(c)), () => sort.Value == c, () => sort.Value = c);
-        }
-        return RailBar(words);
+        var words = new Controls.Words.Word[3];
+        for (int i = 0; i < words.Length; i++) words[i] = new Controls.Words.Word(Loc.Bind(ReaderSortKey(i)));
+        return Controls.Words.Rail(words, sort);
     }
 
     static string ReaderSortKey(int code) => code switch
@@ -176,66 +165,6 @@ public readonly partial struct User
         1 => Strings.Library.ReaderSort.Oldest,
         2 => Strings.Library.ReaderSort.Alphabetical,
         _ => Strings.Library.ReaderSort.Newest,
-    };
-
-    // Named RailBar, not Rail: `Wavee.Rail` is the shell rail class, and a member named Rail would shadow it inside User.
-    static Element RailBar(Element[] words) => new BoxEl
-    {
-        Direction = 0, Height = RailHeight, Gap = RailWordGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = words,
-    };
-
-    /// <summary>One rail word. <c>TextEl.Weight</c> is a plain <c>ushort</c> (engine <c>Dsl/Element.cs:669</c>), so the
-    /// active 600 is TWO STACKED RUNS whose ink cross-fades over 83 ms — never a bound weight. The 600 run measures the
-    /// stack (a ZStack takes its max child), so activating a word never shifts the rail by a fraction of a DIP.</summary>
-    static Element RailWord(Prop<string> label, Func<bool> isOn, Action tap, Func<bool>? chevron = null)
-    {
-        Element ink = new BoxEl
-        {
-            ZStack = true, Shrink = 0f,
-            Children =
-            [
-                RailInk(label, 400, Prop.Of(() => isOn() ? ColorF.Transparent : Tok.TextPrimary)),
-                RailInk(label, 600, Prop.Of(() => isOn() ? Tok.TextPrimary : ColorF.Transparent)),
-            ],
-        };
-        Element head = chevron is null
-            ? ink
-            : new BoxEl
-            {
-                Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children =
-                [
-                    ink,
-                    new BoxEl
-                    {
-                        Width = 10f, Height = 10f, Shrink = 0f, Visible = Prop.Of(chevron),
-                        Children = [Icon(Icons.ChevronDown, 10f, Tok.TextSecondary)],
-                    },
-                ],
-            };
-        return new BoxEl
-        {
-            Direction = 1, Gap = 3f, Shrink = 0f, Padding = new Edges4(0f, 2f, 0f, 0f),
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = tap,
-            Opacity = Prop.Of(() => isOn() ? 1f : 0.5f), HoverOpacity = 0.85f, Transition = RailInkFade,
-            Children =
-            [
-                head,
-                new BoxEl
-                {
-                    Height = 2f, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(1f),
-                    Fill = Prop.Of(() => isOn() ? Tok.AccentDefault : ColorF.Transparent),
-                    BrushTransitionMs = Design.Motion.Faster,
-                },
-            ],
-        };
-    }
-
-    static TextEl RailInk(Prop<string> label, ushort weight, Prop<ColorF> ink) => new(label)
-    {
-        Size = RailWordSize, LineHeight = RailWordLine, Weight = weight, CharSpacing = -5f, MaxLines = 1,
-        Color = ink, BrushTransitionMs = Design.Motion.Faster,
-        AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
     };
 
     // ══ 3. THE VIEW TOGGLE AND THE TRIMMED VIEW PANEL ════════════════════════════════════════════════════════════════

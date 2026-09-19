@@ -331,26 +331,41 @@ public class EntitiesFakeAlbumTests
     // ── shows ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Every_show_holds_its_episodes_newest_first_with_one_in_progress_at_a_third()
+    public void Every_show_holds_its_episodes_newest_first_numbered_down_from_its_total()
     {
         Seed();
-        Span<float> pcts = stackalloc float[16];
         for (int s = 0; s < 8; s++)
         {
             var show = ShowOf(s);
             var slots = show.EpisodeSlots;
-            Assert.Equal(8 + s % 5, slots.Length);
+            Assert.Equal(s == 0 ? 14 : 8 + s % 5, slots.Length);           // sh0 is the podcast rework's 14-episode serial
             for (int i = 0; i < slots.Length; i++)
             {
                 var ep = new Episode(slots[i]);
                 Assert.Equal(show.Slot, ep.ShowSlot);
                 Assert.Equal((22 + (s * 7 + i * 13) % 50) * 60_000, ep.DurationMs);
                 Assert.Equal((int)(Now0 - (i * 7 * Day + s * Day)), ep.PublishedAt);
+                Assert.Equal(show.TotalEpisodes - i, ep.Number);             // the title's own "#N"
+                Assert.Equal(EpisodeKind.Full, ep.Kind);
                 if (i > 0) Assert.True(new Episode(slots[i - 1]).PublishedAt > ep.PublishedAt);
-                pcts[i] = Episode.Rules.PctOf(ep);
             }
+        }
+    }
+
+    [Fact]
+    public void The_chapter_09_shows_keep_one_episode_in_progress_at_a_third()
+    {
+        // sh0-sh2 are the podcast rework's three visits (EntitiesFakeTests); sh3-sh7 keep ch 09's continue card.
+        Seed();
+        Span<float> pcts = stackalloc float[16];
+        for (int s = 3; s < 8; s++)
+        {
+            var slots = ShowOf(s).EpisodeSlots;
+            for (int i = 0; i < slots.Length; i++) pcts[i] = Episode.Rules.PctOf(new Episode(slots[i]));
             Assert.Equal(1, Episode.Rules.ResumePick(pcts[..slots.Length]));
             Assert.Equal(1f / 3f, pcts[1], 3);
+            Assert.True(new Episode(slots[1]).PlayedAt > new Episode(slots[1]).PublishedAt);   // played after it came out
+            Assert.Equal(0, new Episode(slots[0]).PlayedAt);                                   // never played: no stamp
         }
     }
 

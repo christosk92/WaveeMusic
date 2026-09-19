@@ -58,6 +58,14 @@ public enum ActionId : ushort
     PlayContextNext, AddContextToQueue, AddContextToPlaylist,
     /// <summary>Album card → its primary artist (the track menu's Go-to-artist, for a target that carries no track).</summary>
     GoToAlbumArtist,
+    // Podcast rework wave P2 (owner S; podcast-show-rework-implementation.md §5.11) — the episode reader's row menu
+    // (wave P5, owner Q). MarkPlayed/MarkUnplayed are an ABSOLUTE-STATE pair (the pin precedent above), not one
+    // toggle: their <c>AppAction.Execute</c> calls exactly <c>public static void Entities.MarkEpisode(Episode e, bool
+    // played)</c> (owner T, this wave). GoToShow is the container half of "Go to podcast" above, but for an EPISODE'S
+    // OWN menu rather than a track riding the album slot — it navigates <see cref="ActionTarget.ShowUri"/> via
+    // <see cref="ActionRules.ShowRouteFor"/>, never <see cref="ActionRules.RouteFor"/> (which would be the episode's
+    // own route). Labels: <c>Strings.Podcast.Menu.MarkPlayed/MarkUnplayed/GoToShow</c>.
+    MarkPlayed, MarkUnplayed, GoToShow,
 }
 
 /// <summary>The action icon-KEY vocabulary: an action carries a SEMANTIC key and never a raw glyph. The one
@@ -862,8 +870,10 @@ public static partial class Actions
 // A DESCRIPTOR acts on a persisted binding; an `AppAction` acts on a LIVE target built at menu-open time. Both are
 // here so the two shapes cannot drift into two files with two opinions about what an action is.
 
-/// <summary>What a context menu / batch bar is acting on.</summary>
-public enum TargetKind : byte { None, Tracks, Album, Artist, Playlist, QueueEntry, SidebarItem, NowPlaying }
+/// <summary>What a context menu / batch bar is acting on. <see cref="Show"/>/<see cref="Episode"/> are the podcast
+/// rework's (wave P2, plan §5.11): a show or an episode is a container the same way <see cref="Album"/>/
+/// <see cref="Artist"/>/<see cref="Playlist"/> are, never a <see cref="Tracks"/> set.</summary>
+public enum TargetKind : byte { None, Tracks, Album, Artist, Playlist, QueueEntry, SidebarItem, NowPlaying, Show, Episode }
 
 /// <summary>The hosting playlist a track set was right-clicked INSIDE (default elsewhere). <see cref="Caps"/> is the
 /// playlist table's own <see cref="PlaylistCaps"/> bitmask (<c>Entities/Playlist.cs</c>) — one vocabulary, not a
@@ -877,14 +887,18 @@ public readonly record struct PlaylistHost(EntityUri Playlist, PlaylistCaps Caps
 }
 
 /// <summary>The action target: kind + the track set (Tracks / QueueEntry / NowPlaying) or the container uri/name, plus
-/// the optional playlist host and the queue-entry identity. Built at menu-open / bar-render time, NEVER retained.</summary>
+/// the optional playlist host and the queue-entry identity. Built at menu-open / bar-render time, NEVER retained.
+/// <para><paramref name="ShowUri"/> is the podcast rework's (wave P2, plan §5.11): an EPISODE target's owning show —
+/// the only target shape that needs a SECOND uri, since "Go to show" navigates there, never to <paramref name="Uri"/>
+/// (the episode's own route). Default/invalid for every other kind.</para></summary>
 public readonly record struct ActionTarget(
     TargetKind Kind,
     IReadOnlyList<Track> Tracks,
     EntityUri Uri,
     string Name,
     PlaylistHost Host,
-    long QueueItemId = 0)
+    long QueueItemId = 0,
+    EntityUri ShowUri = default)
 {
     static readonly Track[] NoTracks = [];
 
@@ -910,6 +924,17 @@ public readonly record struct ActionTarget(
 
     public static ActionTarget ForNowPlaying(Track track)
         => new(TargetKind.NowPlaying, [track], track.Uri, track.Title, PlaylistHost.None);
+
+    /// <summary>A show container — the podcast rework's (wave P2). No track set, no playlist host: a show is never a
+    /// deposit destination.</summary>
+    public static ActionTarget ForShow(EntityUri uri, string name)
+        => new(TargetKind.Show, NoTracks, uri, name, PlaylistHost.None);
+
+    /// <summary>An episode — the podcast rework's (wave P2). <paramref name="showUri"/> may be invalid (a name-only
+    /// projection that does not yet know its show); <see cref="ActionRules.ShowRouteFor"/> is what turns that into
+    /// "no 'Go to show' row" rather than a dead navigation.</summary>
+    public static ActionTarget ForEpisode(EntityUri uri, string name, EntityUri showUri)
+        => new(TargetKind.Episode, NoTracks, uri, name, PlaylistHost.None, ShowUri: showUri);
 }
 
 /// <summary>The action context an <see cref="AppAction"/> receives: the WHAT (<see cref="Target"/>) + the HOW
@@ -973,17 +998,28 @@ public static class ActionRules
 
     /// <summary>The route a container target navigates to. Every LIKED spelling folds through the one parser — a card
     /// built from a Home/recents section item can carry <c>spotify:user:&lt;u&gt;:collection</c>, which used to route
-    /// to a playlist page instead of Liked Songs.</summary>
+    /// to a playlist page instead of Liked Songs.
+    /// <para><see cref="TargetKind.Show"/>/<see cref="TargetKind.Episode"/> (wave P2): this is the target's OWN
+    /// route — for an episode, the episode page itself, never its show. "Go to show" is
+    /// <see cref="ShowRouteFor"/>.</para></summary>
     public static Shell.Route RouteFor(in ActionTarget target)
     {
         if (!target.Uri.IsValid) return new Shell.Route(Shell.RouteKind.NotFound);
         return target.Kind switch
         {
             TargetKind.Album or TargetKind.Artist or TargetKind.Playlist or TargetKind.SidebarItem
+                or TargetKind.Show or TargetKind.Episode
                 => Shell.For(target.Uri, target.Name),
             _ => new Shell.Route(Shell.RouteKind.NotFound),
         };
     }
+
+    /// <summary>"Go to show" (wave P2, plan §5.11): an EPISODE target's <see cref="ActionTarget.ShowUri"/>, never
+    /// <see cref="RouteFor"/>'s reading of the target's own uri (which would be the episode page itself). Absent
+    /// (<see cref="Shell.RouteKind.NotFound"/>) when the episode carries no show ref — a name-only projection has
+    /// nowhere to go, same grammar as <see cref="CanGoToPodcast"/>'s track-menu precedent.</summary>
+    public static Shell.Route ShowRouteFor(in ActionTarget target)
+        => target.ShowUri.IsValid ? Shell.For(target.ShowUri) : new Shell.Route(Shell.RouteKind.NotFound);
 }
 
 /// <summary>ONE action definition — every instance is a static readonly singleton with a stable

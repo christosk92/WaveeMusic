@@ -730,6 +730,7 @@ public static partial class Diagnostics
             }
             body.Add(ModulesSection(ModulesReportSource?.Invoke()));
             body.Add(UpdatesSection(update, NotesReportSource?.Invoke()));
+            body.Add(Embed.Comp(static () => new PodcastWireCheckView()));
             body.Add(new BoxEl
             {
                 Direction = 0, Gap = Spacing.S,
@@ -904,6 +905,142 @@ public static partial class Diagnostics
                     Children = [HyperlinkButton.Create(Loc.Get(Strings.Diagnostics.Updates.Repair), () => Update.Host.OpenUrl(feed)), Caption(Loc.Get(Strings.Diagnostics.Updates.RepairHint))],
                 });
             return Card(Loc.Get(Strings.Diagnostics.Updates.Title), rows);
+        }
+    }
+
+    // ══ 5b. THE PODCAST WIRE CHECK (podcast-show-rework-implementation.md §6.0; owner D1) ══════════════════════════
+    //
+    // A Diagnostics click that fires the podcast rework's 8 pathfinder ops + herodotus ListCurrentStates + the
+    // transcript GET, ONCE each, and lists each one's status/bytes/root-found — the pre-flight the WinUI-era hashes
+    // need before wave P5 writes a single decoder line against a guess (a 400 means a rotated hash; nothing else
+    // blocks). "Save captures" writes every raw body under Platform.LogFolder\podcast-wire\ — scrubbed of account
+    // data, those files become the P5 decoder fixtures. All additive: a new card on the existing runtime-diagnostics
+    // page, no restructuring.
+
+    /// <summary>The two uri fields, the Run button (disabled while running or signed out), the "Save captures" toggle
+    /// and the result list. Prefills BOTH fields once, at mount, from the now-playing episode/show if one is playing
+    /// (never overwrites a field the user already typed into). The network walk itself
+    /// (<see cref="Spotify.Api.PodcastQueries.RunWireCheckAsync"/>) already runs on an api worker thread; this
+    /// component only awaits it and marshals the result back with <see cref="UsePost"/>, same as every other
+    /// background action on this page.</summary>
+    sealed class PodcastWireCheckView : Component
+    {
+        readonly Signal<string> _showUri = new("");
+        readonly Signal<string> _episodeUri = new("");
+        readonly Signal<bool> _saveCaptures = new(false);
+        readonly Signal<bool> _running = new(false);
+        readonly Signal<int> _resultVersion = new(0);
+        IReadOnlyList<Spotify.Api.PodcastQueries.WireCheckResult>? _results;
+
+        public override Element Render()
+        {
+            var post = UsePost();
+            _ = _resultVersion.Value;
+            bool live = Shell.Auth.Value == Shell.AuthState.Live;
+            bool running = _running.Value;
+
+            UseEffect(() =>
+            {
+                if (_showUri.Peek().Length > 0 || _episodeUri.Peek().Length > 0) return;
+                var cur = Playback.Current.Peek();
+                if (cur.Kind != EntityKind.Episode || cur.IsNone) return;
+                var ep = new Episode(cur.Slot);
+                if (!ep.IsValid) return;
+                _episodeUri.Value = ep.Uri.Text;
+                if (ep.ShowSlot > 0) _showUri.Value = new Show(ep.ShowSlot).Uri.Text;
+            }, DepKey.Empty);
+
+            var rows = new List<Element>(6)
+            {
+                Body(Loc.Get(Strings.Diagnostics.PodcastWire.Body)),
+                TextBox.Create(_showUri, null, new TextBox.TextBoxOptions
+                    { Header = Loc.Get(Strings.Diagnostics.PodcastWire.ShowUri), Width = 460f }),
+                TextBox.Create(_episodeUri, null, new TextBox.TextBoxOptions
+                    { Header = Loc.Get(Strings.Diagnostics.PodcastWire.EpisodeUri), Width = 460f }),
+                CheckBox.Create(Loc.Get(Strings.Diagnostics.PodcastWire.SaveCaptures), _saveCaptures),
+                new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S,
+                    Children =
+                    [
+                        Button.Accent(Loc.Get(running ? Strings.Diagnostics.PodcastWire.Running : Strings.Diagnostics.PodcastWire.Run),
+                            () => Run(post), isEnabled: live && !running),
+                    ],
+                },
+            };
+            if (_results is { Count: > 0 } results) rows.Add(ResultsTable(results));
+            return Card(Loc.Get(Strings.Diagnostics.PodcastWire.Title), rows);
+        }
+
+        void Run(Action<Action> post)
+        {
+            string showUri = _showUri.Peek();
+            string episodeUri = _episodeUri.Peek();
+            bool save = _saveCaptures.Peek();
+            _running.Value = true;
+            _ = InvokeAsync(post, showUri, episodeUri, save);
+        }
+
+        async Task InvokeAsync(Action<Action> post, string showUri, string episodeUri, bool save)
+        {
+            IReadOnlyList<Spotify.Api.PodcastQueries.WireCheckResult> results;
+            try
+            {
+                results = await Spotify.Api.PodcastQueries.RunWireCheckAsync(showUri, episodeUri, save, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("podcast", "wire check faulted", ex);
+                results = [];
+            }
+            post(() =>
+            {
+                _results = results;
+                _resultVersion.Value = _resultVersion.Peek() + 1;
+                _running.Value = false;
+                if (save && results.Count > 0)
+                {
+                    string dir = Path.Combine(Platform.LogFolder, Spotify.Api.PodcastQueries.CaptureFolderName);
+                    Notify.Say(Strings.Diagnostics.PodcastWire.Saved(dir), InfoBarSeverity.Success);
+                }
+            });
+        }
+
+        static Element ResultsTable(IReadOnlyList<Spotify.Api.PodcastQueries.WireCheckResult> results)
+        {
+            var inv = CultureInfo.InvariantCulture;
+            var rows = new List<Element>(results.Count + 2)
+            {
+                new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S,
+                    Children =
+                    [
+                        new TextEl(Loc.Get(Strings.Diagnostics.PodcastWire.ColOp)) { Size = 11f, Weight = 600, Color = Tok.TextTertiary, Width = 190f },
+                        new TextEl(Loc.Get(Strings.Diagnostics.PodcastWire.ColStatus)) { Size = 11f, Weight = 600, Color = Tok.TextTertiary, Width = 60f },
+                        new TextEl(Loc.Get(Strings.Diagnostics.PodcastWire.ColBytes)) { Size = 11f, Weight = 600, Color = Tok.TextTertiary, Width = 70f },
+                        new TextEl(Loc.Get(Strings.Diagnostics.PodcastWire.ColRoot)) { Size = 11f, Weight = 600, Color = Tok.TextTertiary, Grow = 1f },
+                    ],
+                },
+                Separator(2f),
+            };
+            foreach (var r in results)
+            {
+                string status = r.Status == -1 ? "skip" : r.Status.ToString(inv);
+                string root = r.RootFound ? (r.RootKey ?? "yes") : OrDash(r.Error);
+                rows.Add(new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Start,
+                    Children =
+                    [
+                        new TextEl(r.Op) { Size = 12f, Color = Tok.TextPrimary, Width = 190f, Wrap = TextWrap.Wrap },
+                        new TextEl(status) { Size = 12f, Color = Tok.TextSecondary, Width = 60f },
+                        new TextEl(r.Bytes.ToString(inv)) { Size = 12f, Color = Tok.TextSecondary, Width = 70f },
+                        new TextEl(root) { Size = 12f, Color = r.RootFound ? Tok.TextPrimary : Tok.SystemFillCritical, Grow = 1f, Wrap = TextWrap.Wrap },
+                    ],
+                });
+            }
+            return new BoxEl { Direction = 1, Gap = 6f, Children = rows.ToArray() };
         }
     }
 

@@ -2,13 +2,18 @@
 //    wire call must produce ONE request, not two (docs/plans/wavee's fetch-runner de-dupe gap).
 //
 // THE BUG THIS FILE GATES. A row bucket and an edge bucket are — by construction — two different `Demand`s: the
-// bucket key is `(provider, subject, kind, priority, edge)` and `FetchSubject.Entity` can never equal
+// bucket key is `(provider, subject, kind, edge)` and `FetchSubject.Entity` can never equal
 // `FetchSubject.Edge`, so the planner cannot merge them. But `FetchRoutes` can send BOTH of them to the very same
 // transport (an album's row asks `Metadata(AlbumV4)` and its `AlbumTracks` edge asks the very same route at offset 0;
 // a playlist's row and its `PlaylistTracks` edge both ask `Spclient(PlaylistRead)`; an artist's row and BOTH its
 // `ArtistPopular`/`ArtistRelated` edges ask `Pathfinder(ArtistOverview)`). Opening any of those three pages therefore
 // fired the request twice (three times for the artist) — this file is the in-flight route index that stops it, and
 // the re-plan path that keeps the dropped ask from turning into a skeleton forever.
+//
+// SINCE WAVE D4 a door never sends: the page's row ask and its edge ask land in their buckets and leave together on the
+// tick's `Fetch.Drain()`, which every fact below runs where the host's tick would. Within one priority the drain sends
+// ROW buckets before EDGE buckets — the row batch is what indexes the route the edge dedupes against — so the facts
+// hold whichever of the two asks a page happens to make first.
 //
 // These tests never read production source (house rule): everything here goes through the public door —
 // `Entities.Ensure` / `Entities.EnsureEdge`, `Fetch.Answer` / `Fetch.Failed` — and a fake transport that records what
@@ -87,6 +92,7 @@ public class FetchDedupTests : IDisposable
 
         Entities.Ensure(scope.Albums, new[] { album }, (uint)AlbumFields.Detail, FetchPriority.Visible);
         Entities.EnsureEdge(FetchEdge.AlbumTracks, album);
+        Fetch.Drain();                                             // the tick: row first, then the edge
 
         // The edge ask is real — `WasAsked` flips, so no OTHER caller re-asks it either — it is just never SENT a
         // second time while the row's own `Metadata(AlbumV4)` batch is already carrying the very same request.
@@ -105,6 +111,7 @@ public class FetchDedupTests : IDisposable
 
         Entities.Ensure(scope.Playlists, new[] { playlist }, (uint)PlaylistFields.All, FetchPriority.Visible);
         Entities.EnsureEdge(FetchEdge.PlaylistTracks, playlist);
+        Fetch.Drain();                                             // the tick: row first, then the edge
 
         // Both resolve to `Spclient(PlaylistRead)` — the full decorated body — so the edge ask must not repeat it.
         Assert.True(scope.Edges.PlaylistTracks.WasAsked(playlist, 0));
@@ -126,6 +133,7 @@ public class FetchDedupTests : IDisposable
         Entities.Ensure(scope.Artists, new[] { artist }, (uint)ArtistFields.All, FetchPriority.Visible);
         Entities.EnsureEdge(FetchEdge.ArtistPopular, artist);
         Entities.EnsureEdge(FetchEdge.ArtistRelated, artist);
+        Fetch.Drain();                                             // the tick: row first, then the edge
 
         Assert.True(scope.Edges.ArtistPopular.WasAsked(artist, 0));
         Assert.True(scope.Edges.ArtistRelated.WasAsked(artist, 0));
@@ -147,6 +155,7 @@ public class FetchDedupTests : IDisposable
 
         Entities.Ensure(scope.Albums, new[] { album }, (uint)AlbumFields.Detail, FetchPriority.Visible);
         Entities.EnsureEdge(FetchEdge.AlbumMerch, album);
+        Fetch.Drain();                                             // the tick: row first, then the edge
 
         Assert.Equal(2, provider.Seen.Count);
         Assert.Contains(provider.Seen, x => x.Subject == FetchSubject.Entity);
@@ -165,6 +174,7 @@ public class FetchDedupTests : IDisposable
 
         Entities.Ensure(scope.Albums, new[] { album }, (uint)AlbumFields.Detail, FetchPriority.Visible);
         Entities.EnsureEdge(FetchEdge.AlbumTracks, album);
+        Fetch.Drain();                                             // the tick: row first, then the edge
         Assert.Single(provider.Seen);                              // the edge ask was absorbed, not sent
 
         // The row answers with NOTHING for the relation (a bare answer, or one whose decode never reached
@@ -197,6 +207,7 @@ public class FetchDedupTests : IDisposable
 
         Entities.Ensure(scope.Albums, new[] { album }, (uint)AlbumFields.Detail, FetchPriority.Visible);
         Entities.EnsureEdge(FetchEdge.AlbumTracks, album);
+        Fetch.Drain();                                             // the tick: row first, then the edge
         Assert.Single(provider.Seen);
 
         scope.Edges.AlbumTracks.ReplaceRun(album, ReadOnlySpan<int>.Empty, default);   // staged as a side effect…
@@ -218,6 +229,7 @@ public class FetchDedupTests : IDisposable
 
         Entities.Ensure(scope.Albums, new[] { album }, (uint)AlbumFields.Detail, FetchPriority.Visible);
         Entities.EnsureEdge(FetchEdge.AlbumTracks, album);
+        Fetch.Drain();                                             // the tick: row first, then the edge
         Assert.Single(provider.Seen);
 
         Fetch.Failed(provider.Seen[0].Ticket, 503, 0);              // retryable: the ROW itself waits out a backoff…
@@ -239,6 +251,7 @@ public class FetchDedupTests : IDisposable
 
         Entities.Ensure(scope.Albums, new[] { album }, (uint)AlbumFields.Detail, FetchPriority.Visible);
         Entities.EnsureEdge(FetchEdge.AlbumTracks, album);
+        Fetch.Drain();                                             // the tick: row first, then the edge
         Assert.Single(provider.Seen);
 
         Fetch.Failed(provider.Seen[0].Ticket, 404, 0);              // terminal: the row itself is un-asked outright…

@@ -3,11 +3,12 @@
 // library write seam, the ylpin pin bridge, and the pre-save drop scheduler's attach
 //
 // Role: SHELL
-// Owner: F
-// Wave: gap batch B2
-// Budget: 1100 lines
+// Owner: F (L3: the list pushes, the reconnect's list revalidation, the planner's Online gate — wave D3)
+// Wave: gap batch B2; D3
+// Budget: 1100 lines (the per-list half lives in Spotify.Library.Lists.cs, a named partial)
 // Spec: gap register G-042 (sync), G-043, G-048, G-049, G-062, G-089; decision D11 ("a Spotify library host implements
-//       Sidebar.LibraryWrites and the sync; App.cs installs it; pages never call Spotify.Api directly")
+//       Sidebar.LibraryWrites and the sync; App.cs installs it; pages never call Spotify.Api directly");
+//       docs/plans/wavee/cache-integrity-and-playlist-diff-implementation.md §3.3 (dealer), §3.5 (the Online gate)
 //
 // NOTHING HERE DECIDES. When to sync, which relation a push names, which op a gesture is, whether a pin is swept, what
 // a body's bytes are — all of that is `Spotify.Encode.cs` (CORE, tested). This file feeds those rules values off the
@@ -17,7 +18,10 @@
 //     ScopeEpoch ─────┼─ WatchSession ─ Decide ─┤    (the provider walks them; the commit lands them)
 //                     │                         └─ ReleaseDrops.Attach (G-089)
 //     edges.Changed ──┴─ WatchEdges ─ AfterPublish ─ paging · pins → LibraryPinSync · rootlist rows · owned caps · drops
-//     dealer push ─── OnDealerPush ─ Classify ─ 250 ms settle ─ RefreshEdge
+//     dealer push ─── OnDealerPush ─ Classify ─┬─ collections, rootlist: 250 ms settle ─ RefreshEdge (rootlist: by head)
+//                                              └─ one playlist: DecodePush ─ post ─ ListPush.Decide ─ replay in place ·
+//                                                 dirty · /diff now (Spotify.Library.Lists.cs)
+//     Online ──────── the planner's gate opens (Fetch.CanSend) ─ Fetch.Pump: the held boot burst leaves as full batches
 //     User.Like/Save/Follow ─ Dispatch ─ Api.CollectionAdd/Remove ─ post Settle
 //     sidebar gesture ─ Writes.* ─ Encode ops ─ ApplyLocally + LandRootlist (optimistic) ─ Api.RootlistChanges ─ post
 //
@@ -31,6 +35,12 @@
 // (the reply is bookkeeping only, so this IS the new tree) and toasts only on the 200; a refusal reads the rootlist back
 // and says why. A collection write is `User.Add/Remove`'s pending edge (C6), settled here. Nothing is replayed after a
 // failure or a restart (C6: the pending bit is the outbox).
+//
+// THE HELD HEAD UNDER AN OPTIMISTIC TREE (wave D3). Landing the tree FORGETS the rootlist's held revision
+// (`LandRootlistTree` → `Entities.ForgetListRevision`): the tree is no longer the list that head describes, and a
+// `/rootlist/diff` from it would replay our own ops over a tree that already holds them. The 200's head is held again
+// only when it is provably that tree (`AdoptRootlistHead`, rule `OptimisticHead.MayAdopt`); otherwise, and after every
+// refusal (`ReadRootlistBack`), the next rootlist ask is a full read. The disk keeps the pre-edit pair until then.
 
 using InfoBarSeverity = FluentGpu.Controls.InfoBarSeverity;
 using Loc = FluentGpu.Localization.Loc;
@@ -46,8 +56,9 @@ public readonly partial struct User
 
 public static partial class Spotify
 {
-    /// <summary>The library host. SHELL; UI thread unless a member says otherwise. See the file header.</summary>
-    public static class Library
+    /// <summary>The library host. SHELL; UI thread unless a member says otherwise. See the file header; the per-list
+    /// section (dealer pushes for one list, the stamps, the reconnect's revalidation) is Spotify.Library.Lists.cs.</summary>
+    public static partial class Library
     {
         // ══ 1. install ══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -61,9 +72,15 @@ public static partial class Spotify
 
         static readonly Action s_flush = static () => { s_flushPosted = false; s_runtime?.Flush(); };
         static readonly Action s_syncNow = SyncNow;
+        static readonly Action s_pumpFetch = Fetch.Pump;
+        static bool s_wasOnline;
         static readonly Action s_afterPublish = AfterPublish;
         static readonly Action s_flushPushes = FlushPushes;
         static readonly Action s_pumpWaiters = PumpWaiters;
+        static readonly Action s_settleProgress = static () =>
+        {
+            if (Entities.Current is { } scope) Telemetry.SettleProgressUnreachable(scope);
+        };
 
         /// <summary>THE sidebar's library write seam (<see cref="Sidebar.LibraryWrites"/>), every member implemented.</summary>
         public static SidebarLibraryWrites Writes { get; } = new()
@@ -81,18 +98,23 @@ public static partial class Spotify
         /// <summary>Compose the host, once, on the UI thread, AFTER <c>Entities.Boot</c>, <c>Spotify.Boot</c> and
         /// <c>Sidebar.Boot</c> (the pin store must be loaded before the bridge takes its local-change hook) and BEFORE
         /// <c>Shell.InstallUi</c> (the pane reads the seam at mount). Idempotent. No request goes out here: the sync waits for
-        /// the session to reach Online.</summary>
+        /// the session to reach Online — and so does the planner (<see cref="Fetch.CanSend"/>, below).</summary>
         public static void Install()
         {
             if (s_installed) return;
             s_installed = true;
+            // THE PLANNER'S ONLINE GATE (plan §3.5): a Spotify bucket is HELD — never dropped, never un-asked — until the
+            // session is Online, so the boot burst leaves as a few full batches instead of as unauthenticated requests to
+            // the fallback spclient that 401 and retry. The Online transition pumps (WatchSession). Local files, modules
+            // and the fake catalog are never held; the disk leg is never gated.
+            Fetch.CanSend = static p => p != EntityProvider.Spotify || Spotify.Current.IsOnline;
             Sidebar.LibraryWrites = Writes;
             s_pinSync = new LibraryPinSync(Sidebar.Pins, Platform.Settings, WritePin, IsPinWritePending,
                 static id => string.Equals(id, "liked", StringComparison.Ordinal) ? Loc.Get("nav.likedSongs") : "");
             s_runtime = new FluentGpu.Signals.ReactiveRuntime { FrameRequested = RequestFlush };
             s_sessionWatch = new FluentGpu.Signals.Effect(s_runtime, WatchSession);
             s_edgeWatch = new FluentGpu.Signals.Effect(s_runtime, WatchEdges);
-            Log.Info("library", "library host installed (sync on Online, sidebar writes, pin bridge)");
+            Log.Info("library", "library host installed (sync on Online, planner held until Online, sidebar writes, pin bridge)");
         }
 
         /// <summary>The exit tail: stop watching, drop the timers, hand the pin store's hook back. Idempotent; UI thread.</summary>
@@ -163,12 +185,22 @@ public static partial class Spotify
 
         // ══ 2. the login-time sync (G-042) ══════════════════════════════════════════════════════════════════════════
 
-        /// <summary>Tracked: re-runs when the phase or the scope generation moves. Posts; never works inline.</summary>
+        /// <summary>Tracked: re-runs when the phase or the scope generation moves. Posts; never works inline. The
+        /// transition INTO Online also opens the planner's gate: one pump, so what <see cref="Fetch.CanSend"/> held while
+        /// the session was connecting leaves now — a held bucket is not a wake deadline, and an idle window would otherwise
+        /// hold it until something unrelated ticked. A reconnect the sync's 30 s guard skips still pumps. A session that
+        /// cannot reach Spotify never syncs, so it settles the podcast hydrate FAILED instead
+        /// (<see cref="Telemetry.ProgressUnreachable"/>: Reconnecting or Failed — an offline launch included): without it the
+        /// show page's visit head would wait on <see cref="Telemetry.ProgressSettled"/> for good (podcast plan §6.1).</summary>
         static void WatchSession()
         {
             var phase = Status.Value;
             uint scopeGeneration = Entities.ScopeEpoch.Value;
-            var verdict = LibrarySyncRules.Decide(ref s_syncMemo, phase == SessionPhase.Online, IsAccountScope(Entities.Current),
+            bool online = phase == SessionPhase.Online;
+            if (online && !s_wasOnline) Post(s_pumpFetch);
+            s_wasOnline = online;
+            if (Telemetry.ProgressUnreachable(phase)) Post(s_settleProgress);
+            var verdict = LibrarySyncRules.Decide(ref s_syncMemo, online, IsAccountScope(Entities.Current),
                                                   Current.Epoch, scopeGeneration, Environment.TickCount64);
             if (verdict == LibrarySyncVerdict.Sync) Post(s_syncNow);
             else if (verdict == LibrarySyncVerdict.RateLimited)
@@ -178,15 +210,18 @@ public static partial class Spotify
         /// <summary>Ask for the whole library again. The provider walks each relation (the rootlist and recents through
         /// their held revisions, the collection sets page by page) and the commit lands them; the edge watch does the rest.
         /// Saved albums ride the shared <c>collection</c> walk the Liked ask pays for (Api's edge walk stages both), so
-        /// they are not asked twice.</summary>
+        /// they are not asked twice. A SECOND sync of the same scope is a reconnect: the lists on screen and the dirty ones
+        /// are revalidated, every other stamp forgotten (<see cref="RevalidateListsAfterReconnect"/>).</summary>
         static void SyncNow()
         {
             var scope = Entities.Current;
             if (!IsAccountScope(scope) || !Current.IsOnline) return;
             // FIRST: whatever a 401/403 un-asked before the session authorised (an artist's top tracks, a page's rows)
             // is planned again now that it will be answered — the pages that asked have long since mounted and nothing
-            // else re-asks for them (Fetch.Resume; the seed's SeedRetryOn is the same verdict).
+            // else re-asks for them (Fetch.Resume; the seed's SeedRetryOn is the same verdict) — and it leaves at once,
+            // with whatever the Online gate was holding.
             Fetch.Resume();
+            Fetch.Pump();
             int me = scope.MeSlot;
             Entities.RefreshEdge(FetchEdge.Rootlist, me, FetchPriority.Visible);
             Entities.RefreshEdge(FetchEdge.Pins, me, FetchPriority.Visible);
@@ -195,12 +230,20 @@ public static partial class Spotify
             Entities.RefreshEdge(FetchEdge.SavedShows, me, FetchPriority.Visible);
             Entities.RefreshEdge(FetchEdge.Recents, me, FetchPriority.Prefetch);
             Entities.Ensure(new User(me), UserFields.Identity, FetchPriority.Visible);
+            // Podcast progress: ONE ListCurrentStates for every resume point touched in the last 180 days, folded into the
+            // episode rows (podcast plan §5.8). Every sync of the scope — a reconnect catches up on what another device
+            // played meanwhile, and keeps the show page's settled head (Telemetry.ProgressSettled) rather than resetting it.
+            Telemetry.HydrateProgress(scope);
+            SyncBans(scope);
+            _ = Podcasts.ReadSavedAsync(CancellationToken.None);
+            if (ReferenceEquals(scope, s_syncedScope)) RevalidateListsAfterReconnect(scope);
+            s_syncedScope = scope;
             if (!s_dropsAttached)
             {
                 s_dropsAttached = true;
                 Notify.ReleaseDrops.Attach(ResolveDrops);          // G-089: reconciles once now, then on every saved-set change
             }
-            Log.Info("library", "library sync asked: rootlist, pins, liked + albums, artists, shows, recents");
+            Log.Info("library", "library sync asked: rootlist, pins, liked + albums, artists, shows, recents, podcast progress");
         }
 
         // ══ 3. the edge watch ═══════════════════════════════════════════════════════════════════════════════════════
@@ -242,6 +285,10 @@ public static partial class Spotify
             {
                 s_seenScope = scope;
                 s_seenRootlist = s_seenPins = s_seenSavedAlbums = s_seenCapsRootlist = s_seenPlaylists = uint.MaxValue;
+                // A scope switch — a sign-in, a sign-out, a market change: every freshness stamp described a list of the
+                // scope that is gone (C7), and a stale "revalidated" would let a restored baseline paint unasked.
+                ListStamps.ForgetAll();
+                s_rootlistAskedFor = null;
             }
             if (s_waiters.Count > 0) PumpWaiters();
             if (!IsAccountScope(scope)) return;
@@ -327,18 +374,33 @@ public static partial class Spotify
         // ══ 4. dealer pushes ════════════════════════════════════════════════════════════════════════════════════════
 
         /// <summary>How long a burst of pushes for the same relations folds into one read. The dealer sends the rootlist
-        /// head twice (v2 and legacy topics) and a multi-select edit elsewhere as several collection pushes.</summary>
+        /// head twice (v2 and legacy topics) and a multi-select edit elsewhere as several collection pushes. A push for ONE
+        /// playlist is never settled: its ops chain, each push's parent the previous one's head.</summary>
         public const int PushSettleMs = 250;
 
         static int s_pendingPush;
         static System.Threading.Timer? s_pushTimer;
 
-        /// <summary>A dealer MESSAGE's topic. ANY THREAD (the dealer's): classify, fold into the pending set, arm the settle.
-        /// The one caller is <c>Spotify.Connect.OnDealer</c>'s fall-through for frames it does not read itself.</summary>
-        public static void OnDealerPush(ReadOnlySpan<byte> topic)
+        /// <summary>A dealer MESSAGE: its topic and its decoded body. ANY THREAD (the dealer's). A push for ONE playlist
+        /// (<see cref="LibraryPush.Playlist"/>) is decoded here — pure (<see cref="PlaylistOps.DecodePush"/>), off the UI
+        /// thread — and POSTED as it is, in arrival order (<c>PlaylistPushed</c>, Spotify.Library.Lists.cs). A rootlist
+        /// push leaves its head for the settle's dedupe; every library push folds into the pending set and arms the
+        /// settle. The one caller is <c>Spotify.Connect.OnDealer</c>'s fall-through for frames it does not read itself.
+        /// <paramref name="payload"/> is a view into the dealer thread's scratch: decoded before this returns, never kept.
+        /// An empty one decodes as an unreadable push, which marks the list dirty — never applies.</summary>
+        public static void OnDealerPush(ReadOnlySpan<byte> topic, ReadOnlySpan<byte> payload = default)
         {
+            if (OnBanPush(topic)) return;
+            if (OnShowPush(topic, payload)) return;
+            if (Podcasts.OnSavedEpisodesPush(topic)) return;
             var push = LibraryPushRules.Classify(topic);
             if (push == LibraryPush.None) return;
+            if (push == LibraryPush.Playlist)
+            {
+                PostPlaylistPush(System.Text.Encoding.UTF8.GetString(LibraryPushRules.PlaylistId(topic)), DecodePushBody(payload));
+                return;
+            }
+            if ((push & LibraryPush.Rootlist) != 0) NoteRootlistPush(payload);
             int before, after;
             do
             {
@@ -357,7 +419,7 @@ public static partial class Spotify
             var scope = Entities.Current;
             if (push == LibraryPush.None || !IsAccountScope(scope)) return;
             int me = scope.MeSlot;
-            if ((push & LibraryPush.Rootlist) != 0) Entities.RefreshEdge(FetchEdge.Rootlist, me);
+            if ((push & LibraryPush.Rootlist) != 0) FlushRootlistPush(scope, me);
             if ((push & (LibraryPush.Liked | LibraryPush.SavedAlbums)) != 0) Entities.RefreshEdge(FetchEdge.Liked, me);
             if ((push & LibraryPush.FollowedArtists) != 0) Entities.RefreshEdge(FetchEdge.FollowedArtists, me);
             if ((push & LibraryPush.SavedShows) != 0) Entities.RefreshEdge(FetchEdge.SavedShows, me);
@@ -600,9 +662,10 @@ public static partial class Spotify
                                    out RootlistMoveCheck reason);
 
         /// <summary>THE rootlist write: read the live stream, build the ops, land the locally applied tree (the optimistic
-        /// half — the reply will not carry one), send against the held head, and on the 200 adopt the resulting head and run
-        /// <paramref name="confirmed"/>. A refusal to BUILD says why and sends nothing; a refusal from the SERVER reads the
-        /// rootlist back and says why.</summary>
+        /// half — the reply will not carry one — which forgets the held head: <see cref="LandRootlistTree"/>), send against
+        /// the head the tree was computed over, and on the 200 hold the resulting head when it is provably that tree
+        /// (<see cref="AdoptRootlistHead"/>) and run <paramref name="confirmed"/>. A refusal to BUILD says why and sends
+        /// nothing; a refusal from the SERVER reads the rootlist back in full and says why.</summary>
         static void WriteRootlist(string verb, RootlistPlan plan, Action? confirmed)
         {
             if (!CanWrite(out var scope, out string username)) { Unavailable(); return; }
@@ -630,23 +693,69 @@ public static partial class Spotify
                 Notify.Say(Loc.Get("library.moveFailed"), InfoBarSeverity.Error, dedupeKey: "library.rootlist-failed");
                 return;
             }
-            Encode.LandRootlist(new User(me), after);
+            OptimisticRootlist landed = LandRootlistTree(scope, after);
             Entities.Publish();
 
-            string revision = Entities.Strings.Resolve(scope.Edges.RootlistRevision(me));
             PlaylistOp[] body = ops.ToArray();
             var net = Net;
-            if (!net.Run(() => PostRootlist(net, scope, username, revision, body, now, verb, confirmed)))
+            if (!net.Run(() => PostRootlist(net, scope, username, landed, body, now, verb, confirmed)))
                 RootlistFailed(scope, verb, 0);
         }
 
-        /// <summary>API THREAD. The head the write is based on is the one the rootlist last answered at; with none held (the
-        /// rootlist has not answered this scope) it is read first.</summary>
-        static void PostRootlist(Transport net, Scope scope, string username, string revisionText, PlaylistOp[] ops, long nowMs,
+        /// <summary>What a rootlist write's optimistic landing leaves for its confirm (<see cref="AdoptRootlistHead"/>):
+        /// <paramref name="Base"/>, the head the landed tree was computed over — the base the write sends; "" when none was
+        /// held — and <paramref name="Version"/>, the rootlist edge's version right after the landing.</summary>
+        public readonly record struct OptimisticRootlist(string Base, uint Version);
+
+        /// <summary>THE OPTIMISTIC HALF OF EVERY ROOTLIST WRITE (the moves, follow/unfollow, the folder verbs, a create's
+        /// filing, a delete): land the locally applied <paramref name="tree"/> as the account's rootlist and FORGET the held
+        /// head (<see cref="Entities.ForgetListRevision"/>) — the tree is no longer the list that head describes, so the next
+        /// rootlist ask is a full read, never a <c>/rootlist/diff</c> whose ops (our own, echoed) replay over a tree that
+        /// already holds them. The disk keeps the pre-edit pair. Returns the head the tree was computed over and the
+        /// version the landing left. UI thread; the caller publishes. Public for the facts (no <c>InternalsVisibleTo</c>).</summary>
+        public static OptimisticRootlist LandRootlistTree(Scope scope, IReadOnlyList<RootlistEntry> tree)
+        {
+            ArgumentNullException.ThrowIfNull(scope);
+            int me = scope.MeSlot;
+            var held = scope.Edges.RootlistRevision(me);
+            string based = held.IsEmpty ? "" : Entities.Strings.Resolve(held);
+            Encode.LandRootlist(new User(me), tree);
+            Entities.ForgetListRevision(scope, EdgeRelation.Rootlist, me);
+            return new OptimisticRootlist(based, scope.Edges.Rootlist.Version(me));
+        }
+
+        /// <summary>A write's 200: hold its reply <paramref name="head"/> again ONLY when it is provably the tree
+        /// <paramref name="landed"/> put there (<see cref="OptimisticHead.MayAdopt"/>: the direct successor of the base the
+        /// tree was computed over, with nothing replacing the rows or re-arming a head since). True when held; otherwise the
+        /// head stays forgotten and the next rootlist ask — usually this write's own dealer echo — reads in full. UI thread.</summary>
+        public static bool AdoptRootlistHead(Scope scope, OptimisticRootlist landed, string head)
+        {
+            ArgumentNullException.ThrowIfNull(scope);
+            int me = scope.MeSlot;
+            bool untouched = scope.Edges.Rootlist.Version(me) == landed.Version && scope.Edges.RootlistRevision(me).IsEmpty;
+            if (!OptimisticHead.MayAdopt(landed.Base, head, untouched)) return false;
+            scope.Edges.SetRootlistRevision(me, Entities.Strings.Intern(head));
+            return true;
+        }
+
+        /// <summary>The landed tree is not the server's — a refused write, a create that did not file where it landed, a
+        /// delete either way: FORGET whatever head is held, then read the rootlist back. A FULL read: a <c>/diff</c> from
+        /// any held head would be answered about a tree the server never had ("unchanged", or ops replayed onto it). UI
+        /// thread, in <paramref name="scope"/> = the current one. Public for the facts.</summary>
+        public static void ReadRootlistBack(Scope scope)
+        {
+            ArgumentNullException.ThrowIfNull(scope);
+            Entities.ForgetListRevision(scope, EdgeRelation.Rootlist, scope.MeSlot);
+            Entities.RefreshEdge(FetchEdge.Rootlist, scope.MeSlot);
+        }
+
+        /// <summary>API THREAD. The head the write is based on is the one the landed tree was computed over; with none held
+        /// (the rootlist has not answered this scope, or another write's tree is still unconfirmed) it is read first.</summary>
+        static void PostRootlist(Transport net, Scope scope, string username, OptimisticRootlist landed, PlaylistOp[] ops, long nowMs,
                                  string verb, Action? confirmed)
         {
             Span<byte> revision = stackalloc byte[Encode.MaxRevisionBytes];
-            int length = Encode.RevisionBytes(revisionText, revision);
+            int length = Encode.RevisionBytes(landed.Base, revision);
             if (length == 0)
             {
                 Api.Result read = net.Rootlist(username);
@@ -667,7 +776,7 @@ public static partial class Spotify
                 return;
             }
             string head = HeadOf(result.Bytes);
-            Post(() => RootlistConfirmed(scope, head, confirmed));
+            Post(() => RootlistConfirmed(scope, landed, head, confirmed));
         }
 
         /// <summary>A reply's resulting head in the <c>{counter},{hex}</c> spelling the edge holds, or "".</summary>
@@ -681,10 +790,10 @@ public static partial class Spotify
             return written == 0 ? "" : new string(text[..written]);
         }
 
-        static void RootlistConfirmed(Scope scope, string head, Action? confirmed)
+        static void RootlistConfirmed(Scope scope, OptimisticRootlist landed, string head, Action? confirmed)
         {
             if (!ReferenceEquals(scope, Entities.Current)) return;
-            if (head.Length > 0) scope.Edges.SetRootlistRevision(scope.MeSlot, Entities.Strings.Intern(head));
+            AdoptRootlistHead(scope, landed, head);
             confirmed?.Invoke();
         }
 
@@ -692,8 +801,8 @@ public static partial class Spotify
         {
             Log.Warn("library", "rootlist " + verb + " refused (status " + status + ")");
             if (!ReferenceEquals(scope, Entities.Current)) return;
-            // The optimistic tree is not the server's: read the truth back (the held revision makes it a diff).
-            Entities.RefreshEdge(FetchEdge.Rootlist, scope.MeSlot);
+            // The optimistic tree is not the server's: forget any head, read the truth back in full.
+            ReadRootlistBack(scope);
             string key = status switch
             {
                 409 => "library.conflict",
@@ -874,13 +983,12 @@ public static partial class Spotify
             if (slot == Table.None) { Notify.Say(Loc.Get("detail.edit.createFailed"), InfoBarSeverity.Error); return; }
 
             PlaylistOp add = Encode.RootlistAdd(uri, at, now);
-            Encode.LandRootlist(new User(me), Encode.ApplyLocally(entries, [add]));
+            OptimisticRootlist landed = LandRootlistTree(scope, Encode.ApplyLocally(entries, [add]));
             Entities.Publish();
             if (navigate) { Playlist.PlaylistCreateIntent.Arm(uri); Actions.Services.Go?.Invoke(Shell.For(new EntityUri(scope.Playlists.Id[slot]), name)); }
 
-            string revision = Entities.Strings.Resolve(scope.Edges.RootlistRevision(me));
             var net = Net;
-            if (!net.Run(() => PostCreate(net, scope, username, id, uri, name, revision, add, now, slot, folderId, navigate, then)))
+            if (!net.Run(() => PostCreate(net, scope, username, id, uri, name, landed, add, now, slot, folderId, navigate, then)))
                 CreateFailed(scope, slot, folderId, navigate, then, 0);
         }
 
@@ -908,9 +1016,12 @@ public static partial class Spotify
         }
 
         /// <summary>API THREAD. The create, then the rootlist ADD. A 409 on the ADD means the rootlist moved under us: the
-        /// playlist EXISTS, so it is filed at the top against a freshly read head rather than left out of the library.</summary>
-        static void PostCreate(Transport net, Scope scope, string username, string id, string uri, string name, string revisionText,
-                               PlaylistOp add, long nowMs, int slot, string? folderId, bool navigate, Action<string, string>? then)
+        /// playlist EXISTS, so it is filed at the top against a freshly read head rather than left out of the library —
+        /// and then it is NOT where the landed tree put it (<paramref name="add"/>'s placement), which the confirm must
+        /// know: only the ADD that was landed can vouch for a head.</summary>
+        static void PostCreate(Transport net, Scope scope, string username, string id, string uri, string name,
+                               OptimisticRootlist landed, PlaylistOp add, long nowMs, int slot, string? folderId, bool navigate,
+                               Action<string, string>? then)
         {
             Api.Result created = net.PlaylistCreate(id, Encode.CreateChanges(name, username, nowMs, Encode.NewNonce()));
             if (!created.Ok)
@@ -921,8 +1032,9 @@ public static partial class Spotify
             }
 
             Span<byte> revision = stackalloc byte[Encode.MaxRevisionBytes];
-            int length = Encode.RevisionBytes(revisionText, revision);
+            int length = Encode.RevisionBytes(landed.Base, revision);
             Api.Result filed = default;
+            bool asLanded = false;
             for (int attempt = 0; attempt < 2; attempt++)
             {
                 if (length == 0 || attempt > 0)
@@ -933,25 +1045,31 @@ public static partial class Spotify
                 }
                 PlaylistOp op = attempt == 0 ? add : Encode.RootlistAdd(uri, 0, nowMs);
                 filed = net.RootlistChanges(username, Encode.RootlistChanges(revision[..length], [op], username, nowMs, Encode.NewNonce()));
+                asLanded = attempt == 0;
                 if (filed.Status != 409) break;
             }
             string head = filed.Ok ? HeadOf(filed.Bytes) : "";
             bool inLibrary = filed.Ok;
+            bool filedAsLanded = inLibrary && asLanded;
             int filedStatus = filed.Status;
-            Post(() => CreateConfirmed(scope, slot, uri, name, head, inLibrary, filedStatus, then));
+            Post(() => CreateConfirmed(scope, slot, uri, name, landed, filedAsLanded, head, inLibrary, filedStatus, then));
         }
 
-        static void CreateConfirmed(Scope scope, int slot, string uri, string name, string head, bool inLibrary, int status,
-                                    Action<string, string>? then)
+        /// <summary>The create's verdict. Filed with the ADD the tree landed: its head is held when provable
+        /// (<see cref="AdoptRootlistHead"/>). Filed by the retry at the top: the landed tree has the row elsewhere, so it is
+        /// read back in full. Not filed: read back, and said.</summary>
+        static void CreateConfirmed(Scope scope, int slot, string uri, string name, OptimisticRootlist landed, bool filedAsLanded,
+                                    string head, bool inLibrary, int status, Action<string, string>? then)
         {
             if (!ReferenceEquals(scope, Entities.Current)) return;
             new Playlist(slot).SettleCreate(ok: true);
-            if (head.Length > 0) scope.Edges.SetRootlistRevision(scope.MeSlot, Entities.Strings.Intern(head));
+            if (filedAsLanded) AdoptRootlistHead(scope, landed, head);
+            else if (inLibrary) ReadRootlistBack(scope);
             if (!inLibrary)
             {
                 // The playlist exists; only its rootlist row did not stick. Read the rootlist back and say so.
                 Log.Warn("library", "created playlist not filed in the rootlist (status " + status + ")");
-                Entities.RefreshEdge(FetchEdge.Rootlist, scope.MeSlot);
+                ReadRootlistBack(scope);
                 Notify.Say(Loc.Get(status == 409 ? "library.conflict" : "library.moveFailed"), InfoBarSeverity.Error);
             }
             Entities.Publish();
@@ -964,7 +1082,7 @@ public static partial class Spotify
             Log.Warn("library", "playlist create refused (status " + status + ")");
             if (!ReferenceEquals(scope, Entities.Current)) return;
             new Playlist(slot).SettleCreate(ok: false);
-            Entities.RefreshEdge(FetchEdge.Rootlist, scope.MeSlot);
+            ReadRootlistBack(scope);
             Entities.Publish();
             // A rejected id is never reused: Retry re-runs the whole flow and mints a new one.
             Notify.Say(Loc.Get("detail.edit.createFailed"), InfoBarSeverity.Error, Loc.Get("common.retry"),

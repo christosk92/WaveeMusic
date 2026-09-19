@@ -836,12 +836,15 @@ public static partial class Spotify
         }
 
         /// <summary>`metadata.Show` (kind 11) → the show's Identity and About (ch 09 §7: publisher and description
-        /// are the two lines the show header states beside the cover).</summary>
+        /// are the two lines the show header states beside the cover), and its Facts (podcast plan §5.3): explicit,
+        /// media type, consumption order, trailer, music-and-talk. Facts is claimed WHOLE after the loop — proto2 omits a
+        /// false bool, so an absent field is a real "no", and a group claimed only when a field shows up would re-ask a
+        /// plain audio show forever.</summary>
         public static void ShowV4(ReadOnlySpan<byte> proto, Staging s)
         {
             var r = new ProtoReader(proto);
             ref var row = ref s.Shows.RowFor(default, Authority.Full, (uint)(ShowFields.Identity | ShowFields.About));
-            var episodes = s.Run(Relation.ShowEpisodes);
+            int media = -1;                                            // media_type unstated
 
             while (r.Next())
             {
@@ -851,27 +854,32 @@ public static partial class Spotify
                     case 2: row.Title = s.AddText(r.Bytes()); break;
                     case 64: row.Description = s.AddText(r.Bytes()); break;
                     case 66: row.Publisher = s.AddText(r.Bytes()); break;
+                    case 68: if (r.Bool()) row.Flags |= (uint)ShowFlags.Explicit; break;
                     case 69: row.Image = Cover(s, r.Message()); break;
-                    case 70:                                           // episode
+                    case 74: media = r.Int32(); break;                 // MIXED 0 · AUDIO 1 · VIDEO 2
+                    case 75:                                           // SEQUENTIAL 1 · EPISODIC 2 · RECENT 3 = ConsumptionOrder's own
                         {
-                            var id = EntityId.ForGid(EntityKind.Episode, r.Message().Bytes(1));
-                            if (!id.IsEmpty) episodes.Add(id);
+                            int order = r.Int32();
+                            row.Order = (byte)(order is >= (int)ConsumptionOrder.Sequential and <= (int)ConsumptionOrder.Recent ? order : 0);
                             break;
                         }
+                    case 83: row.Trailer = s.AddText(r.Bytes()); break;
+                    case 85: if (r.Bool()) row.Flags |= (uint)ShowFlags.MusicAndTalk; break;
                     default: r.Skip(); break;
                 }
             }
 
-            var show = row.Id;
-            if (!s.Shows.Settle()) { episodes.Discard(); return; }
-            // A show's episode list is PAGED on every transport that serves it, so it lands as a page at offset 0 and
-            // stays Partial until its own length reaches the server's total (Edges.cs, D7) — never Complete off one
-            // answer, which is what would stop the page asking for the rest (ch 09 §7).
-            if (episodes.Count > 0) episodes.Page(in show, offset: 0, total: 0);
+            if (media == 2) row.Flags |= (uint)ShowFlags.Video;
+            else if (media == 0) row.Flags |= (uint)ShowFlags.Mixed;
+            row.Known |= (uint)ShowFields.Facts;
+
+            s.Shows.Settle();
         }
 
         /// <summary>`metadata.Episode` (kind 12) → Identity and About. The show it belongs to is staged thin, the same
-        /// way a track's album is, so an episode row can name its show before the show is fetched.</summary>
+        /// way a track's album is, so an episode row can name its show before the show is fetched. The number, the kind
+        /// and the explicit / video / short bits ride the Identity group (podcast plan §5.3) — declared up front, so an
+        /// absent field is a real "no" here too.</summary>
         public static void EpisodeV4(ReadOnlySpan<byte> proto, Staging s)
         {
             var r = new ProtoReader(proto);
@@ -886,9 +894,20 @@ public static partial class Spotify
                     case 2: row.Title = s.AddText(r.Bytes()); break;
                     case 7: row.DurationMs = (int)r.ZigZag(); break;
                     case 64: row.Description = s.AddText(r.Bytes()); break;
+                    case 88: row.Season = (ushort)Math.Clamp(r.Int32(), 0, ushort.MaxValue); break;
+                    case 89: row.Number = (ushort)Math.Clamp(r.Int32(), 0, ushort.MaxValue); break;
                     case 66: Date(r.Message(), zigzag: true, out _, out row.PublishedAt, out _); break;
                     case 68: row.Image = Cover(s, r.Message()); break;
+                    case 70: if (r.Bool()) row.Flags |= (uint)EpisodeFlags.Explicit; break;
                     case 71: row.ShowUri = ThinShow(r.Message(), s); break;
+                    case 72: row.Flags |= (uint)EpisodeFlags.Video; r.Skip(); break;   // repeated VideoFile: one is a video
+                    case 87:                                                         // FULL 0 · TRAILER 1 · BONUS 2 = EpisodeKind's own
+                        {
+                            int kind = r.Int32();
+                            row.Kind = (byte)(kind is > (int)EpisodeKind.Full and <= (int)EpisodeKind.Bonus ? kind : 0);
+                            break;
+                        }
+                    case 97: if (r.Bool()) row.Flags |= (uint)EpisodeFlags.Short; break;
                     default: r.Skip(); break;
                 }
             }
@@ -1067,6 +1086,11 @@ public static partial class Spotify
                 case Ext.TrackV4: TrackV4(payload, entityUri, s); break;
                 case Ext.AlbumV4: AlbumV4(payload, s); break;
                 case Ext.ArtistV4: ArtistV4(payload, s); break;
+                case (Ext)3: PodcastTopics(payload, entityUri, s); break;
+                case (Ext)54: PodcastHtml(payload, entityUri, s); break;
+                case (Ext)182: EpisodeMedia(payload, entityUri, s); break;
+                case (Ext)37: PodcastRating(payload, entityUri, s); break;
+                case (Ext)21: EpisodeTranscripts(payload, entityUri, s); break;
                 case Ext.ShowV4: ShowV4(payload, s); break;
                 case Ext.EpisodeV4: EpisodeV4(payload, s); break;
                 case Ext.ListMetadataV2: ListMetadataV2(payload, entityUri, s); break;
@@ -1075,7 +1099,10 @@ public static partial class Spotify
                 case Ext.PlayCount: PlayCount(payload, entityUri, s); break;
                 case Ext.Publishing: Publishing(payload, entityUri, s); break;
                 case Ext.VideoAssociations: VideoAssociations(payload, entityUri, s); break;
-                case Ext.VisualIdentity: VisualIdentity(payload, s); break;
+                case Ext.VisualIdentity:
+                    VisualIdentity(payload, s);
+                    if (entityUri.StartsWith("spotify:show:"u8)) PodcastAppearance(payload, entityUri, s);
+                    break;
                 case Ext.PreRelease: PreRelease(payload, entityUri, s); break;
                 // G-044: the five kinds the Api asked for and this dispatch used to drop (Spotify.Decode.Traits.cs).
                 case Ext.UserProfile: UserProfile(payload, entityUri, s); break;
@@ -1587,7 +1614,7 @@ public static partial class Spotify
                     // changes_require_resync (playlist4_external.proto:225): "the accepted delta cannot be expressed
                     // as a diff against our base — do NOT advance the stored revision in place, refetch instead."
                     // This answer rode the revision-gated `/diff` route (`Spotify.Api.Library.ReadList`) with a
-                    // `contents` block attached anyway — `DiffVerdict` reads it exactly like a full read's body — but
+                    // `contents` block attached anyway — `PlaylistOps.DecodeDiff` reads it exactly like a full read's body — but
                     // the server is explicitly saying it is not a trustworthy total. Regression evidence: a real
                     // 50-track "Eurodance Mix" (cover art, HAS a good count from the sidebar's earlier FULL read)
                     // came back from its PAGE's own revision-gated re-ask with `length: 0` and this bit set, and the

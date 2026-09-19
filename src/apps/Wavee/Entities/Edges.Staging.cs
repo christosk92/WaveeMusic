@@ -415,19 +415,20 @@ public static partial class Entities
                         Land(Current.Edges.AlbumTracks, parent, page.Length, s_edgeAlbumTrack, in run);
                         break;
                     }
+                case Relation.ShowEpisodes:
                 case Relation.PlaylistTracks:
                     {
                         // Every membership fact is the EDGE's (D10). `AddedBy` is a user SLOT, so the adder's row is
                         // allocated here exactly like any other child — a byline is bindable before the profile lands.
-                        int n = Resolve(s, page, Current.Tracks);
+                        int n = Resolve(s, page, run.Relation == Relation.ShowEpisodes ? Current.Episodes : Current.Tracks);
                         for (int j = 0; j < n; j++)
                         {
                             ref readonly var e = ref page[j];
                             s_edgePlaylistTrack[j] = new PlaylistTrackEdge(
                                 s.Intern(e.Text), e.At, s.Slot(Current.Users, in e.Aux), e.B1, e.U0, e.U1, e.B0);
                         }
-                        Land(Current.Edges.PlaylistTracks, parent, n, s_edgePlaylistTrack, in run);
-                        new global::Wavee.Playlist(parent).Refold();
+                        Land(run.Relation == Relation.ShowEpisodes ? Current.Edges.ShowEpisodes : Current.Edges.PlaylistTracks, parent, n, s_edgePlaylistTrack, in run);
+                        if (run.Relation == Relation.PlaylistTracks) new global::Wavee.Playlist(parent).Refold();
                         break;
                     }
                 case Relation.TrackTags:
@@ -690,7 +691,6 @@ public static partial class Entities
         Relation.ArtistAlbums => Current.Edges.ArtistAlbums,
         Relation.ArtistSingles => Current.Edges.ArtistSingles,
         Relation.ArtistCompilations => Current.Edges.ArtistCompilations,
-        Relation.ShowEpisodes => Current.Edges.ShowEpisodes,
         Relation.TrackRelatedArtists => Current.Edges.TrackRelatedArtists,
         Relation.HomeSection => Current.Edges.HomeSection,
         _ => Current.Edges.TrackArtists,

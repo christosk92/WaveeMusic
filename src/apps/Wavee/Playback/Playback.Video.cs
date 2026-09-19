@@ -288,6 +288,7 @@ public static partial class Playback
         static VideoSource? s_live;              // the source the live load opened (fault attribution)
         static uint s_epoch;                     // the reducer's LoadEpoch this load belongs to
         static bool s_playIntent, s_intentPaused, s_progressed, s_errorReported, s_firstFrameFired;
+        static float s_desiredRate = 1;
         static long s_reportedDurMs;
         static LiveWindow s_reportedLive;
         static bool s_liveReported;
@@ -350,8 +351,10 @@ public static partial class Playback
         public static void Load(VideoSource source, uint epoch, int fromMs = 0, bool paused = false)
         {
             Boot();
+            float rate = RateFor(s_state.CurrentId);
             lock (s_gate)
             {
+                s_desiredRate = rate;
                 s_pumpEpoch++;
                 s_pending = new LoadRequest(source, Math.Max(0, fromMs), epoch);
                 s_pendingClear = false;
@@ -952,12 +955,21 @@ public static partial class Playback
 
         /// <summary>After the open: the intent the reducer last stated wins — a Pause that arrived during the open leaves
         /// it paused; otherwise play (idempotent on a session that opened playing).</summary>
+        public static void SetRate(float rate)
+        {
+            lock (s_gate) s_desiredRate = rate;
+            try { Volatile.Read(ref s_player)?.SetRate(rate); }
+            catch (Exception ex) { Log.Warn("video", "speed change failed", ex); }
+        }
+
         static void SettleIntent(MediaPlayer p)
         {
             bool play;
-            lock (s_gate) play = s_playIntent;
+            float rate;
+            lock (s_gate) { play = s_playIntent; rate = s_desiredRate; }
             try
             {
+                p.SetRate(rate);
                 if (play) _ = p.PlayAsync();
                 else _ = p.PauseAsync();
             }

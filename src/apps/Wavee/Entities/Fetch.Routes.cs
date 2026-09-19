@@ -122,7 +122,7 @@ public enum RouteTransport : byte
 public enum PathfinderOp : byte
 {
     None = 0,
-    GetAlbum, GetTrack, ArtistOverview, Discography,
+    GetAlbum, GetTrack, ArtistOverview, Discography, EpisodeDetail,
     /// <summary><c>fetchPlaylist</c> — the playlist header's accent, daylist and chart facts (ch 06 §7). NOT in the
     /// Api's persisted-query table today (REPORTED, G-040): until it is, the four groups it serves seal.</summary>
     FetchPlaylist,
@@ -142,6 +142,7 @@ public enum SpclientRoute : byte
     None = 0,
     /// <summary><c>/playlist/v2/playlist/&lt;id&gt;</c> with decorations (header, capabilities, a page of items).</summary>
     PlaylistRead,
+    ShowRead,
     /// <summary><c>/playlist-permission/v1/playlist/&lt;id&gt;/permission/base</c>.</summary>
     PermissionBase,
     /// <summary><c>/popcount/v2/playlist/&lt;id&gt;/count</c>.</summary>
@@ -207,7 +208,9 @@ public static class FetchRoutes
     static readonly FetchRoute[] s_episode =
     [
         FetchRoute.Metadata(EpisodeV4, (uint)(EpisodeFields.Identity | EpisodeFields.About)),
-        // Progress: no transport in this build (the resume position is a playback-state fact). Seals.
+        FetchRoute.Pathfinder(PathfinderOp.EpisodeDetail, (uint)EpisodeFields.Detail),
+        FetchRoute.Metadata(21, (uint)EpisodeFields.Transcript),
+        FetchRoute.Metadata(182, (uint)EpisodeFields.Media),
     ];
 
     static readonly FetchRoute[] s_album =
@@ -250,7 +253,14 @@ public static class FetchRoutes
 
     static readonly FetchRoute[] s_show =
     [
-        FetchRoute.Metadata(ShowV4, (uint)(ShowFields.Identity | ShowFields.About)),
+        // Facts (flags, consumption order, trailer) ride the SAME ShowV4 answer — one request fills all three groups, so
+        // a show whose Identity came from a search card still gets its facts from one batched ask (podcast plan §5.3).
+        // Rating has no route until the pathfinder show read lands (§5.9, wave P4); asked alone it seals.
+        FetchRoute.Metadata(ShowV4, (uint)(ShowFields.Identity | ShowFields.About | ShowFields.Facts)),
+        FetchRoute.Metadata(37, (uint)ShowFields.Rating),
+        FetchRoute.Metadata(179, (uint)ShowFields.Appearance),
+        FetchRoute.Metadata(3, (uint)ShowFields.Topics),
+        FetchRoute.Metadata(54, (uint)ShowFields.Html),
     ];
 
     static readonly FetchRoute[] s_user =
@@ -377,7 +387,7 @@ public static class FetchRoutes
         FetchEdge.AlbumSimilar => FetchRoute.Pathfinder(PathfinderOp.SimilarAlbums, 0),
         FetchEdge.ArtistPopular or FetchEdge.ArtistRelated => FetchRoute.Pathfinder(PathfinderOp.ArtistOverview, 0),
         FetchEdge.ArtistReleases => FetchRoute.Pathfinder(PathfinderOp.Discography, 0),
-        FetchEdge.ShowEpisodes => FetchRoute.Metadata(ShowV4, 0),
+        FetchEdge.ShowEpisodes => FetchRoute.Spclient(SpclientRoute.ShowRead, 0),
         FetchEdge.TrackCredits => FetchRoute.Metadata(CreditsV2, 0),
         FetchEdge.TrackVersions => FetchRoute.Metadata(AudioAssociations, 0),
         FetchEdge.TrackWaveform => FetchRoute.Metadata(ThreeBandWaveforms, 0),

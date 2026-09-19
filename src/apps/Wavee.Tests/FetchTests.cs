@@ -17,6 +17,12 @@
 //     thread may not resolve an id it might outlive;
 //   · and the whole 300-row path allocates NOTHING after warm-up — asserted, not asserted-about, because "the planner
 //     allocates nothing per call" (P8) is the kind of claim that rots silently.
+//
+// SINCE 2026-09-19 (wave D4, plan §3.5) a plan never sends: it buckets its rows and owes the host's per-tick drain.
+// So every fact below that reads what the provider was handed runs `Fetch.Drain()` — the host's tick — between the
+// asks and the assertion, and every "nothing went out" fact drains first too, so the emptiness it asserts is the
+// planner's verdict and not merely a drain nobody ran. What the drain itself adds (one request per bucket per tick,
+// Playback at once, the online gate, the merged priority) is FetchDrainTests'.
 
 using System.Collections.Concurrent;
 using System.Text;
@@ -148,6 +154,7 @@ public class FetchTests : IDisposable
 
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         // Ten pages asking for the same rows in one drain produce ONE request. That sentence is C7, and this is it.
         Assert.Single(provider.Seen);
@@ -167,6 +174,7 @@ public class FetchTests : IDisposable
         t.Known[slots[1]] |= Identity;
 
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Single(provider.Seen);
         Assert.Equal(1, provider.Seen[0].Count);
@@ -183,6 +191,7 @@ public class FetchTests : IDisposable
         t.Known[slots[0]] |= Identity;
 
         Fetch.Plan(scope, t, slots, Identity | Extras, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Single(provider.Seen);                       // Extras is missing, so the row goes out
     }
@@ -230,14 +239,16 @@ public class FetchTests : IDisposable
         int[] slots = Rows(t, 3);
 
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
-        // Leg one: the disk, and NOTHING on the wire yet.
+        // Leg one: the disk, and NOTHING on the wire yet — not even after the tick's drain.
         Assert.Equal(3, Fetch.ToDisk);
         Assert.Equal(0, Fetch.ToNetwork);
         Assert.Empty(provider.Seen);
 
         Store.Flush();
         DrainPosts();
+        Fetch.Drain();
 
         // Leg two: the disk had nothing, so the same rows continue to the provider — in the same plan, without a
         // second Ensure and without clearing the in-flight marks in between.
@@ -261,6 +272,7 @@ public class FetchTests : IDisposable
         t.FetchedAt[slots[1]] = 500;
 
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Equal(0, Fetch.ToDisk);
         Assert.Equal(2, Fetch.ToNetwork);
@@ -276,9 +288,11 @@ public class FetchTests : IDisposable
         Table t = scope.Tracks;
 
         Fetch.Plan(scope, t, Rows(t, 4), Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Equal(0, Fetch.ToDisk);
         Assert.Equal(4, Fetch.ToNetwork);
+        Assert.Equal(4, Assert.Single(provider.Seen).Count);
     }
 
     // ── batching (P4) ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -292,6 +306,7 @@ public class FetchTests : IDisposable
         Table t = scope.Tracks;
 
         Fetch.Plan(scope, t, Rows(t, 700), Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Equal(3, provider.Seen.Count);
         Assert.Equal(300, provider.Seen[0].Count);
@@ -308,6 +323,7 @@ public class FetchTests : IDisposable
         Table t = scope.Tracks;
 
         Fetch.Plan(scope, t, Rows(t, 2_000), Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Equal(4, provider.Seen.Count);
         Assert.Equal(4, Fetch.InFlight);
@@ -330,6 +346,7 @@ public class FetchTests : IDisposable
         slots.AddRange(Rows(t, 3, "wavee:local:file:"));
 
         Fetch.Plan(scope, t, slots.ToArray(), Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Single(spotify.Seen);
         Assert.Equal(2, spotify.Seen[0].Count);
@@ -342,10 +359,12 @@ public class FetchTests : IDisposable
     {
         Scope scope = Boot();
         Table t = scope.Tracks;
-        // Queue three shapes with no transport attached, so nothing can leave…
+        // Queue three SHAPES with no transport attached, so nothing can leave… Three different needs, because urgency
+        // is no longer part of a bucket's shape (wave D4): three asks of ONE need would be one bucket and one request at
+        // Playback, which is FetchDrainTests' fact. This one is the order ACROSS buckets.
         Fetch.Plan(scope, t, Rows(t, 1), Identity, FetchPriority.Prefetch);
-        Fetch.Plan(scope, t, Rows(t, 1), Identity, FetchPriority.Visible);
-        Fetch.Plan(scope, t, Rows(t, 1), Identity, FetchPriority.Playback);
+        Fetch.Plan(scope, t, Rows(t, 1), Extras, FetchPriority.Visible);
+        Fetch.Plan(scope, t, Rows(t, 1), 1u << 2, FetchPriority.Playback);
         Assert.Equal(3, Fetch.Pending);
 
         // …then attach one and pump once: the batch that goes out is the one the user can hear.
@@ -368,6 +387,7 @@ public class FetchTests : IDisposable
         int slot = t.Slot("https://open.spotify.com/track/x".AsSpan());
 
         Fetch.Plan(scope, t, new[] { slot }, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Empty(provider.Seen);
         Assert.Equal(0, Fetch.Pending);
@@ -395,6 +415,7 @@ public class FetchTests : IDisposable
         t.OriginalAudio[slots[0]] = audio;
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Files, FetchPriority.Visible);
+        Fetch.Drain();
 
         FetchBatch batch = provider.Last!;
         Assert.Equal(1, provider.Batches);
@@ -424,6 +445,7 @@ public class FetchTests : IDisposable
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Files, FetchPriority.Visible);
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Files, FetchPriority.Visible);
+        Fetch.Drain();
 
         // The derived request is deduped by the same in-flight stamp as every other group (C7): two drawers opening
         // the same row in one drain is one POST, not two.
@@ -446,6 +468,7 @@ public class FetchTests : IDisposable
         for (int i = 0; i < slots.Length; i++) t.OriginalAudio[slots[i]] = AudioKey(i + 20);
 
         Fetch.Plan(scope, t, slots, Identity | (uint)TrackFields.Files, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Equal(2, provider.Seen.Count);
         Assert.Contains(provider.Seen, x => x.Wanted == Identity);
@@ -466,6 +489,7 @@ public class FetchTests : IDisposable
         int[] slots = GidRows(t, 1, 7007);
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Files, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Empty(provider.Seen);
         Assert.False(t.Knows(slots[0], (uint)TrackFields.Files));
@@ -474,6 +498,7 @@ public class FetchTests : IDisposable
         // …and the moment the key lands, the very same Ensure goes out.
         t.OriginalAudio[slots[0]] = AudioKey(99);
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Files, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Single(provider.Seen);
         Assert.Equal(1, provider.Seen[0].Count);
@@ -497,6 +522,7 @@ public class FetchTests : IDisposable
         Assert.Equal(EntityForm.Gid, id.Form);
 
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         FetchBatch batch = provider.Last!;
         Assert.NotNull(batch);
@@ -522,6 +548,7 @@ public class FetchTests : IDisposable
         int slot = t.Slot("wavee:local:file:carried-20260912".AsSpan());
 
         Fetch.Plan(scope, t, new[] { slot }, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         FetchBatch batch = provider.Last!;
         Assert.NotNull(batch);
@@ -555,6 +582,7 @@ public class FetchTests : IDisposable
         Fetch.Register(three);
 
         Fetch.Plan(scope, t, new[] { spotify, local, module }, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Equal(1, Assert.Single(one.Seen).Count);
         Assert.Equal(1, Assert.Single(two.Seen).Count);
@@ -574,10 +602,34 @@ public class FetchTests : IDisposable
     //     80 bytes. That refusal is the third fact.
     // The 80 B this file used to report was ALL of it that display class, on the refusal path, with the store closed.
     // Nothing in the planner ever allocated; no bound needed widening.
+    //
+    // SINCE WAVE D4 the send is the tick's `Fetch.Drain()`, not the tail of `Plan`, so the planner's window is the plan
+    // AND the drain that sends it — measured together below, the whole path exactly as before. The drain now also writes
+    // the always-on `fetch.send` line, and that line is the LOG's line item (one entry per REQUEST, by design) the way
+    // the disk leg is the store's: the window filters Info, which costs the line one compare and leaves every other byte
+    // of the path inside the window.
+
+    /// <summary>What a plan and the tick's drain allocate together on this thread, with the always-on log filtered for
+    /// the window (see above). Safe to flip the process-wide level here: the only facts that read the ring are this
+    /// collection's own (serial with this one) and the Platform collection's, which runs alone.</summary>
+    static long PlanAndDrainAllocates(Scope scope, Table t, int[] rows)
+    {
+        WaveeLogLevel level = Log.MinLevel;
+        Log.MinLevel = WaveeLogLevel.Warning;
+        try
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Fetch.Plan(scope, t, rows, Identity, FetchPriority.Visible);
+            Fetch.Drain();
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+        finally { Log.MinLevel = level; }
+    }
 
     /// <summary>THE PLANNER, over the doc's own unit of measurement: 300 uris is one extended-metadata POST. The
-    /// whole path — <c>Select</c>'s AND-NOT, the in-flight marks, the bucket, the batch, the send — runs over pooled
-    /// buffers and packed ids, so a page mounting 300 rows must add NOTHING to the frame's allocation budget.
+    /// whole path — <c>Select</c>'s AND-NOT, the in-flight marks, the bucket, the tick's drain, the batch, the send —
+    /// runs over pooled buffers and packed ids, so a page mounting 300 rows must add NOTHING to the frame's allocation
+    /// budget.
     ///
     /// <para>The rows are stamped <c>FetchedAt</c> first, and that is what makes this a measurement OF THE PLANNER:
     /// a row the disk has already answered about skips the disk leg entirely (<c>disk &gt; 0 &amp;&amp;</c>
@@ -601,12 +653,11 @@ public class FetchTests : IDisposable
         for (int i = 0; i < measured.Length; i++) t.FetchedAt[measured[i]] = 500;
 
         Fetch.Plan(scope, t, warm, Identity, FetchPriority.Visible);
+        Fetch.Drain();
         Fetch.Failed(provider.LastTicket, 404, 0);                    // terminal: settles the batch back into the pool
         Assert.Equal(1, provider.Batches);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Fetch.Plan(scope, t, measured, Identity, FetchPriority.Visible);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = PlanAndDrainAllocates(scope, t, measured);
 
         Assert.Equal(2, provider.Batches);
         Assert.Equal(2 * Fetch.MaxUrisPerRequest, provider.Rows);
@@ -630,15 +681,15 @@ public class FetchTests : IDisposable
         int[] measured = GidRows(t, Fetch.MaxUrisPerRequest, 100_001);
 
         Fetch.Plan(scope, t, warm, Identity, FetchPriority.Visible);  // FetchedAt == 0: the disk IS offered them
+        Fetch.Drain();
         Fetch.Failed(provider.LastTicket, 404, 0);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Fetch.Plan(scope, t, measured, Identity, FetchPriority.Visible);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = PlanAndDrainAllocates(scope, t, measured);
 
         Assert.False(Store.IsOpen);
         Assert.Equal(0, Fetch.ToDisk);                                // offered, refused…
         Assert.Equal(2 * Fetch.MaxUrisPerRequest, Fetch.ToNetwork);   // …and straight out instead
+        Assert.Equal(2, provider.Batches);
         Assert.Equal(0L, allocated);
     }
 
@@ -678,8 +729,8 @@ public class FetchTests : IDisposable
 
         long Plan(int[] rows)
         {
-            // Nothing may be pending: a leftover bucket would make `Pump` send inside the window, and a send with an
-            // empty batch pool allocates a `FetchBatch`.
+            // Nothing may be pending: a leftover bucket is a send waiting for the next drain, and a send with an empty
+            // batch pool allocates a `FetchBatch`.
             Assert.Equal(0, Fetch.Pending);
             Assert.Equal(0, Fetch.InFlight);
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -687,7 +738,8 @@ public class FetchTests : IDisposable
             long cost = GC.GetAllocatedBytesForCurrentThread() - before;
 
             Store.Flush();
-            DrainPosts();                                             // the disk answers; the rest continues out
+            DrainPosts();                                             // the disk answers; the rest is bucketed…
+            Fetch.Drain();                                            // …and the tick sends it
             while (provider.Seen.Count > 0)
             {
                 uint ticket = provider.Seen[0].Ticket;
@@ -711,6 +763,7 @@ public class FetchTests : IDisposable
         Table t = scope.Tracks;
         int[] slots = Rows(t, 2);
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
         uint ticket = provider.Seen[0].Ticket;
 
         Fetch.Failed(ticket, 404, 0);
@@ -718,6 +771,7 @@ public class FetchTests : IDisposable
         Assert.Equal(0u, t.Inflight[slots[0]]);
         Assert.Equal(0, Fetch.InFlight);
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
         Assert.Equal(2, provider.Seen.Count);               // asked again, because nothing said not to
     }
 
@@ -730,6 +784,7 @@ public class FetchTests : IDisposable
         Table t = scope.Tracks;
         int[] slots = Rows(t, 2);
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
         uint ticket = provider.Seen[0].Ticket;
 
         Fetch.Failed(ticket, 503, 0);
@@ -739,9 +794,11 @@ public class FetchTests : IDisposable
         Assert.Equal(Fetch.Stamp(scope.Epoch), t.Inflight[slots[0]]);   // still ours: a second plan must not duplicate
         Assert.Single(provider.Seen);                       // and it does NOT go out again in the same second
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
         Assert.Single(provider.Seen);
+        Assert.Equal(1, Fetch.NextWakeAt());                // the host's idle wake is armed to the backoff's deadline…
 
-        Entities.Now = 60;                                  // the backoff expires; the host's frame tick pumps
+        Entities.Now = 60;                                  // …which expires; the wake pumps
         Fetch.Pump();
         Assert.Equal(2, provider.Seen.Count);
         Assert.Equal(1, provider.Seen[1].Attempt);
@@ -756,6 +813,7 @@ public class FetchTests : IDisposable
         Table t = scope.Tracks;
         int[] slots = Rows(t, 1);
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         for (int i = 0; i < Fetch.MaxAttempts; i++)
         {
@@ -788,6 +846,7 @@ public class FetchTests : IDisposable
         Table t = scope.Tracks;
         int[] slots = Rows(t, 1);
         Fetch.Plan(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         // What a commit does to a row it filled: mark the group known and clear the in-flight mark (Table.Applied).
         Column<byte> auth = default;
@@ -797,6 +856,7 @@ public class FetchTests : IDisposable
 
         Assert.Equal(0u, t.Inflight[slots[0]]);
         Fetch.Plan(scope, t, slots, Identity | Extras, FetchPriority.Visible);
+        Fetch.Drain();
         Assert.Equal(2, provider.Seen.Count);
     }
 
@@ -826,6 +886,7 @@ public class FetchTests : IDisposable
         int[] slots = GidRows(t, 1, 404_040);
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Fetch.Drain();
         Assert.Single(provider.Seen);
         Assert.Equal((uint)TrackFields.Row, provider.Seen[0].Wanted);
 
@@ -835,6 +896,7 @@ public class FetchTests : IDisposable
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Fetch.Drain();
         Assert.Single(provider.Seen);                                     // …and nobody asks for it again this scope
         Assert.Equal((uint)TrackFields.PlayCount, t.Asked[slots[0]] & (uint)TrackFields.PlayCount);
     }
@@ -850,8 +912,10 @@ public class FetchTests : IDisposable
         TrackTable t = scope.Tracks;
         int[] slots = GidRows(t, 3, 505_050);
 
-        Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);   // still in flight
+        Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Fetch.Drain();                                                                      // still in flight
         Fetch.Plan(scope, t, slots, (uint)(TrackFields.Identity | TrackFields.Audio), FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Equal(2, provider.Seen.Count);
         Assert.Equal((uint)TrackFields.Identity, provider.Seen[0].Wanted);
@@ -869,11 +933,14 @@ public class FetchTests : IDisposable
         int[] slots = GidRows(t, 1, 606_060);
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Fetch.Drain();
         Fetch.Plan(scope, t, slots, (uint)TrackFields.PlayCount, FetchPriority.Visible);
+        Fetch.Drain();
         Fetch.Failed(provider.Seen[1].Ticket, 404, 0);
 
         Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[0]]);     // the Identity ask is still out and still ours
         Fetch.Plan(scope, t, slots, (uint)(TrackFields.Identity | TrackFields.PlayCount), FetchPriority.Visible);
+        Fetch.Drain();
         Assert.Equal(3, provider.Seen.Count);
         Assert.Equal((uint)TrackFields.PlayCount, provider.Seen[2].Wanted);
     }
@@ -886,12 +953,14 @@ public class FetchTests : IDisposable
         Fetch.Register(provider);
         int[] before = GidRows(scope.Tracks, 1, 707_070);
         Fetch.Plan(scope, scope.Tracks, before, (uint)TrackFields.Row, FetchPriority.Visible);
+        Fetch.Drain();                                                    // the old scope's ask went out
 
         Entities.Switch(CatalogScope.Fake(locale: "nl-NL", market: "NL"));
         Scope next = Entities.Current;
         int[] after = GidRows(next.Tracks, 1, 707_070);                   // the same identity, a new row
         Assert.Equal(0u, next.Tracks.Asked[after[0]]);
         Fetch.Plan(next, next.Tracks, after, (uint)TrackFields.Row, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Equal(2, provider.Seen.Count);
     }
@@ -913,6 +982,7 @@ public class FetchTests : IDisposable
         int[] slots = GidRows(t, 1, 808_080);
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Fetch.Drain();
         AnswerIdentity(provider.Seen[0].Ticket, t.Id[slots[0]], unfilled: (uint)TrackFields.PlayCount);
 
         Assert.True(t.Knows(slots[0], (uint)TrackFields.Identity));
@@ -921,6 +991,7 @@ public class FetchTests : IDisposable
         Assert.Equal(0u, t.Inflight[slots[0]]);
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Fetch.Drain();
         Assert.Equal(2, provider.Seen.Count);                                           // the next mount really retries…
         Assert.Equal((uint)TrackFields.PlayCount, provider.Seen[1].Wanted);              // …for that group alone
     }
@@ -939,11 +1010,13 @@ public class FetchTests : IDisposable
         uint wanted = (uint)(TrackFields.Row | TrackFields.Audio);
 
         Fetch.Plan(scope, t, slots, wanted, FetchPriority.Visible);
+        Fetch.Drain();
         AnswerIdentity(provider.Seen[0].Ticket, t.Id[slots[0]], unfilled: (uint)(TrackFields.PlayCount | TrackFields.Identity));
 
         Assert.Equal((uint)TrackFields.Audio, t.Asked[slots[0]] & (uint)TrackFields.Audio);       // nobody served it: sealed
         Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[0]] & (uint)TrackFields.Identity); // filled: stays asked
         Fetch.Plan(scope, t, slots, wanted, FetchPriority.Visible);
+        Fetch.Drain();
         Assert.Equal(2, provider.Seen.Count);
         Assert.Equal((uint)TrackFields.PlayCount, provider.Seen[1].Wanted);                       // only the refused group
     }
@@ -960,13 +1033,15 @@ public class FetchTests : IDisposable
         int[] slots = GidRows(t, 2, 111_222);
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
-        Assert.Equal(Fetch.Stamp(scope.Epoch), t.Inflight[slots[1]]);
+        Assert.Equal(Fetch.Stamp(scope.Epoch), t.Inflight[slots[1]]);                  // stamped at the PLAN, not the send
+        Fetch.Drain();
         AnswerIdentity(provider.Seen[0].Ticket, t.Id[slots[0]]);                       // names the first row only
 
         Assert.Equal(0u, t.Inflight[slots[0]]);
         Assert.Equal(0u, t.Inflight[slots[1]]);                                         // settled, not stranded
         Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[1]]);                    // and still sealed: no re-ask
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Fetch.Drain();
         Assert.Single(provider.Seen);
     }
 
@@ -986,14 +1061,17 @@ public class FetchTests : IDisposable
         int[] slots = GidRows(t, 2, 333_444);
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Prefetch);
+        Fetch.Drain();
         Fetch.Failed(provider.Seen[0].Ticket, 401, 0);
 
         Assert.Equal(0u, t.Asked[slots[0]]);                                            // un-asked, as any terminal failure
         Assert.Equal(0u, t.Inflight[slots[1]]);
+        Fetch.Drain();
         Assert.Single(provider.Seen);                                                   // nothing goes out while refused
         Assert.Equal(2, Fetch.Refused);
 
         Fetch.Resume();
+        Fetch.Pump();                                                                   // the Online transition's pump
 
         Assert.Equal(2, provider.Seen.Count);                                           // planned again, as ONE request…
         Assert.Equal(2, provider.Seen[1].Count);
@@ -1002,6 +1080,7 @@ public class FetchTests : IDisposable
         Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[1]]);
         Assert.Equal(0, Fetch.Refused);
         Fetch.Resume();
+        Fetch.Pump();
         Assert.Equal(2, provider.Seen.Count);                                           // once: the list is spent
     }
 
@@ -1017,9 +1096,11 @@ public class FetchTests : IDisposable
         int[] slots = GidRows(t, 1, 555_666);
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Fetch.Drain();
         Fetch.Failed(provider.Seen[0].Ticket, 400, 0);
         Assert.Equal(0, Fetch.Refused);
         Fetch.Resume();
+        Fetch.Pump();
         Assert.Single(provider.Seen);
     }
 
@@ -1032,11 +1113,13 @@ public class FetchTests : IDisposable
         int[] slots = GidRows(scope.Tracks, 1, 777_888);
 
         Fetch.Plan(scope, scope.Tracks, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Fetch.Drain();
         Fetch.Failed(provider.Seen[0].Ticket, 403, 0);
         Assert.Equal(1, Fetch.Refused);
 
         Entities.Switch(CatalogScope.Fake(locale: "nl-NL", market: "NL"));            // the slot indexes a table nobody holds
         Fetch.Resume();
+        Fetch.Pump();
 
         Assert.Single(provider.Seen);
         Assert.Equal(0, Fetch.Pending);
@@ -1054,10 +1137,12 @@ public class FetchTests : IDisposable
         int[] slots = GidRows(t, 1, 999_000);
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Fetch.Drain();
         Fetch.Failed(provider.Seen[0].Ticket, 401, 0);
         t.Id[slots[0]] = default;                                                       // recycled: another row lives here now
 
         Fetch.Resume();
+        Fetch.Pump();
         Assert.Single(provider.Seen);
     }
 
@@ -1073,17 +1158,21 @@ public class FetchTests : IDisposable
         int[] slots = GidRows(t, 1, 121_212);
 
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Fetch.Drain();
         AnswerIdentity(provider.Seen[0].Ticket, t.Id[slots[0]]);                        // PlayCount: asked, never filled
         Fetch.Plan(scope, t, slots, (uint)TrackFields.Row, FetchPriority.Visible);
+        Fetch.Drain();
         Assert.Single(provider.Seen);                                                   // sealed for the scope…
 
         Entities.Refresh(t, slots, (uint)TrackFields.PlayCount);                        // …until somebody means it
+        Fetch.Drain();
 
         Assert.Equal(2, provider.Seen.Count);
         Assert.Equal((uint)TrackFields.PlayCount, provider.Seen[1].Wanted);
         Assert.Equal(Fetch.Stamp(scope.Epoch), t.Inflight[slots[0]]);
 
         Entities.Refresh(t, slots, (uint)TrackFields.Identity);                         // known: nothing to fetch again
+        Fetch.Drain();
         Assert.Equal(2, provider.Seen.Count);
     }
 
@@ -1101,6 +1190,7 @@ public class FetchTests : IDisposable
         Assert.Equal(EntityProvider.None, scope.Homes.Id[home].Provider);
 
         Fetch.Plan(scope, scope.Homes, new[] { home }, (uint)HomeFields.All, FetchPriority.Visible);
+        Fetch.Drain();
 
         FetchBatch batch = provider.Last!;
         Assert.Equal(1, provider.Batches);
@@ -1124,6 +1214,7 @@ public class FetchTests : IDisposable
 
         Fetch.Plan(scope, scope.Homes, new[] { home }, 1u, FetchPriority.Visible);
         Fetch.Plan(scope, scope.Searches, new[] { search }, 1u, FetchPriority.Visible);
+        Fetch.Drain();                                    // one tick, and still two requests: two tables, two shapes
 
         Assert.Equal(2, provider.Seen.Count);
         Assert.All(provider.Seen, x => Assert.Equal(1, x.Count));
@@ -1172,10 +1263,12 @@ public class FetchTests : IDisposable
         Assert.Equal(10, Fetch.Pending);
 
         Entities.Switch(CatalogScope.Fake(locale: "de-DE", market: "DE"));
-        Fetch.Register(new RecordingProvider(EntityProvider.Spotify));
-        Fetch.Pump();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        Fetch.Drain();                                    // the tick after the switch: the stale bucket is dropped, not sent
 
         Assert.Equal(0, Fetch.Pending);
+        Assert.Empty(provider.Seen);
     }
 
     [Fact]
@@ -1186,6 +1279,7 @@ public class FetchTests : IDisposable
         Fetch.Register(provider);
         Table t = scope.Tracks;
         Fetch.Plan(scope, t, Rows(t, 3), Identity, FetchPriority.Visible);
+        Fetch.Drain();
         uint ticket = provider.Seen[0].Ticket;
 
         Entities.Switch(CatalogScope.Fake(locale: "fr-FR", market: "FR"));
@@ -1206,8 +1300,10 @@ public class FetchTests : IDisposable
 
         Entities.Switch(CatalogScope.Fake(locale: "es-ES", market: "ES"));
         Fetch.Continue(scope, t, slots, Identity, FetchPriority.Visible);
+        Fetch.Drain();
 
         Assert.Empty(provider.Seen);
+        Assert.Equal(0, Fetch.Pending);
     }
 
     // ── the backoff (pure) ──────────────────────────────────────────────────────────────────────────────────────────

@@ -162,7 +162,6 @@ message Episode {
     optional sint32 duration = 7;
     repeated AudioFile audio = 12;
     optional string description = 64;
-    optional sint32 number = 65;
     optional Date publish_time = 66;
     optional sint32 deprecated_popularity = 67;
     optional ImageGroup cover_image = 68;
@@ -181,6 +180,8 @@ message Episode {
     optional Audio original_audio = 84;
 
     optional Episode.EpisodeType type = 87;
+    optional int32 season = 88;
+    optional int32 number = 89;
     enum EpisodeType {
         FULL = 0;
         TRAILER = 1;

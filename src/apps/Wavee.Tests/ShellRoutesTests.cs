@@ -35,7 +35,19 @@ public class ShellRouteTableTests
         // destination in the app.
         for (int i = 0; i < Shell.RouteKindCount; i++)
             Assert.Equal((Shell.RouteKind)i, Shell.Row((Shell.RouteKind)i).Kind);
-        Assert.Equal(30, Shell.RouteKindCount);   // 15 exact + 10 prefix + 3 concert + ConnectDiagnostics + NotFound
+        // 15 exact + 10 prefix + 3 concert + Episode (podcast rework wave P2) + ConnectDiagnostics + NotFound
+        Assert.Equal(31, Shell.RouteKindCount);
+    }
+
+    [Fact]
+    public void Episode_is_a_kind_with_its_own_label_and_claims_material_like_show()
+    {
+        // Podcast rework wave P2 (plan §5.11): an episode renders the shared detail surface exactly like show/album,
+        // so it needs its own label + glyph — without this it would fall through to "Your Library" (ch 18 §7).
+        Assert.Equal(Strings.Nav.Episode, Shell.Row(Shell.RouteKind.Episode).TitleLocKey);
+        Assert.True(Shell.Row(Shell.RouteKind.Episode).ClaimsMaterial);
+        Assert.False(Shell.Row(Shell.RouteKind.Episode).KeyedByArg);
+        Assert.False(Shell.Row(Shell.RouteKind.Episode).DeveloperOnly);
     }
 
     [Fact]
@@ -214,6 +226,7 @@ public class ShellRouteCodecTests
     [InlineData("browse:spotify:genre:pop", Shell.RouteKind.BrowseCategory)]
     [InlineData("home-section:spotify:section:abc", Shell.RouteKind.HomeSection)]
     [InlineData("browse-section:spotify:section:abc", Shell.RouteKind.BrowseSection)]
+    [InlineData("episode:spotify:episode:4uLU6hMCjMI75M1A2tKUQC", Shell.RouteKind.Episode)]
     public void Every_prefix_family_resolves_to_its_kind(string key, Shell.RouteKind expected)
         => Assert.Equal(expected, Shell.Parse(key).Kind);
 
@@ -277,6 +290,14 @@ public class ShellRouteCodecTests
     {
         Assert.Equal(Shell.RouteKind.Liked, Shell.For(EntityUri.Parse("spotify:collection:tracks")).Kind);
         Assert.Equal(Shell.RouteKind.Liked, Shell.For(EntityUri.Parse("spotify:user:jane:collection")).Kind);
+    }
+
+    [Fact]
+    public void Shell_for_routes_an_episode_uri_to_the_episode_kind()
+    {
+        // Podcast rework wave P2 (plan §5.11 item 2): the composer every "go to this thing" call site shares.
+        var r = Shell.For(EntityUri.Parse("spotify:episode:4uLU6hMCjMI75M1A2tKUQC"));
+        Assert.Equal(Shell.RouteKind.Episode, r.Kind);
     }
 
     [Fact]
@@ -355,11 +376,19 @@ public class DeepLinkTests
     }
 
     [Fact]
-    public void A_bare_spotify_playable_uri_means_play_this()
+    public void A_bare_spotify_track_uri_means_play_this()
+        => Assert.Equal(Shell.DeepLinkKind.Play, Shell.DeepLink("spotify:track:4uLU6hMCjMI75M1A2tKUQC").Kind);
+
+    [Fact]
+    public void A_bare_spotify_episode_uri_opens_its_page_rather_than_playing()
     {
-        // Gating this on Track alone is why a shared EPISODE link fell through to "route is null ⇒ refuse".
-        Assert.Equal(Shell.DeepLinkKind.Play, Shell.DeepLink("spotify:track:4uLU6hMCjMI75M1A2tKUQC").Kind);
-        Assert.Equal(Shell.DeepLinkKind.Play, Shell.DeepLink("spotify:episode:4uLU6hMCjMI75M1A2tKUQC").Kind);
+        // Podcast rework decision D-2 (plan §12), superseding the earlier 0.2.9-parity fix that widened the play
+        // gate to Track-or-Episode (the historical defect that fix closed: gating on Track alone meant a shared
+        // episode link fell through to "route is null ⇒ refuse" and did nothing). Now an episode link OPENS the
+        // episode page — whose own primary is one click from Play — exactly like every other shared entity link.
+        var v = Shell.DeepLink("spotify:episode:4uLU6hMCjMI75M1A2tKUQC");
+        Assert.Equal(Shell.DeepLinkKind.Open, v.Kind);
+        Assert.Equal(Shell.RouteKind.Episode, v.Route.Kind);
     }
 
     [Fact]

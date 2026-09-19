@@ -42,8 +42,9 @@ public static partial class Shell
     // the back/forward flyout, the sidebar's pinned rows and the not-found glyph. Here they are three READS of ONE
     // table (`Row(kind)`), so a new kind cannot be added with three of the four columns filled in.
 
-    /// <summary>One kind per destination <see cref="PageFor"/> can render. 28 registered routes + connect-diagnostics
-    /// + <see cref="RouteKind.NotFound"/> (29 in 0.2.9, less ApiConsole — deleted, plan §9.6 Q7).</summary>
+    /// <summary>One kind per destination <see cref="PageFor"/> can render. 29 registered routes (28 in 0.2.9's own
+    /// count, +1 for the podcast rework's <see cref="RouteKind.Episode"/>, wave P2) + connect-diagnostics +
+    /// <see cref="RouteKind.NotFound"/> (29 in 0.2.9, less ApiConsole — deleted, plan §9.6 Q7).</summary>
     public enum RouteKind : byte
     {
         // s_exact (15) — ApiConsole DELETED, plan §9.6 Q7, 2026-09-12: the console and its four ApiDebug* helpers are cut
@@ -53,6 +54,10 @@ public static partial class Shell
         Album, Playlist, Artist, Show, Prerelease, Discography, Module, BrowseCategory, HomeSection, BrowseSection,
         // ConcertRoutes (3)
         Concerts, ArtistConcerts, Concert,
+        // Podcast rework wave P2 (owner S; podcast-show-rework-implementation.md §5.11), appended the same way the
+        // concert family was: an episode renders the shared detail surface like show/artist, so it needs its own
+        // label + glyph rather than falling through to "Your Library".
+        Episode,
         // Renderable by PageFor, NOT in 0.2.9's s_exact — the defect the table closes.
         //
         // 0.2.9: `ContentHost.PageFor` renders `ConnectDiagnosticsPage.Route` but the key is absent from
@@ -158,6 +163,10 @@ public static partial class Shell
         new(RouteKind.ArtistConcerts,      "artist-concerts:",     true,  Strings.Nav.ArtistConcertsGeneric, Icons.Calendar, false, false, false),
         new(RouteKind.Concert,             "concert:",             true,  Strings.Nav.ConcertDetails,   Icons.Calendar,    false, false, false),
 
+        // Podcast rework wave P2: a shared `spotify:episode:` link OPENS this route (decision D-2) rather than
+        // playing — the same shared-detail-surface treatment as `show:`, so it wears its own label + glyph too.
+        new(RouteKind.Episode,             "episode:",             true,  Strings.Nav.Episode,          Icons.RadioTower,  false, true,  false),
+
         new(RouteKind.ConnectDiagnostics,  "connect-diagnostics",  false, Strings.Nav.ConnectDiagnostics, Icons.MusicNote, true,  false, false),
         new(RouteKind.NotFound,            "",                     false, Strings.Nav.PageNotFound,     Icons.MusicNote,   false, false, false),
     ];
@@ -196,10 +205,10 @@ public static partial class Shell
     // ── 1.3 lazy page-factory groups ────────────────────────────────────────────────────────────────────────────────
     //
     // Three of the nine App.cs page-owner installs moved off the boot path and onto this miss arm: Home.InstallPages
-    // (8 kinds: Home/Search/Browse/Recents + the two section prefixes + HomeCustomize), Album.InstallPages (3: Album/
-    // Prerelease/Show) and Playlist.InstallPages (6: Playlist/Local/Liked + the three library kinds) — 17 of the 29
-    // renderable kinds, and most of the boot.pages cost. Each group installs at most ONCE (the bool below), then every
-    // kind in it resolves the ordinary way.
+    // (8 kinds: Home/Search/Browse/Recents + the two section prefixes + HomeCustomize), Album.InstallPages (4: Album/
+    // Prerelease/Show/Episode — Episode joined in the podcast rework's wave P2, plan §5.11) and Playlist.InstallPages
+    // (6: Playlist/Local/Liked + the three library kinds) — 18 of the 30 renderable kinds, and most of the boot.pages
+    // cost. Each group installs at most ONCE (the bool below), then every kind in it resolves the ordinary way.
     //
     // NOT moved here — each stays eager in App.cs, called exactly where it always was:
     //   • Artist.InstallPages (Artist/Discography + Concert.InstallPages's three concert kinds): its own comment says
@@ -227,7 +236,10 @@ public static partial class Shell
                 s_homeGroupInstalled = true;
                 Home.InstallPages();
                 break;
-            case RouteKind.Album or RouteKind.Prerelease or RouteKind.Show:
+            // RouteKind.Episode joined this group in the podcast rework's wave P2 (plan §5.11): Album.InstallPages()
+            // registers its placeholder page the same way it registers Show's real one, so a miss on EITHER must
+            // install the SAME group or the episode route's page factory would never resolve.
+            case RouteKind.Album or RouteKind.Prerelease or RouteKind.Show or RouteKind.Episode:
                 if (s_albumGroupInstalled) return;
                 s_albumGroupInstalled = true;
                 Album.InstallPages();
@@ -394,6 +406,7 @@ public static partial class Shell
             EntityKind.Artist => RouteKind.Artist,
             EntityKind.Show => RouteKind.Show,
             EntityKind.Concert => RouteKind.Concert,
+            EntityKind.Episode => RouteKind.Episode,
             _ => RouteKind.NotFound,
         };
         return kind == RouteKind.NotFound
@@ -563,7 +576,7 @@ public static partial class Shell
     /// prefix table: a deep link names the FAMILY (<c>album</c>), the table names the PREFIX (<c>album:</c>), and
     /// letting the gap close itself would make <c>home-section</c> deep-linkable as a bare word.</summary>
     static bool IsEntityVerb(string route)
-        => route is "album" or "pl" or "artist" or "show" or "prerelease" or "module";
+        => route is "album" or "pl" or "artist" or "show" or "prerelease" or "module" or "episode";
 
     static bool TryParseVerb(ReadOnlySpan<char> raw, out string name, out string route, out string arg,
         out string ctx, out string link)
@@ -590,10 +603,12 @@ public static partial class Shell
         return true;
     }
 
-    /// <summary>A bare Spotify entity uri. Pages become an OPEN on the shell's own route names; a PLAYABLE (a track OR
-    /// an episode) becomes a PLAY — which is what clicking a shared link to one means, and gating it on Track alone is
-    /// why a shared episode link fell through to "route is null ⇒ refuse" and did nothing at all. Everything else
-    /// (users, concerts, search links, <c>https://open.spotify.com/…</c> web links) is refused, not guessed at.</summary>
+    /// <summary>A bare Spotify entity uri. Pages become an OPEN on the shell's own route names; a PLAYABLE track
+    /// becomes a PLAY — which is what clicking a shared link to one means, and gating it on Track alone is why a
+    /// shared track link fell through to "route is null ⇒ refuse" and did nothing at all. An episode is now an OPEN
+    /// too (decision D-2, podcast plan §12): a shared episode link lands on the episode page, whose primary is one
+    /// click from playing, rather than starting playback the instant the link is followed. Everything else (users,
+    /// concerts, search links, <c>https://open.spotify.com/…</c> web links) is refused, not guessed at.</summary>
     static bool TryParseSpotifyUri(ReadOnlySpan<char> raw, out string name, out string route, out string arg, out string ctx)
     {
         name = route = arg = ctx = "";
@@ -613,7 +628,7 @@ public static partial class Shell
         // kind (the id stays verbatim — base62 IS case-sensitive).
         string uriText = string.Concat("spotify:", kind.ToString().ToLowerInvariant(), ":", id.ToString());
         var entityKind = EntityUri.KindOf(uriText);
-        if (entityKind is EntityKind.Track or EntityKind.Episode)
+        if (entityKind is EntityKind.Track)
         {
             name = "play";
             ctx = uriText;
@@ -625,6 +640,7 @@ public static partial class Shell
             EntityKind.Playlist => "pl",
             EntityKind.Artist => "artist",
             EntityKind.Show => "show",
+            EntityKind.Episode => "episode",
             _ => "",
         };
         if (route.Length == 0) return false;
@@ -2041,7 +2057,11 @@ public static partial class Shell
         /// <summary>People are circles (radius 22); everything else a 5-DIP rounded square.</summary>
         public static bool IsCircular(ItemKind kind) => kind is ItemKind.Artist or ItemKind.User;
 
-        /// <summary>Choosing a row PLAYS it (a track, an episode) rather than navigating.</summary>
+        /// <summary>Choosing a row PLAYS it (a track, an episode) rather than navigating. Deliberately UNCHANGED by the
+        /// podcast rework's D-2 (an episode DEEP LINK opens its page): picking a rich row here is the user explicitly
+        /// choosing something they just searched for — the same explicit-play action <c>Search.UI.cs</c>'s hit rows and
+        /// <c>Recents.UI.cs</c>'s rows are, not a passively-received shared link. <see cref="RouteFor"/> below has no
+        /// Episode arm (it falls to <see cref="Route.None"/>) precisely because choosing one never navigates.</summary>
         public static bool ChoosePlays(ItemKind kind) => kind is ItemKind.Track or ItemKind.Episode;
 
         /// <summary>Where choosing a row navigates, or <see cref="Route.None"/> for a row that plays (or a profile, which

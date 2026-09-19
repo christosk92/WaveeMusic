@@ -76,7 +76,7 @@ public class PlaybackIntakeTests
     }
 
     [Fact]
-    public void A_newer_play_supersedes_an_older_one_still_waiting_and_keeps_the_queue_body_between_them()
+    public void Every_play_reaches_the_reducer_for_its_command_receipt_in_arrival_order()
     {
         var released = new List<ClusterBuffer>();
         var intakes = new Playback.IntakeQueue(released.Add);
@@ -86,8 +86,10 @@ public class PlaybackIntakeTests
         intakes.Arrive(QueueIntake(rows), pending: 0);
         intakes.Arrive(LoadIntake(second), pending: 1);                     // one mailbox item came between
 
-        Assert.Equal(new[] { first }, released);
-        Assert.Equal(2, intakes.Count);
+        Assert.Empty(released);
+        Assert.Equal(3, intakes.Count);
+        Assert.True(intakes.TryTake(mailboxEmpty: false, out Playback.Intake initial));
+        Assert.Same(first, initial.Buffer);
         Assert.True(intakes.TryTake(mailboxEmpty: false, out Playback.Intake a));
         Assert.Same(rows, a.Buffer);
         Assert.False(intakes.TryTake(mailboxEmpty: false, out _));          // the item between goes before the newer play

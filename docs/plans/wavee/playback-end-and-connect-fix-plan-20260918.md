@@ -206,3 +206,7 @@ After you approve the prototype: `podcast-show-rework-implementation.md` (same s
 - Engine: `dotnet build src/FluentGpu.slnx` Debug+Release and engine tests (`--blame-hang-timeout`) in `fluent-gpu-pin`; new RT-path test: drained mixer + buffered sink ⇒ `Ended` within one buffer.
 - App: one Debug + one Release build of `wavee-0.3`, `dotnet test src/apps/Wavee.Tests` — new pure tests for `DrainVerdict`, `MirrorSnapshot`, `ResumeStart`, `EndgamePlan`, `PublishGate`, session `Step` (split drops, new-id announce), bind-before-send ordering.
 - Live (side-folder publish, never touching the user's running instance): play a track with crossfade 0 and an empty queue tail ⇒ `[gapless] ended` then advance/autoplay; mirror a phone, pause the phone > one track length, press play in Wavee ⇒ `fromMs` log shows a sane position and a prepared next; confirm `put-state … owner=Us` after a forced dealer drop and that an AP reset leaves `dealer connected` count unchanged. Compare AP reset count/day before and after B6.
+
+## As built
+
+B4 and B6 (2026-09-19): see [as-built-20260919.md](as-built-20260919.md) — sections B4, B6.

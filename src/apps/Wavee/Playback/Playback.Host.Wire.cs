@@ -47,6 +47,29 @@ public static partial class Playback
 
     /// <summary>The parity half of the PUT about to be captured. While we are not the active device (or hold nothing) only
     /// the device facts travel; the player half is empty by construction (<see cref="Snapshot.Of"/>).</summary>
+    static WireOrigin? s_wireOrigin;
+    static EntityId s_wireOriginContext;
+
+    static void CaptureOrigin(in Spotify.Decode.RemoteLoad load, ClusterBuffer buffer)
+    {
+        s_wireOriginContext = EntityId.Parse(buffer.Utf8(load.ContextUri));
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        ReadMetadata(load.ResolvedMetadata);
+        ReadMetadata(load.ContextMetadata); // The command's explicit sort/filter wins over resolver defaults.
+        void ReadMetadata(TextRef source)
+        {
+            if (source.IsEmpty) return;
+            using var json = System.Text.Json.JsonDocument.Parse(buffer.Utf8(source).ToArray());
+            if (json.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+                foreach (var property in json.RootElement.EnumerateObject())
+                    if (property.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+                        metadata[property.Name] = property.Value.GetString() ?? "";
+        }
+        s_wireOrigin = new WireOrigin(Text(load.FeatureIdentifier), Text(load.FeatureVersion), Text(load.ViewUri),
+            Text(load.ExternalReferrer), Text(load.ReferrerIdentifier), Text(load.DeviceIdentifier), Text(load.CommandId), metadata.ToArray());
+        string Text(TextRef value) => value.IsEmpty ? "" : Encoding.UTF8.GetString(buffer.Utf8(value));
+    }
+
     static WireExtras CaptureWire(long frameNowMs)
     {
         string? sender = s_state.LastCommandSender != 0 && s_state.LastCommandMessageId != 0
@@ -57,17 +80,32 @@ public static partial class Playback
         string output = OutputDeviceName();
         if (!Ownership.IsActiveOnWire(in s_state.Own) || !s_state.HasCurrent || Entities.Current is null)
             return new WireExtras(null, 0, default, privateSession, output, sender);
-        return new WireExtras(WindowNow(), RevisionNow(), in s_wireIds, privateSession, output, sender);
+        return new WireExtras(WindowNow(), RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.ContentRate, s_wireOrigin, OutputDeviceKind());
     }
 
     /// <summary>The OS endpoint we render to: the one the user chose, else the system default's row. "" when unknown —
     /// never another machine's name (0.2.9's rule).</summary>
+    static byte OutputDeviceKind()
+    {
+        if (Audio.CurrentEndpoint is { } active) return active.Kind;
+        foreach (Audio.LocalAudioDevice device in Audio.Devices.Peek())
+            if (device.IsDefault) return device.Kind;
+        return 0;
+    }
+
     static string OutputDeviceName()
     {
-        string chosen = Platform.Settings.Get(Platform.Keys.OutputDeviceName);
-        if (chosen.Length > 0) return chosen;
+        if (Audio.CurrentEndpoint is { } active)
+        {
+            Spotify.Telemetry.AudioRoute(active.Id, active.Name, active.Kind.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return active.Name;
+        }
         foreach (Audio.LocalAudioDevice device in Audio.Devices.Peek())
-            if (device.IsDefault) return device.Name ?? "";
+            if (device.IsDefault)
+            {
+                Spotify.Telemetry.AudioRoute(device.Id, device.Name, device.Kind.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                return device.Name ?? "";
+            }
         return "";
     }
 
@@ -111,7 +149,7 @@ public static partial class Playback
             WireRow current = RowOf(s_state.Current, in deck, s_state.CurrentId);
             int contextIndex = 0;
             for (int k = 0; laid && k < cursor; k++) if (rows[k].Provider == (byte)QueueProvider.Context) contextIndex++;
-            s_window = new WireWindow(in current, scratch.AsSpan(0, prevCount), scratch.AsSpan(prevCount, nextCount), contextIndex);
+            s_window = new WireWindow(in current, scratch.AsSpan(0, prevCount), scratch.AsSpan(prevCount, nextCount), s_state.Context.Kind == EntityKind.Show ? -1 : contextIndex);
         }
         finally { ArrayPool<WireRow>.Shared.Return(scratch, clearArray: true); }
 
@@ -226,8 +264,7 @@ public static partial class Playback
     /// new context (0.2.9: <c>Started</c>, or the context changed). An advance inside the context keeps the session.</summary>
     static void WireStarted(EntityId context, PlayReason why)
     {
-        bool fresh = s_wireIds.SessionId == UInt128.Zero || !context.Equals(s_wireContext)
-                     || why is PlayReason.ClickRow or PlayReason.Remote or PlayReason.PlayButton;
+        bool fresh = s_wireIds.SessionId == UInt128.Zero || !context.Equals(s_wireContext);
         UInt128 playback = Random128();
         s_wireIds = fresh
             ? new WireIds(Random128(), playback, Random128(), Random128(), Random128())
@@ -387,6 +424,12 @@ public static partial class Playback
     {
         inactive = default;
         if (s_state.Own.Kind != Owner.Us) return false;
+        int finalPosition = s_state.Position(FrameNowMs());
+        if (IsSpotifyEpisode(s_state.CurrentId)) LeaveEpisode(s_state.CurrentId, finalPosition, UnixNowMs(), "shutdown");
+        if (s_registration.Open) Spotify.Telemetry.Ended(ref s_registration, finalPosition, "logout");
+        s_registration = default;
+        s_registeredId = default;
+        ArmProgressMirror(false);
         var device = new WireExtras(null, 0, default, Platform.Settings.Get(Platform.Keys.PrivateSession), OutputDeviceName(), null);
         inactive = Snapshot.Retiring(in s_state, in s_identity, UnixNowMs(), in device);
         return true;
@@ -485,6 +528,8 @@ public static partial class Playback
         s_revision = 0;
         s_revisionScope = null;
         s_wireIds = default;
+        s_wireOrigin = null;
+        s_wireOriginContext = default;
         s_wireContext = default;
         s_foreign.Clear();
         s_forward.Clear();

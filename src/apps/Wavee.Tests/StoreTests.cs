@@ -14,6 +14,13 @@
 // the same id and therefore the same slot — and a decoder that only ever held 16 gid bytes can key a row without a
 // uri string existing anywhere. The third new fact is the leak (defect 1): a trim now measurably shrinks the
 // interner, which is the entire return on ref-counting the graph's text.
+//
+// SINCE WAVE D1 (cache integrity, 2026-09-19) the file is named for its schema and every open goes through ONE
+// recreate path with ONE always-on `store.open` line; a damaged file is rebuilt ONCE mid-session (`Store.Rebuild`,
+// the door the fault path uses); and "Clear metadata" (`Store.DropCatalog`) empties the cache tier while keeping the
+// library, the journal and the ledgers. Those facts read the always-on log lines they promise — the lines ARE the
+// contract a "why was nothing cached" report depends on. The reaper and the all-or-nothing delete are pinned in
+// StoreFilesTests; the pure recovery verdict in StoreHealthTests.
 
 using System.Collections.Concurrent;
 using System.Text;
@@ -121,12 +128,73 @@ public class StoreTests : IDisposable
             try { File.Delete(_dbPath + suffix); } catch (IOException) { }
     }
 
-    Scope Boot()
+    Scope Boot() => Boot(CatalogScope.Fake());
+
+    Scope Boot(CatalogScope key)
     {
-        Entities.Boot(CatalogScope.Fake());
+        Entities.Boot(key);
         Store.Flush();                             // let Warm resolve the scope id before anything reads or writes
         return Entities.Current;
     }
+
+    /// <summary>A scope with a REAL account (StoreEdgeTests' shape): <c>CatalogScope.Fake()</c> has an empty account,
+    /// so no library relation hangs off anything.</summary>
+    static CatalogScope AccountScope(string account) => new("wavee-test", account, "en-US", "US", 0, true);
+
+    string FileNameOnly => Path.GetFileName(_dbPath);
+
+    /// <summary>The newest always-on line with this event id whose <paramref name="field"/> is <paramref name="value"/>.
+    /// The ring is process-wide, but this collection runs alone (DisableParallelization) and every file name and step
+    /// here carries a fresh guid, so the match is this test's own line. The line IS the contract being pinned: the D1
+    /// gate reads `store.open outcome=…` and `store.recovered …` off the log, and nothing else says why a session ran
+    /// without its cache.</summary>
+    static WaveeLogEntry LastLine(string eventId, string field, string value)
+    {
+        WaveeLogEntry[] ring = Log.Snapshot();
+        for (int i = ring.Length - 1; i >= 0; i--)
+            if (ring[i].EventId == eventId && FieldOf(ring[i], field) == value) return ring[i];
+        Assert.Fail($"no {eventId} line with {field}={value} in the log ring");
+        return default;
+    }
+
+    static string? FieldOf(in WaveeLogEntry entry, string name)
+    {
+        if (entry.Fields is not { } fields) return null;
+        foreach (WaveeLogField f in fields)
+            if (f.Name == name) return f.Value;
+        return null;
+    }
+
+    /// <summary>A second, unpooled connection to the store's file — what any other reader of a WAL database is. Used
+    /// to look at the file directly (and to plant rows no public door writes), never to change what the store does.
+    /// Unpooled, so no handle outlives the call and the store's rename-first delete is never refused by the test.</summary>
+    Microsoft.Data.Sqlite.SqliteConnection Direct()
+    {
+        var cs = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = _dbPath, Pooling = false };
+        var c = new Microsoft.Data.Sqlite.SqliteConnection(cs.ToString());
+        c.Open();
+        return c;
+    }
+
+    /// <summary>Every statement in <paramref name="sql"/>, on <see cref="Direct"/>.</summary>
+    void Sql(string sql)
+    {
+        using var c = Direct();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>One value, read on <see cref="Direct"/>.</summary>
+    object? SqlValue(string sql)
+    {
+        using var c = Direct();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = sql;
+        return cmd.ExecuteScalar();
+    }
+
+    long Count(string sql) => SqlValue(sql) is long n ? n : -1;
 
     void Write(params (string Uri, string? Title, int DurationMs, uint Known, int Auth, int FetchedAt, int Touched)[] rows)
     {
@@ -434,7 +502,9 @@ public class StoreTests : IDisposable
     public void A_file_written_by_another_schema_is_deleted_not_migrated()
     {
         // plan §4.4: "a v2 file is deleted, not migrated — it is a cache". Every row in it can be asked for again,
-        // and a migration would be a second schema to keep correct forever.
+        // and a migration would be a second schema to keep correct forever. In the app a schema change names a
+        // DIFFERENT file (Store.FileName) and this never happens at open; a test's path carries no schema, so here it
+        // is the `stale` verdict, set aside and recreated through the one recreate path.
         Scope scope = Boot();
         Write(("spotify:track:a", "Alpha", 1, Identity, 3, 1, 1));
         Store.Shutdown();
@@ -462,9 +532,77 @@ public class StoreTests : IDisposable
         Scope scope = Boot();
 
         Assert.True(Store.IsOpen);
+        // …and the log says so in the one line a "why was nothing cached" report greps for: SQLITE_NOTADB at the
+        // pragmas, set aside and recreated — at Warning, because a whole cache was just thrown away.
+        WaveeLogEntry open = LastLine("store.open", "file", FileNameOnly);
+        Assert.Equal("recreated:unreadable:26", FieldOf(open, "outcome"));
+        Assert.Equal(WaveeLogLevel.Warning, open.Level);
         Write(("spotify:track:a", "Alpha", 1, Identity, 3, 1, 1));   // and it persists like any fresh file
         Assert.True(Store.IsOpen);
         _ = scope;
+    }
+
+    /// <summary>The fingerprint verdict, through the same single recreate path. Under the schema-named file a stale
+    /// fingerprint at the path only happens to a file copied or renamed by hand — so the file here is written by hand,
+    /// with an old-shaped <c>track</c> table a kept file would trip over forever (<c>CREATE TABLE IF NOT EXISTS</c> over
+    /// it is a no-op, and the first upsert names a column it does not have).</summary>
+    [Fact]
+    public void A_file_stamped_with_another_fingerprint_is_recreated_and_persists_afterwards()
+    {
+        Sql("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES('schema','0123456789abcdef');" +
+            "CREATE TABLE track(uri TEXT PRIMARY KEY, title TEXT); INSERT INTO track VALUES('spotify:track:a','Old');");
+
+        Scope scope = Boot();
+        Table t = scope.Tracks;
+        int faults = Store.Stats.Faults;
+
+        Assert.True(Store.IsOpen);
+        Assert.Equal("recreated:stale", FieldOf(LastLine("store.open", "file", FileNameOnly), "outcome"));
+        Store.Read(scope, t, new[] { t.Slot("spotify:track:a".AsSpan()) }, Identity, FetchPriority.Visible);
+        Store.Flush();
+        DrainPosts();
+        Assert.Empty(_shape.In);                                 // nothing of the old file survived…
+
+        Write(("spotify:track:b", "Beta", 2, Identity, 3, 1, 1));
+        Store.Read(scope, t, new[] { t.Slot("spotify:track:b".AsSpan()) }, Identity, FetchPriority.Visible);
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Beta", Assert.Single(_shape.In).Title);    // …and the fresh one takes rows and answers reads
+        Assert.Equal(faults, Store.Stats.Faults);
+    }
+
+    /// <summary>One always-on line per open, whatever happened: a brand-new file says <c>created</c> (Info), the same
+    /// file on the next boot says <c>opened</c>, and both name the schema they hold.</summary>
+    [Fact]
+    public void Every_open_writes_one_store_open_line_created_then_opened()
+    {
+        Boot();
+        WaveeLogEntry first = LastLine("store.open", "file", FileNameOnly);
+        Assert.Equal("created", FieldOf(first, "outcome"));
+        Assert.Equal("0", FieldOf(first, "walBytes"));           // nothing was there before sqlite looked
+        Assert.Equal($"{Store.Fingerprint(Store.Ddl()):x16}", FieldOf(first, "fingerprint"));
+        Assert.Equal(WaveeLogLevel.Info, first.Level);
+
+        Store.Shutdown();
+        Boot();
+        WaveeLogEntry second = LastLine("store.open", "file", FileNameOnly);
+        Assert.True(second.Sequence > first.Sequence);
+        Assert.Equal("opened", FieldOf(second, "outcome"));
+        Assert.Equal(WaveeLogLevel.Info, second.Level);
+    }
+
+    /// <summary>THE NAME CARRIES THE SCHEMA (wave D1). A build whose DDL differs names a different file, so it never
+    /// opens — never mind deletes — the file another build is using.</summary>
+    [Fact]
+    public void The_file_name_carries_the_schema_and_a_schema_change_names_another_file()
+    {
+        string name = Store.FileName;
+        Assert.Equal($"library.{Store.Fingerprint(Store.Ddl()):x16}.db", name);
+
+        Store.Shutdown();
+        Store.Register(new StoreProbeShape(extraColumn: true));  // the same kind, one column more
+
+        Assert.NotEqual(name, Store.FileName);
     }
 
     [Theory]
@@ -506,6 +644,9 @@ public class StoreTests : IDisposable
         Staging staging = Staging.Rent();
         Assert.False(Store.WriteBehind(staging));
         Staging.Return(staging);                                 // refused ⇒ still the caller's
+        Store.DropCatalog();                                     // no store: nothing to clear, nothing to wait for
+        Store.Rebuild("no-store");                               // …and nothing to rebuild
+        Assert.False(Store.IsOpen);
     }
 
     // ── the memory trim (R2, defect 1) ──────────────────────────────────────────────────────────────────────────────
@@ -616,6 +757,166 @@ public class StoreTests : IDisposable
         // C6: never replayed automatically. The failed row is a record of what was in flight when the process died,
         // for the shell to reconcile — not a queue that fires itself on the next launch.
         Assert.Equal(1, Store.PendingIntents());
+    }
+
+    // ── mid-session recovery (wave D1) ──────────────────────────────────────────────────────────────────────────────
+    //
+    // `Store.Rebuild` is the recovery door the fault path uses the first time sqlite says the FILE is damaged. It is
+    // driven directly here: corrupting bytes under a live handle is not deterministic (what sqlite reports, and when,
+    // depends on which page the next statement happens to touch), and the door is the same either way.
+
+    [Fact]
+    public void A_rebuild_mid_session_leaves_an_open_store_on_a_fresh_file()
+    {
+        Scope scope = Boot();
+        Table t = scope.Tracks;
+        Write(("spotify:track:a", "Alpha", 1, Identity, 3, 1, 1));
+        Assert.True(Store.Journal(7, "unsynced"u8) > 0);
+        Store.MetaSet("library.sync-token", "ledger-of-the-old-file");
+        Store.Flush();
+        int faults = Store.Stats.Faults;
+        string step = "rebuild-" + Guid.NewGuid().ToString("n");
+
+        Store.Rebuild(step);
+        Store.Flush();                                           // the store thread services it before the next job
+        DrainPosts();
+
+        Assert.True(Store.IsOpen);
+        WaveeLogEntry recovered = LastLine("store.recovered", "step", step);
+        Assert.Equal("reopened", FieldOf(recovered, "outcome"));
+        Assert.Equal("1", FieldOf(recovered, "lostIntents"));   // counted BEFORE the close, while the file answered
+        Assert.Equal(WaveeLogLevel.Warning, recovered.Level);
+        Assert.Equal("recreated:recovery:" + step, FieldOf(LastLine("store.open", "file", FileNameOnly), "outcome"));
+        Assert.Null(Store.MetaGet("library.sync-token"));        // a ledger with no list behind it is forgotten
+        Assert.Equal(faults, Store.Stats.Faults);
+
+        Store.Read(scope, t, new[] { t.Slot("spotify:track:a".AsSpan()) }, Identity, FetchPriority.Visible);
+        Store.Flush();
+        DrainPosts();
+        Assert.Empty(_shape.In);                                 // the old rows went with the old file…
+
+        Write(("spotify:track:b", "Beta", 2, Identity, 3, 1, 1));
+        Store.Read(scope, t, new[] { t.Slot("spotify:track:b".AsSpan()) }, Identity, FetchPriority.Visible);
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Beta", Assert.Single(_shape.In).Title);    // …and the fresh one takes writes (re-prepared) and reads
+        Assert.Equal(faults, Store.Stats.Faults);
+    }
+
+    /// <summary>The journal runs on its CALLER's thread, so it is the one door a rebuild can pull a connection out from
+    /// under. After the swap it writes into the fresh file — and an id minted against the OLD file (whose rowid a
+    /// fresh file hands out again, from 1) must never settle the new file's intent.</summary>
+    [Fact]
+    public void The_journal_survives_a_rebuild_and_an_old_id_never_settles_a_new_intent()
+    {
+        Boot();
+        long before = Store.Journal(1, "before"u8);
+        Assert.True(before > 0);
+
+        Store.Rebuild("journal-" + Guid.NewGuid().ToString("n"));
+        Store.Flush();
+
+        Assert.Equal(0, Store.PendingIntents());                 // the damaged file's intent went with it (and was counted)
+        long after = Store.Journal(1, "after"u8);
+        Assert.True(after > 0);
+        Assert.NotEqual(before, after);                          // the same rowid, a different file
+        Assert.Equal(1, Store.PendingIntents());
+
+        Store.JournalSettle(before, ok: true);
+        Store.Flush();
+        Assert.Equal(1, Store.PendingIntents());                 // the stale id settled nothing
+
+        Store.JournalSettle(after, ok: true);
+        Store.Flush();
+        Assert.Equal(0, Store.PendingIntents());
+    }
+
+    /// <summary>The race itself: journal calls on another thread while the store thread retires, recreates and swaps
+    /// the file. Whatever the interleaving, every call must come back with an id and none may touch a disposed
+    /// connection (which would surface as a fault). The interleaving varies run to run; the verdict does not.</summary>
+    [Fact]
+    public void A_journal_racing_a_rebuild_never_uses_a_retired_connection()
+    {
+        Boot();
+        int faults = Store.Stats.Faults;
+        var ids = new ConcurrentBag<long>();
+        using var stop = new ManualResetEventSlim(false);
+        var writer = new Thread(() =>
+        {
+            for (int i = 0; i < 2_000 && !stop.IsSet; i++) ids.Add(Store.Journal(3, "race"u8));
+        });
+        writer.Start();
+
+        Store.Rebuild("race-" + Guid.NewGuid().ToString("n"));
+        Store.Flush();
+        stop.Set();
+        writer.Join();
+
+        Assert.True(Store.IsOpen);
+        Assert.NotEmpty(ids);
+        Assert.All(ids, id => Assert.True(id > 0));
+        Assert.Equal(faults, Store.Stats.Faults);
+    }
+
+    // ── Settings ▸ Storage ▸ "Clear metadata" ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>The cache tier goes — catalog rows, palette rows, every non-library edge list — and everything that is
+    /// not a cache stays: the library relations, the intent journal (an unsynced like is the user's, not metadata), and
+    /// the sync ledgers that pair with the library. Deliberately not "delete the file", which would take all of it.</summary>
+    [Fact]
+    public void Clearing_metadata_drops_the_cache_tier_and_keeps_the_library_the_journal_and_the_ledgers()
+    {
+        Store.RegisterLibraryEdges();
+        Scope scope = Boot(AccountScope("clear-" + Guid.NewGuid().ToString("n")));
+        int me = scope.MeSlot;
+        Assert.NotEqual(Table.None, me);
+        EntityId meId = scope.Users.Id[me];
+        StagedId parent = meId;
+
+        Write(("spotify:track:a", "Alpha", 1, Identity, 3, 1, 1));               // a catalog row (cache)
+
+        int liked = scope.Tracks.Slot("wavee:test:track:clear-liked".AsSpan()); // the user's Liked list (kept)
+        Staging s = Staging.Rent();
+        var run = s.Run(Relation.Liked);
+        run.Add(scope.Tracks.Id[liked]).At = 1_700_000_000;
+        run.End(in parent);
+        Entities.Commit(s);
+        Assert.True(Store.WriteBehind(s));
+
+        int album = scope.Albums.Slot("wavee:test:album:clear-album".AsSpan()); // an album's track list (cache)
+        var albumTracks = new EdgeTable<NoEdge>();
+        albumTracks.Replace(album, new[] { liked }, ReadOnlySpan<NoEdge>.Empty, EdgeState.Complete, 1);
+        Assert.True(Store.SaveEdges(EdgeRelation.AlbumTracks, albumTracks, album, scope.Albums.Id[album], scope.Tracks));
+
+        Assert.True(Store.Journal(7, "unsynced like"u8) > 0);                  // the journal (kept)
+        Store.MetaSet("library.sync-token", "kept");                            // a ledger (kept)
+        Store.Flush();
+        Sql("INSERT INTO palette(key,known,ts,dark,light) VALUES('cover:clear',1,0,NULL,NULL);");   // a cover's colours (cache)
+
+        Assert.Equal(1L, Count("SELECT count(*) FROM track;"));
+        Assert.Equal(1L, Count("SELECT count(*) FROM palette;"));
+        Assert.Equal(1L, Count($"SELECT count(*) FROM edge WHERE kind={(int)EdgeRelation.AlbumTracks};"));
+        int faults = Store.Stats.Faults;
+
+        Store.DropCatalog();                                     // blocking: the bytes are gone when it returns
+
+        Assert.Equal(0L, Count("SELECT count(*) FROM track;"));
+        Assert.Equal(0L, Count("SELECT count(*) FROM palette;"));
+        Assert.Equal(0L, Count($"SELECT count(*) FROM edge WHERE kind={(int)EdgeRelation.AlbumTracks};"));
+        Assert.Equal(0L, Count($"SELECT count(*) FROM edge_state WHERE kind={(int)EdgeRelation.AlbumTracks};"));
+        Assert.Equal(1L, Count($"SELECT count(*) FROM edge WHERE kind={(int)EdgeRelation.Liked};"));
+        Assert.Equal(1L, Count($"SELECT count(*) FROM edge_state WHERE kind={(int)EdgeRelation.Liked};"));
+        Assert.Equal("kept", SqlValue("SELECT value FROM meta WHERE key='library.sync-token';") as string);
+        Assert.Equal(1, Store.PendingIntents());
+        Assert.Equal(faults, Store.Stats.Faults);
+
+        // The kept list still reads back through the store's own door, into a table that forgot it.
+        scope.Edges.Liked.Clear(me);
+        Assert.True(Store.ReadEdges(scope, EdgeRelation.Liked, meId));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal(EdgeState.Complete, scope.Edges.Liked.State(me));
+        Assert.True(scope.Edges.Liked.Targets(me).SequenceEqual(new[] { liked }));
     }
 
     // ── the counters ────────────────────────────────────────────────────────────────────────────────────────────────

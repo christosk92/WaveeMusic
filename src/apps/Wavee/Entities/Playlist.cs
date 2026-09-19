@@ -82,8 +82,10 @@ public enum PlaylistFields : uint
     /// <summary>Bug A1: the playlist's REAL track count has landed — set ONLY by the one decoder that actually saw
     /// the wire's length field (<see cref="Spotify.Decode.PlaylistRevision"/>, gated on the proto's own `optional`
     /// presence, not on the value: a genuinely empty playlist's real `length: 0` sets this bit exactly like a
-    /// nonzero one). NEVER inferred from <see cref="Identity"/> — <see cref="Spotify.Decode.ListMetadataV2"/> (ext
-    /// kind 205) stamps Identity applied too while carrying no length field at all
+    /// nonzero one), and by a SETTLED list restored from disk (Store.Lists.cs), whose count is the one that decoder
+    /// answered and was written in the same transaction as the rows. NEVER inferred from <see cref="Identity"/> —
+    /// <see cref="Spotify.Decode.ListMetadataV2"/> (ext kind 205) stamps Identity applied too while carrying no length
+    /// field at all
     /// (<c>Protos/list_metadata_v2.proto</c>). Deliberately excluded from <see cref="Row"/>/<see cref="Header"/>/
     /// <see cref="All"/>: those aggregates gate `Knows(...)` calls all over the app (an ALL-of check,
     /// <c>Table.Knows</c>), and no route names this bit in its `Primary`/`Groups` — folding it in would make every
@@ -220,7 +222,8 @@ public sealed class PlaylistTable : Table
     public Column<byte> IdentityAuthority, ExtrasAuthority;
 
     /// <summary>The membership revision the rows were answered at, in the wire spelling <c>{counter},{hex}</c>
-    /// (<c>Spotify.Api.FormatRevision</c>) — the base a <c>/diff</c> read sends (B1b gap 8) and the tuning hash's input.</summary>
+    /// (<c>Spotify.Api.FormatRevision</c>) — the base a <c>/diff</c> read sends (B1b gap 8) and the tuning hash's input.
+    /// Not a row fact on disk: it is restored only WITH the rows it describes (<c>list_head</c>, Store.Lists.cs).</summary>
     public Column<StringId> Revision;
 
     /// <summary>Flags a provider answer may SET but never CLEAR. Only the tombstone: 0.2.9 merges it as
@@ -683,9 +686,14 @@ public static partial class Entities
             // length (ListMetadataV2) never sets it. Shares `IdentityAuthority` — same wire family, same persisted
             // column (`PlaylistShape.IdentityFields`) — but its own group bit, so `Knows(Identity)` staying true
             // can never be read as "the count is known too".
+            // The group writes its OWN value (wave D2): a row that knows its count and nothing else — a list restored
+            // from disk (Store.Lists.cs), a row whose `track_count` was rewritten with its settled list — lands the
+            // count without pretending to know Identity. A row that also carries Identity wrote the same value above;
+            // one whose Identity lost the authority gate still fills the count HOLE, which is D16's own rule.
             if ((row.Known & (uint)PlaylistFields.TrackCount) != 0
                 && t.Accepts(slot, (uint)PlaylistFields.TrackCount, authority, in t.IdentityAuthority))
             {
+                t.TrackCount[slot] = row.TrackCount;
                 t.Applied(slot, (uint)PlaylistFields.TrackCount, authority, ref t.IdentityAuthority);
             }
 
@@ -849,6 +857,13 @@ public static partial class Entities
 /// all four, bound whenever any is known — the same pattern <see cref="TrackShape"/> uses for its cold groups), plus
 /// <see cref="PlaylistFields.Accent"/> and <see cref="PlaylistFields.Saves"/> (sharing <c>extras_auth</c>).
 ///
+/// <para><b>THE PERSISTED COUNT IS AUTHORITATIVE.</b> <c>track_count</c> is rewritten — with the count-known bit — in
+/// the SAME transaction as a settled membership list (<c>Store.Lists.cs</c>, <see cref="PlaylistShape.CountColumn"/>), so a stored
+/// 0 known is a real, empty playlist and loads as one: a restored empty list is an answer. The load-time
+/// "a persisted 0 is unknown" mask that healed bug A1's corrupted rows is gone — those rows live in a file this schema
+/// never opens (the file's NAME carries the schema, <see cref="Store.FileName"/>), and a mask would turn every genuinely
+/// empty playlist into a re-ask on every launch.</para>
+///
 /// <para><b>Deliberately NOT persisted:</b> <see cref="PlaylistFields.Format"/>/<see cref="PlaylistFields.Daylist"/>/
 /// <see cref="PlaylistFields.Chart"/>/<see cref="PlaylistFields.Tuning"/> (each cheap to re-ask and, for Tuning, an
 /// edge this shape does not persist). Daylist and Format stay unpersisted on purpose: a held
@@ -859,19 +874,25 @@ public static partial class Entities
 /// a plain per-group authority write, and persisting it half-right (accepting the merge's real semantics) is a
 /// follow-up, not a silent approximation; <see cref="PlaylistTable.Notice"/> — commit-DERIVED
 /// (<see cref="Entities.DeriveNotice"/>, called every commit) and re-derives itself the moment the row commits
-/// again; and <see cref="PlaylistTable.Revision"/> — written UNGATED by any field group (ch 06 §7), which does not
-/// fit this shape's known-bit-gated column model and is left to the network's next answer.</para>
+/// again; and <see cref="PlaylistTable.Revision"/> — which is not a ROW fact at all: a revision describes the
+/// MEMBERSHIP, so it lives in <c>list_head</c> beside the rows it is true of, written in the same transaction
+/// (Store.Lists.cs). There is no revision column here, so a row write can never advance it, and a restart restores it
+/// only together with a list it describes.</para>
 ///
 /// <para>STORE THREAD (both halves) — see <see cref="ShowShape"/>'s note.</para></summary>
 public sealed class PlaylistShape : KindShape
 {
+    /// <summary>The count column, named once: <c>Store.Lists.cs</c> rewrites it inside a settled list's transaction
+    /// (the list's total IS the count), and this shape binds it at ordinal 4 on both halves.</summary>
+    public const string CountColumn = "track_count";
+
     static readonly StoreColumn[] Cols =
     [
         new("title", StoreType.Text, StoreColumnFlags.Title),
         new("description", StoreType.Text),
         new("image", StoreType.Text),
         new("share_url", StoreType.Text),
-        new("track_count", StoreType.Int),
+        new(CountColumn, StoreType.Int),
         new("owner_uri", StoreType.Text),
         new("caps", StoreType.Int),
         new("permission_revision", StoreType.Text),
@@ -943,14 +964,6 @@ public sealed class PlaylistShape : KindShape
         row.Accent = (uint)r.Int(8);
         row.Saves = (int)r.Int(9);
         row.Known = r.Known & PersistedFields;
-        // Bug A1 regression heal: a persisted track count of 0 is never trusted as confidently known on load — a
-        // build with the resync-flagged-answer defect could have committed a bogus zero over a real count (a
-        // revision-gated `/diff` answer whose `contents` came back attached to `changes_require_resync`, decoded
-        // before that gate existed), and there is no way to tell that corruption apart from a genuinely empty
-        // playlist's persisted zero after the fact. Mask the bit out so a restart always re-verifies a "0" instead
-        // of trusting a wipe-worthy value forever — the same shape as bug C's Artists-bit mask (ch 03), and just as
-        // cheap: one extra round trip, paid only by a playlist that really is empty.
-        if (row.TrackCount == 0) row.Known &= ~(uint)PlaylistFields.TrackCount;
         row.Authority = (Authority)Math.Max(r.Int(10), r.Int(11));
     }
 }

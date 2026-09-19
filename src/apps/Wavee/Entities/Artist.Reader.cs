@@ -511,8 +511,8 @@ public readonly partial struct Artist
         /// <para>They are TRUTHFUL by construction, not by guess: both band arms are one <c>AlignItems.Center</c> row
         /// whose tallest child is the AVATAR (the name column is 38 + 2 + 16 = 56 wide-arm / 30 + 2 + 16 = 48 compact,
         /// the Follow pill and every command circle are 36, and <c>Controls.Play</c>'s pill floor is 36 — all under
-        /// 72/56), so the height is padTop + avatar + padBottom. The sub-rail is one <c>User.RailBar</c>, which declares
-        /// <c>Height = User.RailHeight</c> outright, inside the rail row's own padding, plus the 1-DIP divider under
+        /// 72/56), so the height is padTop + avatar + padBottom. The sub-rail is one <c>Controls.Words.Rail</c>, which declares
+        /// <c>Height = Controls.Words.Height</c> (= <c>User.RailHeight</c>) outright, inside the rail row's own padding, plus the 1-DIP divider under
         /// it. Both item roots then DECLARE the same number, so analytic == measured by identity.</para></summary>
         const float BandH = Spacing.XL + AvatarEdge + Spacing.S;                        // 20 + 72 + 8
         const float BandCompactH = Spacing.L + AvatarEdgeCompact + Spacing.S;           // 16 + 56 + 8

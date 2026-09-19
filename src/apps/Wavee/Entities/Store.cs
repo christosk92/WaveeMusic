@@ -1,11 +1,18 @@
 // ── Entities/Store.cs — SHELL with a CORE section (owner C, wave 1, budget 1,200; plan §2, §4.4) ─────────────────────
 //
-// THE DISK. One sqlite file — `library.db`, schema v4 (v4 adds the process-wide `palette` table, §WS-C) — holding
-// the same columns the tables hold in memory, so "every track whose title starts with X" and "this album's rows"
-// are real indexed queries instead of a walk over
-// deserialized JSON (§5.4, P11). Everything here is a CACHE: a file whose schema does not match what this build
-// writes is DELETED, never migrated (plan §4.4 — a v2 file is deleted; the provider can answer again, and a
-// migration is a second schema to keep correct forever).
+// THE DISK. One sqlite file — `library.<schema fingerprint>.db`, schema v4 (v4 adds the process-wide `palette`
+// table, §WS-C) — holding the same columns the tables hold in memory, so "every track whose title starts with X" and
+// "this album's rows" are real indexed queries instead of a walk over deserialized JSON (§5.4, P11). Everything here
+// is a CACHE, and a cache is never migrated (plan §4.4: the provider can answer again, and a migration is a second
+// schema to keep correct forever).
+//
+// THE NAME CARRIES THE SCHEMA (wave D1, docs/plans/wavee/cache-integrity-and-playlist-diff-implementation.md §3.1). A
+// build whose DDL differs opens a DIFFERENT file and never touches this one — nothing is deleted to make room at
+// open. Until D1 every build (0.2.x, 0.3 Debug, 0.3 Release, each with its own schema) shared `library.db`, deleted it
+// file by file whenever the fingerprint disagreed, and opened it before the single-instance gate; on 2026-09-18 a
+// `library.db` that was sound on its own sat beside a `-wal` holding page 1 of a DIFFERENT database, and thirteen
+// launches ran memory-only. Stale generations and the legacy `library.db` set are reaped at boot, AFTER the instance
+// gate, by `StoreFiles.Reap` (Store.Files.cs) — through the same all-or-nothing, rename-first `Delete` used here.
 //
 // The shape of this file, in order:
 //   1. CORE — `CatalogSweepSchedule`: which rows leave the cache, as a pure function over synthetic rows. Ported
@@ -14,8 +21,14 @@
 //      file on disk (D17, and the reason the 0.2.9 GC had no test of its ordering at all).
 //   2. CORE — the schema: the v3 DDL as text, generated from the registered kind shapes, and its fingerprint.
 //   3. SHELL — one write connection and one read connection, both owned by ONE store thread (C9/D22). The UI thread
-//      never touches sqlite: it enqueues, and it is answered by a `Staging` posted back (C1/C10).
-//   4. SHELL — the batched cold read, write-behind, the edge tables, the synchronous intent journal, the GC tick.
+//      never touches sqlite: it enqueues, and it is answered by a `Staging` posted back (C1/C10). The same thread
+//      opens the file (one recreate path, one `store.open` line) and, once per session, REBUILDS it when sqlite says
+//      the file itself is damaged mid-session (`StoreHealth`, Store.Files.cs).
+//   4. SHELL — the batched cold read, write-behind, the edge tables, the synchronous intent journal, the GC tick,
+//      and Settings ▸ Storage ▸ "Clear metadata" (`DropCatalog`).
+//   5. SHELL, in the named partial Store.Lists.cs (wave D2) — the persisted LISTS: a playlist's membership and the
+//      account's rootlist, as text rows in `list_item` with the revision they are true at in `list_head`, written
+//      together or not at all, read back through the very staging + commit a wire answer lands through.
 //
 // The rules this file is written under:
 //   C1/C9   the UI thread never opens, reads, writes or waits on sqlite. Everything crosses through `Store.Post`.
@@ -31,22 +44,24 @@
 //
 // THE KEY IS STILL `uri TEXT`, AND THAT IS A DECISION (2026-09-12; docs/plans/wavee/wavee-0.3-entity-identity-memory.md
 // §4.4 and §6). A row's identity in memory is now a packed 24-byte `EntityId`, so the alternative was a BLOB key —
-// 18 bytes instead of 36, no formatting at all, and a v3 file this build would simply delete (the fingerprint covers
-// the DDL, and plan §4.4 already says a stale cache is DELETED, never migrated). It stays TEXT, for four reasons:
+// 18 bytes instead of 36, no formatting at all, and a new file this build would simply open beside the old one (the
+// fingerprint covers the DDL and names the file, and plan §4.4 already says a stale cache is never migrated). It stays
+// TEXT, for four reasons:
 //   1. HALF THE IDS CANNOT BE PACKED. A text-form id's payload is a `StringId` — an index into a PROCESS-LOCAL
 //      interner, meaningless in the next launch. Only the gid form survives a restart as bytes, so a BLOB key would
 //      have to be two encodings in one column (a tagged gid, and the uri's UTF-8 for everything else), with a whole
 //      class of "the same entity was written under two keys" bugs behind it. The uri text is the one spelling both
 //      forms already have, and `EntityId.Parse` folds it back to one id either way.
-//   2. THE FILE STAYS READABLE. `sqlite3 library.db "select uri,title from track"` is the diagnostic a cache should
-//      keep (CLAUDE.md: always-on diagnostics, no debug switches), and `edge.parent`/`edge.child` and the sweep's
+//   2. THE FILE STAYS READABLE. `sqlite3 library.<fp>.db "select uri,title from track"` is the diagnostic a cache
+//      should keep (CLAUDE.md: always-on diagnostics, no debug switches), and `edge.parent`/`edge.child` and the sweep's
 //      `length(uri)+64` byte estimate all read the same column.
 //   3. THE COST MOVED OFF THE FRAME, WHICH IS THE HALF THAT MATTERED. The doc prices the new key at one `Format`
 //      (81 ns) plus one string per row per read/write, where the interned string used to be free. It is paid on the
 //      STORE thread now: the UI thread hands over a snapshot of `Column<EntityId>` (a 24-byte copy per row and no
 //      string at all) and the store thread formats what it needs. The frame's per-row cost went DOWN, not up.
 //   4. AND THE ESCAPE HATCH IS FREE. If a BLOB(18) key is ever wanted, it is one DDL change: the fingerprint moves,
-//      the stale file is deleted, and the provider re-answers. Nothing here is ever migrated.
+//      the build opens a file with a new name, the reaper removes the old one, and the provider re-answers. Nothing
+//      here is ever migrated.
 //
 // WHO MAY TOUCH THE INTERNER, AND FROM WHERE (C1 — and the reason for the two-array snapshot below). `Resolve` is
 // safe from a second thread only while the id is ALIVE: a released id's slot is cleared 16 ticks after its last
@@ -260,8 +275,8 @@ public abstract class KindShape
     public abstract string Table { get; }
 
     /// <summary>The kind's own columns, in a FIXED order — the order <see cref="Save"/> and <see cref="Load"/> index
-    /// them by. Appending is free (the fingerprint changes, so the stale cache file is dropped); reordering is too,
-    /// for the same reason. Return a span over a <c>static readonly</c> array, never a fresh one.</summary>
+    /// them by. Appending is free (the fingerprint changes, so this build opens a new file and the old one is
+    /// reaped); reordering is too, for the same reason. Return a span over a <c>static readonly</c> array, never a fresh one.</summary>
     public abstract ReadOnlySpan<StoreColumn> Columns { get; }
 
     /// <summary>Write every staged row of this kind into the prepared upsert: bind the kind's columns by index, then
@@ -500,13 +515,28 @@ public sealed class EdgePage
 // ── 3. SHELL: the store ──────────────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>sqlite as columns (plan §4.4). One file, one thread, two connections, four ways in: <see cref="Read"/>
-/// (cold read), <see cref="WriteBehind"/> (a committed batch), <see cref="Journal"/> (a user intent, synchronous)
-/// and <see cref="Tick"/> (the GC). Nothing else may reach the database, and nothing here may reach a live column.</summary>
+/// (cold read — and its list twin, <see cref="ReadList"/>, Store.Lists.cs), <see cref="WriteBehind"/> (a committed
+/// batch, its settled lists included), <see cref="Journal"/> (a user intent, synchronous) and <see cref="Tick"/> (the
+/// GC). Nothing else may reach the database, and nothing here may reach a live column.</summary>
 public static partial class Store
 {
     /// <summary>Bumped whenever the generated DDL changes shape in a way the fingerprint cannot see (it can see
-    /// almost everything). Part of the fingerprint, so bumping it drops every cached file.</summary>
+    /// almost everything). Part of the fingerprint, and the fingerprint NAMES the file (<see cref="FileName"/>), so
+    /// bumping it moves every install onto a fresh file; the old one is left alone until the reaper removes it.</summary>
     public const int SchemaVersion = 4;
+
+    /// <summary>The cache file's name carries the schema it holds: <c>library.&lt;fingerprint as 16 hex&gt;.db</c>. A build
+    /// with a different DDL opens a DIFFERENT file and never touches this one, so nothing is ever deleted to make room
+    /// at open — the 2026-09-18 corruption was a fresh database created beside a WAL that survived a per-file delete,
+    /// in a folder every build shared by one name (file header).
+    /// <para><b>Valid only after every <see cref="KindShape"/> is registered</b> (<c>App.RegisterShapes</c>): the
+    /// registered shapes generate the DDL, and the DDL IS the schema's identity. Read before that, it names a schema
+    /// with no kind tables — a file no build ever writes.</para></summary>
+    public static string FileName => $"library.{Fingerprint(Ddl()):x16}.db";
+
+    /// <summary>The name every build shared before wave D1. Only the reaper still names it (<see cref="StoreFiles"/>):
+    /// its set is removed at boot, all three files or none.</summary>
+    public const string LegacyFileName = "library.db";
 
     /// <summary>Bounded, per C8. A full queue is a signal, not a wait: writes are dropped (the provider can answer
     /// again) and reads are refused (the planner un-marks in-flight and the row is asked again next drain).</summary>
@@ -614,13 +644,49 @@ public static partial class Store
 
     // ── state ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    sealed class Db(string path, SqliteConnection write, SqliteConnection read)
+    sealed class Db(string path, SqliteConnection write, SqliteConnection read, int generation)
     {
         public readonly string Path = path;
         public readonly SqliteConnection Write = write;
         public readonly SqliteConnection Read = read;
         /// <summary>Guards <see cref="Write"/>: the store thread and the synchronous journal both use it (D22).</summary>
         public readonly object WriteLock = new();
+        /// <summary>Which file this is, counted by mid-session rebuilds (<see cref="s_generation"/>). An intent id
+        /// carries it (<see cref="Journal"/>), because a rebuilt file restarts its rowids at 1 and an id minted
+        /// against the old file would otherwise settle a stranger's intent in the new one.</summary>
+        public readonly int Generation = generation;
+        /// <summary>Set under <see cref="WriteLock"/> the moment the connections are closed, never cleared. The two
+        /// SYNCHRONOUS doors (<see cref="Journal"/>, <see cref="PendingIntents"/>) capture a Db, then take its lock
+        /// on their caller's thread — a rebuild can retire it in between, and a disposed connection must never be
+        /// used, so they re-check this after the lock and retry once against whatever is current.</summary>
+        public volatile bool Retired;
+    }
+
+    /// <summary>A rebuild or a retirement the store thread owes (<see cref="Repair"/>). Carried as a request, not run
+    /// where the fault was noticed: the fault may surface on a caller's thread (the journal), or inside a job that is
+    /// still holding the connection it is about to lose — the loop services it BETWEEN jobs, where nothing holds one.</summary>
+    sealed class StoreRepair(Db db, string step, int code, bool retire)
+    {
+        /// <summary>The file the fault was about. A request for a file that is already retired is stale and dropped.</summary>
+        public readonly Db Db = db;
+        public readonly string Step = step;
+        public readonly int Code = code;
+        /// <summary>True: go memory-only (recovery spent). False: rebuild the file.</summary>
+        public readonly bool Retire = retire;
+    }
+
+    /// <summary>What one <see cref="Open"/> found and did — the fields of the <c>store.open</c> line, filled as the
+    /// open goes, so the caller can still write the line (as <c>memory-only</c>) when it throws halfway.</summary>
+    struct OpenReport
+    {
+        public long WalBytes;
+        public long Pages;
+        public ulong Fingerprint;
+        /// <summary>Non-null ⇒ the existing file was set aside and recreated: <c>stale</c>, <c>foreign</c>,
+        /// <c>unreadable:&lt;code&gt;</c>, or <c>recovery:&lt;step&gt;</c> for a mid-session rebuild.</summary>
+        public string? Why;
+        /// <summary>A brand-new file (sqlite had nothing there, or nothing of ours).</summary>
+        public bool Created;
     }
 
     sealed class ShapeSql(KindShape shape)
@@ -632,8 +698,30 @@ public static partial class Store
     }
 
     static string? s_path;
-    static Db? s_db;
+    // VOLATILE: the store thread swaps it during a rebuild and the journal reads it on its caller's thread.
+    static volatile Db? s_db;
     static Thread? s_thread;
+    /// <summary>Held by the store thread for the whole of a rebuild — retire, delete, reopen, swap. A synchronous
+    /// caller that found its <see cref="Db"/> retired takes it to wait the rebuild out, then reads the new
+    /// <see cref="s_db"/>. Never taken while holding a <see cref="Db.WriteLock"/> (the rebuild takes them in the order
+    /// swap → write lock; the journal releases its write lock before it waits here), so the two cannot deadlock.</summary>
+    static readonly object s_swap = new();
+    /// <summary>The repair the store thread owes, or null. Written by any thread (Interlocked), serviced by the loop.</summary>
+    static StoreRepair? s_repair;
+    /// <summary>This store session has spent its one rebuild (<see cref="StoreHealth.OnFault"/>'s input). Reset by
+    /// <see cref="Boot"/>: a boot opens — and if it must, recreates — the file itself, so a fresh session has earned
+    /// its recovery back; within one session a second damaged file means something outside the file is destroying it
+    /// (a disk, an antivirus, a second writer), and rebuilding again would be a loop.</summary>
+    static volatile bool s_recovered;
+    /// <summary>Mid-session rebuilds this PROCESS has done; the next <see cref="Db"/> is stamped with it. Never reset:
+    /// an intent id minted before a rebuild must stay foreign to every file opened after it.</summary>
+    static int s_generation;
+    /// <summary>The scope <see cref="Warm"/> last resolved, so a rebuild can resolve it again in the fresh file (whose
+    /// <c>scope</c> table starts empty, so the old <c>scope_id</c> means nothing there). STORE THREAD ONLY: the key
+    /// travels inside the warm job's closure and is written here when that job runs, so no second thread touches it
+    /// while the store thread lives — a <c>CatalogScope</c> is a multi-field struct and a cross-thread write could
+    /// tear. (<see cref="Boot"/> clears it before it starts the thread, which is the one exception, and a safe one.)</summary>
+    static CatalogScope? s_warmedKey;
     // NOT readonly: `CompleteAdding` is permanent, so a shutdown retires the queue and the next Boot mints a
     // fresh one. (A sign-out/sign-in cycle re-Boots the store; a single instance would silently refuse every job.)
     static BlockingCollection<Action> s_queue = new(QueueCapacity);
@@ -682,10 +770,11 @@ public static partial class Store
 
     // ── boot ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Point the store at a file. <c>App.cs</c> calls this before <c>Entities.Boot</c> with
-    /// <c>%LOCALAPPDATA%\Wavee\library.db</c> (packaged: the package's <c>LocalCache</c>) — and deliberately does NOT
-    /// call it under <c>--fake</c>, which is the whole of "the demo catalog is not persisted". No path, no database,
-    /// no thread, no file touched.
+    /// <summary>Point the store at a file. <c>App.cs</c> calls this before <c>Entities.Boot</c>, AFTER the
+    /// single-instance gate and the reaper (<see cref="StoreFiles.Reap"/>), with
+    /// <c>%LOCALAPPDATA%\Wavee\</c><see cref="FileName"/> (packaged: the package's <c>LocalCache</c>) — and deliberately
+    /// does NOT call it under <c>--fake</c>, which is the whole of "the demo catalog is not persisted". No path, no
+    /// database, no thread, no file touched. Tests pass a temp path of any name: nothing here reads the name back.
     /// <para>Pass null (or an empty path) to detach: the next <see cref="Boot"/> opens nothing. That is the whole
     /// of "the demo catalog is not persisted", and the whole of a test asking for a memory-only graph.</para></summary>
     public static void Use(string? path) => s_path = string.IsNullOrEmpty(path) ? null : path;
@@ -710,13 +799,14 @@ public static partial class Store
     /// <see cref="Boot"/> (<c>App.cs</c>, alongside <c>RegisterShapes</c>): <see cref="Warm"/> fires inside
     /// <c>Entities.Boot</c>, and a page whose applier slot is still null is simply dropped.
     ///
-    /// <para><b>Everything else stays off disk, on purpose.</b> Rootlist (<see cref="RootlistEdge"/>), PlaylistTracks
-    /// (<see cref="PlaylistTrackEdge"/>), TrackTags (<see cref="StringId"/>), TrackCredits (<see cref="CreditEdge"/>)
-    /// and Friends (<see cref="FriendEdge"/>) all carry a <see cref="StringId"/> in their payload — an index into the
-    /// PROCESS-LOCAL interner (Edges.cs's file header) — and <see cref="SaveEdges{TEdge}"/> writes a payload as its
-    /// raw bytes (that method's own doc). Replaying those bytes on a later launch would resolve to whatever string
-    /// that same numeric id happens to mean THIS time, unrelated to what was saved; those relations stay answered by
-    /// the network only.</para></summary>
+    /// <para><b>No other relation rides the <c>edge</c> table, on purpose.</b> TrackTags (<see cref="StringId"/>),
+    /// TrackCredits (<see cref="CreditEdge"/>) and Friends (<see cref="FriendEdge"/>) all carry a <see cref="StringId"/>
+    /// in their payload — an index into the PROCESS-LOCAL interner (Edges.cs's file header) — and
+    /// <see cref="SaveEdges{TEdge}"/> writes a payload as its raw bytes (that method's own doc). Replaying those bytes on
+    /// a later launch would resolve to whatever string that same numeric id happens to mean THIS time, unrelated to what
+    /// was saved; those relations stay answered by the network only. The Rootlist (<see cref="RootlistEdge"/>) and
+    /// PlaylistTracks (<see cref="PlaylistTrackEdge"/>) carry strings too, and they DO persist — as lists with real
+    /// TEXT columns and the revision they are true at (Store.Lists.cs), never as payload bytes here.</para></summary>
     public static void RegisterLibraryEdges()
     {
         RegisterEdges(EdgeRelation.Liked,
@@ -781,20 +871,28 @@ public static partial class Store
         Entities.Current.Edges.Pins.Replace(parent, targets, payload, page.State, page.Total);
     }
 
-    /// <summary>Open the file (creating or REPLACING it) and start the store thread. Called by
-    /// <c>Entities.Boot</c> through the <c>StoreBoot</c> hook; a no-op when <see cref="Use"/> was never called.</summary>
+    /// <summary>Open the file (keeping, creating or recreating it) and start the store thread. Called by
+    /// <c>Entities.Boot</c> through the <c>StoreBoot</c> hook; a no-op when <see cref="Use"/> was never called. Writes
+    /// the one <c>store.open</c> line whatever happens — <c>outcome=memory-only:&lt;why&gt;</c> included, when the file
+    /// will not open at all.</summary>
     public static void Boot()
     {
         if (s_open || s_path is null) return;
+        string path = s_path;
+        long started = Stopwatch.GetTimestamp();
+        var report = new OpenReport();
+        // A fresh store session: its own one recovery, and nothing owed by a session that has ended.
+        s_recovered = false;
+        s_repair = null;
+        s_warmedKey = null;
         try
         {
-            string? dir = Path.GetDirectoryName(s_path);
+            string? dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            s_db = Open(s_path);
             // The prepared upserts belong to the connection that is being replaced: drop them, or the first write
-            // after a re-Boot executes against a closed handle.
-            for (int i = 0; i < s_shapes.Length; i++)
-                if (s_shapes[i] is { } sql) { sql.Upsert?.Dispose(); sql.Upsert = null; }
+            // after a re-Boot executes against a closed handle. (`Close` already did, unless a boot failed first.)
+            DropPreparedUpserts();
+            s_db = Open(path, force: null, ref report);
             s_meta.Clear();   // this may be a DIFFERENT file (a re-Boot after Shutdown): nothing carries over
             s_open = true;
             s_stopping = false;
@@ -803,6 +901,7 @@ public static partial class Store
             BlockingCollection<Action> queue = s_queue;
             s_thread = new Thread(() => Loop(queue)) { IsBackground = true, Name = "wavee-store" };
             s_thread.Start();
+            LogOpen(path, in report, OutcomeOf(in report), started, warn: report.Why is not null);
             // FIRST, before `Warm` (Entities.Boot calls `StoreWarm` right after this returns): the palette is
             // process-wide, not scoped, so it has no scope id to wait for. Once per boot — reset at `Shutdown`.
             if (!s_paletteWarmedOnce)
@@ -814,104 +913,191 @@ public static partial class Store
         catch (Exception ex)
         {
             // A cache that will not open must not stop the app: the provider is still there. Count it and run
-            // memory-only — the one behaviour 0.2.9 also had, and the reason it survived a corrupt file in the field.
+            // memory-only for this session — and SAY so, in the store.open line as well as the fault line, because
+            // "nothing was cached all day" has to be answerable from the log alone (it was not, on 2026-09-18).
             s_faults++;
             Fault("open", ex);
             s_db = null;
             s_open = false;
+            LogOpen(path, in report, "memory-only:" + FailureOf(ex), started, warn: true);
         }
     }
 
-    static Db Open(string path)
+    /// <summary>Open <paramref name="path"/> for this build and hand back both connections. ONE recreate path
+    /// (<see cref="Recreate"/>) serves every reason a file cannot be kept:
+    /// <list type="bullet">
+    /// <item>sqlite itself cannot read it — SQLITE_CORRUPT / SQLITE_NOTADB at the pragmas, the fingerprint read or the
+    /// DDL (<c>unreadable:&lt;code&gt;</c>, <see cref="TryKeep"/>);</item>
+    /// <item><see cref="ReadFingerprint"/> says this build did not write it (<c>stale</c>, <c>foreign</c>);</item>
+    /// <item>the caller already knows it must go (<paramref name="force"/> — a mid-session rebuild,
+    /// <c>recovery:&lt;step&gt;</c>).</item>
+    /// </list>
+    /// A brand-new file and a file carrying this build's fingerprint are kept. There is no separate "the schema
+    /// changed" block any more: under the schema-named <see cref="FileName"/> a changed schema is a different NAME, so
+    /// a stale fingerprint at this path only happens to a file copied or renamed by hand (and in tests, which pass
+    /// their own paths). Throws when even the recreate fails; the caller then runs memory-only.
+    /// <paramref name="report"/> is filled as the open goes, so a caller can still write its line when this throws.</summary>
+    static Db Open(string path, string? force, ref OpenReport report)
     {
-        var write = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString());
-        try
-        {
-            write.Open();
-            Exec(write, Pragmas);
-        }
-        catch (SqliteException ex) when (IsUnreadableFile(ex.SqliteErrorCode))
-        {
-            // THE PRAGMAS ARE THE FIRST STATEMENTS THAT TOUCH THE FILE, so a malformed one throws HERE — before
-            // `ReadFingerprint`'s unreadable-file verdict can ever run. 2026-09-18: `journal_mode=WAL` over a corrupt
-            // library.db raised SQLITE_CORRUPT on every launch, `Boot` caught it and the whole day ran memory-only
-            // (every page a cold network load, nothing persisted) with `store.fault step=open` as the only trace.
-            // Same verdict as a foreign file: it is a cache, delete it and start clean.
-            write.Dispose();
-            SqliteConnection.ClearAllPools();
-            bool gone = Delete(path);
-            Log.Event(WaveeLogLevel.Warning, "store", "store.dropped",
-                "the cache file could not be opened and was recreated", null, -1, null,
-                WaveeLogField.Of("why", $"unreadable:{ex.SqliteErrorCode}"), WaveeLogField.Of("deleted", gone));
-            if (!gone) throw;                                // undeletable AND unreadable: memory-only is the honest outcome
-            write = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString());
-            write.Open();
-            Exec(write, Pragmas);
-        }
-
+        // BEFORE sqlite touches it: a WAL that outlived its database is the 2026-09-18 shape, and once sqlite has
+        // replayed or reset it the evidence is gone.
+        report.WalBytes = LengthOf(path + "-wal");
         string ddl = Ddl();
         ulong want = Fingerprint(ddl);
-        if (ReadFingerprint(write, out string why) is { } have && have != want)
-        {
-            // A CACHE, NOT A DOCUMENT (plan §4.4). Every row here can be asked for again; a migration would be a
-            // second schema to keep correct forever, for data whose whole value is that it saves one round trip.
-            write.Close();
-            write.Dispose();
-            SqliteConnection.ClearAllPools();               // release the file handles the driver's pool is holding
-            bool gone = Delete(path);
-            write = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString());
-            write.Open();
-            Exec(write, Pragmas);
-            // The file survived the delete (another process, an antivirus, a handle the pool did not release). Empty
-            // it instead: `CREATE TABLE IF NOT EXISTS` over a table with the OLD columns is a silent no-op, and the
-            // first read of a column this build expects would fail forever. Same outcome, one more statement.
-            // ALWAYS-ON (CLAUDE.md: no debug switches), and ONE line: losing the whole cache is the kind of thing a
-            // "why is nothing cached today" report has to be able to read off the log. `why` says which of the three
-            // verdicts fired — a stale schema, a foreign file, or a file sqlite itself could not read — and `deleted`
-            // says whether the file really went. BEFORE the drop, not after: `DropEverything` reads `sqlite_master`, so
-            // it is the one statement that can still throw on an undeletable MALFORMED file, and this line has to be in
-            // the log when it does (a `store.fault step=open` follows it and memory-only is then the honest outcome).
-            Log.Event(WaveeLogLevel.Warning, "store", "store.dropped",
-                "the cache file did not match this build and was recreated", null, -1, null,
-                WaveeLogField.Of("why", why), WaveeLogField.Of("found", $"{have:x16}"),
-                WaveeLogField.Of("want", $"{want:x16}"), WaveeLogField.Of("deleted", gone));
-            if (!gone) DropEverything(write);
-        }
-        Exec(write, ddl);
-        Exec(write, $"INSERT OR REPLACE INTO meta(key,value) VALUES('schema','{want:x16}');");
+        report.Fingerprint = want;
 
-        // The reader is a SECOND connection so a cold read never queues behind the writer's transaction. Read-only
-        // attach can fail on filesystems that will not let it create the -shm; a second read/write connection is
-        // still the point, it just is not enforced by the driver then (0.2.9 SqliteColdStore.OpenReader).
-        SqliteConnection read;
+        SqliteConnection write;
+        string? why = force;
+        if (why is null && TryKeep(path, ddl, want, ref report, out SqliteConnection? kept, out why))
+            write = kept;
+        else
+        {
+            report.Why = why;
+            report.Created = false;
+            write = Recreate(path, why, ddl, want);
+        }
+
         try
         {
-            read = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly }.ToString());
-            read.Open();
+            report.Pages = Scalar(write, "PRAGMA page_count;");
+            return new Db(path, write, OpenReader(path), s_generation);
+        }
+        catch
+        {
+            write.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>Try to KEEP the file at <paramref name="path"/>: open it, run the pragmas, read its fingerprint, and —
+    /// when it is brand new or this build's own — apply the DDL. True with the open connection; false with
+    /// <paramref name="why"/> naming what is wrong with the file (the probe is disposed by then, and
+    /// <see cref="Recreate"/> releases the pool's handle on it). Any other failure throws.
+    /// <para>THE PRAGMAS ARE THE FIRST STATEMENTS THAT TOUCH THE FILE, so a malformed one throws there — before any
+    /// fingerprint can be read. 2026-09-18: <c>journal_mode=WAL</c> over a corrupt library.db raised SQLITE_CORRUPT on
+    /// every launch, <see cref="Boot"/> caught it, and the whole day ran memory-only with <c>store.fault step=open</c>
+    /// as the only trace. The same verdict now covers the DDL too: a damaged page anywhere in the check is a file to
+    /// set aside, never a session without a cache.</para></summary>
+    static bool TryKeep(string path, string ddl, ulong want, ref OpenReport report,
+                        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out SqliteConnection? kept,
+                        [System.Diagnostics.CodeAnalysis.NotNullWhen(false)] out string? why)
+    {
+        SqliteConnection probe = Connect(path);
+        try
+        {
+            probe.Open();
+            Exec(probe, Pragmas);
+            ulong? have = ReadFingerprint(probe, out string verdict);
+            if (have is null || have == want)
+            {
+                Stamp(probe, ddl, want);
+                report.Created = have is null;
+                kept = probe;
+                why = null;
+                return true;
+            }
+            why = verdict;
+        }
+        catch (SqliteException ex) when (IsUnreadableFile(PrimaryCode(ex)))
+        {
+            why = $"unreadable:{PrimaryCode(ex)}";
+        }
+        catch
+        {
+            probe.Dispose();
+            throw;
+        }
+        probe.Dispose();
+        kept = null;
+        return false;
+    }
+
+    /// <summary>THE recreate path — every reason <see cref="Open"/> cannot keep a file lands here, and so does a
+    /// mid-session rebuild. The old set is moved aside all-or-nothing (<see cref="Delete"/>) and a fresh file is
+    /// created at the same path. When the set will not move (another process holds it), the file is EMPTIED through
+    /// sqlite instead (<see cref="DropEverything"/>): <c>CREATE TABLE IF NOT EXISTS</c> over a table with the OLD
+    /// columns is a silent no-op, and the first read of a column this build expects would fail forever. Throws when
+    /// even that fails — an unmovable file sqlite cannot read — and memory-only is then the honest outcome.
+    /// <para>ALWAYS-ON and ONE line, written BEFORE anything that can still throw: losing the whole cache is what a
+    /// "why is nothing cached today" report has to be able to read off the log. <c>why</c> names the verdict and
+    /// <c>deleted</c> whether the set really went (the <c>store.open</c> line that follows says how it ended).</para></summary>
+    static SqliteConnection Recreate(string path, string why, string ddl, ulong want)
+    {
+        SqliteConnection.ClearAllPools();                    // release the handles the driver's pool still holds on it
+        bool gone = Delete(path);
+        Log.Event(WaveeLogLevel.Warning, "store", "store.dropped",
+            "the cache file could not be kept and was recreated", null, -1, null,
+            WaveeLogField.Of("why", why), WaveeLogField.Of("deleted", gone));
+        SqliteConnection fresh = Connect(path);
+        try
+        {
+            fresh.Open();
+            Exec(fresh, Pragmas);
+            if (!gone) DropEverything(fresh);
+            Stamp(fresh, ddl, want);
+            return fresh;
+        }
+        catch
+        {
+            fresh.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>This build's schema, applied, and its fingerprint written where <see cref="ReadFingerprint"/> reads it.</summary>
+    static void Stamp(SqliteConnection c, string ddl, ulong want)
+    {
+        Exec(c, ddl);
+        Exec(c, $"INSERT OR REPLACE INTO meta(key,value) VALUES('schema','{want:x16}');");
+    }
+
+    /// <summary>The reader is a SECOND connection so a cold read never queues behind the writer's transaction. A
+    /// read-only open can fail on filesystems that will not let it create the -shm; a second read/write connection is
+    /// still the point, it just is not enforced by the driver then (0.2.9 SqliteColdStore.OpenReader).</summary>
+    static SqliteConnection OpenReader(string path)
+    {
+        SqliteConnection readOnly = Connect(path, SqliteOpenMode.ReadOnly);
+        try
+        {
+            readOnly.Open();
+            return readOnly;
         }
         catch (SqliteException)
         {
-            read = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString());
-            read.Open();
+            readOnly.Dispose();
         }
-        return new Db(path, write, read);
+        SqliteConnection read = Connect(path);
+        try
+        {
+            read.Open();
+            return read;
+        }
+        catch
+        {
+            read.Dispose();
+            throw;
+        }
     }
+
+    static SqliteConnection Connect(string path, SqliteOpenMode mode = SqliteOpenMode.ReadWriteCreate)
+        => new(new SqliteConnectionStringBuilder { DataSource = path, Mode = mode }.ToString());
 
     /// <summary>The file's schema fingerprint, and <paramref name="why"/> for the log line if it loses. THREE outcomes,
     /// and the difference between the last two is a whole session's persistence:
     /// <list type="bullet">
-    /// <item>a real fingerprint — compare it with this build's and delete the file if it differs (<c>why = "stale"</c>).</item>
+    /// <item>a real fingerprint — kept when it is this build's, recreated when it is not (<c>why = "stale"</c>). Under
+    /// the schema-named <see cref="FileName"/> the second only happens to a file copied or renamed by hand.</item>
     /// <item><c>0</c> — a FOREIGN file. It has a <c>meta</c> table with no schema row, or sqlite could not read it as a
-    /// database at all. 0 never equals a real fingerprint, so <see cref="Open"/> deletes and recreates it.</item>
-    /// <item><c>null</c> — a BRAND-NEW file: <c>meta</c> does not exist yet, so there is nothing to drop and the DDL
-    /// right after this simply creates it.</item>
+    /// database at all. 0 never equals a real fingerprint, so <see cref="Open"/> recreates it.</item>
+    /// <item><c>null</c> — a BRAND-NEW file: <c>meta</c> does not exist yet, so there is nothing to set aside and the
+    /// DDL right after this simply creates it.</item>
     /// </list>
     /// <para>A MALFORMED FILE USED TO COME BACK <c>null</c> WITH THE BRAND-NEW ONES, and that was a whole-process
     /// outage: every <see cref="SqliteException"/> read as "no meta table at all ⇒ nothing to drop", so a corrupt
-    /// <c>library.db</c> (SQLITE_CORRUPT, 11) skipped the delete-and-recreate path, <c>Exec(write, ddl)</c> threw on the
-    /// very next line, <see cref="Boot"/> caught it and ran MEMORY-ONLY for the rest of the process — no rows, no
-    /// palette, nothing persisted, every launch the same — with a <c>Debug.WriteLine</c> nobody sees in Release as the
-    /// only trace. One bad byte on disk cost the cache permanently; deleting the file costs one refetch.</para></summary>
+    /// <c>library.db</c> (SQLITE_CORRUPT, 11) skipped the recreate path, <c>Exec(write, ddl)</c> threw on the very next
+    /// line, <see cref="Boot"/> caught it and ran MEMORY-ONLY for the rest of the process — no rows, no palette,
+    /// nothing persisted, every launch the same — with a <c>Debug.WriteLine</c> nobody sees in Release as the only
+    /// trace. One bad byte on disk cost the cache permanently; recreating the file costs one refetch.</para></summary>
     static ulong? ReadFingerprint(SqliteConnection c, out string why)
     {
         why = "stale";
@@ -932,8 +1118,8 @@ public static partial class Store
         {
             // THE FILE is the problem, not the missing table: SQLITE_CORRUPT (11), SQLITE_NOTADB (26), a truncated
             // header, an encrypted file. It holds nothing this build can read, which is the same verdict as a foreign
-            // file — and unlike `null` it takes the delete path instead of leaving the store memory-only forever.
-            why = $"unreadable:{ex.SqliteErrorCode}";
+            // file — and unlike `null` it takes the recreate path instead of leaving the store memory-only forever.
+            why = $"unreadable:{PrimaryCode(ex)}";
             return 0UL;
         }
     }
@@ -943,19 +1129,86 @@ public static partial class Store
     const int SqliteGenericError = 1;
 
     /// <summary>The sqlite verdicts that are a statement about the FILE rather than the statement: SQLITE_CORRUPT (11)
-    /// and SQLITE_NOTADB (26). PURE.</summary>
-    internal static bool IsUnreadableFile(int sqliteErrorCode) => sqliteErrorCode is 11 or 26;
+    /// and SQLITE_NOTADB (26). PURE, and public so a fact can pin it: it decides both the recreate at open
+    /// (<see cref="TryKeep"/>) and the mid-session verdict (<see cref="StoreHealth.OnFault"/>). Takes a PRIMARY result
+    /// code — an extended one (SQLITE_CORRUPT_VTAB, 267) is reduced to its low byte first (<see cref="PrimaryCode"/>).</summary>
+    public static bool IsUnreadableFile(int sqliteErrorCode) => sqliteErrorCode is 11 or 26;
 
-    /// <summary>WAL mode means three files, and a half-deleted set is worse than none. Returns whether the main file
-    /// is actually gone — the caller has a fallback when it is not.</summary>
-    static bool Delete(string path)
+    /// <summary>The PRIMARY result code of a sqlite failure: the low byte, so an extended code reads as its family.</summary>
+    static int PrimaryCode(SqliteException ex) => ex.SqliteErrorCode & 0xFF;
+
+    /// <summary>The primary sqlite code of the first <see cref="SqliteException"/> in <paramref name="ex"/>'s chain, or 0
+    /// when sqlite said nothing (an I/O exception, a disposed object, a bug) — which <see cref="Fault"/> only counts.</summary>
+    static int SqliteCodeOf(Exception ex)
     {
-        foreach (string suffix in new[] { "", "-wal", "-shm" })
-            try { File.Delete(path + suffix); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-        return !File.Exists(path);
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+            if (e is SqliteException s) return PrimaryCode(s);
+        return 0;
     }
 
-    /// <summary>Drop every table in the file. The undeletable-file path of "a v2 file is deleted, not migrated".</summary>
+    /// <summary>The <c>&lt;why&gt;</c> of <c>memory-only:&lt;why&gt;</c>: the file verdict when sqlite gave one, the
+    /// sqlite code when it gave another, the exception's type when sqlite said nothing.</summary>
+    static string FailureOf(Exception ex)
+    {
+        int code = SqliteCodeOf(ex);
+        return code == 0 ? ex.GetType().Name : IsUnreadableFile(code) ? $"unreadable:{code}" : $"sqlite:{code}";
+    }
+
+    /// <summary>All three files or none. WAL mode means three files, and a half-deleted set is worse than none — it IS
+    /// the 2026-09-18 incident: a <c>-wal</c> that outlived its database was replayed over the next one created at the
+    /// path. The old version deleted the files one by one, swallowed every failure and reported only on the main file.
+    /// <para>So each member is RENAMED aside first (<c>&lt;member&gt;.dead-&lt;8 hex&gt;</c>). A rename fails, atomically,
+    /// while any other handle holds the file without share-delete — sqlite's own handles included — which is exactly
+    /// the question "is anybody still using this set?". Only a FULLY renamed set is deleted; a set that will not move
+    /// is put back exactly as it was and false is returned, and the caller empties it through sqlite
+    /// (<see cref="Recreate"/>) or leaves it for next time (the reaper, <see cref="StoreFiles.Reap"/>). Deleting the
+    /// renamed files is best effort: a leftover <c>.dead-*</c> belongs to nobody, and the reaper removes it.</para>
+    /// <para>THE ORDER IS THE POINT: <c>-wal</c> first, the main file LAST. Stopped between any two steps — a crash, a
+    /// held member, a rename back that fails — what can remain is a database WITHOUT its WAL (consistent, merely
+    /// missing its newest commits: a cache miss), never a WAL without its database, the one leftover that poisons
+    /// whatever is created at the path next.</para>
+    /// <para>True for a set with no files at all.</para></summary>
+    internal static bool Delete(string path)
+    {
+        string tag = StoreFiles.DeadTag + Guid.NewGuid().ToString("N")[..StoreFiles.DeadTagHexDigits];
+        Span<bool> moved = stackalloc bool[MemberSuffixes.Length];
+        for (int i = 0; i < MemberSuffixes.Length; i++)
+        {
+            string member = path + MemberSuffixes[i];
+            if (!File.Exists(member)) continue;
+            if (TryMove(member, member + tag)) { moved[i] = true; continue; }
+            if (!File.Exists(member)) continue;              // it went on its own between the two calls: nothing to move
+            // HELD. Undo what already moved, newest first, and report the set as kept — exactly as it was.
+            for (int j = i - 1; j >= 0; j--)
+                if (moved[j]) TryMove(path + MemberSuffixes[j] + tag, path + MemberSuffixes[j]);
+            return false;
+        }
+        for (int i = 0; i < MemberSuffixes.Length; i++)
+            if (moved[i]) TryDelete(path + MemberSuffixes[i] + tag);
+        return true;
+    }
+
+    /// <summary>A set's members in the order <see cref="Delete"/> moves them: the WAL first, the main file last.</summary>
+    static readonly string[] MemberSuffixes = ["-wal", "-shm", ""];
+
+    static bool TryMove(string from, string to)
+    {
+        try { File.Move(from, to); return true; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    /// <summary>Best-effort delete of one file; false when something still holds it. <see cref="StoreFiles"/> uses it
+    /// for the <c>.dead-*</c> leftovers.</summary>
+    internal static bool TryDelete(string file)
+    {
+        try { File.Delete(file); return true; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    /// <summary>Drop every table in the file. The unmovable-file path of <see cref="Recreate"/>: the set could not be
+    /// renamed aside, so it is emptied in place instead.</summary>
     static void DropEverything(SqliteConnection c)
     {
         var tables = new List<string>(16);
@@ -969,31 +1222,81 @@ public static partial class Store
             try { Exec(c, $"DROP TABLE IF EXISTS \"{tables[i].Replace("\"", "\"\"")}\";"); } catch (SqliteException) { }
     }
 
+    /// <summary>ONE always-on line per open — boot, recreate or rebuild — so "what did the cache do at launch" is one
+    /// grep: <c>store.open file= pages= walBytes= fingerprint= outcome=opened|created|recreated:&lt;why&gt;|memory-only:&lt;why&gt; ms=</c>.
+    /// Info for a kept or new file, Warning for anything that lost data or will not persist. <c>walBytes</c> is the WAL
+    /// found BEFORE sqlite touched it: a large one beside a small or fresh database is the 2026-09-18 shape, and it is
+    /// the number that would have named that incident from the log alone.</summary>
+    static void LogOpen(string path, in OpenReport report, string outcome, long started, bool warn)
+        => Log.Event(warn ? WaveeLogLevel.Warning : WaveeLogLevel.Info, "store", "store.open", "", null, -1, null,
+            WaveeLogField.Of("file", Path.GetFileName(path)), WaveeLogField.Of("pages", report.Pages),
+            WaveeLogField.Of("walBytes", report.WalBytes), WaveeLogField.Of("fingerprint", $"{report.Fingerprint:x16}"),
+            WaveeLogField.Of("outcome", outcome), WaveeLogField.Of("ms", ElapsedMs(started)));
+
+    static string OutcomeOf(in OpenReport report)
+        => report.Why is { } why ? "recreated:" + why : report.Created ? "created" : "opened";
+
+    static long ElapsedMs(long started) => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+
+    static long LengthOf(string file)
+    {
+        try
+        {
+            var info = new FileInfo(file);
+            return info.Exists ? info.Length : 0;
+        }
+        catch (IOException) { return 0; }
+        catch (UnauthorizedAccessException) { return 0; }
+    }
+
     /// <summary>Close the store: stop taking work, drain what is queued, checkpoint the WAL, close both connections.
-    /// Blocking, and never called from the UI thread (App.cs calls it from its shutdown shell).</summary>
+    /// Blocking, and never called from the UI thread (App.cs calls it from its shutdown shell). Also the cleanup for a
+    /// store that went memory-only mid-session (<see cref="RetireToMemory"/>): its thread is still there to join.</summary>
     public static void Shutdown()
     {
-        if (!s_open) return;
+        if (!s_open && s_thread is null) return;
         s_stopping = true;
-        s_queue.CompleteAdding();
+        try { s_queue.CompleteAdding(); } catch (ObjectDisposedException) { }
         s_thread?.Join(TimeSpan.FromSeconds(5));
-        var db = s_db;
-        if (db is not null)
-        {
-            lock (db.WriteLock)
-            {
-                // The reader goes first: a live read connection can hold the WAL open and turn the truncating
-                // checkpoint into a no-op, which is how a 51 MB WAL survives a clean shutdown.
-                try { db.Read.Close(); db.Read.Dispose(); } catch (SqliteException) { }
-                try { Exec(db.Write, "PRAGMA wal_checkpoint(TRUNCATE);"); } catch (SqliteException) { }
-                try { db.Write.Close(); db.Write.Dispose(); } catch (SqliteException) { }
-            }
-        }
-        SqliteConnection.ClearAllPools();   // so a later Boot that must DELETE this file can actually do it
+        s_thread = null;
+        s_open = false;                     // BEFORE the close: a late fault on the way out must not owe a rebuild
+        if (s_db is { } db) Close(db, checkpoint: true);
+        SqliteConnection.ClearAllPools();   // so a later Boot that must set this file aside can actually move it
         s_db = null;
-        s_open = false;
+        s_repair = null;
         s_meta.Clear();                     // the next Boot (if any) warms fresh from whatever file it opens
         s_paletteWarmedOnce = false;         // the next Boot opens (possibly) a different file and must warm it too
+    }
+
+    /// <summary>Retire a <see cref="Db"/>: mark it, drop the commands prepared on it, close both connections — all
+    /// under its write lock, so a synchronous journal call is either finished with it or will see
+    /// <see cref="Db.Retired"/>. The reader goes first: a live read connection can hold the WAL open and turn the
+    /// truncating checkpoint into a no-op, which is how a 51 MB WAL survives a clean shutdown.
+    /// <paramref name="checkpoint"/> is false for a file being abandoned — nothing in it is worth folding back.
+    /// Idempotent.</summary>
+    static void Close(Db db, bool checkpoint)
+    {
+        lock (db.WriteLock)
+        {
+            if (db.Retired) return;
+            db.Retired = true;
+            DropPreparedUpserts();
+            try { db.Read.Close(); db.Read.Dispose(); } catch (SqliteException) { }
+            if (checkpoint)
+            {
+                try { Exec(db.Write, "PRAGMA wal_checkpoint(TRUNCATE);"); } catch (SqliteException) { }
+            }
+            try { db.Write.Close(); db.Write.Dispose(); } catch (SqliteException) { }
+        }
+    }
+
+    /// <summary>Dispose every shape's prepared upsert. They belong to the write connection they were prepared on; the
+    /// next batch prepares them again against whatever connection is current (<see cref="PrepareUpsert"/>). Called on
+    /// the UI thread by <see cref="Boot"/> (before the store thread exists) and under a retiring Db's write lock.</summary>
+    static void DropPreparedUpserts()
+    {
+        for (int i = 0; i < s_shapes.Length; i++)
+            if (s_shapes[i] is { } sql) { sql.Upsert?.Dispose(); sql.Upsert = null; }
     }
 
     /// <summary>Block until everything queued has run. Tests and shutdown only — never the UI thread (C9).</summary>
@@ -1009,18 +1312,25 @@ public static partial class Store
 
     static void Loop(BlockingCollection<Action> queue)
     {
-        while (!s_stopping || queue.Count > 0)
+        while (true)
         {
             Action? job = null;
             try { if (!queue.TryTake(out job, 250)) job = null; }
             catch (ObjectDisposedException) { break; }
-            catch (InvalidOperationException) { break; }         // CompleteAdding + empty
+            catch (InvalidOperationException) { break; }
+            // An owed rebuild runs HERE: between jobs, on this thread, BEFORE the job just taken. No job is ever
+            // holding a connection the rebuild closes, and the job then runs against the fresh file (or as a no-op).
+            Repair(queue);
             if (job is not null)
             {
                 try { job(); }
                 catch (Exception ex) { s_faults++; Fault("job", ex); }
                 continue;
             }
+            // Drained AND closed to new work: this queue's thread is done. The QUEUE's state and not the global
+            // `s_stopping`, because a store that went memory-only completes its queue without a Shutdown, and a later
+            // Boot resets `s_stopping` for the NEXT thread — this one must still find its way out.
+            if (queue.IsCompleted) break;
             if (!s_stopping) MaybeSweep();
         }
     }
@@ -1029,7 +1339,16 @@ public static partial class Store
     {
         if (!s_open || s_stopping) return false;
         // TryAdd, never Add: a bounded queue whose producer is the UI thread must refuse, not block (C8/C9).
-        if (s_queue.TryAdd(job)) return true;
+        try
+        {
+            if (s_queue.TryAdd(job)) return true;
+        }
+        catch (InvalidOperationException)
+        {
+            // Completed between the check above and here: the store went memory-only (RetireToMemory) or is
+            // shutting down. A refusal like any other — every caller already has its fallback for one.
+            return false;
+        }
         s_dropped++;
         return false;
     }
@@ -1041,28 +1360,260 @@ public static partial class Store
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>One statement inside <paramref name="tx"/>; returns the rows it changed.</summary>
+    static int Exec(SqliteConnection c, SqliteTransaction tx, string sql)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = sql;
+        return cmd.ExecuteNonQuery();
+    }
+
     /// <summary>Every store failure, in ONE always-on line (CLAUDE.md: always-on logs, no debug switches). It was a
     /// <c>Debug.WriteLine</c>, which is compiled OUT of Release — so the one configuration the user runs reported a
     /// dead cache as silence: <c>open</c> failing means memory-only for the whole process (<see cref="Boot"/>), and
     /// <c>read</c>/<c>write</c>/<c>palette.*</c> failing means a cold start that never warms. `s_faults` already
     /// counts them for the diagnostics page; this is what names them. Warning, not Error: the app is still correct
     /// without a cache, it is only slower.
-    /// <para>Called from the STORE THREAD for every case but <c>open</c>; <c>Log.Event</c> is ring-locked and safe
-    /// from any thread.</para>
+    /// <para>Called from the STORE THREAD for every case but <c>open</c> and the two synchronous journal doors, which
+    /// run on their caller's thread; <c>Log.Event</c> is ring-locked and safe from any thread.</para>
     /// <para>ONE line and no stack, deliberately: a failing <c>write</c> faults once per batch, and a stack per batch
     /// would bury the log it exists to inform. The type and the message are what the <c>Debug.WriteLine</c> printed and
-    /// what actually names the cause ("SqliteException: database disk image is malformed").</para></summary>
-    static void Fault(string what, Exception ex)
-        => Log.Event(WaveeLogLevel.Warning, "store", "store.fault",
-            $"the store's {what} step failed: {ex.GetType().Name}: {ex.Message}", null, -1, null,
+    /// what actually names the cause ("SqliteException: database disk image is malformed").</para>
+    /// <para><b>AND THE ROUTER FOR MID-SESSION RECOVERY</b> (wave D1). A fault whose exception is (or wraps) a
+    /// <see cref="SqliteException"/> goes through <see cref="StoreHealth.OnFault"/>: the first statement this session
+    /// that the FILE is damaged owes a rebuild (<c>recovery=owed</c>) — serviced by the store thread between jobs
+    /// (<see cref="Repair"/>), never here, which may be a caller's thread or the middle of a job still holding the
+    /// connection; a second one retires the store to memory-only for the rest of the session (<c>recovery=spent</c>).
+    /// Everything else — busy, locked, full, an I/O error, a bug — is only counted. A fault about a file a rebuild has
+    /// already replaced (<paramref name="about"/> retired) is history, not news, and owes nothing.</para></summary>
+    static void Fault(string what, Exception ex) => Fault(what, ex, s_db);
+
+    /// <inheritdoc cref="Fault(string,Exception)"/>
+    static void Fault(string what, Exception ex, Db? about)
+    {
+        int code = SqliteCodeOf(ex);
+        // READ FIRST, the retirement second: a rebuild marks its old Db retired BEFORE it sets `s_recovered`, so a
+        // `true` here guarantees the Retired check below sees the retirement — a fault about the old file that lands
+        // mid-rebuild can never read as a SECOND corruption and retire the fresh one.
+        bool recovered = s_recovered;
+        string recovery = "none";
+        if (code != 0 && s_open && about is { Retired: false })
+        {
+            if (StoreHealth.OnFault(code, recovered) == StoreFaultVerdict.Recover)
+            {
+                Interlocked.CompareExchange(ref s_repair, new StoreRepair(about, what, code, retire: false), null);
+                recovery = "owed";
+            }
+            else if (StoreHealth.RecoverySpent(code, recovered))
+            {
+                s_open = false;                   // stop taking work NOW, from whichever thread noticed
+                Volatile.Write(ref s_repair, new StoreRepair(about, what, code, retire: true));
+                recovery = "spent";
+            }
+        }
+        Log.Event(WaveeLogLevel.Warning, "store", "store.fault",
+            recovery == "spent"
+                ? $"the store's {what} step failed a second time on a damaged file: memory-only for the rest of this session: {ex.GetType().Name}: {ex.Message}"
+                : $"the store's {what} step failed: {ex.GetType().Name}: {ex.Message}",
+            null, -1, null,
             WaveeLogField.Of("step", what), WaveeLogField.Of("error", ex.GetType().Name),
+            WaveeLogField.Of("code", code), WaveeLogField.Of("recovery", recovery),
             WaveeLogField.Of("faults", s_faults));
+    }
+
+    // ── recovery (wave D1) ──────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>THE RECOVERY DOOR: rebuild the cache file from nothing, on the store thread, between jobs.
+    /// <see cref="Fault"/> is its caller — the first time this session sqlite says the FILE is damaged
+    /// (<see cref="StoreHealth.OnFault"/>) — and it is public because recovery is one door, not two: whatever else
+    /// knows the file must go uses the very same path, and that path can be exercised without corrupting bytes under a
+    /// live handle.
+    /// <para>What runs, in order, on the store thread (<see cref="RebuildCore"/>): the pending-intent count is read
+    /// while the file may still answer; both connections are closed under the write lock; the set is moved aside all
+    /// or nothing (<see cref="Delete"/>, or emptied through sqlite when it will not move); the same path is opened
+    /// fresh; the last warmed scope is resolved again in it; <see cref="s_db"/> is swapped; and the UI thread is told to
+    /// forget the <c>meta</c> ledgers that described the old file. ONE <c>store.recovered</c> line (beside the
+    /// <c>store.open</c> line every open writes) says what happened. A rebuild that fails leaves the store memory-only
+    /// for the rest of the session, and says so.</para>
+    /// <para>Non-blocking — <see cref="Flush"/> after it to wait. A no-op with no store open. Not
+    /// <see cref="DropCatalog"/>'s path: a rebuild loses the intent journal with the file, which is right for a file
+    /// sqlite calls damaged and wrong for a user who only asked to clear cached metadata.</para></summary>
+    public static void Rebuild(string step)
+    {
+        Db? db = s_db;
+        if (!s_open || db is null) return;
+        Interlocked.CompareExchange(ref s_repair, new StoreRepair(db, step, 0, retire: false), null);
+    }
+
+    /// <summary>STORE THREAD, from <see cref="Loop"/> before every job and on every idle tick: service the owed repair,
+    /// if any. A request about a file that is no longer current (already rebuilt, already closed) is stale and
+    /// dropped; so is anything owed during shutdown — <see cref="Shutdown"/> closes the file anyway, and the next
+    /// launch's open judges it afresh.</summary>
+    static void Repair(BlockingCollection<Action> queue)
+    {
+        StoreRepair? owed = Interlocked.Exchange(ref s_repair, null);
+        if (owed is null || s_stopping) return;
+        if (owed.Db.Retired || !ReferenceEquals(owed.Db, s_db)) return;
+        if (owed.Retire) RetireToMemory(queue, owed.Db);
+        else RebuildCore(queue, owed);
+    }
+
+    /// <summary>STORE THREAD. <see cref="Rebuild"/>'s body. <see cref="s_swap"/> is held from the retire to the swap,
+    /// so a synchronous journal call that finds its Db retired waits here and then writes into the fresh file.
+    /// <para><b>THE <c>meta</c> LEDGERS ARE FORGOTTEN, NOT COPIED.</b> They are the library sync tokens, and each is only
+    /// true together with the library list it was captured against (<c>LibrarySyncLedger</c>: "the count travels
+    /// WITH the token in the SAME write"). The fresh file holds no library lists, so writing the old ledgers into it
+    /// would put a token on disk with nothing it describes; clearing the UI thread's copy instead makes the next sync
+    /// of each relation a FULL walk, which is correct, and that walk writes list and ledger into the new file together.
+    /// The in-memory library itself is untouched: only the disk forgot.</para></summary>
+    static void RebuildCore(BlockingCollection<Action> queue, StoreRepair owed)
+    {
+        long started = Stopwatch.GetTimestamp();
+        Db old = owed.Db;
+        var report = new OpenReport();
+        string lost = "unknown";
+        string? failure = null;
+        lock (s_swap)
+        {
+            lock (old.WriteLock)
+            {
+                // What the user loses, read BEFORE the close while the file may still answer. The journal is the one
+                // table here that is not a cache — writes the user made that the server has not confirmed — and no
+                // row can be carried out of a file sqlite calls damaged.
+                try { lost = Scalar(old.Write, "SELECT count(*) FROM intent;").ToString(System.Globalization.CultureInfo.InvariantCulture); }
+                catch (SqliteException) { }
+                catch (InvalidOperationException) { }
+                Close(old, checkpoint: false);
+            }
+            // `s_db` still names the RETIRED Db until the swap, on purpose: a journal caller that captures it now
+            // finds it retired under the lock and waits on `s_swap` for the fresh one — a null here would read as
+            // "no store" and drop the user's intent instead of delaying it by one rebuild.
+            s_recovered = true;                       // AFTER the retirement (Fault reads this first — see there)
+            s_generation++;
+            try
+            {
+                Db fresh = Open(old.Path, force: "recovery:" + owed.Step, ref report);
+                try
+                {
+                    // The fresh `scope` table is empty: the old scope_id means nothing in it.
+                    if (s_warmedKey is { } key) s_scopeId = ResolveScopeId(fresh, key);
+                }
+                catch
+                {
+                    Close(fresh, checkpoint: false);
+                    throw;
+                }
+                s_db = fresh;
+            }
+            catch (Exception ex)
+            {
+                s_faults++;
+                failure = FailureOf(ex);
+                Fault("rebuild", ex, about: null);    // the line that names the cause; owes nothing (about: null)
+                RetireToMemory(queue, old);
+            }
+        }
+
+        LogOpen(old.Path, in report, failure is null ? OutcomeOf(in report) : "memory-only:" + failure, started, warn: true);
+        Log.Event(WaveeLogLevel.Warning, "store", "store.recovered",
+            failure is null
+                ? "the cache file was damaged mid-session and was rebuilt"
+                : "the cache file was damaged mid-session and could not be rebuilt: memory-only for the rest of this session",
+            null, -1, null,
+            WaveeLogField.Of("step", owed.Step), WaveeLogField.Of("code", owed.Code),
+            WaveeLogField.Of("lostIntents", lost), WaveeLogField.Of("outcome", failure is null ? "reopened" : "memory-only"),
+            WaveeLogField.Of("ms", ElapsedMs(started)));
+        if (failure is null) Post(static () => s_meta.Clear());
+    }
+
+    /// <summary>STORE THREAD. Give up on the file for the rest of this session, honestly: stop taking work, close
+    /// it, and complete the queue so what is already in it drains as no-ops (every job reads <see cref="s_db"/> and
+    /// finds null — a cold read still posts back and continues to the network, a write returns its staging). The
+    /// thread then exits; <see cref="Shutdown"/> joins it, and a later <see cref="Boot"/> may open the file afresh.</summary>
+    static void RetireToMemory(BlockingCollection<Action> queue, Db db)
+    {
+        s_open = false;
+        Close(db, checkpoint: false);
+        if (ReferenceEquals(s_db, db)) s_db = null;
+        try { queue.CompleteAdding(); } catch (ObjectDisposedException) { }
+    }
+
+    // ── Settings ▸ Storage ▸ "Clear metadata" ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>The five library relations (<see cref="RegisterLibraryEdges"/>) as a sql list: what
+    /// <see cref="DropCatalog"/> keeps. Built from the enum, so the persisted numbers are named once.</summary>
+    static readonly string LibraryRelations =
+        $"{(byte)EdgeRelation.Liked},{(byte)EdgeRelation.SavedAlbums},{(byte)EdgeRelation.FollowedArtists}," +
+        $"{(byte)EdgeRelation.SavedShows},{(byte)EdgeRelation.Pins}";
+
+    /// <summary>Settings ▸ Storage ▸ "Clear metadata": drop the CACHE tier — every row of every registered kind table
+    /// (all scopes), every palette row, every edge list except the five library relations, and every persisted LIST
+    /// (<c>list_head</c> + <c>list_item</c>, Store.Lists.cs) — then hand the pages back to the disk
+    /// (<c>incremental_vacuum</c>, then a truncating checkpoint, outside the transaction, so the bytes actually leave).
+    /// KEPT: the library relations (Liked, SavedAlbums, FollowedArtists, SavedShows, Pins — the user's own lists) with
+    /// the <c>meta</c> sync ledgers that pair with them, the <c>intent</c> journal (writes the user made that the server
+    /// has not confirmed — never a cache), and <c>scope</c>. One transaction on the store thread, so a half-cleared cache
+    /// cannot exist. One <c>store.cleared rows= ms=</c> line.
+    /// <para><b>The rootlist goes with the playlists, although it is the user's own list.</b> The five kept relations
+    /// are kept because each is paired with a <c>meta</c> sync token that is only true of the list it was captured
+    /// against — drop one half and the next delta applies to nothing. A persisted list carries its revision in its OWN
+    /// head, in the same rows it describes, so dropping both together is always consistent, and the next launch reads
+    /// the rootlist in full once. Nothing about the rootlist is worth an exception to "metadata is cache".</para>
+    /// <para><b>Deliberately NOT close → <see cref="Delete"/> → <see cref="Boot"/></b> (the plan's first sketch, and
+    /// <see cref="Rebuild"/>'s path): deleting the file deletes the journal and the library with it, and a button that
+    /// says "metadata" must never cost the user an unsynced like.</para>
+    /// <para>In-memory tables are untouched — they are the running session's, and the pages bound to them keep
+    /// painting; the effect is a COLD NEXT LAUNCH (every catalog row and cover colour asked for again).</para>
+    /// <para>BLOCKING, with a bounded wait like <see cref="Flush"/>: Settings calls it off the UI thread and recounts
+    /// disk usage right after, so it must not return before the bytes are gone. A no-op when no store is open.</para></summary>
+    public static void DropCatalog()
+    {
+        if (!s_open) return;
+        var done = new ManualResetEventSlim(false);   // NOT disposed: a late job may still Set it
+        if (!Enqueue(() => { try { DropCatalogCore(); } finally { done.Set(); } })) return;
+        done.Wait(TimeSpan.FromSeconds(30));
+    }
+
+    static void DropCatalogCore()
+    {
+        Db? db = s_db;
+        if (db is null) return;
+        long started = Stopwatch.GetTimestamp();
+        long rows = 0;
+        try
+        {
+            lock (db.WriteLock)
+            {
+                using (SqliteTransaction tx = db.Write.BeginTransaction())
+                {
+                    for (int k = 0; k < s_shapes.Length; k++)
+                        if (s_shapes[k] is { } sql) rows += Exec(db.Write, tx, $"DELETE FROM {sql.Shape.Table};");
+                    rows += Exec(db.Write, tx, "DELETE FROM palette;");
+                    rows += Exec(db.Write, tx, $"DELETE FROM edge WHERE kind NOT IN ({LibraryRelations});");
+                    rows += Exec(db.Write, tx, $"DELETE FROM edge_state WHERE kind NOT IN ({LibraryRelations});");
+                    rows += Exec(db.Write, tx, "DELETE FROM list_item;");
+                    rows += Exec(db.Write, tx, "DELETE FROM list_head;");
+                    tx.Commit();
+                }
+                // After the commit, never inside it: the freed pages go back to the file system first, then the WAL
+                // that carried all of it is folded into the file and truncated — a checkpoint cannot fold in a
+                // transaction that is still open.
+                try { Exec(db.Write, "PRAGMA incremental_vacuum;"); } catch (SqliteException) { }
+                try { Exec(db.Write, "PRAGMA wal_checkpoint(TRUNCATE);"); } catch (SqliteException) { }
+            }
+            Log.Event(WaveeLogLevel.Info, "store", "store.cleared",
+                "the metadata cache was cleared (library, journal and sync ledgers kept)", null, -1, null,
+                WaveeLogField.Of("rows", rows), WaveeLogField.Of("ms", ElapsedMs(started)));
+        }
+        catch (Exception ex) { s_faults++; Fault("clear", ex); }
+    }
 
     // ── the schema (CORE: pure text) ────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The whole v4 schema as one script — the fixed tables verbatim from plan §4.4, plus one table and two
-    /// indexes per registered kind, generated from its columns. Pure: same shapes in, same text out, which is what
-    /// makes <see cref="Fingerprint"/> a decision and not a guess.</summary>
+    /// indexes per registered kind, generated from its columns, plus the two list tables (<see cref="ListDdl"/>). Pure:
+    /// same shapes in, same text out, which is what makes <see cref="Fingerprint"/> a decision and not a guess.</summary>
     public static string Ddl()
     {
         var sb = new StringBuilder(4096);
@@ -1089,6 +1640,7 @@ public static partial class Store
         sb.Append("CREATE TABLE IF NOT EXISTS edge(scope_id INT, kind INT, parent TEXT, ordinal INT, child TEXT, payload BLOB, PRIMARY KEY(scope_id,kind,parent,ordinal)) WITHOUT ROWID;\n");
         sb.Append("CREATE INDEX IF NOT EXISTS ix_edge_child ON edge(scope_id, kind, child);\n");
         sb.Append("CREATE TABLE IF NOT EXISTS edge_state(scope_id INT, kind INT, parent TEXT, state INT, total INT, version INT, fetched_at INT, PRIMARY KEY(scope_id,kind,parent)) WITHOUT ROWID;\n");
+        sb.Append(ListDdl);
         sb.Append("CREATE TABLE IF NOT EXISTS intent(id INTEGER PRIMARY KEY, kind INT, payload BLOB, created_at INT, state INT);\n");
         sb.Append("CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);\n");
         // The palette: process-wide (Palette.cs's file header), so no scope_id — one row per artwork identity, ever.
@@ -1104,9 +1656,10 @@ public static partial class Store
         _ => "INT",
     };
 
-    /// <summary>FNV-1a over the DDL plus the schema version. A file whose fingerprint differs is a file written by a
-    /// build with different columns, and it is deleted — so an owner adding a column to their kind's shape never has
-    /// to think about migration, and never gets a column read back at the wrong ordinal.</summary>
+    /// <summary>FNV-1a over the DDL plus the schema version, and the NAME of the file (<see cref="FileName"/>). A build
+    /// with different columns has a different fingerprint and therefore opens a different file — so an owner adding a
+    /// column to their kind's shape never has to think about migration, never gets a column read back at the wrong
+    /// ordinal, and never touches the file another build is using. The old generation is left to the reaper.</summary>
     public static ulong Fingerprint(string ddl)
     {
         ulong h = 14695981039346656037UL;
@@ -1122,9 +1675,11 @@ public static partial class Store
     // ── warm (cold start) ───────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A scope became current: resolve its <c>scope_id</c> and read what an offline launch needs first —
-    /// the account's own edge lists, because the library IS edges (G6, plan §4.14). Everything else is read on
-    /// demand by the planner, which is what "disk before network" means; there is no speculative warm of the
-    /// catalog, because the catalog is not what the first frame paints.</summary>
+    /// the account's own edge lists, because the library IS edges (G6, plan §4.14), and the account's ROOTLIST with the
+    /// revision it is true at (wave D2), so the sidebar paints from disk and the login sync's rootlist ask is a
+    /// <c>/diff</c>. Everything else is read on demand by the planner, which is what "disk before network" means — a
+    /// playlist's membership included (the edge door's disk leg, <c>Fetch.PlanEdge</c>); there is no speculative warm of
+    /// the catalog, because the catalog is not what the first frame paints.</summary>
     public static void Warm(Scope scope)
     {
         if (!s_open) return;
@@ -1132,11 +1687,13 @@ public static partial class Store
         CatalogScope key = scope.Key;
         // Build the account's KEY here, on the UI thread: the store thread may not touch a live column, and may not
         // resolve a text-form id at all (file header). An account uri is always the text form, so this is a resolve.
-        string? me = scope.MeSlot == Table.None ? null : KeyText(scope.Users.Id[scope.MeSlot]);
+        EntityId meId = scope.MeSlot == Table.None ? default : scope.Users.Id[scope.MeSlot];
+        string? me = meId.IsEmpty ? null : KeyText(meId);
         if (me is { Length: 0 }) me = null;
         Enqueue(() =>
         {
-            s_scopeId = ResolveScopeId(key);
+            s_warmedKey = key;                        // what a rebuild resolves again in its fresh file (store thread only)
+            s_scopeId = ResolveScopeId(s_db, key);
             WarmMetaCore();
             if (me is null) return;
             ReadEdgesCore(scope, EdgeRelation.Liked, me, epoch);
@@ -1144,17 +1701,19 @@ public static partial class Store
             ReadEdgesCore(scope, EdgeRelation.FollowedArtists, me, epoch);
             ReadEdgesCore(scope, EdgeRelation.SavedShows, me, epoch);
             ReadEdgesCore(scope, EdgeRelation.Pins, me, epoch);
-            // Rootlist is NOT read here, on purpose (2026-09-15): `RootlistEdge` carries two `StringId`s
-            // (FolderName, FolderId) — indices into the PROCESS-LOCAL interner — and `SaveEdges` writes a payload as
-            // raw bytes (its own doc). A persisted rootlist page would resolve those bytes to whatever string that
-            // same numeric id happens to mean on the NEXT launch, unrelated to what was saved. The rootlist stays
-            // answered by the network only; `RegisterLibraryEdges` registers no applier for it either.
+            // The rootlist has ONE parent, so it is warmed with the library rather than asked per mount (Store.Lists.cs).
+            // Nobody continues from it: the login sync asks the network itself, and by then this has landed the
+            // revision that makes that ask a diff. A network answer that beats it here wins — the disk never
+            // overwrites a list that is no longer Unknown.
+            ReadListCore(scope, EdgeRelation.Rootlist, me, meId, epoch, then: null);
         });
     }
 
-    static long ResolveScopeId(CatalogScope key)
+    /// <summary>STORE THREAD. The <c>scope_id</c> for <paramref name="key"/> in <paramref name="db"/>, inserting the
+    /// row the first time. Takes the Db rather than reading <see cref="s_db"/> because a rebuild resolves it in the
+    /// fresh file BEFORE that file is swapped in.</summary>
+    static long ResolveScopeId(Db? db, CatalogScope key)
     {
-        Db? db = s_db;
         if (db is null) return 0;
         lock (db.WriteLock)
         {
@@ -1183,10 +1742,10 @@ public static partial class Store
     // ── small key/value persistence (meta) ─────────────────────────────────────────────────────────────────────────
     //
     // `meta(key TEXT PRIMARY KEY, value TEXT)` already exists in the generated DDL (see `Ddl()` above) and, until now,
-    // held only the schema fingerprint (the `INSERT OR REPLACE ... 'schema'` in `Open`). A ROW here costs nothing: the
+    // held only the schema fingerprint (the `INSERT OR REPLACE ... 'schema'` in `Stamp`). A ROW here costs nothing: the
     // fingerprint is computed over the DDL TEXT, so a value living in `meta` never touches it — where a new COLUMN
-    // (on `edge_state` or anywhere else) would move the fingerprint and delete every user's `library.db` once, for
-    // the whole app, on the next launch (plan §4.4). So this is rows, never a column.
+    // (on `edge_state` or anywhere else) would move the fingerprint and start every user on a fresh, empty file once,
+    // for the whole app, on the next launch (the name carries the schema — file header). So this is rows, never a column.
     //
     // MetaGet must never block the UI thread (C1/C9), and the store owns its own thread, so a synchronous read from
     // sqlite is not an option here (no sync-over-async, CLAUDE.md). The chosen shape is `Warm`'s: the WHOLE table is
@@ -1416,7 +1975,18 @@ public static partial class Store
         // this batch's answer by the time we get here) — see `SaveLibraryEdgesTouchedBy`'s own doc for why this is
         // the one call site that reaches every library write, wherever it commits.
         SaveLibraryEdgesTouchedBy(staging);
-        return Enqueue(() => WriteCore(staging));
+        // The LISTS this batch settled (Store.Lists.cs) are snapshotted NOW — the staging is still this thread's and
+        // the live tables hold this batch's answer — but queued AFTER the row job, so a playlist's count update inside
+        // the list's transaction finds the row this same batch writes. The staging is the store's the moment the row
+        // job is accepted, which is why nothing reads it after that line.
+        PrepareListsTouchedBy(staging);
+        if (!Enqueue(() => WriteCore(staging)))
+        {
+            s_listJobs.Clear();                       // a dropped batch drops its lists with it: a cache miss, never a half
+            return false;
+        }
+        EnqueuePreparedLists();
+        return true;
     }
 
     static void WriteCore(Staging staging)
@@ -1465,11 +2035,14 @@ public static partial class Store
             {
                 // coalesce, not assign: a Thin answer that says nothing about a column must not blank what a Full
                 // answer wrote last week — the same rule `Table.Accepts` enforces in memory, expressed in sql (D16).
-                // Authority columns take the max for the same reason: authority climbs, and never falls.
+                // Authority columns take the max for the same reason: authority climbs, and never falls. BOTH sides are
+                // coalesced: sqlite's multi-argument max() is NULL when ANY argument is NULL, so a group written for
+                // the first time into a row an earlier answer inserted (its authority column still NULL) used to keep
+                // a NULL authority forever — and a per-group Load restored that group at None.
                 string name = cols[i].Name;
                 sb.Append(name).Append('=');
                 sb.Append((cols[i].Flags & StoreColumnFlags.Authority) != 0
-                    ? $"max({name},coalesce(excluded.{name},0))"
+                    ? $"max(coalesce({name},0),coalesce(excluded.{name},0))"
                     : $"coalesce(excluded.{name},{name})");
                 sb.Append(',');
             }
@@ -1513,9 +2086,10 @@ public static partial class Store
     /// <para>The payload is written as its raw unmanaged bytes. <b>THIS IS NOT COVERED BY THE SCHEMA FINGERPRINT</b> —
     /// <see cref="Ddl"/> emits the fixed <c>edge(…, payload BLOB, …)</c> table verbatim; a payload struct's SHAPE
     /// (its field order, widths, padding) never appears in the generated text, so changing <c>TEdge</c> does not
-    /// change <see cref="Fingerprint"/> and does not drop the file. An applier reading last build's bytes as this
-    /// build's struct is a real hazard, not a hypothetical one — which is exactly why every registered applier MUST
-    /// assert <c>page.Stride == Unsafe.SizeOf&lt;TEdge&gt;()</c> before trusting <see cref="EdgePage.PayloadAs{TEdge}"/>,
+    /// change <see cref="Fingerprint"/> and does not move the build onto a new file. An applier reading last build's
+    /// bytes as this build's struct is a real hazard, not a hypothetical one — which is exactly why every registered
+    /// applier MUST assert <c>page.Stride == Unsafe.SizeOf&lt;TEdge&gt;()</c> before trusting
+    /// <see cref="EdgePage.PayloadAs{TEdge}"/>,
     /// and drop the page (never read it) when the width does not match (2026-09-15).</para></summary>
     public static bool SaveEdges<TEdge>(EdgeRelation relation, EdgeTable<TEdge> edges, int parent, EntityId parentId, Table children)
         where TEdge : unmanaged
@@ -1772,49 +2346,83 @@ public static partial class Store
     /// frame in the always-on frame log, which is where a stall belongs.</para>
     /// <para>Returns the intent's id, or 0 when there is no store. Nothing here is REPLAYED automatically (C6): a
     /// pending row is a record of what was in flight, for the shell to reconcile or drop, never a queue that fires
-    /// itself on a later launch.</para></summary>
+    /// itself on a later launch.</para>
+    /// <para><b>IT TOLERATES A REBUILD.</b> It runs on its caller's thread, so a mid-session rebuild
+    /// (<see cref="Rebuild"/>) can retire the Db it captured between the capture and the lock. Under the lock it
+    /// checks <see cref="Db.Retired"/>; a retired Db sends it to wait the rebuild out (<see cref="AfterSwap"/>) and try
+    /// ONCE more against the fresh file — a disposed connection is never used. The id carries the generation of the
+    /// file it was written to (<see cref="IntentId"/>), so it can never settle a stranger in a later file.</para></summary>
     public static long Journal(byte kind, ReadOnlySpan<byte> payload)
     {
         Db? db = s_db;
         if (!s_open || db is null) return 0;
         byte[] bytes = payload.IsEmpty ? Array.Empty<byte>() : payload.ToArray();
-        try
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            lock (db.WriteLock)
+            try
             {
-                using var cmd = db.Write.CreateCommand();
-                cmd.CommandText = "INSERT INTO intent(kind,payload,created_at,state) VALUES($k,$p,$c,0);";
-                cmd.Parameters.Add(new SqliteParameter("$k", (long)kind));
-                cmd.Parameters.Add(new SqliteParameter("$p", bytes.Length == 0 ? DBNull.Value : (object)bytes));
-                cmd.Parameters.Add(new SqliteParameter("$c", DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
-                cmd.ExecuteNonQuery();
-                // Its own statement: which statement of a multi-statement command a scalar comes from is the
-                // driver's business, and this id is the caller's only handle on the intent it just recorded.
-                using var last = db.Write.CreateCommand();
-                last.CommandText = "SELECT last_insert_rowid();";
-                return last.ExecuteScalar() is long id ? id : 0;
+                lock (db.WriteLock)
+                {
+                    if (!db.Retired)
+                    {
+                        using var cmd = db.Write.CreateCommand();
+                        cmd.CommandText = "INSERT INTO intent(kind,payload,created_at,state) VALUES($k,$p,$c,0);";
+                        cmd.Parameters.Add(new SqliteParameter("$k", (long)kind));
+                        cmd.Parameters.Add(new SqliteParameter("$p", bytes.Length == 0 ? DBNull.Value : (object)bytes));
+                        cmd.Parameters.Add(new SqliteParameter("$c", DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+                        cmd.ExecuteNonQuery();
+                        // Its own statement: which statement of a multi-statement command a scalar comes from is the
+                        // driver's business, and this id is the caller's only handle on the intent it just recorded.
+                        using var last = db.Write.CreateCommand();
+                        last.CommandText = "SELECT last_insert_rowid();";
+                        return last.ExecuteScalar() is long row && row > 0 ? IntentId(row, db.Generation) : 0;
+                    }
+                }
             }
+            catch (Exception ex) { s_faults++; Fault("journal", ex, db); return 0; }
+            db = AfterSwap();                         // retired under us: wait the rebuild out, then once more
+            if (db is null) return 0;
         }
-        catch (Exception ex) { s_faults++; Fault("journal", ex); return 0; }
+        return 0;
+    }
+
+    /// <summary>The intent id's layout: the file's rowid, with the <see cref="Db.Generation"/> of the file it lives in
+    /// above bit 48. Generation 0 until a rebuild, so until then an id IS its rowid. After one, a fresh file counts its
+    /// rowids from 1 again, and without the generation an id minted against the old file would name — and settle — a
+    /// NEWER intent in the new one.</summary>
+    const int IntentGenerationShift = 48;
+
+    static long IntentId(long row, int generation) => row | ((long)generation << IntentGenerationShift);
+
+    /// <summary>The live <see cref="Db"/> once any rebuild in progress has finished — the rebuild holds
+    /// <see cref="s_swap"/> from the retirement to the swap — or null when the store is closed or went memory-only.
+    /// For the synchronous doors only, and only after they released their Db's write lock (the lock order is
+    /// swap → write lock, never the reverse).</summary>
+    static Db? AfterSwap()
+    {
+        lock (s_swap) return s_open && s_db is { Retired: false } db ? db : null;
     }
 
     /// <summary>The intent settled (C6's four cases collapse to two on disk): the row is deleted when the server
     /// accepted it, and marked failed when it did not — a failed row is what the diagnostics page lists and what a
-    /// human decides about, never something this layer retries on its own.</summary>
+    /// human decides about, never something this layer retries on its own. An id from a file a rebuild has since
+    /// replaced settles nothing: its row went with that file (<see cref="IntentId"/>).</summary>
     public static void JournalSettle(long id, bool ok)
     {
         if (id <= 0 || !s_open) return;
+        int generation = (int)(id >> IntentGenerationShift);
+        long row = id & ((1L << IntentGenerationShift) - 1);
         Enqueue(() =>
         {
             Db? db = s_db;
-            if (db is null) return;
+            if (db is null || db.Generation != generation) return;
             try
             {
                 lock (db.WriteLock)
                 {
                     using var cmd = db.Write.CreateCommand();
                     cmd.CommandText = ok ? "DELETE FROM intent WHERE id=$i;" : "UPDATE intent SET state=2 WHERE id=$i;";
-                    cmd.Parameters.Add(new SqliteParameter("$i", id));
+                    cmd.Parameters.Add(new SqliteParameter("$i", row));
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -1823,21 +2431,31 @@ public static partial class Store
     }
 
     /// <summary>How many intents did not settle — read once at boot by the shell that owns them, and by the
-    /// diagnostics page. Blocking, like <see cref="Journal"/>, and never called from the UI thread.</summary>
+    /// diagnostics page. Blocking, like <see cref="Journal"/>, never called from the UI thread, and tolerant of a
+    /// rebuild the same way (see there).</summary>
     public static int PendingIntents()
     {
         Db? db = s_db;
         if (!s_open || db is null) return 0;
-        try
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            lock (db.WriteLock)
+            try
             {
-                using var cmd = db.Write.CreateCommand();
-                cmd.CommandText = "SELECT count(*) FROM intent;";
-                return cmd.ExecuteScalar() is long n ? (int)n : 0;
+                lock (db.WriteLock)
+                {
+                    if (!db.Retired)
+                    {
+                        using var cmd = db.Write.CreateCommand();
+                        cmd.CommandText = "SELECT count(*) FROM intent;";
+                        return cmd.ExecuteScalar() is long n ? (int)n : 0;
+                    }
+                }
             }
+            catch (Exception ex) { s_faults++; Fault("journal.count", ex, db); return 0; }
+            db = AfterSwap();
+            if (db is null) return 0;
         }
-        catch (Exception ex) { s_faults++; Fault("journal.count", ex); return 0; }
+        return 0;
     }
 
     // ── the GC tick (R2) ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1898,7 +2516,11 @@ public static partial class Store
                 if (plan.Deferred) return;
                 if (plan.Victims == 0) continue;
 
-                DeleteRows(db, sql.Shape.Table, uris, victims.AsSpan(0, plan.Victims));
+                // A playlist row takes its persisted list with it (Store.Lists.cs): the list's bytes count toward the
+                // budget, so a list nothing could evict is the 0.2.9 extension tier again — bytes the ceiling measures
+                // and no sweep can reach. Keyed by the same uri, deleted in the same batch transaction.
+                DeleteRows(db, sql.Shape.Table, uris, victims.AsSpan(0, plan.Victims),
+                           lists: sql.Shape.Kind == EntityKind.Playlist);
                 bytes = plan.BytesAfter;
                 evicted += plan.Victims;
                 s_evicted += plan.Victims;
@@ -1935,7 +2557,10 @@ public static partial class Store
         catch (Exception ex) { s_faults++; Fault("sweep", ex); }
     }
 
-    static void DeleteRows(Db db, string table, List<string> uris, ReadOnlySpan<int> victims)
+    /// <summary>Delete the sweep's victims in bounded batches, one transaction each. <paramref name="lists"/>: the rows
+    /// are playlists, and each one's persisted list (<c>list_head</c> + <c>list_item</c>, keyed by the same uri) goes in
+    /// the same transaction — a list whose header was evicted is a cold list, and the budget has to be able to reach it.</summary>
+    static void DeleteRows(Db db, string table, List<string> uris, ReadOnlySpan<int> victims, bool lists)
     {
         lock (db.WriteLock)
         {
@@ -1945,7 +2570,9 @@ public static partial class Store
                 using SqliteTransaction tx = db.Write.BeginTransaction();
                 using var cmd = db.Write.CreateCommand();
                 cmd.Transaction = tx;
-                cmd.CommandText = $"DELETE FROM {table} WHERE scope_id=$s AND uri=$u;";
+                cmd.CommandText = lists
+                    ? $"DELETE FROM {table} WHERE scope_id=$s AND uri=$u; DELETE FROM list_item WHERE scope_id=$s AND list=$u; DELETE FROM list_head WHERE scope_id=$s AND list=$u;"
+                    : $"DELETE FROM {table} WHERE scope_id=$s AND uri=$u;";
                 cmd.Parameters.Add(new SqliteParameter("$s", s_scopeId));
                 var pu = new SqliteParameter("$u", DBNull.Value);
                 cmd.Parameters.Add(pu);

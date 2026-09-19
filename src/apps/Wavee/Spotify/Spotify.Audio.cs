@@ -1121,7 +1121,7 @@ public static partial class Spotify
             {
                 using var head = new HttpRequestMessage(HttpMethod.Head, url);
                 using HttpResponseMessage r = Cdn.Send(head, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-                if (r.IsSuccessStatusCode && r.Content.Headers.ContentLength is > 0 and { } n) return n;
+                if (r.IsSuccessStatusCode && r.Content.Headers.ContentLength is >= 65536 and { } n) return n;
             }
             catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException) { }
             try

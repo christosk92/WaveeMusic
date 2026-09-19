@@ -1402,13 +1402,13 @@ public class SidebarProjectionEdgeFacts
         Assert.True(Entities.Current.Edges.PlaylistTracks.WasAsked(p.Slot, 0));
     }
 
-    /// <summary>Bug A1: a COVERED row is no longer exempt from the `PlaylistTracks` ask — the count needs the same
-    /// answer a cover-less row's mosaic does, and `StagePlaylist` never marks `PlaylistFields.TrackCount` known (it
-    /// stages Identity+Capabilities only, exactly the shape a real ListMetadataV2 answer leaves). This replaces the
-    /// old "never asked — it has its own cover" fact, whose premise (a cover implies nothing is owed) never held for
-    /// the count.</summary>
+    /// <summary>D2 (issue #4): the deleted bug A1 `ShouldEnsureCount` used to force exactly this ask — a COVERED row
+    /// with an unknown count got its full `PlaylistTracks` edge read just to learn a number (the ~30 full
+    /// `GET /playlist/v2/playlist/{id}` reads proven at boot). `StagePlaylist` never marks `PlaylistFields.TrackCount`
+    /// known (it stages Identity+Capabilities only, exactly the shape a real ListMetadataV2 answer leaves) — the
+    /// count now simply stays unknown, and the row shows none; it is never a reason to ask anything.</summary>
     [Fact]
-    public void EnsureIdentity_AsksAnUncountedCoveredRowsTracks_ForTheCountAlone()
+    public void CoveredRowWithAnUnknownCount_IsNeverAskedForItsTracks()
     {
         TestScope.Fresh();
         var s = Staging.Rent();
@@ -1420,13 +1420,13 @@ public class SidebarProjectionEdgeFacts
         var me = Me();
         SetRootlist(me, Item(p, depth: 0));
 
-        Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
-        Assert.True(Entities.Current.Edges.PlaylistTracks.WasAsked(p.Slot, 0));   // asked anyway — for the count
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+        Assert.False(Entities.Current.Edges.PlaylistTracks.WasAsked(p.Slot, 0));
+        Assert.False(Assert.Single(rows).CountKnown);   // no ask ⇒ no count ⇒ no subtitle, never a confident zero
     }
 
-    /// <summary>The positive control for the fact above: a covered row whose count IS already known (the
-    /// `PlaylistFields.TrackCount` bit, bug A1's real signal) is never re-asked — `ShouldEnsureCount` and
-    /// `ShouldEnsureMembership` both refuse it.</summary>
+    /// <summary>The positive control: a covered row whose count IS already known is never asked either — same
+    /// conclusion (nothing left to warm), reached from the other starting state.</summary>
     [Fact]
     public void EnsureIdentity_NeverAsksAFullyKnownCoveredRows_Tracks()
     {
@@ -1585,6 +1585,33 @@ public class SidebarProjectionEdgeFacts
         Assert.False(e.CountKnown);
     }
 
+    /// <summary>D2: the one free upgrade over the fact above — once membership is resident for some OTHER reason (a
+    /// cover-less row's own mosaic ask), its <see cref="Playlist.MembershipTotal"/> IS the real count, so the row
+    /// shows it without a second ask. This is bug A1's own proven shape (Identity landed off a thin route that never
+    /// carried a length) recovered for free instead of masked as "unknown".</summary>
+    [Fact]
+    public void ACoverlessRowsLandedMembership_FillsTheCount_WhenTheLengthFieldNeverDid()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var p = StagePlaylist(s, "spotify:playlist:thin-coverless", "Thin", null, 0, PlaylistCaps.None);   // no image
+        var t1 = StageTrack(s, "spotify:track:tc1", "spotify:album:tc1", "spotify:image:tc1");
+        var t2 = StageTrack(s, "spotify:track:tc2", "spotify:album:tc2", "spotify:image:tc2");
+        var t3 = StageTrack(s, "spotify:track:tc3", "spotify:album:tc3", "spotify:image:tc3");
+        TestScope.CommitAndPublish(s);
+        p.ApplyMembership([t1.Slot, t2.Slot, t3.Slot], default);
+        Assert.False(p.Knows(PlaylistFields.TrackCount));       // the bit never landed
+        Assert.Equal(3, p.MembershipTotal);                     // but the resident edge already knows the real count
+
+        var me = Me();
+        SetRootlist(me, Item(p, depth: 0));
+
+        var (rows, _) = Build(me, SidebarEntryKindMask.PlaylistTree);
+        var e = Assert.Single(rows);
+        Assert.True(e.CountKnown);
+        Assert.Equal(3, e.TrackCount);
+    }
+
     /// <summary>The real decoders, not the `StagePlaylist` shortcut: a PlaylistRead-shaped answer
     /// (`Spotify.Decode.PlaylistRevision`, the SelectedListContent shape a real `contents` fetch decodes) marks the
     /// count known because it carries the wire's `length` field; a ListMetadataV2-shaped answer (ext kind 205,
@@ -1626,7 +1653,7 @@ public class SidebarProjectionEdgeFacts
     /// mix with cover art — persisted with `track_count=0` and the `PlaylistFields.TrackCount` bit SET. The culprit:
     /// its PAGE re-asked the same playlist through the revision-gated `/diff` route
     /// (`Spotify.Api.Library.ReadList`), which — when the delta cannot be expressed against the held base —
-    /// answers with `changes_require_resync: true` AND a `contents` block anyway; `DiffVerdict` (Spotify.Api.Library.cs)
+    /// answers with `changes_require_resync: true` AND a `contents` block anyway; `PlaylistOps.DecodeDiff` (Spotify.Playlist.Ops.cs)
     /// reads that block exactly like a full read's, so `Decode.PlaylistRevision` saw a REAL `length: 0` field and,
     /// before this fix, treated any `sawLength` as trustworthy — overwriting the correct 50 the sidebar's earlier
     /// FULL read had already landed. Reproduces the exact shape: a trustworthy 50 lands first (the sidebar's ask),
@@ -1652,7 +1679,7 @@ public class SidebarProjectionEdgeFacts
         Assert.Equal(50, p.TrackCount);
 
         // The page's own re-ask: revision-gated, resync-flagged, `length: 0` — the shape `ReadList` hands to
-        // `Decode.PlaylistRevision` unchanged when `DiffVerdict` reads a `Contents` verdict off a diff response.
+        // `Decode.PlaylistRevision` unchanged when `PlaylistOps.DecodeDiff` reads a `Contents` answer off a diff response.
         var resyncFlagged = new Wavee.Protocol.Playlist.SelectedListContent
         {
             Length = 0,
@@ -1690,10 +1717,6 @@ public class SidebarProjectionEdgeFacts
         Assert.Equal(0, p.TrackCount);
     }
 
-    // The Load-time heal for a persisted corrupted zero (PlaylistShape.Load masking the TrackCount bit whenever the
-    // stored count is 0) needs a REAL Store round trip (sqlite file, WriteBehind/Read, StoreTests.cs's own fixture
-    // shape) to mean anything — see PlaylistPersistenceTests.cs.
-
     /// <summary>E3/Bug A1: the visible-row ask is BATCHED — every cold row in one walk gets its `Asked` bit flipped
     /// from the SAME `Build` call, off one span-form `Entities.Ensure`, not one `Fetch.Plan` per row.</summary>
     [Fact]
@@ -1719,10 +1742,12 @@ public class SidebarProjectionEdgeFacts
         Assert.NotEqual(b3, Entities.Current.Playlists.Asked[p3.Slot]);
     }
 
-    /// <summary>The count half of the same batching claim: every un-counted row's `PlaylistTracks` edge is asked
-    /// from the same `Build` call.</summary>
+    /// <summary>D2 (issue #4): the OLD count-driven half of this batching claim (deleted bug A1 `ShouldEnsureCount`)
+    /// used to ask every un-counted COVERED row's `PlaylistTracks` edge from the same `Build` call — a boot-time
+    /// storm across the whole rootlist. Covered rows with covers of their own never ask for anything any more,
+    /// batched or not.</summary>
     [Fact]
-    public void EnsureIdentity_BatchesTheCountAskAcrossMultipleUncountedRows_InOneWalk()
+    public void EnsureIdentity_NeverAsksMultipleUncountedCoveredRows_InOneWalk()
     {
         TestScope.Fresh();
         var s = Staging.Rent();
@@ -1737,8 +1762,43 @@ public class SidebarProjectionEdgeFacts
 
         Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
 
-        Assert.True(Entities.Current.Edges.PlaylistTracks.WasAsked(p1.Slot, 0));
-        Assert.True(Entities.Current.Edges.PlaylistTracks.WasAsked(p2.Slot, 0));
+        Assert.False(Entities.Current.Edges.PlaylistTracks.WasAsked(p1.Slot, 0));
+        Assert.False(Entities.Current.Edges.PlaylistTracks.WasAsked(p2.Slot, 0));
+    }
+
+    /// <summary>The membership ask that DOES remain (a cover-less row's own mosaic, `ShouldEnsureMembership`) keeps
+    /// the collected-then-asked-once shape across MULTIPLE rows in one walk — never one `EnsureEdge` per row — and
+    /// goes out at `FetchPriority.Prefetch`, never `Visible`: a tile is not a page, and must never compete with the
+    /// pane's own visible asks or reproduce the boot-time storm the deleted count ask caused.</summary>
+    [Fact]
+    public void EnsureIdentity_BatchesTheMembershipAskAcrossMultipleCoverlessRows_AtPrefetchPriority()
+    {
+        TestScope.Fresh();
+        Fetch.Reset();
+        var provider = new RecordingProvider(EntityProvider.Spotify);
+        Fetch.Register(provider);
+        try
+        {
+            var s = Staging.Rent();
+            var p1 = StagePlaylist(s, "spotify:playlist:u1", "U1", null, 0, PlaylistCaps.None);   // no image
+            var p2 = StagePlaylist(s, "spotify:playlist:u2", "U2", null, 0, PlaylistCaps.None);   // no image
+            TestScope.CommitAndPublish(s);
+            Assert.False(Entities.Current.Edges.PlaylistTracks.WasAsked(p1.Slot, 0));
+            Assert.False(Entities.Current.Edges.PlaylistTracks.WasAsked(p2.Slot, 0));
+
+            var me = Me();
+            SetRootlist(me, Item(p1, depth: 0), Item(p2, depth: 0));
+
+            Build(me, SidebarEntryKindMask.PlaylistTree, ensureIdentity: true);
+            Fetch.Drain();                                      // the host's tick (wave D4): the walk's asks leave here
+
+            Assert.True(Entities.Current.Edges.PlaylistTracks.WasAsked(p1.Slot, 0));
+            Assert.True(Entities.Current.Edges.PlaylistTracks.WasAsked(p2.Slot, 0));
+            var batch = Assert.Single(provider.Seen);           // ONE Start() call, not one per row
+            Assert.Equal(2, batch.Count);
+            Assert.Equal(FetchPriority.Prefetch, batch.Priority);
+        }
+        finally { Fetch.Reset(); }
     }
 
     /// <summary>Bug A3: a folder whose `spotify:end-group:` marker never arrives (a truncated answer, or the page
@@ -1814,18 +1874,6 @@ public class SidebarProjectionEnsurePredicateFacts
         Assert.False(SidebarProjection.ShouldEnsureMembership(ensureIdentity: true, hasCover: true, EdgeState.Unknown));
         Assert.False(SidebarProjection.ShouldEnsureMembership(ensureIdentity: true, hasCover: false, EdgeState.Complete));
         Assert.False(SidebarProjection.ShouldEnsureMembership(ensureIdentity: false, hasCover: false, EdgeState.Unknown));
-    }
-
-    /// <summary>Bug A1: unlike <see cref="SidebarProjection.ShouldEnsureMembership"/>, the count is asked
-    /// regardless of cover — a COVERED row's subtitle needs the real count exactly as much as a cover-less row's
-    /// mosaic needs membership.</summary>
-    [Fact]
-    public void ShouldEnsureCount_RegardlessOfCover_OnlyWhileTheCountIsUnknownAndVisible()
-    {
-        Assert.True(SidebarProjection.ShouldEnsureCount(ensureIdentity: true, countKnown: false, EdgeState.Unknown));
-        Assert.False(SidebarProjection.ShouldEnsureCount(ensureIdentity: true, countKnown: true, EdgeState.Unknown));
-        Assert.False(SidebarProjection.ShouldEnsureCount(ensureIdentity: true, countKnown: false, EdgeState.Complete));
-        Assert.False(SidebarProjection.ShouldEnsureCount(ensureIdentity: false, countKnown: false, EdgeState.Unknown));
     }
 
     /// <summary>The mosaic warm's gate is the complement of <see cref="SidebarProjection.ShouldEnsureMembership"/>
@@ -2866,11 +2914,13 @@ public class SidebarLibraryFingerprintPlaylistTracksTests
         Assert.NotEqual(before, SidebarLibraryFingerprint.Of(in me, default));
     }
 
-    [Fact]
-    public void ACoveredPlaylists_TracksLandingOnTheEdgeDirectly_DoesNotMoveTheFingerprint()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ACoveredPlaylists_EdgeLandingMovesFingerprintOnlyWhenCountIsUnknown(bool countKnown)
     {
-        // The fold only pays for the extra read on a row that actually NEEDS it (its mosaic never renders while the
-        // playlist has its own cover), so a covered playlist's tracks loading must not force a rebuild either.
+        // Covered rows still derive their count from membership until an authoritative count lands.
+        // Once both cover and count are known, membership does not affect this row's presentation.
         TestScope.Fresh();
         var s = Staging.Rent();
         ref var row = ref s.Playlists.Add();
@@ -2878,7 +2928,7 @@ public class SidebarLibraryFingerprintPlaylistTracksTests
         row.Title = s.Text("Has A Cover");
         row.Image = s.Text("spotify:image:cover");
         row.Caps = (byte)PlaylistCaps.CanView;
-        row.Known = (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities);
+        row.Known = (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities | (countKnown ? PlaylistFields.TrackCount : 0));
         row.Authority = Authority.Full;
         TestScope.CommitAndPublish(s);
         var p = Entities.Playlist(EntityUri.Parse("spotify:playlist:covered"));
@@ -2889,7 +2939,9 @@ public class SidebarLibraryFingerprintPlaylistTracksTests
         Entities.Current.Edges.PlaylistTracks.Replace(
             p.Slot, ReadOnlySpan<int>.Empty, ReadOnlySpan<PlaylistTrackEdge>.Empty, EdgeState.Complete, 0);
 
-        Assert.Equal(before, SidebarLibraryFingerprint.Of(in me, default));
+        long after = SidebarLibraryFingerprint.Of(in me, default);
+        if (countKnown) Assert.Equal(before, after);
+        else Assert.NotEqual(before, after);
     }
 
     /// <summary>Bug A2: the mosaic needs each member TRACK's own <c>AlbumSlot</c>/<c>ImageId</c>, which can land in a

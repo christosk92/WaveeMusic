@@ -1,6 +1,7 @@
 // ── Playback/Playback.Host.Context.cs ────────────────────────────────────────────────────────────────────────────────
 // Playing a context: the context resolve and its start, rows a caller holds, radio, the queue reorder, a controller's
-// add-to-queue, the launch restore, and the play report (registration, resume points, the play log). The inbound Connect
+// add-to-queue, the launch restore, and the play report (registration, resume points and their local progress mirror,
+// the play log), plus where an episode load starts (the row's progress, podcast plan §5.8). The inbound Connect
 // intake (play / transfer / set_queue / update_context, in arrival order) is `Playback.Host.Remote.cs`; autoplay and its
 // pages are `Playback.Host.Autoplay.cs`.
 //
@@ -85,7 +86,7 @@ public static partial class Playback
     /// <paramref name="startAt"/> when named, at <paramref name="fromMs"/>. UI thread. A playable uri plays as a one-row
     /// context at once (<see cref="PlayRows"/>, which keeps the user's queue); anything else is resolved on an api thread
     /// first. Owner Q's <c>Queue.InstallUi</c> installs it as <c>Shell.OnPlayContext</c> and the Play verb.</summary>
-    public static void PlayContext(EntityId context, EntityId startAt = default, int fromMs = 0)
+    public static void PlayContext(EntityId context, EntityId startAt = default, int fromMs = -1)
     {
         if (context.IsEmpty || Entities.Current is null) return;
         // Another device owns playback: the click is a COMMAND to it, never a resolve here (StartContext would drop the
@@ -99,7 +100,7 @@ public static partial class Playback
             string contextUri = context.Text, trackUri = startAt.IsEmpty ? "" : startAt.Text;
             bool shuffle = s_state.Shuffle;
             Log.Info("playback", "play forwarded to the owner: context=" + contextUri + " track=" + trackUri);
-            Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None));
+            Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, fromMs));
             return;
         }
         if (context.IsPlayable)
@@ -115,7 +116,7 @@ public static partial class Playback
         var load = default(RemoteLoad);
         load.Kind = RemoteCmd.Play;
         load.SkipToIndex = -1;
-        load.SeekToMs = Math.Max(0, fromMs);
+        load.SeekToMs = Math.Max(-1, fromMs);
         load.Shuffle = -1;
         load.Repeat = -1;
         load.Speed = 1.0;
@@ -130,7 +131,7 @@ public static partial class Playback
     /// provider Spotify), which is what <see cref="State.Context"/> and the PUT body carry, and from there the resolve, the
     /// queue build and autoplay's refusal of an infinite context are exactly the ones every other context takes. UI thread
     /// (the parse interns).</summary>
-    public static void PlayContext(string contextUri, EntityId startAt = default, int fromMs = 0)
+    public static void PlayContext(string contextUri, EntityId startAt = default, int fromMs = -1)
     {
         if (string.IsNullOrEmpty(contextUri) || Entities.Current is null) return;
         PlayContext(EntityId.Parse(contextUri.AsSpan()), startAt, fromMs);
@@ -287,6 +288,7 @@ public static partial class Playback
             ++s_contextSeq;
             s_orderRefs = null;
             s_orderRows = null;
+            FillQueueIds(playlist, packed.AsSpan(0, n), rows.AsSpan(0, n));
             if (s_state.Shuffle) Reorder(packed.AsSpan(0, n), rows.AsSpan(0, n), deck, shuffle: true);
             Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
             s_uids.Retain(Queue.Rows);
@@ -318,7 +320,7 @@ public static partial class Playback
     /// <see cref="RemotePlan.Layout"/> (history, the deck, the user's still-waiting queued rows, the rest as next up, the
     /// next-up run shuffled when shuffle is on), published at once so the queue surfaces answer the click in its own frame,
     /// and one Play is posted. A context resolve still in flight is superseded.</summary>
-    public static void PlayRows(ReadOnlySpan<EntityRef> rows, int start, EntityId context, int fromMs = 0)
+    public static void PlayRows(ReadOnlySpan<EntityRef> rows, int start, EntityId context, int fromMs = -1)
     {
         if (Entities.Current is null || (uint)start >= (uint)rows.Length || rows[start].IsNone) return;
         Rebind();                                          // the queue this play keeps from must be this scope's (G-241)
@@ -344,12 +346,14 @@ public static partial class Playback
             ++s_contextSeq;
             s_orderRefs = null;
             s_orderRows = null;
+            FillQueueIds(context, packed.AsSpan(0, n), laid.AsSpan(0, n));
             if (s_state.Shuffle) Reorder(packed.AsSpan(0, n), laid.AsSpan(0, n), deck, shuffle: true);
             Queue.Replace(packed.AsSpan(0, n), laid.AsSpan(0, n));
             Entities.Publish();
             EntityRef row = rows[start];
             long now = FrameNowMs();
-            Post(Input.Play(row, row.Id, context, Queue.CursorOf(deck), PlayableKind.Audio, fromMs, now));
+            Post(Input.PlayFrom(row, row.Id, context, Queue.CursorOf(deck), PlayableKind.Audio, Math.Max(0, fromMs), now,
+                ClaimCause.UserPlay, paused: false, explicitPosition: fromMs >= 0));
             s_pageUrl = "";                                // the caller's rows ARE the context: nothing to page (G-242)
             if (!sameContext) ForgetAutoplayPage();
             Post(Input.ContextPages(context, morePages: false, now));
@@ -416,6 +420,7 @@ public static partial class Playback
                     Spotify.Decode.ContextPage page = Spotify.Decode.ContextResolve(result.Bytes, buffer);
                     start = page.TrackStart;
                     count = page.TrackCount;
+                    load.ResolvedMetadata = page.Metadata;
                     if (!page.NextPageUrl.IsEmpty) pageUrl = System.Text.Encoding.UTF8.GetString(buffer.Utf8(page.NextPageUrl));
                 }
                 else Log.Warn("playback", "context resolve refused (" + result.Status + ")");
@@ -481,6 +486,7 @@ public static partial class Playback
     {
         if (seq != s_contextSeq || Entities.Current is null) return;
         if (s_state.Owner == Owner.Foreign) return;
+        CaptureOrigin(in load, buffer);
 
         ReadOnlySpan<ClusterTrack> context = buffer.Tracks(contextStart, contextCount);
         bool transfer = load.Kind == RemoteCmd.Transfer;
@@ -532,6 +538,7 @@ public static partial class Playback
                 Queue.Pack(refs.AsSpan(0, n), packed);
                 s_orderRefs = null;
                 s_orderRows = null;
+                FillQueueIds(contextId, packed.AsSpan(0, n), rows.AsSpan(0, n));
                 if (shuffle) Reorder(packed.AsSpan(0, n), rows.AsSpan(0, n), at, shuffle: true);
                 Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
                 s_uids.Retain(Queue.Rows);
@@ -543,7 +550,7 @@ public static partial class Playback
             Apply(Input.ShuffleOrdered(shuffle));
             if (load.Repeat >= 0) Apply(Input.Repeat((RepeatMode)load.Repeat));
             Apply(Input.PlayFrom(row, row.Id, contextId, Queue.CursorOf(at), PlayableKind.Audio,
-                (int)Math.Min(from, int.MaxValue), now, cause, RemotePlan.StartsPaused(in load)));
+                (int)Math.Min(from, int.MaxValue), now, cause, RemotePlan.StartsPaused(in load), explicitPosition: load.SeekToMs >= 0));
             s_pageContext = contextId;
             s_pageUrl = pageUrl;
             if (!sameContext) ForgetAutoplayPage();
@@ -561,6 +568,29 @@ public static partial class Playback
     /// <summary>One wire row → a queue row: its identity (allocating the catalog row), its uid kept exactly
     /// (<see cref="UidBook"/>, G-075) and its provenance. A row with no playable identity — a page marker, a delimiter —
     /// is skipped rather than queued as a hole.</summary>
+    static void FillQueueIds(EntityId context, ReadOnlySpan<int> packed, Span<QueueEdge> rows)
+    {
+        Dictionary<int, ulong>? canonical = null;
+        var scope = Entities.Current;
+        if (scope is not null && context.Kind == EntityKind.Show && scope.Shows.TryGetSlot(context, out int show))
+        {
+            var targets = scope.Edges.ShowEpisodes.Targets(show);
+            var payload = scope.Edges.ShowEpisodes.Payload(show);
+            canonical = new Dictionary<int, ulong>();
+            for (int k = 0; k < targets.Length && k < payload.Length; k++)
+                if (!payload[k].ItemId.IsEmpty)
+                    canonical[targets[k]] = s_uids.ItemIdOf(System.Text.Encoding.UTF8.GetBytes(Entities.Strings.Resolve(payload[k].ItemId)));
+        }
+        for (int k = 0; k < rows.Length; k++)
+        {
+            if (rows[k].ItemId != 0) continue;
+            var row = Queue.Unpack(packed[k]);
+            ulong item = row.Kind == EntityKind.Episode && canonical is not null && canonical.TryGetValue(row.Slot, out ulong held)
+                ? held : Queue.MintItemIds(1);
+            rows[k] = rows[k] with { ItemId = item };
+        }
+    }
+
     static void AddRow(ClusterBuffer buffer, in ClusterTrack track, QueueBucket bucket, EntityRef[] refs, QueueEdge[] rows, ref int n)
     {
         if (n >= refs.Length) return;
@@ -568,6 +598,9 @@ public static partial class Playback
         if (uri.IsEmpty) return;
         EntityId id = EntityId.Parse(uri);
         if (!id.IsPlayable) return;
+        if (bucket == QueueBucket.NextUp && (Spotify.Library.IsBanned(id)
+            || (!track.ArtistUri.IsEmpty && Spotify.Library.IsBanned(id.Text,
+                [System.Text.Encoding.UTF8.GetString(buffer.Utf8(track.ArtistUri))])))) return;
         EntityRef row = Entities.Ref(id);
         if (row.IsNone) return;
         QueueProvider provider = bucket == QueueBucket.UserQueue ? QueueProvider.Queue : RemotePlan.ProviderOf(buffer.Utf8(track.Provider));
@@ -832,7 +865,7 @@ public static partial class Playback
     {
         if (row.IsNone) return;
         Span<EntityRef> refs = [row];
-        Span<QueueEdge> rows = [new QueueEdge(0, (byte)QueueProvider.Context, (byte)QueueBucket.NowPlaying)];
+        Span<QueueEdge> rows = [new QueueEdge(Queue.MintItemIds(1), (byte)QueueProvider.Context, (byte)QueueBucket.NowPlaying)];
         Queue.Replace(refs, rows);
     }
 
@@ -930,6 +963,7 @@ public static partial class Playback
                     try
                     {
                         Queue.Pack(refs.AsSpan(0, n), packed);
+                        FillQueueIds(context, packed.AsSpan(0, n), rows.AsSpan(0, n));
                         Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
                     }
                     finally { ArrayPool<int>.Shared.Return(packed); }
@@ -1062,30 +1096,37 @@ public static partial class Playback
 
     /// <summary>Ask the catalog for the laid rows' identities so the panel paints titles, not skeletons: the deck and
     /// <see cref="RestoreHotRows"/> around it at playback priority, the rest at prefetch. One batched <c>Ensure</c> per
-    /// priority for tracks; an episode row (rare in a queue) goes one at a time.</summary>
+    /// priority for tracks, and one more per priority for episodes (D4: a restored episode row used to be asked one
+    /// at a time — rare in a queue, but still a per-row POST).</summary>
     static void EnsureRestoredIdentities(ReadOnlySpan<EntityRef> rows, int deck)
     {
         int hotFirst = Math.Max(0, deck - RestoreHotRows / 6);
         int hotEnd = Math.Min(rows.Length, hotFirst + RestoreHotRows);
         Track[] tracks = ArrayPool<Track>.Shared.Rent(rows.Length);
+        Episode[] episodes = ArrayPool<Episode>.Shared.Rent(rows.Length);
         try
         {
             for (int pass = 0; pass < 2; pass++)
             {
                 bool hot = pass == 0;
                 FetchPriority priority = hot ? FetchPriority.Playback : FetchPriority.Prefetch;
-                int n = 0;
+                int n = 0, m = 0;
                 for (int i = 0; i < rows.Length; i++)
                 {
                     if ((i >= hotFirst && i < hotEnd) != hot) continue;
                     EntityRef r = rows[i];
                     if (r.Kind == EntityKind.Track) tracks[n++] = new Track(r.Slot);
-                    else if (r.Kind == EntityKind.Episode) Entities.Ensure(new Episode(r.Slot), EpisodeFields.Identity, priority);
+                    else if (r.Kind == EntityKind.Episode) episodes[m++] = new Episode(r.Slot);
                 }
                 if (n > 0) Entities.Ensure(tracks.AsSpan(0, n), TrackFields.Identity, priority);
+                if (m > 0) Entities.Ensure(episodes.AsSpan(0, m), EpisodeFields.Identity, priority);
             }
         }
-        finally { ArrayPool<Track>.Shared.Return(tracks); }
+        finally
+        {
+            ArrayPool<Track>.Shared.Return(tracks);
+            ArrayPool<Episode>.Shared.Return(episodes);
+        }
     }
 
     // ── 7. the play report: registration, resume points, the play log (G-076, G-079) ───────────────────────────────
@@ -1106,27 +1147,31 @@ public static partial class Playback
     {
         long unix = UnixNowMs();
         bool open = s_registration.Open;
-        bool episode = s_registeredId.Kind == EntityKind.Episode && s_registeredId.Provider == EntityProvider.Spotify;
+        bool episode = IsSpotifyEpisode(s_registeredId);
 
         if ((r.Events & PlayEvents.Seeked) != 0 && open) Spotify.Telemetry.Seeked(ref s_registration, r.SeekFromMs, r.SeekToMs);
         if ((r.Events & PlayEvents.Paused) != 0)
         {
+            ArmProgressMirror(false);
             if (open) Spotify.Telemetry.Paused(ref s_registration, r.PausePosMs);
-            if (episode) Spotify.Telemetry.ResumePoint(s_registeredId.Text, r.PausePosMs, unix);
+            if (episode) LeaveEpisode(s_registeredId, r.PausePosMs, unix, "pause");
         }
-        if ((r.Events & PlayEvents.Resumed) != 0 && open) Spotify.Telemetry.Resumed(ref s_registration, r.ResumePosMs);
+        if ((r.Events & PlayEvents.Resumed) != 0 && open)
+        {
+            Spotify.Telemetry.Resumed(ref s_registration, r.ResumePosMs);
+            if (episode) ArmProgressMirror(true);
+        }
         if ((r.Events & PlayEvents.Ended) != 0)
         {
+            ArmProgressMirror(false);
             if (open) Spotify.Telemetry.Ended(ref s_registration, r.EndPosMs, ReasonText(r.EndReason));
-            if (r.EndedId.Kind == EntityKind.Episode && r.EndedId.Provider == EntityProvider.Spotify)
-                Spotify.Telemetry.ResumePoint(r.EndedId.Text, r.EndPosMs, unix);
+            if (IsSpotifyEpisode(r.EndedId)) LeaveEpisode(r.EndedId, r.EndPosMs, unix, "end");
             s_registration = default;
             s_registeredId = default;
         }
         if ((r.Events & PlayEvents.Started) == 0) return;
 
         EntityId id = r.StartedId;
-        WireStarted(r.Context, r.StartReason);           // the PUT's playback / session ids (G-240), before the registration
         PlayStarted?.Invoke(id, r.Context, unix);
         if (id.Provider != EntityProvider.Spotify || !id.IsPlayable) return;
         string uri = id.Text;
@@ -1135,7 +1180,61 @@ public static partial class Playback
             ProviderText(), ReasonText(r.StartReason), null, null, opened.BitrateKbps, opened.Label,
             r.DurationMs > 0 ? r.DurationMs : opened.DurationMs, r.StartPosMs);
         s_registeredId = id;
+        if (s_state.ContentRate != 1f) Spotify.Telemetry.RateChanged(ref s_registration, r.StartPosMs, s_state.ContentRate);
+        if (id.Kind == EntityKind.Episode)
+        {
+            ArmProgressMirror(true);
+            // Where the episode's audio really began — its resume point, when the load named none (EmitLoad resolved it).
+            if (r.StartPosMs > 0)
+                Log.Info("podcast", "podcast.progress.resume fromMs=" + r.StartPosMs + " durationMs=" + r.DurationMs);
+        }
         if (!Platform.Settings.Get(Platform.Keys.PrivateSession)) Spotify.Telemetry.PlayHistory(uri, unix);
+    }
+
+    static bool IsSpotifyEpisode(EntityId id) => id.Kind == EntityKind.Episode && id.Provider == EntityProvider.Spotify;
+
+    /// <summary>The listener left an episode (a pause, an end, a skip): tell herodotus where, and mirror the SAME position
+    /// at the SAME instant into the row at Local (podcast plan §5.8) — the row repaints now, the next launch reads it
+    /// from disk, and a later hydrate recognises this device's own revision by that instant and keeps the row.</summary>
+    static void LeaveEpisode(EntityId id, int positionMs, long unixMs, string why)
+    {
+        Spotify.Telemetry.ResumePoint(id.Text, positionMs, unixMs);
+        Entities.MirrorEpisodeProgress(id, positionMs, unixMs);
+        Log.Info("podcast", "podcast.progress.mirror why=" + why + " positionMs=" + positionMs);
+    }
+
+    // ── the local progress mirror's tick (P10, named: EpisodeProgress.MirrorIntervalMs) ──
+    //
+    // Herodotus hears this device on pause and end only, so without a tick a row would show the position the episode
+    // STARTED at until the listener stopped. Armed by a Spotify episode's Started/Resumed report, disarmed by any
+    // Paused/Ended one; the tick itself re-checks on the UI thread and disarms when the deck is no longer that episode,
+    // playing. One Timer for the process, a cached tick delegate: nothing allocates per tick but the mirror's own
+    // pooled staging and its write-behind job.
+
+    static Timer? s_progressMirror;
+    static readonly Action s_progressMirrorTick = ProgressMirrorTick;
+
+    static void ArmProgressMirror(bool on)
+    {
+        if (!on)
+        {
+            s_progressMirror?.Change(Timeout.Infinite, Timeout.Infinite);
+            return;
+        }
+        s_progressMirror ??= new Timer(static _ => ToUi(s_progressMirrorTick), null, Timeout.Infinite, Timeout.Infinite);
+        s_progressMirror.Change(EpisodeProgress.MirrorIntervalMs, EpisodeProgress.MirrorIntervalMs);
+    }
+
+    /// <summary>UI THREAD (marshalled by <see cref="ToUi"/>): mirror the playing episode's position at Local.</summary>
+    static void ProgressMirrorTick()
+    {
+        if (!s_registration.Open || !IsSpotifyEpisode(s_registeredId) || s_state.Phase != Phase.Playing
+            || !s_state.CurrentId.Equals(s_registeredId))
+        {
+            ArmProgressMirror(false);
+            return;
+        }
+        Entities.MirrorEpisodeProgress(s_registeredId, s_state.Position(FrameNowMs()), UnixNowMs());
     }
 
     /// <summary>The provenance word of the queue row the deck is on.</summary>
@@ -1163,19 +1262,6 @@ public static partial class Playback
             Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString(), Guid.NewGuid().ToString("N"));
     }
 
-    /// <summary>An episode loaded from its start: ask herodotus where it was left, and let the reducer seek there if
-    /// the listener has not moved past it by the time the answer lands (G-076).</summary>
-    static void LookUpResumePoint(EntityId episode, uint epoch)
-    {
-        string uri = episode.Text;
-        Spotify.Api.Run(() =>
-        {
-            long ms = 0;
-            try { ms = Spotify.Telemetry.ResumeMs(uri, CancellationToken.None); }
-            catch (Exception ex) { Log.Warn("playback", "resume point read failed", ex); }
-            if (ms > 0) Post(Input.ResumeAt(epoch, (int)Math.Min(ms, int.MaxValue), FrameNowMs()));
-        });
-    }
 
     // ── 8. test seam ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -1195,6 +1281,7 @@ public static partial class Playback
         s_orderRows = null;
         s_registration = default;
         s_registeredId = default;
+        ArmProgressMirror(false);                        // a fact's episode must not tick into the next fact's scope
         s_pageUrl = "";
         s_pageContext = default;
         ForgetAutoplayPage();

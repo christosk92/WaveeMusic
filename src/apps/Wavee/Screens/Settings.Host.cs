@@ -72,8 +72,10 @@ public static partial class Settings
     /// answer) → the Metadata-cache row keeps its generic description.</summary>
     public static Func<MetadataCacheSnapshot?>? MetadataStats;
 
-    /// <summary>The entities/store owner assigns: drop the cache tier of library.db (library, playlists, downloads and
-    /// video overrides are kept). Called OFF the UI thread. Null → "Clear metadata cache" is disabled.</summary>
+    /// <summary>Wired in <c>App.cs</c> to <c>Store.DropCatalog</c> (D1): drops the cache TIER of the store file — the
+    /// catalog rows, palettes and non-library edges — while the library relations and the pending-intent journal are
+    /// kept. Called OFF the UI thread; a no-op if the store never opened (--fake). Null would disable "Clear metadata
+    /// cache", but after D1 it never is.</summary>
     public static Action? ClearMetadataCache;
 
     /// <summary>B4 assigns (G-220): how many license keys the audio path keeps on disk. Null → the generic sub.</summary>
@@ -159,7 +161,9 @@ public static partial class Settings
         string root = Platform.LocalFolder;
         long library = 0, logs = 0;
         int logFiles = 0;
-        try { foreach (string f in Directory.EnumerateFiles(root, "library.db*")) library += FileBytes(f); }
+        // Every "library.*" file: the current schema-named set, a not-yet-reaped legacy library.db* set, and any
+        // ".dead-*" leftovers a rename-first Delete could not clean up yet — all are bytes the cache occupies.
+        try { foreach (string f in Directory.EnumerateFiles(root, "library.*")) library += FileBytes(f); }
         catch { }
         try
         {

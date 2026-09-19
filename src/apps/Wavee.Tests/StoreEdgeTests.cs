@@ -4,9 +4,10 @@
 // relations whose payload is `LibraryEdge`) and `SaveLibraryEdgesTouchedBy` gives `SaveEdges` its call site off
 // `WriteBehind`. These tests exercise both against a real temp-db file — the same harness `StoreTests` uses, because
 // the thing under test IS the file: a page whose on-disk payload width disagrees with `sizeof(LibraryEdge)` must be
-// DROPPED, never reinterpreted (the payload is not covered by the schema fingerprint — `SaveEdges`'s own doc), an
-// unregistered relation (Rootlist, deliberately) must come back with nothing crashing, and `Store.Warm` must
-// repopulate a relation from a brand-new, empty table set — a real restart, not just a same-process re-read.
+// DROPPED, never reinterpreted (the payload is not covered by the schema fingerprint — `SaveEdges`'s own doc), a
+// relation with no `edge`-table applier (Rootlist, deliberately: it persists as a LIST — Store.Lists.cs, StoreListTests)
+// must come back with nothing crashing, and `Store.Warm` must repopulate a relation from a brand-new, empty table set —
+// a real restart, not just a same-process re-read.
 
 using System.Collections.Concurrent;
 using Wavee;
@@ -161,7 +162,7 @@ public class StoreEdgeTests : IDisposable
         Assert.Equal(0, scope.Edges.Liked.Count(me));
     }
 
-    // ── no registered applier drops cleanly (Rootlist, deliberately unregistered) ───────────────────────────────────
+    // ── no registered applier drops cleanly (Rootlist: persisted as a list, never through `edge`) ────────────────────
 
     [Fact]
     public void A_relation_with_no_registered_applier_drops_cleanly()
@@ -171,9 +172,10 @@ public class StoreEdgeTests : IDisposable
         EntityId meId = scope.Users.Id[me];
         int t1 = scope.Tracks.Slot(TrackUri("no-applier-a").AsSpan());
 
-        // Rootlist is deliberately never registered (RegisterLibraryEdges' own doc: RootlistEdge owns two StringIds,
-        // an interner index a page cannot restore) — SaveEdges itself does not know or care which relations have an
-        // applier, so the row lands on disk exactly as any other relation's would.
+        // Rootlist has no `edge`-table applier on purpose (RegisterLibraryEdges' own doc: RootlistEdge owns two
+        // StringIds, which payload bytes cannot restore — the rootlist persists as a LIST with text columns instead,
+        // Store.Lists.cs). SaveEdges itself does not know or care which relations have an applier, so the row lands
+        // on disk exactly as any other relation's would.
         var bogus = new EdgeTable<NoEdge>();
         bogus.Replace(me, new[] { t1 }, ReadOnlySpan<NoEdge>.Empty, EdgeState.Complete, 1);
         Assert.True(Store.SaveEdges(EdgeRelation.Rootlist, bogus, me, meId, scope.Tracks));

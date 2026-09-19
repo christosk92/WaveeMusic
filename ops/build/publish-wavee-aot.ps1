@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Publish Wavee as a NativeAOT single-file native exe.
 

@@ -178,6 +178,12 @@ public static partial class Platform
         public static readonly SettingKey<string> PlaylistDepositRecents = new("playlist.deposit.recents", "");
         public static readonly SettingKey<string> WorkspacePinnedTabs = new("workspace.tabs.pinned", "");
 
+        // ── podcasts ──
+        /// <summary>The show reader's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most
+        /// recent first, <see cref="ShowViewPrefs.Cap"/> shows), never a key per uri (podcast plan D-6). Read and written
+        /// ONLY through <see cref="ShowViewPrefs"/>, which owns the format.</summary>
+        public static readonly SettingKey<string> PodcastViews = new("podcast.views", "");
+
         // ── video surfaces ──
         public static readonly SettingKey<string> VideoPreferredPlacement = new("video.placement", "");
         public static readonly SettingKey<string> VideoPipRect = new("video.pip.rect", "");        // window-DIP "x,y,w,h"

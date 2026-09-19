@@ -466,3 +466,9 @@ one batch; Playback is immediate; a held provider keeps its rows and releases th
 5. `/diff` ops refetch instead of replay; per-playlist dealer pushes dropped — D3.
 6. Planner sends one-uri POSTs (no per-tick drain) and sends before the session is Online (boot 401s) — D4.
 7. Collection delta re-ask loop (fixed 09-18) — D0. 8. No outbound request log (added 09-18) — D0.
+
+---
+
+## 10. As built
+
+D1–D4 (2026-09-19): see [as-built-20260919.md](as-built-20260919.md) — sections D1-S1, D1-S2, D2-U, D2-L, D3-pure, D3-L2, D3-L3, D3-U1, the optimistic-revision fix, D4-F1, D4-F2.

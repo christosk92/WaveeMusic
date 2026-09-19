@@ -17,6 +17,10 @@
 //
 // Ch 09 §7 is the reader. Its table says, of six of these columns, "NOT IN THE PLAN" — plan §4 declares no episode
 // columns at all — so every one below cites that chapter's gap row.
+//
+// PODCAST REWORK, wave P1 (owner B; docs/plans/wavee/podcast-show-rework-implementation.md §5.1): `Number`, `Variant`
+// (the episode kind) and `Flags` ride the Identity group — `EpisodeV4` carries them with the identity and the row paints
+// them — and `PlayedAt` rides Progress; `Rules` gains THE one completion rule and the herodotus fold.
 
 using FluentGpu.Foundation;
 
@@ -44,38 +48,95 @@ public enum EpisodeFields : uint
     /// <summary>The resume position. An episode whose progress is unknown renders as UNPLAYED, never as a half-drawn
     /// bar (ch 09 §7) — which is why this bit is not part of <see cref="Row"/>.</summary>
     Progress = 1 << 9,
+    Detail = 1 << 10,
+    Completion = 1 << 11,
+    Transcript = 1 << 12,
+    Media = 1 << 13,
 
     /// <summary>What an episode row paints. Identical to <see cref="Identity"/> ON PURPOSE: the list's shimmer gate and
     /// the cells' gate are the same set, and <see cref="Progress"/> is excluded because its absence is a rendered
     /// state, not a missing one (ch 09 §7).</summary>
     Row = Identity,
-    All = Identity | About | Progress,
+    All = Identity | About | Progress | Detail | Completion | Transcript | Media,
 }
 
-/// <summary>Every episode in one scope, as columns (ch 09 DATA GAPS). No <c>Flags</c> column: nothing on this surface
-/// reads a boolean about an episode that is not derived from the two duration/progress numbers (P3 cuts both ways — a
-/// bit nobody reads is as wrong as a bool column).</summary>
+/// <summary>Episode booleans as bits (P3). The first three come with the identity (<c>EpisodeV4</c>); the last three
+/// are the pathfinder episode answer's (wave P5), and when that answer gets its own group its commit takes those three
+/// as ITS mask — the <see cref="ShowFlags"/> split. Until then the Identity arm writes the whole column.</summary>
+[Flags]
+public enum EpisodeFlags : uint
+{
+    None = 0,
+    /// <summary><c>Episode.explicit</c> (metadata.proto field 70).</summary>
+    Explicit = 1 << 0,
+    /// <summary>A video episode: the repeated <c>video</c> file list (field 72) is non-empty.</summary>
+    Video = 1 << 1,
+    /// <summary><c>is_podcast_short</c> (field 97).</summary>
+    Short = 1 << 2,
+    /// <summary>Subscribers-only (pathfinder <c>restrictions.paywallContent</c>).</summary>
+    Paywalled = 1 << 3,
+    /// <summary>Only a preview plays here (pathfinder <c>previewPlayback</c> while not <c>playability.playable</c>).</summary>
+    PreviewOnly = 1 << 4,
+    /// <summary>A transcript exists (pathfinder <c>transcripts.items[]</c> non-empty) — the reader's transcript tab.</summary>
+    HasTranscript = 1 << 5,
+    Unplayable = 1 << 6,
+}
+
+/// <summary>Which kind of episode (<c>Episode.type</c>, field 87). The numbers ARE the wire's (FULL 0 · TRAILER 1 ·
+/// BONUS 2), so an absent field is a full episode.</summary>
+public enum EpisodeKind : byte { Full = 0, Trailer = 1, Bonus = 2 }
+
+/// <summary>Every episode in one scope, as columns (ch 09 DATA GAPS; podcast plan §5.1).</summary>
 public sealed class EpisodeTable : Table
 {
-    public Column<StringId> Title, Image, Description;
+    public Column<StringId> Title, Image, Description, HtmlDescription, TranscriptUrl, TranscriptLanguage;
     public Column<int> DurationMs;
     /// <summary>Unix seconds, the same epoch as <c>FetchedAt</c> (ch 09 DATA GAPS).</summary>
     public Column<int> PublishedAt;
-    /// <summary>The resume position, ms. USER state — see <see cref="ProgressAuthority"/>.</summary>
+    /// <summary>The resume position, ms. USER state — see <see cref="ProgressAuthority"/>. A completed episode holds
+    /// its duration (or <see cref="int.MaxValue"/> before the duration is resident — <see cref="Episode.Rules.ProgressOf"/>).</summary>
     public Column<int> ProgressMs;
     /// <summary>The owning show's slot, 0 = the writer did not know (ch 09 DATA GAPS).</summary>
     public Column<int> Show;
+    /// <summary>The number within its show (<c>number</c>, field 65); 0 = unnumbered. Identity group.</summary>
+    public Column<ushort> Number, Season;
+    public Column<bool> TranscriptReadAlong, ExplicitCompleted;
+    public Column<long> RevisionUpdateSeconds, RevisionCreateSeconds, CompletionAtMs;
+    public Column<int> RevisionUpdateNanos, RevisionCreateNanos;
+    /// <summary><see cref="EpisodeKind"/> as a byte. Not <c>Kind</c>: <see cref="Table.Kind"/> is the table's
+    /// <see cref="EntityKind"/> (the <c>AlbumTable.ReleaseKind</c> precedent). Identity group.</summary>
+    public Column<byte> Variant;
+    /// <summary><see cref="EpisodeFlags"/>. Identity group (see the enum for the P5 split).</summary>
+    public Column<uint> Flags;
+    /// <summary>Unix seconds of the newest resume-point revision; 0 = never played. PROGRESS state — it rides that group
+    /// and its authority, so a stale server stamp cannot rewind this device's own. Feeds "new since you were here".</summary>
+    public Column<int> PlayedAt;
 
     // ── authority, per column GROUP (D16) ──
     /// <summary><see cref="ProgressAuthority"/> is its own column because progress is written at
     /// <see cref="Authority.Local"/> by the player and at a lower rung by the catalogue's playback-state trait: a
     /// stale server position must never rewind the position this device just played to (ch 09 DATA GAPS).</summary>
-    public Column<byte> IdentityAuthority, AboutAuthority, ProgressAuthority;
+    public Column<byte> IdentityAuthority, AboutAuthority, ProgressAuthority, DetailAuthority, CompletionAuthority, TranscriptAuthority, MediaAuthority;
 
     public override EntityKind Kind => EntityKind.Episode;
 
     protected override void GrowColumns(int capacity)
     {
+        HtmlDescription.EnsureCapacity(capacity);
+        TranscriptUrl.EnsureCapacity(capacity);
+        TranscriptLanguage.EnsureCapacity(capacity);
+        Season.EnsureCapacity(capacity);
+        TranscriptReadAlong.EnsureCapacity(capacity);
+        ExplicitCompleted.EnsureCapacity(capacity);
+        RevisionUpdateSeconds.EnsureCapacity(capacity);
+        RevisionCreateSeconds.EnsureCapacity(capacity);
+        CompletionAtMs.EnsureCapacity(capacity);
+        RevisionUpdateNanos.EnsureCapacity(capacity);
+        RevisionCreateNanos.EnsureCapacity(capacity);
+        DetailAuthority.EnsureCapacity(capacity);
+        TranscriptAuthority.EnsureCapacity(capacity);
+        MediaAuthority.EnsureCapacity(capacity);
+        CompletionAuthority.EnsureCapacity(capacity);
         Title.EnsureCapacity(capacity);
         Image.EnsureCapacity(capacity);
         Description.EnsureCapacity(capacity);
@@ -83,6 +144,10 @@ public sealed class EpisodeTable : Table
         PublishedAt.EnsureCapacity(capacity);
         ProgressMs.EnsureCapacity(capacity);
         Show.EnsureCapacity(capacity);
+        Number.EnsureCapacity(capacity);
+        Variant.EnsureCapacity(capacity);
+        Flags.EnsureCapacity(capacity);
+        PlayedAt.EnsureCapacity(capacity);
         IdentityAuthority.EnsureCapacity(capacity);
         AboutAuthority.EnsureCapacity(capacity);
         ProgressAuthority.EnsureCapacity(capacity);
@@ -97,6 +162,9 @@ public sealed class EpisodeTable : Table
         ClearText(ref Title, slot);
         ClearText(ref Image, slot);
         ClearText(ref Description, slot);
+        ClearText(ref HtmlDescription, slot);
+        ClearText(ref TranscriptUrl, slot);
+        ClearText(ref TranscriptLanguage, slot);
     }
 }
 
@@ -123,8 +191,21 @@ public readonly partial struct Episode(int slot) : IEquatable<Episode>
     public int DurationMs => T.DurationMs[Slot];
     public int PublishedAt => T.PublishedAt[Slot];
     public int ProgressMs => T.ProgressMs[Slot];
+    public bool ExplicitCompleted => T.ExplicitCompleted[Slot];
+    public bool Completed => ExplicitCompleted || ProgressMs == int.MaxValue || Rules.Completed(ProgressMs, DurationMs);
+    public int Season => T.Season[Slot];
+    public string HtmlDescription => Entities.Strings.Resolve(T.HtmlDescription[Slot]);
+    public string TranscriptUrl => Entities.Strings.Resolve(T.TranscriptUrl[Slot]);
+    public string TranscriptLanguage => Entities.Strings.Resolve(T.TranscriptLanguage[Slot]);
+    public bool TranscriptReadAlong => T.TranscriptReadAlong[Slot];
     public Show Show => new(T.Show[Slot]);
     public int ShowSlot => T.Show[Slot];
+    /// <inheritdoc cref="EpisodeTable.Number"/>
+    public int Number => T.Number[Slot];
+    public EpisodeKind Kind => (EpisodeKind)T.Variant[Slot];
+    public EpisodeFlags Flags => (EpisodeFlags)T.Flags[Slot];
+    /// <inheritdoc cref="EpisodeTable.PlayedAt"/>
+    public int PlayedAt => T.PlayedAt[Slot];
 
     public bool Equals(Episode other) => other.Slot == Slot;
     public override bool Equals(object? obj) => obj is Episode other && other.Slot == Slot;
@@ -142,10 +223,19 @@ public struct StagedEpisode : IStagedRow
     /// it arrived as 16 gid bytes, the uri's UTF-8 in the arena when it arrived as text. One field, one resolve —
     /// <c>s.Slot(table, in row.Id)</c> — and no format-to-arena-then-parse-back round trip.</summary>
     public StagedId Id;
-    public TextRef Title, Image, Description;
+    public TextRef Title, Image, Description, HtmlDescription, TranscriptUrl, TranscriptLanguage;
     /// <summary>The show this episode belongs to — staged thin so the row can name it before the fetch.</summary>
     public StagedId ShowUri;
     public int DurationMs, PublishedAt, ProgressMs;
+    /// <summary>Identity: the number, the <see cref="EpisodeKind"/> as a byte, the <see cref="EpisodeFlags"/>.</summary>
+    public ushort Number, Season;
+    public bool TranscriptReadAlong, ExplicitCompleted;
+    public long RevisionUpdateSeconds, RevisionCreateSeconds, CompletionAtMs;
+    public int RevisionUpdateNanos, RevisionCreateNanos;
+    public byte Kind;
+    public uint Flags;
+    /// <summary>Progress: unix seconds of the newest resume-point revision, written with <see cref="ProgressMs"/>.</summary>
+    public int PlayedAt;
     /// <summary><see cref="EpisodeFields"/>: which groups this row speaks for.</summary>
     public uint Known;
     public Authority Authority;
@@ -199,12 +289,18 @@ public static partial class Entities
             {
                 // `SetText`, never `Title[slot] = …`: it AddRefs what comes in and releases what it overwrites, so a
                 // re-answered episode owns one title and one cover rather than one per answer (defect 1).
-                t.SetText(ref t.Title, slot, s.Intern(row.Title));
-                t.SetText(ref t.Image, slot, s.Intern(row.Image));
-                t.DurationMs[slot] = row.DurationMs;
-                t.PublishedAt[slot] = row.PublishedAt;
+                if ((known & (uint)EpisodeFields.Title) != 0) t.SetText(ref t.Title, slot, s.Intern(row.Title));
+                if ((known & (uint)EpisodeFields.Image) != 0) t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                if ((known & (uint)EpisodeFields.Duration) != 0 && !t.Knows(slot, (uint)EpisodeFields.Media)) t.DurationMs[slot] = row.DurationMs;
+                if ((known & (uint)EpisodeFields.Published) != 0) t.PublishedAt[slot] = row.PublishedAt;
                 if (!row.ShowUri.IsEmpty) t.Show[slot] = s.Slot(Current.Shows, in row.ShowUri);
-                t.Applied(slot, (uint)EpisodeFields.Identity, auth, ref t.IdentityAuthority);
+                t.Number[slot] = row.Number;
+                t.Season[slot] = row.Season;
+                t.Variant[slot] = row.Kind;
+                uint identityFlags = (uint)EpisodeFlags.Short;
+                if (!t.Knows(slot, (uint)EpisodeFields.Media)) identityFlags |= (uint)(EpisodeFlags.Explicit | EpisodeFlags.Video);
+                t.Flags[slot] = (t.Flags[slot] & ~identityFlags) | (row.Flags & identityFlags);
+                t.Applied(slot, known & (uint)EpisodeFields.Identity, auth, ref t.IdentityAuthority);
             }
             if ((known & (uint)EpisodeFields.About) != 0
                 && t.Accepts(slot, (uint)EpisodeFields.About, auth, in t.AboutAuthority))
@@ -216,7 +312,44 @@ public static partial class Entities
                 && t.Accepts(slot, (uint)EpisodeFields.Progress, auth, in t.ProgressAuthority))
             {
                 t.ProgressMs[slot] = row.ProgressMs;
+                t.PlayedAt[slot] = row.PlayedAt;
+                t.RevisionUpdateSeconds[slot] = row.RevisionUpdateSeconds;
+                t.RevisionUpdateNanos[slot] = row.RevisionUpdateNanos;
+                t.RevisionCreateSeconds[slot] = row.RevisionCreateSeconds;
+                t.RevisionCreateNanos[slot] = row.RevisionCreateNanos;
                 t.Applied(slot, (uint)EpisodeFields.Progress, auth, ref t.ProgressAuthority);
+            }
+            if ((known & (uint)EpisodeFields.Media) != 0
+                && t.Accepts(slot, (uint)EpisodeFields.Media, auth, in t.MediaAuthority))
+            {
+                const uint mediaFlags = (uint)(EpisodeFlags.Explicit | EpisodeFlags.Video);
+                t.DurationMs[slot] = row.DurationMs;
+                t.Flags[slot] = (t.Flags[slot] & ~mediaFlags) | (row.Flags & mediaFlags);
+                t.Applied(slot, (uint)EpisodeFields.Media, auth, ref t.MediaAuthority);
+            }
+            if ((known & (uint)EpisodeFields.Detail) != 0
+                && t.Accepts(slot, (uint)EpisodeFields.Detail, auth, in t.DetailAuthority))
+            {
+                const uint detailFlags = (uint)(EpisodeFlags.Paywalled | EpisodeFlags.PreviewOnly | EpisodeFlags.Unplayable);
+                t.Flags[slot] = (t.Flags[slot] & ~detailFlags) | (row.Flags & detailFlags);
+                t.SetText(ref t.HtmlDescription, slot, s.Intern(row.HtmlDescription));
+                t.Applied(slot, (uint)EpisodeFields.Detail, auth, ref t.DetailAuthority);
+            }
+            if ((known & (uint)EpisodeFields.Transcript) != 0
+                && t.Accepts(slot, (uint)EpisodeFields.Transcript, auth, in t.TranscriptAuthority))
+            {
+                const uint transcriptFlag = (uint)EpisodeFlags.HasTranscript;
+                t.Flags[slot] = (t.Flags[slot] & ~transcriptFlag) | (row.Flags & transcriptFlag);
+                t.SetText(ref t.TranscriptUrl, slot, s.Intern(row.TranscriptUrl));
+                t.SetText(ref t.TranscriptLanguage, slot, s.Intern(row.TranscriptLanguage));
+                t.TranscriptReadAlong[slot] = row.TranscriptReadAlong;
+                t.Applied(slot, (uint)EpisodeFields.Transcript, auth, ref t.TranscriptAuthority);
+            }
+            if ((known & (uint)EpisodeFields.Completion) != 0 && row.CompletionAtMs >= t.CompletionAtMs[slot])
+            {
+                t.ExplicitCompleted[slot] = row.ExplicitCompleted;
+                t.CompletionAtMs[slot] = row.CompletionAtMs;
+                t.Applied(slot, (uint)EpisodeFields.Completion, auth, ref t.CompletionAuthority);
             }
         }
     }
@@ -227,7 +360,15 @@ public static partial class Entities
 /// <summary>How an episode survives a restart. Persists all three groups <c>EpisodeTable</c> carries: identity, the
 /// about clamp, AND the resume position — <see cref="EpisodeFields.Progress"/> is the one cold field worth caching,
 /// since losing it on every relaunch would silently rewind a listener's place (its own <c>progress_auth</c> column,
-/// same as memory: a stale server position must never rewind what THIS device just played to, D16).
+/// same as memory: a stale server position must never rewind what THIS device just played to, D16). The podcast
+/// rework's four columns are APPENDED — number, kind and flags with the identity, <c>played_at</c> with the progress —
+/// which moves the DDL fingerprint: that is the schema bump (Store.cs, a new fingerprint names a new file).
+/// <para><b>AUTHORITY IS PER GROUP, BOTH WAYS.</b> <see cref="Save"/> writes each group's authority into that group's own
+/// column (<c>identity_auth</c>, <c>about_auth</c>, <c>progress_auth</c>; the upsert keeps the max of each), and
+/// <see cref="Load"/> restores each group at ITS column's rung — one staged row per distinct authority
+/// (<see cref="RunsOf"/>), each speaking only for its groups. Restoring the whole row at the highest rung, as the load
+/// did first, froze an episode: the player's Local progress lifted the reloaded identity and about clamp to Local too,
+/// and every later wire refresh of either bounced off <c>Table.Accepts</c> for good.</para>
 /// <para>STORE THREAD (both halves) — see <see cref="ShowShape"/>'s note.</para></summary>
 public sealed class EpisodeShape : KindShape
 {
@@ -243,14 +384,43 @@ public sealed class EpisodeShape : KindShape
         new("identity_auth", StoreType.Int, StoreColumnFlags.Authority),
         new("about_auth", StoreType.Int, StoreColumnFlags.Authority),
         new("progress_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("number", StoreType.Int),                   // 10 ┐
+        new("kind", StoreType.Int),                     // 11 ├ identity
+        new("flags", StoreType.Int),                    // 12 ┘
+        new("played_at", StoreType.Int),                // 13   progress
+        new("season", StoreType.Int),
+        new("html_description", StoreType.Text),
+        new("transcript_url", StoreType.Text),
+        new("transcript_language", StoreType.Text),
+        new("transcript_read_along", StoreType.Int),
+        new("detail_flags", StoreType.Int),
+        new("detail_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("explicit_completed", StoreType.Int),
+        new("completion_at_ms", StoreType.Int),
+        new("completion_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("revision_update_seconds", StoreType.Int),
+        new("revision_update_nanos", StoreType.Int),
+        new("revision_create_seconds", StoreType.Int),
+        new("revision_create_nanos", StoreType.Int),
+        new("transcript_auth", StoreType.Int, StoreColumnFlags.Authority),
+        new("transcript_flags", StoreType.Int),
+        new("media_duration_ms", StoreType.Int),
+        new("media_flags", StoreType.Int),
+        new("media_auth", StoreType.Int, StoreColumnFlags.Authority),
     ];
 
-    const uint PersistedFields = (uint)(EpisodeFields.Identity | EpisodeFields.About | EpisodeFields.Progress);
+    const uint PersistedFields = (uint)EpisodeFields.All;
 
     public override EntityKind Kind => EntityKind.Episode;
     public override string Table => "episode";
     public override ReadOnlySpan<StoreColumn> Columns => Cols;
 
+    /// <summary>Write every staged episode: each group's columns when the row carries that group, NULL otherwise (the
+    /// upsert's "said nothing"), and each group's authority into ITS column — as a number either way. An authority
+    /// column is never bound NULL: the upsert merges it as <c>max(col, coalesce(excluded.col, 0))</c>, and sqlite's
+    /// multi-argument <c>max()</c> is NULL when ANY argument is, so a row inserted without a group would have kept a NULL
+    /// rung for that group forever — every later write of it merging to NULL, and <see cref="Load"/> restoring it at
+    /// <see cref="Authority.None"/>. 0 is the same "nothing" to the merge and a real number to <c>max()</c>.</summary>
     public override void Save(Staging s, RowWriter w)
     {
         var rows = s.EpisodesOrNull;
@@ -263,6 +433,7 @@ public sealed class EpisodeShape : KindShape
             bool identity = (known & (uint)EpisodeFields.Identity) != 0;
             bool about = (known & (uint)EpisodeFields.About) != 0;
             bool progress = (known & (uint)EpisodeFields.Progress) != 0;
+            int authority = (int)row.Authority;
 
             if (identity)
             {
@@ -271,41 +442,143 @@ public sealed class EpisodeShape : KindShape
                 w.Id(2, s, row.ShowUri);
                 w.Int(3, row.DurationMs);
                 w.Int(4, row.PublishedAt);
-                w.Int(7, (int)row.Authority);
+                w.Int(10, row.Number);
+                w.Int(11, row.Kind);
+                w.Int(12, row.Flags);
             }
-            else { w.Null(0); w.Null(1); w.Null(2); w.Null(3); w.Null(4); w.Null(7); }
+            else { w.Null(0); w.Null(1); w.Null(2); w.Null(3); w.Null(4); w.Null(10); w.Null(11); w.Null(12); }
+            w.Int(7, identity ? authority : 0);
 
-            if (about)
-            {
-                w.Text(5, row.Description);
-                w.Int(8, (int)row.Authority);
-            }
-            else { w.Null(5); w.Null(8); }
+            if (about) w.Text(5, row.Description);
+            else w.Null(5);
+            w.Int(8, about ? authority : 0);
 
             if (progress)
             {
                 w.Int(6, row.ProgressMs);
-                w.Int(9, (int)row.Authority);
+                w.Int(13, row.PlayedAt);
             }
-            else { w.Null(6); w.Null(9); }
+            else { w.Null(6); w.Null(13); }
+            w.Int(9, progress ? authority : 0);
 
+            if (identity) w.Int(14, row.Season); else w.Null(14);
+            bool detail = (known & (uint)EpisodeFields.Detail) != 0;
+            if (detail)
+            {
+                w.Text(15, row.HtmlDescription); w.Int(19, row.Flags & (uint)(EpisodeFlags.Paywalled | EpisodeFlags.PreviewOnly | EpisodeFlags.Unplayable));
+            }
+            else { w.Null(15); w.Null(19); }
+            bool transcript = (known & (uint)EpisodeFields.Transcript) != 0;
+            if (transcript)
+            {
+                w.Text(16, row.TranscriptUrl); w.Text(17, row.TranscriptLanguage);
+                w.Int(18, row.TranscriptReadAlong ? 1 : 0); w.Int(29, row.Flags & (uint)EpisodeFlags.HasTranscript);
+            }
+            else { w.Null(16); w.Null(17); w.Null(18); w.Null(29); }
+            w.Int(28, transcript ? authority : 0);
+            w.Int(20, detail ? authority : 0);
+            bool completion = (known & (uint)EpisodeFields.Completion) != 0;
+            if (completion) { w.Int(21, row.ExplicitCompleted ? 1 : 0); w.Int(22, row.CompletionAtMs); }
+            else { w.Null(21); w.Null(22); }
+            w.Int(23, completion ? authority : 0);
+            if (progress)
+            {
+                w.Int(24, row.RevisionUpdateSeconds); w.Int(25, row.RevisionUpdateNanos);
+                w.Int(26, row.RevisionCreateSeconds); w.Int(27, row.RevisionCreateNanos);
+            }
+            else { for (int c = 24; c <= 27; c++) w.Null(c); }
+            bool media = (known & (uint)EpisodeFields.Media) != 0;
+            if (media) { w.Int(30, row.DurationMs); w.Int(31, row.Flags & (uint)(EpisodeFlags.Explicit | EpisodeFlags.Video)); }
+            else { w.Null(30); w.Null(31); }
+            w.Int(32, media ? authority : 0);
             w.Emit(row.Id, known, Entities.Now, Entities.Now);
         }
     }
 
+    /// <summary>Restore one persisted row as one staged row PER AUTHORITY (<see cref="RunsOf"/>): the key is copied into
+    /// the arena once and shared, and each run's row carries only its own groups' columns — so the commit applies every
+    /// group at the rung that wrote it (the class note says why). A row persisted with nothing known restores nothing.</summary>
     public override void Load(RowReader r, Staging into)
     {
-        ref var row = ref into.Episodes.Add();
-        row.Id = r.Uri;
-        row.Title = r.Text(0);
-        row.Image = r.Text(1);
-        row.ShowUri = r.Text(2);
-        row.DurationMs = (int)r.Int(3);
-        row.PublishedAt = (int)r.Int(4);
-        row.Description = r.Text(5);
-        row.ProgressMs = (int)r.Int(6);
-        row.Known = r.Known & PersistedFields;
-        row.Authority = (Authority)Math.Max(r.Int(7), Math.Max(r.Int(8), r.Int(9)));
+        Span<GroupRun> runs = stackalloc GroupRun[7];
+        int n = RunsOf(r.Known & PersistedFields, (Authority)r.Int(7), (Authority)r.Int(8), (Authority)r.Int(9), runs, (Authority)r.Int(20), (Authority)r.Int(23), (Authority)r.Int(28), (Authority)r.Int(32));
+        if (n == 0) return;
+        StagedId id = r.Uri;
+        for (int k = 0; k < n; k++)
+        {
+            uint groups = runs[k].Groups;
+            ref StagedEpisode row = ref into.Episodes.RowFor(in id, runs[k].Authority, groups);
+            if ((groups & (uint)EpisodeFields.Identity) != 0)
+            {
+                row.Title = r.Text(0);
+                row.Image = r.Text(1);
+                row.ShowUri = r.Text(2);
+                row.DurationMs = (int)r.Int(3);
+                row.PublishedAt = (int)r.Int(4);
+                row.Number = (ushort)r.Int(10);
+                row.Season = (ushort)r.Int(14);
+                row.Kind = (byte)r.Int(11);
+                row.Flags = (uint)r.Int(12);
+            }
+            if ((groups & (uint)EpisodeFields.About) != 0) row.Description = r.Text(5);
+            if ((groups & (uint)EpisodeFields.Progress) != 0)
+            {
+                row.ProgressMs = (int)r.Int(6);
+                row.PlayedAt = (int)r.Int(13);
+                row.RevisionUpdateSeconds = r.Int(24); row.RevisionUpdateNanos = (int)r.Int(25);
+                row.RevisionCreateSeconds = r.Int(26); row.RevisionCreateNanos = (int)r.Int(27);
+            }
+            if ((groups & (uint)EpisodeFields.Detail) != 0)
+            {
+                row.HtmlDescription = r.Text(15); row.Flags |= (uint)r.Int(19);
+            }
+            if ((groups & (uint)EpisodeFields.Transcript) != 0)
+            {
+                row.TranscriptUrl = r.Text(16); row.TranscriptLanguage = r.Text(17);
+                row.TranscriptReadAlong = r.Int(18) != 0; row.Flags |= (uint)r.Int(29);
+            }
+            if ((groups & (uint)EpisodeFields.Media) != 0)
+            {
+                row.DurationMs = (int)r.Int(30);
+                row.Flags = (row.Flags & ~(uint)(EpisodeFlags.Explicit | EpisodeFlags.Video)) | (uint)r.Int(31);
+            }
+            if ((groups & (uint)EpisodeFields.Completion) != 0)
+            {
+                row.ExplicitCompleted = r.Int(21) != 0; row.CompletionAtMs = r.Int(22);
+            }
+        }
+    }
+
+    /// <summary>One run of a restored row: the groups it speaks for, at the one authority they were all written at.</summary>
+    public readonly record struct GroupRun(uint Groups, Authority Authority);
+
+    /// <summary>PURE: a persisted row's groups (<paramref name="known"/>) split into runs of EQUAL authority, in group order
+    /// — Identity, About, Progress — with groups that share a rung sharing a run (the usual row: one Full answer wrote
+    /// identity and about, the player wrote progress at Local ⇒ two runs). A group not in <paramref name="known"/> is not
+    /// restored, whatever its column says. Writes at most three runs into <paramref name="into"/>; returns the count.</summary>
+    public static int RunsOf(uint known, Authority identity, Authority about, Authority progress, Span<GroupRun> into, Authority detail = Authority.None, Authority completion = Authority.None, Authority transcript = Authority.None, Authority media = Authority.None)
+    {
+        int n = 0;
+        Add(known & (uint)EpisodeFields.Identity, identity, into, ref n);
+        Add(known & (uint)EpisodeFields.About, about, into, ref n);
+        Add(known & (uint)EpisodeFields.Progress, progress, into, ref n);
+        Add(known & (uint)EpisodeFields.Detail, detail, into, ref n);
+        Add(known & (uint)EpisodeFields.Completion, completion, into, ref n);
+        Add(known & (uint)EpisodeFields.Transcript, transcript, into, ref n);
+        Add(known & (uint)EpisodeFields.Media, media, into, ref n);
+        return n;
+
+        static void Add(uint groups, Authority authority, Span<GroupRun> into, ref int n)
+        {
+            if (groups == 0) return;
+            for (int i = 0; i < n; i++)
+            {
+                if (into[i].Authority != authority) continue;
+                into[i] = new GroupRun(into[i].Groups | groups, authority);
+                return;
+            }
+            into[n++] = new GroupRun(groups, authority);
+        }
     }
 }
 
@@ -323,7 +596,7 @@ public readonly partial struct Episode
         /// <summary>At or below this an episode is unplayed; above it the 3-DIP rule exists.</summary>
         public const float InProgressFloor = 0.01f;
         /// <summary>At or above this an episode is played.</summary>
-        public const float PlayedCeiling = 0.98f;
+        public const float PlayedCeiling = 1f;
 
         /// <summary>The four-way status filter, in the SelectorBar's order (0 All · 1 Unplayed · 2 In progress · 3 Played).</summary>
         public enum Status : byte { All = 0, Unplayed = 1, InProgress = 2, Played = 3 }
@@ -333,11 +606,60 @@ public readonly partial struct Episode
             => durationMs > 0 ? Math.Clamp(progressMs / (float)durationMs, 0f, 1f) : 0f;
 
         /// <summary>A row's fraction. Progress UNKNOWN reads 0 — an unplayed card, never a half-drawn bar (ch 09 §7).</summary>
-        public static float PctOf(Episode e) => e.Knows(EpisodeFields.Progress) ? Pct(e.ProgressMs, e.DurationMs) : 0f;
+        public static float PctOf(Episode e) => e.Completed ? 1f : e.Knows(EpisodeFields.Progress) ? Pct(e.ProgressMs, e.DurationMs) : 0f;
 
         public static bool InProgress(float pct) => pct > InProgressFloor && pct < PlayedCeiling;
 
         public static bool Played(float pct) => pct >= PlayedCeiling;
+
+        /// <summary>The tail that counts as finished: 30 s (podcast plan D-5).</summary>
+        public const int CompletedTailMs = 30_000;
+
+        /// <summary>THE completion rule (D-5; the WinUI app had three — 90 s, 30 s, 0.995): at or past
+        /// <see cref="PlayedCeiling"/>, or no more than <see cref="CompletedTailMs"/> left. Never with the duration
+        /// unknown, and never at a position of 0 — without that guard every unplayed episode of 30 s or less would read
+        /// finished. Long arithmetic, so no position can wrap the tail test. Note it is WIDER than
+        /// <see cref="Played(float)"/> under 25 minutes, where 30 s is less than the last 2 %.</summary>
+        public static bool Completed(int progressMs, int durationMs)
+            => durationMs > 0 && progressMs >= durationMs;
+
+        /// <summary>Which arm of herodotus's <c>CurrentStateValue.state</c> oneof a revision carries. The numbers ARE the
+        /// wire's field numbers (the official client 1.2.96.518, captured 2026-09-19: findings-podcast-wire.md §3.2,
+        /// §4.1). Markers 3 and 4 are PROVISIONAL readings of one sample each; a capture of mark played / mark unplayed /
+        /// a natural end settles them.</summary>
+        public enum ResumeArm : byte
+        {
+            /// <summary>No arm. 0 of 31 captured episode states lacked one: it says nothing, so it claims nothing —
+            /// never "completed" (the retired reading of an omitted resume point).</summary>
+            None = 0,
+            /// <summary>A position (<c>google.protobuf.Duration</c>, the caller has scaled it to ms); <c>{}</c> = 0 =
+            /// NOT_STARTED.</summary>
+            Position = 2,
+            /// <summary>Empty. The official desktop wrote it the moment a fresh play of an episode began: started, no
+            /// position yet — in progress at 0, never completed.</summary>
+            Marker3 = 3,
+            /// <summary>Empty. Its one sample is stamped exactly its episode's duration after a plausible start: finished.</summary>
+            Marker4 = 4,
+            /// <summary>An album/playlist context resume — never an episode's own position.</summary>
+            Context = 12,
+        }
+
+        /// <summary>THE herodotus fold for one episode revision: <see cref="ResumeArm.Position"/> ⇒ the position, clamped
+        /// to [0, int.MaxValue]; <see cref="ResumeArm.Marker3"/> ⇒ 0 (started, not completed; any position is ignored);
+        /// <see cref="ResumeArm.Marker4"/> ⇒ completed — the full duration, or <see cref="int.MaxValue"/> while the
+        /// duration is not resident, which <see cref="Pct"/> clamps to 1 the moment it lands (plan §5.8; a duration-less
+        /// 1 would read UNPLAYED then). <see cref="ResumeArm.None"/> and <see cref="ResumeArm.Context"/> return false:
+        /// the row's progress stays UNKNOWN (§6.1), never a guessed "unplayed" or "completed".</summary>
+        public static bool ProgressOf(ResumeArm arm, long positionMs, int durationMs, out int progressMs)
+        {
+            switch (arm)
+            {
+                case ResumeArm.Position: progressMs = (int)Math.Clamp(positionMs, 0L, int.MaxValue); return true;
+                case ResumeArm.Marker3: progressMs = 0; return true;
+                case ResumeArm.Marker4: progressMs = durationMs > 0 ? durationMs : int.MaxValue; return true;
+                default: progressMs = 0; return false;
+            }
+        }
 
         /// <summary>Does the card draw its progress rule (EpisodeList.cs:230)?</summary>
         public static bool HasRule(float pct) => pct > InProgressFloor;

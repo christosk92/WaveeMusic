@@ -1,5 +1,35 @@
 # Podcast rework — the show reader and the episode page (Wavee 0.3)
 
+## Implementation update - 2026-09-19, supplied vc3/vc4 evidence
+
+This update supersedes the old endpoint/unit/capture-gate assumptions below. Implementation and integrated validation are recorded in [the implementation status](podcast-20260919-implementation-status.md). The owner approved the full podcast plan, all 17 comparison findings, real pitch-preserving speed, and one integrated final gate. No further user captures are needed.
+
+Evidence: `verycomplex3.saz` #420/#430/#446 establish canonical saved-episode IDs; #422 establishes paginated listen-later discovery; #594 establishes replies; #605/#624 establish the web episode-detail contract. `verycomplex4.saz` #312/#313 establish compound explicit completion; #410 establishes repeated revisions grouped by URI and timestamp tie-breaking; #414/#420/#432 establish 1.5/1.9/1 playback settings. Source-confirmed recommendation/reaction contracts come from the already extracted official UI. The Spotify notification preference remains explicitly unavailable.
+
+Implementation owners: progress/model/telemetry; playback/Connect/audio resolution; engine PCM time stretching; orchestrator catalog/list/API/UI integration. Files are disjoint. Only the orchestrator builds/tests/launches, after assembly.
+
+```csharp
+// Zero is a valid explicit position, not a sentinel for resume.
+Playback.PlayEpisode(id, context,
+    new Playback.EpisodeStart(Playback.EpisodeStartKind.Position, chapter.StartMs));
+// Show membership is playlist4, with canonical item IDs and a coherent disk baseline.
+Entities.EnsureEdge(FetchEdge.ShowEpisodes, show.Slot);
+```
+
+```text
+Show reader                       Episode reader
++ artwork / publisher / rating    + artwork / owning show / facts
++ follow / visit primary action   + resume / beginning / save / completion
++ find / filter / sort            + description / media
++ grouped episode rows            + chapters / transcript / comments
++ related shows                   + related episodes
+```
+
+Final gates: Wavee Debug + Release, Wavee.Tests, Pester release tests, engine Debug + Release + VerticalSlice/canon as applicable, ARM64 publish, fake UI and normal diagnostic smoke. Raw captures and credentials never enter fixtures. Track every remaining item and gate outcome in the session as-built report; an implementation claim requires passing evidence.
+
+---
+
+
 Written 2026-09-18 against the worktree `C:\WAVEE\wavee-0.3` @ `02f22cce` (+ the uncommitted 09-18 playback/Connect
 fix wave). The visual target is the approved prototype `docs/plans/wavee/podcast-show-episode-mica.html` (published at
 https://claude.ai/artifact/92Ly7eaziCbWB4r1x4sgYU) — it is the parity reference for this plan the way the 0.2.9
@@ -15,7 +45,7 @@ affordance" rule of ch 09 items 20–21 and the per-load `LookUpResumePoint` rou
 pure rules in CORE with tests — the UI renders them); **no page-side fetch windows** (a page demands its whole model;
 `Fetch` batches 300/POST); **no environment switches** (the wire check is a Diagnostics action); **no source-text
 tests**; **props freeze at mount**; **every fix references its issue** (§13); **subagents never build, test, or touch
-git** — the orchestrator runs one Debug build, one Release build and one test run per wave.
+git** — the orchestrator runs one integrated final validation gate after all implementation waves (owner decision, 2026-09-19).
 **Never run `--spotify-*` probes from an agent shell** (memory `spotify-probes-clear-credentials`): hash verification is
 §6.0's in-app action, run by the user.
 
@@ -231,7 +261,7 @@ Disjoint by construction inside a wave (§8). An agent that needs a file it does
 | `Spotify.Api.Serves(in FetchRoute)` | **a new op not listed here seals silently** | `Spotify.Api.cs:666-683` |
 | `Spotify.Api.GetText(url, ct)` — `App-Platform: Android`, no client token | transcript GET | `Spotify.Api.cs:1623` |
 | `Rs.ListCurrentStatesRequest/Response`, `Rs.CurrentStateEntry` | generated, uncalled | `Protos/herodotus.proto` |
-| 0.3 `ResumePoint { int64 position = 2; }` vs 0d0429a0 `uint32 position_seconds = 1` | **unit differs — T verifies against `ResumeMs`'s own scaling before mapping** | `herodotus.proto`, `Telemetry.cs:737-752` |
+| **SETTLED 2026-09-19: a `google.protobuf.Duration {seconds = 1, nanos = 2}` in a `CurrentStateValue` oneof (2 Duration · 3/4 markers · 12 context), revisions repeated — see `as-built-20260919.md` "Herodotus resume-point fix"; both rows below were wrong.** 0.3 `ResumePoint { int64 position = 2; }` vs 0d0429a0 `uint32 position_seconds = 1` | **unit differs — T verifies against `ResumeMs`'s own scaling before mapping** | `herodotus.proto`, `Telemetry.cs:737-752` |
 | `Authority.Local` > wire; `Authority.Seed` < every wire answer | progress authority ladder | `Episode.cs:70-73`, `Entities.cs:90` |
 | `ListOptions.PersistentPrefixCount`, `ScrollOptions.ItemClipTopInset/ItemClipTopFadeBand`, `el.Sticky(0f)` | sticky plane; **the sticky node must be a RAW element of a bound list** | `Artist.Reader.cs:355-375, 791-804` |
 | `Controls.Equalizer(playing, color, height, paused)` | now-playing glyph | `Controls.cs:530` |
@@ -620,4 +650,4 @@ Show 0 = **serial, Returning** (`Order = Sequential`, 14 episodes numbered 14→
 
 ## 14. As built
 
-*(stub — deviations are recorded here per wave)*
+P1 and P2 (2026-09-19): see [as-built-20260919.md](as-built-20260919.md) — sections P1-R, P1-A/B/C/F, P1-D1, P1-O, P2-S, P2-M, P2-T.

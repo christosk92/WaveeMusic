@@ -173,7 +173,7 @@ public static partial class Spotify
         {
             StagedId owner = default;
             TextRef name = default, description = default, rawPicture = default, sizedPicture = default;
-            int length = -1;
+            int length = -1, pictureRank = -1;
             while (item.Next())
             {
                 if (item.Field == 3 && item.Wire == 0) length = item.Int32();
@@ -188,20 +188,18 @@ public static partial class Spotify
                         else if (attributes.Field == 3 && attributes.Wire == 2) rawPicture = Image(s, attributes.Bytes());
                         else if (attributes.Field == 13 && attributes.Wire == 2)
                         {
-                            // ListAttributes.picture_size: repeated PictureSize { target_name = 1, url = 2 }. Every
-                            // non-empty url overwrites the last (0.2.9 `PlaylistFetcher.CoverOf` walked it back to
-                            // front and took the first hit) — walking forward and always overwriting lands on the
-                            // same entry, the last one the wire carried, which is the largest.
+                            // Prefer the largest regular tile (large/640), avoiding xlarge/1280 for sidebar art.
                             var size = attributes.Message();
+                            ReadOnlySpan<byte> target = default, url = default;
                             while (size.Next())
                             {
-                                if (size.Field == 2 && size.Wire == 2)
-                                {
-                                    var url = s.AddText(size.Bytes());
-                                    if (!url.IsEmpty) sizedPicture = url;
-                                }
+                                if (size.Field == 1 && size.Wire == 2) target = size.Bytes();
+                                else if (size.Field == 2 && size.Wire == 2) url = size.Bytes();
                                 else size.Skip();
                             }
+                            int rank = target.SequenceEqual("large"u8) ? 4 : target.SequenceEqual("medium"u8) ? 3
+                                : target.SequenceEqual("small"u8) ? 2 : target.SequenceEqual("xsmall"u8) ? 1 : 0;
+                            if (!url.IsEmpty && rank >= pictureRank) { sizedPicture = s.AddText(url); pictureRank = rank; }
                         }
                         else attributes.Skip();
                     }

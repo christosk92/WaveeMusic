@@ -400,6 +400,7 @@ public readonly partial struct User
         public override Element Render()
         {
             uint epoch = Entities.ScopeEpoch.Value;          // FIRST: a scope switch re-points every table below
+            var savedEpisodes = UseSignal(false);
             _shape = UseComputed(_computeShape);
             SelectedSlot = UseComputed(_resolveSelected);
             _searchActive = UseComputed(_isSearching);
@@ -463,6 +464,23 @@ public readonly partial struct User
                 };
             }
             // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser.
+            if (IsPodcasts)
+            {
+                var tabs = new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, Padding = Edges4.All(Spacing.S),
+                    Children =
+                    [
+                        Button.Standard(Loc.Get(Strings.Podcast.Reader.FollowedShows), () => savedEpisodes.Value = false),
+                        Button.Standard(Loc.Get(Strings.Podcast.Reader.YourEpisodes), () => savedEpisodes.Value = true),
+                    ],
+                };
+                return new BoxEl
+                {
+                    Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = _onBounds,
+                    Children = [tabs, savedEpisodes.Value ? Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + epoch } : inner],
+                };
+            }
             return new BoxEl { Direction = 1, Grow = 1f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = _onBounds, Children = [inner] };
         }
 

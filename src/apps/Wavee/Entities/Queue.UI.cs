@@ -112,19 +112,42 @@ public static partial class Queue
                            d.DurationMs, thin, d.IsExplicit);
     }
 
-    /// <summary>Ask the catalog for the context entity's name, so <see cref="ContextName"/> has one to answer with.
-    /// Nothing else fetches it: a restored or remote context is only ever named here.</summary>
+    /// <summary>Ask the catalog for the context entity's name, so <see cref="ContextName"/> has one to answer with — as ONE
+    /// span ask over (table, row, groups) (plan §3.5: the per-row callers became span asks; the tick's drain batches it
+    /// with everything else the tick asked) — and open a playlist context's LIST through the one open rule at the queue's
+    /// urgency (<see cref="ListOpenPolicy.Surface.Queue"/>: Prefetch, never holds — the queue's rows are the playback
+    /// host's, and the list behind "Playing from" only has to be current by the time its page opens). Nothing else
+    /// fetches the name: a restored or remote context is only ever named here.</summary>
     internal static void EnsureContext(EntityId context)
     {
-        if (context.IsEmpty || Entities.Current is null) return;
+        var scope = Entities.Current;
+        if (context.IsEmpty || scope is null) return;
+        Table table;
+        uint groups;
         switch (context.Kind)
         {
-            case EntityKind.Playlist: Entities.Ensure(Entities.Playlist(context), PlaylistFields.Identity); break;
-            case EntityKind.Album: Entities.Ensure(Entities.Album(context), AlbumFields.Title); break;
-            case EntityKind.Artist: Entities.Ensure(Entities.Artist(context), ArtistFields.Name); break;
-            case EntityKind.Show: Entities.Ensure(Entities.Show(context), ShowFields.Title); break;
+            case EntityKind.Playlist: table = scope.Playlists; groups = (uint)PlaylistFields.Identity; break;
+            case EntityKind.Album: table = scope.Albums; groups = (uint)AlbumFields.Title; break;
+            case EntityKind.Artist: table = scope.Artists; groups = (uint)ArtistFields.Name; break;
+            case EntityKind.Show: table = scope.Shows; groups = (uint)ShowFields.Title; break;
+            default: return;
         }
+        int slot = table.Slot(context);        // the factory's row for an unseen context, as before
+        Entities.Ensure(table, new ReadOnlySpan<int>(in slot), groups);
+        if (context.Kind == EntityKind.Playlist) ListOpen.Open(new Playlist(slot), ListOpenPolicy.Surface.Queue);
     }
+
+    /// <summary>The queue's half of a playlist context's open revalidation (<see cref="ListOpen.Observe"/>): the queue never
+    /// holds, but the record still settles — and a rolling context (a daylist) re-asks its header — when the model says how
+    /// the revalidation ended, and the baseline is captured when the disk leg lands. Auto-tracked: the context signal,
+    /// then the membership and playlist tables <see cref="ListOpen.Observe"/> subscribes (a playlist context only).</summary>
+    static readonly Action s_observeContext = static () =>
+    {
+        EntityId context = Playback.ContextUri.Value;
+        var scope = Entities.Current;
+        if (scope is null || context.Kind != EntityKind.Playlist) return;
+        if (scope.Playlists.TryGetSlot(context, out int slot)) ListOpen.Observe(slot);
+    };
 
     /// <summary>The context's name, from the entity it names — never a "Playing from" with no name. Liked Songs answers
     /// at once. Shared with the stage's queue skin (<c>Stage.UI.cs</c>).</summary>
@@ -258,6 +281,7 @@ public static partial class Queue
             Current = Playback.Current.Value;
             ContextId = Playback.ContextUri.Value;
             UseEffect(static () => EnsureContext(Playback.ContextUri.Peek()), DepKey.From(ContextId.GetHashCode()));
+            UseEffect(s_observeContext);
             Viewer = Playback.OwnerSignal.Value == Playback.Owner.Foreign;
             _ = Platform.SettingsChanged.Value;
             Autoplay = Platform.Settings.Get(Platform.Keys.AutoplayEnabled);

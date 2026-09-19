@@ -160,7 +160,7 @@ public static partial class Spotify
         public static void Clear()
         {
             while (TryDequeue(out Item item)) Release(item);
-            lock (s_publishLock) { s_hasHeld = false; s_heldSnapshot = default; s_heldReason = default; }
+            lock (s_publishLock) { s_hasHeld = false; s_heldSnapshot = default; s_heldReason = default; s_commandStates.Clear(); s_hasPending = false; }
             s_hasPublishedKey = false;
         }
 
@@ -246,8 +246,13 @@ public static partial class Spotify
 
             // Everything else (presence pushes, playlist pushes, the user-attribute stream) is somebody else's frame.
             // It is not an error and it is not logged per push: the dealer carries a lot of traffic we do not read. A
-            // library push (the rootlist, a collection) is the library host's to classify and settle (Spotify.Library.cs).
-            if (message.Kind == DealerFrameKind.Message) Library.OnDealerPush(message.Uri);
+            // library push (the rootlist, a collection, one playlist) is the library host's to classify and settle
+            // (Spotify.Library.cs). The payload rides along for the per-playlist push (its ops replay in place, wave D3);
+            // a truncated one is handed over EMPTY, which that host reads as "unreadable ⇒ mark the list dirty".
+            if (message.Kind == DealerFrameKind.Message)
+                if (!Playback.OnSpeedSettings(message.Uri, message.Truncated ? default : message.Payload)
+                    && !Telemetry.OnDealerProgress(message.Uri, message.Truncated ? default : message.Payload))
+                    Library.OnDealerPush(message.Uri, message.Truncated ? default : message.Payload);
         }
 
         // ── 3. out: put-state ────────────────────────────────────────────────────────────────────────────────────────
@@ -266,6 +271,7 @@ public static partial class Spotify
         static PutReason s_pendingReason;
         static bool s_pendingActive;
         static Playback.Snapshot s_pendingSnapshot;
+        static bool s_hasPending;
 
         /// <summary>The last message id we sent. The put-state response quotes it, which is how the ownership fold
         /// knows the cluster it just read is the answer to OUR claim and not somebody else's (C5).</summary>
@@ -278,6 +284,15 @@ public static partial class Spotify
         /// reducer's drain (`Playback.Host.cs`), because <c>Playback.State</c> is the UI thread's alone (C1) and this
         /// debounce plus the PUT below both run on an api thread. <c>isActive</c> came off the snapshot with it — its
         /// one writer is <c>Playback.Ownership.IsActiveOnWire</c>.</para></summary>
+        static readonly System.Collections.Generic.Queue<Playback.Snapshot> s_commandStates = new();
+
+        /// <summary>Command receipts are a sequence; unlike local slider state they must not coalesce.</summary>
+        public static void PublishCommand(in Playback.Snapshot snapshot)
+        {
+            lock (s_publishLock) { s_commandStates.Enqueue(snapshot); s_hasPending = false; }
+            Api.Run(Flush);
+        }
+
         public static void PublishState(in Playback.Snapshot snapshot, PutReason reason)
         {
             lock (s_publishLock)
@@ -286,6 +301,7 @@ public static partial class Spotify
                 // (P2) is the reason a phone kept showing a stale row for 2h23m (2026-09-18).
                 if (GateOrHold(in snapshot, reason, hasConnectionId: !Current.ConnectionId.IsEmpty)) return;
                 s_pendingSnapshot = snapshot;
+                s_hasPending = true;
                 s_pendingReason = reason;
                 s_pendingActive = snapshot.IsActive;
                 s_debounce ??= new Timer(static _ => Api.Run(Flush), null, Timeout.Infinite, Timeout.Infinite);
@@ -301,7 +317,7 @@ public static partial class Spotify
             lock (s_publishLock)
             {
                 proceed = !GateOrHold(in snapshot, reason, hasConnectionId: !Current.ConnectionId.IsEmpty);
-                if (proceed) { s_pendingSnapshot = snapshot; s_pendingReason = reason; s_pendingActive = snapshot.IsActive; }
+                if (proceed) { s_hasPending = true; s_pendingSnapshot = snapshot; s_pendingReason = reason; s_pendingActive = snapshot.IsActive; }
             }
             if (proceed) Api.Run(Flush);
         }
@@ -476,7 +492,7 @@ public static partial class Spotify
         {
             if (RetireRouteOf(!Current.ConnectionId.IsEmpty, Hello is not null, ownsPlayback: true) == RetireRoute.SignOutNow)
             {
-                signOut();
+                Playback.ToUi(() => { Playback.RetireForSignOut(out _); signOut(); });
                 return;
             }
             Playback.ToUi(() =>
@@ -523,12 +539,12 @@ public static partial class Spotify
         /// NewDevice / NewConnection / BecameInactive — those are identity and lifecycle announces, not state, and a
         /// picker that never sees them again is worse than one extra PUT. PURE.</summary>
         public readonly record struct PublishKey(bool Active, EntityId Track, EntityId Context, bool Playing,
-            bool Paused, bool Shuffle, Decode.RepeatMode Repeat, long PositionSec, int Volume, int NextTracksSignature)
+            bool Paused, bool Shuffle, Decode.RepeatMode Repeat, long PositionSec, int Volume, int NextTracksSignature, uint CommandId = 0, float PlaybackRate = 1f)
         {
             /// <summary>Position is truncated to whole SECONDS — the pump's own ticker moves it every drain, and a key
             /// that changed every second would never suppress anything.</summary>
             public static PublishKey Of(in Playback.Snapshot s) => new(s.IsActive, s.Track, s.Context, s.IsPlaying,
-                s.IsPaused, s.Shuffling, s.Repeat, s.PositionAsOfMs / 1000, s.Volume, NextSignature(in s.Wire));
+                s.IsPaused, s.Shuffling, s.Repeat, s.PositionAsOfMs / 1000, s.Volume, NextSignature(in s.Wire), s.LastCommandMessageId, s.Wire.PlaybackRate);
 
             /// <summary>FNV-ish fold over the next-tracks window's identities — the same family as
             /// <see cref="TraceKey"/>, just over <see cref="EntityId"/> instead of bytes.</summary>
@@ -578,7 +594,9 @@ public static partial class Spotify
                     FlushOnce();
                     lock (s_flushGate)
                     {
-                        if (!s_flushAgain) { s_flushing = false; return; }
+                        bool commands;
+                        lock (s_publishLock) commands = s_commandStates.Count > 0 || s_hasPending;
+                        if (!s_flushAgain && !commands) { s_flushing = false; return; }
                         s_flushAgain = false;
                     }
                 }
@@ -600,14 +618,18 @@ public static partial class Spotify
             bool proceed;
             lock (s_publishLock)
             {
-                reason = s_pendingReason;
-                isActive = s_pendingActive;
+                bool command = s_commandStates.Count > 0;
+                if (!command && !s_hasPending) return;
+                if (!command) s_hasPending = false;
+                Playback.Snapshot pending = command ? s_commandStates.Dequeue() : s_pendingSnapshot;
+                reason = command ? PutReason.PlayerStateChanged : s_pendingReason;
+                isActive = pending.IsActive;
                 // The id is minted HERE, inside the window, so the ten captures that coalesced into this one PUT all
                 // travel under the number that actually goes on the wire — the number the response quotes, which is
                 // what the ownership fence reads (C5). Minted even when the gate below holds or drops it: message ids
                 // need not be gapless, and a hold must still capture the snapshot under a stable id for its log line.
                 messageId = ++s_messageId;
-                snapshot = s_pendingSnapshot.WithMessageId(messageId);
+                snapshot = pending.WithMessageId(messageId);
                 // The connection could have dropped between PublishState/PublishNow's own gate check and this api-thread
                 // flush; re-check here rather than trust a decision made possibly milliseconds ago on another thread.
                 proceed = !GateOrHold(in snapshot, reason, hasConnectionId: !Current.ConnectionId.IsEmpty);
@@ -615,7 +637,7 @@ public static partial class Spotify
             if (!proceed) return;
 
             PublishKey key = PublishKey.Of(in snapshot);
-            if (IsRedundant(reason, in key, s_hasPublishedKey, in s_lastPublishedKey)) return;   // already told (B2)
+            if (snapshot.LastCommandMessageId == 0 && IsRedundant(reason, in key, s_hasPublishedKey, in s_lastPublishedKey)) return;   // already told (B2)
 
             // Sized to the snapshot: a 50 + 50 window with its rows' metadata is several times the old fixed 64 KB (G-240).
             byte[] rented = ArrayPool<byte>.Shared.Rent(Decode.PutStateCapacity(in snapshot));

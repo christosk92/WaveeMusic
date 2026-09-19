@@ -75,6 +75,13 @@ public static partial class Spotify
 
             public void B(int field, bool value) { if (value) { Tag(field, 0); Var(1); } }
 
+            public void F32(int field, float value)
+            {
+                Tag(field, 5);
+                BinaryPrimitives.WriteUInt32LittleEndian(_b[Length..], BitConverter.SingleToUInt32Bits(value));
+                Length += 4;
+            }
+
             public void F64(int field, double value)
             {
                 Tag(field, 1);
@@ -267,6 +274,12 @@ public static partial class Spotify
             int n = 16 * 1024 + 2 * UriBytes
                     + 3 * ((snap.Device.DeviceName?.Length ?? 0) + (snap.Uid?.Length ?? 0) + snap.VideoGid.Length
                            + snap.Wire.OutputDevice.Length + snap.Wire.CommandSender.Length + (snap.Device.Platform?.Length ?? 0));
+            if (snap.Wire.Origin is { } origin)
+            {
+                n += 3 * (origin.Feature.Length + origin.Version.Length + origin.View.Length + origin.ExternalReferrer.Length
+                    + origin.Referrer.Length + origin.Device.Length + origin.CommandId.Length) + 256;
+                foreach (var entry in origin.Metadata) n += 3 * (entry.Key.Length + entry.Value.Length) + 32;
+            }
             if (snap.Wire.Window is not { } window) return n;
             n += RowCapacity(in window.Current);
             foreach (ref readonly Playback.WireRow row in window.Prev) n += RowCapacity(in row);
@@ -285,7 +298,7 @@ public static partial class Spotify
             w.B(1, true);                                      // can_play
             w.UAlways(2, (ulong)Math.Clamp(snap.Volume, 0, 65535));
             w.Str(3, snap.Device.DeviceName);
-            Capabilities(ref w, 4);
+            Capabilities(ref w, 4, snap.Device.SupportsLossless);
             w.Str(6, snap.Device.SoftwareVersion);
             w.UAlways(7, 1);                                   // device_type = COMPUTER
             w.Str(9, snap.Device.SpircVersion);
@@ -298,7 +311,7 @@ public static partial class Spotify
             w.Entry(16, "tier1_port", "0");
             w.Str(23, "premium");                              // license — Recently-Played eligibility
             int output = w.Open(24);                           // audio_output_device_info, 24/24 captures
-            w.UAlways(1, 0);                                   // type UNKNOWN, explicitly present
+            w.UAlways(1, snap.Wire.OutputType);                // actual endpoint type
             w.StrAlways(2, snap.Wire.OutputDevice);            // the OS endpoint's name, "" when unknown (explicit)
             w.UAlways(5, 3);                                   // unnamed, always 3
             w.Close(output);
@@ -319,16 +332,22 @@ public static partial class Spotify
             w.Empty(4);                                        // context_restrictions {}
             int origin = w.Open(5);                            // play_origin
             ReadOnlySpan<byte> feature = FeatureOf(context);
-            w.Utf8(1, feature);
-            w.Utf8(2, "xpui-snapshot_2026-07-01_1782890476915_7b5cc0c"u8);
-            w.Utf8(5, feature);
+            if (snap.Wire.Origin is { Feature.Length: > 0 } carried)
+            {
+                w.Str(1, carried.Feature); w.Str(2, carried.Version); w.Str(3, carried.View);
+                w.Str(4, carried.ExternalReferrer); w.Str(5, carried.Referrer); w.Str(6, carried.Device);
+            }
+            else { w.Utf8(1, feature); w.Utf8(5, feature); }
             w.Close(origin);
-            int index = w.Open(6);                             // index {track}
-            w.U(2, (ulong)contextIndex);
-            w.Close(index);
+            if (contextIndex >= 0)
+            {
+                int index = w.Open(6);
+                w.U(2, (ulong)contextIndex);
+                w.Close(index);
+            }
             CurrentTrack(ref w, in snap, context, contextIndex, scratch);
             Hex(ref w, 8, ids.PlaybackId, scratch);            // playback_id
-            if (!snap.IsPaused) w.F64(9, 1.0);                 // playback_speed — 0 (unwritten) while paused
+            if (snap.IsPlaying && !snap.IsPaused && !snap.IsBuffering) w.F64(9, snap.Wire.PlaybackRate);                 // playback_speed — 0 (unwritten) while paused
             w.U(10, (ulong)Math.Max(0, snap.PositionAsOfMs));
             w.U(11, (ulong)Math.Max(0, snap.DurationMs));
             w.B(12, playing);
@@ -339,20 +358,22 @@ public static partial class Spotify
             w.B(1, snap.Shuffling);
             w.B(2, snap.Repeat == RepeatMode.Context);
             w.B(3, snap.Repeat == RepeatMode.Track);
+            if (snap.Track.Kind == EntityKind.Episode) w.F32(4, snap.Wire.PlaybackRate);
             Mode(ref w, "context_enhancement"u8, "NONE"u8);    // the three modes, constant in 24/24
             Mode(ref w, "media"u8, default);
             Mode(ref w, "jam"u8, "off"u8);
             w.Close(options);
 
             int restrictions = w.Open(17);
+            if (snap.IsBuffering) w.Utf8(3, "not_playing_media"u8);
             if (snap.IsPaused)
             {
                 w.Utf8(1, "already_paused"u8);
                 if (contextIndex <= 0 && (window is null || window.Prev.IsEmpty)) w.Utf8(6, "no_prev_track"u8);
             }
             else if (playing) w.Utf8(2, "not_paused"u8);
-            w.Utf8(25, "not_supported_by_content_type"u8);   // setting playback speed
-            if (context.IndexOf(":playlist:"u8) < 0)           // Enhance is a playlist feature
+            if (snap.Track.Kind != EntityKind.Episode) w.Utf8(25, "not_supported_by_content_type"u8);   // setting playback speed
+            if (snap.Track.Kind != EntityKind.Episode && context.IndexOf(":playlist:"u8) < 0)           // Enhance is a playlist feature
             {
                 int modes = w.Open(28);
                 w.Utf8(1, "context_enhancement"u8);
@@ -368,7 +389,7 @@ public static partial class Spotify
             }
             // The mode we HOST is never offered; the other one is offered in `signals` when the gid is known, else disallowed.
             DisallowSignal(ref w, video ? "switch-to-video"u8 : "switch-to-audio"u8);
-            if (!offer) DisallowSignal(ref w, video ? "switch-to-audio"u8 : "switch-to-video"u8);
+            if (!offer && snap.Track.Kind != EntityKind.Episode) DisallowSignal(ref w, video ? "switch-to-audio"u8 : "switch-to-video"u8);
             w.Utf8(31, "already_set"u8);                       // unnamed, always exactly this
             w.Close(restrictions);
 
@@ -376,16 +397,26 @@ public static partial class Spotify
             if (window is not null)
             {
                 foreach (ref readonly Playback.WireRow row in window.Prev) QueueRow(ref w, 19, in row, context, -1, in ids, scratch);
-                int view = contextIndex + 1;
+                int view = Math.Max(0, contextIndex + 1);
                 foreach (ref readonly Playback.WireRow row in window.Next)
                 {
-                    bool numbered = row.Provider != QueueProvider.Queue;   // context and autoplay rows number the context
+                    bool numbered = row.Provider == QueueProvider.Autoplay || (contextIndex >= 0 && row.Provider != QueueProvider.Queue);   // context and autoplay rows number the context
                     QueueRow(ref w, 20, in row, context, numbered ? view : -1, in ids, scratch);
                     if (numbered) view++;
                 }
+                if (window.Next.Length > 0 && window.Next[^1].Provider == QueueProvider.Autoplay)
+                {
+                    int delimiter = w.Open(20);
+                    w.Utf8(1, "spotify:delimiter"u8); w.Utf8(2, "delimiter0"u8);
+                    w.Entry(3, "hidden"u8, "true"u8);
+                    w.Entry(3, "actions.advancing_past_track"u8, "pause"u8);
+                    w.Close(delimiter);
+                }
             }
+            if (snap.Wire.Origin is { } carriedOrigin)
+                foreach (var entry in carriedOrigin.Metadata) w.Entry(21, entry.Key, entry.Value);
             w.Entry(21, "player.arch"u8, "2"u8);               // context_metadata
-            Hex(ref w, 23, ids.SessionId, scratch);            // session_id
+            if (ids.SessionId != UInt128.Zero) { Base62.Encode(ids.SessionId, scratch); w.Utf8(23, scratch[..Base62.GidChars]); }            // session_id
             if (snap.Wire.QueueRevision != 0 && Utf8Formatter.TryFormat(snap.Wire.QueueRevision, scratch, out int digits))
                 w.Utf8(24, scratch[..digits]);                 // queue_revision, as its digits
             int quality = w.Open(32);                          // playback_quality: high · cached_file · high · available · hifi off
@@ -396,7 +427,8 @@ public static partial class Spotify
             w.Utf8(33, "automix-preview"u8);
             w.Utf8(33, "speed-preview"u8);
             w.Utf8(33, "stop-speed-preview"u8);
-            Hex(ref w, 35, ids.SessionCommandId, scratch);     // session_command_id
+            if (snap.Wire.Origin is { CommandId.Length: > 0 } commandOrigin) w.Str(35, commandOrigin.CommandId);
+            else Hex(ref w, 35, ids.SessionCommandId, scratch);     // session_command_id
             int unknown = w.Open(38);                          // unnamed #38 = {1: ""}
             w.Utf8Always(1, default);
             w.Close(unknown);
@@ -448,7 +480,7 @@ public static partial class Spotify
         static void Head(ref ProtoWriter w, in Playback.WireRow row, QueueProvider provider, scoped ReadOnlySpan<byte> context, bool isVideo)
         {
             w.EntryText(3, "title"u8, row.Title);
-            w.EntryText(3, "artist_name"u8, row.ArtistName);
+            w.EntryText(3, row.Id.Kind == EntityKind.Episode ? "author_name"u8 : "artist_name"u8, row.ArtistName);
             w.EntryText(3, "album_title"u8, row.AlbumTitle);
             w.EntryId(3, "album_uri"u8, row.AlbumId);
             w.EntryId(3, "artist_uri"u8, row.ArtistId);
@@ -594,7 +626,7 @@ public static partial class Spotify
 
         /// <summary>`DeviceInfo.capabilities` — CONSTANT, so it is written the same way every time. The 15
         /// `supported_types` and the five unnamed bits are the captured desktop client's, verbatim.</summary>
-        static void Capabilities(ref ProtoWriter w, int field)
+        static void Capabilities(ref ProtoWriter w, int field, bool lossless)
         {
             int c = w.Open(field);
             w.B(2, true);                                      // can_be_player
@@ -618,10 +650,9 @@ public static partial class Spotify
             w.B(23, true);                                     // supports_gzip_pushes
             w.B(25, true);                                     // supports_set_options_command
             int hifi = w.Open(26);                             // supports_hifi
-            w.B(1, true); w.B(2, true); w.B(3, true);
+            w.B(1, lossless); w.B(2, lossless); w.B(3, lossless);
             w.Close(hifi);
-            w.B(29, true);                                     // supports_dj
-            w.UAlways(30, 4);                                  // supported_audio_quality = VERY_HIGH (320 kbps OGG)
+            w.UAlways(30, lossless ? 5UL : 4UL);                // HIFI only when this runtime can open lossless files
             w.B(33, true); w.B(34, true); w.B(35, true); w.B(36, true); w.B(38, true);   // unnamed, 24/24 captures
             w.Close(c);
         }

@@ -25,7 +25,7 @@ public static class App
     /// <para>Idempotent and safe to call more than once: <c>Entities.Switch</c> re-warms the store for a new scope
     /// without re-booting it, so nothing after startup calls this again, but a guard costs one bool and removes any
     /// question of what a second call would do.</para></summary>
-    static void RegisterShapes()
+    internal static void RegisterShapes()
     {
         if (s_shapesRegistered) return;
         s_shapesRegistered = true;
@@ -58,14 +58,21 @@ public static class App
         }
 
         Shell.InstallMarshallers();      // FIRST of the GUI boot: every seam posts to the UI thread; posts queue until the root attaches (G-013)
+        // The single-instance gate (D1), BEFORE anything registers a shape, opens the store or writes a setting: the
+        // 2026-09-18 corruption was exactly this ordering inverted — a second launch's own boot ran ahead of the gate
+        // and could delete/recreate the running instance's cache file out from under it. A refused acquire means
+        // another instance already has this launch's activation payload; leave now, having touched no store.
+        if (!Shell.AcquireInstance()) { Platform.Shutdown(); return 0; }
         RegisterShapes();                // the catalog's disk schema (G-007): before Store.Boot / Entities.Boot either way, so --fake and a real profile share one registration path
         if (!Platform.Args.Fake)
         {
             Setup.BootstrapInstall();    // fresh-install detection over the profile's disk witnesses (read-only probe), before any store opens (B5)
-            Store.Use(Path.Combine(Platform.LocalFolder, "library.db"));   // the persistent graph (G-007); --fake stays memory-only
+            StoreFiles.Reap(Platform.LocalFolder, Store.FileName);   // stale schemas, the legacy library.db set, .dead-* leftovers — after the gate, before the open
+            Store.Use(Path.Combine(Platform.LocalFolder, Store.FileName));   // the persistent graph (G-007), one file per schema fingerprint; --fake stays memory-only
             // The persisted metadata-cache ceiling, applied at boot (until now only a Storage combo change set it); 0 disables the budget leg.
             Store.Policy = Store.Policy with { ByteBudget = Math.Max(0L, Platform.Settings.Get(Platform.Keys.MetadataCacheBudgetBytes)) };
         }
+        Settings.ClearMetadataCache = Store.DropCatalog;   // Settings ▸ Storage ▸ Clear metadata cache — dead until now (never assigned); no-ops under --fake (store never opened)
         Entities.Boot(Platform.Scope);   // table set for the last scope, Store thread, Fetch
         Log.Event(WaveeLogLevel.Info, "app", "boot.entities", "", null, Log.SinceStartMs);
         if (Platform.Args.Fake) Entities.SeedFake(Platform.Clock.SeedEpoch);   // --fake: the offline seed (ch 31), after the tables exist and before any page reads them
@@ -78,6 +85,18 @@ public static class App
         // stamp with it off the UI thread, and it keeps running while the window is idle, minimized or tray-hidden. Same QPC
         // domain as Design.FrameTime, so render sites convert explicitly.
         Playback.FrameNowMs = static () => (long)(System.Diagnostics.Stopwatch.GetTimestamp() * (1000.0 / System.Diagnostics.Stopwatch.Frequency));
+        Playback.Audio.EnumerateEndpoints = static () =>
+        {
+            var endpoints = FluentGpu.Windows.Wasapi.WasapiPcm.EnumerateEndpoints();
+            var rows = new Playback.Audio.LocalAudioDevice[endpoints.Length];
+            for (int i = 0; i < rows.Length; i++)
+            {
+                var endpoint = endpoints[i];
+                byte kind = endpoint.FormFactor switch { 3 or 5 => 2, 8 or 9 => 4, 1 => 1, _ => 0 };
+                rows[i] = new(endpoint.Id, endpoint.Name, kind, endpoint.IsDefault);
+            }
+            return rows;
+        };
         Playback.Boot();                 // state, host loop, audio pump, os bridges
         if (Platform.Args.Fake) Playback.Audio.UseSilentEndpoint();              // --fake never opens a device
         Modules.Boot();

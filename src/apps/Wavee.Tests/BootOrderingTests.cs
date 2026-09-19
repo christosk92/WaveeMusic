@@ -8,7 +8,7 @@
 // own, unchanged, whether Shell.PageFor is the old dumb array read or the new miss-installs-once seam:
 //
 //   ROUTE_TABLE  every RouteKind resolves a page after a full (eager) boot, NotFound excepted — the exhaustive
-//                enumeration ShellRouteTableTests already pins the SHAPE of (30 kinds); this pins that PageFor
+//                enumeration ShellRouteTableTests already pins the SHAPE of (31 kinds); this pins that PageFor
 //                actually answers non-null for every one of them once every owner has installed.
 //   LAZY_GROUP   the NEW half: a miss on one kind in a lazy group installs the whole group once, not per kind, and
 //                never re-installs on a later miss (the cheap hit path stays cheap).
@@ -93,8 +93,10 @@ public sealed class BootOrderingTests : IDisposable
         }
 
         // Pinned by ShellRouteTableTests too — restated here because a drift in the count would silently narrow the
-        // loop above into "most kinds", exactly what this guard exists to refuse.
-        Assert.Equal(30, Shell.RouteKindCount);
+        // loop above into "most kinds", exactly what this guard exists to refuse. 31 since the podcast rework's
+        // wave P2 appended RouteKind.Episode (plan §5.11) — its page resolves through the SAME Album.InstallPages
+        // lazy-group miss the loop above already exercises via RouteKind.Album/Prerelease/Show.
+        Assert.Equal(31, Shell.RouteKindCount);
     }
 
     // ══ LAZY_GROUP: a miss installs its whole group once, the hit path never re-installs ══════════════════════════

@@ -108,7 +108,7 @@ public static partial class Playback
             // Tier 1. `Decide` runs a File.Exists probe (seconds against an offline share) — which is why the walk is on an
             // api thread and never inline on the UI thread. A Broken link raises `Overrides.BrokenLink` once per session.
             var decision = global::Wavee.Video.Overrides.Decide(uri);
-            bool spotifyTrack = id.Kind == EntityKind.Track && id.Provider == EntityProvider.Spotify;
+            bool spotifyTrack = id.Kind is EntityKind.Track or EntityKind.Episode && id.Provider == EntityProvider.Spotify;
             Func<EntityId, string, CancellationToken, VideoSource?>? chained = s_chained;
             SourceTier tier = SourceTiers.First(decision.Tier, spotifyTrack, manifestId, chained is not null);
 
@@ -151,6 +151,8 @@ public static partial class Playback
 
         /// <summary>The uri → manifest id answers the wire tier found, so a re-toggle of a linked track costs no POST. A
         /// small bounded map (a session watches a handful of videos); full means start over, never grow.</summary>
+        public static string KnownManifestId(EntityId id) => ManifestIds.Lookup(id.Text) ?? "";
+
         static class ManifestIds
         {
             const int Capacity = 64;
@@ -260,6 +262,16 @@ public static partial class Playback
             /// names a DIFFERENT track (the linked video), whose TrackV4 carries the gid. Blocks; "" for no video.</summary>
             public static string ManifestIdOf(string trackUri, CancellationToken ct)
             {
+                if (trackUri.StartsWith("spotify:episode:", StringComparison.Ordinal))
+                {
+                    ReadOnlySpan<Xm.ExtensionKind> episodeKind = [Xm.ExtensionKind.EpisodeV4];
+                    var episode = Spotify.Api.MetadataPost(Spotify.Api.MetadataBody(trackUri, episodeKind, Spotify.Api.Market, Spotify.Api.Catalogue), ct);
+                    if (!episode.Ok) return "";
+                    var metadata = new Spotify.Decode.ProtoReader(Payload(episode.Bytes, (int)Xm.ExtensionKind.EpisodeV4, trackUri));
+                    ReadOnlySpan<byte> video = metadata.Bytes(72);
+                    ReadOnlySpan<byte> fileId = new Spotify.Decode.ProtoReader(video).Bytes(1);
+                    return fileId.Length == 16 ? Convert.ToHexStringLower(fileId) : "";
+                }
                 ReadOnlySpan<string> uris = [trackUri, trackUri];
                 ReadOnlySpan<Xm.ExtensionKind> kinds = [Xm.ExtensionKind.TrackV4, Xm.ExtensionKind.VideoAssociations];
                 Spotify.Api.Result first = Spotify.Api.MetadataPost(Spotify.Api.MetadataBody(uris, kinds, Spotify.Api.Market, Spotify.Api.Catalogue), ct);

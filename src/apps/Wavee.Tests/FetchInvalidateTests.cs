@@ -69,6 +69,7 @@ public class FetchInvalidateTests : IDisposable
         TrackTable t = scope.Tracks;
         int slot = Rows(t, 1)[0];
         Fetch.Plan(scope, t, [slot], Identity, FetchPriority.Visible);
+        Fetch.Drain();                                              // the host's tick (wave D4): a plan never sends
         AnswerIdentity(provider.Seen[0].Ticket, t.Id[slot], Authority.Full, "the ended edition");
         provider.Seen.Clear();
         Assert.True(t.Knows(slot, Identity));
@@ -83,6 +84,7 @@ public class FetchInvalidateTests : IDisposable
         uint version = t.Version[slot];
 
         Entities.Invalidate(t, [slot], Identity);
+        Fetch.Drain();
 
         Assert.True(t.Knows(slot, Identity));                       // still rendering: never a skeleton
         Assert.True(t.IsStale(slot, Identity));
@@ -118,6 +120,7 @@ public class FetchInvalidateTests : IDisposable
         var before = t.Title[slot];
 
         Entities.Invalidate(t, [slot], Identity);
+        Fetch.Drain();
         AnswerIdentity(provider.Seen[0].Ticket, t.Id[slot], Authority.Thin, "the new edition");
 
         Assert.NotEqual(before, t.Title[slot]);                     // a stale group is a hole: Thin over Full lands
@@ -132,6 +135,7 @@ public class FetchInvalidateTests : IDisposable
         var (_, provider, t, slot) = KnownRow();
 
         Entities.Invalidate(t, [slot], Identity);
+        Fetch.Drain();
         Fetch.Failed(provider.Seen[0].Ticket, 404, 0);
 
         Assert.Equal(0u, t.Asked[slot] & Identity);                 // stale is unsettled, so the failure un-asks it
@@ -139,6 +143,7 @@ public class FetchInvalidateTests : IDisposable
         Assert.True(t.Knows(slot, Identity));
 
         Entities.Ensure(t, [slot], Identity);
+        Fetch.Drain();
         Assert.Equal(2, provider.Seen.Count);
         Assert.Equal(Identity, provider.Seen[1].Wanted);
     }
@@ -163,6 +168,7 @@ public class FetchInvalidateTests : IDisposable
         var (_, provider, t, _) = KnownRow();
 
         Entities.Invalidate(t, [Table.None, t.Count, t.Count + 7], Identity);
+        Fetch.Drain();
 
         Assert.Empty(provider.Seen);
     }
@@ -176,6 +182,7 @@ public class FetchInvalidateTests : IDisposable
         Assert.Equal(EdgeState.Unknown, scope.Edges.Rootlist.State(scope.MeSlot));
 
         Entities.InvalidateEdge(FetchEdge.Rootlist, scope.MeSlot);
+        Fetch.Drain();
 
         Assert.Empty(provider.Seen);
     }
@@ -189,6 +196,7 @@ public class FetchInvalidateTests : IDisposable
         var rootlist = scope.Edges.Rootlist;
 
         Entities.EnsureEdge(FetchEdge.Rootlist, scope.MeSlot);
+        Fetch.Drain();
         var s = Staging.Rent();
         ref var list = ref s.Rootlists.Add();
         list.Parent = scope.Users.Id[scope.MeSlot];
@@ -199,9 +207,11 @@ public class FetchInvalidateTests : IDisposable
         int count = rootlist.Count(scope.MeSlot);
 
         Entities.EnsureEdge(FetchEdge.Rootlist, scope.MeSlot);
+        Fetch.Drain();
         Assert.Single(provider.Seen);                               // sealed for the scope…
 
         Entities.InvalidateEdge(FetchEdge.Rootlist, scope.MeSlot);
+        Fetch.Drain();
 
         Assert.Equal(2, provider.Seen.Count);                       // …until the edition ends
         Assert.Equal(FetchPriority.Prefetch, provider.Seen[1].Priority);

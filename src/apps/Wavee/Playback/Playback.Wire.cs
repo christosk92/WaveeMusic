@@ -47,7 +47,8 @@ public static partial class Playback
         string ClientId,
         string Platform,
         string SoftwareVersion,
-        string SpircVersion);
+        string SpircVersion,
+        bool SupportsLossless = false);
 
     /// <summary>The per-session ids the player state names (0.2.9 <c>DeviceStatePublisher</c>): <c>session_id</c> and
     /// <c>session_command_id</c> turn over with a new session (a new play, or a new context), <c>playback_id</c> with every
@@ -93,7 +94,7 @@ public static partial class Playback
     public sealed class WireWindow
     {
         /// <summary>0.2.9's <c>MaxWirePrevTracks</c> / <c>MaxWireNextTracks</c>.</summary>
-        public const int MaxPrev = 50, MaxNext = 50;
+        public const int MaxPrev = 10, MaxNext = 50;
 
         readonly WireRow[] _prev, _next;
 
@@ -112,12 +113,15 @@ public static partial class Playback
             Current = current;
             _prev = (prev.Length > MaxPrev ? prev[(prev.Length - MaxPrev)..] : prev).ToArray();
             _next = (next.Length > MaxNext ? next[..MaxNext] : next).ToArray();
-            ContextIndex = Math.Max(0, contextIndex);
+            ContextIndex = contextIndex;
         }
     }
 
     /// <summary>The PUT's parity half beside the deck: what 0.2.9 sent and 0.3's first encoder did not (G-240). A value;
     /// its one reference (<see cref="Window"/>) is immutable.</summary>
+    public sealed record WireOrigin(string Feature, string Version, string View, string ExternalReferrer,
+        string Referrer, string Device, string CommandId, KeyValuePair<string, string>[] Metadata);
+
     public readonly struct WireExtras
     {
         /// <summary>Null while we are not the active device, or have nothing on the deck.</summary>
@@ -125,8 +129,12 @@ public static partial class Playback
         /// <summary><c>queue_revision</c>: moves whenever the queue, the deck row or the options did. 0 = not stated.</summary>
         public readonly ulong QueueRevision;
         public readonly WireIds Ids;
+        public readonly WireOrigin? Origin;
+        public readonly byte OutputType;
         /// <summary><c>DeviceInfo.is_private_session</c> — the setting, honoured on the wire.</summary>
         public readonly bool PrivateSession;
+        readonly float _playbackRate;
+        public float PlaybackRate => _playbackRate > 0 ? _playbackRate : 1f;
         readonly string? _outputDevice, _commandSender;
 
         /// <summary><c>audio_output_device_info.device_name</c>: the OS endpoint we render to, "" when unknown.</summary>
@@ -135,10 +143,10 @@ public static partial class Playback
         public string CommandSender => _commandSender ?? "";
 
         public WireExtras(WireWindow? window, ulong queueRevision, in WireIds ids, bool privateSession, string? outputDevice,
-            string? commandSender)
+            string? commandSender, float playbackRate = 1f, WireOrigin? origin = null, byte outputType = 0)
         {
             Window = window; QueueRevision = queueRevision; Ids = ids; PrivateSession = privateSession;
-            _outputDevice = outputDevice; _commandSender = commandSender;
+            _outputDevice = outputDevice; _commandSender = commandSender; _playbackRate = playbackRate; Origin = origin; OutputType = outputType;
         }
     }
 

@@ -807,7 +807,9 @@ public class SpotifyApiListRouteTests
 
         Assert.Equal(Spotify.Verb.Get, route.Verb);
         Assert.Equal("/playlist/v2/playlist/37i9dQZF1DX?decorate=revision,attributes,length,owner,capabilities,picture", route.Path);
-        Assert.Equal(Common | Spotify.HeaderSet.AcceptProtobuf, route.Headers);
+        Assert.Equal(Common | Spotify.HeaderSet.AcceptProtobuf | Spotify.HeaderSet.ApplyLenses
+            | Spotify.HeaderSet.AcceptListItems | Spotify.HeaderSet.AcceptGeoblock | Spotify.HeaderSet.DsaMode, route.Headers);
+        Assert.Equal("CAwQAQ==", route.SyncReason);
         Assert.True(route.Zstd);
     }
 
@@ -857,72 +859,6 @@ public class SpotifyApiListRouteTests
         revision[3] = (byte)counter;
         for (int i = 4; i < 24; i++) revision[i] = (byte)i;
         return revision;
-    }
-
-    static Pl.Diff Diff(bool withOps)
-    {
-        var diff = new Pl.Diff { FromRevision = ByteString.CopyFrom(Revision24(1)), ToRevision = ByteString.CopyFrom(Revision24(1)) };
-        if (withOps) diff.Ops.Add(new Pl.Op { Kind = Pl.Op.Types.Kind.Add });
-        return diff;
-    }
-
-    [Fact]
-    public void The_diff_verdict_follows_the_four_answer_shapes()
-    {
-        Assert.Equal(Spotify.Api.ListDiff.Unchanged, Spotify.Api.DiffVerdict([]));
-        Assert.Equal(Spotify.Api.ListDiff.Unchanged,
-                     Spotify.Api.DiffVerdict(new Pl.SelectedListContent { UpToDate = true }.ToByteArray()));
-        Assert.Equal(Spotify.Api.ListDiff.Unchanged,
-                     Spotify.Api.DiffVerdict(new Pl.SelectedListContent { Diff = Diff(withOps: false) }.ToByteArray()));
-        Assert.Equal(Spotify.Api.ListDiff.Changed,
-                     Spotify.Api.DiffVerdict(new Pl.SelectedListContent { Diff = Diff(withOps: true) }.ToByteArray()));
-
-        var full = new Pl.SelectedListContent { Contents = new Pl.ListItems { Pos = 0, Truncated = false } };
-        full.Contents.Items.Add(new Pl.Item { Uri = "spotify:track:a" });
-        Assert.Equal(Spotify.Api.ListDiff.Contents, Spotify.Api.DiffVerdict(full.ToByteArray()));
-    }
-
-    /// <summary>The common no-change reply carries a diff with no ops; contents beside it do not make it a change.</summary>
-    [Fact]
-    public void A_diff_without_ops_is_unchanged_even_beside_contents()
-    {
-        var answer = new Pl.SelectedListContent
-        {
-            Diff = Diff(withOps: false),
-            Contents = new Pl.ListItems { Pos = 0, Truncated = false },
-        };
-        Assert.Equal(Spotify.Api.ListDiff.Unchanged, Spotify.Api.DiffVerdict(answer.ToByteArray()));
-    }
-
-    /// <summary>Bug A1's regression, the transport half: <c>changes_require_resync</c> (field 20 — "the accepted
-    /// delta cannot be expressed as a diff against our base, refetch instead") outranks every other field.
-    /// `ReadList` treats <see cref="Spotify.Api.ListDiff.Changed"/> as "ignore this body, do the full read" — the
-    /// SAME verdict a diff-with-ops gets — so a resync-flagged answer converges on a full read exactly like the
-    /// field's own contract, never decoded as a trustworthy snapshot even when it carries a `contents` block (the
-    /// Eurodance Mix shape: a stale/zeroed `length` that must never reach the table).</summary>
-    [Fact]
-    public void ChangesRequireResync_OutranksEveryOtherField_AndConvergesOnTheFullRead()
-    {
-        Assert.Equal(Spotify.Api.ListDiff.Changed,
-                     Spotify.Api.DiffVerdict(new Pl.SelectedListContent { ChangesRequireResync = true }.ToByteArray()));
-
-        // The dangerous shape: resync-flagged AND carrying `contents` — must still be Changed, never Contents (the
-        // pre-fix behaviour that let a diff-triggered "resync" answer's `length` reach the decoder as if trusted).
-        var withContents = new Pl.SelectedListContent
-        {
-            ChangesRequireResync = true,
-            Length = 0,
-            Contents = new Pl.ListItems { Pos = 0, Truncated = false },
-        };
-        Assert.Equal(Spotify.Api.ListDiff.Changed, Spotify.Api.DiffVerdict(withContents.ToByteArray()));
-
-        // And resync beats even up_to_date, in case a malformed answer ever sets both.
-        var withUpToDate = new Pl.SelectedListContent { ChangesRequireResync = true, UpToDate = true };
-        Assert.Equal(Spotify.Api.ListDiff.Changed, Spotify.Api.DiffVerdict(withUpToDate.ToByteArray()));
-
-        // Without the flag, the same contents-bearing shape is trusted as before (the ordinary Contents verdict).
-        var clean = new Pl.SelectedListContent { Length = 50, Contents = new Pl.ListItems { Pos = 0, Truncated = false } };
-        Assert.Equal(Spotify.Api.ListDiff.Contents, Spotify.Api.DiffVerdict(clean.ToByteArray()));
     }
 
     [Fact]

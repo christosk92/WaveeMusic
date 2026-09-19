@@ -38,7 +38,7 @@ public static partial class Spotify
         // ── set_options ──────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The most verbs one <c>set_options</c> folds to: a shuffle verb and one repeat verb.</summary>
-        public const int MaxOptionVerbs = 2;
+        public const int MaxOptionVerbs = 3;
 
         /// <summary>A <c>set_options</c> body → the verbs the reducer already folds, written into <paramref name="into"/>
         /// (at least <see cref="MaxOptionVerbs"/> long). Each verb is <paramref name="command"/> with its own kind, argument
@@ -49,6 +49,7 @@ public static partial class Spotify
         {
             if (command.Kind != RemoteCmd.SetOptions || into.Length < MaxOptionVerbs) return 0;
             sbyte shuffle = -1, repeatTrack = -1, repeatContext = -1;
+            float speed = 0;
             var r = new Utf8JsonReader(payload);
             try
             {
@@ -61,6 +62,11 @@ public static partial class Spotify
                         if (r.ValueTextEquals("shuffling_context"u8)) shuffle = Tri(ref r);
                         else if (r.ValueTextEquals("repeating_track"u8)) repeatTrack = Tri(ref r);
                         else if (r.ValueTextEquals("repeating_context"u8)) repeatContext = Tri(ref r);
+                        else if (r.ValueTextEquals("playback_speed"u8))
+                        {
+                            r.Read();
+                            if (r.TokenType == JsonTokenType.Number && r.TryGetSingle(out float value) && float.IsFinite(value) && value is >= .5f and <= 3f) speed = value;
+                        }
                         else SkipValue(ref r);
                     }
                 }
@@ -74,6 +80,12 @@ public static partial class Spotify
             if (shuffle >= 0) into[n++] = OptionVerb(in command, RemoteCmd.SetShufflingContext, shuffle == 1);
             if (repeatTrack == 1) into[n++] = OptionVerb(in command, RemoteCmd.SetRepeatingTrack, true);
             else if (repeatContext >= 0 || repeatTrack == 0) into[n++] = OptionVerb(in command, RemoteCmd.SetRepeatingContext, repeatContext == 1);
+            if (speed > 0) into[n++] = command with
+            {
+                Kind = RemoteCmd.SetPlaybackSpeed,
+                SeekToMs = BitConverter.SingleToInt32Bits(speed),
+                DedupeKey = Fnv(Fnv(command.SenderHash, (ulong)(uint)command.MessageId), (ulong)RemoteCmd.SetPlaybackSpeed),
+            };
             return n;
         }
 

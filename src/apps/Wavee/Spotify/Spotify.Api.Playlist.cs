@@ -18,6 +18,13 @@
 //                                   one retry on 409 where the op is keyed-exact        (PlaylistEditErrors.Raise)
 //
 // The Local Files playlist has no remote: its row writes settle in place. Nothing here holds a span across a post.
+//
+// THE HELD REVISION (wave D3). Every optimistic ROW write here — a remove, a move, the revert of either — lands through
+// ONE door, `LandOptimistic`, which forgets the playlist's held revision with the rows (`Entities.ForgetListRevision`):
+// the settle's refresh is then a full read, never a `/diff` from the pre-edit head replayed over rows that already hold
+// the edit. An add is not optimistic (the rows move only when the server's answer lands), and a header write keeps the
+// revision (a header op replays onto rows nobody touched). The delete's rootlist half goes through the library host's
+// own door (`Library.LandRootlistTree` / `ReadRootlistBack`).
 
 using System.Text;
 using System.Text.Json;
@@ -43,11 +50,21 @@ public static partial class Spotify
             Decode.PlaylistFormatAttributes(selectedListContent, utf8, s);
         }
 
-        /// <summary>The membership relation's read, REVISION-GATED (B1b gap 8): a held head asks the /diff first
-        /// (<see cref="ReadList"/>), and an unchanged list stages nothing.</summary>
-        static void PlaylistEdge(string uri, string? revision, Staging s, ref FetchOutcome outcome)
+        /// <summary>The membership relation's read, REVISION-GATED (B1b gap 8) and REPLAYED (wave D3): a held head asks the
+        /// /diff first (<see cref="ReadList"/>) — an unchanged list stages nothing, ops replayed over the batch's
+        /// <paramref name="baseline"/> land as the whole list at the new revision (<c>Decode.PlaylistReplay</c>), and
+        /// anything to decode is decoded as the full read it is. A replay the staging refuses — which the decision's own
+        /// checks make unreachable — is read in full.</summary>
+        static void PlaylistEdge(string uri, string? revision, ListRow[]? baseline, Staging s, ref FetchOutcome outcome)
         {
-            byte[]? body = ReadList(ListKind.Playlist, IdOf(uri), revision, ref outcome);
+            string id = IdOf(uri);
+            ListRead read = ReadList(ListKind.Playlist, id, revision, baseline, ref outcome);
+            byte[]? body = read.Body;
+            if (read.Rows is { } rows && !Decode.PlaylistReplay(rows, uri, read.Revision!, read.Attrs, s))
+            {
+                Log.Warn("library", "a replayed playlist did not stage; reading it in full");
+                body = FullRead(ListKind.Playlist, id, ref outcome);
+            }
             if (body is not null) PlaylistAnswer(body, uri, s);
         }
 
@@ -130,12 +147,31 @@ public static partial class Spotify
             return new Membership(e.Targets(p.Slot).ToArray(), e.Payload(p.Slot).ToArray(), e.State(p.Slot), e.Total(p.Slot));
         }
 
+        /// <summary>The revert: the pre-edit rows go back through <see cref="LandOptimistic"/>, so the revision stays
+        /// FORGOTTEN — deliberately not put back. A landing may have moved the head while the write was out, and the
+        /// pre-edit rows would then sit under a head that does not describe them; forgotten, the next ask reads in full.</summary>
         static void Restore(Scope scope, Playlist p, in Membership m)
         {
             if (!ReferenceEquals(scope, Entities.Current)) return;
-            scope.Edges.PlaylistTracks.Replace(p.Slot, m.Targets, m.Payload, m.State, m.Total);
+            LandOptimistic(p, m.Targets, m.Payload, m.State, m.Total);
             p.Refold();
             Entities.Publish();
+        }
+
+        /// <summary>THE ONE DOOR every optimistic membership write of this host lands through — a remove, a move and the
+        /// revert of either (file header): the rows replace the live list, and the playlist's held revision is FORGOTTEN
+        /// with them (<see cref="Entities.ForgetListRevision"/>). Left in place, the settle's refresh would ask the
+        /// <c>/diff</c> FROM the pre-edit head over rows that already hold the edit, the server's positional echo of it
+        /// would be applied a second time, and that list written to disk at the new head; the dealer's echo would do the
+        /// same through the in-place apply. Forgotten, the refresh is a full read, the echo can only dirty the list, and
+        /// the disk keeps its pre-edit pair until the full read replaces it. UI thread; the caller refolds and publishes.
+        /// Public for the facts (this assembly has no <c>InternalsVisibleTo</c>).</summary>
+        public static void LandOptimistic(Playlist p, ReadOnlySpan<int> targets, ReadOnlySpan<PlaylistTrackEdge> payload,
+                                          EdgeState state, int total)
+        {
+            var scope = Entities.Current;
+            scope.Edges.PlaylistTracks.Replace(p.Slot, targets, payload, state, total);
+            Entities.ForgetListRevision(scope, EdgeRelation.PlaylistTracks, p.Slot);
         }
 
         static PlaylistMember MemberAt(in Membership m, int index)
@@ -168,7 +204,7 @@ public static partial class Spotify
             var payload = new PlaylistTrackEdge[kept];
             for (int i = 0, k = 0; i < drop.Length; i++)
                 if (!drop[i]) { targets[k] = before.Targets[i]; payload[k++] = before.Payload[i]; }
-            scope.Edges.PlaylistTracks.Replace(p.Slot, targets, payload, before.State, Math.Max(0, before.Total - members.Count));
+            LandOptimistic(p, targets, payload, before.State, Math.Max(0, before.Total - members.Count));
             p.Refold();
             Entities.Publish();
             int count = members.Count;
@@ -221,7 +257,7 @@ public static partial class Spotify
             if (!local && !CanWrite(out _, out _)) { Fail(PlaylistMutationFailure.NotSupported, PlaylistEditVerb.Reorder); return false; }
 
             var scope = Entities.Current;
-            scope.Edges.PlaylistTracks.Replace(p.Slot, targets, payload, before.State, before.Total);
+            LandOptimistic(p, targets, payload, before.State, before.Total);
             Entities.Publish();
             if (local) return true;
 
@@ -387,11 +423,11 @@ public static partial class Spotify
             Encode.RootlistEntries(me, entries);
             string uri = p.Uri.Text;
             if (Encode.RootlistRemove(entries, uri) is not { } op) { Fail(PlaylistMutationFailure.Deleted, PlaylistEditVerb.Generic); return; }
-            Encode.LandRootlist(me, Encode.ApplyLocally(entries, [op]));
+            // The optimistic tree lands and the held head is forgotten with it; the head it was computed over is the base.
+            string revisionText = Library.LandRootlistTree(scope, Encode.ApplyLocally(entries, [op])).Base;
             Entities.Publish();
             Actions.Services.Go?.Invoke(new Shell.Route(Shell.RouteKind.Home));
 
-            string revisionText = Entities.Strings.Resolve(scope.Edges.RootlistRevision(scope.MeSlot));
             var net = Net;
             long now = NowMs();
             if (!net.Run(() =>
@@ -410,11 +446,11 @@ public static partial class Spotify
                     Post(() =>
                     {
                         if (!ReferenceEquals(scope, Entities.Current)) return;
-                        Entities.RefreshEdge(FetchEdge.Rootlist, scope.MeSlot);   // converge either way: the reply names no head we keep
+                        Library.ReadRootlistBack(scope);   // converge either way, in full: the reply names no head we keep
                         if (!ok) Fail(PlaylistEditErrorKinds.KindOfStatus(status), PlaylistEditVerb.Generic);
                     });
                 }))
-                Entities.RefreshEdge(FetchEdge.Rootlist, scope.MeSlot);
+                Library.ReadRootlistBack(scope);
         }
 
         // ── tune (W24): POST /signals, the reply IS the rebuilt list ──────────────────────────────────────────────
