@@ -62,9 +62,13 @@ public readonly partial struct Episode
     /// <summary>What one bound row slot binds: the handle, its row version and the host's marks — so a data change to
     /// THIS episode (or its marks) re-fires the slot's binds and a publish of any other row does not (the slot item is
     /// equality-gated).</summary>
-    public readonly record struct RowItem(Episode Episode, uint Version, RowMarks Marks = RowMarks.None)
+    /// <param name="Number">A number the HOST states for this row, 0 = "the episode's own". An audiobook's chapters
+    /// carry no <c>number</c> on the wire (<see cref="AudiobookOrder"/>), so the reader numbers them by POSITION and
+    /// hands the number down here — the row never recomputes an order it cannot see.</param>
+    public readonly record struct RowItem(Episode Episode, uint Version, RowMarks Marks = RowMarks.None, int Number = 0)
     {
-        public static RowItem Of(Episode e, RowMarks marks = RowMarks.None) => new(e, e.IsValid ? e.Version : 0u, marks);
+        public static RowItem Of(Episode e, RowMarks marks = RowMarks.None, int number = 0)
+            => new(e, e.IsValid ? e.Version : 0u, marks, number);
     }
 
     /// <summary>What a row needs from its host, built ONCE per host: the show's tone (a live read), the disc's verb, the
@@ -79,11 +83,27 @@ public readonly partial struct Episode
         public Action<Episode>? Open { get; init; }
         public IOverlayService? Overlay { get; init; }
         public Func<Episode, ContextMenuModel?>? Menu { get; init; }
+        /// <summary>Multi-select mode, when the row is hosted inside a selection surface. Null = no selection
+        /// affordance (the row is a plain link).
+        /// <para>B2 (plan §3.3): narrowed from the deleted <c>EpisodeSelection</c> to the two members
+        /// <see cref="ReaderRowContent"/> actually reads — <c>Track.Table</c>'s rows carry their OWN selection state
+        /// through <c>RowScope</c>/<c>host.Skin</c> (the check lane, the row fill) and reach this seam only for the
+        /// hyperlink-vs-toggle click decision. A caller still using the retired per-page selection model (the show
+        /// reader, until the S-reader wave migrates it onto <c>Track.Table</c>) adapts to this shape instead.</para></summary>
+        public RowSelectionContext? Selection { get; init; }
+    }
+
+    /// <summary>The two members <see cref="ReaderRowContent"/> needs from whatever owns row selection: is multi-select
+    /// armed, and how to clear it (Escape, the batch bar's ✕). See <see cref="RowContext.Selection"/>.</summary>
+    public sealed class RowSelectionContext
+    {
+        public required Signal<bool> Selecting { get; init; }
+        public required Action Clear { get; init; }
     }
 
     // ── the metrics (W3; the prototype's .erow) ──
-    public const float NumeralWidth = 46f, RowArt = 56f, RowArtNarrow = 48f, RowDisc = 36f, RowDiscGlyph = 14f;
-    public const float RowGap = 14f, RowPadX = 8f, RowPadY = 12f, RowRadius = 6f, PlayedInk = 0.58f;
+    public const float NumeralWidth = 46f, RowArt = 64f, RowArtNarrow = 48f, RowDisc = 36f, RowDiscGlyph = 14f;
+    public const float RowGap = 12f, RowPadX = 0f, RowPadY = 12f, RowRadius = 6f, PlayedInk = 0.85f;
     public const float RuleHeight = 3f, RuleMaxWidth = 340f, ToneBarWidth = 3f, ActionBox = 30f;
     const float RuleCorner = 2f, ArtRadius = 6f, ClusterFadeMs = 120f, EqualizerHeight = 11f;
     const string DisplayFace = "Segoe UI Variable Display";
@@ -114,6 +134,26 @@ public readonly partial struct Episode
     /// <summary><see cref="ReaderPct(int,int)"/> of a row; progress UNKNOWN reads 0 — no state, never a guess.</summary>
     public static float ReaderPctOf(Episode e)
         => e.IsValid ? e.Completed ? 1f : e.Knows(EpisodeFields.Progress) ? ReaderPct(e.ProgressMs, e.DurationMs) : 0f : 0f;
+
+    /// <summary>THE reveal rule — what one reader surface (a row, an up-next chip, the continue hero) shows for an
+    /// episode, from four column facts and nothing else. Pure, so a test pins the table of outcomes without a table:
+    /// <list type="bullet">
+    /// <item>no row at all (<paramref name="valid"/> false) → <see cref="LoadState.Pending"/> — a recycled slot holds
+    /// the default item for a frame, and a shimmer is the only honest thing to draw for it;</item>
+    /// <item>the title is known → <see cref="LoadState.Ready"/> when it has text, else <see cref="LoadState.Failed"/> —
+    /// an answered-but-empty identity is a definite failure, not a shimmer that never ends;</item>
+    /// <item>the title is not known → <see cref="LoadState.Failed"/> once the ask for it terminally failed
+    /// (<c>Table.Failed</c>: a transport failure's <c>MarkFailed</c>, or <c>FetchMissPolicy</c>'s seal after the
+    /// wire omitted the row twice), else <see cref="LoadState.Pending"/>.</item>
+    /// </list>
+    /// Whoever asks for the facts is a different question (<c>ShowReaderRules.RowDemand</c>, the reader host's own
+    /// effect): this rule only says what to paint for what the columns hold.</summary>
+    public static LoadState RevealState(bool valid, bool knowsTitle, bool hasTitle, bool failed)
+    {
+        if (!valid) return LoadState.Pending;
+        if (knowsTitle) return hasTitle ? LoadState.Ready : LoadState.Failed;
+        return failed ? LoadState.Failed : LoadState.Pending;
+    }
 
     /// <summary>Whole minutes left, at least 1 (the prototype's <c>max(1, round(dur × (1 − pct)))</c>); 0 when the
     /// duration is unknown. A position past the end reads as the end.</summary>
@@ -176,22 +216,23 @@ public readonly partial struct Episode
     static readonly FormatCache<int> s_left = new();
     static readonly FormatCache<int> s_durations = new();
     static readonly FormatCache<(string Title, int Number)> s_titles = new();
-    static readonly Func<int, string> s_dateFormat = static key => key <= 0
-        ? ""
-        : new DateTime(key / 10000, key / 100 % 100, key % 100).ToString("MMM d", CultureInfo.CurrentCulture);
+    /// <summary>The row's date, from the <see cref="DateKeys"/> DAY key the row binds. Total by construction: a key the
+    /// family did not mint (a month key, a truncated one, a zero month or day) reads "" — this thunk runs on the render
+    /// path, where a thrown <c>DateTime</c> constructor is a crashed app loop.</summary>
+    static readonly Func<int, string> s_dateFormat = static key => DateKeys.DayLabel(key, CultureInfo.CurrentCulture);
     static readonly Func<int, string> s_leftFormat = static minutes => Strings.Podcast.Left(DurationWords(minutes));
     static readonly Func<int, string> s_durationFormat = static minutes => DurationWords(minutes);
     static readonly Func<(string Title, int Number), string> s_strip = static k => TitleSansNumber(k.Title, k.Number);
 
-    internal static int DateKey(int unixSeconds)
-    {
-        if (unixSeconds <= 0) return 0;
-        var local = DateTimeOffset.FromUnixTimeSeconds(unixSeconds).ToLocalTime();
-        return local.Year * 10000 + local.Month * 100 + local.Day;
-    }
+    /// <summary>The row's <see cref="DateKeys"/> day key (<c>year*10000 + month*100 + day</c>) in the LISTENER's clock;
+    /// <see cref="DateKeys.None"/> when the date is unknown.
+    /// <para>Public, not internal: this assembly has no <c>InternalsVisibleTo</c> (see <c>Playlist.UI.cs</c>) and the
+    /// row's date is exactly the decision the crash came out of, so a fact pins it.</para></summary>
+    public static int DateKey(int unixSeconds) => DateKeys.DayKeyOfLocal(unixSeconds);
 
-    /// <summary>"MMM d" for a unix-seconds stamp; empty for 0 (an unknown date is never invented).</summary>
-    internal static string DateLabel(int unixSeconds) => s_dates.Get(DateKey(unixSeconds), s_dateFormat);
+    /// <summary>"MMM d" for a unix-seconds stamp, cached by day; empty for an unknown date (never invented) and for
+    /// any key the day-key family did not mint — it cannot throw.</summary>
+    public static string DateLabel(int unixSeconds) => s_dates.Get(DateKey(unixSeconds), s_dateFormat);
 
     // ══ 3. NOW PLAYING, THE DISC, THE LINK ═══════════════════════════════════════════════════════════════════════════
 
@@ -244,16 +285,20 @@ public readonly partial struct Episode
     static bool HasDescription(Episode e) => e.IsValid && e.Knows(EpisodeFields.About) && !e.DescriptionId.IsEmpty;
     static string DescriptionOf(Episode e) => HasDescription(e) ? Entities.Strings.Resolve(e.DescriptionId) : "";
     static string? ArtOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Image) ? Controls.ArtUrl(e.ImageId) : null;
-    static int DateKeyOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Published) ? DateKey(e.PublishedAt) : 0;
+    static int DateKeyOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Published) ? DateKey(e.PublishedAt) : DateKeys.None;
     static EpisodeFlags FlagsOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Title) ? e.Flags : EpisodeFlags.None;
     static EpisodeKind KindOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Title) ? e.Kind : EpisodeKind.Full;
     static int NumberOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Title) ? e.Number : 0;
     static string NumeralText(Episode e) { int n = NumberOf(e); return n > 0 ? FormatCache.Int(n) : ""; }
+
+    /// <summary>The row's numeral: the HOST's number when it stated one (an audiobook chapter's POSITION — the wire
+    /// carries none), else the episode's own.</summary>
+    static string NumeralOf(RowItem r) => r.Number > 0 ? FormatCache.Int(r.Number) : NumeralText(r.Episode);
     static string DurationLabelOf(Episode e) => e.IsValid && e.Knows(EpisodeFields.Duration) ? DurationLabel(e.DurationMs) : "";
-    static bool InProgressOf(Episode e) => Rules.InProgress(ReaderPctOf(e));
-    static bool PlayedOf(Episode e) => Rules.Played(ReaderPctOf(e));
-    static string LeftOf(Episode e) => InProgressOf(e) ? LeftLabel(e.ProgressMs, e.DurationMs) : "";
-    static bool IsNew(in RowItem r) => (r.Marks & RowMarks.Fresh) != 0 && ReaderPctOf(r.Episode) <= Rules.InProgressFloor;
+    static bool InProgressOf(Episode e) => Rules.InProgress(PlaybackProgressOf(e).Pct);
+    static bool PlayedOf(Episode e) => Rules.Played(PlaybackProgressOf(e).Pct);
+    static string LeftOf(Episode e) => InProgressOf(e) ? PlaybackProgressOf(e).LeftLabel : "";
+    static bool IsNew(in RowItem r) => (r.Marks & RowMarks.Fresh) != 0 && PlaybackProgressOf(r.Episode).Pct <= Rules.InProgressFloor;
 
     /// <summary>The wide arm's title: the number prefix stripped when the numeral carries it (cached per title).</summary>
     static string ShownTitle(Episode e)
@@ -270,6 +315,68 @@ public readonly partial struct Episode
     /// the verbs resolve the slot's CURRENT item at invocation, never one captured at build time.</summary>
     public static Element ReaderRow(in BoundItemScope<RowItem> item, RowContext ctx, bool narrow)
     {
+        var bound = item;
+        var content = ReaderRowContent(in bound, ctx, narrow, seed: false);
+        return new SkelRegionEl(
+            Pending: () => ReaderLoadState(bound.Item.Value.Episode) == LoadState.Pending,
+            Failed: () => ReaderLoadState(bound.Item.Value.Episode) == LoadState.Failed,
+            Content: () => content,
+            ShimmerSource: () => SeedReaderRow(narrow),
+            OnFailed: () => ReaderFailure(bound.Item.Value.Episode, narrow),
+            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+    }
+
+    /// <summary><see cref="RevealState"/> read off the live columns — the SUBSCRIBING read every reader gate binds. While
+    /// the title is unresolved it observes the table's <c>Changed</c> signal, because a failure mark (or a seal after
+    /// repeated misses) need not move the row's version: the gate must still wake for it.</summary>
+    public static LoadState ReaderLoadState(Episode episode)
+    {
+        if (!episode.IsValid) return LoadState.Pending;
+        if (episode.Knows(EpisodeFields.Title)) return RevealState(valid: true, knowsTitle: true, episode.Title.Length > 0, failed: false);
+        _ = Entities.Current.Episodes.Changed.Value;
+        return RevealState(valid: true, knowsTitle: false, hasTitle: false,
+                           Entities.Current.Episodes.IsFailed(episode.Slot, (uint)EpisodeFields.Title));
+    }
+
+    /// <summary>THE retry: ask this row's paint groups again, whatever the scope sealed — a terminal transport failure's
+    /// mark, or <c>FetchMissPolicy</c>'s seal after the wire omitted the row twice, both go with it (<c>Fetch.Refresh</c>
+    /// clears <c>Asked</c> AND the miss count, then plans). One door for the row's Retry, the chip's and the hero's.</summary>
+    public static void RetryRow(Episode episode)
+    {
+        if (episode.IsValid) Entities.Refresh(Entities.Current.Episodes, [episode.Slot], (uint)(EpisodeFields.Row | EpisodeFields.About));
+    }
+
+    /// <summary>The reveal GATE every reader surface shares: <paramref name="content"/> once <see cref="ReaderLoadState"/>
+    /// says Ready, <paramref name="seed"/> (a derived shimmer of the same shape) while Pending, <paramref name="failed"/>
+    /// on Failed — so a surface built over an episode whose identity is not there yet never paints an empty plate, and
+    /// one whose ask failed offers a Retry instead of shimmering forever. <paramref name="episode"/> is FIXED (the head's
+    /// chips and hero are rebuilt by their owner when the episode's version moves); a bound row uses
+    /// <see cref="ReaderRow"/>, which reads its slot's live item.</summary>
+    public static Element Reveal(Episode episode, Func<Element> content, Func<Element> seed, Func<Element> failed)
+        => new SkelRegionEl(
+            Pending: () => ReaderLoadState(episode) == LoadState.Pending,
+            Failed: () => ReaderLoadState(episode) == LoadState.Failed,
+            Content: content, ShimmerSource: seed, OnFailed: failed,
+            Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
+
+    static Element ReaderFailure(Episode episode, bool narrow)
+    {
+        var item = Fixed(RowItem.Of(episode));
+        return RowGrid(Art(in item, narrow ? RowArtNarrow : RowArt),
+            new BoxEl { Direction = 1, Grow = 1, Basis = 0, MinWidth = 0, Gap = Spacing.S,
+                Children = [new TextEl(Loc.Get(Strings.Podcast.Reader.Unavailable))
+                    { Size = 14, LineHeight = 19, Wrap = TextWrap.Wrap, Color = Tok.TextSecondary }] },
+            Button.Subtle(Loc.Get(Strings.Podcast.Reader.Retry), () => RetryRow(episode)));
+    }
+
+    static BoxEl RowGrid(Element art, Element copy, Element actions) => new()
+    {
+        Direction = 0, Gap = RowGap, AlignItems = FlexAlign.Start, MinWidth = 0,
+        Padding = new Edges4(RowPadX + ToneBarWidth + 8f, RowPadY, RowPadX, RowPadY), Children = [art, copy, actions],
+    };
+
+    static Element ReaderRowContent(in BoundItemScope<RowItem> item, RowContext ctx, bool narrow, bool seed)
+    {
         IReadSignal<RowItem> it = item.Item;
         Func<ColorF> tone = ctx.Tone;
         Prop<ColorF> toneInk = Prop.Of(tone);
@@ -279,16 +386,9 @@ public readonly partial struct Episode
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 3f,
             Opacity = item.Opacity(static r => PlayedOf(r.Episode) ? PlayedInk : 1f),
-            Children = [TitleLine(in item, it, tone, narrow), Description(in item), MetaLine(in item, toneInk), Rule(in item, toneInk)],
+            Children = [TitleLine(in item, it, tone, narrow, seed), Description(in item, seed), MetaLine(in item, toneInk, seed), Rule(in item, toneInk)],
         };
-        var grid = new BoxEl
-        {
-            Direction = 0, Gap = RowGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
-            Padding = new Edges4(RowPadX, RowPadY, RowPadX, RowPadY),
-            Children = narrow
-                ? [Art(in item, RowArtNarrow), copy, Cluster(in item, it, ctx, narrow: true)]
-                : [Numeral(in item), Art(in item, RowArt), copy, Cluster(in item, it, ctx, narrow: false)],
-        };
+        var grid = RowGrid(Art(in item, narrow ? RowArtNarrow : RowArt), copy, Cluster(in item, it, ctx, narrow, seed));
         var root = new BoxEl
         {
             ZStack = true, MinWidth = 0f, Corners = CornerRadius4.All(RowRadius),
@@ -313,6 +413,38 @@ public readonly partial struct Episode
                 grid,
             ],
         };
+        if (ctx.Selection is { } selection)
+        {
+            var scope = item.Row;
+            var interact = scope.OnInteraction;
+            root = root with
+            {
+                Role = AutomationRole.Button, Focusable = false, OnClick = null,
+                Fill = Prop.Of(() => scope.IsSelected() ? Design.Colors.RowHover : ColorF.Transparent),
+                OnFocusChanged = scope.OnFocusChanged,
+                OnPointerReleased = args =>
+                {
+                    if (selection.Selecting.Peek() || (args.Mods & (KeyModifiers.Ctrl | KeyModifiers.Shift)) != 0)
+                        interact(ItemContainerTrigger.Tap, SelectorVisualsBound.MultiSelectMods(selection.Selecting.Peek(), args.Mods));
+                    else open(it.Peek().Episode);
+                },
+                OnKeyDown = args =>
+                {
+                    if (args.KeyCode == Keys.Enter)
+                    {
+                        if (selection.Selecting.Peek()) interact(ItemContainerTrigger.SpaceKey, SelectorVisualsBound.MultiSelectMods(true, args.Mods));
+                        else open(it.Peek().Episode);
+                        args.Handled = true;
+                    }
+                    else if (args.KeyCode == Keys.Space && !args.IsRepeat)
+                    { selection.Selecting.Value = true; interact(ItemContainerTrigger.SpaceKey, SelectorVisualsBound.MultiSelectMods(true, args.Mods)); args.Handled = true; }
+                    else if (args.KeyCode == Keys.Escape) { selection.Clear(); args.Handled = true; }
+                },
+                Children = [new BoxEl { Direction = 0, MinWidth = 0, Children =
+                [SelectorVisualsBound.BoundCheckLane(() => selection.Selecting.Value, scope.IsSelected, interact, 4f),
+                 new BoxEl { ZStack = true, Grow = 1, Basis = 0, MinWidth = 0, Children = root.Children }] }],
+            };
+        }
         if (ctx.Overlay is { } overlay && ctx.Menu is { } menu)
             root = ContextMenu.Attach(root, overlay, () => menu(it.Peek().Episode), s_menuOptions);
         return root;
@@ -324,7 +456,7 @@ public readonly partial struct Episode
         Opacity = item.Opacity(static r => PlayedOf(r.Episode) ? PlayedInk : 1f),
         Children =
         [
-            new TextEl(item.Text(static r => NumeralText(r.Episode)))
+            new TextEl(item.Text(static r => NumeralOf(r)))
             {
                 FontFamily = DisplayFace, Size = 30f, LineHeight = RowArt, Weight = 300, CharSpacing = -30f,
                 Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap,
@@ -348,21 +480,38 @@ public readonly partial struct Episode
     };
 
     /// <summary>The equalizer (now playing) · the title (tone while playing) · the badge chips, on one centred line.</summary>
-    static Element TitleLine(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, Func<ColorF> tone, bool narrow) => new BoxEl
+    static Element TitleLine(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, Func<ColorF> tone, bool narrow, bool seed = false) => new BoxEl
     {
         Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
         Children =
         [
-            item.ShowWhen(static r => IsNowPlaying(r.Episode), () => Controls.Equalizer(Playback.IsPlaying, tone, EqualizerHeight)),
-            new TextEl(narrow ? item.Text(static r => TitleOf(r.Episode)) : item.Text(static r => ShownTitle(r.Episode)))
+            seed ? new BoxEl() : item.ShowWhen(static r => IsNowPlaying(r.Episode), () => Controls.Equalizer(Playback.IsPlaying, tone, EqualizerHeight)),
+            new TextEl(seed ? SeedTitle : item.Text(static r => ShownTitle(r.Episode)))
             {
                 Size = 14f, LineHeight = 19f, Weight = 600, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
-                MinWidth = 0f, Shrink = 1f,
+                MinWidth = 0f, Grow = 1f, Basis = 0f, Shrink = 1f,
                 Color = Prop.Of(() => IsNowPlaying(it.Value.Episode) ? tone() : Tok.TextPrimary),
             },
-            Controls.Chip(Loc.Get(Strings.Podcast.Badge.Bonus), tone: true, toneOf: tone)
+        ],
+    };
+
+    static Element Description(in BoundItemScope<RowItem> item, bool seed = false) => new TextEl(seed ? SeedDescription : item.Text(static r => DescriptionOf(r.Episode)))
+    {
+        Size = 12.5f, LineHeight = 18f, Color = Tok.TextSecondary, MaxLines = 2, Wrap = TextWrap.Wrap,
+        Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Visible = seed ? true : item.Show(static r => HasDescription(r.Episode)),
+    };
+
+    /// <summary>NEW · "23 min left" (in progress) · date · length (not in progress) · ✓ played · the transcript mark.</summary>
+    static Element MetaLine(in BoundItemScope<RowItem> item, Prop<ColorF> toneInk, bool seed = false) => new BoxEl
+    {
+        Direction = 0, Wrap = true, Gap = 10f, AlignItems = FlexAlign.Center, MinWidth = 0f, Margin = new Edges4(0f, 2f, 0f, 0f),
+        Children =
+        [
+            MetaText(item.Text(static r => NumeralOf(r) is { Length: > 0 } n ? "#" + n : ""))
+                with { Visible = item.Show(static r => NumeralOf(r).Length > 0) },
+            Controls.Chip(Loc.Get(Strings.Podcast.Badge.Bonus), tone: true)
                 with { Visible = item.Show(static r => KindOf(r.Episode) == EpisodeKind.Bonus) },
-            Controls.Chip(Loc.Get(Strings.Podcast.Badge.Trailer), tone: true, toneOf: tone)
+            Controls.Chip(Loc.Get(Strings.Podcast.Badge.Trailer), tone: true)
                 with { Visible = item.Show(static r => KindOf(r.Episode) == EpisodeKind.Trailer) },
             Controls.Chip(ExplicitMark)
                 with { Visible = item.Show(static r => (FlagsOf(r.Episode) & EpisodeFlags.Explicit) != 0) },
@@ -370,21 +519,6 @@ public readonly partial struct Episode
                 with { Visible = item.Show(static r => (FlagsOf(r.Episode) & EpisodeFlags.Video) != 0) },
             Controls.Chip(Loc.Get(Strings.Podcast.Badge.Subscribers), LockGlyph)
                 with { Visible = item.Show(static r => (FlagsOf(r.Episode) & EpisodeFlags.Paywalled) != 0) },
-        ],
-    };
-
-    static Element Description(in BoundItemScope<RowItem> item) => new TextEl(item.Text(static r => DescriptionOf(r.Episode)))
-    {
-        Size = 12.5f, LineHeight = 18f, Color = Tok.TextSecondary, MaxLines = 2, Wrap = TextWrap.Wrap,
-        Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Visible = item.Show(static r => HasDescription(r.Episode)),
-    };
-
-    /// <summary>NEW · "23 min left" (in progress) · date · length (not in progress) · ✓ played · the transcript mark.</summary>
-    static Element MetaLine(in BoundItemScope<RowItem> item, Prop<ColorF> toneInk) => new BoxEl
-    {
-        Direction = 0, Gap = 10f, AlignItems = FlexAlign.Center, MinWidth = 0f, Margin = new Edges4(0f, 2f, 0f, 0f),
-        Children =
-        [
             new TextEl(Loc.Get(Strings.Podcast.New))
             {
                 Size = 10.5f, LineHeight = 16f, Weight = 700, CharSpacing = 60f, Color = toneInk, MaxLines = 1,
@@ -395,8 +529,9 @@ public readonly partial struct Episode
                 Size = 12f, LineHeight = 16f, Weight = 600, Color = toneInk, MaxLines = 1, Wrap = TextWrap.NoWrap,
                 Visible = item.Show(static r => InProgressOf(r.Episode)),
             },
-            MetaText(item.Text(static r => DateKeyOf(r.Episode), s_dates, s_dateFormat)),
-            MetaText(item.Text(static r => DurationLabelOf(r.Episode))) with { Visible = item.Show(static r => !InProgressOf(r.Episode)) },
+            MetaText(seed ? s_dates.Get(SeedDateKey, s_dateFormat) : item.Text(static r => DateKeyOf(r.Episode), s_dates, s_dateFormat))
+                with { Visible = seed ? true : item.Show(static r => DateKeys.IsDayKey(DateKeyOf(r.Episode))) },
+            MetaText(seed ? DurationLabel(SeedDurationMs) : item.Text(static r => DurationLabelOf(r.Episode))) with { Visible = seed ? true : item.Show(static r => !InProgressOf(r.Episode) && r.Episode.IsValid && r.Episode.Knows(EpisodeFields.Duration) && r.Episode.DurationMs > 0) },
             new BoxEl
             {
                 Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
@@ -421,33 +556,25 @@ public readonly partial struct Episode
             new BoxEl
             {
                 Grow = 1f, Fill = toneInk, TransformOriginX = 0f,
-                Transform = item.Value(static r => Affine2D.Scale(MathF.Max(0.001f, ReaderPctOf(r.Episode)), 1f)),
+                Transform = item.Value(static r => Affine2D.Scale(MathF.Max(0.001f, PlaybackProgressOf(r.Episode).Pct), 1f)),
             },
         ],
     };
 
     /// <summary>Queue · mark · ♥ (Your Episodes) · ⋯ (the row's menu) + the disc, fading in
     /// with the row's hover; narrow: the disc alone, always visible.</summary>
-    static Element Cluster(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, RowContext ctx, bool narrow)
+    static Element Cluster(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, RowContext ctx, bool narrow, bool seed = false)
     {
         var focused = new Signal<bool>(false);
         Action<bool> focus = value => focused.Value = value;
-        Element disc = Disc(in item, it, ctx, focus);
-        if (narrow) return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [disc] };
+        Element disc = Disc(in item, it, ctx, focus, seed);
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
-            Opacity = Prop.Of(() => focused.Value ? 1f : 0f), HoverOpacity = 1f, HoverDurationMs = ClusterFadeMs,
+            Direction = (byte)(narrow ? 1 : 0), Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
             Children =
             [
-                ActionButton(Icon(WaveeIcons.PlayAfter, 16f, Tok.TextSecondary, WaveeIcons.Font), Loc.Get(Strings.Detail.PlayAfter),
-                             item.Invoke(static r => Enqueue(r.Episode, next: false)), focus),
-                MarkButton(in item, it, ctx.Tone, focus),
-                ActionButton(Icon(Icons.Heart, 16f) with
-                    { Color = Prop.Of(() => Spotify.Podcasts.IsSaved(it.Value.Episode) ? ctx.Tone() : Tok.TextSecondary) },
-                    Loc.Get(Strings.Podcast.Reader.Save), item.Invoke(static r => Spotify.Podcasts.ToggleSaved(r.Episode)), focus),
                 // ⋯ raises the row's own context request — the ONE menu the row attached above.
-                ToolTip.Wrap(ActionCell(Icon(Icons.More, 16f, Tok.TextSecondary)) with { ClickRequestsContext = true, OnFocusChanged = focus },
+                seed ? ActionCell(Icon(Icons.More, 16f, Tok.TextSecondary)) : ToolTip.Wrap(ActionCell(Icon(Icons.More, 16f, Tok.TextSecondary)) with { ClickRequestsContext = true, OnFocusChanged = focus },
                              Loc.Get(Strings.Common.More)),
                 disc,
             ],
@@ -488,7 +615,7 @@ public readonly partial struct Episode
     }
 
     /// <summary>The 36 tone disc: play, or pause on the playing row (<see cref="Invoke"/> through the host's verb).</summary>
-    static Element Disc(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, RowContext ctx, Action<bool>? focus = null)
+    static Element Disc(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, RowContext ctx, Action<bool>? focus = null, bool seed = false)
     {
         Func<ColorF> tone = ctx.Tone;
         Action<Episode> play = ctx.Play;
@@ -509,7 +636,7 @@ public readonly partial struct Episode
                 },
             ],
         };
-        return Controls.Named(disc, Loc.Get(Strings.Detail.Play));
+        return seed ? disc : Controls.Named(disc, Loc.Get(Strings.Detail.Play));
     }
 
     static TextEl MetaText(Prop<string> text) => new(text)
@@ -534,34 +661,11 @@ public readonly partial struct Episode
 
     /// <summary>The cold skeleton's row: figure-space title and blurb bars, "Jan 1 · 3 min", the art tile — the real
     /// row's geometry, no cluster (hidden at rest), no rule (the seed invents no progress).</summary>
+    static readonly RowContext s_seedContext = new() { Tone = static () => Tok.AccentDefault, Play = static _ => { } };
     internal static Element SeedReaderRow(bool narrow)
     {
-        float edge = narrow ? RowArtNarrow : RowArt;
-        Element art = new BoxEl
-        {
-            Width = edge, Height = edge, Shrink = 0f, Corners = CornerRadius4.All(ArtRadius),
-            Fill = Design.PlaceholderFor(default(ReadOnlySpan<char>)),
-        };
-        var copy = new BoxEl
-        {
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 3f,
-            Children =
-            [
-                new TextEl(SeedTitle) { Size = 14f, LineHeight = 19f, Weight = 600, MaxLines = 1, Color = Tok.TextPrimary },
-                new TextEl(SeedDescription) { Size = 12.5f, LineHeight = 18f, MaxLines = 1, Color = Tok.TextSecondary },
-                new BoxEl
-                {
-                    Direction = 0, Gap = 10f, Margin = new Edges4(0f, 2f, 0f, 0f),
-                    Children = [MetaText(s_dates.Get(SeedDateKey, s_dateFormat)), MetaText(DurationLabel(SeedDurationMs))],
-                },
-            ],
-        };
-        return new BoxEl
-        {
-            Direction = 0, Gap = RowGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
-            Padding = new Edges4(RowPadX, RowPadY, RowPadX, RowPadY),
-            Children = narrow ? [art, copy] : [new BoxEl { Width = NumeralWidth, Shrink = 0f }, art, copy],
-        };
+        var item = Fixed(default);
+        return ReaderRowContent(in item, s_seedContext, narrow, seed: true);
     }
 
     /// <summary>A progress track in the tone (the hero's 4 DIP): two flex halves, so the fill is exact at any width.</summary>

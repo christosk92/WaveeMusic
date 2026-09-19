@@ -1363,7 +1363,7 @@ public readonly partial struct Album
             header: VideoShelfHeader(items.Length),
             pager: ShelfPager.Chevrons | ShelfPager.Pips,
             minCardW: VideoCardMinW, maxCardW: VideoCardMaxW, gap: Spacing.M, headerGap: Spacing.M,
-            snap: ShelfSnap.Page, edgeFade: Design.Size.FadeShelf,
+            snap: ShelfSnap.Page, edgeFade: Design.Size.FadeRail,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             measured: true, keyOf: s_videoKey, maxItems: PageRules.VideoCap);
     }

@@ -933,8 +933,8 @@ public sealed class SidebarRowPlannerTests
     {
         var plan = SidebarRowPlanner.Build(SidebarTemplates.Build(SidebarTemplates.Curated), FullInput());
 
-        // Pinned (2) / Jump back in via Played as a two-column media strip / shortcuts (5) /
-        // tree (folder + 2 leaves + create), separated by the three authored quiet dividers.
+        // Pinned (2) / Jump back in via Played as a two-column media strip / shortcuts (5, Audiobooks joined
+        // beside Podcasts) / tree (folder + 2 leaves + create), separated by the three authored quiet dividers.
         Assert.Equal(new[] {
             SidebarRowKind.SectionHeader, SidebarRowKind.EntityRow, SidebarRowKind.EntityRow,
             SidebarRowKind.Divider,
@@ -1637,9 +1637,10 @@ public sealed class SidebarRailPlannerTests
 
         var plan = SidebarRowPlanner.BuildRail(SidebarTemplates.Build(SidebarTemplates.Curated), input);
 
-        // 2 pin tiles · rule · 5 shortcut glyphs · rule · folder + its ONE top-level sibling ("Inner" sits inside the
-        // folder, and the rail is top level only). Jump back in ships ShowInRail:false, and its two flanking dividers
-        // collapse into the single quiet rule before the shortcuts.
+        // 2 pin tiles · rule · 5 shortcut glyphs (Audiobooks, A2 plan §3.6, joined beside Podcasts) · rule · folder +
+        // its ONE top-level sibling ("Inner" sits inside the folder, and the rail is top level only). Jump back in
+        // ships ShowInRail:false, and its two flanking dividers collapse into the single quiet rule before the
+        // shortcuts.
         Assert.Equal(new[]
         {
             SidebarRowKind.EntityRow, SidebarRowKind.EntityRow,
@@ -1650,7 +1651,7 @@ public sealed class SidebarRailPlannerTests
             SidebarRowKind.FolderHeader, SidebarRowKind.EntityRow,
         }, KindsOf(plan));
 
-        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts", "local" },
+        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts", "audiobooks" },
             new[] { plan.Rows[3].Key, plan.Rows[4].Key, plan.Rows[5].Key, plan.Rows[6].Key, plan.Rows[7].Key });
     }
 

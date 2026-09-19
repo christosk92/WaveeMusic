@@ -543,7 +543,8 @@ public static partial class Spotify
                     }
                 case EntityKind.Show:
                     {
-                        uint known = (uint)ShowFields.Identity;
+                        uint known = (n.Name.IsEmpty ? 0 : (uint)ShowFields.Title)
+                            | (n.Image.IsEmpty ? 0 : (uint)ShowFields.Image);
                         if (!n.Description.IsEmpty) known |= (uint)ShowFields.About;
                         ref var row = ref s.Shows.RowFor(n.Uri, authority, known);
                         row.Title = n.Name;

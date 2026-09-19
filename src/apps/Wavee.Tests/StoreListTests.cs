@@ -244,14 +244,21 @@ public class StoreListTests : IDisposable
         Assert.Equal(3, p.TrackSlots.Length);
         for (int i = 0; i < members.Length; i++)
         {
-            int track = p.TrackSlots[i];
+            int target = p.TrackSlots[i];
             PlaylistTrackEdge edge = p.TrackEdges[i];
-            Assert.Equal(members[i].Uri, scope.Tracks.Id[track].Text);
+            // The episode member (index 1) resolves into scope.Episodes, never scope.Tracks (plan §3.1, ledger row
+            // 12) — its slot in Kind's own table is what the round trip has to prove, not just that a slot exists.
+            EntityId id = edge.Kind == PlaylistItemKind.Episode ? scope.Episodes.Id[target] : scope.Tracks.Id[target];
+            Assert.Equal(members[i].Uri, id.Text);
             Assert.Equal(members[i].ItemId, Entities.Strings.Resolve(edge.ItemId));
             Assert.Equal(members[i].AddedAt, edge.AddedAt);
             if (members[i].AddedBy is null) Assert.Equal(Table.None, edge.AddedBy);
             else Assert.Equal(members[i].AddedBy, scope.Users.Id[edge.AddedBy].Text);
         }
+        Assert.Equal(PlaylistItemKind.Track, p.TrackEdges[0].Kind);
+        Assert.Equal(PlaylistItemKind.Episode, p.TrackEdges[1].Kind);
+        Assert.Equal(PlaylistItemKind.Track, p.TrackEdges[2].Kind);
+        Assert.True(p.IsMixed);                                                  // one episode among three rows
         Assert.Equal(2, p.TrackEdges[0].ChartStatus);
         Assert.Equal(3, p.TrackEdges[0].ChartPos);
         Assert.Equal(5, p.TrackEdges[0].ChartPrev);
@@ -449,7 +456,9 @@ public class StoreListTests : IDisposable
         Assert.Equal(EdgeState.Complete, scope.Edges.ShowEpisodes.State(slot));
         Assert.Equal(ListAnswers.RevisionA, Entities.Strings.Resolve(scope.Shows.ListRevision[slot]));
         var restored = Assert.Single(Store.SnapshotList(scope, EdgeRelation.ShowEpisodes, slot)!);
-        Assert.Equal(rows[0], restored);
+        // Every row of a SHOW's membership list is an episode — the store stamps ItemKind = Episode on write
+        // regardless of what the caller passed (ListAnswers.Member defaults to the meaningless Track value).
+        Assert.Equal(rows[0] with { ItemKind = PlaylistItemKind.Episode }, restored);
     }
 
 }

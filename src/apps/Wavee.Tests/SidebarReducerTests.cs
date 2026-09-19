@@ -2123,8 +2123,9 @@ public sealed class SidebarTemplateTests
         Assert.Equal(SidebarDensity.Cozy, shortcuts.Opts.Density);
         Assert.True(shortcuts.Opts.CountBadges);
         Assert.True(shortcuts.Opts.ShowInRail);
-        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts", "local" }, Keys(shortcuts));
-        Assert.Equal(new string?[] { "Heart", "Album", "Contact", "RadioTower", "Folder" }, IconNames(shortcuts));
+        // Audiobooks (A2 plan §3.6) joined beside Podcasts.
+        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts", "audiobooks" }, Keys(shortcuts));
+        Assert.Equal(new string?[] { "Heart", "Album", "Contact", "RadioTower", "Microphone" }, IconNames(shortcuts));
         foreach (var it in shortcuts.ItemList) Assert.Equal(SidebarItemTarget.Route, it.Target);
 
         var tree = l.Sections[^1];
@@ -2154,7 +2155,8 @@ public sealed class SidebarTemplateTests
         // Classic's rail carries no pin tiles.
         Assert.False(First(l, SidebarSectionKind.Pinned).Opts.ShowInRail);
 
-        Assert.Equal(new[] { "albums", "artists", "liked", "podcasts", "local" },
+        // Audiobooks (A2 plan §3.6) joined beside Podcasts.
+        Assert.Equal(new[] { "albums", "artists", "liked", "podcasts", "audiobooks" },
             Keys(First(l, SidebarSectionKind.CollectionShortcuts)));
 
         var links = First(l, SidebarSectionKind.StaticLinks);

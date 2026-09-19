@@ -1,0 +1,75 @@
+{
+  "data": {
+    "comments": [
+      {
+        "__typename": "CommentPage",
+        "eligibilityStatus": "ELIGIBILITY_STATUS_UNRESTRICTED",
+        "entityUri": "spotify:episode:fixture",
+        "items": [
+          {
+            "author": {
+              "data": {
+                "__typename": "User",
+                "name": "Listener 1",
+                "uri": "spotify:user:fixture-0",
+                "avatar": {
+                  "sources": []
+                }
+              }
+            },
+            "commentString": "Fixture comment 1.",
+            "coverImagesReacted": [],
+            "coverImagesReplied": [],
+            "createDate": {
+              "isoString": "2026-09-19T10:00:00Z"
+            },
+            "hasUserReachedReplyLimit": false,
+            "isPendingReview": false,
+            "isPinned": false,
+            "isSensitive": false,
+            "numberOfRepliesWithThreads": 0,
+            "reactionsMetadata": {
+              "numberOfReactions": 1,
+              "usersReactionUnicode": null
+            },
+            "replies": [],
+            "topRepliesAuthors": [],
+            "uri": "spotify:comment:fixture-0"
+          },
+          {
+            "author": {
+              "data": {
+                "__typename": "User",
+                "name": "Listener 2",
+                "uri": "spotify:user:fixture-1",
+                "avatar": {
+                  "sources": []
+                }
+              }
+            },
+            "commentString": "Fixture comment 2.",
+            "coverImagesReacted": [],
+            "coverImagesReplied": [],
+            "createDate": {
+              "isoString": "2026-09-19T10:00:00Z"
+            },
+            "hasUserReachedReplyLimit": false,
+            "isPendingReview": false,
+            "isPinned": false,
+            "isSensitive": false,
+            "numberOfRepliesWithThreads": 0,
+            "reactionsMetadata": {
+              "numberOfReactions": 0,
+              "usersReactionUnicode": null
+            },
+            "replies": [],
+            "topRepliesAuthors": [],
+            "uri": "spotify:comment:fixture-1"
+          }
+        ],
+        "nextPageToken": null,
+        "totalCount": 2
+      }
+    ]
+  }
+}

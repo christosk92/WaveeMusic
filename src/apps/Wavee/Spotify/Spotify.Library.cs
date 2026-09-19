@@ -1279,10 +1279,18 @@ public static partial class Spotify
                 FetchEdge.PlaylistTracks => w.Scope.Edges.PlaylistTracks.Targets(w.Parent),
                 _ => w.Scope.Edges.Liked.Targets(w.Parent),
             };
+            // A playlist target slot only indexes Tracks when its own membership row says Track (PlaylistItemKind):
+            // an episode member's slot indexes Episodes, and wrapping it in `new Track(slot)` would read the wrong
+            // table entirely. This resolver answers a DEPOSIT (Track[] only — no Episode leg), so an episode member
+            // is skipped rather than mis-typed; AlbumTracks and Liked are never mixed and need no such guard.
+            bool mixed = w.Edge == FetchEdge.PlaylistTracks;
+            ReadOnlySpan<PlaylistTrackEdge> payload = mixed ? w.Scope.Edges.PlaylistTracks.Payload(w.Parent) : default;
             int n = 0;
-            for (int i = 0; i < slots.Length; i++) if (slots[i] > Table.None) n++;
+            for (int i = 0; i < slots.Length; i++)
+                if (slots[i] > Table.None && (!mixed || payload[i].Kind == PlaylistItemKind.Track)) n++;
             var tracks = new Track[n];
-            for (int i = 0, k = 0; i < slots.Length; i++) if (slots[i] > Table.None) tracks[k++] = new Track(slots[i]);
+            for (int i = 0, k = 0; i < slots.Length; i++)
+                if (slots[i] > Table.None && (!mixed || payload[i].Kind == PlaylistItemKind.Track)) tracks[k++] = new Track(slots[i]);
             w.Done.TrySetResult(tracks);
             return true;
         }

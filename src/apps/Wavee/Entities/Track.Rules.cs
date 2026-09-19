@@ -377,6 +377,11 @@ public readonly partial struct Track
         /// <summary>Forwards to the one decision so every Modern row agrees on 32/40/48.</summary>
         public static float ArtSizeFor(int density) => TableRules.ArtSizeFor(density, classic: false);
 
+        /// <summary>The episode row template's height, density-aware (B2, plan §3.2): two title lines + a clamped two-line
+        /// description + the meta line need more than a track row's single line, so the ladder sits a band above
+        /// <see cref="RowHeightFor(int)"/> at every density rather than sharing its numbers.</summary>
+        public static float EpisodeRowHeightFor(int density) => density switch { 0 => 88f, 2 => 104f, 3 => 112f, _ => 96f };
+
         /// <summary>Full at wide tiers, tighter as the pane narrows; tier 0 is the unchanged constants.</summary>
         public static float PadXFor(int tier) => tier <= 3 ? PadX : tier <= 5 ? Spacing.M : Spacing.S;
         public static float ColGapFor(int tier) => tier <= 4 ? ColGap : Spacing.S;
@@ -1545,5 +1550,113 @@ public readonly partial struct Track
             }
             return n;
         }
+    }
+}
+
+// ══ Episodes as Track.Table rows (playlists only) — the pure row-shape / selection-verb rules ══════════════════════
+//
+// Role: CORE (pure, engine-free)
+//
+// TWO pure classes, unit-tested without touching Track.Table.cs's live host: `TableRowShape` (what template/height a
+// row's kind gets), `SelectionVerbs` (which `ActionId`s a selection's kind mix shows in the batch bar). No source-text
+// tests read these — `TableRowShapeTests.cs` / `SelectionVerbsTests.cs` exercise them by value.
+
+
+/// <summary>What a display row's ROOT SWITCHES on inside <c>TableSlot</c>.</summary>
+public enum RowTemplate : byte { Track = 0, Episode = 1 }
+
+/// <summary>The row TEMPLATE and HEIGHT a kind gets.</summary>
+public static class TableRowShape
+{
+    /// <summary>A resident member's template. There is no <see cref="EntityKind.Episode"/>-shaped ambiguity: every kind
+    /// other than <see cref="EntityKind.Episode"/> renders as a track row (the table's long-standing default).</summary>
+    public static RowTemplate TemplateOf(EntityKind kind) => kind == EntityKind.Episode ? RowTemplate.Episode : RowTemplate.Track;
+
+    /// <summary>The height a row's template draws at, given the table's live density/skin — the ONE place a caller
+    /// (the row-height estimator, a measured-layout fallback) asks "how tall is THIS row" without re-deriving the
+    /// ladder by hand.</summary>
+    public static float HeightOf(RowTemplate template, int density, bool classic) => template switch
+    {
+        RowTemplate.Episode => Track.RowMetrics.EpisodeRowHeightFor(density),
+        _ => Track.TableRules.RowHeightFor(density, classic),
+    };
+}
+
+/// <summary>One <see cref="ItemsViewController.CorrectMeasuredExtent"/> write a drawer toggle must apply (item 9): a
+/// display INDEX and the extent it should read now.</summary>
+public readonly record struct DrawerExtentWrite(int Index, float Extent);
+
+/// <summary>The drawer's list-extent correction (item 9, the confirmed "flyout paints over the rows below" bug): a
+/// row's "…" flyout opening (or the drawer itself opening/closing) changes that row's REAL on-screen extent, but the
+/// list's measured-layout cache only re-seeds on a resize/splice (<c>RepeatLayout.Extents</c> calls the extent
+/// function only then) — a surviving row keeps the extent it was seeded with until something corrects it. The
+/// sanctioned repair is <c>ItemsViewController.CorrectMeasuredExtent(index, extent)</c> (the same one
+/// <c>Artist.Reader.cs</c>'s <c>Settle</c> and <c>Recents.Page.cs</c> use), and <see cref="For"/> is the pure decision
+/// behind every call: given the row KEY that was open before and the one open now (<c>""</c> = none), a resolver from
+/// a key to its CURRENT display index, the row height and the drawer's own height, which writes the caller must apply,
+/// in order.
+/// <para>A row switch closes the OLD row first (its own write), then opens the new one (a second write) — never one
+/// combined write, since <see cref="ItemsViewController.CorrectMeasuredExtent"/> corrects ONE row at a time. Nothing is
+/// written when the key did not change, when <paramref name="rowH"/> is not yet known (≤ 0), when a key's row is not in
+/// the current view (a filtered-out row closing), or — for the OPEN leg only — when <paramref name="drawerH"/> is ≤ 0
+/// (its real height is not measured yet; the caller re-asks once the drawer's own bounds land).</para></summary>
+public static class DrawerExtentRule
+{
+    public static int For(string previousKey, string newKey, Func<string, int> displayOf, float rowH, float drawerH,
+                          Span<DrawerExtentWrite> into)
+    {
+        if (rowH <= 0f || into.Length == 0) return 0;
+        bool hadPrev = previousKey.Length > 0;
+        bool hasNew = newKey.Length > 0;
+        if (string.Equals(previousKey, newKey, StringComparison.Ordinal)) return 0;
+        int n = 0;
+        if (hadPrev)
+        {
+            int pi = displayOf(previousKey);
+            if (pi >= 0 && n < into.Length) into[n++] = new DrawerExtentWrite(pi, rowH);
+        }
+        if (hasNew && drawerH > 0f && n < into.Length)
+        {
+            int ni = displayOf(newKey);
+            if (ni >= 0) into[n++] = new DrawerExtentWrite(ni, rowH + drawerH);
+        }
+        return n;
+    }
+}
+
+/// <summary>Which <see cref="ActionId"/>s a selection's KIND MIX shows in the batch bar (B2 plan §3.3): all-track keeps
+/// today's set untouched (this class is never consulted for that case — <c>TableHost</c> keeps its existing all-track
+/// path verbatim); all-episode gets the episode verbs; anything mixed gets the three verbs every kind agrees on.
+/// <see cref="ActionId.MarkPlayed"/> in the episode set stands for the ABSOLUTE-STATE pair — the caller swaps it for
+/// <see cref="ActionId.MarkUnplayed"/> at render time when the selection is entirely played (the same substitution
+/// <c>Episode.Menu.cs</c>'s single-row menu already makes), so this pure table stays state-free.</summary>
+public static class SelectionVerbs
+{
+    static readonly ActionId[] s_episode =
+    [
+        ActionId.Play, ActionId.PlayNext, ActionId.AddToQueue, ActionId.SaveEpisode, ActionId.MarkPlayed, ActionId.SelectAll,
+    ];
+
+    static readonly ActionId[] s_mixed = [ActionId.Play, ActionId.PlayNext, ActionId.AddToQueue, ActionId.SelectAll];
+
+    static readonly ActionId[] s_track =
+    [
+        ActionId.Play, ActionId.PlayNext, ActionId.AddToQueue, ActionId.ToggleLike, ActionId.SelectAll,
+    ];
+
+    /// <summary>The verb set for a selection whose rows carry the given kinds (duplicates/order irrelevant — only
+    /// PRESENCE of <see cref="EntityKind.Track"/> and/or <see cref="EntityKind.Episode"/> matters). An empty span (no
+    /// rows selected) returns the track set — the caller never shows a bar at count 0 regardless.</summary>
+    public static ActionId[] For(ReadOnlySpan<EntityKind> kinds)
+    {
+        bool anyTrack = false, anyEpisode = false;
+        for (int i = 0; i < kinds.Length; i++)
+        {
+            if (kinds[i] == EntityKind.Episode) anyEpisode = true;
+            else if (kinds[i] == EntityKind.Track) anyTrack = true;
+        }
+        if (anyEpisode && anyTrack) return s_mixed;
+        if (anyEpisode) return s_episode;
+        return s_track;
     }
 }

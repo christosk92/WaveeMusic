@@ -58,7 +58,7 @@ public static partial class Entities
 
         public static string ExtraUri(int k) => "spotify:playlist:plx" + Wrap(k, ExtraCount).ToString(CultureInfo.InvariantCulture);
         public static string LocalTrackUri(int i) => "wavee:local:track:" + Wrap(i, LocalCount).ToString(CultureInfo.InvariantCulture);
-        static string EpisodeRowUri(int k) => "spotify:track:plxep" + Wrap(k, 3).ToString(CultureInfo.InvariantCulture);
+        static string EpisodeRowUri(int k) => "spotify:episode:plxep" + Wrap(k, 3).ToString(CultureInfo.InvariantCulture);
 
         static readonly string[] s_extraTitles = ["My Playlist #7", "Cafe Mosaic", "Deleted Mix", "Private Share", "My Playlist #8", "Mixed Bag"];
 
@@ -243,16 +243,17 @@ public static partial class Entities
                 }
             }
 
-            // X5's three episodes, rendered as tracks (the Podcast bit; ch 04 DATA GAPS "Episodes inside a playlist").
+            // X5's three episodes: real Episode-table rows (plan §3.1, ledger row 12) — a playlist member's own
+            // Kind (PlaylistItemKind, set where the membership lands in LandExtras below) is what says the target
+            // slot indexes Episodes rather than Tracks, never a flag on the row itself. Linked to show 0 ("The Wavee
+            // Debrief", already staged by the base seed's own show loop, which runs before this partial).
             for (int k = 0; k < 3; k++)
             {
-                ref var ep = ref s.Tracks.RowFor(Text(s, EpisodeRowUri(k)), Authority.Seed,
-                    (uint)(TrackFields.Identity | TrackFields.Availability));
+                ref var ep = ref s.Episodes.RowFor(Text(s, EpisodeRowUri(k)), Authority.Seed, (uint)EpisodeFields.Identity);
                 ep.Title = Text(s, s_episodeTitles[k]);
-                ep.ArtistLine = Text(s, "The Wavee Debrief");
                 ep.Image = Text(s, Cover(k + 2));
                 ep.DurationMs = (22 + (k * 13) % 50) * 60_000;
-                ep.Flags = (uint)TrackFlags.Podcast;
+                ep.ShowUri = Text(s, ShowUri(0));
             }
         }
 
@@ -294,23 +295,17 @@ public static partial class Entities
         static StringId ItemIdFor(int list, int row)
             => Intern(Utf8((0x5EED_0000_0000_0000UL | ((ulong)(uint)list << 20) | (uint)row).ToString("x16", CultureInfo.InvariantCulture)));
 
-        /// <summary>Land a COMPLETE membership with its commit-time facts folded in one pass (Playlist.cs item 3).</summary>
+        /// <summary>Land a COMPLETE membership and re-derive its commit-time facts from the rows just landed
+        /// (<see cref="global::Wavee.Playlist.Refold"/> — the same per-row Kind dispatch a live commit uses,
+        /// plan §3.1: a track member's target slot indexes <c>Current.Tracks</c>, an episode member's indexes
+        /// <c>Current.Episodes</c>, and only the edge's own <see cref="PlaylistItemKind"/> says which). The seed
+        /// used to fold this itself, Track-only, which mis-read an episode member's slot as a Track row once X5
+        /// (plan §3.1, ledger row 12) started landing real episode rows; folding through the one already-tested
+        /// rule instead of a second copy of it removes that whole class of bug at every call site below.</summary>
         static void Land(global::Wavee.Playlist p, ReadOnlySpan<int> targets, ReadOnlySpan<PlaylistTrackEdge> edges)
         {
-            var facts = Fold(targets, edges);
-            p.ApplyMembership(targets, edges, in facts);
-        }
-
-        static PlaylistFacts Fold(ReadOnlySpan<int> targets, ReadOnlySpan<PlaylistTrackEdge> edges)
-        {
-            var facts = new PlaylistFacts();
-            for (int i = 0; i < targets.Length; i++)
-            {
-                var t = new global::Wavee.Track(targets[i]);
-                var e = i < edges.Length ? edges[i] : default;
-                facts.Add(e.AddedBy, e.AddedAt, t.DurationMs, t.IsPodcast, t.HasVideo);
-            }
-            return facts;
+            p.ApplyMembership(targets, edges);
+            p.Refold();
         }
 
         /// <summary>P0 / P1 / P4 rewrite their base runs with the payload their arm needs; P2 / P3 / P5 / P6 keep their
@@ -359,9 +354,8 @@ public static partial class Entities
                         }
                         Land(p, targets[..n], edges[..n]);
                         break;
-                    default:  // P2 / P3 / P5 / P6: the base run stands; fold its facts
-                        var facts = Fold(targets[..n], p.TrackEdges[..Math.Min(n, p.TrackEdges.Length)]);
-                        if (facts.Rows > 0) p.Apply(in facts);
+                    default:  // P2 / P3 / P5 / P6: the base run stands; fold its facts (Kind-dispatched, see Refold)
+                        p.Refold();
                         break;
                 }
             }
@@ -437,10 +431,12 @@ public static partial class Entities
                 int pool = 120, episode = 0;
                 for (int k = 0; k < 20; k++)
                 {
-                    targets[k] = k is 4 or 11 or 17
-                        ? SlotOf(EntityKind.Track, EpisodeRowUri(episode++))
+                    bool isEpisode = k is 4 or 11 or 17;
+                    targets[k] = isEpisode
+                        ? SlotOf(EntityKind.Episode, EpisodeRowUri(episode++))
                         : SlotOf(EntityKind.Track, TrackUri(pool++));
-                    edges[k] = new PlaylistTrackEdge(ItemIdFor(105, k), (int)(now0 - k * 5 * Hour), me, 0, 0, 0, 0);
+                    edges[k] = new PlaylistTrackEdge(ItemIdFor(105, k), (int)(now0 - k * 5 * Hour), me, 0, 0, 0, 0,
+                        isEpisode ? PlaylistItemKind.Episode : PlaylistItemKind.Track);
                 }
                 Land(x5, targets[..20], edges[..20]);
             }

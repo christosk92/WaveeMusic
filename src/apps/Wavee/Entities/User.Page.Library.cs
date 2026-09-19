@@ -122,12 +122,14 @@ public readonly partial struct User
 {
     // ══ 1. THE FACTORY ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>RouteKind.LibraryAlbums / LibraryArtists / LibraryPodcasts → the master-detail browser. ONE component keyed
-    /// by the route's name, so each kind keeps its own keep-alive instance (the kind freezes at mount).</summary>
+    /// <summary>RouteKind.LibraryAlbums / LibraryArtists / LibraryPodcasts / LibraryAudiobooks (A2 plan §3.6) → the
+    /// master-detail browser. ONE component keyed by the route's name, so each kind keeps its own keep-alive instance
+    /// (the kind freezes at mount).</summary>
     // MOUNT POINT (stage B contract)
     public static Element LibraryPageFor(in Shell.Route route)
     {
-        var kind = route.Kind is Shell.RouteKind.LibraryArtists or Shell.RouteKind.LibraryPodcasts ? route.Kind : Shell.RouteKind.LibraryAlbums;
+        var kind = route.Kind is Shell.RouteKind.LibraryArtists or Shell.RouteKind.LibraryPodcasts
+            or Shell.RouteKind.LibraryAudiobooks ? route.Kind : Shell.RouteKind.LibraryAlbums;
         return Embed.Comp(() => new LibraryPage(kind)) with { Key = "library:" + Shell.NameOf(route) };
     }
 
@@ -209,6 +211,9 @@ public readonly partial struct User
         readonly ItemsViewController _navCtl = new();
         readonly ScrollOptions _navScroll;
         readonly Signal<int> _sArtist = new(0), _sAlbum = new(0);   // the search drill-down, by slot, apart from browse
+        /// <summary>Podcasts row-1 words (0 Followed shows · 1 Your Episodes, A2 plan §3.5): the standard toolbar's
+        /// picker row IS the mode switch for this kind — no separate wrapper above the page any more.</summary>
+        readonly Signal<int> _savedEpisodes = new(0);
         readonly object _skelGroup = new();
         readonly Signal<bool> _collapsed = new(false);
         readonly Signal<int> _depth = new(0);
@@ -226,6 +231,9 @@ public readonly partial struct User
         int[] _filtered = new int[64], _perm = new int[64], _sorted = new int[64], _counts = new int[64], _songs = new int[64];
         long[] _played = new long[64];
         uint[] _rowVer = new uint[64];
+        /// <summary>The Podcasts/Audiobooks split's own scratch buffer (A2 plan §3.6) — reused across computes,
+        /// never sized beyond what the last <c>SavedShows</c> edge read needed.</summary>
+        int[] _showKindSrc = new int[64];
         /// <summary>The ARTISTS navigator's source (C1): followed ∪ the billed artists of your saved albums ∪ the
         /// credited artists of your liked songs (<see cref="User.LibraryArtistsOf"/>) — NOT the followed relation, which
         /// is only the first of the three groups. Two pooled buffers because the memo and the demand effect each read the
@@ -307,7 +315,15 @@ public readonly partial struct User
         readonly Func<BoundItemScope<LibraryNavItem>, Element> _slotT, _slotCompactT, _cardT, _cardCompactT;
 
         bool IsArtists => _entity == EntityKind.Artist;
-        bool IsPodcasts => _entity == EntityKind.Show;
+        /// <summary>The Show ENTITY, whichever of the two show-kind library routes this is (A2 plan §3.6): the
+        /// structural facts that do not care WHICH half of <c>SavedShows</c> is showing (no full-search UI, the
+        /// "select a show" placeholder) key off this.</summary>
+        bool IsShowEntity => _entity == EntityKind.Show;
+        /// <summary>The Podcasts route specifically — NOT just "a show entity" any more, now that Audiobooks (A2 plan
+        /// §3.6) is the entity's other library route: only Podcasts owns the Followed shows / Your Episodes mode
+        /// switch.</summary>
+        bool IsPodcasts => _route == Shell.RouteKind.LibraryPodcasts;
+        bool IsAudiobooks => _route == Shell.RouteKind.LibraryAudiobooks;
 
         public LibraryPage(Shell.RouteKind route)
         {
@@ -316,6 +332,10 @@ public readonly partial struct User
             {
                 Shell.RouteKind.LibraryArtists => ("artists", EntityKind.Artist, LibraryEdgeKind.FollowedArtists, FetchEdge.FollowedArtists),
                 Shell.RouteKind.LibraryPodcasts => ("podcasts", EntityKind.Show, LibraryEdgeKind.SavedShows, FetchEdge.SavedShows),
+                // Audiobooks (A2 plan §3.6): the SAME SavedShows edge as Podcasts, split client-side
+                // (LibraryAudiobookFilter) rather than a relation of its own — an audiobook is still filed under
+                // `SavedShows` on the wire, only its flags say which half of the list it belongs to.
+                Shell.RouteKind.LibraryAudiobooks => ("audiobooks", EntityKind.Show, LibraryEdgeKind.SavedShows, FetchEdge.SavedShows),
                 _ => ("albums", EntityKind.Album, LibraryEdgeKind.SavedAlbums, FetchEdge.SavedAlbums),
             };
             var s = Platform.Settings;
@@ -400,7 +420,6 @@ public readonly partial struct User
         public override Element Render()
         {
             uint epoch = Entities.ScopeEpoch.Value;          // FIRST: a scope switch re-points every table below
-            var savedEpisodes = UseSignal(false);
             _shape = UseComputed(_computeShape);
             SelectedSlot = UseComputed(_resolveSelected);
             _searchActive = UseComputed(_isSearching);
@@ -414,7 +433,7 @@ public readonly partial struct User
             var shape = _shape.Value;
             string raw = Filter.Value.Trim();
             string query = _query.Value;
-            bool fullSearch = raw.Length > 0 && !IsPodcasts;
+            bool fullSearch = raw.Length > 0 && !IsShowEntity;
             _fullSearch = fullSearch;
             bool awaiting = fullSearch && !string.Equals(query, raw, StringComparison.Ordinal);
             bool shimmer = awaiting && _hits.IsEmpty;
@@ -445,6 +464,17 @@ public readonly partial struct User
             Element inner;
             if (collapsed)
                 inner = Collapsed(fullSearch, shimmer, selectedSlot);
+            // Your Episodes (A2 plan §3.5): the standard toolbar's row-1 words ARE the mode switch for Podcasts now —
+            // no more wrapper above the page. Selecting the word swaps the WHOLE body for the flat episode table (real
+            // Spotify shows no per-show pane beside it either), but the toolbar (and so the word that switches back)
+            // stays put, which is the one thing the old top-level `tabs` swap did not keep visible.
+            else if (IsPodcasts && _savedEpisodes.Value == 1)
+                inner = new BoxEl
+                {
+                    Key = "lib:wide:saved",
+                    Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+                    Children = [Toolbar(title: true), Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + epoch }],
+                };
             else
             {
                 Element right = fullSearch
@@ -464,23 +494,6 @@ public readonly partial struct User
                 };
             }
             // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser.
-            if (IsPodcasts)
-            {
-                var tabs = new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.S, Padding = Edges4.All(Spacing.S),
-                    Children =
-                    [
-                        Button.Standard(Loc.Get(Strings.Podcast.Reader.FollowedShows), () => savedEpisodes.Value = false),
-                        Button.Standard(Loc.Get(Strings.Podcast.Reader.YourEpisodes), () => savedEpisodes.Value = true),
-                    ],
-                };
-                return new BoxEl
-                {
-                    Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = _onBounds,
-                    Children = [tabs, savedEpisodes.Value ? Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + epoch } : inner],
-                };
-            }
             return new BoxEl { Direction = 1, Grow = 1f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = _onBounds, Children = [inner] };
         }
 
@@ -520,6 +533,9 @@ public readonly partial struct User
                        : IsArtists ? ArtistsInto(ref _artistSrc)
                        : relation.Targets(scope.MeSlot);
             bool answered = scope.MeSlot > Table.None && relation.State(scope.MeSlot) != EdgeState.Unknown;
+            // Audiobooks/Podcasts split the SAME SavedShows edge client-side (A2 plan §3.6): Podcasts applies the
+            // inverse of Audiobooks' own predicate, so a show can never appear on neither or both lists.
+            if (IsShowEntity) source = SplitShowKind(source);
             Grow(source.Length);
             int n = LibraryRows.Filter(_entity, source, filter, _filtered);
             long[]? played = null;
@@ -567,6 +583,23 @@ public readonly partial struct User
 
             return new NavShape(n, lettered ? _letters.FlatCount : n, LibraryNavOrder.OrderKey(display),
                                 LibraryNavOrder.FactsKey(display), rowsKey, lettersKey, answered, titlesKnown, mount);
+        }
+
+        /// <summary>Podcasts keeps the shows for which <see cref="LibraryAudiobookFilter.IsAudiobookRow"/> is false;
+        /// Audiobooks keeps the inverse (A2 plan §3.6) — the ONE predicate, applied both ways, so a show can never
+        /// land on neither list or both.</summary>
+        ReadOnlySpan<int> SplitShowKind(ReadOnlySpan<int> source)
+        {
+            if (_showKindSrc.Length < source.Length) _showKindSrc = new int[source.Length];
+            bool wantAudiobooks = IsAudiobooks;
+            int n = 0;
+            for (int i = 0; i < source.Length; i++)
+            {
+                int slot = source[i];
+                bool audiobook = LibraryAudiobookFilter.IsAudiobookRow(new Show(slot).Flags);
+                if (audiobook == wantAudiobooks) _showKindSrc[n++] = slot;
+            }
+            return _showKindSrc.AsSpan(0, n);
         }
 
         /// <summary>The Artists navigator's source, into a pooled buffer. <see cref="User.LibraryArtistsOf"/> returns the
@@ -955,10 +988,16 @@ public readonly partial struct User
         /// the kind. The count is a BOUND text, so a row landing re-fires one property instead of the toolbar.</summary>
         Element Toolbar(bool title)
         {
+            // Podcasts' row-1 words ARE Followed shows / Your Episodes (A2 plan §3.5) — the shows sort rail only
+            // makes sense while browsing shows, and the mode switch belongs in the SAME row Albums uses for its own
+            // words, not a wrapper of its own.
             _picker ??= new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Children = [WordRail(_entity, Sort, Desc), new BoxEl { Grow = 1f }, ViewToggle(View, Size)],
+                Children = IsPodcasts
+                    ? [Controls.Words.Rail([new(Loc.Bind(Strings.Podcast.Reader.FollowedShows)), new(Loc.Bind(Strings.Podcast.Reader.YourEpisodes))], _savedEpisodes),
+                       new BoxEl { Grow = 1f }, ViewToggle(View, Size)]
+                    : [WordRail(_entity, Sort, Desc), new BoxEl { Grow = 1f }, ViewToggle(View, Size)],
             };
             Element filter = AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: Filter, queryIcon: Icons.Search,
                 grow: 1f, maxFillWidth: 9999f, minHeight: 32f, cornerRadius: Radii.Control);
@@ -1173,14 +1212,14 @@ public readonly partial struct User
 
         Element DetailColumn(bool hasSelection, int slot)
         {
-            if (!hasSelection) return Placeholder(IsPodcasts ? Strings.Library.SelectShow : Strings.Library.SelectAlbum);
+            if (!hasSelection) return Placeholder(IsShowEntity ? Strings.Library.SelectShow : Strings.Library.SelectAlbum);
             return ReadingPane with { Key = "lib:detail", Grow = 1f, Basis = 0f, Children = [PaneFor(_entity, slot)] };
         }
 
         /// <summary>NO `Key` on the album pane: a selection change RE-PUSHES its props and the pane re-skins in place
         /// (it owns its own crossfade) — a keyed remount would throw away its scroll and its warm demand.</summary>
         Element PaneFor(EntityKind kind, int slot) => kind == EntityKind.Show
-            ? Embed.Comp(new PaneProps(slot), static () => new LibraryShowPane()) with { Key = "show-pane:" + slot }
+            ? Embed.Comp(new Show.PaneProps(slot), static () => new Show.Pane())
             : Embed.Comp(new Album.PaneProps(slot, ShowAlsoBy: true, OnAlsoBy: _onAlsoBy), static () => new Album.Pane());
 
         /// <summary>The artists view's ONE right-hand rung (W3): the reader takes the navigator's slot plus the three
@@ -1231,7 +1270,10 @@ public readonly partial struct User
                 body = new BoxEl
                 {
                     Key = "col:nav",   // keyed like its three alternatives; the "depth:N" wrapper already separates them
-                    Direction = 1, Grow = 1f, Children = [Toolbar(title: false), fullSearch ? LeftSearchBody(shimmer) : ListBody()],
+                    Direction = 1, Grow = 1f,
+                    Children = [Toolbar(title: false), IsPodcasts && _savedEpisodes.Value == 1
+                        ? Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + Entities.ScopeEpoch.Value }
+                        : (fullSearch ? LeftSearchBody(shimmer) : ListBody())],
                 };
             else if (depth >= 2)
                 body = ReadingPane with { Key = "col:tracks", Grow = 1f, Basis = 0f, Children = [TrackHits(shimmer)] };
@@ -1282,7 +1324,7 @@ public readonly partial struct User
         uint RunSearch()
         {
             _ = Entities.ScopeEpoch.Value;
-            bool active = _searchActive!.Value && !IsPodcasts;
+            bool active = _searchActive!.Value && !IsShowEntity;
             string q = _query!.Value;
             if (active)
             {
@@ -1502,162 +1544,13 @@ public readonly partial struct User
 
     // ══ 3. THE COMPACT SHOW PANE (W3: Follow, no "Open album ↗", compact episodes) ════════════════════════════════════
 
-    sealed record EpisodeShape(int Count, uint Version);
+}
 
-    sealed class LibraryShowPane : Component
-    {
-        int _slot;
-        Memo<EpisodeShape>? _shape;
-        BoundItemsSource<LibraryNavItem>? _items;
-        readonly Action _demand, _demandRows, _play, _shuffle, _open;
-        readonly Func<EpisodeShape> _compute;
-
-        public LibraryShowPane()
-        {
-            _demand = () =>
-            {
-                var sh = new Show(_slot);
-                if (!sh.IsValid) return;
-                Entities.Ensure(sh, ShowFields.All);
-                if (Entities.Current.Edges.ShowEpisodes.State(_slot) == EdgeState.Unknown) Entities.EnsureEdge(FetchEdge.ShowEpisodes, _slot);
-            };
-            _demandRows = () =>
-            {
-                _ = Entities.ScopeEpoch.Value;
-                _ = Entities.Current.Edges.ShowEpisodes.Changed.Value;
-                var sh = new Show(_slot);
-                if (sh.IsValid && sh.EpisodeSlots.Length > 0) Entities.Ensure(MemoryMarshal.Cast<int, Episode>(sh.EpisodeSlots), EpisodeFields.Row);
-            };
-            _play = () => { var sh = new Show(_slot); if (sh.IsValid) Playback.PlayContext(sh.Id); };
-            _shuffle = () => { var sh = new Show(_slot); if (!sh.IsValid) return; Playback.SetShuffle(true); Playback.PlayContext(sh.Id); };
-            _open = () => { var sh = new Show(_slot); if (sh.IsValid) Shell.GoTo(Shell.For(sh.Uri, sh.Title)); };
-            _compute = () =>
-            {
-                _ = Entities.ScopeEpoch.Value;
-                var e = Entities.Current.Edges.ShowEpisodes;
-                _ = e.Changed.Value;
-                _ = Entities.Current.Episodes.Changed.Value;
-                return new EpisodeShape(e.Count(_slot), e.Version(_slot));
-            };
-        }
-
-        public override Element Render()
-        {
-            var p = UseProps<PaneProps>();      // keyed per show by the caller, so the slot is stable for this instance
-            _slot = p.Slot;
-            uint epoch = Entities.ScopeEpoch.Value;
-            var scope = Entities.Current;
-            _ = scope.Shows.Changed.Value;
-            _shape = UseComputed(_compute);
-            UseEffect(_demand, DepKey.From(p.Slot, (int)epoch));
-            UseEffect(_demandRows);
-            _items ??= BoundItems.Project(_shape, static s => s.Count, (_, i) => EpisodeAt(i), default(LibraryNavItem));
-
-            var sh = new Show(_slot);
-            if (!sh.IsValid || !sh.Knows(ShowFields.Title)) return ShowHeaderSkeleton();
-            string uri = sh.Uri.Text, title = sh.Title;
-            string publisher = Entities.Strings.Resolve(sh.PublisherId);
-            _ = _shape.Value;
-            Element body = ItemsView.CreateBound(_items, s_episodeRow, RepeatLayout.VariableList(64f), new ListOptions<LibraryNavItem>
-            {
-                SelectionMode = ItemsSelectionMode.None, Grow = 1f,
-                Scroll = new ScrollOptions { ScrollKey = "lib:episodes:" + uri },
-            });
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, ClipToBounds = true,
-                Children =
-                [
-                    // ONE geometry for both kinds: a selection crossing album → show moves nothing but the words (§5.4).
-                    Show.PaneHeader(Controls.ArtUrl(sh.ImageId), Loc.Get(Strings.Podcast.Show), title, _open,
-                        publisher.Length > 0 ? new TextEl(publisher) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis } : new BoxEl(),
-                        Detail.Text.ShowMeta(publisher, sh.TotalEpisodes) ?? ""),
-                    ShowCommands(_play, _shuffle, Embed.Comp(() => new Controls.FollowButton { Uri = uri, Name = title }) with { Key = "follow:" + uri }),
-                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f), Children = [body] },
-                ],
-            };
-        }
-
-        LibraryNavItem EpisodeAt(int i)
-        {
-            var slots = Entities.Current.Edges.ShowEpisodes.Targets(_slot);
-            return (uint)i < (uint)slots.Length ? LibraryNavItem.Of(EntityKind.Episode, slots[i]) : default;
-        }
-
-        // Compact episode row: MinH 56, a 32 circular play chip, a 2-line title and the duration (W3).
-        static readonly Func<BoundItemScope<LibraryNavItem>, Element> s_episodeRow = static scope => new BoxEl
-        {
-            Direction = 0, MinHeight = 56f, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = Edges4.All(Spacing.S),
-            Corners = Radii.ControlAll, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-            OnClick = scope.Invoke(static it => PlayEpisode(it.Slot)),
-            Children =
-            [
-                new BoxEl { Width = 32f, Height = 32f, Shrink = 0f, Corners = Radii.Circle(32f), Fill = Tok.FillSubtleSecondary,
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Icon(Icons.Play, 12f, Tok.TextSecondary)] },
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, Gap = 2f, MinWidth = 0f,
-                    Children =
-                    [
-                        new TextEl(scope.Text(static it => it.Slot > Table.None ? new Episode(it.Slot).Title : ""))
-                            { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis },
-                        new TextEl(scope.Duration(static it => it.Slot > Table.None ? (long)new Episode(it.Slot).DurationMs : 0L))
-                            { Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary },
-                    ],
-                },
-            ],
-        }.Interactive(Interaction.Subtle);
-
-        static void PlayEpisode(int slot)
-        {
-            if (slot <= Table.None) return;
-            var ep = new Episode(slot);
-            if (ep.Show.IsValid) Playback.PlayContext(ep.Show.Id, ep.Id);
-            else Playback.PlayContext(ep.Id);
-        }
-    }
-
-    // ══ 4. THE SHOW PANE'S OWN VERBS AND SKELETON ════════════════════════════════════════════════════════════════════
-
-    /// <summary>The show pane's verb rung — the twin of <c>Album.PaneCommands</c> minus the two an album has and a show
-    /// does not: no "Open album ↗" doorway (the hero title IS the show's link) and no ⋯ menu on this surface. Play wears
-    /// the SYSTEM accent, which is the one stated exception; there is never a second accent CTA (ch 15 §0.8).</summary>
-    static Element ShowCommands(Action play, Action shuffle, Element follow) => new BoxEl
-    {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, Shrink = 0f,
-        Padding = new Edges4(Spacing.XL, Spacing.M, Spacing.XL, Spacing.S),
-        Children = [Controls.Play(Tok.AccentDefault, play), ShowCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle), follow],
-    };
-
-    /// <summary>A 36-px subtle circle with a glyph and a tooltip name — the pane's secondary verb, sized to match the
-    /// album pane's command circles so the two panes' rungs line up to the DIP.</summary>
-    static Element ShowCircle(string glyph, string name, Action tap) => Controls.Named(new BoxEl
-    {
-        Width = 36f, Height = 36f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.Circle(36f),
-        Fill = Tok.FillSubtleSecondary, HoverScale = Design.Motion.ScaleStandard.Hover, PressScale = Design.Motion.ScaleStandard.Press,
-        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = tap,
-        Children = [Icon(glyph, 16f, Tok.TextSecondary)],
-    }.Interactive(Interaction.Subtle), name);
-
-    /// <summary>The show pane's one not-yet state: HAND-AUTHORED solid blocks at the header's own 128 geometry — no
-    /// shimmer pulse, no blur reveal (a pulsing skeleton on a pane you selected reads as a fault). Short-lived: the
-    /// navigator already demanded the show's identity.</summary>
-    static Element ShowHeaderSkeleton() => new BoxEl
-    {
-        Direction = 0, Gap = 18f, AlignItems = FlexAlign.End, Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
-        Children =
-        [
-            new BoxEl { Width = 128f, Height = 128f, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillCardDefault },
-            new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, Gap = Spacing.S, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl { Width = 80f, Height = 12f, Corners = CornerRadius4.All(4f), Fill = Tok.FillCardDefault },
-                    new BoxEl { Width = 220f, Height = 26f, Corners = CornerRadius4.All(4f), Fill = Tok.FillCardDefault },
-                    new BoxEl { Width = 120f, Height = 12f, Corners = CornerRadius4.All(4f), Fill = Tok.FillCardDefault },
-                ],
-            },
-        ],
-    };
+/// <summary>The Podcasts/Audiobooks split (A2 plan §3.6): pure over <see cref="ShowFlags"/>, the same bit
+/// <see cref="Show.IsAudiobook"/> checks first — no episode-table scan here, because a library ROW filter runs over
+/// every saved show on every relation change and must stay O(1) per show; the full <c>Show.IsAudiobook</c> (chapter
+/// fallback for a show the WIRE never flagged) is the detail pane's own concern, not the library list's.</summary>
+public static class LibraryAudiobookFilter
+{
+    public static bool IsAudiobookRow(ShowFlags flags) => (flags & ShowFlags.Audiobook) != 0;
 }

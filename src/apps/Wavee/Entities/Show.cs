@@ -66,9 +66,18 @@ public enum ShowFlags : uint
     MusicAndTalk = 1 << 4,
     /// <summary>The account may rate this show (pathfinder <c>rating.canRate</c>, wave P4).</summary>
     CanRate = 1 << 5,
+    /// <summary><c>metadata.Show.is_audiobook</c> (field 89). Never inferred from titles.</summary>
+    Audiobook = 1 << 6,
+    /// <summary>The playlist4 list-header's <c>autoplay_candidate=false</c> attribute on the show's OWN membership
+    /// read (<c>GET playlist/v2/show/{id}</c>, plan §4.3) — the playback host reads this instead of an episode-type
+    /// heuristic. Deliberately OUTSIDE <see cref="FactsMask"/>: it does not ride <c>ShowV4</c> at all, only the
+    /// header-attribute route (<see cref="StagedShow.HeaderFacts"/>, <c>Show.cs</c>'s <c>CommitShows</c>), which sets
+    /// bits OUTSIDE the Facts authority ladder — were this bit inside <see cref="FactsMask"/>, a later whole-group
+    /// <c>ShowV4</c> replace (which never states this fact) would blank it on every full re-answer.</summary>
+    NoAutoplay = 1 << 7,
 
     /// <summary>The bits <see cref="ShowFields.Facts"/> owns.</summary>
-    FactsMask = Explicit | Video | Mixed | MusicAndTalk,
+    FactsMask = Explicit | Video | Mixed | MusicAndTalk | Audiobook,
     /// <summary>The bits <see cref="ShowFields.Rating"/> owns.</summary>
     RatingMask = Exclusive | CanRate,
 }
@@ -188,6 +197,28 @@ public readonly partial struct Show(int slot) : IEquatable<Show>
 
     /// <summary>Both groups' bits (<see cref="ShowFields.Facts"/>, <see cref="ShowFields.Rating"/>).</summary>
     public ShowFlags Flags => (ShowFlags)T.Flags[Slot];
+    /// <summary>Explicit catalog classification, or a resident chapter explicitly classified by its provider.
+    /// The latter covers a cached/304 parent without inventing a Facts write from a thin show mention.
+    /// This is a low-frequency projection: reader memos should include the episode table revision.</summary>
+    public bool IsAudiobook
+    {
+        get
+        {
+            _ = Entities.ScopeEpoch.Value;
+            if (!IsValid) return false;
+            _ = T.Changed.Value;
+            if ((Flags & ShowFlags.Audiobook) != 0) return true;
+            var episodes = Entities.Current.Episodes;
+            _ = episodes.Changed.Value;
+            for (int i = 1; i < episodes.Count; i++)
+                if (!episodes.Id[i].IsEmpty && episodes.Show[i] == Slot
+                    && (episodes.Known[i] & (uint)EpisodeFields.Show) != 0
+                    && (episodes.Flags[i] & (uint)EpisodeFlags.AudiobookChapter) != 0)
+                    return true;
+            return false;
+        }
+    }
+
     public ConsumptionOrder Order => (ConsumptionOrder)T.Order[Slot];
     /// <inheritdoc cref="ShowTable.Trailer"/>
     public StringId TrailerId => T.Trailer[Slot];
@@ -238,9 +269,34 @@ public struct StagedShow : IStagedRow
     public int RatingCount;
     public byte MyRating;
     public uint Tone;
+    /// <summary>Classification bits the wire stated OUTSIDE any <c>ShowV4</c> field group — today only
+    /// <see cref="ShowFlags.Audiobook"/> / <see cref="ShowFlags.NoAutoplay"/> from the show's OWN list-header
+    /// attributes (<c>Spotify.Decode.Show.cs</c>'s <c>ShowHeaderAttributes</c>). The commit ORs this straight onto
+    /// <see cref="ShowTable.Flags"/>, outside the authority ladder — like <see cref="ShowTable.EpisodesAsked"/>'s
+    /// forward-only ratchet — so a partial answer (this read only saw <c>is_audiobook</c>, not
+    /// <c>autoplay_candidate</c>) can never blank a sibling bit a fuller <c>ShowV4</c> answer already sealed.
+    /// 0 = this row states nothing new.</summary>
+    public uint HeaderFacts;
     /// <summary><see cref="ShowFields"/>: which groups this row speaks for.</summary>
     public uint Known;
     public Authority Authority;
+
+    /// <summary>A thin mention only speaks for identity columns it actually carries. This also repairs cached
+    /// partial rows written by older decoders that claimed the whole Identity mask.</summary>
+    public readonly uint EffectiveKnown
+    {
+        get
+        {
+            uint known = Known;
+            if (Authority == Wavee.Authority.Thin)
+            {
+                if (Title.IsEmpty) known &= ~(uint)ShowFields.Title;
+                if (Image.IsEmpty) known &= ~(uint)ShowFields.Image;
+                if (Publisher.IsEmpty) known &= ~(uint)ShowFields.Publisher;
+            }
+            return known;
+        }
+    }
 
     /// <inheritdoc cref="IStagedRow.Init"/>
     public void Init(in StagedId id, Authority authority, uint known) { Id = id; Authority = authority; Known = known; }
@@ -284,18 +340,37 @@ public static partial class Entities
             int slot = s.Slot(t, in row.Id);
             if (slot == Table.None) continue;   // a row with no identity is not a row
             var auth = row.Authority;
-            uint known = row.Known;
+            uint known = row.EffectiveKnown;
             if (!row.ListRevision.IsEmpty) t.SetText(ref t.ListRevision, slot, s.Intern(row.ListRevision));
 
-            if ((known & (uint)ShowFields.Identity) != 0
-                && t.Accepts(slot, (uint)ShowFields.Identity, auth, in t.IdentityAuthority))
+            uint acceptedIdentity = 0;
+            // A parent-show mention may carry only its title. Gate and write each claimed column separately:
+            // filling an image hole must not make a thinner title authoritative over a known full title.
+            if ((known & (uint)ShowFields.Title) != 0
+                && t.Accepts(slot, (uint)ShowFields.Title, auth, in t.IdentityAuthority))
             {
-                // `SetText`, never `Title[slot] = …` — AddRef in, release what it overwrites (defect 1).
                 t.SetText(ref t.Title, slot, s.Intern(row.Title));
-                t.SetText(ref t.Image, slot, s.Intern(row.Image));
-                t.SetText(ref t.Publisher, slot, s.Intern(row.Publisher));
-                t.Applied(slot, (uint)ShowFields.Identity, auth, ref t.IdentityAuthority);
+                t.Applied(slot, (uint)ShowFields.Title, auth, ref t.IdentityAuthority);
+                acceptedIdentity |= (uint)ShowFields.Title;
             }
+            if ((known & (uint)ShowFields.Image) != 0
+                && t.Accepts(slot, (uint)ShowFields.Image, auth, in t.IdentityAuthority))
+            {
+                t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                t.Applied(slot, (uint)ShowFields.Image, auth, ref t.IdentityAuthority);
+                acceptedIdentity |= (uint)ShowFields.Image;
+            }
+            if ((known & (uint)ShowFields.Publisher) != 0
+                && t.Accepts(slot, (uint)ShowFields.Publisher, auth, in t.IdentityAuthority))
+            {
+                t.SetText(ref t.Publisher, slot, s.Intern(row.Publisher));
+                t.Applied(slot, (uint)ShowFields.Publisher, auth, ref t.IdentityAuthority);
+                acceptedIdentity |= (uint)ShowFields.Publisher;
+            }
+            // Write-behind consumes this SAME staging after the UI commit. Its generic SQL merge coalesces
+            // present text, so suppress identity values that the authority gate rejected before they reach disk.
+            // Otherwise a thin parent title would be rejected live but resurrected as Full after a cold read.
+            row.Known = (row.Known & ~(uint)ShowFields.Identity) | acceptedIdentity;
             if ((known & (uint)ShowFields.About) != 0
                 && t.Accepts(slot, (uint)ShowFields.About, auth, in t.AboutAuthority))
             {
@@ -343,8 +418,31 @@ public static partial class Entities
                 t.EpisodesAsked[slot] = row.EpisodesAsked;
                 t.Bump(slot);
             }
+            // Header-observed classification bits (plan §4.3): also outside the ladder, and a pure OR — it can only
+            // ever turn a bit on, so a header answer that saw one key this time and the other key last time can never
+            // undo either, and it cannot race a fuller `ShowV4` Facts answer landing before or after it.
+            if (row.HeaderFacts != 0)
+            {
+                uint before = t.Flags[slot];
+                uint after = before | row.HeaderFacts;
+                if (after != before) { t.Flags[slot] = after; t.Bump(slot); }
+            }
         }
     }
+}
+
+/// <summary>The pure repair rule (plan §4.2): a row loaded off disk with Identity sealed at
+/// <see cref="Authority.Full"/> but an empty <c>Image</c> or <c>Publisher</c> string was sealed wrong by the old
+/// decoder, which claimed the whole Identity group at Full even when <c>cover_image</c>/<c>publisher</c> never rode
+/// the wire — demote it to <see cref="Authority.Thin"/> so <see cref="Table.Accepts"/> lets the next real answer fill
+/// the hole instead of refusing it forever (a Full row can only ever be overwritten by another Full one). Runs
+/// unconditionally on every <see cref="ShowShape.Load"/>, so it self-heals a wrongly-sealed row the moment it is
+/// read back, with no separate one-time migration flag: a row that is already Thin, or genuinely Full with both
+/// fields present, is returned unchanged.</summary>
+public static class ShowIdentityRepair
+{
+    public static Authority Demote(Authority authority, bool hasImage, bool hasPublisher)
+        => authority == Authority.Full && (!hasImage || !hasPublisher) ? Authority.Thin : authority;
 }
 
 // ── persistence (Store.cs's per-kind seam) ───────────────────────────────────────────────────────────────────────────
@@ -404,7 +502,7 @@ public sealed class ShowShape : KindShape
         for (int i = 0; i < span.Length; i++)
         {
             ref readonly var row = ref span[i];
-            uint known = row.Known & PersistedFields;
+            uint known = row.EffectiveKnown & PersistedFields;
             bool identity = (known & (uint)ShowFields.Identity) != 0;
             bool about = (known & (uint)ShowFields.About) != 0;
             bool facts = (known & (uint)ShowFields.Facts) != 0;
@@ -412,9 +510,9 @@ public sealed class ShowShape : KindShape
 
             if (identity)
             {
-                w.Text(0, row.Title);
-                w.Text(1, row.Image);
-                w.Text(2, row.Publisher);
+                if ((known & (uint)ShowFields.Title) != 0) w.Text(0, row.Title); else w.Null(0);
+                if ((known & (uint)ShowFields.Image) != 0) w.Text(1, row.Image); else w.Null(1);
+                if ((known & (uint)ShowFields.Publisher) != 0) w.Text(2, row.Publisher); else w.Null(2);
                 w.Int(4, (int)row.Authority);
             }
             else { w.Null(0); w.Null(1); w.Null(2); w.Null(4); }
@@ -482,7 +580,12 @@ public sealed class ShowShape : KindShape
             ref var staged = ref into.Shows.Add();
             staged = row;
             staged.Known = known;
-            staged.Authority = (Authority)r.Int(authorities[i]);
+            var authority = (Authority)r.Int(authorities[i]);
+            // The one-time repair (plan §4.2): a Full Identity row an old decoder sealed with an empty Image or
+            // Publisher can never be corrected once written — demote it here so the next Ensure asks again.
+            if (groups[i] == (uint)ShowFields.Identity)
+                authority = ShowIdentityRepair.Demote(authority, hasImage: !row.Image.IsEmpty, hasPublisher: !row.Publisher.IsEmpty);
+            staged.Authority = authority;
         }
     }
 }

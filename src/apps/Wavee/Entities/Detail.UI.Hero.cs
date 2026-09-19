@@ -49,11 +49,21 @@ public static partial class Detail
         /// only; not part of the table contract and not compared. Null ⇒ the hero plays the context.</summary>
         internal Action? PlayAll { get; init; }
 
+        /// <summary>── INSIGHTS SHEET (additive) ── The frame's sheet toggle, when this arm hosts the facts bento in a
+        /// sheet (<see cref="InsightsSheet.ShowsToggle"/>). Set by the frame only — a stable per-host object, so like
+        /// <see cref="PlayAll"/> it is not compared: its OPEN state travels by signal, never by a re-push. Null ⇒ this
+        /// page has no facts and the toolbar row carries no toggle.</summary>
+        internal InsightsToggle? Insights { get; init; }
+
         public bool Equals(VerticalSpec? o)
         {
             if (ReferenceEquals(this, o)) return true;
             return o is not null && Identity.Equals(o.Identity) && Config == o.Config
-                && Actions.Equals(o.Actions) && Slots.Equals(o.Slots);
+                && Actions.Equals(o.Actions) && Slots.Equals(o.Slots)
+                // ── INSIGHTS SHEET (additive) ── PRESENCE, like every slot: the toggle appears when the page's facts
+                //    arrive and goes when they do not, and the hero must re-render for exactly that (its open STATE is
+                //    a signal the button binds, so opening the sheet still costs no render here).
+                && (Insights is null) == (o.Insights is null);
         }
 
         public override int GetHashCode() => HashCode.Combine(Identity, Config, Actions, Slots);
@@ -293,7 +303,12 @@ public static partial class Detail
                         Direction = 1,
                         Padding = new Edges4(parts.CompactLeft, VerticalLayout.ExpandedToolbarTopPad,
                                              parts.CompactLeft, VerticalLayout.ExpandedToolbarBottomPad),
-                        Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
+                        // ── INSIGHTS SHEET (additive) ── the toolbar ROW: the table's command bar, plus the sheet's
+                        //    toggle pinned to its trailing end when this page has facts and no rail to show them in
+                        //    (Detail.Insights.cs). The bar keeps the whole row when there is no toggle, so a page
+                        //    without facts composes exactly the tree it composed before. This is the PRE-STUCK half of
+                        //    the control: once the hero collapses the pinned band's word (§7) is the reachable one.
+                        Children = [ToolbarRow(parts, spec.Insights)],
                     },
                 ],
             };
@@ -350,6 +365,11 @@ public static partial class Detail
             }
 
             // Input ownership crosses WITH the band: it takes hits only once stuck (and passes the rest through).
+            // ── INSIGHTS SHEET (additive) ── this gate is what makes the sheet's TWO entry points one control rather
+            //    than two. `parts.BandActions` now carries the sheet's toggle beside Find · Filter · Play, and it is
+            //    live exactly when `compactCanHit` is true, while the hero's own toolbar toggle (inside `expanded`,
+            //    under `presentation` below) is live exactly when it is false. Never both, never neither — stated as
+            //    Detail.InsightsSheet.BandToggleTakesInput / HeroToggleTakesInput, pinned by DetailInsightsSheetTests.
             Element compact = new BoxEl
             {
                 ZStack = true, Width = availW, Height = BandLayout.Height,
@@ -655,7 +675,7 @@ public static partial class Detail
     };
 
     /// <summary>The artist arm's row (0.2.9 ContextBand.Row): title · pivot · actions as cluster children, same geometry as Band.</summary>
-    public static Element Band(float width, float gutter, Element[] children) => new BoxEl
+    public static BoxEl Band(float width, float gutter, Element[] children) => new BoxEl
     {
         Direction = 0, Width = width, Height = BandLayout.Height, Padding = new Edges4(gutter, 0f, gutter, 0f),
         Gap = BandLayout.ClusterGap, AlignItems = FlexAlign.Center, HitTestVisible = true, Children = children,

@@ -1024,8 +1024,11 @@ public class FetchTests : IDisposable
     [Fact]
     public void An_answer_clears_inflight_for_rows_it_did_not_name()
     {
-        // `Table.Applied` clears the in-flight mark for a row a group LANDED on; a row the answer skipped kept it for
-        // the life of the scope, so `Asked && Inflight == 0` — the surfaces' "asked, nothing coming" — never read true.
+        // `Table.Applied` clears the in-flight mark for a row a group LANDED on; a row a 200 batch did not name AT
+        // ALL gets the same `Inflight` clear — and, since ledger 2a (`FetchMissPolicy`, Fetch.Miss.cs), it is also
+        // UN-ASKED and queued for its own retry rather than sealed: `slots[0]`'s row got Identity, `slots[1]`'s row
+        // got nothing whatsoever (not even an attempt — its `Version` never moves), which is exactly the shape a
+        // real batch takes when the wire's page simply left an entity out.
         Scope scope = Boot();
         var provider = new RecordingProvider(EntityProvider.Spotify);
         Fetch.Register(provider);
@@ -1039,10 +1042,20 @@ public class FetchTests : IDisposable
 
         Assert.Equal(0u, t.Inflight[slots[0]]);
         Assert.Equal(0u, t.Inflight[slots[1]]);                                         // settled, not stranded
-        Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[1]]);                    // and still sealed: no re-ask
-        Fetch.Plan(scope, t, slots, (uint)TrackFields.Identity, FetchPriority.Visible);
+        Assert.Equal(0u, t.Asked[slots[1]]);                                            // un-asked, not sealed: ledger 2a
+        Assert.False(t.IsFailed(slots[1], (uint)TrackFields.Identity));                 // one miss: the retry budget is two
+        Assert.Equal(1, Fetch.Pending);                                                 // queued again, on its own
+
+        Entities.Now = 1;                                                              // Backoff(0, 0, 0) = 1 s
+        Fetch.Pump();
+        Assert.Equal(2, provider.Seen.Count);
+        Assert.Equal(1, provider.Seen[1].Count);                                        // only the omitted row rides it
+        Assert.Equal((uint)TrackFields.Identity, provider.Seen[1].Wanted);
+
+        // `slots[0]` is unaffected throughout: a normal re-plan of the row the FIRST answer DID name asks nothing.
+        Fetch.Plan(scope, t, [slots[0]], (uint)TrackFields.Identity, FetchPriority.Visible);
         Fetch.Drain();
-        Assert.Single(provider.Seen);
+        Assert.Equal(2, provider.Seen.Count);
     }
 
     // ── an auth refusal is re-planned when the session resumes ─────────────────────────────────────────────────────

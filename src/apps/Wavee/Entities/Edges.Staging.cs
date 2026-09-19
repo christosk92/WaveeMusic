@@ -416,19 +416,43 @@ public static partial class Entities
                         break;
                     }
                 case Relation.ShowEpisodes:
-                case Relation.PlaylistTracks:
                     {
-                        // Every membership fact is the EDGE's (D10). `AddedBy` is a user SLOT, so the adder's row is
-                        // allocated here exactly like any other child — a byline is bindable before the profile lands.
-                        int n = Resolve(s, page, run.Relation == Relation.ShowEpisodes ? Current.Episodes : Current.Tracks);
+                        // A show's own membership names nothing but episodes — no per-row kind check, unlike the
+                        // mixed relation below, but the shared edge still carries Kind so a reader never has to know
+                        // which relation landed the row it is looking at.
+                        int n = Resolve(s, page, Current.Episodes);
                         for (int j = 0; j < n; j++)
                         {
                             ref readonly var e = ref page[j];
                             s_edgePlaylistTrack[j] = new PlaylistTrackEdge(
-                                s.Intern(e.Text), e.At, s.Slot(Current.Users, in e.Aux), e.B1, e.U0, e.U1, e.B0);
+                                s.Intern(e.Text), e.At, s.Slot(Current.Users, in e.Aux), e.B1, e.U0, e.U1, e.B0,
+                                PlaylistItemKind.Episode);
                         }
-                        Land(run.Relation == Relation.ShowEpisodes ? Current.Edges.ShowEpisodes : Current.Edges.PlaylistTracks, parent, n, s_edgePlaylistTrack, in run);
-                        if (run.Relation == Relation.PlaylistTracks) new global::Wavee.Playlist(parent).Refold();
+                        Land(Current.Edges.ShowEpisodes, parent, n, s_edgePlaylistTrack, in run);
+                        break;
+                    }
+                case Relation.PlaylistTracks:
+                    {
+                        // Every membership fact is the EDGE's (D10). `AddedBy` is a user SLOT, so the adder's row is
+                        // allocated here exactly like any other child — a byline is bindable before the profile lands.
+                        //
+                        // PER-ROW DISPATCH (mirrors AlbumTracks above, G-231's shape): a playlist mixes tracks and
+                        // episodes on the same page, and the wire names each member's own kind in its uri — so, unlike
+                        // AlbumTracks, nothing here is ever skipped: a non-Track/non-Episode member (a local file, an
+                        // unrecognised uri the wire still let through) keeps the pre-mix behaviour of landing in
+                        // Current.Tracks, because a playlist member of ANY kind is still a real row Refold must fold
+                        // in. Only an EPISODE member diverts to Current.Episodes.
+                        for (int j = 0; j < page.Length; j++)
+                        {
+                            ref readonly var e = ref page[j];
+                            bool episode = e.Target.Kind(s) == EntityKind.Episode;
+                            s_edgeTargets[j] = s.Slot(episode ? Current.Episodes : Current.Tracks, in e.Target);
+                            s_edgePlaylistTrack[j] = new PlaylistTrackEdge(
+                                s.Intern(e.Text), e.At, s.Slot(Current.Users, in e.Aux), e.B1, e.U0, e.U1, e.B0,
+                                episode ? PlaylistItemKind.Episode : PlaylistItemKind.Track);
+                        }
+                        Land(Current.Edges.PlaylistTracks, parent, page.Length, s_edgePlaylistTrack, in run);
+                        new global::Wavee.Playlist(parent).Refold();
                         break;
                     }
                 case Relation.TrackTags:

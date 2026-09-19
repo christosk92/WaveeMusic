@@ -52,6 +52,9 @@ public static partial class Spotify
             AudioFiles = 5,
             TrackDescriptor = 6,
             ArtistV4 = 8, AlbumV4 = 9, TrackV4 = 10, ShowV4 = 11, EpisodeV4 = 12,
+            /// <summary>An audiobook's genre shelf (<c>spotify.audiobookgenres.AudiobookGenres</c>, an <c>Any</c>
+            /// payload) — <see cref="Decode.AudiobookGenres"/>, Spotify.Decode.Show.cs's D2.</summary>
+            AudiobookGenres = 83,
             /// <summary>The account profile a playlist owner, an added-by cell and the chip read (G-044,
             /// Spotify.Decode.Traits.cs).</summary>
             UserProfile = 15,
@@ -441,22 +444,30 @@ public static partial class Spotify
             return id;
         }
 
-        /// <summary>The show an episode carries inside itself: uri, title, publisher.</summary>
+        /// <summary>The show an episode carries inside itself: uri, title, publisher. Already a producer mask (plan
+        /// §4.2): each column is claimed only when this mention actually carries it, same as `ShowV4`'s fix. No
+        /// asked-vs-payload mismatch guard applies here — unlike `ShowV4`, a mention names no identity it was ASKED
+        /// for; its own gid (field 1) IS the identity, so there is nothing to compare it against.</summary>
         static StagedId ThinShow(ProtoReader show, Staging s)
         {
             StagedId id = default;
-            TextRef title = default, publisher = default;
+            TextRef title = default, publisher = default, image = default;
             while (show.Next())
             {
                 if (show.Field == 1) id = EntityId.ForGid(EntityKind.Show, show.Bytes());
                 else if (show.Field == 2) title = s.AddText(show.Bytes());
                 else if (show.Field == 66) publisher = s.AddText(show.Bytes());
+                else if (show.Field == 69) image = Cover(s, show.Message());
                 else show.Skip();
             }
             if (id.IsEmpty) return default;
-            ref var row = ref s.Shows.RowFor(id, Authority.Thin, (uint)ShowFields.Identity);
+            uint known = (title.IsEmpty ? 0 : (uint)ShowFields.Title)
+                | (publisher.IsEmpty ? 0 : (uint)ShowFields.Publisher)
+                | (image.IsEmpty ? 0 : (uint)ShowFields.Image);
+            ref var row = ref s.Shows.RowFor(id, Authority.Thin, known);
             row.Title = title;
             row.Publisher = publisher;
+            row.Image = image;
             return id;
         }
 
@@ -839,11 +850,29 @@ public static partial class Spotify
         /// are the two lines the show header states beside the cover), and its Facts (podcast plan §5.3): explicit,
         /// media type, consumption order, trailer, music-and-talk. Facts is claimed WHOLE after the loop — proto2 omits a
         /// false bool, so an absent field is a real "no", and a group claimed only when a field shows up would re-ask a
-        /// plain audio show forever.</summary>
-        public static void ShowV4(ReadOnlySpan<byte> proto, Staging s)
+        /// plain audio show forever.
+        ///
+        /// <para><b>Identity is a PRODUCER MASK</b> (plan §4.2, report 2b): unlike Facts, an absent
+        /// <c>cover_image</c>/<c>publisher</c>/<c>name</c> is NOT a stated "no" — a followed show re-served thin (or a
+        /// field the provider simply omitted this time) must not blank an already-known value, so only the columns
+        /// this payload actually carried are claimed. Claiming the whole group regardless is exactly the defect that
+        /// let a wrong Full row (SOLVED ↔ The Manager's Path) seal for good: <see cref="Table.Accepts"/> then refuses
+        /// every later, more honest, thin correction.</para></summary>
+        public static void ShowV4(ReadOnlySpan<byte> proto, Staging s) => ShowV4(proto, default, s);
+
+        /// <inheritdoc cref="ShowV4(ReadOnlySpan{byte},Staging)"/>
+        /// <param name="proto">The `metadata.Show` bytes.</param>
+        /// <param name="entityUri">The envelope's <c>entity_uri</c> — the show this batch ASKED for. A show has no
+        /// relinking concept (unlike <c>TrackV4</c>'s market-restricted alias, this file): the payload's own gid
+        /// (field 1) disagreeing with the asked uri is a wire defect — a misrouted or stale batch answer — never a
+        /// legitimate second identity, so the row is DROPPED rather than sealed under the wrong uri (plan §4.2's
+        /// mismatch guard, `TrackV4`'s asked-vs-payload compare minus the relink). Empty = a direct decode (the test
+        /// fixtures); nothing to compare.</param>
+        /// <param name="s">The staging buffer.</param>
+        public static void ShowV4(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {
             var r = new ProtoReader(proto);
-            ref var row = ref s.Shows.RowFor(default, Authority.Full, (uint)(ShowFields.Identity | ShowFields.About));
+            ref var row = ref s.Shows.RowFor(default, Authority.Full, (uint)ShowFields.About);
             int media = -1;                                            // media_type unstated
 
             while (r.Next())
@@ -865,13 +894,30 @@ public static partial class Spotify
                         }
                     case 83: row.Trailer = s.AddText(r.Bytes()); break;
                     case 85: if (r.Bool()) row.Flags |= (uint)ShowFlags.MusicAndTalk; break;
+                    case 89: if (r.Bool()) row.Flags |= (uint)ShowFlags.Audiobook; break;
                     default: r.Skip(); break;
                 }
+            }
+
+            // The envelope names which show was ASKED; a mismatch against the payload's own gid is dropped, never
+            // sealed (see the `entityUri` remark above). Only a packed (gid) ask can ever be compared — a text-form
+            // ask has no gid to compare, same rule `TrackV4`'s relink check applies.
+            var asked = Identity(s, entityUri);
+            if (!asked.Packed.IsEmpty && !row.Id.IsEmpty && asked.Packed != row.Id.Packed)
+            {
+                Log.Warn("decode", "decode.mismatch kind=show asked=" + asked.Packed + " got=" + row.Id.Packed);
+                s.Shows.Drop();
+                return;
             }
 
             if (media == 2) row.Flags |= (uint)ShowFlags.Video;
             else if (media == 0) row.Flags |= (uint)ShowFlags.Mixed;
             row.Known |= (uint)ShowFields.Facts;
+
+            // The producer mask (see the summary): claim only the Identity columns this answer actually carried.
+            row.Known |= (row.Title.IsEmpty ? 0 : (uint)ShowFields.Title)
+                | (row.Image.IsEmpty ? 0 : (uint)ShowFields.Image)
+                | (row.Publisher.IsEmpty ? 0 : (uint)ShowFields.Publisher);
 
             s.Shows.Settle();
         }
@@ -907,6 +953,7 @@ public static partial class Spotify
                             row.Kind = (byte)(kind is > (int)EpisodeKind.Full and <= (int)EpisodeKind.Bonus ? kind : 0);
                             break;
                         }
+                    case 96: if (r.Bool()) row.Flags |= (uint)EpisodeFlags.AudiobookChapter; break;
                     case 97: if (r.Bool()) row.Flags |= (uint)EpisodeFlags.Short; break;
                     default: r.Skip(); break;
                 }
@@ -1091,7 +1138,10 @@ public static partial class Spotify
                 case (Ext)182: EpisodeMedia(payload, entityUri, s); break;
                 case (Ext)37: PodcastRating(payload, entityUri, s); break;
                 case (Ext)21: EpisodeTranscripts(payload, entityUri, s); break;
-                case Ext.ShowV4: ShowV4(payload, s); break;
+                case (Ext)83: AudiobookGenres(payload, entityUri, s); break;
+                // The envelope's uri rides along so a misrouted/stale answer can be caught against the payload's own
+                // gid (D2's mismatch guard) — see `ShowV4`'s remark.
+                case Ext.ShowV4: ShowV4(payload, entityUri, s); break;
                 case Ext.EpisodeV4: EpisodeV4(payload, s); break;
                 case Ext.ListMetadataV2: ListMetadataV2(payload, entityUri, s); break;
                 case Ext.AudioAttributes: AudioAttributes(payload, entityUri, s); break;

@@ -511,6 +511,12 @@ public static partial class Detail
         public static float StickyClipInset(float contentFilterExtent = 0f, float headerHeight = ChromeHeaderHeight)
             => CompactIdentityHeight + ChromeExtent(contentFilterExtent, headerHeight);
 
+        /// <summary>The trailing shelves' own clip inset (the album "Also by" / release-panel band under the rows,
+        /// Track.Table.cs's <c>TrailingBody</c>): the same line the hero collapses to, so a shelf cannot show through
+        /// the compact band while still riding under it. Equal to <see cref="CompactIdentityHeight"/> by construction —
+        /// named separately so a caller states what it means, not <see cref="StickyClipInset"/>'s.</summary>
+        public static float TrailingClipInset => CompactIdentityHeight;
+
         // ── the vertical viewport's slot map: hero, pinned chrome, the recycled rows, then (hero system only) the facts
         //    FOOTER — a slot, not a block in the identity column, so the page opens on its songs, not on charts.
         public const int PrefixCount = 2;
@@ -562,13 +568,91 @@ public static partial class Detail
     /// <summary>Which surfaces get a rail grip at which mode, the bounds, and which persisted pair a scope reads.</summary>
     public static class RailPolicy
     {
-        /// <summary>Only the wide two-column arm resizes; modes 1/2 compose their breakpoint rail (224 / 188).</summary>
-        public const int ResizableMode = 0;
+        /// <summary>The WIDEST two-column arm (page ≥ 820). Its rail rests at the scope's own persisted width; modes 1/2
+        /// rest at their breakpoint width instead — but all three RESIZE (issue: the grip vanished the moment a
+        /// transcript/lyrics side rail pushed a detail page under 820, on every detail page).</summary>
+        public const int WideMode = 0;
 
-        /// <summary>180, not 220: every rail's content survives it (cover floor, title MinSize 18, wrapping CTAs).</summary>
+        /// <summary>The two narrow two-column arms' RESTING rail — <c>DetailShell.RailW</c>'s 224 / 188. A scope the user
+        /// has never dragged opens here; a dragged one carries its persisted width into these modes too.</summary>
+        public const float MidRestWidth = 224f, NarrowRestWidth = 188f;
+
+        /// <summary>180, not 220: every rail's content survives it (cover floor, title MinSize 18, wrapping CTAs).
+        /// <see cref="MaxWidth"/> is the ABSOLUTE ceiling; the live one is <see cref="MaxWidthForPage"/>.</summary>
         public const float MinWidth = 180f, MaxWidth = 480f;
 
-        public static bool ResizableFor(bool railResizable, int mode) => railResizable && mode == ResizableMode;
+        /// <summary>The seam the row always pays between rail and content (<see cref="Splitter.StripW"/>), and the two
+        /// widths the COLLAPSED arm composes instead (the 96-DIP identity strip + its 20-DIP re-open grip).</summary>
+        public const float GripStripW = Splitter.StripW;
+        public const float CompactStripW = 96f, CollapsedGripW = 20f;
+
+        /// <summary>The live maximum moves in 8-DIP steps, so a per-pixel window resize cannot churn the frame's render
+        /// (and the floor never rounds the cap UP past what the page can actually give).</summary>
+        public const float MaxQuantum = 8f;
+
+        /// <summary>Does this mode compose a rail at all? Modes 0/1/2 are the two-column arms; mode 3
+        /// (<see cref="Breakpoints.VerticalMode"/>) is the single-column hero/vertical page — there is no rail, no grip
+        /// and nothing to resize. Anything outside the ladder is treated as no rail.</summary>
+        public static bool ComposesRail(int mode) => mode >= WideMode && mode < Breakpoints.VerticalMode;
+
+        /// <summary>EVERY two-column arm resizes, not just the wide one. Only a single-column arm (and a config that opts
+        /// out) has no grip.</summary>
+        public static bool ResizableFor(bool railResizable, int mode) => railResizable && ComposesRail(mode);
+
+        /// <summary>The widest rail a page THIS wide may carry: whatever is left after the grip strip and the content
+        /// column's own floor (<see cref="Breakpoints.TwoColumnContentMinW"/>), never above <see cref="MaxWidth"/> and
+        /// never below <see cref="MinWidth"/>. An unmeasured page (width ≤ 0) answers the absolute ceiling — the
+        /// pre-measure seed, corrected by the first bounds callback. Mode 0 needs 820 DIP, and 480 + 16 + 300 = 796, so
+        /// the wide arm's answer is always 480: this rule changes nothing there.</summary>
+        public static float MaxWidthForPage(float pageWidth, int mode)
+        {
+            if (!ComposesRail(mode) || pageWidth <= 0f) return MaxWidth;
+            float room = MathF.Min(pageWidth, Design.Size.PageMaxW) - GripStripW - Breakpoints.ContentMinWidthForMode(mode);
+            room = MathF.Floor(room / MaxQuantum) * MaxQuantum;
+            return Math.Clamp(room, MinWidth, MaxWidth);
+        }
+
+        /// <summary>The breakpoint rail modes 1/2 rest at when the scope has never been dragged.</summary>
+        public static float NarrowRestWidthFor(int mode) => mode == 1 ? MidRestWidth : NarrowRestWidth;
+
+        /// <summary>Has the user ever moved this scope's rail? The same test Settings' "Clear all remembered sizes"
+        /// uses (<see cref="HasCustomizedRailPrefs"/>): a stored width that is no longer the authored default.</summary>
+        public static bool HasDraggedWidth(float storedWidth, RailScope scope)
+            => ClampStored(storedWidth, scope) != DefaultWidthFor(scope);
+
+        /// <summary>A LIVE width clamped to the page-aware bounds. Applied on read as well as on every width change, so a
+        /// remembered width wider than this page can give is merely held back, never lost.</summary>
+        public static float ClampLive(float width, RailScope scope, float maxWidth)
+        {
+            float min = MinWidthFor(scope);
+            return Math.Clamp(width, min, MathF.Max(maxWidth, min));
+        }
+
+        /// <summary>THE resting width: what the live rail shows for a (scope, mode, maximum), derived from the REMEMBERED
+        /// width alone. Wide arm — the persisted width, as ever. Narrow arms — the breakpoint rail until the user has
+        /// dragged this scope, then their own width. Always clamped through <see cref="ClampLive"/>, and the clamp is
+        /// never written back to the store, so widening the window restores the remembered width.</summary>
+        public static float RestingWidth(float storedWidth, RailScope scope, int mode, float maxWidth)
+        {
+            float stored = ClampStored(storedWidth, scope);
+            float want = mode == WideMode || HasDraggedWidth(storedWidth, scope) ? stored : NarrowRestWidthFor(mode);
+            return ClampLive(want, scope, maxWidth);
+        }
+
+        /// <summary>What a drag RELEASE persists. A drag that merely parked against a page-imposed cap keeps the wider
+        /// remembered width (the cap is the page's verdict, not the user's); any other release is the user's own number.</summary>
+        public static float CommitWidth(float draggedWidth, float storedWidth, float maxWidth)
+            => draggedWidth >= maxWidth && storedWidth > maxWidth ? storedWidth : draggedWidth;
+
+        /// <summary>What the right column is left with — the guard every arm must clear
+        /// (<see cref="Breakpoints.ContentMinWidthForMode"/>).</summary>
+        public static float ContentWidthFor(float pageWidth, float railWidth, float gripWidth)
+            => MathF.Min(pageWidth, Design.Size.PageMaxW) - railWidth - gripWidth;
+
+        /// <summary>The COLLAPSED arm's content width: the 96-DIP identity strip plus its 20-DIP re-open grip. 96 + 20 +
+        /// 300 = 416, well under the narrowest two-column page (540), so collapsing can never squeeze the content out.</summary>
+        public static float CollapsedContentWidthFor(float pageWidth)
+            => ContentWidthFor(pageWidth, CompactStripW, CollapsedGripW);
 
         /// <summary>Album-like (album, show — and so an episode) 280; list-like (playlist, Liked) and Uniform 240.</summary>
         public static float DefaultWidthFor(RailScope scope) => scope switch
@@ -611,6 +695,105 @@ public static partial class Detail
             || playlistWidth != DefaultWidthFor(RailScope.Playlist) || playlistCollapsed
             || likedWidth != DefaultWidthFor(RailScope.Liked) || likedCollapsed
             || showWidth != DefaultWidthFor(RailScope.Show) || showCollapsed;
+    }
+
+    // ══ 3b. THE INSIGHTS SHEET ═══════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>WHERE the facts bento lives, per arm, and how wide the vertical arm's sheet is.
+    /// <para>The two-column arms are unchanged: the bento is a rail row, on screen with the list beside it. The
+    /// VERTICAL arm has no rail, and the bento used to fall to the bottom of the page as a footer nobody scrolled to —
+    /// so there it becomes a dismissable sheet laid OVER the content, reached only through the toolbar toggle. The two
+    /// hosts are mutually exclusive by construction (<see cref="RailHostsFacts"/> / <see cref="SheetHostsFacts"/> read
+    /// the same mode ladder from opposite ends), and there is no third, inline host any more.</para></summary>
+    public static class InsightsSheet
+    {
+        /// <summary>The sheet's preferred width — one step wider than the rail's own comfortable measure.</summary>
+        public const float PreferredWidth = 390f;
+
+        /// <summary>…or this share of the page when the page is narrower, so a strip of the list stays visible behind
+        /// the sheet and it never reads as a full-screen route change.</summary>
+        public const float PageFraction = 0.76f;
+
+        /// <summary>The resolved sheet width for a page this wide. An UNMEASURED page (width ≤ 0) answers the preferred
+        /// width — the pre-measure seed, corrected by the first bounds callback, exactly like the rail's ceiling.
+        /// Quantized to whole DIP so a per-pixel window resize cannot churn the pane's layout.</summary>
+        public static float WidthFor(float pageWidth)
+            // `!(w > 0)` and not `w <= 0`: a NaN width is an unmeasured page too (the pre-measure seed), never a NaN
+            // pane that would take the layout with it.
+            => !(pageWidth > 0f)
+                ? PreferredWidth
+                : MathF.Max(1f, MathF.Min(PreferredWidth, MathF.Floor(pageWidth * PageFraction)));
+
+        /// <summary>Only the two list-like surfaces carry facts at all (<c>User.FactsHas</c> answers false for any
+        /// other kind — this is the same gate, one step earlier).</summary>
+        public static bool KindHasFacts(DetailKind kind) => kind is DetailKind.Liked or DetailKind.Playlist;
+
+        /// <summary>The two-column arms: the bento is a rail row, as it has always been. Nothing about them changes.</summary>
+        public static bool RailHostsFacts(int mode, DetailKind kind, bool factsSlot)
+            => factsSlot && KindHasFacts(kind) && RailPolicy.ComposesRail(mode);
+
+        /// <summary>The vertical arm: the bento is reachable ONLY through the sheet.</summary>
+        public static bool SheetHostsFacts(int mode, DetailKind kind, bool factsSlot)
+            => factsSlot && KindHasFacts(kind) && mode == Breakpoints.VerticalMode;
+
+        /// <summary>The bento is never appended to the page body again — every mode is answered by exactly one host,
+        /// and a mode that composes neither simply has no facts to show.</summary>
+        public static bool AppendsFactsToPageBody(int mode, DetailKind kind, bool factsSlot) => false;
+
+        /// <summary>Is the toggle composed at all? The vertical arm only, on a facts-bearing page whose facts have
+        /// actually arrived, and only on a TRACK page (an episode list's vertical arm has no bento).
+        /// <para>ONE predicate, THREE readers: the hero's toolbar button, the pinned band's word, and the sheet itself.
+        /// The band does not re-derive it — the frame threads the answer down as the presence of the toggle object
+        /// (<c>VerticalSpec.Insights</c>), so the two entry points cannot disagree about whether they exist.</para></summary>
+        public static bool ShowsToggle(int mode, DetailKind kind, bool factsSlot, DetailContent content)
+            => content == DetailContent.Tracks && SheetHostsFacts(mode, kind, factsSlot);
+
+        // ── the two entry points (Detail.Insights.cs §6/§7) ──
+
+        /// <summary>Has this page DECIDED it has no facts, or has it merely not answered yet? The page publishes its
+        /// bento as a SLOT, and that slot is derived from a scan of the live row source — which reads EMPTY while the
+        /// list's open is holding its reveal, and can therefore say "no facts" about a page that plainly has them. So
+        /// the frame LATCHES the answer for the route: once the facts have been offered they are settled, and a later
+        /// null is the list re-folding, not the page losing its bento.
+        /// <para>The latch is one-way and route-scoped (the frame drops it with the route, like the open state —
+        /// <see cref="SurvivesRouteChange"/>), which is exactly the asymmetry the surface wants: a page that has never
+        /// offered facts shows nothing and hints at nothing, while a page whose facts arrive LATE grows the toggle when
+        /// they land instead of carrying a button that flickers with every re-fold.</para></summary>
+        public static bool FactsSettled(bool everSeen, bool slotNow) => everSeen || slotNow;
+
+        /// <summary>Which entry point owns INPUT at this scroll position. The pinned band takes hits only once its
+        /// chrome is stuck; the collapsing hero's presentation stops taking them at the same edge. Exactly one of the
+        /// two answers true for any <paramref name="bandStuck"/> — which is why BOTH are composed: neither alone covers
+        /// the whole scroll range, the pair does, and there is no position at which both are live.</summary>
+        public static bool BandToggleTakesInput(bool bandStuck) => bandStuck;
+
+        /// <inheritdoc cref="BandToggleTakesInput"/>
+        public static bool HeroToggleTakesInput(bool bandStuck) => !bandStuck;
+
+        /// <summary>The band action cluster's width claim — Find · Filter · Play, and Insights between the view verbs
+        /// and the terminal primary when this arm hosts the sheet. The compact search field derives its own width by
+        /// subtracting exactly this, so the toggle joining the cluster NARROWS the field rather than pushing the words
+        /// past the band's right edge.</summary>
+        public static float BandActionsWidth(float find, float filter, float play, float insights, bool showsToggle)
+        {
+            if (!showsToggle)
+            {
+                Span<float> three = [find, filter, play];
+                return BandLayout.ActionsWidth(three);
+            }
+            Span<float> four = [find, filter, insights, play];
+            return BandLayout.ActionsWidth(four);
+        }
+
+        /// <summary>The LIVE open state: a sheet whose toggle has gone (the window widened back into a two-column arm,
+        /// or the facts went away) is CLOSED, never merely hidden — so re-entering the vertical arm never restores a
+        /// sheet the user cannot remember leaving open.</summary>
+        public static bool OpenFor(bool wanted, int mode, DetailKind kind, bool factsSlot, DetailContent content)
+            => wanted && ShowsToggle(mode, kind, factsSlot, content);
+
+        /// <summary>A route change closes the sheet outright: it never survives navigation (the frame is keyed by
+        /// subject, but a same-subject route swap reuses the host, so the host closes it itself).</summary>
+        public const bool SurvivesRouteChange = false;
     }
 
     // ══ 4. THE HEADER MERGE ══════════════════════════════════════════════════════════════════════════════════════════

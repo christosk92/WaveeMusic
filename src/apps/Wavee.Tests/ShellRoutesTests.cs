@@ -35,8 +35,9 @@ public class ShellRouteTableTests
         // destination in the app.
         for (int i = 0; i < Shell.RouteKindCount; i++)
             Assert.Equal((Shell.RouteKind)i, Shell.Row((Shell.RouteKind)i).Kind);
-        // 15 exact + 10 prefix + 3 concert + Episode (podcast rework wave P2) + ConnectDiagnostics + NotFound
-        Assert.Equal(31, Shell.RouteKindCount);
+        // 16 exact (15 + LibraryAudiobooks, A2 plan §3.6) + 10 prefix + 3 concert + Episode (podcast rework wave P2)
+        // + ConnectDiagnostics + NotFound
+        Assert.Equal(32, Shell.RouteKindCount);
     }
 
     [Fact]
@@ -197,6 +198,7 @@ public class ShellRouteCodecTests
     [InlineData("albums", Shell.RouteKind.LibraryAlbums)]
     [InlineData("artists", Shell.RouteKind.LibraryArtists)]
     [InlineData("podcasts", Shell.RouteKind.LibraryPodcasts)]
+    [InlineData("audiobooks", Shell.RouteKind.LibraryAudiobooks)]
     [InlineData("liked", Shell.RouteKind.Liked)]
     [InlineData("local", Shell.RouteKind.Local)]
     [InlineData("history", Shell.RouteKind.History)]

@@ -46,9 +46,7 @@ public readonly partial struct Episode
 
         var rows = new List<MenuFlyoutItem>(8) { TransportRow(e, next: true), TransportRow(e, next: false) };
 
-        bool saved = Spotify.Podcasts.IsSaved(e);
-        rows.Add(new MenuFlyoutItem(Loc.Get(saved ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save),
-            Icons.Heart, !Spotify.Podcasts.SavedBusy, () => Spotify.Podcasts.ToggleSaved(e)));
+        if (Actions.Menu.Row(ActionId.SaveEpisode, in ctx) is { } save) rows.Add(save);
 
         // D-5: the row that applies is decided by THE completion rule, the same pct the reader row paints.
         bool played = Rules.Played(ReaderPctOf(e));
@@ -141,7 +139,7 @@ public readonly partial struct Episode
         {
             Id = ActionId.MarkPlayed, IconKey = ActionIcons.Save,
             Label = static _ => Loc.Get(Strings.Podcast.Menu.MarkPlayed),
-            IsEnabled = static c => EpisodeOf(c.Target).IsValid,
+            IsEnabled = static c => EpisodesOf(c.Target).Count > 0,
             Execute = static c => Mark(c.Target, played: true),
         });
 
@@ -149,8 +147,25 @@ public readonly partial struct Episode
         {
             Id = ActionId.MarkUnplayed, IconKey = ActionIcons.Remove,
             Label = static _ => Loc.Get(Strings.Podcast.Menu.MarkUnplayed),
-            IsEnabled = static c => EpisodeOf(c.Target).IsValid,
+            IsEnabled = static c => EpisodesOf(c.Target).Count > 0,
             Execute = static c => Mark(c.Target, played: false),
+        });
+
+        // The batch bar's Save/Unsave (B2 plan §3.3) AND the single-row menu's inline save (this file's Menu()) both
+        // route through here — a TOGGLE (checked = every acting episode is saved), unlike the mark pair, since a
+        // partly-saved selection has no absolute-state reading.
+        AppActions.Register(new AppAction
+        {
+            Id = ActionId.SaveEpisode, IconKey = ActionIcons.Save,
+            Label = static c => Loc.Get(AllSaved(c.Target) ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save),
+            IsChecked = static c => AllSaved(c.Target),
+            IsEnabled = static c => EpisodesOf(c.Target).Count > 0 && !Spotify.Podcasts.SavedBusy,
+            Execute = static c =>
+            {
+                var episodes = EpisodesOf(c.Target);
+                if (episodes.Count == 0) return;
+                _ = Spotify.Podcasts.SetSavedAsync(episodes, !AllSaved(c.Target), CancellationToken.None);
+            },
         });
 
         AppActions.Register(new AppAction
@@ -173,9 +188,27 @@ public readonly partial struct Episode
         return scope.Episodes.TryGetSlot(target.Uri.Id, out int slot) ? new Episode(slot) : default;
     }
 
+    /// <summary>The episodes a MULTI-target verb acts on: the selection list when the target carries one
+    /// (<see cref="ActionTarget.ForEpisodes"/>, Track.Table's batch bar), else the single episode
+    /// <see cref="EpisodeOf"/> resolves (the row menu's <see cref="ActionTarget.ForEpisode"/>).</summary>
+    static IReadOnlyList<Episode> EpisodesOf(ActionTarget target)
+    {
+        if (target.Episodes is { Count: > 0 } selected) return selected;
+        var single = EpisodeOf(target);
+        return single.IsValid ? [single] : Array.Empty<Episode>();
+    }
+
+    /// <summary>Is every acting episode saved? Empty ⇒ false (nothing to check).</summary>
+    static bool AllSaved(ActionTarget target)
+    {
+        var episodes = EpisodesOf(target);
+        if (episodes.Count == 0) return false;
+        foreach (var e in episodes) if (!Spotify.Podcasts.IsSaved(e)) return false;
+        return true;
+    }
+
     static void Mark(ActionTarget target, bool played)
     {
-        var e = EpisodeOf(target);
-        if (e.IsValid) Entities.MarkEpisode(e, played);
+        foreach (var e in EpisodesOf(target)) Entities.MarkEpisode(e, played);
     }
 }

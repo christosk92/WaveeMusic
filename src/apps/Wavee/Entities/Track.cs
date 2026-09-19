@@ -114,8 +114,16 @@ public enum TrackFlags : uint
     Explicit = 1 << 0,
     /// <summary>An imported local file (<c>wavee:local:file:…</c>) — the row has no catalogue behind it.</summary>
     Local = 1 << 1,
-    /// <summary>The row is an episode rendered as a track (<c>EpisodeAsTrack</c>): no artists, the SHOW in the album
-    /// slot, no drawer chevron (ch 04 DATA GAPS, "Episodes inside a playlist").</summary>
+    /// <summary>SUPERSEDED (plan §3.1, ledger row 12): the "episode rendered as a Track row, SHOW in the album slot"
+    /// design (ch 04 DATA GAPS, "Episodes inside a playlist") was never wired to the real playlist decode, and as of
+    /// A3's follow-up the fake-data seed (<c>Entities.Fake.Library.cs</c>'s X5) no longer writes it either — nothing
+    /// commits this bit AT ALL any more. An episode playlist member now resolves into <c>Current.Episodes</c>
+    /// directly, via the edge's own <see cref="PlaylistItemKind"/> (<c>Edges.Staging.cs</c>'s
+    /// <c>Relation.PlaylistTracks</c> per-row dispatch), and <see cref="Playlist.Refold"/> reads THAT, not this flag.
+    /// Left defined — and <see cref="TrackTable.Album"/>'s SHOW-in-the-album-slot reading with it — only because it
+    /// is still READ outside this owner's files (<c>Track.UI.cs</c>, <c>Track.Menu.cs</c>, <c>Lyrics.UI.cs</c>,
+    /// the playback host's <c>Playback.Host.Wire.cs</c>); a future pass that retires those readers should retire
+    /// this bit with them.</summary>
     Podcast = 1 << 2,
 
     // Availability group
@@ -162,8 +170,9 @@ public sealed class TrackTable : Table
     /// builds its per-artist spans from <c>Edges.TrackArtists</c> — ch 04 DATA GAPS corrects plan §4.12 on exactly
     /// this point.</summary>
     public Column<StringId> ArtistLine;
-    /// <summary>The album's SLOT (0 = none). For a <see cref="TrackFlags.Podcast"/> row this is the SHOW's slot — the
-    /// "go to the container" lane resolves the right table off the uri's kind (ch 04 DATA GAPS).</summary>
+    /// <summary>The album's SLOT (0 = none). The <see cref="TrackFlags.Podcast"/> repurposing this once documented
+    /// (SHOW's slot here) is superseded for playlist membership — see that flag's own summary — and unused by any
+    /// live decode; kept only for the readers outside this owner's files that still branch on the flag.</summary>
     public Column<int> Album;
     public Column<int> DurationMs;
     /// <summary><see cref="TrackFlags"/>.</summary>
@@ -327,7 +336,8 @@ public readonly partial struct Track(int slot) : IEquatable<Track>
     /// <summary>The precomputed credit line (measure/paint only — see <see cref="TrackTable.ArtistLine"/>).</summary>
     public StringId ArtistLineId => T.ArtistLine[Slot];
     public StringId ImageId => T.Image[Slot];
-    /// <summary>The album, or the SHOW for a <see cref="TrackFlags.Podcast"/> row (ch 04).</summary>
+    /// <summary>The album, or the SHOW for a legacy <see cref="TrackFlags.Podcast"/> row (superseded — that flag's
+    /// own summary).</summary>
     public Album Album => new(T.Album[Slot]);
     public int AlbumSlot => T.Album[Slot];
     public int DurationMs => T.DurationMs[Slot];

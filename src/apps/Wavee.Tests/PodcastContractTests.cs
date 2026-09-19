@@ -21,7 +21,7 @@ public class PodcastReaderContractTests
     }
 
     [Fact]
-    public void Transcript_title_and_sentence_are_alternatives_and_empty_title_is_a_paragraph()
+    public void Transcript_title_and_sentence_are_alternatives_and_empty_titles_are_omitted()
     {
         var transcript = Spotify.Podcasts.DecodeTranscript("""
             {"language":"en-us","section":[
@@ -30,12 +30,12 @@ public class PodcastReaderContractTests
              {"startMs":1000,"title":{}},
              {"startMs":1200,"text":{"sentence":{"startMs":1250,"text":"Next paragraph."}}}]}
             """u8.ToArray());
-        Assert.Equal(4, transcript.Lines.Length);
+        Assert.Equal(3, transcript.Lines.Length);
         Assert.True(transcript.Lines[0].Heading);
         Assert.False(transcript.Lines[1].Heading);
-        Assert.Equal("", transcript.Lines[2].Text);
-        Assert.True(transcript.Lines[2].Heading);
-        Assert.Equal(1250, transcript.Lines[3].StartMs);
+        Assert.Equal("Next paragraph.", transcript.Lines[2].Text);
+        Assert.False(transcript.Lines[2].Heading);
+        Assert.Equal(1250, transcript.Lines[2].StartMs);
     }
 
     [Fact]

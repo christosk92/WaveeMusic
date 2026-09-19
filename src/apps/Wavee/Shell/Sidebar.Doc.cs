@@ -1352,9 +1352,10 @@ public static class SidebarShortcutsSection
         return document with { Sections = sections };
     }
 
-    /// <summary>The five fixed library destinations, in presentation order — the ONE owner of that list, so the
-    /// top-bar seed, the Classic dedupe and Library V3's destination strip cannot disagree.</summary>
-    public static readonly string[] LibraryDestinations = ["liked", "albums", "artists", "podcasts", "local"];
+    /// <summary>The fixed library destinations, in presentation order — the ONE owner of that list, so the
+    /// top-bar seed, the Classic dedupe and Library V3's destination strip cannot disagree. Audiobooks (A2 plan
+    /// §3.6) joined beside Podcasts.</summary>
+    public static readonly string[] LibraryDestinations = ["liked", "albums", "artists", "podcasts", "audiobooks"];
 
     /// <summary>Is this route one of <see cref="LibraryDestinations"/>?</summary>
     public static bool IsLibraryDestination(string? routeKey)
@@ -1447,7 +1448,8 @@ public static class SidebarTemplates
             Route("albums", "Album"),
             Route("artists", "Contact"),
             Route("podcasts", "RadioTower"),
-            Route("local", "Folder"),
+            // Audiobooks (A2 plan §3.6) — its own library entry beside Podcasts.
+            Route("audiobooks", "Microphone"),
         ]),
         Divider(),
         Section(SidebarSectionKind.PlaylistTree, "sidebar.playlists", SidebarDisplayOptions.Entities),
@@ -1465,7 +1467,7 @@ public static class SidebarTemplates
             Route("artists", "Contact"),
             Route("liked", "Heart"),
             Route("podcasts", "RadioTower"),
-            Route("local", "Folder"),
+            Route("audiobooks", "Microphone"),
         ]),
         Divider(),
         // Subtitles = the song-count caption.

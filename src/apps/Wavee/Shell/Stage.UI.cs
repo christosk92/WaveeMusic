@@ -406,7 +406,7 @@ public static partial class Stage
             // Shrink (G-256): a grown spacer that keeps its last arranged width across maximize → restore would push the ⌄.
             new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false },
             Embed.Comp(static () => new SecondaryLineFab()),
-            ToolTip.Wrap(ExitFab(Icons.ChevronDown, static () => Shell.Ui.ImmersiveLyrics.Value = false), Loc.Get(Strings.Player.CloseLyricsHint)),
+            ToolTip.Wrap(ExitFab(Icons.ChevronDown, static () => Shell.Ui.ImmersiveLyrics.Value = false), Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? "player.closeTranscriptHint" : Strings.Player.CloseLyricsHint)),
         ],
     };
 
@@ -937,7 +937,7 @@ public static partial class Stage
                         Padding = new Edges4(Spacing.XXL, 0f, Spacing.XXL, Spacing.L),
                         Children =
                         [
-                            PivotLink(Loc.Get(Strings.Player.Lyrics), lyrics, accent, static () => Pane.Current.Value = Pane.Lyrics),
+                            PivotLink(Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.Lyrics), lyrics, accent, static () => Pane.Current.Value = Pane.Lyrics),
                             PivotLink(Loc.Get(Strings.Player.Queue), !lyrics, accent, static () => Pane.Current.Value = Pane.Queue),
                         ],
                     },

@@ -631,8 +631,9 @@ public sealed class SidebarBuiltInDocumentTests
         var icons = new string?[lib.ItemList.Count];
         for (int i = 0; i < keys.Length; i++) { keys[i] = lib.ItemList[i].Key; icons[i] = lib.ItemList[i].IconOverride; }
 
-        Assert.Equal(new[] { "albums", "artists", "liked", "podcasts", "local" }, keys);
-        Assert.Equal(new string?[] { "Album", "Contact", "Heart", "RadioTower", "Folder" }, icons);
+        // Audiobooks (A2 plan §3.6) joined beside Podcasts.
+        Assert.Equal(new[] { "albums", "artists", "liked", "podcasts", "audiobooks" }, keys);
+        Assert.Equal(new string?[] { "Album", "Contact", "Heart", "RadioTower", "Microphone" }, icons);
         Assert.True(lib.Opts.CountBadges);   // the counts survive — as quiet numbers, never the accent pill
     }
 
@@ -1530,7 +1531,7 @@ public sealed class LibraryV3DocumentTests
     {
         // The strip, the Classic section and anything else that needs "which routes are fixed library destinations"
         // read SidebarShortcutsSection.LibraryDestinations. A second copy is how the same row gets rendered twice.
-        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts", "local" },
+        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts", "audiobooks" },
             SidebarShortcutsSection.LibraryDestinations);
         foreach (var key in SidebarShortcutsSection.LibraryDestinations)
             Assert.True(SidebarShortcutsSection.IsLibraryDestination(key));

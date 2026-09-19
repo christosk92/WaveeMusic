@@ -12,19 +12,30 @@ public static partial class Spotify
     public static partial class Podcasts
     {
         public sealed record Comment(string Uri, string Text, string Author, string Avatar, string Created,
-            bool Pending, bool Sensitive, bool Pinned, int Replies, int Reactions, string MyReaction, bool ReplyLimit);
+            bool Pending, bool Sensitive, bool Pinned, int Replies, int Reactions, string MyReaction, bool ReplyLimit)
+        {
+            /// <summary>Avatar URLs of the first few people who replied, in the order the answer listed them — what the
+            /// replies disclosure stacks beside "N replies". APPENDED as an init property (never a positional field), so
+            /// every existing construction site is untouched, and EMPTY whenever the answer carried none: the disclosure
+            /// then shows the count alone rather than inventing faces.</summary>
+            public string[] ReplyAvatars { get; init; } = [];
+        }
         public sealed record Page<T>(T[] Items, string NextToken, int Total, string Eligibility, int Status)
         {
             public bool Ok => Status is >= 200 and < 300;
+            public ReactionCount[] ReactionCounts { get; init; } = [];
         }
         public sealed record Chapter(string Uri, string Title, int StartMs, int EndMs);
-        public sealed record TranscriptLine(int StartMs, string Text, bool Heading);
+        public readonly record struct TranscriptSpan(int StartMs, int Offset, int Length);
+        public sealed record TranscriptLine(int StartMs, string Text, bool Heading,
+            TranscriptSpan[]? Highlights = null, int? EndMs = null);
         public sealed record Transcript(string Language, TranscriptLine[] Lines, int Status)
         {
             public bool Ok => Status is >= 200 and < 300;
         }
         public sealed record Recommendation(string Uri, string Title, string Image, string Subtitle);
         public sealed record Reaction(string Emoji, string Author, string Avatar, string Created);
+        public sealed record ReactionCount(string Emoji, int Count);
         public readonly record struct Mutation(bool Success, int Status, bool Ambiguous = false);
         public readonly record struct TranscriptKey(EntityId Episode, string Language, bool ReadAlong);
 
@@ -38,13 +49,16 @@ public static partial class Spotify
         static readonly Dictionary<(uint Epoch, string Uri, string Token, bool Replies), Task<Page<Comment>>> CommentRequests = [];
         static uint s_discussionGeneration;
 
+        public static bool DiscussionScopeCurrent(Scope scope, uint generation)
+            => ReferenceEquals(scope, Entities.Current) && Entities.ScopeEpoch.Peek() == generation;
+
         public static Task<Page<Comment>> CommentsAsync(uint epoch, string uri, string token, bool replies, CancellationToken ct)
         {
             Scope scope = Entities.Current;
             var key = (epoch, uri, token, replies);
             lock (CacheGate)
             {
-                if (scope.Epoch != epoch) return Task.FromResult(new Page<Comment>([], "", 0, "", 409));
+                if (!DiscussionScopeCurrent(scope, epoch)) return Task.FromResult(new Page<Comment>([], "", 0, "", 409));
                 if (CommentCache.TryGetValue(key, out var cached) && Environment.TickCount64 - cached.At < 30_000)
                     return Task.FromResult(cached.Page);
                 if (CommentRequests.TryGetValue(key, out var pending)) return pending;
@@ -59,7 +73,7 @@ public static partial class Spotify
                     var page = result.Ok ? DecodeComments(result.Body, replies) : new Page<Comment>([], "", 0, "", result.Status);
                     lock (CacheGate)
                     {
-                        if (generation != s_discussionGeneration || !ReferenceEquals(scope, Entities.Current) || scope.Epoch != epoch)
+                        if (generation != s_discussionGeneration || !DiscussionScopeCurrent(scope, epoch))
                             return new Page<Comment>([], "", 0, "", 409);
                         if (page.Ok)
                         {
@@ -105,7 +119,8 @@ public static partial class Spotify
                     Text(author, "name"), FirstImage(At(author, "avatar", "sources")), Text(At(item, "createDate"), "isoString"),
                     Bool(item, "isPendingReview"), Bool(item, "isSensitive"), Bool(item, "isPinned"),
                     Number(item, "numberOfRepliesWithThreads"), Number(reactions, "numberOfReactions"),
-                    Text(reactions, "usersReactionUnicode"), Bool(item, "hasUserReachedReplyLimit")));
+                    Text(reactions, "usersReactionUnicode"), Bool(item, "hasUserReachedReplyLimit"))
+                { ReplyAvatars = ReplyAvatarsOf(item) });
             }
             return new(rows.ToArray(), Text(page, "nextPageToken"), Number(page, "totalCount"), Text(page, "eligibilityStatus"), 200);
         }
@@ -136,24 +151,42 @@ public static partial class Spotify
             });
 
         public static Task<Page<Reaction>> ReactionsAsync(string commentUri, string token, string emoji, CancellationToken ct)
-            => Api.RunAsync(() =>
+        {
+            Scope scope = Entities.Current;
+            uint epoch = Entities.ScopeEpoch.Peek();
+            return Api.RunAsync(() =>
             {
+                using var accountRequest = Api.ForAccount(scope.Key.Account);
+                ct.ThrowIfCancellationRequested();
+                if (!DiscussionScopeCurrent(scope, epoch)) return new Page<Reaction>([], "", 0, "", 409);
                 var result = Api.PodcastQueries.ReactionsQuery(commentUri, token, emoji, ct);
-                if (!result.Ok) return new Page<Reaction>([], "", 0, "", result.Status);
-                using var doc = JsonDocument.Parse(result.Body);
-                var pages = At(doc.RootElement, "data", "commentReactions");
-                if (HasGraphQlErrors(doc.RootElement)) return new Page<Reaction>([], "", 0, "", 502);
-                if (pages.ValueKind != JsonValueKind.Array || pages.GetArrayLength() == 0) return new Page<Reaction>([], "", 0, "", 502);
-                var page = pages[0]; var rows = new List<Reaction>();
-                foreach (var item in Array(At(page, "items")))
-                {
-                    var author = At(item, "author", "data");
-                    rows.Add(new(Text(item, "reactionUnicode"), Text(author, "name"), FirstImage(At(author, "avatar", "sources")), Text(At(item, "createDate"), "isoString")));
-                }
-                int total = 0;
-                foreach (var count in Array(At(page, "reactionCounts"))) total += Number(count, "numberOfReactions");
-                return new Page<Reaction>(rows.ToArray(), Text(page, "nextPageToken"), total, "", 200);
+                if (!DiscussionScopeCurrent(scope, epoch)) return new Page<Reaction>([], "", 0, "", 409);
+                return result.Ok ? DecodeReactions(result.Body) : new Page<Reaction>([], "", 0, "", result.Status);
             });
+        }
+
+        public static Page<Reaction> DecodeReactions(byte[] bytes)
+        {
+            using var doc = JsonDocument.Parse(bytes);
+            var pages = At(doc.RootElement, "data", "commentReactions");
+            if (HasGraphQlErrors(doc.RootElement) || pages.ValueKind != JsonValueKind.Array || pages.GetArrayLength() == 0)
+                return new([], "", 0, "", 502);
+            var page = pages[0]; var rows = new List<Reaction>();
+            foreach (var item in Array(At(page, "items")))
+            {
+                var author = At(item, "author", "data");
+                rows.Add(new(Text(item, "reactionUnicode"), Text(author, "name"), FirstImage(At(author, "avatar", "sources")), Text(At(item, "createDate"), "isoString")));
+            }
+            var counts = new List<ReactionCount>();
+            foreach (var count in Array(At(page, "reactionCounts")))
+            {
+                string emoji = Text(count, "reactionUnicode");
+                int total = Math.Max(0, Number(count, "numberOfReactions"));
+                if (emoji.Length > 0) counts.Add(new(emoji, total));
+            }
+            return new(rows.ToArray(), Text(page, "nextPageToken"), counts.Sum(c => c.Count), "", 200)
+                { ReactionCounts = counts.ToArray() };
+        }
 
         public static Mutation CommentMutationOf(in Api.Result result, bool reply)
             => MutationOf(result, reply ? "createCommentReply" : "createComment",
@@ -212,8 +245,13 @@ public static partial class Spotify
             });
 
         public static Task<Page<Chapter>> ChaptersAsync(string episodeUri, CancellationToken ct)
+            => ChaptersAsync(episodeUri, Entities.Current.Key.Account, ct);
+
+        public static Task<Page<Chapter>> ChaptersAsync(string episodeUri, string account, CancellationToken ct)
             => Api.RunAsync(() =>
             {
+                using var accountRequest = Api.ForAccount(account);
+                ct.ThrowIfCancellationRequested();
                 var route = new Api.Route(Verb.Get, ApiHost.Spclient,
                     "/playlist/v2/list/podcast-chapters/" + Uri.EscapeDataString(episodeUri),
                     HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity | HeaderSet.AcceptLanguage | HeaderSet.AcceptProtobuf
@@ -236,37 +274,71 @@ public static partial class Spotify
                     if (!list.Contents.Truncated) break;
                     if (list.Contents.Items.Count == 0) return new Page<Chapter>([], "", 0, "", 502);
                 } while (true);
-                var chapters = new List<Chapter>();
-                foreach (var item in items)
-                {
-                    int start = 0, end = 0;
-                    if (item.Attributes is { } attrs)
-                        foreach (var attribute in attrs.FormatAttributes)
-                            if (int.TryParse(attribute.Value, out int value))
-                            {
-                                if (attribute.Key == "chapter.start_position_in_milliseconds") start = value;
-                                if (attribute.Key == "chapter.end_position_in_milliseconds") end = value;
-                            }
-                    chapters.Add(new(item.Uri, "", start, end));
-                }
-                for (int offset = 0; offset < chapters.Count; offset += 300)
+                var chapters = FillChapterEnds(ChaptersFromItems(items));
+                for (int offset = 0; offset < chapters.Length; offset += 300)
                 {
                     var uris = chapters.Skip(offset).Take(300).Select(x => x.Uri).ToArray();
-                    var metadata = Api.MetadataPost(Api.MetadataBody(uris, [(Xm.ExtensionKind)178], Api.Market, Api.Catalogue), ct);
+                    var metadata = Api.MetadataPost(ChapterMetadataBody(uris, Api.Market, Api.Catalogue), ct);
                     if (!metadata.Ok) return new Page<Chapter>([], "", 0, "", metadata.Status);
-                    var response = Xm.BatchedExtensionResponse.Parser.ParseFrom(metadata.Body);
-                    foreach (var group in response.ExtendedMetadata)
-                        foreach (var entity in group.ExtensionData)
-                        {
-                            if (group.ExtensionKind != (Xm.ExtensionKind)178 || entity.ExtensionData is null
-                                || (entity.Header is { StatusCode: >= 400 })) continue;
-                            string title = DecodeChapterTitle(entity.ExtensionData);
-                            int index = chapters.FindIndex(x => x.Uri == entity.EntityUri);
-                            if (index >= 0) chapters[index] = chapters[index] with { Title = title };
-                        }
+                    chapters = ApplyChapterTitles(chapters, Xm.BatchedExtensionResponse.Parser.ParseFrom(metadata.Body));
                 }
-                return new Page<Chapter>(chapters.ToArray(), "", chapters.Count, "", 200);
+                return new Page<Chapter>(chapters, "", chapters.Length, "", 200);
             });
+
+        /// <summary>The bounds half of a chapter list read — start/end from each item's playlist4 format attributes,
+        /// title left blank (kind 178 fills it separately). Pure: no network, reusable by tests against a
+        /// hand-built <see cref="Pl.Item"/> list.</summary>
+        public static Chapter[] ChaptersFromItems(IEnumerable<Pl.Item> items)
+        {
+            var chapters = new List<Chapter>();
+            foreach (var item in items)
+            {
+                int start = 0, end = 0;
+                if (item.Attributes is { } attrs)
+                    foreach (var attribute in attrs.FormatAttributes)
+                        if (int.TryParse(attribute.Value, out int value))
+                        {
+                            if (attribute.Key == "chapter.start_position_in_milliseconds") start = value;
+                            if (attribute.Key == "chapter.end_position_in_milliseconds") end = value;
+                        }
+                chapters.Add(new(item.Uri, "", start, end));
+            }
+            return chapters.ToArray();
+        }
+
+        /// <summary>A chapter whose end bound the wire left unstated (end &lt;= start — the common case: only the
+        /// last chapter in a real capture carried <c>chapter.end_position_in_milliseconds</c>) borrows the NEXT
+        /// chapter's start. The final chapter has no later start to borrow and keeps whatever the wire gave it
+        /// (including 0 — the episode's own duration is not known at this layer).</summary>
+        public static Chapter[] FillChapterEnds(Chapter[] chapters)
+        {
+            for (int i = 0; i < chapters.Length - 1; i++)
+                if (chapters[i].EndMs <= chapters[i].StartMs && chapters[i + 1].StartMs > chapters[i].StartMs)
+                    chapters[i] = chapters[i] with { EndMs = chapters[i + 1].StartMs };
+            return chapters;
+        }
+
+        /// <summary>Kind-178 titles (<see cref="DecodeChapterTitle"/>) matched onto <paramref name="chapters"/> by
+        /// entity uri. A wrong extension kind, an error header (status &gt;= 400) or an unmatched uri leaves that
+        /// chapter's title untouched — pure, so a fixture response decodes without a network round trip.</summary>
+        public static Chapter[] ApplyChapterTitles(Chapter[] chapters, Xm.BatchedExtensionResponse response)
+        {
+            foreach (var group in response.ExtendedMetadata)
+            {
+                if (group.ExtensionKind != (Xm.ExtensionKind)178) continue;
+                foreach (var entity in group.ExtensionData)
+                {
+                    if (entity.ExtensionData is null || entity.Header is { StatusCode: >= 400 }) continue;
+                    string title = DecodeChapterTitle(entity.ExtensionData);
+                    int index = System.Array.FindIndex(chapters, x => x.Uri == entity.EntityUri);
+                    if (index >= 0) chapters[index] = chapters[index] with { Title = title };
+                }
+            }
+            return chapters;
+        }
+
+        public static byte[] ChapterMetadataBody(string[] chapterUris, string market, string catalogue)
+            => Api.BatchBody(chapterUris, [178], market, catalogue);
 
         public static string DecodeChapterTitle(Google.Protobuf.WellKnownTypes.Any value)
             => Encoding.UTF8.GetString(new Decode.ProtoReader(value.Value.Span).Bytes(2));
@@ -281,13 +353,34 @@ public static partial class Spotify
             {
                 int start = Number(section, "startMs");
                 if (section.ValueKind != JsonValueKind.Object) continue;
-                if (section.TryGetProperty("title", out var title)) lines.Add(new(start, Text(title, "title"), true));
-                else
+                if (section.TryGetProperty("title", out var title))
                 {
-                    var sentence = At(section, "text", "sentence");
-                    string text = Text(sentence, "text");
-                    if (text.Length > 0) lines.Add(new(Number(sentence, "startMs", start), text, false));
+                    string heading = Text(title, "title");
+                    if (!string.IsNullOrWhiteSpace(heading)) lines.Add(new(start, heading, true));
+                    continue;
                 }
+                var sentence = At(section, "text", "sentence");
+                string text = Text(sentence, "text");
+                if (string.IsNullOrWhiteSpace(text)) continue;
+                int sentenceStart = Number(sentence, "startMs", start);
+                var spans = new List<TranscriptSpan>();
+                int offset = 0, previous = sentenceStart;
+                bool valid = true;
+                foreach (var highlight in Array(At(sentence, "highlight")))
+                {
+                    int time = Number(highlight, "startMs", -1), count = Number(highlight, "numChars", -1);
+                    if (count <= 0 || count > text.Length - offset || time < previous
+                        || (offset + count < text.Length && char.IsLowSurrogate(text[offset + count])))
+                    { valid = false; break; }
+                    spans.Add(new(time, offset, count));
+                    offset += count; previous = time;
+                }
+                // Malformed ranges (bad ordering/offsets, split surrogates) still fall back to the whole sentence.
+                // Partial coverage — the answer simply left some words unhighlighted — is a plain gap, not
+                // corruption: FromTranscript fills it with a filler run and keeps the covered words word-by-word.
+                var highlights = valid ? spans.ToArray() : [];
+                int end = Number(sentence, "endMs", Number(section, "endMs", 0));
+                lines.Add(new(sentenceStart, text, false, highlights, end > sentenceStart ? end : null));
             }
             return new(Text(doc.RootElement, "language"), lines.ToArray(), 200);
         }
@@ -321,5 +414,35 @@ public static partial class Spotify
             foreach (var image in Array(node)) { string url = Text(image, "url"); if (url.Length > 0) return url; }
             return "";
         }
+
+        /// <summary>The first few repliers' avatar URLs for a comment's replies disclosure. The answer carries them in
+        /// two shapes depending on the query — <c>topRepliesAuthors</c> (author objects, optionally wrapped in a
+        /// <c>data</c> envelope) and <c>coverImagesReplied</c> (bare image sources) — so both are read, and a shape we
+        /// do not recognise yields NOTHING rather than a guess: the disclosure shows its count without a face stack.</summary>
+        static string[] ReplyAvatarsOf(JsonElement item)
+        {
+            List<string>? urls = null;
+            Collect(At(item, "topRepliesAuthors"));
+            Collect(At(item, "coverImagesReplied"));
+            return urls is null ? [] : urls.ToArray();
+
+            void Collect(JsonElement list)
+            {
+                foreach (var entry in Array(list))
+                {
+                    if (urls is { Count: >= ReplyAvatarCap }) return;
+                    var node = At(entry, "data") is { ValueKind: JsonValueKind.Object } wrapped ? wrapped : entry;
+                    string url = entry.ValueKind == JsonValueKind.String ? entry.GetString() ?? ""
+                        : FirstImage(At(node, "avatar", "sources")) is { Length: > 0 } avatar ? avatar
+                        : FirstImage(At(node, "sources")) is { Length: > 0 } sources ? sources
+                        : Text(node, "url");
+                    if (url.Length == 0 || (urls is not null && urls.Contains(url))) continue;
+                    (urls ??= new List<string>(ReplyAvatarCap)).Add(url);
+                }
+            }
+        }
+
+        /// <summary>How many replier avatars are worth decoding — the disclosure stacks at most three.</summary>
+        const int ReplyAvatarCap = 3;
     }
 }

@@ -392,7 +392,11 @@ public static partial class Controls
 
     /// <summary>The SHELF card — a fixed-width cell inside a horizontally paged shelf.</summary>
     public static Element ShelfCard(CardData d, float cardW)
-        => Embed.Comp(new ShelfCardProps(d, cardW), static () => new ShelfCardHost());
+        => Embed.Comp(new ShelfCardProps(d, cardW), static () => new ShelfCardHost()) with
+        {
+            SkeletonProxy = () => Embed.Comp(new ShelfCardProps(d, cardW), static () => new ShelfCardHost())
+                with { DeriveRenderedOutput = true },
+        };
 
     /// <summary>The shelf card's re-pushed props: the card's DATA (<see cref="CardData"/>'s data-only equality) and its
     /// width. Public only so the equality rule can be pinned by a fact.</summary>
@@ -1145,6 +1149,12 @@ public static partial class Controls
             ushort w = (ushort)(bold > 0 ? 700 : 0);
             if (href is { } h && onNavRoute is not null && RouteForUri?.Invoke(h) is { } key)
                 spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: () => onNavRoute(key)));
+            else if (href is { } url && Actions.PlayLinkRules.IsWebUrl(url))
+                spans.Add(new TextSpan(t, Weight: w, Color: linkColor, OnClick: () =>
+                {
+                    if (Actions.Services.OpenExternal is { } open) open(url);
+                    else InputHooks.Current.Default.OpenUri?.Invoke(url);
+                }));
             else if (href is not null)
                 spans.Add(new TextSpan(t, Weight: w, Color: linkColor));   // a reference we cannot route → styled, inert
             else
@@ -1163,9 +1173,18 @@ public static partial class Controls
                 string lower = tag.ToLowerInvariant();
                 if (lower == "/a") href = null;
                 else if (lower == "a" || lower.StartsWith("a ", StringComparison.Ordinal)) href = ExtractHref(tag);
-                else if (lower is "b" or "strong") bold++;
-                else if (lower is "/b" or "/strong") bold = Math.Max(0, bold - 1);
-                // every other tag (br, i, em, span, p, …) is DROPPED; its text content is preserved
+                else if (lower is "b" or "strong" or "em" or "i") bold++;
+                else if (lower is "/b" or "/strong" or "/em" or "/i") bold = Math.Max(0, bold - 1);
+                else if (lower is "h1" or "h2" or "h3" or "h4" or "h5" or "h6") bold++;
+                else if (lower is "br" or "br/" or "br /" or "/li") buf.Append('\n');
+                else if (lower is "/p" or "/div" or "/ul" or "/ol"
+                    or "/h1" or "/h2" or "/h3" or "/h4" or "/h5" or "/h6")
+                {
+                    if (lower.Length == 3 && lower[1] == 'h') bold = Math.Max(0, bold - 1);   // closes the heading's bold run
+                    buf.Append("\n\n");
+                }
+                else if (lower == "li" || lower.StartsWith("li ", StringComparison.Ordinal)) buf.Append("\u2022 ");
+                // every other tag (span, p, ul, ol, div, …) is DROPPED; its text content is preserved
                 i = gt + 1;
             }
             else
@@ -1224,6 +1243,14 @@ public static partial class Controls
         => Embed.Comp(() => new ExpandableRich(html, size, color, linkColor, width, maxLines, onNavRoute))
             with { Key = $"rich-expand:{contextKey}:{html}:{(int)width}:{maxLines}" };
 
+    public static Element ExpandableRichTextFlex(string? html, float size, ColorF color, ColorF linkColor,
+                                                int maxLines, string contextKey, Action<string>? onNavRoute = null)
+        => new BoxEl
+        {
+            Direction = 1, MinWidth = 0, Children =
+            [ExpandableRichText(html, size, color, linkColor, float.NaN, maxLines, contextKey, onNavRoute)],
+        };
+
     sealed class ExpandableRich : Component
     {
         readonly string? _html;
@@ -1252,8 +1279,8 @@ public static partial class Controls
             {
                 Size = _size, Color = _color, LineHeight = LineHeightFor(_size),
                 Width = float.IsNaN(_width) ? float.NaN : _width,
-                Grow = float.IsNaN(_width) ? 1f : 0f,
-                Basis = float.IsNaN(_width) ? 0f : float.NaN,
+                Grow = 0f,
+                MinWidth = 0f,
                 MaxLines = expanded ? 0 : _maxLines,
                 Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
                 OverflowSuffix = expanded
@@ -1262,5 +1289,108 @@ public static partial class Controls
                                     OnClick: () => _expanded.Value = true)],
             };
         }
+    }
+}
+
+// ── show-notes CHAPTERS(hh:mm:ss) Title recognition (Wave E, podcast-ui-repair plan §5.2) ────────────────────────────
+//
+// A show-notes timestamp reference, recognised out of episode description/show-notes text (Episode.Reader/Page's
+// About panel). Two conventions land in the wild: a "CHAPTERS(00:00:00) Title" line that opens the run, and a bare
+// "(hh:mm:ss) Title" line for every entry after it. <see cref="StartMs"/> lets the caller build a seek action with
+// the existing episode play-at-position intent (Episode.StartAt); <see cref="Title"/> is never empty (a line whose
+// text after the timestamp is blank is not a chapter reference).
+public readonly record struct ChapterLink(int StartMs, string Title);
+
+/// <summary>Engine-free splitter for episode show-notes text: separates the prose body from the show-notes timestamp
+/// convention, so <c>ParseRich</c> renders the remaining prose exactly as before and the caller (<c>Episode.About</c>)
+/// renders the recognised timestamps as a seek list instead of inert flattened text. Pure text in, pure data out — no
+/// FluentGpu / TextSpan dependency, so it is unit-tested directly (RichTextBlocksTests.cs) with no engine present.
+/// <para>A chapter line may itself be HTML-wrapped ("&lt;p&gt;CHAPTERS(00:00:00) Introduction&lt;/p&gt;") — tags are
+/// stripped per line before the timestamp pattern is matched, so the convention is recognised whether the wire sends
+/// plain text or a paragraph-wrapped show notes body.</para></summary>
+public static class RichTextBlocks
+{
+    /// <summary>Splits <paramref name="text"/> into the prose that is left (with every recognised chapter line
+    /// removed, and the blank separators around a chapter run swallowed) and the ordered chapter links found, in the
+    /// order they appeared. Recognises nothing (prose unchanged, an empty chapters array) when the input carries no
+    /// show-notes timestamp line at all.</summary>
+    public static (string Prose, ChapterLink[] Chapters) Split(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return (text ?? "", []);
+        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var chapters = new List<ChapterLink>();
+        var prose = new List<string>();
+        bool inChapterRun = false;
+        foreach (var raw in lines)
+        {
+            if (TryParseChapterLine(raw, out var link))
+            {
+                chapters.Add(link);
+                inChapterRun = true;
+                continue;
+            }
+            if (inChapterRun && StripTags(raw).Trim().Length == 0) continue;   // swallow blank lines inside the run
+            inChapterRun = false;
+            prose.Add(raw);
+        }
+        return (string.Join('\n', prose).Trim(), chapters.ToArray());
+    }
+
+    /// <summary>One line → a chapter link, if it matches "CHAPTERS(hh:mm:ss) Title" or a bare "(hh:mm:ss) Title" once
+    /// its HTML tags are stripped and it is trimmed.</summary>
+    internal static bool TryParseChapterLine(string rawLine, out ChapterLink link)
+    {
+        link = default;
+        string line = StripTags(rawLine).Trim();
+        int i = 0;
+        if (line.StartsWith("CHAPTERS", StringComparison.OrdinalIgnoreCase)) i = 8;
+        while (i < line.Length && line[i] == ' ') i++;
+        if (i >= line.Length || line[i] != '(') return false;
+        int close = line.IndexOf(')', i);
+        if (close < 0) return false;
+        if (!TryParseTimestamp(line[(i + 1)..close], out int ms)) return false;
+        string title = line[(close + 1)..].Trim();
+        if (title.Length == 0) return false;
+        link = new ChapterLink(ms, title);
+        return true;
+    }
+
+    /// <summary>"hh:mm:ss" or "mm:ss" → milliseconds. Any other shape (missing/extra parts, non-digits) fails.
+    /// Public so the parsing rule is pinned by a fact directly (RichTextBlocksTests.cs), not only through
+    /// <see cref="Split"/> — this assembly carries no <c>InternalsVisibleTo</c> (see Controls.cs / Playlist.UI.cs).</summary>
+    public static bool TryParseTimestamp(string s, out int ms)
+    {
+        ms = 0;
+        var parts = s.Split(':');
+        if (parts.Length is < 2 or > 3) return false;
+        Span<int> v = stackalloc int[3];
+        for (int i = 0; i < parts.Length; i++)
+            if (!int.TryParse(parts[i], System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out v[i])) return false;
+        int h = parts.Length == 3 ? v[0] : 0;
+        int m = parts.Length == 3 ? v[1] : v[0];
+        int sec = parts.Length == 3 ? v[2] : v[1];
+        ms = ((h * 3600) + (m * 60) + sec) * 1000;
+        return true;
+    }
+
+    /// <summary>The minimal tag strip a show-notes line needs before timestamp matching — not a general HTML parser
+    /// (ParseRich stays the one real parser), just enough to see through "&lt;p&gt;…&lt;/p&gt;" wrapping.</summary>
+    internal static string StripTags(string s)
+    {
+        if (s.IndexOf('<') < 0) return s;
+        var buf = new StringBuilder(s.Length);
+        int i = 0;
+        while (i < s.Length)
+        {
+            if (s[i] == '<')
+            {
+                int gt = s.IndexOf('>', i);
+                if (gt < 0) { buf.Append(s[i]); i++; continue; }
+                i = gt + 1;
+            }
+            else { buf.Append(s[i]); i++; }
+        }
+        return buf.ToString();
     }
 }

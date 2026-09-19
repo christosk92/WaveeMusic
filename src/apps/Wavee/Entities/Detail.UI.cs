@@ -306,6 +306,11 @@ public static partial class Detail
         /// <summary>The topic words (<c>Controls.Words.Links</c>), under the CTA. Two lines reserved; the rail only (the
         /// vertical header has no topics).</summary>
         public Func<float, Element>? Topics { get; init; }
+        /// <summary>The rail's SHORT about block — a small label over the description clamped to a few lines, with the
+        /// inline overflow affordance the clamp itself decides on (an episode's; podcast-episode-peek §1). Natural
+        /// height, arrives with the description, and the full text / chapters / links stay in the page body. Rail only
+        /// (the vertical header puts its body under the rows, where the About section already is).</summary>
+        public Func<float, Element>? About { get; init; }
 
         internal int Mask()
             => (Cover is null ? 0 : 1) | (CompactCover is null ? 0 : 2) | (Title is null ? 0 : 4)
@@ -313,7 +318,8 @@ public static partial class Detail
              | (Chart is null ? 0 : 64) | (PreRelease is null ? 0 : 128) | (ReleasePanel is null ? 0 : 256)
              | (LikedFacts is null ? 0 : 512) | (Trailing is null ? 0 : 1024) | (Episodes is null ? 0 : 2048)
              | (Badges is null ? 0 : 4096) | (Rating is null ? 0 : 8192) | (Ledger is null ? 0 : 16384)
-             | (Primary is null ? 0 : 32768) | (Satellites is null ? 0 : 65536) | (Topics is null ? 0 : 131072);
+             | (Primary is null ? 0 : 32768) | (Satellites is null ? 0 : 65536) | (Topics is null ? 0 : 131072)
+             | (About is null ? 0 : 262144);
 
         public bool Equals(FrameSlots? o) => o is not null && Mask() == o.Mask();
         public override int GetHashCode() => Mask();
@@ -364,10 +370,10 @@ public static partial class Detail
         => Embed.Comp(spec, static () => new FrameHost()) with { Key = "detail:" + spec.Identity.Subject.Text };
 
     // Frame arithmetic 0.2.9 kept inside DetailShell / DetailRail (not in the CORE contract; see the report).
-    const float RailMidW = 224f, RailNarrowW = 188f;                 // RailW(mode 1 / mode 2)
+    const float RailMidW = RailPolicy.MidRestWidth, RailNarrowW = RailPolicy.NarrowRestWidth;  // RailW(mode 1 / mode 2)
     const float RailForcePush = 44f, RailReExpand = 220f;            // the collapse detent
-    const float RailCompactW = 96f;                                   // the collapsed identity strip
-    const float GripStripCollapsedW = 20f;                            // the grip while collapsed (also a re-open gesture)
+    const float RailCompactW = RailPolicy.CompactStripW;               // the collapsed identity strip
+    const float GripStripCollapsedW = RailPolicy.CollapsedGripW;       // the grip while collapsed (also a re-open gesture)
     const float TwoColumnHeroBandFraction = 0.55f;                    // the tone plane's synthetic band (hero-only is dead)
     const float TallWindowH = Design.Size.DesignH;                    // the 40/52 rail title at ≥ 900
     const float ShortWindowH = 760f;                                  // the 3-line description below 760
@@ -377,14 +383,19 @@ public static partial class Detail
     const int RailCoverDecodePx = 256;                                // the shelf card's bucket — a warm texture on arrival
     const string MetaShimmerText = "00 songs · 0 hr 00 min";          // the shimmer SHAPE only; never painted as text
 
-    /// <summary><c>DetailShell.RailW</c>: the breakpoint rail of modes 1/2, the config's own width at mode 0.</summary>
+    /// <summary><c>DetailShell.RailW</c>: the breakpoint rail of modes 1/2, the config's own width at mode 0. The
+    /// NON-RESIZABLE arm only (<c>RailResizable: false</c>) — a resizable rail rests through
+    /// <see cref="RailPolicy.RestingWidth"/>, which carries the same two breakpoint widths.</summary>
     static float RailWidthForMode(int mode, in Config cfg) => mode switch { 0 => cfg.RailWidth, 1 => RailMidW, _ => RailNarrowW };
 
     /// <summary><c>DetailRail.CoverEdge</c>: the rail cover fills the column less its side padding, floored at 80.</summary>
     static float RailCoverEdge(float railW) => MathF.Max(80f, railW - RailSidePadL - RailSidePadR);
 
-    /// <summary>One persisted rail pair (width + collapsed), live. Seeded CLAMPED (ch 30 N4); the drag writes the width
-    /// signal directly; RELEASE commits both to THIS scope's keys with ONE epoch bump.</summary>
+    /// <summary>One persisted rail pair (width + collapsed), live. TWO widths, deliberately: <see cref="Width"/> is the
+    /// LIVE column (what the row lays out and the grip drags — always inside the page-aware bounds), <c>_stored</c> is
+    /// the REMEMBERED one (what the store holds). A page too narrow for the remembered width only holds it back
+    /// (<see cref="Rest"/>); widening the window restores it, because the clamp is never written back. RELEASE commits
+    /// both to THIS scope's keys with ONE epoch bump.</summary>
     sealed class RailCell
     {
         public readonly RailScope Scope;
@@ -392,20 +403,24 @@ public static partial class Detail
         public readonly Signal<bool> Collapsed;
         public readonly Action Commit;
         public readonly Action Expand;
-        public readonly Splitter.SplitterOptions Options;
         public readonly string GripKey;
         readonly Signal<float> _fade;
+        Splitter.SplitterOptions _options;
+        float _stored;                                  // the REMEMBERED width — a page-width clamp never lowers it
+        float _max = RailPolicy.MaxWidth;
+        int _mode = RailPolicy.WideMode;
 
         public RailCell(RailScope scope, Signal<float> fade)
         {
             Scope = scope;
             _fade = fade;
             var keys = RailPolicy.KeysFor(scope);
-            Width = new Signal<float>(RailPolicy.ClampStored(Platform.Settings.Get(keys.Width), scope));
+            _stored = RailPolicy.ClampStored(Platform.Settings.Get(keys.Width), scope);
+            Width = new Signal<float>(RailPolicy.RestingWidth(_stored, scope, RailPolicy.WideMode, RailPolicy.MaxWidth));
             Collapsed = new Signal<bool>(Platform.Settings.Get(keys.Collapsed));
             Commit = CommitNow;
             Expand = ExpandNow;
-            Options = new Splitter.SplitterOptions
+            _options = new Splitter.SplitterOptions
             {
                 Min = RailPolicy.MinWidthFor(scope), Max = RailPolicy.MaxWidth,
                 ForcePush = RailForcePush, ReExpand = RailReExpand,
@@ -420,10 +435,30 @@ public static partial class Detail
             };
         }
 
+        /// <summary>The seam's knobs for the page's CURRENT maximum. One record per distinct max (never per render), so
+        /// the re-pushed <c>Splitter.Props</c> only differs when the cap really moved.</summary>
+        public Splitter.SplitterOptions OptionsFor(float max)
+        {
+            if (max != _options.Max) _options = _options with { Max = max };
+            return _options;
+        }
+
+        /// <summary>The page reported a new (mode, maximum): re-derive the LIVE width from the REMEMBERED one. Value-gated,
+        /// so a resize that changes nothing costs no render. Runs from an effect, never from a render.</summary>
+        public void Rest(int mode, float max)
+        {
+            _mode = mode;
+            _max = max;
+            float w = RailPolicy.RestingWidth(_stored, Scope, mode, max);
+            if (w != Width.Peek()) Width.Value = w;
+        }
+
         void CommitNow()
         {
             var keys = RailPolicy.KeysFor(Scope);
-            Platform.Settings.Set(keys.Width, Width.Peek());
+            // A drag that merely parked against a page-imposed cap keeps the wider remembered width.
+            _stored = RailPolicy.CommitWidth(Width.Peek(), _stored, _max);
+            Platform.Settings.Set(keys.Width, _stored);
             // The ONE bump: every mounted (and parked) frame re-syncs its rails, so "Keep left-rail same size" moves them all.
             Prefs.DetailHero.Set(keys.Collapsed, Collapsed.Peek());
         }
@@ -435,11 +470,12 @@ public static partial class Detail
             Prefs.DetailHero.Set(RailPolicy.KeysFor(Scope).Collapsed, false);
         }
 
-        /// <summary>Re-seed from the store, clamped exactly as at mount (the epoch effect, ch 03 §6).</summary>
+        /// <summary>Re-seed from the store, then re-rest at the page's live bounds (the epoch effect, ch 03 §6).</summary>
         public void Resync()
         {
             var keys = RailPolicy.KeysFor(Scope);
-            Width.Value = RailPolicy.ClampStored(Platform.Settings.Get(keys.Width), Scope);
+            _stored = RailPolicy.ClampStored(Platform.Settings.Get(keys.Width), Scope);
+            Rest(_mode, _max);
             Collapsed.Value = Platform.Settings.Get(keys.Collapsed);
         }
     }
@@ -458,6 +494,10 @@ public static partial class Detail
         // ── rails, fade, hero height, accent, play cell, tint owner ──
         readonly RailCell[] _rails;
         readonly Signal<float> _railFade = new(1f);
+        /// <summary>The PAGE-AWARE rail maximum, quantized to 8 DIP by <see cref="RailPolicy.MaxWidthForPage"/> and
+        /// value-gated in <see cref="Measure"/> — the wide arm never writes it (its answer is always 480), so only the
+        /// narrow arms re-render as the window resizes.</summary>
+        readonly Signal<float> _railMax = new(RailPolicy.MaxWidth);
         readonly Signal<float> _heroHeight = new(0f);
         readonly Signal<ColorF> _accent = new(ColorF.Transparent);
         readonly Signal<Design.PageAccent> _pageAccent = new(new Design.PageAccent(Tok.AccentTextPrimary, Tok.AccentDefault, ""));
@@ -467,11 +507,27 @@ public static partial class Detail
         IReadSignal<Size2>? _viewport;
         bool _accentSeeded;
 
+        // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the vertical arm's host for the facts bento. One toggle
+        //    per mounted frame: the open state is a signal, so the toolbar button and the pane cannot disagree and
+        //    neither costs the page a render. `_sheetRoute` closes it on any route swap the host survives.
+        readonly InsightsToggle _insights = new();
+        readonly Action _closeInsights;
+        readonly Action _returnInsightsFocus;
+        readonly Action _syncInsightsArm;
+        InputHooks? _inputHooks;
+        string _sheetRoute = "\0";
+        bool _sheetHosts;
+        //    The FACTS LATCH (InsightsSheet.FactsSettled): the page's bento slot is derived from a scan of the live row
+        //    source, which reads empty while the list's open holds its reveal — so an absent slot is "not answered yet",
+        //    not "no facts". Latched per ROUTE and dropped with it, beside the open state.
+        Func<float, Element>? _factsLatched;
+
         // ── cached delegates (zero per-render allocation for the handlers the tree carries) ──
         readonly Action<RectF> _measure;
         readonly Func<ColorF> _accentFn;
         readonly Action _playAll;
         readonly Action _resyncRails;
+        readonly Action _restRails;
         readonly Action _publishAccentTracked;
         readonly Action _publishTheme;
         readonly Func<int> _heightRungsCompute;
@@ -516,6 +572,7 @@ public static partial class Detail
             _accentFn = () => _accent.Value;
             _playAll = PlayAll;
             _resyncRails = ResyncRails;
+            _restRails = RestRails;
             _publishAccentTracked = PublishAccentTracked;
             _publishTheme = () => { _theme.Value = Tok.Theme; };
             _heightRungsCompute = ComputeHeightRungs;
@@ -547,6 +604,24 @@ public static partial class Detail
             _sTopics = w => _latest?.Slots.Topics?.Invoke(w) ?? new BoxEl();
             _sPrimary = a => _latest?.Slots.Primary?.Invoke(a) ?? new BoxEl();
             _sSatellites = () => _latest?.Slots.Satellites?.Invoke() ?? Array.Empty<Element>();
+
+            // ── INSIGHTS SHEET (additive) ──
+            _closeInsights = _insights.Close;
+            _returnInsightsFocus = ReturnInsightsFocus;
+            _syncInsightsArm = () => { if (!_sheetHosts) _insights.Close(); };
+        }
+
+        /// <summary>── INSIGHTS SHEET (additive) ── Focus returns to the toolbar toggle when the sheet closes. The
+        /// control has already popped its focus scope and restored whatever held focus when the sheet opened; this is
+        /// the belt-and-braces leg for the case where that node is gone (the hero re-realized while the sheet was
+        /// open), so the user is never dropped back at the top of the page.</summary>
+        void ReturnInsightsFocus()
+        {
+            var node = _insights.ButtonNode[0];
+            if (node.IsNull || _inputHooks is not { } hooks) return;
+            var scene = Context.Scene;
+            if (scene is null || !scene.IsLive(node)) return;
+            hooks.FocusNode?.Invoke(node, false);
         }
 
         /// <summary>Every re-push lands here (the reconciler calls it at mount and on every parent render).</summary>
@@ -554,6 +629,15 @@ public static partial class Detail
         {
             var spec = (FrameSpec)props;
             _latest = spec;
+            // ── INSIGHTS SHEET (additive) ── the sheet never survives a route change. The frame is keyed by subject, so
+            //    a different subject remounts this host outright; a SAME-subject route swap reuses it, and this is the
+            //    edge that closes the sheet there (Detail.InsightsSheet.SurvivesRouteChange).
+            if (!string.Equals(_sheetRoute, spec.RouteKey, StringComparison.Ordinal))
+            {
+                _sheetRoute = spec.RouteKey;
+                _insights.Close();
+                _factsLatched = null;        // the facts latch is the ROUTE's, exactly like the open state
+            }
             if (!_accentSeeded)
             {
                 // The first paint already carries a cached grading's accent instead of the default for one frame.
@@ -577,8 +661,12 @@ public static partial class Detail
             bool uniform = Prefs.DetailHero.RailUniform();
             int railEpoch = Prefs.DetailHero.Epoch.Value;
             UseEffect(_resyncRails, DepKey.From(railEpoch));
+            // Auto-tracked on _mode + _railMax: a breakpoint cross or a narrower page re-rests every rail from its
+            // REMEMBERED width. A signal write belongs in an effect, never in a render (rule 6).
+            UseEffect(_restRails);
 
             var shellSlot = UseContext(ShellMaterial.Slot);
+            _inputHooks = UseContext(InputHooks.Current);       // ── INSIGHTS SHEET (additive): the focus return ──
             var viewportSig = UseContextSignal(Viewport.Size);
             _viewport = viewportSig;
             var rungsMemo = UseComputed(_heightRungsCompute);
@@ -606,6 +694,24 @@ public static partial class Detail
                 mode = Breakpoints.VerticalMode;
             bool vertical = mode == Breakpoints.VerticalMode;
             bool verticalTracks = vertical && cfg.Content == DetailContent.Tracks;
+
+            // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── which arm HOSTS the facts bento. A two-column arm is
+            //    unchanged (the rail row, below). The vertical arm has no rail, so the bento is a sheet over the
+            //    content and the toolbar carries its toggle — and, because the toggle is gated on the same slot
+            //    presence, the bento is never appended to the page body again (Detail.InsightsSheet).
+            //
+            //    The slot is LATCHED for the route first (InsightsSheet.FactsSettled): a page derives its bento slot
+            //    from a scan of the live row source, which reads empty while the list's open holds its reveal, so an
+            //    absent slot on a page that plainly has facts means "not answered yet", not "no facts" — and a toggle
+            //    that appears only if that scan happens to have run at the right moment is the bug this cures. A page
+            //    that has never offered facts still shows nothing and hints at nothing.
+            bool factsNow = spec.Slots.LikedFacts is not null;
+            bool factsSettled = InsightsSheet.FactsSettled(_factsLatched is not null, factsNow);
+            if (factsNow) _factsLatched = spec.Slots.LikedFacts;      // a plain field, not a signal: no render write
+            _sheetHosts = InsightsSheet.ShowsToggle(mode, id.Kind, factsSettled, cfg.Content);
+            // Widening back into a two-column arm (or losing the facts) CLOSES the sheet — a signal write belongs in an
+            // effect, never in a render (rule 6).
+            UseEffect(_syncInsightsArm, DepKey.From(_sheetHosts ? 1 : 0));
 
             // ── the leaves: shell tint (a hand-over, never a clear) and the page tone plane (the ONE ground) ──
             Element tint = Palette.ShellTint(paletteUrl, ready: true, disabled: !washes, apply: cfg.TwoColumn,
@@ -655,10 +761,20 @@ public static partial class Detail
                     Key = "detail:vertical", Direction = 1, Grow = 1f, ClipToBounds = true,
                     Children = [notice, content],
                 };
+                // ── INSIGHTS SHEET (additive) ── a TRACK page's vertical arm ALWAYS composes the overlay, open or not
+                //    and facts or not, so the page's tree shape never changes underneath the list: the facts arriving
+                //    (or the sheet opening) must not remount the table and lose its scroll position. An episode list's
+                //    vertical arm is left exactly as it was.
+                Element verticalRoot = verticalTracks
+                    //    The LATCHED builder, not the live slot: the toggle and the pane must never disagree, and the
+                    //    builder closes over the page's own live source, so a latched one is never stale data.
+                    ? InsightsOverlay(verticalPage, _insights, _sheetHosts ? _factsLatched : null,
+                                      _measuredW, routeKey, _returnInsightsFocus)
+                    : verticalPage;
                 return Ctx.Provide(Design.AccentCtx.Slot, (IReadSignal<Design.PageAccent>?)_pageAccent, new BoxEl
                 {
                     ZStack = true, Grow = 1f, OnBoundsChanged = _measure, ClipToBounds = true,
-                    Children = [tint, tone, verticalPage],
+                    Children = [tint, tone, verticalRoot],
                 });
             }
 
@@ -667,13 +783,16 @@ public static partial class Detail
             bool resizable = RailPolicy.ResizableFor(cfg.RailResizable, mode);
             // Read unconditionally (a stable subscription) but honoured only where the grip that can undo it exists.
             bool collapsed = rail.Collapsed.Value && resizable;
-            float railW = resizable ? rail.Width.Value : RailWidthForMode(mode, cfg);
+            // The page-aware cap: the rail may never squeeze the content column below its 300-DIP floor. Clamped again
+            // HERE (on read) so the one frame between a resize and the re-resting effect still lays out inside the page.
+            float railMax = _railMax.Value;
+            float railW = resizable ? RailPolicy.ClampLive(rail.Width.Value, rail.Scope, railMax) : RailWidthForMode(mode, cfg);
 
             Element[] rowKids;
             if (collapsed)
             {
                 // `right` keeps its Key across the collapse, so the table reconciles in place and keeps its scroll.
-                rowKids = [CompactRailRegion(spec, RailCompactW, rail.Expand), Grip(rail, collapsedNow: true), right];
+                rowKids = [CompactRailRegion(spec, RailCompactW, rail.Expand), Grip(rail, railMax, collapsedNow: true), right];
             }
             else
             {
@@ -701,7 +820,7 @@ public static partial class Detail
                     Opacity = _railFade,
                     Children = [RailRegion(spec, acts, railW, titleSize, titleLineHeight, descLines)],
                 };
-                rowKids = resizable ? [railFaded, Grip(rail, collapsedNow: false), right] : [railFaded, right];
+                rowKids = resizable ? [railFaded, Grip(rail, railMax, collapsedNow: false), right] : [railFaded, right];
             }
 
             var row = new BoxEl
@@ -783,7 +902,7 @@ public static partial class Detail
                 Accent = _accentFn,
                 Vertical = verticalTracks
                     ? new VerticalSpec(spec.Identity, cfg, TrampolineActions(spec.Actions), TrampolineSlots(spec.Slots), _accentFn)
-                    { PlayAll = _playAll }
+                    { PlayAll = _playAll, Insights = _sheetHosts ? _insights : null }
                     : null,
                 ShowToolbar = cfg.Content == DetailContent.Tracks || !vertical,
                 Trailing = trailing,
@@ -844,6 +963,10 @@ public static partial class Detail
             return _trampActions;
         }
 
+        /// <summary>The VERTICAL arm's view of the page's slots. ── INSIGHTS SHEET (additive) ── <c>LikedFacts</c> is
+        /// deliberately DROPPED here: in this arm the bento belongs to the sheet, and the table's own facts FOOTER
+        /// (its <c>hasFacts</c> reads exactly this slot) is what used to push it to the bottom of the page. The frame
+        /// still hands the page's own builder to the sheet, so nothing is lost — only the host changed.</summary>
         FrameSlots TrampolineSlots(FrameSlots s)
         {
             int mask = s.Mask();
@@ -861,7 +984,7 @@ public static partial class Detail
                     Chart = s.Chart is null ? null : _sChart,
                     PreRelease = s.PreRelease is null ? null : _sPreRelease,
                     ReleasePanel = s.ReleasePanel is null ? null : _sReleasePanel,
-                    LikedFacts = s.LikedFacts is null ? null : _sLikedFacts,
+                    LikedFacts = null,   // ── INSIGHTS SHEET ── the sheet hosts it in this arm; never the list footer.
                     Trailing = s.Trailing is null ? null : _sTrailing,
                     Episodes = s.Episodes is null ? null : _sEpisodes,
                     Badges = s.Badges is null ? null : _sBadges,
@@ -877,15 +1000,16 @@ public static partial class Detail
 
         // ── the grip ──
 
-        Element Grip(RailCell rail, bool collapsedNow) => new BoxEl
+        Element Grip(RailCell rail, float max, bool collapsedNow) => new BoxEl
         {
             Key = "detail-rail-grip-strip",
             Width = collapsedNow ? GripStripCollapsedW : Splitter.StripW,
             Shrink = 0f, Direction = 1, AlignItems = FlexAlign.Stretch,
             Children =
             [
-                // Width writes are direct during the drag; RELEASE commits width + collapsed to THIS scope's pair.
-                Splitter.Create(rail.Width, rail.Commit, rail.Options, collapsed: rail.Collapsed, fade: _railFade)
+                // Width writes are direct during the drag (bounded by the page-aware Max, so a drag can never squeeze the
+                // content column out); RELEASE commits width + collapsed to THIS scope's pair.
+                Splitter.Create(rail.Width, rail.Commit, rail.OptionsFor(max), collapsed: rail.Collapsed, fade: _railFade)
                     with { Key = rail.GripKey },
             ],
         };
@@ -900,11 +1024,23 @@ public static partial class Detail
             int md = Breakpoints.ModeFor(r.W, _mode.Peek(), _modeInitialized);
             _modeInitialized = true;
             if (md != _mode.Peek()) _mode.Value = md;     // value-gated: a re-render only on a breakpoint cross
+            // …and the rail's page-aware ceiling, quantized to 8 DIP and value-gated for the same reason.
+            float mx = RailPolicy.MaxWidthForPage(r.W, md);
+            if (mx != _railMax.Peek()) _railMax.Value = mx;
         }
 
         void ResyncRails()
         {
             for (int i = 0; i < _rails.Length; i++) _rails[i].Resync();
+        }
+
+        /// <summary>Every rail re-rests from its REMEMBERED width for the page's live (mode, maximum): the breakpoint rail
+        /// in a narrow arm the scope has never been dragged in, the persisted width once it has — clamped, never written back.</summary>
+        void RestRails()
+        {
+            int mode = _mode.Value;
+            float max = _railMax.Value;
+            for (int i = 0; i < _rails.Length; i++) _rails[i].Rest(mode, max);
         }
 
         void PlayAll()
@@ -1165,6 +1301,10 @@ public static partial class Detail
             });
 
         if (rows.Topics && slots.Topics is { } topics) kids.Add(LateRow("rail:topics", topics(cover)));
+
+        // The short About block (podcast-episode-peek §1): its own late row, because the description lands after the
+        // header facts do — an empty body renders an empty box and reserves nothing.
+        if (slots.About is { } about) kids.Add(LateRow("rail:about", about(cover)));
 
         if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(LateRow("rail:prerelease", pre()));
 

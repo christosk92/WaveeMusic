@@ -926,44 +926,73 @@ public readonly struct LibraryRows(EntityKind kind, int[] slots, int count, long
         User.FillReleaseCounts(slots, into);
     }
 
-    public static EntityId IdOf(EntityKind kind, int slot) => kind switch
-    {
-        EntityKind.Album => Entities.Current.Albums.Id[slot],
-        EntityKind.Artist => Entities.Current.Artists.Id[slot],
-        EntityKind.Show => Entities.Current.Shows.Id[slot],
-        EntityKind.Track => Entities.Current.Tracks.Id[slot],
-        _ => default,
-    };
+    /// <summary>Does <paramref name="table"/> hold <paramref name="slot"/> — a row it has handed out, slot 0 (the blank
+    /// "none" row) included? THE guard every column read below goes through, and the reason none of them can take the
+    /// app loop down on a slot that is not a row of that table. The navigator's slots are binds over ONE shared item
+    /// source (<c>BoundItems.Project</c> over the shape memo), and a mounted list keeps re-resolving its items from it
+    /// for the one flush in which the a–z projection flips underneath it — a Recents→a–z tap, a grid→list toggle under
+    /// a–z, or the letter grouping moving as rows land — BEFORE the keyed remount replaces it. In that flush a ROW slot
+    /// built without letters is handed the letter HEADER item, <c>Slot = -(letter + 1)</c>, and its art bind read
+    /// <c>Image[-1]</c>: the 2026-09-19 IndexOutOfRange that killed the artists navigator on every a–z tap. A slot the
+    /// table does not hold answers the blank row, exactly as <see cref="Table.IsFailed(int, uint)"/> answers false for a
+    /// stale one — for one frame the row reads as empty, and then the remount is there.</summary>
+    static bool Holds(Table table, int slot) => (uint)slot < (uint)table.Count;
 
-    public static string TitleOf(EntityKind kind, int slot) => Entities.Strings.Resolve(kind switch
+    public static EntityId IdOf(EntityKind kind, int slot)
     {
-        EntityKind.Album => Entities.Current.Albums.Title[slot],
-        EntityKind.Artist => Entities.Current.Artists.Name[slot],
-        EntityKind.Show => Entities.Current.Shows.Title[slot],
-        EntityKind.Track => Entities.Current.Tracks.Title[slot],
-        _ => StringId.Empty,
-    });
+        var scope = Entities.Current;
+        return kind switch
+        {
+            EntityKind.Album when Holds(scope.Albums, slot) => scope.Albums.Id[slot],
+            EntityKind.Artist when Holds(scope.Artists, slot) => scope.Artists.Id[slot],
+            EntityKind.Show when Holds(scope.Shows, slot) => scope.Shows.Id[slot],
+            EntityKind.Track when Holds(scope.Tracks, slot) => scope.Tracks.Id[slot],
+            _ => default,
+        };
+    }
+
+    public static string TitleOf(EntityKind kind, int slot)
+    {
+        var scope = Entities.Current;
+        return Entities.Strings.Resolve(kind switch
+        {
+            EntityKind.Album when Holds(scope.Albums, slot) => scope.Albums.Title[slot],
+            EntityKind.Artist when Holds(scope.Artists, slot) => scope.Artists.Name[slot],
+            EntityKind.Show when Holds(scope.Shows, slot) => scope.Shows.Title[slot],
+            EntityKind.Track when Holds(scope.Tracks, slot) => scope.Tracks.Title[slot],
+            _ => StringId.Empty,
+        });
+    }
 
     /// <summary>Album → its first billed artist's name; show → the publisher; anything else → "".</summary>
     public static string SubtitleOf(EntityKind kind, int slot)
     {
-        if (kind == EntityKind.Show) return Entities.Strings.Resolve(Entities.Current.Shows.Publisher[slot]);
+        var scope = Entities.Current;
+        if (kind == EntityKind.Show) return Holds(scope.Shows, slot) ? Entities.Strings.Resolve(scope.Shows.Publisher[slot]) : "";
         if (kind != EntityKind.Album) return "";
-        var artists = Entities.Current.Edges.AlbumArtists.Targets(slot);
-        return artists.Length > 0 && artists[0] > Table.None ? Entities.Strings.Resolve(Entities.Current.Artists.Name[artists[0]]) : "";
+        var artists = scope.Edges.AlbumArtists.Targets(slot);
+        return artists.Length > 0 && artists[0] > Table.None && Holds(scope.Artists, artists[0])
+            ? Entities.Strings.Resolve(scope.Artists.Name[artists[0]]) : "";
     }
 
-    public static StringId ImageOf(EntityKind kind, int slot) => kind switch
+    public static StringId ImageOf(EntityKind kind, int slot)
     {
-        EntityKind.Album => Entities.Current.Albums.Image[slot],
-        EntityKind.Artist => Entities.Current.Artists.Image[slot],
-        EntityKind.Show => Entities.Current.Shows.Image[slot],
-        EntityKind.Track => Entities.Current.Tracks.Image[slot],
-        _ => StringId.Empty,
-    };
+        var scope = Entities.Current;
+        return kind switch
+        {
+            EntityKind.Album when Holds(scope.Albums, slot) => scope.Albums.Image[slot],
+            EntityKind.Artist when Holds(scope.Artists, slot) => scope.Artists.Image[slot],
+            EntityKind.Show when Holds(scope.Shows, slot) => scope.Shows.Image[slot],
+            EntityKind.Track when Holds(scope.Tracks, slot) => scope.Tracks.Image[slot],
+            _ => StringId.Empty,
+        };
+    }
 
     public static int YearOf(EntityKind kind, int slot)
-        => kind == EntityKind.Album && Entities.Current.Albums.Knows(slot, (uint)AlbumFields.Year) ? Entities.Current.Albums.Year[slot] : 0;
+    {
+        var albums = Entities.Current.Albums;
+        return kind == EntityKind.Album && Holds(albums, slot) && albums.Knows(slot, (uint)AlbumFields.Year) ? albums.Year[slot] : 0;
+    }
 
     /// <summary>The uri text of an id: the interned string for the text form, the formatted scratch for a gid.</summary>
     public static ReadOnlySpan<char> UriOf(EntityId id, Span<char> scratch)
@@ -1026,12 +1055,26 @@ public sealed class LibraryLetters
     /// share, so a header can never be laid out at one height and scrolled at another.</summary>
     public const float HeaderExtent = 28f;
 
-    int[] _headerFlat = new int[Count];     // letter -> the flat index of its header, -1 when the letter has no rows
     int[] _flatToRow = new int[64];         // flat index -> row index, or -1 for a header
     byte[] _flatLetter = new byte[64];      // flat index -> the header's letter / the row's group
     float[] _offset = new float[65];        // flat index -> main-axis offset (prefix sum); [FlatCount] = the total
+    int[] _seq = new int[64];               // 0..FlatCount-1 — the flat-index space JumpIndex.Project walks
+    /// <summary>letter -> its header's flat index (A2 plan §3.4: the same <see cref="JumpIndex"/> kernel the show
+    /// reader's date rail projects into) — rebuilt by <see cref="Build"/>, resolved by <see cref="HeaderFlat"/>.</summary>
+    readonly JumpGroup[] _groups = new JumpGroup[Count];
+    int _groupCount;
     int _flatCount, _rows;
     uint _present;                          // bit i = letter i has at least one row
+    // Cached ONCE (the page owns ONE instance): a closure allocated per Build() call would undo the "allocation-free
+    // once warm" the rest of this class holds itself to.
+    readonly Func<int, bool> _isHeaderAt;
+    readonly Func<int, int> _letterAt;
+
+    public LibraryLetters()
+    {
+        _isHeaderAt = flat => _flatToRow[flat] < 0;
+        _letterAt = flat => _flatLetter[flat];
+    }
 
     public int FlatCount => _flatCount;
     /// <summary>How many ROWS the last build covered (<see cref="FlatCount"/> minus its headers).</summary>
@@ -1040,7 +1083,7 @@ public sealed class LibraryLetters
     public int RowOf(int flat) => (uint)flat < (uint)_flatCount ? _flatToRow[flat] : -1;
     public int LetterOf(int flat) => (uint)flat < (uint)_flatCount ? _flatLetter[flat] : -1;
     public bool Has(int letter) => (uint)letter < Count && (_present & (1u << letter)) != 0;
-    public int HeaderFlat(int letter) => (uint)letter < Count ? _headerFlat[letter] : -1;
+    public int HeaderFlat(int letter) => JumpIndex.Resolve(_groups.AsSpan(0, _groupCount), letter);
     public float OffsetOf(int flat) => _offset[Math.Clamp(flat, 0, _flatCount)];
     public float TotalExtent => _offset[_flatCount];
     /// <summary>"Which letters exist" as ONE value: bit i = letter i has rows. The jump strip renders its 27 cells from
@@ -1076,14 +1119,13 @@ public sealed class LibraryLetters
         // take the app loop down. A grouping helper must never be able to crash on its input.
         Grow(_rows * 2 + 1);
         _present = 0; _flatCount = 0;
-        for (int l = 0; l < Count; l++) _headerFlat[l] = -1;
         int last = -1; float off = 0f;
         for (int r = 0; r < _rows; r++)
         {
             int letter = Of(rows.Title(r));
             if (letter != last)
             {
-                _headerFlat[letter] = _flatCount; _present |= 1u << letter;
+                _present |= 1u << letter;
                 _flatToRow[_flatCount] = -1; _flatLetter[_flatCount] = (byte)letter; _offset[_flatCount] = off;
                 _flatCount++; off += HeaderExtent; last = letter;
             }
@@ -1091,6 +1133,8 @@ public sealed class LibraryLetters
             _flatCount++; off += rowExtent;
         }
         _offset[_flatCount] = off;
+        for (int i = 0; i < _flatCount; i++) _seq[i] = i;
+        _groupCount = JumpIndex.Project(_seq.AsSpan(0, _flatCount), _isHeaderAt, _letterAt, _groups);
     }
 
     /// <summary>A flat item's extent: the header band, or a row. The analytic seed for the list's extents.</summary>
@@ -1110,7 +1154,7 @@ public sealed class LibraryLetters
     public ulong Key()
     {
         ulong h = 14695981039346656037UL;
-        for (int l = 0; l < Count; l++) { h ^= (uint)(_headerFlat[l] + 1); h *= 1099511628211UL; }
+        for (int l = 0; l < Count; l++) { h ^= (uint)(HeaderFlat(l) + 1); h *= 1099511628211UL; }
         return h;
     }
 
@@ -1119,7 +1163,7 @@ public sealed class LibraryLetters
     {
         if (_flatToRow.Length >= n) return;
         int size = Math.Max(n, _flatToRow.Length * 2);
-        _flatToRow = new int[size]; _flatLetter = new byte[size]; _offset = new float[size + 1];
+        _flatToRow = new int[size]; _flatLetter = new byte[size]; _offset = new float[size + 1]; _seq = new int[size];
     }
 }
 

@@ -62,6 +62,7 @@ public readonly partial struct Playlist
         Shell.SetPage(Shell.RouteKind.LibraryAlbums, User.LibraryPageFor);
         Shell.SetPage(Shell.RouteKind.LibraryArtists, User.LibraryPageFor);
         Shell.SetPage(Shell.RouteKind.LibraryPodcasts, User.LibraryPageFor);
+        Shell.SetPage(Shell.RouteKind.LibraryAudiobooks, User.LibraryPageFor);
 
         Fetch.ListSettled = ListOpen.Settled;   // wave D3: an unchanged /diff releases a page's reveal hold at once (Playlist.Open.cs)
         Shell.OnNewPlaylist ??= static () => Sidebar.LibraryWrites?.CreatePlaylist?.Invoke(null, true);
@@ -332,8 +333,10 @@ public readonly partial struct Playlist
         }
 
         /// <summary>The gate's compute (the <c>UseComputed</c> body): reads the seven counters this page depends on —
-        /// tracked, so a drain of any of them wakes the memo — plus the session phase, and folds what the render and
-        /// <see cref="IdentityOf"/> read into a <see cref="PageStamp"/>. <c>_playlist</c>, <c>_local</c> and
+        /// tracked, so a drain of any of them wakes the memo — plus the session phase and, through
+        /// <c>_source.Held</c>, the source's own one-shot "the open has run" signal (<see cref="HeldRows.Opened"/>:
+        /// <c>Held</c> answers by a DIFFERENT rule either side of it, so the flip has to reach this memo), and folds
+        /// what the render and <see cref="IdentityOf"/> read into a <see cref="PageStamp"/>. <c>_playlist</c>, <c>_local</c> and
         /// <c>_source</c> are Render's fields, written before the memo is read; the page is keyed on its route, so they
         /// change only together with a scope epoch the memo tracks. Runs one member loop (the fold) and the facts
         /// bento's early-exit scan per publication; allocates nothing once the open has run (the pre-open preview reads
@@ -351,6 +354,7 @@ public readonly partial struct Playlist
             _ = e.PlaylistRecs.Changed.Value;
             _ = e.TrackArtists.Changed.Value;          // FactsHas: a keyed credit alone earns the bento
             _ = ListOpen.Changed.Value;                // the open's hold: taken, answered, out of budget
+            // The open ITSELF — HeldRows.Held switches rule at it — is the source's own signal, read through Held below.
             bool editsLive = EditsLiveNow();           // subscribes to the session phase (item 58)
             var pl = _playlist;
             if (!pl.IsValid)
@@ -547,22 +551,39 @@ public readonly partial struct Playlist
     /// <see cref="ListFreshness.BlockingBudgetMs"/> — it reads as a list nobody has answered yet: Unknown, no rows. The
     /// shimmer stays up, and what the reveal ramp then shows is the revalidated list, never yesterday's copy painted and
     /// swapped. Everything else is the plain playlist source's.
-    /// <para>BEFORE THE OPEN. The page's first frame renders before its demand effect runs the open, and one frame of
-    /// yesterday's rows is exactly the paint-then-swap the hold exists to prevent — so until <see cref="Opened"/>, the
-    /// source reads the hold the open WILL take (<see cref="ListOpen.WouldHold"/>, the same pure rule over the same
-    /// facts). Subscribe reads <see cref="ListOpen.Changed"/>, so the table's memos re-read on every take, answer and
-    /// budget.</para></summary>
+    /// <para>BEFORE THE OPEN. The page's first frame renders before its demand effect runs the open (keyed effects drain
+    /// after present), and one frame of yesterday's rows is exactly the paint-then-swap the hold exists to prevent — so
+    /// until <see cref="Opened"/>, the source reads the hold the open WILL take (<see cref="ListOpen.WouldHold"/>, the
+    /// same pure rule over the same facts). Subscribe reads <see cref="ListOpen.Changed"/>, so the table's memos re-read
+    /// on every take, answer and budget.</para>
+    /// <para><b>THE INVARIANT (a fix, not a decoration).</b> <see cref="Held"/> switches RULE at the open —
+    /// <see cref="ListOpen.WouldHold"/> before, <see cref="ListOpen.Holding"/> after — and the two do not agree in
+    /// general: <c>WouldHold</c> re-decides the plan and looks at neither <c>Observed</c>, nor a spent budget, nor a
+    /// record gone stale, all of which <c>Holding</c> consults. So the flip is a REAL change of the answer, and every
+    /// memo derived from it — the page's <see cref="PageStamp"/> folds <c>Held</c> into <c>Holding</c> and, through
+    /// <c>Count</c>, into <c>Facts</c> — must be able to see it. It is therefore a SIGNAL, written from the demand
+    /// EFFECT and read (tracked) everywhere <c>Held</c> is. As a plain field it flipped with no write for a memo to
+    /// track, and <see cref="ListOpen.Open"/>'s own bump only masked it: the bump is skipped whenever the open JOINS a
+    /// record whose hold is already exactly this one (a re-mount inside <see cref="ListFreshness.BlockingBudgetMs"/>,
+    /// another surface that got there first) and whenever it plans no ask at all. A page whose entity tables then go
+    /// quiet kept its PRE-open stamp for good: zero rows for <c>User.FactsHas</c>, so the facts bento — and the
+    /// Insights toggle behind it — never appeared.</para></summary>
     sealed class HeldRows(Playlist playlist) : Track.TableSource
     {
         readonly Playlist _playlist = playlist;
         readonly Track.TableSource _rows = Track.TableSource.ForPlaylist(playlist);
-        bool _opened;
+        /// <summary>One-shot, and TRACKED: see the invariant on the class. Written only by <see cref="Opened"/>.</summary>
+        readonly Signal<bool> _opened = new(false);
 
-        /// <summary>The page's demand effect ran <see cref="ListOpen.Open"/>: the model's record is the truth from here.</summary>
-        internal void Opened() => _opened = true;
+        /// <summary>The page's demand effect ran <see cref="ListOpen.Open"/>: the model's record is the truth from here.
+        /// A signal write, so it must stay on the EFFECT path (<c>PlaylistPage.Demand</c>) — never a render body.
+        /// Idempotent: <c>Signal.Value</c> is set-if-changed, so a re-run of the demand costs nothing.</summary>
+        internal void Opened() => _opened.Value = true;
 
-        /// <summary>Is the list held right now? A read, never a subscription (<see cref="Subscribe"/> is that).</summary>
-        internal bool Held => _opened ? ListOpen.Holding(_playlist.Slot) : ListOpen.WouldHold(_playlist, ListOpenPolicy.Surface.Page);
+        /// <summary>Is the list held right now? The rule either side of the open — a TRACKED read of <see cref="Opened"/>
+        /// (so a memo over this source re-runs when the open lands), and an untracked read of the model's record
+        /// (<see cref="Subscribe"/>, or <see cref="ListOpen.Changed"/>, is that half).</summary>
+        internal bool Held => _opened.Value ? ListOpen.Holding(_playlist.Slot) : ListOpen.WouldHold(_playlist, ListOpenPolicy.Surface.Page);
 
         public override EntityUri Context => _rows.Context;
         public override int Count => Held ? 0 : _rows.Count;
@@ -583,6 +604,7 @@ public readonly partial struct Playlist
         {
             _rows.Subscribe();
             _ = ListOpen.Changed.Value;
+            _ = _opened.Value;          // the other edge of Held: a consumer that subscribes here and reads Count later
         }
         internal override void Retry() => _rows.Retry();
         internal override Playlist HostPlaylist => _rows.HostPlaylist;

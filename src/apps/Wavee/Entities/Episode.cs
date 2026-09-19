@@ -80,6 +80,8 @@ public enum EpisodeFlags : uint
     /// <summary>A transcript exists (pathfinder <c>transcripts.items[]</c> non-empty) — the reader's transcript tab.</summary>
     HasTranscript = 1 << 5,
     Unplayable = 1 << 6,
+    /// <summary><c>metadata.Episode.is_audiobook_chapter</c> (field 96).</summary>
+    AudiobookChapter = 1 << 7,
 }
 
 /// <summary>Which kind of episode (<c>Episode.type</c>, field 87). The numbers ARE the wire's (FULL 0 · TRAILER 1 ·
@@ -98,7 +100,7 @@ public sealed class EpisodeTable : Table
     public Column<int> ProgressMs;
     /// <summary>The owning show's slot, 0 = the writer did not know (ch 09 DATA GAPS).</summary>
     public Column<int> Show;
-    /// <summary>The number within its show (<c>number</c>, field 65); 0 = unnumbered. Identity group.</summary>
+    /// <summary>The number within its show (<c>number</c>, field 89); 0 = unnumbered. Identity group.</summary>
     public Column<ushort> Number, Season;
     public Column<bool> TranscriptReadAlong, ExplicitCompleted;
     public Column<long> RevisionUpdateSeconds, RevisionCreateSeconds, CompletionAtMs;
@@ -204,6 +206,7 @@ public readonly partial struct Episode(int slot) : IEquatable<Episode>
     public int Number => T.Number[Slot];
     public EpisodeKind Kind => (EpisodeKind)T.Variant[Slot];
     public EpisodeFlags Flags => (EpisodeFlags)T.Flags[Slot];
+    public bool IsAudiobookChapter => IsValid && (Flags & EpisodeFlags.AudiobookChapter) != 0;
     /// <inheritdoc cref="EpisodeTable.PlayedAt"/>
     public int PlayedAt => T.PlayedAt[Slot];
 
@@ -298,6 +301,11 @@ public static partial class Entities
                 t.Season[slot] = row.Season;
                 t.Variant[slot] = row.Kind;
                 uint identityFlags = (uint)EpisodeFlags.Short;
+                // A thin title/image mention is not an answer to chapter classification. Only a
+                // complete identity answer (or an explicit positive bit) may replace this fact.
+                if ((known & (uint)EpisodeFields.Identity) == (uint)EpisodeFields.Identity
+                    || (row.Flags & (uint)EpisodeFlags.AudiobookChapter) != 0)
+                    identityFlags |= (uint)EpisodeFlags.AudiobookChapter;
                 if (!t.Knows(slot, (uint)EpisodeFields.Media)) identityFlags |= (uint)(EpisodeFlags.Explicit | EpisodeFlags.Video);
                 t.Flags[slot] = (t.Flags[slot] & ~identityFlags) | (row.Flags & identityFlags);
                 t.Applied(slot, known & (uint)EpisodeFields.Identity, auth, ref t.IdentityAuthority);
@@ -444,7 +452,10 @@ public sealed class EpisodeShape : KindShape
                 w.Int(4, row.PublishedAt);
                 w.Int(10, row.Number);
                 w.Int(11, row.Kind);
-                w.Int(12, row.Flags);
+                // Partial identity mentions carry no negative classification answer. NULL preserves
+                // the complete metadata flags through the store's column-coalescing upsert.
+                if ((known & (uint)EpisodeFields.Identity) == (uint)EpisodeFields.Identity) w.Int(12, row.Flags);
+                else w.Null(12);
             }
             else { w.Null(0); w.Null(1); w.Null(2); w.Null(3); w.Null(4); w.Null(10); w.Null(11); w.Null(12); }
             w.Int(7, identity ? authority : 0);

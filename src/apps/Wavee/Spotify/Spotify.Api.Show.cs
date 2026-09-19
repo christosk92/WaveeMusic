@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace Wavee;
 
 public static partial class Spotify
@@ -35,6 +37,9 @@ public static partial class Spotify
                     if (!truncated && (!content.HasLength || rows.Count >= content.Length))
                     {
                         if (content.HasLength && rows.Count != content.Length) { retry = true; break; }
+                        // D2 §4.3: the same page that carries membership carries the list-header attributes —
+                        // `is_audiobook`/`autoplay_candidate` — that classify the show before any `ShowV4` answer.
+                        Decode.ShowHeaderAttributes(body, Encoding.UTF8.GetBytes(uri), s);
                         if (!Store.StageList(s, EdgeRelation.ShowEpisodes, uri, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(rows), head!))
                         { var invalid = new Result(503, []); outcome.Note(in invalid); }
                         return;

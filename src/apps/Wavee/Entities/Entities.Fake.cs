@@ -456,6 +456,7 @@ public static partial class Entities
             EntityKind.Artist => Artist(id).Slot,
             EntityKind.Playlist => Playlist(id).Slot,
             EntityKind.Show => Show(id).Slot,
+            EntityKind.Episode => Episode(id).Slot,
             EntityKind.User => User(id).Slot,
             _ => Table.None,
         };

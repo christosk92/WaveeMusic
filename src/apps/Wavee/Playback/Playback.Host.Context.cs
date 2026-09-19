@@ -1149,7 +1149,14 @@ public static partial class Playback
         bool open = s_registration.Open;
         bool episode = IsSpotifyEpisode(s_registeredId);
 
-        if ((r.Events & PlayEvents.Seeked) != 0 && open) Spotify.Telemetry.Seeked(ref s_registration, r.SeekFromMs, r.SeekToMs);
+        if ((r.Events & PlayEvents.Seeked) != 0 && open)
+        {
+            Spotify.Telemetry.Seeked(ref s_registration, r.SeekFromMs, r.SeekToMs);
+            // A deliberate seek updates resume/filter state once, including while paused. Clock ticks themselves
+            // remain presentation-only until the existing coarse mirror fires.
+            if (episode && s_state.CurrentId.Equals(s_registeredId))
+                Entities.MirrorEpisodeProgress(s_registeredId, r.SeekToMs, unix);
+        }
         if ((r.Events & PlayEvents.Paused) != 0)
         {
             ArmProgressMirror(false);

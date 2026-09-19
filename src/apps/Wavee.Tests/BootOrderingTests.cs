@@ -93,10 +93,13 @@ public sealed class BootOrderingTests : IDisposable
         }
 
         // Pinned by ShellRouteTableTests too — restated here because a drift in the count would silently narrow the
-        // loop above into "most kinds", exactly what this guard exists to refuse. 31 since the podcast rework's
+        // loop above into "most kinds", exactly what this guard exists to refuse. 32 since the podcast rework's
         // wave P2 appended RouteKind.Episode (plan §5.11) — its page resolves through the SAME Album.InstallPages
-        // lazy-group miss the loop above already exercises via RouteKind.Album/Prerelease/Show.
-        Assert.Equal(31, Shell.RouteKindCount);
+        // lazy-group miss the loop above already exercises via RouteKind.Album/Prerelease/Show — and A2 (plan §3.6)
+        // appended RouteKind.LibraryAudiobooks, resolved through the SAME Playlist.InstallPages lazy-group miss as
+        // LibraryAlbums/LibraryArtists/LibraryPodcasts (Playlist.Page.cs's InstallPages still owes it one more
+        // Shell.SetPage(RouteKind.LibraryAudiobooks, User.LibraryPageFor) line — outside this wave's ownership).
+        Assert.Equal(32, Shell.RouteKindCount);
     }
 
     // ══ LAZY_GROUP: a miss installs its whole group once, the hit path never re-installs ══════════════════════════

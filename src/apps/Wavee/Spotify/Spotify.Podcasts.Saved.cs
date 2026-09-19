@@ -17,12 +17,28 @@ public static partial class Spotify
         static Scope? s_savedScope;
         static string s_savedUri = "";
         static EntityId[] s_savedEpisodes = [];
-        static bool s_savedReady, s_savedBusy, s_savedRefreshAgain;
-        static int s_savedStatus;
+        static bool s_savedReady, s_savedBusy, s_savedRefreshAgain, s_savedFailed;
+        static int s_savedStatus, s_savedWrites;
         static Timer? s_savedPushTimer;
+
+        /// <summary>Ready/Empty split apart from a genuine transport failure (§D3.1): a successful read with zero
+        /// items, or a 404 confirming the account has no listen-later playlist at all, both land as Empty — never
+        /// Failed. Failed means we have never once landed data and the last attempt did not come back at all.</summary>
+        public enum SavedReadState { Pending, Ready, Empty, Failed }
 
         public static readonly Signal<uint> SavedChanged = new(0);
         public static bool SavedReady { get { _ = SavedChanged.Value; return IsSavedScope && s_savedReady; } }
+        public static bool SavedFailed { get { _ = SavedChanged.Value; return SavedState == SavedReadState.Failed; } }
+        public static SavedReadState SavedState
+        {
+            get
+            {
+                _ = SavedChanged.Value;
+                if (!IsSavedScope) return SavedReadState.Pending;
+                if (s_savedReady) return s_savedEpisodes.Length > 0 ? SavedReadState.Ready : SavedReadState.Empty;
+                return s_savedFailed ? SavedReadState.Failed : SavedReadState.Pending;
+            }
+        }
         public static bool SavedBusy { get { _ = SavedChanged.Value; return IsSavedScope && s_savedBusy; } }
         public static int SavedStatus { get { _ = SavedChanged.Value; return IsSavedScope ? s_savedStatus : 0; } }
         public static string SavedPlaylistUri { get { _ = SavedChanged.Value; return IsSavedScope ? s_savedUri : ""; } }
@@ -39,7 +55,7 @@ public static partial class Spotify
         {
             if (ReferenceEquals(s_savedScope, scope)) return;
             s_savedScope = scope; s_savedUri = ""; s_savedReady = false; s_savedBusy = false;
-            s_savedRefreshAgain = false; s_savedStatus = 0; s_savedEpisodes = []; SavedIds.Clear();
+            s_savedRefreshAgain = false; s_savedStatus = 0; s_savedWrites = 0; s_savedFailed = false; s_savedEpisodes = []; SavedIds.Clear();
             SavedChanged.Value++;
         }
 
@@ -70,7 +86,7 @@ public static partial class Spotify
             string uri = "";
             foreach (var item in items.EnumerateArray())
             {
-                var data = At(item, "data");
+                var data = At(item, "item", "data");
                 if (Text(data, "__typename") == "Playlist" && Text(data, "format") == "listen-later")
                     uri = Text(data, "uri");
             }
@@ -92,7 +108,9 @@ public static partial class Spotify
                     var discovery = DecodeSavedDiscovery(result.Body);
                     if (discovery.Uri.Length > 0) { uri = discovery.Uri; break; }
                     offset += discovery.Count;
-                    if (offset >= discovery.Total || discovery.Count == 0) throw new SavedReadException(404);
+                    // Exhausted the account's whole library without finding a listen-later playlist at all: not a
+                    // transport failure, just an account that has never saved an episode (§D3.1).
+                    if (offset >= discovery.Total || discovery.Count == 0) throw new SavedReadException(404, notFound: true);
                 }
             }
             const string prefix = "spotify:playlist:";
@@ -129,9 +147,12 @@ public static partial class Spotify
             return new(uri, items.ToArray(), head!, full.ToByteArray());
         }
 
-        sealed class SavedReadException(int status) : Exception("Your Episodes read failed: " + status)
+        /// <summary><paramref name="notFound"/> marks the one 404 that means "this account has no listen-later
+        /// playlist yet" (discovery exhausted) rather than a transport failure — see <see cref="SavedReadState"/>.</summary>
+        sealed class SavedReadException(int status, bool notFound = false) : Exception("Your Episodes read failed: " + status)
         {
             public int Status { get; } = status;
+            public bool NotFound { get; } = notFound;
         }
 
         /// <summary>UI entrypoint: discover and read the account's canonical synthetic playlist.</summary>
@@ -154,6 +175,12 @@ public static partial class Spotify
                     SavedNetwork.Wait(ct); held = true;
                     var snapshot = ReadSavedNetwork(uri, ct);
                     Post(() => LandSaved(scope, epoch, snapshot, 200));
+                    done.TrySetResult(new Mutation(true, 200));
+                }
+                catch (Exception ex) when (ex is SavedReadException { NotFound: true })
+                {
+                    // No listen-later playlist exists for this account: a confirmed EMPTY state, not a failure.
+                    Post(() => LandSaved(scope, epoch, null, 200, confirmedEmpty: true));
                     done.TrySetResult(new Mutation(true, 200));
                 }
                 catch (Exception ex)
@@ -188,26 +215,36 @@ public static partial class Spotify
 
         public static void ToggleSaved(Episode episode)
         {
-            if (Platform.Args.Fake || !episode.IsValid) return;
+            if (Platform.Args.Fake || !episode.IsValid || SavedBusy) return;
+            _ = SetSavedAsync([episode], !IsSaved(episode), CancellationToken.None);
+        }
+
+        /// <summary>One explicit-state batch against a fresh canonical snapshot. Writes queue rather than dropping
+        /// when another save is active; the readback supplies canonical item ids for the following batch.</summary>
+        public static Task<Mutation> SetSavedAsync(IReadOnlyList<Episode> episodes, bool saved, CancellationToken ct)
+        {
+            if (Platform.Args.Fake) return Task.FromResult(new Mutation(false, 501));
             Scope scope = Entities.Current;
             BindSaved(scope);
-            if (s_savedBusy) return;
-            if (!s_savedReady) { _ = ReadSavedAsync(CancellationToken.None); return; }
-            string episodeUri = episode.Id.Text;
-            bool save = !SavedIds.Contains(episode.Id);
-            string uri = s_savedUri;
+            string[] uris = episodes.Where(e => e.IsValid).Select(e => e.Id.Text).Distinct(StringComparer.Ordinal).ToArray();
+            if (uris.Length == 0) return Task.FromResult(new Mutation(true, 200));
             uint epoch = scope.Epoch;
-            string account = scope.Key.Account;
-            s_savedBusy = true; SavedChanged.Value++;
+            string account = scope.Key.Account, knownUri = s_savedUri;
+            s_savedWrites++; s_savedBusy = true; SavedChanged.Value++;
+            var done = new TaskCompletionSource<Mutation>(TaskCreationOptions.RunContinuationsAsynchronously);
             if (!Api.Run(() =>
             {
                 using var accountRequest = Api.ForAccount(account);
-                SavedNetwork.Wait();
+                bool held = false;
                 try
                 {
-                    SavedSnapshot snapshot = ReadSavedNetwork(uri, CancellationToken.None);
-                    var ops = SavedMutationOps(episodeUri, save, snapshot.Items, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                        Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(10)));
+                    SavedNetwork.Wait(ct); held = true;
+                    ct.ThrowIfCancellationRequested();
+                    if (!ReferenceEquals(Entities.Current, scope) || scope.Epoch != epoch)
+                        throw new OperationCanceledException("Account changed before Your Episodes write.");
+                    SavedSnapshot snapshot = ReadSavedNetwork(knownUri, ct);
+                    var ops = SavedBatchMutationOps(uris, saved, snapshot.Items, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                        static () => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(10)));
                     int status = 200;
                     if (ops.Length > 0)
                     {
@@ -218,35 +255,77 @@ public static partial class Spotify
                         if (length == 0) throw new SavedReadException(502);
                         string id = snapshot.Uri["spotify:playlist:".Length..];
                         var result = Api.PlaylistChanges(id,
-                            Encode.PlaylistChanges(revision[..length], ops, account, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Encode.NewNonce()),
-                            CancellationToken.None);
+                            Encode.PlaylistChanges(revision[..length], ops, account, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Encode.NewNonce()), ct);
                         status = result.Status;
-                        // A response may canonicalize item_id. Always read it back before the next keyed mutation.
-                        // Ambiguous failures are read back too; never blindly repeat a potentially accepted ADD.
-                        snapshot = ReadSavedNetwork(snapshot.Uri, CancellationToken.None);
-                        bool present = snapshot.Items.Any(item => item.Uri == episodeUri);
-                        if (present == save) status = 200;
+                        // Never repeat an ambiguous ADD: reconcile what actually landed.
+                        snapshot = ReadSavedNetwork(snapshot.Uri, ct);
+                        var present = snapshot.Items.Select(item => item.Uri).ToHashSet(StringComparer.Ordinal);
+                        if (uris.All(uri => present.Contains(uri) == saved)) status = 200;
+                        else if (result.Ok) status = 409;
                     }
-                    Post(() => LandSaved(scope, epoch, snapshot, status));
+                    Complete(snapshot, status);
                 }
                 catch (Exception ex)
                 {
-                    int status = ex is SavedReadException read ? read.Status : 0;
+                    int status = ex is SavedReadException read ? read.Status : ex is OperationCanceledException ? 409 : 0;
                     Log.Warn("podcast", "Your Episodes mutation did not settle", ex);
-                    Post(() => LandSaved(scope, epoch, null, status));
+                    Complete(null, status);
                 }
-                finally { SavedNetwork.Release(); }
-            }))
-                LandSaved(scope, epoch, null, 503);
+                finally { if (held) SavedNetwork.Release(); }
+            })) Complete(null, 503);
+            return done.Task;
+
+            void Complete(SavedSnapshot? snapshot, int status) => Post(() =>
+            {
+                if (ReferenceEquals(Entities.Current, scope) && scope.Epoch == epoch && ReferenceEquals(s_savedScope, scope))
+                {
+                    s_savedWrites = Math.Max(0, s_savedWrites - 1);
+                    LandSaved(scope, epoch, snapshot, status);
+                }
+                done.TrySetResult(new Mutation(status is >= 200 and < 300, status, status == 0 || status >= 500));
+            });
         }
 
-        static void LandSaved(Scope scope, uint epoch, SavedSnapshot? snapshot, int status)
+        public static PlaylistOp[] SavedBatchMutationOps(IReadOnlyList<string> episodeUris, bool saved,
+            PlaylistOps.WireItem[] current, long now, Func<string> mintId)
+        {
+            var distinct = episodeUris.Distinct(StringComparer.Ordinal).ToArray();
+            var operations = new List<PlaylistOp>();
+            // ADD_FIRST operations apply in sequence. Reverse them so the final playlist preserves display order.
+            var ordered = saved ? distinct.Reverse() : distinct.AsEnumerable();
+            foreach (string uri in ordered)
+                operations.AddRange(SavedMutationOps(uri, saved, current, now, saved ? mintId() : ""));
+            return operations.ToArray();
+        }
+
+        /// <summary>What one Your Episodes landing was: real data, a confirmed-empty account (the discovery-exhausted
+        /// 404 — "this account has never saved an episode"), or a genuine transport failure.</summary>
+        public enum SavedLandingOutcome { Data, ConfirmedEmpty, Failure }
+
+        /// <summary>The Ready/Failed transition table for one landing (§D3.1) — pure, so every combination is a
+        /// behavior test with no network mock. Data and ConfirmedEmpty both land Ready and clear any prior Failed —
+        /// a zero-item read is a real answer, not an error. A Failure only sets Failed when the scope has never
+        /// landed data before: stale data outlives a later refresh error rather than flipping the page back to
+        /// "unavailable".</summary>
+        public static (bool Ready, bool Failed) FoldSavedLanding(SavedLandingOutcome outcome, bool previouslyReady) => outcome switch
+        {
+            SavedLandingOutcome.Data or SavedLandingOutcome.ConfirmedEmpty => (true, false),
+            _ => (previouslyReady, !previouslyReady),
+        };
+
+        /// <summary><paramref name="confirmedEmpty"/> lands a verified EMPTY read (the account has no listen-later
+        /// playlist) with <paramref name="snapshot"/> null — the one 404 that is not a failure (§D3.1). Any other
+        /// null snapshot is a genuine transport failure, folded through <see cref="FoldSavedLanding"/>.</summary>
+        static void LandSaved(Scope scope, uint epoch, SavedSnapshot? snapshot, int status, bool confirmedEmpty = false)
         {
             if (!ReferenceEquals(Entities.Current, scope) || scope.Epoch != epoch || !ReferenceEquals(scope, s_savedScope)) return;
-            s_savedBusy = false; s_savedStatus = status;
+            s_savedBusy = s_savedWrites > 0; s_savedStatus = status;
+            var outcome = snapshot is not null ? SavedLandingOutcome.Data
+                : confirmedEmpty ? SavedLandingOutcome.ConfirmedEmpty : SavedLandingOutcome.Failure;
+            (s_savedReady, s_savedFailed) = FoldSavedLanding(outcome, s_savedReady);
             if (snapshot is not null)
             {
-                s_savedUri = snapshot.Uri; s_savedReady = true;
+                s_savedUri = snapshot.Uri;
                 SavedIds.Clear();
                 var ids = new List<EntityId>();
                 foreach (var item in snapshot.Items)
@@ -258,6 +337,12 @@ public static partial class Spotify
                 if (!Store.WriteBehind(staging)) Staging.Return(staging);
                 Episode[] episodes = s_savedEpisodes.Select(Entities.Episode).ToArray();
                 Entities.Ensure(episodes, EpisodeFields.Row, FetchPriority.Visible);
+            }
+            else if (confirmedEmpty)
+            {
+                s_savedUri = "";
+                SavedIds.Clear();
+                s_savedEpisodes = [];
             }
             SavedChanged.Value++;
             if (s_savedRefreshAgain)

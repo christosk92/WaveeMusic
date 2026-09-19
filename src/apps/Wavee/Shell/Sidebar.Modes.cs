@@ -293,7 +293,8 @@ public static class SidebarBuiltInDocuments
                     Route(LibraryId + ":artists", "artists", "Contact"),
                     Route(LibraryId + ":liked", "liked", "Heart"),
                     Route(LibraryId + ":podcasts", "podcasts", "RadioTower"),
-                    Route(LibraryId + ":local", "local", "Folder"),
+                    // Audiobooks (A2 plan §3.6) — its own library entry beside Podcasts.
+                    Route(LibraryId + ":audiobooks", "audiobooks", "Microphone"),
                 ]),
 
             Divider(DividerPlaylistsId),

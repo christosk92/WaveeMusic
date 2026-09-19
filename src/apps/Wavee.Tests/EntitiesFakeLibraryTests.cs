@@ -238,8 +238,16 @@ public class EntitiesFakeLibraryTests
         var p = Extra(5);
         var slots = p.TrackSlots;
         Assert.Equal(20, slots.Length);
+        // X5's three "episodes" (plan §3.1, ledger row 12) are real Episode-kind membership edges resolving into
+        // Current.Episodes now, not Track rows flagged TrackFlags.Podcast — the superseded shape.
+        var payload = Entities.Current.Edges.PlaylistTracks.Payload(p.Slot);
         for (int k = 0; k < slots.Length; k++)
-            Assert.Equal(k is 4 or 11 or 17, new Track(slots[k]).IsPodcast);
+        {
+            bool shouldBeEpisode = k is 4 or 11 or 17;
+            Assert.Equal(shouldBeEpisode ? PlaylistItemKind.Episode : PlaylistItemKind.Track, payload[k].Kind);
+            if (shouldBeEpisode) Assert.True(new Episode(slots[k]).IsValid);
+            else Assert.True(new Track(slots[k]).IsValid);
+        }
         Assert.Equal(3, p.EpisodeCount);
         Assert.True(p.IsMixed);
     }

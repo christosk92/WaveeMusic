@@ -236,4 +236,52 @@ public class ListOpenPolicyTests
     [InlineData(PlaylistFormat.None, 0, false)]
     public void A_rolling_identity_is_a_daylist(PlaylistFormat format, int expiresAt, bool rolling)
         => Assert.Equal(rolling, P.IsRolling(format, expiresAt));
+
+    // ── the open is itself an event: the two rules either side of it disagree ────────────────────────────────────────
+    //
+    // A surface's reveal source answers "is my list held?" by a DIFFERENT rule either side of its own open: BEFORE, by
+    // re-deciding the plan (ListOpen.WouldHold — a page's first frame renders before its demand effect has opened
+    // anything); AFTER, by what the recorded revalidation says (ListOpen.Holding). These pin that the two are not
+    // interchangeable — the open CHANGES the answer, which is why a source must treat its own open as a tracked event
+    // and not as a plain field a memo cannot see (Playlist.HeldRows).
+
+    /// <summary>The seam: the pre-open rule re-decides the PLAN and never looks at what the model has already observed,
+    /// while the post-open rule lets go the moment an answer is visible. Same record, same instant, opposite answers.</summary>
+    [Theory]
+    [InlineData(P.Observed.Moved)]
+    [InlineData(P.Observed.Paged)]
+    [InlineData(P.Observed.Failed)]
+    public void An_answer_the_model_can_already_see_ends_the_hold_that_a_re_decide_would_still_take(P.Observed observed)
+    {
+        var take = P.Decide(P.Surface.Page, Held(revalidatedAt: 0), Now);                 // the record this page's earlier visit took
+        int later = Now + 200;                                                            // re-mounted inside the budget
+
+        // BEFORE this page's open: WouldHold re-decides over the in-flight record and still says hold.
+        var reDecided = P.Decide(P.Surface.Page, Held(revalidatedAt: Now, inFlightSince: Now, inFlightBlocking: take.Blocking), later);
+        Assert.True(reDecided.Hold);
+
+        // AFTER it: Holding reads the record, and the observed answer has already ended the hold.
+        Assert.False(P.Holds(take.Hold, take.HoldUntilMs, later, observed));
+        Assert.NotEqual(reDecided.Hold, P.Holds(take.Hold, take.HoldUntilMs, later, observed));
+
+        // Nothing has answered yet ⇒ they agree, which is what makes the disagreement above a real edge and not noise.
+        Assert.Equal(reDecided.Hold, P.Holds(take.Hold, take.HoldUntilMs, later, P.Observed.Pending));
+    }
+
+    /// <summary>…and the open that crosses that seam writes NOTHING: it joins a record whose hold is byte-identical to
+    /// the one it would take, so no ask goes out, no stamp is made and the record does not move. There is no model-side
+    /// change for a reader to notice — the surface's own open is the only event, so the surface has to carry it.</summary>
+    [Fact]
+    public void Re_opening_a_page_inside_the_budget_joins_its_own_record_without_changing_it()
+    {
+        var take = P.Decide(P.Surface.Page, Held(revalidatedAt: 0), Now);
+        Assert.True(take.Stamp);
+        Assert.Equal(Now + Budget, take.HoldUntilMs);
+
+        var rejoin = P.Decide(P.Surface.Page, Held(revalidatedAt: Now, inFlightSince: Now, inFlightBlocking: take.Blocking), Now + 200);
+        Assert.Equal(P.Ask.None, rejoin.Ask);          // no edge-door call
+        Assert.False(rejoin.Stamp);                    // no new record
+        Assert.True(rejoin.Hold);
+        Assert.Equal(take.HoldUntilMs, rejoin.HoldUntilMs);   // …and the SAME hold: the join is a no-op on the record
+    }
 }

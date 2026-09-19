@@ -484,6 +484,21 @@ public class DetailVerticalLayoutTests
         Assert.Equal(VerticalLayout.StickyClipInset(), VerticalLayout.StickyClipInset(0f, VerticalLayout.ChromeHeaderHeight));
     }
 
+    /// <summary>The trailing shelves' own clip line is the same 56-DIP band the hero collapses to, and (by
+    /// construction) exactly <c>ChromeExtent</c> shorter than the rows' own clip — the gap the chrome itself fills in
+    /// <c>Track.Table.cs</c>'s <c>TrailingBody</c> (<c>tableBlock</c> = chrome + rows; <c>trailBlock</c> clipped at
+    /// <c>TrailingClipInset</c> just below it).</summary>
+    [Fact]
+    public void TrailingClipInset_IsChromeExtentBelowTheRowsClip()
+    {
+        Assert.Equal(VerticalLayout.CompactIdentityHeight, VerticalLayout.TrailingClipInset);
+        Assert.Equal(VerticalLayout.ChromeExtent(), VerticalLayout.StickyClipInset() - VerticalLayout.TrailingClipInset);
+        Assert.Equal(VerticalLayout.ChromeExtent(contentFilterExtent: 48f),
+            VerticalLayout.StickyClipInset(contentFilterExtent: 48f) - VerticalLayout.TrailingClipInset);
+        Assert.Equal(VerticalLayout.ChromeExtent(0f, headerHeight: 32f),
+            VerticalLayout.StickyClipInset(0f, headerHeight: 32f) - VerticalLayout.TrailingClipInset);
+    }
+
     [Fact]
     public void VerticalViewport_MapsEveryLiveTrackToExpandableSlot()
     {

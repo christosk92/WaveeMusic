@@ -19,7 +19,7 @@
 //      ├─ rail: Badges (BadgesSlot) · Attribution (the publisher) · Rating (RatingSlot → the rate flyout) · meta
 //      │        (N episodes · cadence · since) · Ledger (LedgerSlot) · Primary (PrimarySlot: Follow + ghost │ Resume ·
 //      │        N min left │ episode 1 │ latest) · Satellites (♥ · trailer · 🔔 disabled · share · ⋯) · blurb (not New)
-//      └─ right: Slots.Episodes → ReaderHost
+//      └─ right: Slots.Episodes → ReaderHost                      DEMANDS the rows' facts (ShowReaderRules.RowDemand) itself
 //          └─ SkelRegion(list pending) → ItemsView.CreateBound over the snapshot, PersistentPrefixCount = 1
 //              ├─ [0] RAW sticky element (.Sticky(0)) → RailBody: filter words + counts · FindBox · sort words
 //              ├─ [1] VisitHead   New: doors + about │ Returning: hero + up next + new since │ CaughtUp │ shimmer
@@ -43,6 +43,7 @@
 // the prefix is guillotined at the rail's lower edge by ONE shared clip (`ItemClipTopInset` + the 24-DIP fade band), so
 // the rail needs no plate of its own — the page's tone ground shows through, as in the prototype.
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -96,7 +97,7 @@ public readonly partial struct Show
         readonly Func<Element> _badges;
         readonly Func<PageFacts> _facts;
         readonly Func<ContextMenuModel?> _more;
-        readonly Action _demandShow, _demandRows, _demandTrailer, _persist, _playTrailer, _share;
+        readonly Action _demandShow, _demandTrailer, _persist, _playTrailer, _share;
         readonly Prop<bool> _heartShown, _trailerShown;
 
         public PageHost(EntityUri subject)
@@ -105,13 +106,18 @@ public readonly partial struct Show
             Controls.Library ??= User.LibrarySeam;               // the Follow primary and the ♥ satellite write through it
             _facts = ComputeFacts;
             _demandShow = DemandShow;
-            _demandRows = DemandRows;
             _demandTrailer = DemandTrailer;
             _persist = PersistView;
             _playTrailer = PlayTrailer;
             _share = () => Episode.CopyLink(_show.IsValid ? Actions.WebLinkOf(_show.Uri) : "");
             _more = MoreMenu;
             _actions = new Detail.FrameActions { CoverDrag = CoverPayload };
+            // THE VERTICAL SEAM. `FrameSlots.Episodes` is `Func<bool, Element>` and the bool is Detail.UI.cs's
+            // `vertical` arm (mode 3 / the Hero page layout): the show page deliberately ignores it today and hands the
+            // SAME reader to both arms — Detail.UI.cs's vertical branch already wraps it in `ShowHeaderCore`. A future
+            // Hero/vertical show layout plugs in HERE (`v => v ? VerticalReader(...) : Reader(...)`) and nowhere else;
+            // nothing below hard-codes a two-column shape, and the rail/grip/splitter are Detail.UI.cs's, not this
+            // page's, so the two-column arm needs no change to make room for it.
             _episodes = _ => Embed.Comp(new ReaderProps(_m, _routeKey), static () => new ReaderHost());
             _primary = accent => Embed.Comp(new SlotProps(_m, accent), static () => new PrimarySlot()) with { Key = "show:primary" };
             _satellitesOf = () => _satellites ??= BuildSatellites();
@@ -147,7 +153,8 @@ public readonly partial struct Show
             var show = _show;
             UseEffect(_demandShow, DepKey.From(show.Slot, (int)epoch));
             UseActivation(onActivated: Reopen);
-            UseEffect(_demandRows);
+            // The ROWS' facts are the reader's own demand (ReaderHost.DemandRows), not this page's: the library pane
+            // mounts the same reader without a page around it.
             UseEffect(_demandTrailer);
             UseEffect(_persist);
 
@@ -228,21 +235,6 @@ public readonly partial struct Show
             if (verdict != ListFreshness.Verdict.Paint)
                 Entities.RefreshEdge(FetchEdge.ShowEpisodes, show.Slot,
                     verdict == ListFreshness.Verdict.PaintThenRevalidate ? FetchPriority.Prefetch : FetchPriority.Visible);
-        }
-
-        // Auto-tracked: as the membership lands (a page, a refresh), ask for what a row paints. The planner dedupes; the
-        // page demands its WHOLE resident model, never a visible window.
-        void DemandRows()
-        {
-            _ = Entities.ScopeEpoch.Value;
-            var scope = Entities.Current;
-            _ = scope.Edges.ShowEpisodes.Changed.Value;
-            var show = _show;
-            if (!show.IsValid) return;
-            var slots = scope.Edges.ShowEpisodes.Targets(show.Slot);
-            if (slots.Length > 0)
-                Entities.Ensure(System.Runtime.InteropServices.MemoryMarshal.Cast<int, Episode>(slots),
-                                EpisodeFields.Row | EpisodeFields.About | EpisodeFields.Progress);
         }
 
         /// <summary>The trailer is its own episode row OUTSIDE the membership (a text uri on the show): once the show's
@@ -357,6 +349,12 @@ public readonly partial struct Show
     /// <summary>One item of the reader's bound list: its kind, its month (a Group's; a Row's running group), and — for a
     /// Row — the equality-gated row item; a Group's marks carry NoRule when it sits right under the header.</summary>
     readonly record struct ReaderItem(ShowReaderShape.ItemKind Kind, int GroupKey, Episode.RowItem Row);
+
+    /// <summary>The date rail's projection over the reader's items — the same two lambdas
+    /// <see cref="ShowDateIndex.Project"/> hands the shared <see cref="JumpIndex"/> kernel over the shape's own item
+    /// type, restated here for the page's ReaderItem twin (both go through <see cref="ShowDateIndex.KeyOf"/>).</summary>
+    static readonly Func<ReaderItem, bool> s_isGroup = static it => it.Kind == ShowReaderShape.ItemKind.Group;
+    static readonly Func<ReaderItem, int> s_groupJumpKey = static it => ShowDateIndex.KeyOf(it.GroupKey);
 
     /// <summary>ONE coherent read of the page (see the file header). Immutable once published.</summary>
     sealed class ReaderSnap
@@ -477,6 +475,24 @@ public readonly partial struct Show
             int slot = show.Slot;
             var edge = scope.Edges.ShowEpisodes;
             int[] slots = edge.Targets(slot).ToArray();
+            // An AUDIOBOOK's membership arrives in the provider's native playlist order (chapter 1 first) and carries
+            // its sample among the chapters. `AudiobookOrder` is the ONE place that is turned into the reader's order —
+            // everything below (the pcts, the ledger, listen-next, the view, the item list) then reads the same span it
+            // always did. Playback still plays the context Spotify sent; this rewrites nothing but the reader's view.
+            bool audiobook = show.IsValid && show.IsAudiobook;
+            int chapterTrailer = 0;
+            if (audiobook && slots.Length > 0)
+            {
+                var kinds = new EpisodeKind[slots.Length];
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    var e = new Episode(slots[i]);
+                    kinds[i] = e.IsValid && e.Knows(EpisodeFields.Title) ? e.Kind : EpisodeKind.Full;
+                }
+                var chapters = new int[slots.Length];
+                int written = AudiobookOrder.Normalize(slots, kinds, chapters, out chapterTrailer, out _);
+                slots = written == chapters.Length ? chapters : chapters[..written];
+            }
             int n = slots.Length;
             var pcts = new float[n];
             var published = new int[n];
@@ -520,14 +536,28 @@ public readonly partial struct Show
             int capacity = ShowReaderShape.MaxItems(viewCount);
             var shape = new ShowReaderShape.Item[capacity];
             var marks = new Episode.RowMarks[capacity];
-            int count = ShowReaderRules.Layout(slots, pcts, published, view.AsSpan(0, viewCount), lastPlayed, trusted, shape, marks);
+            int resumeAt = resume >= 0 ? slots[resume] : 0;
+            // Report 11a: the visit head already SHOWS its episode (the continue hero), so the body must not repeat it
+            // as its first row. Only the Returning head owns one — New's doors and CaughtUp show none.
+            int headSlot = head == ShowReaderRules.Head.Returning && resumeAt > 0 ? resumeAt : -1;
+            // An audiobook has no months (its chapters are a story, not a release calendar): the dates the ITEM LIST
+            // sees are empty, so no Group ever opens. Every other rule still reads the real dates.
+            var layoutDates = audiobook ? ReadOnlySpan<int>.Empty : published;
+            int count = ShowReaderRules.Layout(slots, pcts, layoutDates, view.AsSpan(0, viewCount), lastPlayed, trusted,
+                                               shape, marks, headSlot);
             var items = new ReaderItem[count];
-            for (int j = 0; j < count; j++)
+            for (int j = 0, row = 0; j < count; j++)
             {
                 var it = shape[j];
-                items[j] = new ReaderItem(it.Kind, it.GroupKey, it.Kind == ShowReaderShape.ItemKind.Row
-                    ? Episode.RowItem.Of(new Episode(it.Slot), marks[j])
-                    : new Episode.RowItem(default, 0u, marks[j]));
+                if (it.Kind != ShowReaderShape.ItemKind.Row)
+                {
+                    items[j] = new ReaderItem(it.Kind, it.GroupKey, new Episode.RowItem(default, 0u, marks[j]));
+                    continue;
+                }
+                while (headSlot != -1 && row < viewCount && slots[view[row]] == headSlot) row++;
+                int orig = row < viewCount ? view[row++] : -1;
+                items[j] = new ReaderItem(it.Kind, it.GroupKey, Episode.RowItem.Of(new Episode(it.Slot), marks[j],
+                    audiobook && orig >= 0 ? AudiobookOrder.ChapterNumber(orig, n) : 0));
             }
 
             var upNext = new int[upCount];
@@ -539,6 +569,8 @@ public readonly partial struct Show
                 if (ShowLedger.IsFresh(pcts[i], published[i], lastPlayed)) fresh[k++] = slots[i];
             int trailer = show.Knows(ShowFields.Facts) && !show.TrailerId.IsEmpty
                           && scope.Episodes.TryGetSlot(show.TrailerId, out int trailerSlot) ? trailerSlot : 0;
+            // An audiobook names no trailer on the show: its SAMPLE is a member of the membership, lifted out above.
+            if (trailer == 0) trailer = chapterTrailer;
             bool complete = state == EdgeState.Complete;
             int firstSlot = complete && n > 0 ? slots[n - 1] : 0;
             int oldestYear = complete && n > 0 && published[n - 1] > 0
@@ -548,7 +580,7 @@ public readonly partial struct Show
             bool paging = Episode.Rules.Paging(pagingFrom, _pagingVersion, edge.Version(slot), failedNow);
             int local = Episode.Rules.LocalCursorAfter(localAsked, pagingFrom, paging, failedNow);
             int edgeAsked = show.EpisodesAsked;
-            int resumeSlot = resume >= 0 ? slots[resume] : 0;
+            int resumeSlot = resumeAt;
 
             ulong fold = 14695981039346656037UL;
             Mix(ref fold, (uint)head);
@@ -624,7 +656,14 @@ public readonly partial struct Show
     sealed record ReaderProps(ReaderModel Model, string RouteKey);
 
     /// <summary>The right column (§5.6): one bound list behind the membership's skeleton. Owns the width arms, the
-    /// tone, the rows' context and the rail's words — everything built once.</summary>
+    /// tone, the rows' context and the rail's words — everything built once.
+    /// <para>MODEL SWAPS. Every `??=`-cached thing here resolves <c>_m</c> (the CURRENT model, re-pointed by
+    /// <see cref="ApplyProps"/>) at call time, and <c>_items</c> projects the model's <c>Snap</c> memo — which its owner
+    /// keeps stable for its own lifetime (Show.Pane.cs's header). So the derived state here does NOT freeze on the first
+    /// model. The host is nonetheless KEYED per show by both its owners (<c>"showpane:reader:"+slot</c> / the route key)
+    /// and stays that way ON PURPOSE: the scroll offset, the <see cref="ItemsViewController"/>, the bulk
+    /// <see cref="EpisodeSelection"/>, the sticky month, the year strip and the persistent rail slot are per-show
+    /// IDENTITY, not derived state — a different show must start at the top with nothing selected.</para></summary>
     sealed class ReaderHost : Component, IPropsHost
     {
         ReaderProps? _latest;
@@ -639,25 +678,60 @@ public readonly partial struct Show
         Memo<ColorF>? _tone;
         readonly RepeatLayout _layout = RepeatLayout.VariableList(ItemEstimate);
 
-        internal Memo<bool>? Narrow, RailScrolls;
-        internal Episode.RowContext? RowCtx;
+        internal Memo<bool>? Narrow;
+        /// <summary>Which rung of the toolbar's collapse ladder the rail's measured width is on
+        /// (<see cref="ShowToolbarLayout.Of"/>) — the rail is ONE row at every one of them.</summary>
+        internal Memo<ToolbarStage>? Toolbar;
+        /// <summary>The list rows' context (it carries <see cref="EpisodeSelection"/>) and the HEAD's — the visit head's
+        /// "new since" rows render over a fixed scope that owns no selection state, so they never wear a check lane.</summary>
+        internal Episode.RowContext? RowCtx, HeadRowCtx;
         internal Controls.Words.Word[]? FilterWords, SortWords;
         /// <summary>The show's tone as a live read (a memo, so a bind re-fires only when the colour moves).</summary>
         internal readonly Func<ColorF> Tone;
+        /// <summary>The narrow toolbar's collapsed find box (report 4a) — session-only, like the query itself.</summary>
+        internal readonly Signal<bool> FindOpen = new(false);
+        internal readonly Action OpenFind, CloseFind, ToggleSelecting;
+        internal readonly Func<bool> IsSelecting;
+        /// <summary>Bulk selection over the reader's rows (report 5). Armed by the toolbar's select toggle; the bar
+        /// appears only above zero.</summary>
+        internal readonly EpisodeSelection Selection;
 
-        readonly Func<bool> _narrowOf, _railScrollsOf, _pending, _failed;
+        readonly Func<bool> _narrowOf, _pending, _failed;
+        readonly Func<ToolbarStage> _toolbarStageOf;
+        readonly Func<int, Element> _selectionCommands;
+        readonly Func<int> _selectedOf;
+        Memo<int>? _selected;
+        readonly ItemsViewController _ctl = new();
+        // the date rail (report 4b): the month groups projected out of the snapshot's items, their distinct years, and
+        // the month pinned at the list's top
+        JumpGroup[] _groups = new JumpGroup[ShowDateIndex.MaxGroups];
+        int _groupCount;
+        int[] _years = [];
+        readonly Signal<int> _stickyMonth = new(-1);
+        readonly Action<int> _jumpYear;
+        readonly Func<int[]> _yearsOf;
+        Memo<int[]>? _yearsMemo;
         readonly Func<ColorF> _toneOf;
         readonly Func<BoundItemScope<ReaderItem>, Element> _template;
         readonly Func<int, int> _contentType;
         readonly Func<Element> _content, _shimmer, _failedView;
-        readonly Action _retry;
+        readonly Action _retry, _demandRows;
         readonly Action<Episode> _play;
         static readonly Func<Episode, ContextMenuModel?> s_menu = static e => Episode.Menu(e, new Episode.MenuOptions(ShowGoToShow: false));
 
         public ReaderHost()
         {
             _narrowOf = () => ShowReaderRules.Narrow(_width?.Value ?? 0f);
-            _railScrollsOf = () => ShowReaderRules.RailScrolls(_width?.Value ?? 0f);
+            _toolbarStageOf = () => ShowToolbarLayout.Of(_width?.Value ?? 0f);
+            Selection = new EpisodeSelection(EpisodeAt, () => _m?.Peek().ItemCount ?? 0, IsRowAt);
+            IsSelecting = () => Selection.Selecting.Value;
+            ToggleSelecting = () => Selection.Arm(!Selection.Selecting.Peek());
+            OpenFind = () => FindOpen.Value = true;
+            CloseFind = () => { FindOpen.Value = false; if (_m is { } m) m.Find.Value = ""; };
+            _selectionCommands = fit => EpisodeSelection.Commands(fit, Selection);
+            _selectedOf = () => Selection.SelectedCount;
+            _jumpYear = JumpToYear;
+            _yearsOf = YearsOf;
             _toneOf = () =>
             {
                 ColorF fallback = _accent is { } a ? a.Value.Fill : Tok.AccentDefault;
@@ -681,9 +755,73 @@ public readonly partial struct Show
             };
             _failedView = () => Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, onAction: _retry);
             _play = e => Episode.Invoke(e, () => Model.PlayInShow(e));
+            _demandRows = DemandRows;
         }
 
         internal ReaderModel Model => _m!;
+
+        /// <summary>THE ROWS' DEMAND lives on the reader, not on whoever mounts it. Auto-tracked: as the membership lands
+        /// (a page, a refresh, a model swap), ask for what a row paints — <see cref="ShowReaderRules.RowDemand"/> over the
+        /// WHOLE resident membership, never a visible window; the planner dedupes. It sat on the route page's host until
+        /// 2026-09-20, and the library pane (Show.Pane.cs), which mounts this same reader, never asked: a show whose rows
+        /// nothing else had made resident shimmered forever there — nothing was coming, and nothing could fail either.</summary>
+        void DemandRows()
+        {
+            _ = _props.Value;                                      // a model swap re-runs this for the new show
+            _ = Entities.ScopeEpoch.Value;
+            var scope = Entities.Current;
+            _ = scope.Edges.ShowEpisodes.Changed.Value;
+            if (_m is not { } m || !m.Subject.IsValid || !scope.Shows.TryGetSlot(m.Subject.Id, out int show)) return;
+            var slots = scope.Edges.ShowEpisodes.Targets(show);
+            if (slots.Length > 0) Entities.Ensure(scope.Episodes, slots, (uint)ShowReaderRules.RowDemand);
+        }
+
+        // ── the selection's item space (report 5): the LIST's index space is the snapshot's, prefix included ──
+        bool IsRowAt(int index)
+        {
+            var s = _m?.Peek();
+            return s is not null && (uint)index < (uint)s.ItemCount && s.Items[index].Kind == ShowReaderShape.ItemKind.Row;
+        }
+
+        Episode EpisodeAt(int index)
+        {
+            var s = _m?.Peek();
+            if (s is null || (uint)index >= (uint)s.ItemCount) return default;
+            var it = s.Items[index];
+            return it.Kind == ShowReaderShape.ItemKind.Row ? it.Row.Episode : default;
+        }
+
+        // ── the date rail (report 4b) ────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The month groups of the CURRENT item list, projected through the shared
+        /// <see cref="JumpIndex"/> kernel (the A–Z strip's kernel), then folded to their distinct years.</summary>
+        int[] YearsOf()
+        {
+            var s = _m?.Read() ?? ReaderSnap.Empty;
+            _groupCount = JumpIndex.Project<ReaderItem>(s.Items.AsSpan(0, s.ItemCount), s_isGroup, s_groupJumpKey, _groups);
+            var years = new int[_groupCount];
+            int n = ShowDateIndex.Years(_groups.AsSpan(0, _groupCount), years);
+            return n == years.Length ? years : years[..n];
+        }
+
+        void JumpToYear(int year)
+        {
+            int flat = ShowDateIndex.ResolveYear(_groups.AsSpan(0, _groupCount), year);
+            if (flat >= 0) _ctl.StartBringItemIntoView(flat, alignmentRatio: 0f, animate: true);
+        }
+
+        /// <summary>The month pinned at the list's top: the item under the viewport's top edge, read through the
+        /// controller (the list's extents are variable, so there is no offset table to index).</summary>
+        long ProjectSticky(ScrollGeometry g) => MonthAtTop();
+
+        void UpdateSticky(ScrollGeometry g) => _stickyMonth.SetIfChanged((int)MonthAtTop());
+
+        long MonthAtTop()
+        {
+            var s = _m?.Peek();
+            if (s is null || s.ItemCount == 0 || !_ctl.TryGetItemIndex(0f, 0f, out int i)) return -1;
+            return (uint)i < (uint)s.ItemCount ? s.Items[i].GroupKey : -1;
+        }
 
         public void ApplyProps(object props)
         {
@@ -700,33 +838,53 @@ public readonly partial struct Show
             _accent = UseContext(Design.AccentCtx.Slot);
             _width = UseMeasuredWidth(4f);
             Narrow = UseComputed(_narrowOf);
-            RailScrolls = UseComputed(_railScrollsOf);
+            Toolbar = UseComputed(_toolbarStageOf);
             _tone = UseComputed(_toneOf);
+            _selected = UseComputed(_selectedOf);
+            _yearsMemo = UseComputed(_yearsOf);
+            UseEffect(_demandRows);
             var m = Model;
-            RowCtx ??= new Episode.RowContext
+            HeadRowCtx ??= new Episode.RowContext
             {
                 Tone = Tone, Play = _play, Menu = s_menu, Overlay = Controls.IsNullOverlay(overlay) ? null : overlay,
             };
+            RowCtx ??= new Episode.RowContext
+            {
+                Tone = Tone, Play = _play, Menu = s_menu, Overlay = Controls.IsNullOverlay(overlay) ? null : overlay,
+                Selection = Selection.Rows,
+            };
             // The words are frozen at the rail's mount (their positions ARE Episode.Rules.Status / the order); the counts
-            // are live binds over the snapshot, empty until progress is trusted.
+            // are live binds over the snapshot, empty until progress is trusted. The thunks read `_m` — the CURRENT
+            // model — and never the `m` local: a `??=` cache that closed over the local would freeze the counts on the
+            // first model this host ever saw, which is exactly the trap Show.Pane.cs's header describes.
             FilterWords ??= new Controls.Words.Word[]
             {
-                new(Loc.Bind(Strings.Podcast.Filter.All), Prop.Of(() => m.Read().CountAll)),
-                new(Loc.Bind(Strings.Podcast.Filter.Unplayed), Prop.Of(() => m.Read().CountUnplayed)),
-                new(Loc.Bind(Strings.Podcast.Filter.InProgress), Prop.Of(() => m.Read().CountProgress)),
-                new(Loc.Bind(Strings.Podcast.Filter.Played), Prop.Of(() => m.Read().CountPlayed)),
+                new(Loc.Bind(Strings.Podcast.Filter.All), Prop.Of(() => _m?.Read().CountAll ?? "")),
+                new(Loc.Bind(Strings.Podcast.Filter.Unplayed), Prop.Of(() => _m?.Read().CountUnplayed ?? "")),
+                new(Loc.Bind(Strings.Podcast.Filter.InProgress), Prop.Of(() => _m?.Read().CountProgress ?? "")),
+                new(Loc.Bind(Strings.Podcast.Filter.Played), Prop.Of(() => _m?.Read().CountPlayed ?? "")),
             };
             SortWords ??= new Controls.Words.Word[] { new(Loc.Bind(Strings.Podcast.Sort.Newest)), new(Loc.Bind(Strings.Podcast.Sort.Oldest)) };
             _items ??= BoundItems.Project(m.Snap!, static s => s.ItemCount, static (s, i) => s.Items[i], default(ReaderItem));
-            return new BoxEl
+            int selected = _selected!.Value;
+            var years = _yearsMemo!.Value;
+            Element list = new BoxEl
             {
-                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ZStack = true,
                 Children =
                 [
                     new SkelRegionEl(
                         Pending: _pending, Failed: _failed, Content: _content, ShimmerSource: _shimmer, OnFailed: _failedView,
                         Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
+                    // the month pinned under the rail, and the selection bar docked at the list's foot
+                    StickyMonth(_stickyMonth, Narrow.Value ? ReaderPadNarrow : ReaderPad),
+                    Controls.SelectionBar(selected, _selectionCommands, standalone: true, bottomPadding: BottomReserve, minCount: 1),
                 ],
+            };
+            return new BoxEl
+            {
+                Direction = 0, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+                Children = years.Length > 1 ? [list, YearStrip(years, _stickyMonth, _jumpYear)] : [list],
             };
         }
 
@@ -737,8 +895,12 @@ public readonly partial struct Show
                 _optionsKey = routeKey;
                 _options = new ListOptions<ReaderItem>
                 {
-                    SelectionMode = ItemsSelectionMode.None,           // no marquee, no Ctrl+A, no batch bar
+                    // Report 5: Extended, so a row can be selected — the ROWS own the check lane and the selected fill
+                    // (Episode.ReaderRowContent), which is why the selector visual stays None.
+                    SelectionMode = ItemsSelectionMode.Extended,
+                    Selection = Selection.Model,
                     Selector = SelectorVisual.None,
+                    Controller = _ctl,
                     Grow = 1f,
                     ContentType = _contentType,                        // recycle pools per kind: a row never rebinds as a head
                     PersistentPrefixCount = ShowReaderShape.Prefix,
@@ -748,6 +910,7 @@ public readonly partial struct Show
                         AutoEdgeFade = false,                           // the rail's clip band owns the top feather
                         ItemClipTopInset = RailHeight,
                         ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand,
+                        OnScrollGeometryChanged = (ProjectSticky, UpdateSticky),
                     },
                 };
             }
@@ -820,19 +983,10 @@ public readonly partial struct Show
     sealed class PrimarySlot : Component
     {
         ReaderModel? _m;
-        Func<ColorF>? _accent;
-        Memo<ColorF>? _tone;
-        readonly Func<ColorF> _toneOf, _toneRead;
         readonly Action _follow, _resume, _first, _latest;
 
         public PrimarySlot()
         {
-            _toneOf = () =>
-            {
-                ColorF fallback = _accent?.Invoke() ?? Tok.AccentDefault;
-                return ToneOf(_m?.Facts is { } f ? f.Value.ToneArgb : 0u, fallback);
-            };
-            _toneRead = () => _tone?.Value ?? Tok.AccentDefault;
             _follow = () =>
             {
                 if (_m is not { } m || Controls.Library is not { } lib || m.SubjectText.Length == 0) return;
@@ -856,16 +1010,15 @@ public readonly partial struct Show
         {
             var p = UseProps<SlotProps>();
             _m = p.Model;
-            _accent = p.Accent;
-            _tone = UseComputed(_toneOf);
             var f = _m.Facts?.Value ?? default;
+            // Reports 11c/11d: the APP accent (never the show tone) and a label that WRAPS — see Show.PrimaryPill.
             Element pill = f.Primary switch
             {
-                ShowReaderRules.Primary.Follow => Detail.PlayPill(_toneRead, _follow, Loc.Get(Strings.Artist.Follow), Icons.Add),
-                ShowReaderRules.Primary.Resume => Detail.PlayPill(_toneRead, _resume,
+                ShowReaderRules.Primary.Follow => PrimaryPill(_follow, Loc.Get(Strings.Artist.Follow), Icons.Add),
+                ShowReaderRules.Primary.Resume => PrimaryPill(_resume,
                     Loc.Get(Strings.Podcast.Resume) + " · " + Strings.Podcast.Left(Episode.DurationWords(f.ResumeLeft))),
-                ShowReaderRules.Primary.PlayFirst => Detail.PlayPill(_toneRead, _first, Strings.Podcast.Badge.Episode(FormatCache.Int(f.FirstNumber))),
-                _ => Detail.PlayPill(_toneRead, _latest, Loc.Get(Strings.Podcast.Latest)),
+                ShowReaderRules.Primary.PlayFirst => PrimaryPill(_first, Strings.Podcast.Badge.Episode(FormatCache.Int(f.FirstNumber))),
+                _ => PrimaryPill(_latest, Loc.Get(Strings.Podcast.Latest)),
             };
             if (f.Primary != ShowReaderRules.Primary.Follow) return pill;
             Element ghost = f.Ghost == ShowReaderRules.Primary.PlayFirst
@@ -1081,13 +1234,16 @@ public static class ShowReaderRules
 
     /// <summary>Below this reader width the rows narrow: no numeral, 48 art, the disc alone (W3).</summary>
     public const float NarrowBelow = 540f;
-    /// <summary>Below this reader width the word rail scrolls sideways instead of pinning its sort words right (W1).</summary>
-    public const float RailScrollsBelow = 720f;
+
+    /// <summary>What the reader asks for every resident member, from whichever host mounts it (the route page, the
+    /// library pane): what a row PAINTS (<see cref="EpisodeFields.Row"/>), its two-line blurb
+    /// (<see cref="EpisodeFields.About"/>) and its progress (<see cref="EpisodeFields.Progress"/> — no route serves it
+    /// per episode, so the plan seals it and the login hydrate fills it; asking is what keeps a later hydrate from being
+    /// asked again). One constant, so the demand and the reveal (<c>Episode.RevealState</c>) cannot drift apart.</summary>
+    public const EpisodeFields RowDemand = EpisodeFields.Row | EpisodeFields.About | EpisodeFields.Progress;
 
     /// <summary>A width of 0 is "not measured yet": the wide arm.</summary>
     public static bool Narrow(float width) => width > 0f && width < NarrowBelow;
-
-    public static bool RailScrolls(float width) => width > 0f && width < RailScrollsBelow;
 
     /// <summary>The head. A Returning visit whose listen-next found nothing to continue (every unfinished episode is
     /// past <see cref="ListenNext.NearComplete"/> — Resume -1 and no up-next, as-built P1-R) falls back to CaughtUp.</summary>
@@ -1147,7 +1303,7 @@ public static class ShowReaderRules
     /// <paramref name="items"/> and <paramref name="marks"/> need <see cref="ShowReaderShape.MaxItems"/>(view.Length).</summary>
     public static int Layout(ReadOnlySpan<int> slots, ReadOnlySpan<float> pcts, ReadOnlySpan<int> publishedAt,
                              ReadOnlySpan<int> view, int lastPlayedAt, bool trusted,
-                             Span<ShowReaderShape.Item> items, Span<Episode.RowMarks> marks)
+                             Span<ShowReaderShape.Item> items, Span<Episode.RowMarks> marks, int skipSlot = -1)
     {
         int v = view.Length;
         var viewSlots = new int[v];
@@ -1158,13 +1314,15 @@ public static class ShowReaderRules
             viewSlots[k] = slots[i];
             viewDates[k] = i < publishedAt.Length ? publishedAt[i] : 0;
         }
-        int count = ShowReaderShape.Build(viewSlots, viewDates, canLoadMore: true, hasSimilar: false, items);
+        int count = ShowReaderShape.Build(viewSlots, viewDates, canLoadMore: true, hasSimilar: false, items, skipSlot);
         int row = 0;
         for (int j = 0; j < count && j < marks.Length; j++)
         {
             var kind = items[j].Kind;
             var prev = j > 0 ? items[j - 1].Kind : ShowReaderShape.ItemKind.Rail;
             var m = Episode.RowMarks.None;
+            // step over the head's episode in LOCKSTEP with Build, so every mark stays on the row it describes
+            while (skipSlot != -1 && row < v && slots[view[row]] == skipSlot) row++;
             if (kind == ShowReaderShape.ItemKind.Row && row < v)
             {
                 int i = view[row++];

@@ -202,7 +202,7 @@ public static partial class Lyrics
     {
         /// <param name="videoActive">Whether a video is the current media — a DERIVED read of the one placement state
         /// (<c>Playback.VideoActive</c>), never a standalone flag.</param>
-        public static bool SyncSuppressed(bool videoActive) => videoActive;
+        public static bool SyncSuppressed(bool videoActive, bool podcast = false) => videoActive && !podcast;
     }
 
     /// <summary>Whether a document swap may KEEP the mounted lyric rows.
@@ -397,6 +397,8 @@ public static partial class Lyrics
         double _anchorMs;
         long _anchorQpc;
         double _rate = 1.0;
+        double _contentRate = 1.0;
+        public double ContentRate => _contentRate;
 
         // The cheap monotonic guard (see At): the rate is always >= 1-MaxSlew (0.95) > 0 between snaps, so this only
         // ever matters right after one — Snap() resets it so a legitimate backward seek is never clamped away.
@@ -425,8 +427,11 @@ public static partial class Lyrics
         /// follow scroll, the handoff cascade) key their "treat this like a fresh landing" recovery off it. A
         /// paused→playing resume always rebases the mapping but reports <c>false</c> unless the position also
         /// jumped.</summary>
-        public bool OnSample(long positionMs, long sampleQpc, bool playing)
+        public bool OnSample(long positionMs, long sampleQpc, bool playing, double contentRate = 1.0)
         {
+            contentRate = double.IsFinite(contentRate) && contentRate > 0 ? contentRate : 1.0;
+            bool rateChanged = _contentRate != contentRate;
+            _contentRate = contentRate;
             bool resuming = playing && !_playing;
             _playing = playing;
 
@@ -457,7 +462,7 @@ public static partial class Lyrics
             double predicted = AtInternal(sampleQpc);
             double error = positionMs - predicted;
             bool jumped = Math.Abs(error) > SnapThresholdMs;
-            if (jumped || resuming)
+            if (jumped || resuming || rateChanged)
             {
                 // A resume always REBASES (the pinned rate-0 line cannot be slewed back to rate 1), but it only reports
                 // a snap when the position genuinely jumped — a plain pause/resume is not a seek, and the caller's seek
@@ -475,7 +480,7 @@ public static partial class Lyrics
             long pivot = Math.Max(_lastTargetQpc, sampleQpc);
             _anchorMs = AtInternal(pivot);
             _anchorQpc = pivot;
-            _rate = 1.0 + Math.Clamp(error / ConvergeMs, -MaxSlew, MaxSlew);
+            _rate = _contentRate + Math.Clamp(error / ConvergeMs, -MaxSlew, MaxSlew);
             _cumulativeSlewMs += Math.Abs(error);
             return false;
         }
@@ -484,7 +489,7 @@ public static partial class Lyrics
         {
             _anchorMs = positionMs;
             _anchorQpc = qpc;
-            _rate = 1.0;
+            _rate = _contentRate;
             _hasSample = true;
             _lastReturnedMs = long.MinValue;
             _lastTargetQpc = 0;
@@ -496,10 +501,10 @@ public static partial class Lyrics
         /// probe). Equivalent to feeding a "first sample" regardless of history.
         /// <para>A document CLEAR must call this too (with 0): a port that keeps the clock across a track change
         /// re-treats the next document's first sample as a &gt;250 ms disagreement.</para></summary>
-        public void Reset(long positionMs, long qpc, bool playing)
+        public void Reset(long positionMs, long qpc, bool playing, double contentRate = 1.0)
         {
             _hasSample = false;
-            OnSample(positionMs, qpc, playing);
+            OnSample(positionMs, qpc, playing, contentRate);
         }
 
         double AtInternal(long targetQpc) => _anchorMs + (targetQpc - _anchorQpc) * 1000.0 / _qpcFrequency * _rate;
@@ -1142,7 +1147,7 @@ public static partial class Lyrics
 
     /// <summary>One surface's lyric-row type and rhythm. The row has NO fixed height: <see cref="Estimate"/> is only
     /// the measured layout's seed (a single-line row).</summary>
-    public readonly record struct RowMetrics(float FontSize, float LineHeight, float RowPad, float SidePad)
+    public readonly record struct RowMetrics(float FontSize, float LineHeight, float RowPad, float SidePad, ushort Weight = 700)
     {
         /// <summary>A single-line row: line box + the two vertical pads (the inter-line gap is 2 × pad).</summary>
         public float Estimate => LineHeight + 2f * RowPad;
@@ -1156,11 +1161,15 @@ public static partial class Lyrics
         /// higher so more of the upcoming verse shows below it.</summary>
         public static float FocalBand(bool large) => large ? 0.38f : 0.40f;
 
-        /// <summary>The timed rows: 26/33/700 with 7/22 pads on the rail, 36/46/700 with 9/64 on the stage.</summary>
-        public static RowMetrics Timed(bool large) => large ? new(36f, 46f, 9f, 64f) : new(26f, 33f, 7f, 22f);
+        /// <summary>Music keeps its lyric type. Speech uses 16/24/500 on the rail/reader and 20/30/500 on the
+        /// expanded stage, with six-DIP vertical pads and the same surface gutters.</summary>
+        public static RowMetrics Timed(bool large, bool podcast = false) => podcast
+            ? large ? new(20f, 30f, 6f, 64f, 500) : new(16f, 24f, 6f, 22f, 500)
+            : large ? new(36f, 46f, 9f, 64f) : new(26f, 33f, 7f, 22f);
 
         /// <summary>The UNSYNCED reading block: smaller reading type (19/26 · 28/36), the same side gutter.</summary>
-        public static RowMetrics Unsynced(bool large) => large ? new(28f, 36f, 7f, 64f) : new(19f, 26f, 5f, 22f);
+        public static RowMetrics Unsynced(bool large, bool podcast = false) => podcast ? Timed(large, true)
+            : large ? new(28f, 36f, 7f, 64f) : new(19f, 26f, 5f, 22f);
 
         /// <summary>The unsynced block's text alpha over the primary ink.</summary>
         public const float UnsyncedAlpha = 0.88f;

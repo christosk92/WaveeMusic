@@ -169,11 +169,14 @@ public static partial class Shell
             var videoAnchor = UseRef<NodeHandle>(default);
             var videoMenu = UseRef<OverlayHandle?>(null);
             var overlay = UseContext(Overlay.Service);
+            var hooks = UseContext(InputHooks.Current);
+            var barNode = UseRef<NodeHandle>(default);
             float artScale = UseContext(Viewport.Scale);
             var rowStamp = UseComputed<(EntityKind Kind, int Slot, uint Version)>(BarRowStamp);
             UseSignalEffect(static () => s_barVolume.SetIfChanged(Playback.Volume.Value));
 
-            var L = _layout.Value;
+            bool isEpisode = Playback.CurrentId.Value.Kind == EntityKind.Episode;
+            var L = isEpisode ? PodcastBarLayout(_layout.Value) : _layout.Value;
             bool marquee = Prefs.Appearance.Marquee();
 
             // ── the low-frequency facts ──
@@ -197,7 +200,16 @@ public static partial class Shell
             var track = isTrack ? new Track(current.Slot) : default;
             bool hasVideo = isTrack && track.IsValid && track.HasVideo;
             string? playingUri = BarPlayingUri(current);
-            bool liked = playingUri is not null && Controls.Library is { } library && library.IsSaved(playingUri);
+            var episode = !current.IsNone && current.Kind == EntityKind.Episode ? new Episode(current.Slot) : default;
+            bool liked = isEpisode ? Spotify.Podcasts.IsSaved(episode)
+                : playingUri is not null && Controls.Library is { } library && library.IsSaved(playingUri);
+            bool saveReady = !isEpisode || episode.IsValid && Spotify.Podcasts.SavedReady && !Spotify.Podcasts.SavedBusy;
+            uint savedEpoch = Entities.ScopeEpoch.Value;
+            UseLayoutEffect(() =>
+            {
+                if (isEpisode && !Spotify.Podcasts.SavedReady && !Spotify.Podcasts.SavedBusy)
+                    _ = Spotify.Podcasts.ReadSavedAsync(System.Threading.CancellationToken.None);
+            }, DepKey.From((int)savedEpoch, isEpisode ? 1 : 0));
             bool likeLit = PlayerBarRules.LikeFaceVisible(L, facts.State);
 
             // The heart pops on the SAME playable's save edge only — played on the captured node, because a keyed
@@ -301,11 +313,12 @@ public static partial class Shell
                 Children = [Controls.Artwork(BarArtUrl(current), L.ArtSize, L.ArtSize, 6f, scale: artScale)],
             };
             // The heart's SLOT is the tier's; an idle bar shows no face in it (and the face cannot be hit or focused).
-            var likeSlot = Slot("like", box, box, likeLit,
-                BarButton(liked ? Icons.HeartFill : Icons.Heart, static () => BarToggleLike(), likeLit, liked,
-                        box, glyph, onRealized: h => likeNode.Value = h)
-                    // The cluster is a drag handle; a press on the heart must not lift the track.
-                    with { BlocksDragArm = true });
+            var saveIcon = isEpisode ? ActionIcons.Resolve(ActionIcons.Save, liked) : ActionIcons.Resolve(ActionIcons.Heart, liked);
+            var saveButton = BarButton(saveIcon.Glyph ?? Icons.Add, static () => BarToggleLike(), likeLit && saveReady, liked,
+                box, glyph, onRealized: h => likeNode.Value = h) with { BlocksDragArm = true };
+            Element saveFace = isEpisode ? ToolTip.Wrap(saveButton,
+                Loc.Get(liked ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save)) : saveButton;
+            var likeSlot = Slot("like", box, box, likeLit, saveFace);
 
             var left = new BoxEl
             {
@@ -314,7 +327,7 @@ public static partial class Shell
                 // The factory PEEKS at promotion time: the mounted cluster outlives every track change. An idle bar is
                 // not a drag handle at all.
                 Draggable = isTrack ? Drag.Source(static () => BarDragPayload()) : null,
-                Children = L.ShowLikeSlot ? [art, metaCol, likeSlot] : [art, metaCol],
+                Children = isEpisode && L.Tier == PlayerBarTier.Minimal ? [art] : L.ShowLikeSlot ? [art, metaCol, likeSlot] : [art, metaCol],
             };
             // Right-click / Menu key / long-press: the track menu over the now-playing target, with its header. ONE seam
             // feeds this cluster AND the immersive stage (`Stage.NowPlayingMenu`, installed by the track menu's owner);
@@ -326,6 +339,8 @@ public static partial class Shell
             if (ownsTransport && L.ShowPrevNext)
                 transportKids.Add(BarButton(Icons.Previous, static () => Playback.Previous(), facts.PrevEnabled, false, box, glyph)
                     with { Key = "prev" });
+            if (ownsTransport && isEpisode)
+                transportKids.Add(BarSeekStepButton(-10_000, box) with { Key = "seek-back-10" });
             if (ownsTransport)
                 transportKids.Add(BarPrimaryButton(
                         facts.State == PlayerState.Error ? Icons.Play : playing ? Icons.Pause : Icons.Play,
@@ -334,6 +349,12 @@ public static partial class Shell
             if (ownsTransport && L.ShowPrevNext)
                 transportKids.Add(BarButton(Icons.Next, static () => Playback.Next(), facts.NextEnabled, false, box, glyph)
                     with { Key = "next" });
+
+            if (ownsTransport && isEpisode)
+            {
+                transportKids.Add(BarSeekStepButton(10_000, box) with { Key = "seek-forward-10" });
+                transportKids.Add(Embed.Comp(static () => new BarEpisodeSpeed()) with { Key = "episode-speed" });
+            }
 
             // Stable keys keep BarSeekRail's identity (scrub state, cached width) across the 760-DIP label breakpoint.
             var seekKids = new List<Element>(3);
@@ -425,8 +446,9 @@ public static partial class Shell
                                 length: PlayerBarLayout.VolumeSliderW, thickness: Slider.DefaultStyle.ThumbRingDiameter));
                     case RightSlot.Lyrics:
                         return Slot("lyrics", w, box, lit,
-                            BarButton(WaveeIcons.Lyrics, static () => Ui.Toggle(RailMode.Lyrics), lit,
-                                railOpen && railMode == RailMode.Lyrics, box, glyph, font: WaveeIcons.Font));
+                            ToolTip.Wrap(BarButton(WaveeIcons.Lyrics, static () => Ui.Toggle(RailMode.Lyrics), lit,
+                                railOpen && railMode == RailMode.Lyrics, box, glyph, font: WaveeIcons.Font),
+                                Loc.Get(isEpisode ? "podcast.reader.transcript" : Strings.Player.Lyrics)));
                     case RightSlot.Video:
                         // Only built while hasVideo holds (the slot is in `slots` iff the track has a video); the face
                         // additionally needs an Active playable, so it stays dark through Loading/Reconnecting/Error.
@@ -492,6 +514,24 @@ public static partial class Shell
                 // NO fill, NO shadow, NO Elevation.DockTop: the dock is a paint-site omission over live Mica.
                 Direction = 1, Height = Design.Size.PlayerBarH, ClipToBounds = true,
                 IsolateLayout = true,   // the layout firewall: a title change re-solves THIS subtree only
+                Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
+                OnRealized = node => barNode.Value = node,
+                OnClick = () => hooks.FocusNode?.Invoke(barNode.Value, true),
+                OnKeyDown = e =>
+                {
+                    var intent = PlayerKey(e.KeyCode, hooks.GetFocus?.Invoke() == barNode.Value,
+                        e.Handled, e.Ctrl || e.Alt || e.Shift);
+                    if (intent == PlayerKeyIntent.None) return;
+                    e.Handled = true;
+                    switch (intent)
+                    {
+                        case PlayerKeyIntent.SeekBack: BarSeekBy(-10_000); break;
+                        case PlayerKeyIntent.SeekForward: BarSeekBy(10_000); break;
+                        case PlayerKeyIntent.VolumeDown: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() - .05f, 0f, 1f)); break;
+                        case PlayerKeyIntent.VolumeUp: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() + .05f, 0f, 1f)); break;
+                        case PlayerKeyIntent.Toggle: if (!e.IsRepeat) TogglePlayPause(); break;
+                    }
+                },
                 Children =
                 [
                     topEdge,
@@ -635,6 +675,11 @@ public static partial class Shell
     static void BarToggleLike()
     {
         var r = Playback.Current.Peek();
+        if (!r.IsNone && r.Kind == EntityKind.Episode)
+        {
+            if (Spotify.Podcasts.SavedReady && !Spotify.Podcasts.SavedBusy) Spotify.Podcasts.ToggleSaved(new Episode(r.Slot));
+            return;
+        }
         if (BarPlayingUri(r) is not { } uri || Controls.Library is not { } library) return;
         library.ToggleSaved(uri, BarPlayableTitle(r));
     }
@@ -995,7 +1040,7 @@ public static partial class Shell
                         PlayerBarRules.RepeatGlyph(repeat), facts.CanTransport);
                 }
                 case OverflowCommand.Lyrics:
-                    return MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.Lyrics), railOpen && mode == RailMode.Lyrics,
+                    return MenuFlyoutItem.Toggle(Loc.Get(Playback.CurrentId.Peek().Kind == EntityKind.Episode ? "podcast.reader.transcript" : Strings.Player.Lyrics), railOpen && mode == RailMode.Lyrics,
                         static () => Ui.Toggle(RailMode.Lyrics), new IconRef { Glyph = WaveeIcons.Lyrics, Font = WaveeIcons.Font });
                 case OverflowCommand.Queue:
                     return new MenuFlyoutItem(Loc.Get(Strings.Player.Queue), Icons.Queue, true, static () => Ui.Toggle(RailMode.Queue));
@@ -1107,7 +1152,10 @@ public static partial class Shell
             () => anchor.Value,
             () => Embed.Comp(() => new BarDevicePickerMenu(() => handle.Value?.Close())),
             FlyoutPlacement.TopEdgeAlignedRight,
-            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+            // The roster already caps itself to the window (PickerMaxHeight = height - 96), so it never needs to
+            // escape the root bounds -- and NOT escaping is what keeps it on the engine's in-window acrylic path
+            // instead of leasing a popup window, whose flat plate the owner rejected.
+            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = true });
         handle.Value.ClosedAction = () => handle.Value = null;
     }
 
@@ -1251,13 +1299,16 @@ public static partial class Shell
         readonly FloatSignal _scrubFrac = new(0f);
         readonly FloatSignal _displayFrac = new(0f);
         readonly FloatSignal _railPx = new(0f);
+        readonly FloatSignal _chapterHover = new(0f);
+        readonly Signal<bool> _chapterHovering = new(false);
         long _committedAtMs;
 
         // Wired ONCE: a bind thunk and the handlers are fields, so a re-render allocates none of them.
         readonly Prop<Affine2D> _fillBind;
         readonly Prop<Affine2D> _thumbBind;
         readonly Action _recompute, _onReport, _onCommit, _onCancel;
-        readonly Action<Point2> _onDown, _onDrag;
+        readonly Action<Point2> _onDown, _onDrag, _onHover;
+        readonly Action _onExit;
         readonly Action<RectF> _onBounds;
 
         public BarSeekRail()
@@ -1270,6 +1321,8 @@ public static partial class Shell
             _onCancel = OnCancel;
             _onDown = OnDown;
             _onDrag = OnDragMove;
+            _onHover = local => { _chapterHovering.Value = true; _chapterHover.SetIfChanged(SeekRail.FractionAt(local.X, _railPx.Peek())); };
+            _onExit = () => _chapterHovering.Value = false;
             _onBounds = b => { if (b.W > 0f && MathF.Abs(b.W - _railPx.Peek()) > 0.5f) { _railPx.Value = b.W; Recompute(); } };
         }
 
@@ -1294,6 +1347,14 @@ public static partial class Shell
             // NOTHING TO REWIND: the rail stops pretending to be one. After every hook, so the hook order never varies.
             if (mode == SeekRailMode.Line) return Embed.Comp(static () => new BarLiveLine());
 
+            var chapterId = Playback.CurrentId.Value;
+            uint chapterEpoch = Entities.ScopeEpoch.Value;
+            bool chapterRail = chapterId.Kind == EntityKind.Episode && mode == SeekRailMode.Track;
+            var chapterIdentity = new ChapterResources.Identity(chapterEpoch, Entities.Current.Key.Account, chapterId);
+            Element chapters = chapterRail
+                ? Embed.Comp(() => new BarChapterTimeline(chapterIdentity, _railPx, _chapterHover, _scrubFrac, _chapterHovering, _scrubbing))
+                    with { Key = "player-chapters:" + chapterEpoch + ":" + chapterId.Text }
+                : new BoxEl { HitTestVisible = false };
             var s = Slider.DefaultStyle;
             var fill = new BoxEl
             {
@@ -1334,6 +1395,7 @@ public static partial class Shell
                         Corners = CornerRadius4.All(s.TrackCornerRadius), ClipToBounds = true, ZStack = true,
                         HitTestVisible = false, Children = railKids,
                     },
+                    chapters,
                     new BoxEl
                     {
                         Width = RingDiameter, Height = RingDiameter,
@@ -1363,7 +1425,7 @@ public static partial class Shell
                 ],
             };
 
-            // Click-anywhere + drag scrub; OnClick is the drag-END commit edge. No tooltip on this rail (W14).
+            // Click-anywhere + drag scrub; OnClick is the drag-END commit edge. Chapter decoration never owns input.
             return new BoxEl
             {
                 Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = HitHeight, Direction = 0, AlignItems = FlexAlign.Center,
@@ -1374,6 +1436,8 @@ public static partial class Shell
                 OnDrag = enabled ? _onDrag : null,
                 OnClick = enabled ? _onCommit : null,
                 OnDragCanceled = enabled ? _onCancel : null,
+                OnHoverMove = chapterRail && enabled ? _onHover : null,
+                OnPointerExit = chapterRail ? _onExit : null,
                 Children = [stack],
             };
         }
@@ -1436,6 +1500,7 @@ public static partial class Shell
             long duration = Playback.DurationMs.Peek();
             if (!SeekRail.CanCommit(live, duration)) { OnCancel(); return; }
             long target = SeekRail.CommitTargetMs(_scrubFrac.Peek(), duration, live);
+            s_barSeek.Reset();
             Playback.SeekTo((int)Math.Clamp(target, 0L, int.MaxValue));
             _committedAtMs = Math.Max(1L, Playback.FrameNowMs());
             _scrubbing.Value = false;

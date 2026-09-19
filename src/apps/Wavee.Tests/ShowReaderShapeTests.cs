@@ -16,12 +16,13 @@ public class ShowReaderShapeTests
     static int At(int y, int m, int d)
         => (int)new DateTimeOffset(y, m, d, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
 
-    static int Key(int y, int m) => y * 12 + m - 1;
+    /// <summary>THE one month-key encoding (<see cref="Wavee.DateKeys"/>): year*100 + month.</summary>
+    static int Key(int y, int m) => y * 100 + m;
 
-    static Item[] Build(int[] slots, int[] dates, bool more = false, bool similar = false, int? room = null)
+    static Item[] Build(int[] slots, int[] dates, bool more = false, bool similar = false, int? room = null, int skip = -1)
     {
         var into = new Item[room ?? ShowReaderShape.MaxItems(slots.Length)];
-        int n = ShowReaderShape.Build(slots, dates, more, similar, into);
+        int n = ShowReaderShape.Build(slots, dates, more, similar, into, skip);
         return into[..n];
     }
 
@@ -135,21 +136,59 @@ public class ShowReaderShapeTests
     [InlineData(2026, 9)]
     [InlineData(2025, 1)]
     [InlineData(1999, 12)]
-    public void GroupKey_IsYearTimesTwelvePlusMonthMinusOne_AndDecodes(int year, int month)
+    public void GroupKey_IsTheOneDecimalMonthKey_AndRoundTripsThroughEveryDecoder(int year, int month)
     {
-        int key = ShowReaderShape.GroupKeyOf(At(year, month, 28));
-        Assert.Equal(year * 12 + month - 1, key);
-        Assert.Equal(year, ShowReaderShape.YearOf(key));
-        Assert.Equal(month, ShowReaderShape.MonthOf(key));
+        int key = ShowReaderShape.MonthKeyOf(At(year, month, 28));
+        Assert.Equal(year * 100 + month, key);
+        Assert.Equal(key, DateKeys.MonthKey(year, month));
+        Assert.Equal(year, DateKeys.YearOfMonth(key));
+        Assert.Equal(month, DateKeys.MonthOfMonth(key));
+        // the date rail reads the SAME key: its jump key is the identity and its year decoder agrees
+        Assert.Equal(key, ShowDateIndex.KeyOf(key));
+        Assert.Equal(year, ShowDateIndex.YearOf(key));
     }
 
     [Fact]
     public void GroupKey_IsUtc_AndUndatedIsMinusOne()
     {
         int lastSecondOfAugustUtc = (int)new DateTimeOffset(2026, 8, 31, 23, 59, 59, TimeSpan.Zero).ToUnixTimeSeconds();
-        Assert.Equal(Key(2026, 8), ShowReaderShape.GroupKeyOf(lastSecondOfAugustUtc));
-        Assert.Equal(Key(2026, 9), ShowReaderShape.GroupKeyOf(lastSecondOfAugustUtc + 1));
-        Assert.Equal(-1, ShowReaderShape.GroupKeyOf(0));
-        Assert.Equal(-1, ShowReaderShape.GroupKeyOf(-86_400));
+        Assert.Equal(Key(2026, 8), ShowReaderShape.MonthKeyOf(lastSecondOfAugustUtc));
+        Assert.Equal(Key(2026, 9), ShowReaderShape.MonthKeyOf(lastSecondOfAugustUtc + 1));
+        Assert.Equal(-1, ShowReaderShape.MonthKeyOf(0));
+        Assert.Equal(-1, ShowReaderShape.MonthKeyOf(-86_400));
     }
+    // ── the head's episode is not repeated as a body row (report 11a) ───────────────────────────────────────────────
+
+    /// <summary>The visit head SHOWS the resume episode (the continue hero); the body must not print it again.</summary>
+    [Fact]
+    public void SkipSlot_DropsTheHeadsEpisode_AndOnlyIt()
+    {
+        var items = Build(Slots, Dates, skip: 42);
+        Assert.DoesNotContain(items, i => i.Kind == Kind.Row && i.Slot == 42);
+        Assert.Equal(new[] { 41, 43, 44 },
+            Array.ConvertAll(Array.FindAll(items, i => i.Kind == Kind.Row), i => i.Slot));
+        // its month still stands (41 is September too), and every other item is untouched
+        Assert.Equal(new[] { Kind.Rail, Kind.Head, Kind.Header, Kind.Group, Kind.Row, Kind.Group, Kind.Row, Kind.Group, Kind.Row },
+            Kinds(items));
+    }
+
+    /// <summary>A head episode ALONE in its month takes the month header with it — the group opens at the first row
+    /// that survives, carrying that row's own slot.</summary>
+    [Fact]
+    public void SkipSlot_TakesAMonthHeaderWithIt_WhenItWasThatMonthsOnlyRow()
+    {
+        var items = Build(Slots, Dates, skip: 43);
+        Assert.Equal(new[] { Key(2026, 9), Key(2026, 7) },
+            Array.ConvertAll(Array.FindAll(items, i => i.Kind == Kind.Group), i => i.GroupKey));
+        Assert.Equal(new[] { 41, 42, 44 },
+            Array.ConvertAll(Array.FindAll(items, i => i.Kind == Kind.Row), i => i.Slot));
+        // the surviving group carries the FIRST row that opened it
+        Assert.Equal(new Item(Kind.Group, 41, Key(2026, 9)), items[3]);
+    }
+
+    /// <summary>-1 is "skip nothing" — the default, and the only value the reader passes when its head owns no
+    /// episode (a New or CaughtUp visit).</summary>
+    [Fact]
+    public void SkipSlot_MinusOne_SkipsNothing()
+        => Assert.Equal(Build(Slots, Dates), Build(Slots, Dates, skip: -1));
 }

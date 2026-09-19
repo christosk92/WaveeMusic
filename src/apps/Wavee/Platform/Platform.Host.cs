@@ -358,8 +358,20 @@ public static partial class Platform
     static bool ReadPlugged()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(8)) return true;
-        try { return AmbientPower.Plugged(true, FluentGpu.WindowsApi.Power.PowerSession.ReadPower()); }
-        catch { return AmbientPower.Plugged(false, default); }   // a failed read resolves plugged, never dims the app
+        try
+        {
+            var status = FluentGpu.WindowsApi.Power.PowerSession.ReadPower();
+            // The same read answers the engine's material policy: WinUI drops acrylic to its solid fallback under
+            // energy saver, and this 2 s poll is the only edge that sees the user toggle it MID-session (App.cs reads
+            // it at startup and on suspend/resume, which cannot). Fails open, exactly like the cadence below.
+            FluentGpu.Dsl.Materials.EnergySaver = status.EnergySaverOn;
+            return AmbientPower.Plugged(true, status);
+        }
+        catch
+        {
+            FluentGpu.Dsl.Materials.EnergySaver = false;
+            return AmbientPower.Plugged(false, default);          // a failed read resolves plugged, never dims the app
+        }
     }
 
     static void ApplyPower()

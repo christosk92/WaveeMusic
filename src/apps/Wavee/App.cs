@@ -43,6 +43,36 @@ public static class App
         Store.RegisterLibraryEdges();
     }
 
+    /// <summary>The one input of the engine's MATERIAL policy (<c>FluentGpu.Dsl.Materials</c>) the platform layer cannot
+    /// set for itself. Two of the three — <c>AdvancedEffectsEnabled</c> (the Transparency-effects switch) and
+    /// <c>EffectsAreFast</c> — are written by the Win32 backend from the OS. <c>EnergySaver</c> is not: it comes from
+    /// <c>FluentGpu.WindowsApi.Power.PowerSession</c>, a pillar that sits BESIDE the PAL rather than under it, so the
+    /// platform layer holds no reference to it and the COMPOSITION ROOT owns this write (stated as such in
+    /// <c>Materials.EnergySaver</c>'s own doc). True ⇒ every acrylic surface resolves to its authored fallback fill and
+    /// pays no blur — exactly what WinUI's AcrylicBrush does in battery-saver mode.
+    /// <para>Read once at startup, then re-read on the suspend/resume edges the app already handles:
+    /// <c>Playback.Os.PowerPolicy</c> holds the live <c>PowerSession.Subscribe()</c> and a handler attached here is
+    /// raised alongside its own (the same shape <c>Home.Host</c> already uses for its re-arm). A plain bool store, so
+    /// the OS-worker callback needs no UI hop — the value is read during recording and one frame of staleness is
+    /// invisible.</para></summary>
+    static void WireMaterialPolicy()
+    {
+        ApplyEnergySaver();
+        try
+        {
+            FluentGpu.WindowsApi.Power.PowerSession.Suspending += ApplyEnergySaver;
+            FluentGpu.WindowsApi.Power.PowerSession.Resumed += ApplyEnergySaver;
+        }
+        catch (Exception ex) { Log.Warn("app", "material power policy subscribe failed", ex); }
+    }
+
+    static void ApplyEnergySaver()
+    {
+        // An unreadable status never costs the user their materials (the same fail-open rule as Platform.ReadPlugged).
+        try { FluentGpu.Dsl.Materials.EnergySaver = FluentGpu.WindowsApi.Power.PowerSession.ReadPower().EnergySaverOn; }
+        catch { FluentGpu.Dsl.Materials.EnergySaver = false; }
+    }
+
     [STAThread]
     static int Main(string[] args)
     {
@@ -98,6 +128,7 @@ public static class App
             return rows;
         };
         Playback.Boot();                 // state, host loop, audio pump, os bridges
+        WireMaterialPolicy();            // Materials.EnergySaver ← PowerSession: AFTER Playback.Boot, which holds the live PowerSession.Subscribe()
         if (Platform.Args.Fake) Playback.Audio.UseSilentEndpoint();              // --fake never opens a device
         Modules.Boot();
         Video.Install();                 // the video host: resolver tiers (chained after the module tier), demotion, engine log sink, attachments, placement preference (B7)

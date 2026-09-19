@@ -108,19 +108,17 @@ public class ShowReaderTests
 
     // ── the width arms ──────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>ONE width arm is left here: the rows' narrow arm. The toolbar's own widths are
+    /// <see cref="ShowToolbarLayout"/>'s two-rung collapse ladder (PodcastShowToolbarTests), and the sideways-scrolling
+    /// rail — the scrollbar the owner reported — is gone with its rule.</summary>
     [Theory]
-    [InlineData(0f, false, false)]      // not measured yet: the wide arm
-    [InlineData(480f, true, true)]
-    [InlineData(539f, true, true)]
-    [InlineData(540f, false, true)]
-    [InlineData(719f, false, true)]
-    [InlineData(720f, false, false)]
-    [InlineData(1200f, false, false)]
-    public void WidthArms(float width, bool narrow, bool railScrolls)
-    {
-        Assert.Equal(narrow, ShowReaderRules.Narrow(width));
-        Assert.Equal(railScrolls, ShowReaderRules.RailScrolls(width));
-    }
+    [InlineData(0f, false)]             // not measured yet: the wide arm
+    [InlineData(480f, true)]
+    [InlineData(539f, true)]
+    [InlineData(540f, false)]
+    [InlineData(1200f, false)]
+    public void WidthArms(float width, bool narrow)
+        => Assert.Equal(narrow, ShowReaderRules.Narrow(width));
 
     // ── the find (§4) ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -167,7 +165,8 @@ public class ShowReaderTests
     // ── the item list (the snapshot's layout over ShowReaderShape) ─────────────────────────────────────────────────
 
     static int At(int y, int m, int d) => (int)new DateTimeOffset(y, m, d, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
-    static int Key(int y, int m) => y * 12 + m - 1;
+    /// <summary>THE one month-key encoding (<see cref="Wavee.DateKeys"/>): year*100 + month.</summary>
+    static int Key(int y, int m) => y * 100 + m;
 
     // newest first: two in September (one fresh, one in progress), two in August (one played, one old and unplayed)
     static readonly int[] Slots = [50, 40, 30, 20];
@@ -280,5 +279,79 @@ public class ShowReaderTests
         Assert.Equal((0, 1), ShowReaderRules.Seed("aaa:4:1", "aaa"));
         Assert.Equal((0, 0), ShowReaderRules.Seed(null, "aaa"));
         Assert.Equal((0, 0), ShowReaderRules.Seed("", ""));
+    }
+    // ── the date rail over the reader's own items (report 4b) ───────────────────────────────────────────────────────
+
+    static (Item[] Items, JumpGroup[] Groups) Reader(int[] slots, int[] dates)
+    {
+        var items = new Item[ShowReaderShape.MaxItems(slots.Length)];
+        int n = ShowReaderShape.Build(slots, dates, canLoadMore: false, hasSimilar: false, items);
+        var groups = new JumpGroup[ShowDateIndex.MaxGroups];
+        int g = ShowDateIndex.Project(items.AsSpan(0, n), groups);
+        return (items[..n], groups[..g]);
+    }
+
+    [Fact]
+    public void DateRail_ProjectsTheMonthHeadersOfTheReadersItems_AndJumpsByYear()
+    {
+        // newest first: two in September 2026, one in August 2026, one in July 2025
+        var (items, groups) = Reader([41, 42, 43, 44],
+            [At(2026, 9, 15), At(2026, 9, 1), At(2026, 8, 25), At(2025, 7, 7)]);
+
+        // one group per month boundary, each at its HEADER's flat index in the same item space the list realizes
+        Assert.Equal(new[] { 202609, 202608, 202507 }, Array.ConvertAll(groups, g => g.Key));
+        foreach (var g in groups) Assert.Equal(Kind.Group, items[g.Index].Kind);
+
+        var years = new int[groups.Length];
+        int y = ShowDateIndex.Years(groups, years);
+        Assert.Equal(new[] { 2026, 2025 }, years[..y]);            // distinct, in the view's own order
+
+        // a year resolves to its FIRST month's header; a year the view does not hold no-ops (-1)
+        Assert.Equal(groups[0].Index, ShowDateIndex.ResolveYear(groups, 2026));
+        Assert.Equal(groups[2].Index, ShowDateIndex.ResolveYear(groups, 2025));
+        Assert.Equal(-1, ShowDateIndex.ResolveYear(groups, 2024));
+    }
+
+    [Fact]
+    public void DateRail_IsEmptyForAnUndatedReader_AndAKeyDecodesToItsYear()
+    {
+        var (_, groups) = Reader([1, 2], [0, 0]);
+        Assert.Empty(groups);
+        Assert.Equal(-1, ShowDateIndex.KeyOf(-1));
+        Assert.Equal(-1, ShowDateIndex.YearOf(-1));
+        Assert.Equal(2026, ShowDateIndex.YearOf(ShowDateIndex.KeyOf(ShowReaderShape.MonthKeyOf(At(2026, 3, 2)))));
+        Assert.Equal(202603, ShowDateIndex.KeyOf(ShowReaderShape.MonthKeyOf(At(2026, 3, 2))));
+    }
+
+    /// <summary>The rail and the shape share ONE key space: the jump key IS the shape's group key, so a strip tap
+    /// resolves the year the sticky header is showing. (They disagreed while two month encodings were alive: the strip
+    /// divided a <c>year*12 + month-1</c> key by 100 and no year ever lit.)</summary>
+    [Fact]
+    public void DateRail_JumpKeyIsTheShapesOwnMonthKey_SoTheStripAgreesWithTheStickyHeader()
+    {
+        var (items, groups) = Reader([41, 42], [At(2026, 9, 15), At(2025, 7, 7)]);
+
+        foreach (var g in groups)
+        {
+            int sticky = items[g.Index].GroupKey;                 // what the sticky-month signal carries
+            Assert.Equal(g.Key, sticky);                          // ... is the jump key itself
+            Assert.Equal(DateKeys.YearOfMonth(sticky), ShowDateIndex.YearOf(g.Key));
+            Assert.Equal(g.Index, ShowDateIndex.ResolveYear(groups, DateKeys.YearOfMonth(sticky)));
+        }
+    }
+
+    /// <summary>The rail's decoders are TOTAL: a key from no space at all answers -1 instead of throwing.</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-7)]
+    [InlineData(11)]              // the old packed space's january of year 0
+    [InlineData(24_296)]          // the old packed space's 2026-09
+    [InlineData(202_613)]         // month 13
+    [InlineData(202_600)]         // month 0
+    [InlineData(20_260_915)]      // a DAY key, handed to a month decoder
+    public void DateRail_RejectsAKeyItDidNotMint(int key)
+    {
+        Assert.Equal(-1, ShowDateIndex.KeyOf(key));
+        Assert.Equal(-1, ShowDateIndex.YearOf(key));
     }
 }

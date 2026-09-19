@@ -138,8 +138,8 @@ public static partial class Controls
         /// The words are FROZEN at mount (a different set is a remount); their labels, counts and presence are live.</para></summary>
         public static Element Rail(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF>? tone = null,
                                    bool big = false, AutomationRole role = AutomationRole.Button,
-                                   Action<int>? onReselect = null, Action<int>? onSelect = null)
-            => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect));
+                                   Action<int>? onReselect = null, Action<int>? onSelect = null, bool wrap = false)
+            => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, wrap));
 
         sealed class RailHost : Component
         {
@@ -147,6 +147,7 @@ public static partial class Controls
             readonly Signal<int> _selected;
             readonly Func<ColorF> _tone;
             readonly bool _big;
+            readonly bool _wrap;
             readonly AutomationRole _role;
             readonly Action<int>? _onReselect, _onSelect;
             // Built ONCE: every state rides a bind, so the rail never re-renders on a selection change.
@@ -160,10 +161,11 @@ public static partial class Controls
             int _shown = int.MinValue;   // the code whose underline was last on screen — the slide's "from"
 
             public RailHost(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF> tone, bool big,
-                            AutomationRole role, Action<int>? onReselect, Action<int>? onSelect)
+                            AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool wrap)
             {
                 _words = words; _selected = selected; _tone = tone; _big = big; _role = role;
                 _onReselect = onReselect; _onSelect = onSelect;
+                _wrap = wrap;
                 _codes = new int[words.Count];
                 _x = new float[words.Count];
                 _w = new float[words.Count];
@@ -185,7 +187,8 @@ public static partial class Controls
                 for (int i = 0; i < kids.Length; i++) kids[i] = BuildWord(i);
                 return new BoxEl
                 {
-                    Direction = 0, Height = _big ? BigHeight : Height, Gap = _big ? BigGap : Gap,
+                    Direction = 0, Height = _wrap ? float.NaN : _big ? BigHeight : Height, Wrap = _wrap,
+                    MinWidth = 0, Gap = _big ? BigGap : Gap,
                     AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids,
                 };
             }
@@ -272,6 +275,7 @@ public static partial class Controls
                 int code = _selected.Value;   // the subscription
                 int from = _shown;
                 _shown = code;
+                if (_wrap) return;
                 if (from == code || from == int.MinValue || Context.Anim is not { } anim) return;
                 int a = IndexOf(from), b = IndexOf(code);
                 if (a < 0 || b < 0 || _bars[b].IsNull) return;

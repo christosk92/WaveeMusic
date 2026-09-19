@@ -348,7 +348,13 @@ public static partial class Spotify
         /// nothing. An attribute the op UNSET (<c>no_value</c>) lands as absent, never as an empty string (§3.10). The cover
         /// and the owner are not the op's to say; the commit keeps what it holds for both.</para>
         /// <para>False, staging nothing, when the list staging refuses (a malformed revision, a member with no uri) — the
-        /// caller then reads the list in full.</para></summary>
+        /// caller then reads the list in full.</para>
+        /// <para>A ROW'S KIND (plan §3.1, ledger row 12) needs no help here: <paramref name="rows"/>' own
+        /// <see cref="ListRow.Uri"/> already carries its <c>spotify:track:</c>/<c>spotify:episode:</c> prefix (or the
+        /// caller's own reconstruction of it for a keyed op), and <c>Entities/Edges.Staging.cs</c>'s
+        /// <c>Relation.PlaylistTracks</c> commit arm re-derives <see cref="PlaylistItemKind"/> from that uri per row —
+        /// the same way a full read's wire item does — so an episode a <c>/diff</c> ADDED resolves into
+        /// <c>Current.Episodes</c> exactly like one a full read named.</para></summary>
         public static bool PlaylistReplay(ReadOnlySpan<ListRow> rows, string playlistUri, string revision,
                                           in PlaylistOps.ListAttributeChange attrs, Staging s)
         {

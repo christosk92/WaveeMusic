@@ -374,6 +374,59 @@ public static partial class Shell
 
     // ══ 3. THE SEEK RAIL ════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>Accumulation belongs to the intent, not the last delayed backend position sample.</summary>
+    public sealed class PlayerSeekAccumulator
+    {
+        EntityId _id;
+        uint _scope;
+        Playback.Owner _owner;
+        int _device;
+        long _at, _target;
+        bool _pending;
+        public void Reset() => _pending = false;
+        public int Step(EntityId id, uint scope, Playback.Owner owner, int device,
+            long reportedMs, long durationMs, long nowMs, int deltaMs, long minimumMs = 0)
+        {
+            bool same = _pending && _id == id && _scope == scope && _owner == owner && _device == device;
+            bool awaiting = same && nowMs >= _at && nowMs - _at < 2000
+                && Math.Abs(reportedMs - _target) > 1000;
+            long basis = awaiting ? _target : reportedMs;
+            long maximum = Math.Min(Math.Max(0, durationMs), int.MaxValue);
+            _target = Math.Clamp(basis + deltaMs, Math.Clamp(minimumMs, 0, maximum), maximum);
+            _id = id; _scope = scope; _owner = owner; _device = device; _at = nowMs; _pending = true;
+            return (int)_target;
+        }
+    }
+
+    public enum PlayerKeyIntent : byte { None, SeekBack, SeekForward, VolumeDown, VolumeUp, Toggle }
+
+    public static PlayerKeyIntent PlayerKey(int key, bool focusedContainer, bool handled, bool modified)
+        => !focusedContainer || handled || modified ? PlayerKeyIntent.None : key switch
+        {
+            FluentGpu.Foundation.Keys.Left => PlayerKeyIntent.SeekBack,
+            FluentGpu.Foundation.Keys.Right => PlayerKeyIntent.SeekForward,
+            FluentGpu.Foundation.Keys.Down => PlayerKeyIntent.VolumeDown,
+            FluentGpu.Foundation.Keys.Up => PlayerKeyIntent.VolumeUp,
+            FluentGpu.Foundation.Keys.Space => PlayerKeyIntent.Toggle,
+            _ => PlayerKeyIntent.None,
+        };
+
+    /// <summary>The podcast pressure map prioritizes its time-step and speed controls over secondary commands.</summary>
+    public static PlayerBarLayout PodcastBarLayout(in PlayerBarLayout layout)
+    {
+        var next = layout with
+        {
+            ShowShuffleRepeat = false,
+            ShowVolumeSlider = false,
+            ShowPrevNext = layout.Tier >= PlayerBarTier.Wide,
+            ShowTimesElapsed = layout.Tier >= PlayerBarTier.Comfortable,
+            ShowTimesRemaining = layout.Tier >= PlayerBarTier.Comfortable,
+            ShowLikeSlot = layout.Tier >= PlayerBarTier.Medium,
+            LeftW = layout.Tier switch { PlayerBarTier.Minimal => layout.ArtSize, PlayerBarTier.Compact => 120f, _ => layout.LeftW },
+        };
+        return next with { RightWMax = PlayerBarRules.RightWidth(in next, hasVideo: true) };
+    }
+
     public static class SeekRail
     {
         /// <summary>The pixel-dwell clamp: short tracks stay smooth, long tracks do not oversample.</summary>

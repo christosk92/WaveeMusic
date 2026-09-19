@@ -42,13 +42,14 @@ public static partial class Shell
     // the back/forward flyout, the sidebar's pinned rows and the not-found glyph. Here they are three READS of ONE
     // table (`Row(kind)`), so a new kind cannot be added with three of the four columns filled in.
 
-    /// <summary>One kind per destination <see cref="PageFor"/> can render. 29 registered routes (28 in 0.2.9's own
-    /// count, +1 for the podcast rework's <see cref="RouteKind.Episode"/>, wave P2) + connect-diagnostics +
+    /// <summary>One kind per destination <see cref="PageFor"/> can render. 30 registered routes (28 in 0.2.9's own
+    /// count, +1 for the podcast rework's <see cref="RouteKind.Episode"/>, wave P2, +1 for
+    /// <see cref="RouteKind.LibraryAudiobooks"/>, A2 plan §3.6) + connect-diagnostics +
     /// <see cref="RouteKind.NotFound"/> (29 in 0.2.9, less ApiConsole — deleted, plan §9.6 Q7).</summary>
     public enum RouteKind : byte
     {
-        // s_exact (15) — ApiConsole DELETED, plan §9.6 Q7, 2026-09-12: the console and its four ApiDebug* helpers are cut
-        Home, Browse, Search, LibraryAlbums, LibraryArtists, LibraryPodcasts, Liked, Local,
+        // s_exact (16) — ApiConsole DELETED, plan §9.6 Q7, 2026-09-12: the console and its four ApiDebug* helpers are cut
+        Home, Browse, Search, LibraryAlbums, LibraryArtists, LibraryPodcasts, LibraryAudiobooks, Liked, Local,
         History, Recents, Settings, PlaybackDiagnostics, WhatsNew, SidebarCustomize, HomeCustomize,
         // s_prefixes (10) — "<prefix><entity uri>"; a bare prefix addresses nothing and is NOT a route
         Album, Playlist, Artist, Show, Prerelease, Discography, Module, BrowseCategory, HomeSection, BrowseSection,
@@ -131,6 +132,10 @@ public static partial class Shell
         new(RouteKind.LibraryAlbums,       "albums",               false, Strings.Nav.Albums,           Icons.Album,       false, false, false),
         new(RouteKind.LibraryArtists,      "artists",              false, Strings.Nav.Artists,          Icons.Contact,     false, false, false),
         new(RouteKind.LibraryPodcasts,     "podcasts",             false, Strings.Nav.Podcasts,         Icons.RadioTower,  false, false, false),
+        // Audiobooks (A2 plan §3.6): its own library route beside Podcasts — same SavedShows edge, split client-side
+        // (User.Page.Library.cs's LibraryAudiobookFilter), so it needs its own row for exactly the ch 18 §7 reason
+        // every other kind does (a fall-through here would read "Your Library" in the tab strip and history).
+        new(RouteKind.LibraryAudiobooks,   "audiobooks",           false, Strings.Nav.Audiobooks,       Icons.Microphone,  false, false, false),
         new(RouteKind.Liked,               "liked",                false, Strings.Nav.LikedSongs,       Icons.Heart,       false, true,  false),
         new(RouteKind.Local,               "local",                false, Strings.Nav.LocalFiles,       Icons.Folder,      false, true,  false),
         new(RouteKind.History,             "history",              false, Strings.Nav.History.Title,    Icons.Clock,       false, false, false),
@@ -245,7 +250,7 @@ public static partial class Shell
                 Album.InstallPages();
                 break;
             case RouteKind.Playlist or RouteKind.Local or RouteKind.Liked or RouteKind.LibraryAlbums
-                or RouteKind.LibraryArtists or RouteKind.LibraryPodcasts:
+                or RouteKind.LibraryArtists or RouteKind.LibraryPodcasts or RouteKind.LibraryAudiobooks:
                 if (s_playlistGroupInstalled) return;
                 s_playlistGroupInstalled = true;
                 Playlist.InstallPages();
@@ -1614,7 +1619,7 @@ public static partial class Shell
             // page — its own kind, so the chips and the row label stay truthful.
             RouteKind.Show => "show",
             RouteKind.LibraryAlbums or RouteKind.LibraryArtists or RouteKind.Liked
-                or RouteKind.LibraryPodcasts or RouteKind.Local => "library",
+                or RouteKind.LibraryPodcasts or RouteKind.LibraryAudiobooks or RouteKind.Local => "library",
             RouteKind.Search => "search",
             RouteKind.Browse or RouteKind.BrowseCategory or RouteKind.BrowseSection => "browse",
             _ => "page",

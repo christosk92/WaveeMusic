@@ -428,7 +428,11 @@ public static partial class Spotify
                 if (staged.IsEmpty) return Unsupported;
                 // A podcast's publisher is a column of the show's Identity group that Stage has no Node field for.
                 if (c.Type == TPodcast && !c.Publisher.IsEmpty && s.Shows.Count > 0 && staged.Kind(s) == EntityKind.Show)
-                    s.Shows[s.Shows.Count - 1].Publisher = c.Publisher;
+                {
+                    ref var show = ref s.Shows[s.Shows.Count - 1];
+                    show.Publisher = c.Publisher;
+                    show.Known |= (uint)ShowFields.Publisher;
+                }
 
                 // The playlist extras Stage has no Node field for (the Format group's header image + generic title, the
                 // daylist window). Stage appended exactly one playlist row, so it is the last one.
@@ -455,7 +459,7 @@ public static partial class Spotify
                 }
                 if (c.Type == TEpisode && !c.ShowUri.IsEmpty && !c.ShowName.IsEmpty)
                 {
-                    ref var show = ref s.Shows.RowFor(c.ShowUri, Authority.Thin, (uint)ShowFields.Identity);
+                    ref var show = ref s.Shows.RowFor(c.ShowUri, Authority.Thin, (uint)ShowFields.Title);
                     show.Title = c.ShowName;
                 }
 

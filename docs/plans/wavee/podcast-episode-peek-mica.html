@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Episode Peek</title>
+</head>
+<body>
+<style>
+  :root{
+    --lab-bg:#e8ebf1; --lab-grad:linear-gradient(160deg,#e6e2ee 0%,#eef0f5 45%,#e3e9f4 100%);
+    --lab-panel:rgba(255,255,255,.66); --lab-stroke:rgba(0,0,0,.08); --lab-text:#1b1f27; --lab-muted:#5a6270;
+    --mica:rgba(243,246,251,.92); --mica-edge:rgba(0,0,0,.10);
+    --layer:rgba(255,255,255,.55);
+    --card:rgba(255,255,255,.80);
+    --stroke-div:rgba(0,0,0,.07);
+    --ctrl:rgba(0,0,0,.045); --ctrl-hover:rgba(0,0,0,.08);
+    --text-1:#1b1b1b; --text-2:#5d6470; --text-3:#8a919c;
+    --accent:#0f6cbd; --accent-text:#0a5aa0; --on-accent:#fff;
+    --shadow:0 18px 44px rgba(20,30,50,.20);
+    --peek-veil:rgba(243,246,251,.72);
+    --rule:rgba(0,0,0,.10);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --lab-bg:#0e1014; --lab-grad:linear-gradient(160deg,#1a1626 0%,#111520 45%,#0e1219 100%);
+      --lab-panel:rgba(27,30,37,.82); --lab-stroke:rgba(255,255,255,.09); --lab-text:#f5f6f8; --lab-muted:#9da4b0;
+      --mica:rgba(32,32,36,.94); --mica-edge:rgba(255,255,255,.10);
+      --layer:rgba(255,255,255,.035); --card:rgba(255,255,255,.055);
+      --stroke-div:rgba(255,255,255,.08);
+      --ctrl:rgba(255,255,255,.055); --ctrl-hover:rgba(255,255,255,.10);
+      --text-1:#ffffff; --text-2:rgba(255,255,255,.77); --text-3:rgba(255,255,255,.53);
+      --accent:#60cdff; --accent-text:#a6d8ff; --on-accent:#000;
+      --shadow:0 20px 50px rgba(0,0,0,.55);
+      --peek-veil:rgba(32,32,36,.74);
+      --rule:rgba(255,255,255,.14);
+    }
+  }
+  :root[data-theme="dark"]{
+    --lab-bg:#0e1014; --lab-grad:linear-gradient(160deg,#1a1626 0%,#111520 45%,#0e1219 100%);
+    --lab-panel:rgba(27,30,37,.82); --lab-stroke:rgba(255,255,255,.09); --lab-text:#f5f6f8; --lab-muted:#9da4b0;
+    --mica:rgba(32,32,36,.94); --mica-edge:rgba(255,255,255,.10);
+    --layer:rgba(255,255,255,.035); --card:rgba(255,255,255,.055);
+    --stroke-div:rgba(255,255,255,.08);
+    --ctrl:rgba(255,255,255,.055); --ctrl-hover:rgba(255,255,255,.10);
+    --text-1:#ffffff; --text-2:rgba(255,255,255,.77); --text-3:rgba(255,255,255,.53);
+    --accent:#60cdff; --accent-text:#a6d8ff; --on-accent:#000;
+    --shadow:0 20px 50px rgba(0,0,0,.55);
+    --peek-veil:rgba(32,32,36,.74);
+    --rule:rgba(255,255,255,.14);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0; padding-block:26px 72px; padding-inline:20px; color:var(--lab-text);
+    background:var(--lab-bg) var(--lab-grad) fixed;
+    font-family:"Segoe UI Variable Text","Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif;
+    font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:"Segoe UI Variable Display","Segoe UI Variable","Segoe UI",system-ui,sans-serif; margin:0; text-wrap:balance}
+  .wrap{max-width:1180px; margin:0 auto; display:flex; flex-direction:column; gap:30px}
+
+  header.lab{display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; justify-content:space-between}
+  header.lab h1{font-size:25px; font-weight:600; letter-spacing:-.01em}
+  header.lab p{margin:6px 0 0; color:var(--lab-muted); max-width:62ch}
+  .toggle{border:1px solid var(--lab-stroke); background:var(--lab-panel); color:inherit; border-radius:999px;
+    padding:7px 14px; font:inherit; cursor:pointer}
+  .toggle:hover{background:var(--ctrl-hover)}
+  .toggle:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  section{display:flex; flex-direction:column; gap:12px}
+  .eyebrow{font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--lab-muted)}
+  section h2{font-size:17px; font-weight:600}
+  section > p.note{margin:0; color:var(--lab-muted); max-width:70ch}
+
+  /* a fragment of the app window */
+  .frag{background:var(--mica); border:1px solid var(--mica-edge); border-radius:12px; box-shadow:var(--shadow);
+    overflow:hidden; color:var(--text-1)}
+  .frag-cap{display:flex; gap:8px; align-items:baseline; padding:9px 14px; border-bottom:1px solid var(--stroke-div);
+    font-size:12px; color:var(--text-3)}
+  .frag-cap b{color:var(--text-2); font-weight:600; font-size:12px}
+
+  .pair{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; align-items:start}
+
+  /* ── the detail rail ───────────────────────────────────────── */
+  .rail{padding:18px; display:flex; flex-direction:column; gap:12px; max-width:340px}
+  .cover{width:170px; aspect-ratio:1; max-width:100%; border-radius:8px; border:1px solid var(--mica-edge);
+    background:
+      radial-gradient(120% 90% at 20% 10%, #ffd400 0 32%, transparent 33%),
+      radial-gradient(90% 70% at 80% 30%, #ffd400 0 26%, transparent 27%),
+      linear-gradient(160deg,#2f2f33,#17171a);
+    display:grid; place-items:end start; padding:10px; color:#fff; font-weight:700; letter-spacing:-.02em}
+  .cover span{font-size:15px; background:rgba(0,0,0,.42); padding:2px 6px; border-radius:4px}
+  .showlink{color:var(--accent-text); font-size:13px; text-decoration:none}
+  .showlink:hover{text-decoration:underline}
+  .eptitle{font-size:24px; font-weight:600; line-height:1.15; letter-spacing:-.015em}
+  .meta{font-size:12.5px; color:var(--text-2)}
+  .playpill{align-self:flex-start; display:inline-flex; gap:8px; align-items:center; border:0; cursor:pointer;
+    background:var(--accent); color:var(--on-accent); border-radius:999px; padding:9px 20px; font:inherit; font-weight:600}
+  .playpill:hover{filter:brightness(1.07)}
+  .playpill:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+  .icons{display:flex; gap:4px; color:var(--text-2)}
+  .icons button{width:32px; height:32px; display:grid; place-items:center; border:0; border-radius:6px;
+    background:transparent; color:inherit; cursor:pointer; font-size:15px}
+  .icons button:hover{background:var(--ctrl-hover)}
+
+  .about{border-top:1px solid var(--stroke-div); padding-top:12px; display:flex; flex-direction:column; gap:7px}
+  .about h3{font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3)}
+  .about p{margin:0; color:var(--text-2); font-size:13.5px; line-height:1.55}
+  .about p.clamp{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:4; overflow:hidden}
+  .more{align-self:flex-start; border:0; background:transparent; color:var(--accent-text); font:inherit;
+    font-weight:600; font-size:13px; padding:2px 0; cursor:pointer}
+  .more:hover{text-decoration:underline}
+  .more:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* ── the transcript pane ───────────────────────────────────── */
+  .pane{padding:0 0 4px}
+  .tabs{display:flex; gap:22px; padding:12px 20px 0; font-size:13.5px; color:var(--text-2);
+    border-bottom:1px solid var(--stroke-div)}
+  .tabs span{padding-bottom:9px; border-bottom:2px solid transparent}
+  .tabs span.on{color:var(--text-1); font-weight:600; border-bottom-color:var(--accent)}
+  .sec-h{font-size:19px; font-weight:600; padding:16px 20px 4px}
+
+  .peek{position:relative; padding:4px 20px 20px}
+  .lines{display:flex; flex-direction:column; gap:11px}
+  .line{display:grid; grid-template-columns:44px 1fr; gap:14px; align-items:baseline}
+  .t{font-size:11.5px; color:var(--text-3); font-variant-numeric:tabular-nums}
+  .s{font-size:15px; line-height:1.5; color:var(--text-1)}
+  .line.sung .s{color:var(--text-3)}
+  .line.now .s{color:var(--accent-text); font-weight:600}
+  .line.now .t{color:var(--accent-text)}
+
+  .veil{position:absolute; inset:0; pointer-events:none;
+    backdrop-filter:blur(4.5px); -webkit-backdrop-filter:blur(4.5px);
+    background:linear-gradient(to bottom, transparent 0%, var(--peek-veil) 62%, var(--peek-veil) 100%);
+    -webkit-mask-image:linear-gradient(to bottom, transparent 6%, rgba(0,0,0,.45) 26%, #000 52%);
+    mask-image:linear-gradient(to bottom, transparent 6%, rgba(0,0,0,.45) 26%, #000 52%)}
+  .gate{position:absolute; left:0; right:0; bottom:26px; display:flex; flex-direction:column; align-items:center; gap:9px}
+  .gate p{margin:0; font-size:12.5px; color:var(--text-2)}
+  .gate .playpill{align-self:center}
+  .hint{font-size:11.5px; color:var(--text-3)}
+
+  .state-note{display:flex; gap:9px; align-items:flex-start; padding:11px 14px; border-radius:9px;
+    background:var(--card); border:1px solid var(--stroke-div); color:var(--text-2); font-size:13px}
+  .state-note b{color:var(--text-1); font-weight:600}
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--accent); margin-top:6px; flex:0 0 auto}
+
+  .quiet{padding:44px 20px; text-align:center; color:var(--text-3); font-size:13.5px}
+
+  ul.rules{margin:0; padding-left:18px; color:var(--lab-muted); display:flex; flex-direction:column; gap:6px; max-width:76ch}
+  ul.rules b{color:var(--lab-text); font-weight:600}
+  /* ── comments ──────────────────────────────────────────────── */
+  .cmt{display:grid; grid-template-columns:34px 1fr auto; gap:0 12px; padding:16px 20px; align-items:start}
+  .av{width:34px; height:34px; border-radius:50%; display:grid; place-items:center; color:#0b0b0b;
+    font-weight:700; font-size:14px; background:#7ee0a1; grid-row:1 / span 4}
+  .av.b{background:#f2a0c0} .av.c{background:#c9b3f5}
+  .who{display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; min-width:0}
+  .who b{font-size:13.5px; font-weight:600; color:var(--text-1)}
+  .who time{font-size:12px; color:var(--text-3)}
+  .body{margin:4px 0 0; font-size:14px; line-height:1.5; color:var(--text-1); max-width:62ch}
+  .acts{display:flex; gap:6px; align-items:center; margin-top:10px; flex-wrap:wrap}
+  .reactpill{display:inline-flex; align-items:center; gap:7px; border:0; cursor:pointer; font:inherit;
+    background:var(--ctrl); color:var(--text-1); border-radius:999px; padding:5px 12px 5px 9px}
+  .reactpill:hover{background:var(--ctrl-hover)}
+  .reactpill:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .reactpill[aria-pressed="true"]{background:color-mix(in srgb, var(--accent) 22%, var(--ctrl))}
+  .emos{display:flex; align-items:center}
+  .emos span{font-size:14px; line-height:1; margin-right:-4px; filter:drop-shadow(0 0 1px rgba(0,0,0,.35))}
+  .emos span:last-child{margin-right:0}
+  .cnt{font-size:12.5px; font-weight:600; font-variant-numeric:tabular-nums; color:var(--text-2)}
+  .txtbtn{border:0; background:transparent; color:var(--text-2); font:inherit; font-size:13px; font-weight:600;
+    padding:5px 10px; border-radius:999px; cursor:pointer}
+  .txtbtn:hover{background:var(--ctrl-hover); color:var(--text-1)}
+  .txtbtn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .replies{display:inline-flex; gap:9px; align-items:center; margin-top:10px; border:0; background:transparent;
+    color:var(--text-2); font:inherit; font-size:13px; font-weight:600; cursor:pointer; padding:4px 8px; border-radius:999px}
+  .replies:hover{background:var(--ctrl-hover); color:var(--text-1)}
+  .stack{display:flex}
+  .stack i{width:20px; height:20px; border-radius:50%; margin-right:-7px; border:2px solid var(--mica);
+    background:#8fd3ff; display:block}
+  .stack i:nth-child(2){background:#f2a0c0} .stack i:nth-child(3){background:#ffd27a; margin-right:0}
+  .chev{font-size:11px; color:var(--text-3)}
+  .thumb{width:44px; height:44px; border-radius:6px; position:relative; align-self:start;
+    background:linear-gradient(160deg,#2f2f33,#17171a); border:1px solid var(--mica-edge)}
+  .thumb em{position:absolute; right:-6px; bottom:-6px; font-size:15px; font-style:normal}
+  .old{display:flex; gap:18px; align-items:center; padding:14px 20px; color:var(--text-2); font-size:13px}
+  .old .h{display:inline-flex; gap:6px; align-items:baseline}
+
+  @media (prefers-reduced-motion: reduce){*{animation:none !important; transition:none !important}}
+</style>
+
+<div class="wrap">
+  <header class="lab">
+    <div>
+      <h1>Episode Peek</h1>
+      <p>Two changes to the episode page: the description gets a short form in the rail, and the transcript shows a
+        real excerpt behind a blur instead of an empty pane. Content is the actual SOLVED episode “Focus, Solved”.</p>
+    </div>
+    <button class="toggle" id="theme" type="button">Switch theme</button>
+  </header>
+
+  <!-- ══ 1. the rail description ══════════════════════════════════════════ -->
+  <section>
+    <div class="eyebrow">1 — Detail rail</div>
+    <h2>A short description, with Show more</h2>
+    <p class="note">Today the rail ends at the action icons and the whole description lives in the About tab. The rail
+      gets the first four lines so the page says what the episode is about before you scroll. Clicking Show more
+      expands it in place; the About tab keeps the full text, chapters and links.</p>
+    <div class="pair">
+      <div class="frag">
+        <div class="frag-cap"><b>Collapsed</b> · the default</div>
+        <div class="rail">
+          <div class="cover"><span>Solved.</span></div>
+          <a class="showlink" href="#" onclick="return false">SOLVED with Mark Manson</a>
+          <div class="eptitle">Focus, Solved</div>
+          <div class="meta">Mar 4 · 3 hr 14 min</div>
+          <button class="playpill" type="button">▷ Play</button>
+          <div class="icons">
+            <button type="button" title="Save">♡</button>
+            <button type="button" title="Mark as played">✓</button>
+            <button type="button" title="Share">↗</button>
+            <button type="button" title="More">···</button>
+          </div>
+          <div class="about">
+            <h3>About</h3>
+            <p class="clamp" id="d1">Focus is one of those things everyone swears they need more of and almost no one is
+              actually addressing correctly. In this episode, we dig into what the science actually says about attention
+              spans (hint: your brain isn’t broken, it’s just overwhelmed), why the standard advice to “try harder” is
+              probably making things worse, and what’s really driving your inability to sit down and get things done.
+              We get into the neuroscience of explore versus exploit modes, why flow states feel the way they do, and the
+              four hidden triggers behind most focus problems — none of which have anything to do with your phone.</p>
+            <button class="more" type="button" data-target="d1">Show more</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="frag">
+        <div class="frag-cap"><b>Expanded</b> · after Show more</div>
+        <div class="rail">
+          <div class="cover"><span>Solved.</span></div>
+          <a class="showlink" href="#" onclick="return false">SOLVED with Mark Manson</a>
+          <div class="eptitle">Focus, Solved</div>
+          <div class="meta">Mar 4 · 3 hr 14 min</div>
+          <button class="playpill" type="button">▷ Play</button>
+          <div class="icons">
+            <button type="button" title="Save">♡</button>
+            <button type="button" title="Mark as played">✓</button>
+            <button type="button" title="Share">↗</button>
+            <button type="button" title="More">···</button>
+          </div>
+          <div class="about">
+            <h3>About</h3>
+            <p id="d2">Focus is one of those things everyone swears they need more of and almost no one is actually
+              addressing correctly. In this episode, we dig into what the science actually says about attention spans
+              (hint: your brain isn’t broken, it’s just overwhelmed), why the standard advice to “try harder” is probably
+              making things worse, and what’s really driving your inability to sit down and get things done. We get into
+              the neuroscience of explore versus exploit modes, why flow states feel the way they do, and the four hidden
+              triggers behind most focus problems — none of which have anything to do with your phone. Then we get into
+              the practical stuff: environmental design, deep work frameworks, the maker versus manager schedule, time
+              boxing, batching, and why a dentist appointment in the middle of your morning can ruin your entire day.</p>
+            <button class="more" type="button" data-target="d2">Show less</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="state-note"><span class="dot"></span><span><b>Rule.</b> The rail clamps to four lines. Show more only
+      appears when the text actually overflows, so a one-paragraph episode has no button and no empty affordance.</span></div>
+  </section>
+
+  <!-- ══ 2. the transcript peek ═══════════════════════════════════════════ -->
+  <section>
+    <div class="eyebrow">2 — Transcript</div>
+    <h2>An excerpt behind a blur, not an empty pane</h2>
+    <p class="note">Today the Transcript tab is a blank area with one line of text in the middle of it. Instead it shows
+      the opening of the real transcript, sharp at the top and dissolving into a blur, with the play control sitting on
+      the blur. You can see the transcript exists, and what it reads like, before committing to the episode.</p>
+
+    <div class="frag" id="tp">
+      <div class="tabs">
+        <span>About this episode</span><span>Chapters</span><span class="on">Transcript</span><span>Comments</span>
+      </div>
+      <div class="sec-h">Transcript</div>
+      <div class="peek">
+        <div class="lines">
+          <div class="line"><div class="t">0:00</div><div class="s" style="font-weight:600">Introduction</div></div>
+          <div class="line"><div class="t">0:00</div><div class="s">Welcome to Solved everybody.</div></div>
+          <div class="line"><div class="t">0:02</div><div class="s">My name is Mark Manson and today I have a question for you.</div></div>
+          <div class="line"><div class="t">0:05</div><div class="s">Is your focus so shattered that you read the same paragraph four times, understand none of it, and then reward yourself by checking your phone?</div></div>
+          <div class="line"><div class="t">0:13</div><div class="s">And now you’re three Instagram reels deep into a video of a golden retriever learning the skateboard and you can’t even remember what you were trying to read in the first place?</div></div>
+          <div class="line"><div class="t">0:22</div><div class="s">Me neither.</div></div>
+          <div class="line"><div class="t">0:23</div><div class="s">How did I get here?</div></div>
+          <div class="line"><div class="t">0:24</div><div class="s">What is this studio and where’s my phone?</div></div>
+          <div class="line"><div class="t">0:27</div><div class="s">Well, here’s the thing that nobody tells you about focus.</div></div>
+        </div>
+        <div class="veil" id="veil"></div>
+        <div class="gate" id="gate">
+          <p>Follows along while you listen</p>
+          <button class="playpill" type="button" id="playgate">▷ Play to view transcript</button>
+          <div class="hint">3 hr 14 min · English</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pair">
+      <div class="frag">
+        <div class="frag-cap"><b>Playing</b> · the gate is gone, the line follows</div>
+        <div class="peek" style="padding-top:16px">
+          <div class="lines">
+            <div class="line sung"><div class="t">0:02</div><div class="s">My name is Mark Manson and today I have a question for you.</div></div>
+            <div class="line sung"><div class="t">0:05</div><div class="s">Is your focus so shattered that you read the same paragraph four times, understand none of it, and then reward yourself by checking your phone?</div></div>
+            <div class="line now"><div class="t">0:13</div><div class="s">And now you’re three Instagram reels deep into a video of a golden retriever learning the skateboard…</div></div>
+            <div class="line"><div class="t">0:22</div><div class="s">Me neither.</div></div>
+            <div class="line"><div class="t">0:23</div><div class="s">How did I get here?</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="frag">
+        <div class="frag-cap"><b>No transcript</b> · nothing to peek at</div>
+        <div class="quiet">No transcript for this episode.</div>
+      </div>
+    </div>
+
+    <ul class="rules">
+      <li><b>The excerpt is real.</b> The first lines of the actual transcript, so the blur hides content that exists
+        rather than a placeholder.</li>
+      <li><b>Sharp to blurred, top to bottom.</b> Roughly the first two lines read normally; the blur takes over where
+        the control sits, so the page never looks broken or unreadable.</li>
+      <li><b>The gate disappears on play</b> and the pane becomes the normal following transcript, current line
+        highlighted. Playing from anywhere in the app clears it, not just this button.</li>
+      <li><b>A different episode is still gated.</b> Opening episode B while episode A plays keeps B behind the blur,
+        with the button reading <i>Play to view transcript</i>.</li>
+      <li><b>No transcript at all</b> keeps today’s quiet line — there is nothing to preview, so there is no blur.</li>
+    </ul>
+  </section>
+
+  <!-- ══ 3. comments ══════════════════════════════════════════════════════ -->
+  <section>
+    <div class="eyebrow">3 — Comments</div>
+    <h2>One reaction pill, not a heart and a number</h2>
+    <p class="note">Today a comment ends in a bare outline heart, a count and a Reply link that sit on different
+      baselines. Reactions collapse into one pill that shows which emoji people actually used and the total; Reply is
+      plain text beside it; replies become a disclosure with the repliers’ avatars.</p>
+
+    <div class="frag">
+      <div class="frag-cap"><b>Now</b> · the state in the screenshot</div>
+      <div class="old">
+        <span class="h">♡ <span style="font-variant-numeric:tabular-nums">36</span></span>
+        <span>Reply (4)</span>
+      </div>
+    </div>
+
+    <div class="frag">
+      <div class="frag-cap"><b>Proposed</b> · reaction pill, plain Reply, replies disclosure</div>
+
+      <div class="cmt">
+        <div class="av">D</div>
+        <div class="who"><b>dodobird1991</b><time>3 weeks ago</time></div>
+        <div class="thumb" style="grid-row:1 / span 4"><em>💗</em></div>
+        <p class="body">Hooray, my favourite podcast. Finally some respite from the endless suffering.</p>
+        <div class="acts">
+          <button class="reactpill" type="button" aria-pressed="true" aria-label="53 reactions, you reacted">
+            <span class="emos"><span>💗</span><span>😂</span><span>😮</span></span>
+            <span class="cnt">53</span>
+          </button>
+          <button class="txtbtn" type="button">Reply</button>
+        </div>
+        <button class="replies" type="button">
+          <span class="stack"><i></i><i></i><i></i></span>
+          <span>4 replies</span><span class="chev">▾</span>
+        </button>
+      </div>
+
+      <div style="border-top:1px solid var(--stroke-div)"></div>
+
+      <div class="cmt">
+        <div class="av b">P</div>
+        <div class="who"><b>peterbuch</b><time>2 weeks ago</time></div>
+        <div></div>
+        <p class="body">The bit about maker versus manager schedules finally explained why my Tuesdays are useless.</p>
+        <div class="acts">
+          <button class="reactpill" type="button" aria-pressed="false" aria-label="8 reactions">
+            <span class="emos"><span>👏</span><span>💗</span></span>
+            <span class="cnt">8</span>
+          </button>
+          <button class="txtbtn" type="button">Reply</button>
+        </div>
+        <div></div>
+      </div>
+
+      <div style="border-top:1px solid var(--stroke-div)"></div>
+
+      <div class="cmt">
+        <div class="av c">J</div>
+        <div class="who"><b>jswnr</b><time>4 weeks ago</time></div>
+        <div></div>
+        <p class="body">No reactions yet — the pill still reads, and tapping it opens the emoji picker.</p>
+        <div class="acts">
+          <button class="reactpill" type="button" aria-label="React">
+            <span class="emos"><span>🙂</span></span><span class="cnt">React</span>
+          </button>
+          <button class="txtbtn" type="button">Reply</button>
+        </div>
+        <div></div>
+      </div>
+    </div>
+
+    <ul class="rules">
+      <li><b>One left edge.</b> Name, body, the pill row and the replies disclosure all start at the same x; only the
+        avatar sits outside it. That is the misalignment in the screenshot.</li>
+      <li><b>The pill carries the emoji people used</b>, up to three, most used first, overlapping slightly, with the
+        total after them. Your own reaction tints the pill.</li>
+      <li><b>Reply is text</b>, with no count in it — the count belongs to the replies disclosure below.</li>
+      <li><b>The replies disclosure</b> shows up to three repliers’ avatars and expands the thread in place.</li>
+      <li><b>The episode thumbnail</b> on the right only appears on a comment about a different episode than the one
+        you are reading, exactly as Spotify does it.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+  (function(){
+    var root = document.documentElement;
+    document.getElementById("theme").addEventListener("click", function(){
+      var dark = getComputedStyle(root).getPropertyValue("--text-1").trim().indexOf("255") >= 0
+              || root.getAttribute("data-theme") === "dark";
+      root.setAttribute("data-theme", dark ? "light" : "dark");
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll(".more"), function(btn){
+      btn.addEventListener("click", function(){
+        var p = document.getElementById(btn.getAttribute("data-target"));
+        var clamped = p.classList.toggle("clamp");
+        btn.textContent = clamped ? "Show more" : "Show less";
+      });
+    });
+
+    var gate = document.getElementById("gate"), veil = document.getElementById("veil");
+    document.getElementById("playgate").addEventListener("click", function(){
+      var on = gate.hidden;
+      gate.hidden = !on; veil.hidden = !on;
+      var lines = document.querySelectorAll("#tp .peek .line");
+      for (var i = 0; i < lines.length; i++) lines[i].classList.toggle("now", !on && i === 4);
+    });
+  })();
+</script>
+
+</body>
+</html>

@@ -134,9 +134,6 @@ public static partial class Shell
         public const float ChromeTabMinW = 110f;
         public const float ChromePinnedTabW = 40f;
         public const float ChromeTabViewportMinW = 32f;
-        public const float ChromeTabComfortRatio = 0.78f;
-        public const float ChromeTabComfortMinW = 240f;
-        public const float ChromeTabComfortMaxW = 720f;
 
         // ── nav-pane (sidebar) width ─────────────────────────────────────────────────────────────────────────────────
         // The single clamp bounds for the expanded pane. EVERY writer (the seam drag, the probe seam, the responsive
@@ -239,10 +236,10 @@ public static partial class Shell
         bool ShowTrailing,
         MergedSearchMode SearchMode,
         float SearchWidth,
-        // The tabs island's RESERVED width (nav buttons excluded — the row adds those on top). Issue #88: the box used
+        // The tabs viewport's RESERVED width (navigation and add buttons excluded — the row adds those on top). Issue #88: the box used
         // to HUG the tab strip's own measured content, so a title swinging inside the strip's min/max (or a tab count
         // change) shoved the centred search box by up to half the swing. This is a QUANTISED, content-independent
-        // stand-in for that hug — sized off `ComfortableTabExtent`, clamped to whatever the row can actually spare,
+        // stand-in for that hug — sized off the measured natural extent, clamped to whatever the row can actually spare,
         // and held across resolves with a WIDEN-IMMEDIATELY / NARROW-AFTER-hysteresis shape: the OPPOSITE polarity
         // from the boolean stages below (which promote late, demote at once), because here it is GROWTH that must
         // never clip a longer title and SHRINKING that must not reclaim space only to hand it straight back.
@@ -288,7 +285,7 @@ public static partial class Shell
         public float FootprintFor(float naturalTabExtent)
             => FixedBudgetFor()
              + (SearchMode == MergedSearchMode.Field ? SearchWidth : Layout.ChromeSearchIconW)
-             + MathF.Min(MathF.Max(naturalTabExtent, Layout.ChromeTabViewportMinW), Layout.ChromeTabComfortMaxW);
+             + RequiredTabExtent(naturalTabExtent);
 
         public static float EstimatedTabExtent(int tabCount, int pinnedCount = 0)
         {
@@ -297,11 +294,16 @@ public static partial class Shell
             return pinned * Layout.ChromePinnedTabW + (open - pinned) * Layout.ChromeTabMinW;
         }
 
-        public static float ComfortableTabExtent(float naturalTabExtent)
-            => Math.Clamp(
-                QuantiseUp(naturalTabExtent * Layout.ChromeTabComfortRatio),
-                Layout.ChromeTabComfortMinW,
-                Layout.ChromeTabComfortMaxW);
+        /// <summary>Measured titles retain their full natural width whenever the window can fit them. Round UP so
+        /// the quantisation itself never clips the last glyph or forces a needless horizontal scroll.</summary>
+        public static float RequiredTabExtent(float naturalTabExtent)
+            => MathF.Max(Layout.ChromeTabViewportMinW, QuantiseUp(naturalTabExtent));
+
+        /// <summary>The island contains navigation and the add button beside the measured scrolling viewport.</summary>
+        public float TabIslandWidth => LeadClusterW
+            + (ShowBack ? Layout.ChromeNavButtonW : 0f)
+            + (ShowForward ? Layout.ChromeNavButtonW : 0f)
+            + (ShowNewTab ? Layout.ChromeAddSlotW : 0f);
 
         public static float PreferredSearchWidth(float width)
             => QuantiseDown(Math.Clamp(
@@ -346,9 +348,9 @@ public static partial class Shell
             if (!FitsEssential()) back = false;
 
             float search = PreferredSearchWidth(width);
-            float tabComfort = ComfortableTabExtent(naturalTabExtent);
+            float tabsRequired = RequiredTabExtent(naturalTabExtent);
             float tabLaneWithField = width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing) - search;
-            bool field = tabLaneWithField >= tabComfort;
+            bool field = tabLaneWithField >= tabsRequired;
             return new Stage(name, actionsInRow, forward, back, newTab, trailing, field);
         }
 
@@ -369,7 +371,7 @@ public static partial class Shell
             float budget = FixedBudget(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing);
             float available = MathF.Max(Layout.ChromeTabViewportMinW, width - budget - searchWidth);
             float desired = MathF.Max(Layout.ChromeTabViewportMinW,
-                MathF.Min(ComfortableTabExtent(naturalTabExtent), available));
+                MathF.Min(RequiredTabExtent(naturalTabExtent), available));
             float candidate = QuantiseDown(desired);
             float held = HeldLeadCluster(candidate, previousLeadClusterW);
             // A STRUCTURAL shrink of `available` (a window resize, or a stage losing a fixed island) always wins over
@@ -388,12 +390,12 @@ public static partial class Shell
             return prev - candidate >= Layout.ChromePromotionHysteresisW ? candidate : prev;
         }
 
-        /// <summary>The tab strip's MEASURED natural extent, as the allocator consumes it: ROUNDED (not floored) to the
+        /// <summary>The tab strip's MEASURED natural extent, as the allocator consumes it: rounded UP to the
         /// width quantum and floored at one tab's minimum. The strip publishes its content extent on every re-measure;
         /// quantising here is what stops a sub-pixel title reflow from re-resolving the row.</summary>
         public static float TabExtentFromMetrics(float contentExtent)
             => MathF.Max(Layout.ChromeTabMinW,
-                MathF.Round(contentExtent / Layout.ChromeWidthQuantumW) * Layout.ChromeWidthQuantumW);
+                QuantiseUp(contentExtent));
 
         /// <summary>The UPWARD seed applied the instant a tab is added or unpinned, so the row can collapse the search in
         /// the same event turn instead of squeezing the new tab behind a stale measurement. Never lowers the measured

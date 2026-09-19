@@ -1068,22 +1068,40 @@ public readonly partial struct Playlist
     }
 
     /// <summary>Re-fold <see cref="PlaylistFacts"/> over the resident membership; writes (and bumps) ONLY when an answer
-    /// moved, so a page effect and a commit hook can both call it without a publish loop. UI thread.</summary>
+    /// moved, so a page effect and a commit hook can both call it without a publish loop. UI thread.
+    /// <para>Whether a row IS an episode comes from the edge's own <see cref="PlaylistTrackEdge.Kind"/>
+    /// (<see cref="PlaylistItemKind"/>, plan §3.1) — never from a flag on the target row — because the target slot
+    /// itself indexes a DIFFERENT table for each: <see cref="Entities.Current"/>.<c>Tracks</c> for
+    /// <see cref="PlaylistItemKind.Track"/>, <c>Episodes</c> for <see cref="PlaylistItemKind.Episode"/>.</para></summary>
     public bool Refold()
     {
         if (!IsValid) return false;
         var slots = E.PlaylistTracks.Targets(Slot);
         var edges = E.PlaylistTracks.Payload(Slot);
         var tracks = Entities.Current.Tracks;
+        var episodes = Entities.Current.Episodes;
         var facts = default(PlaylistFacts);
         for (int i = 0; i < slots.Length; i++)
         {
             int ts = slots[i];
-            bool row = ts > Table.None && ts < tracks.Count;
-            uint flags = row ? tracks.Flags[ts] : 0;
+            bool isEpisode = i < edges.Length && edges[i].Kind == PlaylistItemKind.Episode;
+            int durationMs;
+            bool hasVideo;
+            if (isEpisode)
+            {
+                bool row = ts > Table.None && ts < episodes.Count;
+                durationMs = row ? episodes.DurationMs[ts] : 0;
+                hasVideo = row && (episodes.Flags[ts] & (uint)EpisodeFlags.Video) != 0;
+            }
+            else
+            {
+                bool row = ts > Table.None && ts < tracks.Count;
+                uint flags = row ? tracks.Flags[ts] : 0;
+                durationMs = row ? tracks.DurationMs[ts] : 0;
+                hasVideo = (flags & (uint)TrackFlags.VideoMask) != 0;
+            }
             facts.Add(i < edges.Length ? edges[i].AddedBy : 0, i < edges.Length ? edges[i].AddedAt : 0,
-                      row ? tracks.DurationMs[ts] : 0, (flags & (uint)TrackFlags.Podcast) != 0,
-                      (flags & (uint)TrackFlags.VideoMask) != 0);
+                      durationMs, isEpisode, hasVideo);
         }
         const uint derived = (uint)(PlaylistFlags.HasAddedBy | PlaylistFlags.HasDateAdded | PlaylistFlags.HasVideo | PlaylistFlags.Mixed);
         if ((T.Flags[Slot] & derived) == facts.Flags && T.EpisodeCount[Slot] == facts.Episodes

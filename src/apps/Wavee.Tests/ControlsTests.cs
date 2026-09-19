@@ -260,7 +260,23 @@ public class ControlsRichTextTests
     public void An_unknown_tag_is_dropped_and_its_text_is_kept()
     {
         var spans = Controls.ParseRich("one<br/>two <i>three</i>", Link, null);
-        Assert.Equal("onetwo three", string.Concat(spans.Select(s => s.Text)));
+        Assert.Equal("one\ntwo three", string.Concat(spans.Select(s => s.Text)));
+    }
+
+    [Fact]
+    public void Description_blocks_preserve_reading_boundaries()
+    {
+        var spans = Controls.ParseRich("<p>First paragraph.</p><p>Second<br>line.</p><ul><li>One</li><li>Two</li></ul>", Link, null);
+        Assert.Equal("First paragraph.\n\nSecond\nline.\n\n\u2022 One\n\u2022 Two\n\n\n", string.Concat(spans.Select(s => s.Text)));
+    }
+
+    [Fact]
+    public void Web_description_links_have_an_action_but_unknown_schemes_do_not()
+    {
+        var safe = Assert.Single(Controls.ParseRich("<a href='https://example.test/guide'>Guide</a>", Link, null));
+        Assert.NotNull(safe.OnClick);
+        var unsupported = Assert.Single(Controls.ParseRich("<a href='javascript:alert(1)'>Guide</a>", Link, null));
+        Assert.Null(unsupported.OnClick);
     }
 
     [Fact]

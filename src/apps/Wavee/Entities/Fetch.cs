@@ -485,6 +485,10 @@ public static partial class Fetch
     static readonly List<RefusedAsk> s_refused = new(16);
     const int MaxRefused = 1024;
 
+    // The omitted-entity miss bookkeeping (`s_misses`, `ReviewMisses`, `LogMiss`) lives in Fetch.Miss.cs beside the
+    // pure `FetchMissPolicy` it calls — this file only touches it at the three seams a partial class needs: `Answer`
+    // (where a miss is discovered), and `Boot`/`DropStaleScope`/`Refresh` (where it is cleared).
+
     /// <summary>One row (or one edge parent) an auth refusal un-asked, and everything <see cref="Resume"/> needs to plan
     /// it again: the groups for a row (<see cref="Edge"/> is <see cref="FetchEdge.None"/>), the relation and page for a
     /// parent. <see cref="Epoch"/> is the scope it was recorded under (C7).</summary>
@@ -532,6 +536,7 @@ public static partial class Fetch
         s_routeIndex.Clear();
         s_pendingEdges.Clear();
         s_refused.Clear();
+        s_misses.Clear();             // per-(table,slot) miss counts index the OLD table set too (see Fetch.Miss.cs)
         s_inFlight = 0;
         s_drainOwed = s_held = false;          // nothing is bucketed, so nothing is owed or held
         // Boot may run before `Entities.Boot` has a scope (a test calling Reset): read defensively.
@@ -833,6 +838,7 @@ public static partial class Fetch
         s_routeIndex.Clear();
         s_pendingEdges.Clear();
         s_refused.Clear();            // every entry indexes the OLD table set; the new scope has no marks to resume
+        s_misses.Clear();             // ditto (Fetch.Miss.cs) — a new scope's rows have missed nothing yet
         s_held = false;               // a HELD bucket is dropped with the rest: its slots index the old set too (C7)
         for (int i = 0; i < s_providers.Length; i++) s_providers[i]?.Abandon(scope.Epoch);
         // In-flight batches are NOT cancelled here: their answers are dropped by `Staging.Epoch` at the commit (C7),
@@ -1194,6 +1200,17 @@ public static partial class Fetch
         s_answered++;
         LogAnswer(batch, "ok", unfilled & batch.Wanted, retry: null);
 
+        // Snapshotted BEFORE the commit, and only for a ROW batch of the live scope: `ReviewMisses` (Fetch.Miss.cs)
+        // needs to tell "this row's identity was not in the 200 body at all" (ledger 2a — a retry can fix it) from
+        // "the row IS there, but this particular group is one its route structurally never carries" (TrackV4 and
+        // PlayCount — no retry ever fixes that, and `A_partial_answer_does_not_re_ask` pins the seal that already
+        // exists for it). `Table.Version` bumps once per row `Applied` touches, whichever groups it wrote, so
+        // "unchanged across the commit" is exactly "nothing landed for this row this round" — allocation-free after
+        // warm-up like every other scratch buffer in this file (`ArrayPool`, not a field).
+        Table? table = batch.Epoch == s_scopeEpoch && batch.Subject != FetchSubject.Edge
+            ? TableOf(Entities.Current, batch) : null;
+        uint[]? versionsBefore = table is not null && staging is not null ? SnapshotVersions(batch, table) : null;
+
         if (staging is not null)
         {
             if (staging.Epoch == 0) staging.Epoch = batch.Epoch;      // the provider may not have stamped it
@@ -1203,8 +1220,20 @@ public static partial class Fetch
         if (batch.Epoch == s_scopeEpoch)
         {
             if (batch.Subject == FetchSubject.Edge) EdgesAnswered(batch);
-            else if (TableOf(Entities.Current, batch) is { } table) Unask(batch, table, unfilled & batch.Wanted);
+            else if (table is not null)
+            {
+                uint routedUnfilled = unfilled & batch.Wanted;
+                Unask(batch, table, routedUnfilled);
+                // THE OTHER HALF OF THE SEAL (ledger 2a, plan §4.1): `routedUnfilled` is a ROUTE that did not answer —
+                // `Unask` already un-asks it above. A group whose route DID answer (this is not in `routedUnfilled`)
+                // but whose ENTITY the 200 body simply omitted is a different failure, and until now it had no name:
+                // the row stayed `Asked` with `Inflight` cleared forever, which is a blank 0:00 no later `Ensure`
+                // ever repeats. `ReviewMisses` gives it one (Fetch.Miss.cs) — for the rows `versionsBefore` says
+                // genuinely landed nothing, never for a row whose route simply does not carry the missing group.
+                ReviewMisses(batch, table, routedUnfilled, versionsBefore);
+            }
         }
+        if (versionsBefore is not null) ArrayPool<uint>.Shared.Return(versionsBefore);
 
         // Free this batch's wire slots and re-plan whatever they were blocking (see the file header) — AFTER the
         // commit above, so a row answer that staged the relation as a side effect is not re-asked for it.
@@ -1384,6 +1413,10 @@ public static partial class Fetch
             int slot = slots[i];
             if (slot <= Table.None || slot >= table.Count) continue;
             table.Asked[slot] &= ~groups;
+            // A deliberate Retry vacancy is a clean slate for the omitted-entity count too (Fetch.Miss.cs): whatever
+            // this row missed before, the caller asked for it again on purpose, so the next 200 that omits it again
+            // starts counting from zero rather than sealing on the first repeat.
+            if (s_misses.Count > 0) s_misses.Remove((table, slot));
         }
         Plan(scope, table, slots, groups, priority);
     }

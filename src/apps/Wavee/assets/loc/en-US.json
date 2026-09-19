@@ -355,7 +355,11 @@
       "pillYearsTip": "{range} · {count, plural, one {# track} other {# tracks}} of {known} dated",
       "pillBlendFlat": "{count} styles, none over {share}",
       "lastAdd": "last add {date}",
-      "lastLike": "last like {date}"
+      "lastLike": "last like {date}",
+      "$comment5": "THE INSIGHTS SHEET. In the stacked (vertical) arm there is no rail, so the bento above is reached through a dismissable sheet laid over the list instead of falling to the bottom of the page. sheetTitle heads the panel; sheetOpen labels the toolbar toggle that opens it (and reads as the name of what is behind the button, not as a verb); sheetClose is its ×.",
+      "sheetTitle": "Insights",
+      "sheetOpen": "Insights",
+      "sheetClose": "Close"
     },
     "aboutRelease": "About this release",
     "factSongs": "Songs",
@@ -790,6 +794,13 @@
     },
     "progressUnavailable": "Listening progress isn't available right now",
     "reader": {
+      "jumpDate": "Jump to date",
+      "undated": "Undated",
+      "audiobook": "Audiobook",
+      "chaptersCount": "{count, plural, one {# chapter} other {# chapters}}",
+      "findBook": "Find in this book",
+      "chapterOrder": "Chapter order",
+      "reverseChapterOrder": "Reverse chapter order",
       "about": "About this episode",
       "chapters": "Chapters",
       "transcript": "Transcript",
@@ -822,6 +833,15 @@
       "ratingSaved": "Your rating was saved.",
       "loadMore": "Load more",
       "reactions": "Reactions",
+      "reactionAll": "All",
+      "reactionHeart": "Love",
+      "reactionLaugh": "Laugh",
+      "reactionSmile": "Relieved",
+      "reactionSurprise": "Surprised",
+      "reactionSad": "Sad",
+      "reactionClap": "Applause",
+      "reactionFire": "Fire",
+      "reactionLike": "Like",
       "paywall": "This episode requires access through Spotify.",
       "preview": "Only a preview is available for this episode.",
       "video": "Video episode",
@@ -837,7 +857,14 @@
       "play": "Play",
       "pause": "Pause",
       "consent": "I understand that comments are posted publicly under my Spotify profile name."
-    }
+    },
+    "savedEmpty": "No saved episodes yet",
+    "commentsOff": "Comments are off for this episode.",
+    "railAbout": "About",
+    "peekFollows": "Follows along while you listen",
+    "peekPlay": "Play to view transcript",
+    "react": "React",
+    "repliesCount": "{count, plural, one {# reply} other {# replies}}"
   },
   "recents": {
     "itemCount": "{count, plural, one {# item} other {# items}}",
@@ -1511,6 +1538,9 @@
     "browserFailed": "Browser sign-in failed: {error}"
   },
   "player": {
+    "seekBack10": "Back 10 seconds",
+    "seekForward10": "Forward 10 seconds",
+    "closeTranscriptHint": "Close transcript (Esc)",
     "nothingPlaying": "Nothing playing",
     "loading": "Loading…",
     "cannotPlay": "Can’t play this track",
@@ -1838,7 +1868,8 @@
     "artistConcertsGeneric": "Artist concerts",
     "concertDetails": "Concert details",
     "discography": "Discography",
-    "connectDiagnostics": "Connect diagnostics"
+    "connectDiagnostics": "Connect diagnostics",
+    "audiobooks": "Audiobooks"
   },
   "sidebar": {
     "pinned": "Pinned",

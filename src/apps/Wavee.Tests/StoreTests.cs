@@ -1029,6 +1029,71 @@ public class StoreTests : IDisposable
     }
 
     [Fact]
+    public void Show_rich_identity_survives_conflicting_thin_parent_and_cold_read()
+    {
+        Store.Register(new ShowShape());
+        Scope scope = Boot();
+        var shows = scope.Shows;
+        string uri = GidUri("show", 8);
+        int slot = shows.Slot(uri.AsSpan());
+        EntityId id = shows.Id[slot];
+
+        var rich = Staging.Rent();
+        ref var full = ref rich.Shows.RowFor(id, Authority.Full, (uint)ShowFields.Identity);
+        full.Title = rich.AddText("Authoritative title"u8);
+        full.Image = rich.AddText("https://example.test/show-cover.jpg"u8);
+        full.Publisher = rich.AddText("Original publisher"u8);
+        Entities.Commit(rich);
+        Assert.True(Store.WriteBehind(rich));
+        Store.Flush();
+
+        var partial = Staging.Rent();
+        ref var thin = ref partial.Shows.RowFor(id, Authority.Thin, (uint)ShowFields.Identity);
+        thin.Title = partial.AddText("Conflicting parent title"u8);
+        Entities.Commit(partial);
+        Assert.Equal("Authoritative title", Entities.Strings.Resolve(shows.Title[slot]));
+        Assert.True(Store.WriteBehind(partial));
+        Store.Flush();
+
+        // Remove all resident columns so neither an in-memory cover nor its authority can mask a disk regression.
+        shows.FreeSlot(slot);
+        int reopened = shows.Slot(uri.AsSpan());
+        Assert.False(shows.Knows(reopened, (uint)ShowFields.Identity));
+        Assert.True(Store.Read(scope, shows, new[] { reopened }, (uint)ShowFields.Identity, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Authoritative title", Entities.Strings.Resolve(shows.Title[reopened]));
+        Assert.Equal("https://example.test/show-cover.jpg", Entities.Strings.Resolve(shows.Image[reopened]));
+        Assert.Equal("Original publisher", Entities.Strings.Resolve(shows.Publisher[reopened]));
+        Assert.True(shows.Knows(reopened, (uint)ShowFields.Identity));
+        Assert.Equal((byte)Authority.Full, shows.IdentityAuthority[reopened]);
+    }
+
+    [Fact]
+    public void Show_partial_identity_round_trip_keeps_absent_fields_unknown()
+    {
+        Store.Register(new ShowShape());
+        Scope scope = Boot();
+        var shows = scope.Shows;
+        int slot = shows.Slot(GidUri("show", 7).AsSpan());
+        var staging = Staging.Rent();
+        ref var row = ref staging.Shows.Add();
+        row.Id = shows.Id[slot];
+        row.Title = staging.AddText("Only the title"u8);
+        row.Known = (uint)ShowFields.Identity;
+        row.Authority = Authority.Thin;
+        Assert.True(Store.WriteBehind(staging));
+        Store.Flush();
+        Assert.True(Store.Read(scope, shows, new[] { slot }, (uint)ShowFields.Identity, FetchPriority.Visible));
+        Store.Flush();
+        DrainPosts();
+        Assert.Equal("Only the title", Entities.Strings.Resolve(shows.Title[slot]));
+        Assert.True(shows.Knows(slot, (uint)ShowFields.Title));
+        Assert.False(shows.Knows(slot, (uint)ShowFields.Image));
+        Assert.False(shows.Knows(slot, (uint)ShowFields.Publisher));
+    }
+
+    [Fact]
     public void Show_ddl_gid_round_trip_and_thin_never_blanks_identity()
     {
         Store.Register(new ShowShape());

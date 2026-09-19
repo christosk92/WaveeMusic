@@ -118,6 +118,9 @@ public static partial class Lyrics
 
         /// <summary>The resync ring: the accent on a theme plate, plain ink on media.</summary>
         public ColorF RingFill => OnMedia ? Design.StageInk.Ink : Tok.AccentDefault;
+        /// <summary>The active transcript line's SUNG glyph — the one place the wipe shows a highlight instead of
+        /// plain ink (<see cref="TranscriptPresentation.InkRung.Accent"/>). Same rung as <see cref="RingFill"/>.</summary>
+        public ColorF Accent => RingFill;
         public ColorF RingTrack => OnMedia ? Design.StageInk.Ink with { A = 0.30f } : Tok.StrokeControlDefault with { A = 0.55f };
 
         /// <summary>The loading bars.</summary>
@@ -140,7 +143,7 @@ public static partial class Lyrics
     enum FollowIntent : byte { Normal, Resync }
 
     /// <summary>The lyrics reading surface.</summary>
-    internal sealed class ViewCore : Component
+    internal sealed partial class ViewCore : Component
     {
         // ── advance-probe seam (`--lyrics-advance-probe`, Screens/Diagnostics.Probe.cs, Wave 6) ──────────────────────
         // `internal` accessors, not switches: the probe drives the media clock SYNCHRONOUSLY so a line advance and the
@@ -163,17 +166,28 @@ public static partial class Lyrics
         internal readonly bool Large;
         internal readonly Ink InkMode;
         readonly Func<bool> _visible;
-        internal readonly RowMetrics Metrics;
+        // The rail/stage survives song-to-episode switches. Resolve type from the current subject rather than
+        // freezing music metrics in the constructor; ClearDocument resets measured extents/run lengths on switch.
+        internal RowMetrics Metrics => Surface.Timed(Large, IsPodcast);
         readonly float _band;
 
-        internal ViewCore(bool large, bool onMedia, Func<bool> visible)
+        readonly EntityId _readerEpisode;
+        EntityId _subject;
+        uint _subjectEpoch;
+        internal bool IsPodcast => _subject.Kind == EntityKind.Episode;
+        internal bool OwnsPlayback => _subject == Playback.CurrentId.Peek();
+
+        internal bool ObservedPlaybackOwner => _subject == Playback.CurrentId.Value;
+
+        internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default)
         {
+            _readerEpisode = readerEpisode;
             Large = large;
             InkMode = new Ink(onMedia);
             _visible = visible;
-            Metrics = Surface.Timed(large);
-            _band = Surface.FocalBand(large);
+            _band = readerEpisode.IsValid ? 0.05f : Surface.FocalBand(large);
             _wakeTick = WakeTick;
+            _reseedOwnership = ReseedForOwnership;
             _dotAlpha = new FloatSignal[Interlude.DotCount];
             for (int k = 0; k < _dotAlpha.Length; k++) _dotAlpha[k] = new FloatSignal(0f);
         }
@@ -258,8 +272,11 @@ public static partial class Lyrics
         readonly Signal<MotionWake> _motionWake = new(new MotionWake(0, -1f));
         readonly Signal<bool> _motionRecheck = new(false);
         int _motionWakeSeq;
+        double _motionWakeRate = 1;
         long _motionWakeAtMs = long.MinValue;
         internal readonly Action _wakeTick;
+        /// <summary>Hoisted so the per-render <c>UseEffect</c> hands the SAME delegate every time (no per-render alloc).</summary>
+        readonly Action _reseedOwnership;
 
         // ── the developer surface (gated by `diag.developerMode`, never by an env var — plan §9.6 Q1) ─────────────────
         internal readonly Signal<bool> DebugOpen = new(false);
@@ -308,9 +325,18 @@ public static partial class Lyrics
             }, DepKey.From(secondary));
 
             // ── what is playing ─────────────────────────────────────────────────────────────────────────────────────
-            var current = Playback.Current.Value;                  // value-gated: changes on a track change only
-            bool anything = !Playback.CurrentId.Value.IsEmpty;
-            string trackId = current.Kind == EntityKind.Track && !current.IsNone ? Store.IdOf(new Track(current.Slot)) : "";
+            var current = Playback.Current.Value;
+            _subject = _readerEpisode.IsValid ? _readerEpisode : Playback.CurrentId.Value;
+            bool anything = _subject.IsValid;
+            string trackId = IsPodcast ? _subject.Text
+                : current.Kind == EntityKind.Track && !current.IsNone ? Store.IdOf(new Track(current.Slot)) : "";
+            uint accountEpoch = Entities.ScopeEpoch.Value;
+            // THE PEEK's one gate (podcast-episode-peek §2). Reading it here is also this component's SUBSCRIPTION to
+            // playback identity — the reader's subject is frozen, so nothing else in this render reads CurrentId — and
+            // a flip re-seeds the follow state over the document we already hold instead of clearing and re-fetching it
+            // (PrepareDocument short-circuits on the same instance, so the re-seed is its own step).
+            bool owns = !IsPodcast || ObservedPlaybackOwner;
+            UseEffect(_reseedOwnership, DepKey.From(owns));
 
             if (!anything)
             {
@@ -324,13 +350,21 @@ public static partial class Lyrics
                 _trackId = "";
                 return Message(Loc.Get(Strings.Lyrics.NoLyrics));
             }
-            if (!string.Equals(_trackId, trackId, StringComparison.Ordinal)) ClearDocument();
+            if (!string.Equals(_trackId, trackId, StringComparison.Ordinal) || accountEpoch != _subjectEpoch) ClearDocument();
+            _subjectEpoch = accountEpoch;
             _trackId = trackId;
 
             // The document lives under a track-keyed boundary, so chrome re-renders reconcile it in place instead of
-            // rebuilding the virtual list and remounting every line.
-            Element body = Embed.Comp(() => new DocHost(this, trackId)) with { Key = "lyrics-doc:" + trackId };
-            Element? ticker = open ? Embed.Comp(() => new Ticker(this)) with { Key = "lyrics-ticker:" + trackId } : null;
+            // rebuilding the virtual list and remounting every line. A reader open on an episode that is NOT the one
+            // playing still mounts (and still fetches) it: the transcript is what the peek shows behind its veil —
+            // `TranscriptContent` chooses the peek over the following list, and everything downstream of here already
+            // treats a non-owning podcast as neutral (no active line, no wipe, no follow, no σ ladder).
+            Element body = IsPodcast
+                ? Embed.Comp(() => new TranscriptHost(this, _subject)) with { Key = "transcript-doc:" + accountEpoch + ":" + trackId }
+                : Embed.Comp(() => new DocHost(this, trackId)) with { Key = "lyrics-doc:" + trackId };
+            // …and the frame stepper stays UNMOUNTED while the gate is up: OnFrame returns immediately for a
+            // non-owning podcast, so a subscription to panel-rate frames would buy nothing but battery.
+            Element? ticker = open && owns ? Embed.Comp(() => new Ticker(this)) with { Key = "lyrics-ticker:" + trackId } : null;
             Element dots = InterludeDots();
             Element resync = ResyncOverlay();
             Element banner = VideoNote();
@@ -360,7 +394,7 @@ public static partial class Lyrics
             Children =
             [
                 Flow.Show(
-                    static () => SyncGate.SyncSuppressed(Playback.VideoActive.Value),
+                    () => SyncGate.SyncSuppressed(Playback.VideoActive.Value, IsPodcast),
                     new BoxEl
                     {
                         Shrink = 0f, MinWidth = 0f,
@@ -390,7 +424,7 @@ public static partial class Lyrics
             Children =
             [
                 Flow.Show(
-                    () => Follow_.Value is FollowMode.DetachedActive or FollowMode.DetachedIdle,
+                    () => (!IsPodcast || ObservedPlaybackOwner) && Follow_.Value is FollowMode.DetachedActive or FollowMode.DetachedIdle,
                     new BoxEl
                     {
                         Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f,
@@ -410,6 +444,117 @@ public static partial class Lyrics
                             new TextEl(Loc.Get(Strings.Player.ResyncLyrics)) { Size = 12f, LineHeight = 16f, Weight = 600, Color = InkMode.Primary },
                         ],
                     }),
+            ],
+        };
+
+        /// <summary>THE GATE that sits on the peek's dissolve (podcast-episode-peek §2): the caption, the primary pill
+        /// that starts this episode, and the quiet length · language line. A pass-through positioner, so only the pill
+        /// itself takes the pointer. Only ever reached from a reader (<c>_readerEpisode</c> valid): the rail always
+        /// tracks whatever is playing, so it never lands here.</summary>
+        Element PeekGate()
+        {
+            var episode = Entities.Episode(_subject);
+            string duration = episode.IsValid && episode.Knows(EpisodeFields.Duration) && episode.DurationMs > 0
+                ? Episode.DurationLabel(episode.DurationMs) : "";
+            string meta = TranscriptPeek.MetaLine(duration, TranscriptPeek.LanguageLabel(episode.TranscriptLanguage));
+            var gate = new List<Element>(3)
+            {
+                new TextEl(Loc.Get(Strings.Podcast.PeekFollows))
+                {
+                    Size = 13f, LineHeight = 18f, Color = InkMode.Secondary, Wrap = TextWrap.Wrap, MaxLines = 0,
+                },
+                Button.Accent(Loc.Get(Strings.Podcast.PeekPlay),
+                    () => Episode.StartAt(episode, Playback.EpisodeStartKind.Resume)),
+            };
+            if (meta.Length > 0)
+                gate.Add(new TextEl(meta)
+                {
+                    Size = 12f, LineHeight = 16f, Color = InkMode.Tertiary,
+                    Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                });
+            return new BoxEl
+            {
+                Grow = 1f, MinHeight = 0f, HitTestPassThrough = true,
+                Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+                Padding = new Edges4(Spacing.L, 0f, Spacing.L, Spacing.XXL),
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Shrink = 0f, MinWidth = 0f, Direction = 1,
+                        AlignItems = FlexAlign.Center, Gap = Spacing.S, Children = gate.ToArray(),
+                    },
+                ],
+            };
+        }
+
+        /// <summary>THE PEEK: the transcript's real opening lines, rendered exactly as the following transcript renders
+        /// them (the same <see cref="Metrics"/> type, gutters and ink), grouped into <see cref="TranscriptPeek.Bands"/>
+        /// blocks that get progressively blurred and progressively transparent from top to bottom, with
+        /// <see cref="PeekGate"/> laid on the dissolve.
+        /// <para>The dissolve is the CONTENT's own self-blur (<c>BoxEl.Blur</c> = a real Gaussian over the block's own
+        /// pixels) plus its own opacity ramp — the engine has no backdrop filter, and fading the TEXT rather than
+        /// painting a coloured veil over it is the one form that is correct on every surface the reader can sit on
+        /// (Mica included), where a veil colour would have to guess what is underneath.</para></summary>
+        Element PeekContent(Doc doc)
+        {
+            var m = Metrics;
+            // A blur strength of 0 means the user turned the effect off: the opacity ramp alone still dissolves, and
+            // the gate still reads — the peek never becomes an unreadable smear nor a fully sharp free transcript.
+            bool blur = BlurPolicy.Enabled(_strength);
+            int count = TranscriptPeek.LineCount(doc.Lines.Count);
+            var bands = new List<Element>(TranscriptPeek.Bands);
+            var rows = new List<Element>(count);
+            int band = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int next = TranscriptPeek.BandOf(i, count);
+                if (next != band)
+                {
+                    if (rows.Count > 0) bands.Add(PeekBand(band, rows, blur));
+                    rows.Clear();
+                    band = next;
+                }
+                rows.Add(PeekRow(doc.Lines[i].Text, m));
+            }
+            if (rows.Count > 0) bands.Add(PeekBand(band, rows, blur));
+            return new BoxEl
+            {
+                Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true, ZStack = true,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Grow = 1f, MinHeight = 0f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.Start,
+                        Padding = new Edges4(0f, Surface.UnsyncedBlockPad(Large), 0f, 0f),
+                        Children = bands.ToArray(),
+                    },
+                    PeekGate(),
+                ],
+            };
+        }
+
+        Element PeekBand(int band, List<Element> rows, bool blur) => new BoxEl
+        {
+            Direction = 1, Shrink = 0f, MinWidth = 0f, HitTestVisible = false,
+            Blur = blur ? TranscriptPeek.SigmaOf(band) : 0f,
+            Opacity = TranscriptPeek.OpacityOf(band),
+            Children = rows.ToArray(),
+        };
+
+        /// <summary>One peek row — the same shape <see cref="UnsyncedContent"/> builds, at the TIMED transcript's own
+        /// metrics and full primary ink, so the block the veil covers is the block that appears once you press play.</summary>
+        Element PeekRow(string text, RowMetrics m) => new BoxEl
+        {
+            Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Stretch,
+            Padding = new Edges4(m.SidePad, m.RowPad, m.SidePad, m.RowPad),
+            Children =
+            [
+                new TextEl(text)
+                {
+                    Size = m.FontSize, Weight = m.Weight, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
+                    Color = InkMode.Primary, MaxLines = 0, Trim = TextTrim.None,
+                },
             ],
         };
 
@@ -583,7 +728,7 @@ public static partial class Lyrics
             // SEEDED at the document's TRUE opening state (through the same interlude advance the frame lane uses), so
             // the PushEmphasis below is a silent no-op instead of fanning the whole document out on every load.
             bool timed = IsTimed(doc);
-            int seedActive = timed ? AdvancePastInterlude(doc, ResolveLine(doc.Lines, posMs), posMs, out _, out _) : -1;
+            int seedActive = timed && (!IsPodcast || OwnsPlayback) ? AdvancePastInterlude(doc, ResolveLine(doc.Lines, posMs), posMs, out _, out _) : -1;
             if (!sameShape)
             {
                 _interludeReserveLine = -1;
@@ -592,7 +737,7 @@ public static partial class Lyrics
             }
             _glowInLine = -1; _glowOutLine = -1;
             _activeLine.Value = seedActive;
-            if (!timed) _voiceLine.Value = -1;
+            if (!timed || (IsPodcast && !OwnsPlayback)) _voiceLine.Value = -1;
             PushEmphasis();
             NowMs.Value = posMs;
             _scrollSnapped = false;
@@ -600,10 +745,34 @@ public static partial class Lyrics
             WakeMotion();
         }
 
+        /// <summary>Playback identity moved onto — or off — the episode this reader is open on (the peek's gate
+        /// lifting, or another episode taking over). <see cref="PrepareDocument"/> short-circuits on the same document
+        /// instance, so the follow state is re-seeded HERE over the document we already hold: no clear, no re-fetch,
+        /// no remount — the peek's blocks are replaced by the following list and the active line is already right.</summary>
+        void ReseedForOwnership()
+        {
+            var doc = _doc;
+            if (doc is null) return;
+            long posMs = OwnsPlayback ? Playback.PositionMs.Peek() : 0L;
+            bool timed = IsTimed(doc);
+            int seedActive = timed && (!IsPodcast || OwnsPlayback)
+                ? AdvancePastInterlude(doc, ResolveLine(doc.Lines, posMs), posMs, out _, out _) : -1;
+            _activeLine.Value = seedActive;
+            if (!timed || (IsPodcast && !OwnsPlayback)) _voiceLine.Value = -1;
+            PushEmphasis();
+            NowMs.Value = posMs;
+            _scrollSnapped = false;
+            _dofRampPending = true;
+            RebaseClock(posMs);
+            WakeMotion();
+        }
+
         /// <summary>The header toggle's capability. Gated on a TIMED document: an unsynced block has no rows to render a
         /// second line in, so offering the toggle there would be a control that visibly does nothing (parity 69).</summary>
-        static void PublishSecondaryAvailability(Doc? doc)
-            => Prefs.Available.Value = doc is not null && IsTimed(doc) ? doc.SecondaryAvailable : 0;
+        void PublishSecondaryAvailability(Doc? doc)
+        {
+            if (!_readerEpisode.IsValid) Prefs.Available.Value = doc is not null && IsTimed(doc) ? doc.SecondaryAvailable : 0;
+        }
 
         void PushEmphasis()
         {
@@ -661,7 +830,7 @@ public static partial class Lyrics
         void RebaseClock(long positionMs)
         {
             var snap = Playback.Snap();
-            _clock.Reset(positionMs, FrameTime.NowQpc, Playback.IsPlaying.Peek());
+            _clock.Reset(positionMs, FrameTime.NowQpc, OwnsPlayback && Playback.IsPlaying.Peek(), snap.ContentRate);
             _lastSampleStamp = snap.PosQpc;
             _lastSamplePos = snap.PosMs;
         }
@@ -670,7 +839,14 @@ public static partial class Lyrics
 
         /// <summary>Is timed sync suppressed right now? Read with <c>.Value</c> so the CONTENT re-renders the moment a
         /// video starts or stops; the frame lane peeks the same state.</summary>
-        static bool SyncSuppressedNow() => SyncGate.SyncSuppressed(Playback.VideoActive.Value);
+        bool SyncSuppressedNow() => SyncGate.SyncSuppressed(Playback.VideoActive.Value, IsPodcast);
+
+        /// <summary>Which transcript the pane shows: the PEEK while the reader is browsing an episode that is not the
+        /// one playing, the normal following transcript otherwise. Reading <see cref="ObservedPlaybackOwner"/> here is
+        /// deliberate — this runs inside the skeleton region's own tracked effect, so the gate lifts (and a DIFFERENT
+        /// episode's stays up) the moment playback identity changes, wherever in the app it changed from.</summary>
+        internal Element TranscriptContent(Doc doc)
+            => TranscriptPeek.Gated(IsPodcast, ObservedPlaybackOwner, doc.Lines.Count) ? PeekContent(doc) : LyricsContent(doc);
 
         internal Element LyricsContent(Doc doc)
         {
@@ -713,7 +889,7 @@ public static partial class Lyrics
         /// ellipsised — no highlight, no follow, no wipe, no blur ladder.</summary>
         Element UnsyncedContent(Doc doc)
         {
-            var m = Surface.Unsynced(Large);
+            var m = Surface.Unsynced(Large, IsPodcast);
             var ink = InkMode.Primary with { A = Surface.UnsyncedAlpha };   // an ABSOLUTE alpha, as 0.2.9 set it
             var rows = new Element[doc.Lines.Count];
             for (int i = 0; i < rows.Length; i++)
@@ -726,7 +902,7 @@ public static partial class Lyrics
                     [
                         new TextEl(doc.Lines[i].Text)
                         {
-                            Size = m.FontSize, Weight = 700, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
+                            Size = m.FontSize, Weight = m.Weight, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
                             Color = ink, MaxLines = 0, Trim = TextTrim.None,
                         },
                     ],
@@ -839,7 +1015,7 @@ public static partial class Lyrics
             if (doc is null || (uint)index >= (uint)doc.Lines.Count) return wrapWidth;
             string text = doc.Lines[index].Text;
             if (text.Length == 0 || TextSeam.Default is not { } fonts) return wrapWidth;
-            var style = new TextStyle(default, Metrics.FontSize, 700, TextWrap.Wrap, TextTrim.None, 0,
+            var style = new TextStyle(default, Metrics.FontSize, Metrics.Weight, TextWrap.Wrap, TextTrim.None, 0,
                 CharSpacing: 0f, LineHeight: Metrics.LineHeight);
             Span<RectF> fragments = stackalloc RectF[8];
             int n = fonts.GetRangeRects(text, in style, wrapWidth, 0, text.Length, fragments);
@@ -857,6 +1033,7 @@ public static partial class Lyrics
         /// mid-ramp re-asserts the in-flight σ instead of stomping the node back to the rest target.</summary>
         internal float DofDeclaredFor(int index)
         {
+            if (TranscriptPresentation.Neutral(IsPodcast, OwnsPlayback)) return 0f;
             float cur = (uint)index < (uint)_dofCurrent.Length ? _dofCurrent[index] : float.NaN;
             if (!float.IsNaN(cur)) return cur;
             return DofRamp.Target(index, _activeLine.Peek(), Large, _dofScale, SuppressesDof(Follow_.Peek()));
@@ -877,7 +1054,7 @@ public static partial class Lyrics
             if (!_dofRampPending || cur.Length == 0) return;
 
             // Strength 0 ⇒ the effect is OFF: snap every σ to 0 in ONE pass and quiesce — not the 65 ms decrease.
-            if (!BlurPolicy.Enabled(_strength))
+            if (TranscriptPresentation.Neutral(IsPodcast, OwnsPlayback) || !BlurPolicy.Enabled(_strength))
             {
                 for (int i = 0; i < cur.Length; i++)
                 {
@@ -993,9 +1170,11 @@ public static partial class Lyrics
         void ArmMotionWake(long wakeAtMs, long nowMs)
         {
             if (wakeAtMs >= MotionDemand.None) { ClearMotionWake(); return; }
-            if (wakeAtMs == _motionWakeAtMs) return;
+            double rate = _clock.ContentRate;
+            if (wakeAtMs == _motionWakeAtMs && rate == _motionWakeRate) return;
+            _motionWakeRate = rate;
             _motionWakeAtMs = wakeAtMs;
-            _motionWake.Value = new MotionWake(++_motionWakeSeq, MathF.Max(1f, wakeAtMs - nowMs));
+            _motionWake.Value = new MotionWake(++_motionWakeSeq, MathF.Max(1f, (float)((wakeAtMs - nowMs) / rate)));
         }
 
         void ClearMotionWake()
@@ -1011,7 +1190,7 @@ public static partial class Lyrics
         {
             _motionLive.Value = false;
             ClearMotionWake();
-            _motionRecheck.Value = Playback.IsPlaying.Peek();
+            _motionRecheck.Value = OwnsPlayback && Playback.IsPlaying.Peek();
         }
 
         // ── 2.10 the follow ─────────────────────────────────────────────────────────────────────────────────────────
@@ -1039,6 +1218,7 @@ public static partial class Lyrics
 
         void OnScrollActivity(bool userScrollActive, long nowMs)
         {
+            if (IsPodcast && !OwnsPlayback) return;
             if (userScrollActive)
             {
                 _resyncDeadlineMs = 0L;
@@ -1090,7 +1270,9 @@ public static partial class Lyrics
             if (doc is null || (uint)index >= (uint)doc.Lines.Count) return;
             ResetFollowState(Context.Scene);
             long ms = doc.Lines[index].StartMs;
-            Playback.SeekTo((int)Math.Clamp(ms, 0L, int.MaxValue));   // a line tap is a commit, never a scrub preview
+            if (IsPodcast && !OwnsPlayback)
+                Episode.StartAt(Entities.Episode(_subject), Playback.EpisodeStartKind.Position, (int)Math.Clamp(ms, 0L, int.MaxValue));
+            else Playback.SeekTo((int)Math.Clamp(ms, 0L, int.MaxValue));   // a line tap is a commit, never a scrub preview
             RebaseClock(ms);
             _scrollSnapped = false;
             ZeroCascade(Context.Scene);
@@ -1236,7 +1418,7 @@ public static partial class Lyrics
             if (doc is null || doc.Lines.Count == 0 || !IsTimed(doc)) { QuiesceUnresolved(); return; }
             // A video is a different edit of the song: suppress sync at the ONE driver, so the whole timed apparatus
             // stops together. Peek — this is a frame callback; the content's own read subscribes.
-            if (SyncGate.SyncSuppressed(Playback.VideoActive.Peek()))
+            if (SyncGate.SyncSuppressed(Playback.VideoActive.Peek(), IsPodcast))
             {
                 if (_activeLine.Peek() != -1) _activeLine.Value = -1;
                 if (_voiceLine.Peek() != -1) _voiceLine.Value = -1;
@@ -1249,9 +1431,22 @@ public static partial class Lyrics
             if (!_motionLive.Peek() && !ProbeSyncMode) { _dofRampMs = 0L; _casQpc = 0L; }
 
             long wallMs = FrameTime.NowMs;
-            long auth = Playback.PositionMs.Peek();
-            bool playing = Playback.IsPlaying.Peek();
+            long auth = OwnsPlayback ? Playback.PositionMs.Peek() : 0;
+            bool playing = OwnsPlayback && Playback.IsPlaying.Peek();
             long nowMs;
+            if (!OwnsPlayback && probeNowMs == long.MinValue)
+            {
+                if (_activeLine.Peek() != -1) { _activeLine.Value = -1; PushEmphasis(); }
+                _voiceLine.Value = -1;
+                for (int i = 0; i < _glowAlpha.Length; i++) _glowAlpha[i].Value = 0f;
+                _glowInLine = -1; _glowOutLine = -1;
+                _dofRampPending = true;
+                if (Context.Scene is { } browseScene) DriveDofRamp(browseScene, wallMs);
+                HideInterludeDots();
+                ResetFollowState(Context.Scene);
+                _scrollSnapped = false;
+                QuiesceUnresolved(); return;
+            }
             if (probeNowMs != long.MinValue)
             {
                 nowMs = probeNowMs; auth = probeNowMs; playing = true;
@@ -1262,17 +1457,17 @@ public static partial class Lyrics
                 // The host's authoritative (position, stamp) sample, fed only when it changes and mapped onto QPC through
                 // its AGE; then queried at THIS frame's present time.
                 var snap = Playback.Snap();
-                if (snap.PosQpc != _lastSampleStamp || snap.PosMs != _lastSamplePos)
+                if (snap.PosQpc != _lastSampleStamp || snap.PosMs != _lastSamplePos || snap.ContentRate != _clock.ContentRate)
                 {
                     _lastSampleStamp = snap.PosQpc;
                     _lastSamplePos = snap.PosMs;
                     long sampleQpc = SampleClock.SampleQpc(snap.PosQpc, Playback.FrameNowMs(), Stopwatch.GetTimestamp(), Stopwatch.Frequency);
-                    if (_clock.OnSample(snap.PosMs, sampleQpc, playing)) OnClockJump();
+                    if (_clock.OnSample(snap.PosMs, sampleQpc, playing, snap.ContentRate)) OnClockJump();
                 }
                 else if (playing != _clock.Playing)
                 {
                     // The play state flipped with no fresh sample: feed the EDGE at the authoritative position NOW.
-                    if (_clock.OnSample(auth, Stopwatch.GetTimestamp(), playing)) OnClockJump();
+                    if (_clock.OnSample(auth, Stopwatch.GetTimestamp(), playing, snap.ContentRate)) OnClockJump();
                 }
                 nowMs = playing ? _clock.At(FrameTime.NowQpc) : auth;
             }
@@ -1299,7 +1494,7 @@ public static partial class Lyrics
             }
 
             // Eye leads voice: emphasis + follow on the LEAD-shifted clock, wipe + glow on TRUE time.
-            int active = ResolveLine(doc.Lines, nowMs + LeadMs);
+            int active = ResolveLine(doc.Lines, nowMs + (IsPodcast ? 0 : LeadMs));
             int voiceLine = ResolveLine(doc.Lines, nowMs);
             // A line stops being the voice at its own SUNG-OUT point, not when the next one starts.
             if (voiceLine >= 0 && nowMs >= SungOutMs(doc, voiceLine)) voiceLine = -1;
@@ -1384,7 +1579,7 @@ public static partial class Lyrics
             if (mainNode.IsNull || !scene.IsLive(mainNode) || !scene.TryGetGlyphWipe(mainNode, out var mw)) return;
 
             float split = Wipe.ComputeSplit(doc.Lines[voiceLine], nowMs);
-            if (split > 0f && split < 1f) split = Math.Clamp(split + Wipe.LeadFrac, 0f, 1f);
+            if (!IsPodcast && split > 0f && split < 1f) split = Math.Clamp(split + Wipe.LeadFrac, 0f, 1f);
             // Pixel-quantise the boundary (skip-submit elides sub-pixel ticks); the settled endpoints stay EXACT.
             float runW = scene.AbsoluteRect(mainNode).W;
             if (runW > 1f && split > 0f && split < 1f) split = MathF.Round(split * runW) / runW;
@@ -1604,7 +1799,9 @@ public static partial class Lyrics
         /// retarget after realization springs from that seed (velocity-continuous on a live track).</summary>
         void RetargetOpacity()
         {
-            float to = Emphasis.OpacityOf(_emphasis.Value);
+            bool podcast = _owner.IsPodcast;
+            bool ownsPlayback = !podcast || _owner.ObservedPlaybackOwner;
+            float to = TranscriptPresentation.RowOpacity(podcast, ownsPlayback, _emphasis.Value);
             var ctx = Context;
             if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
             anim.Spring(ctx.HostNode, AnimChannel.Opacity, to, s_opacitySpring);
@@ -1619,8 +1816,11 @@ public static partial class Lyrics
             int shape = UseComputed(_shape).Value;
             UseSignalEffect(_retargetOpacity);
             int e = _emphasis.Peek();
-            bool isActive = RowRender.IsActive(shape);
-            bool near = RowRender.IsNear(shape);
+            bool podcast = owner.IsPodcast;
+            bool ownsPlayback = !podcast || owner.ObservedPlaybackOwner;
+            bool isActive = TranscriptPresentation.Active(podcast, ownsPlayback, e);
+            bool neutral = TranscriptPresentation.Neutral(podcast, ownsPlayback);
+            bool near = !neutral && RowRender.IsNear(shape);
             bool large = owner.Large;
             var ink = owner.InkMode;
             var m = owner.Metrics;
@@ -1629,28 +1829,34 @@ public static partial class Lyrics
             // Distance is carried by OPACITY + DoF; scale is a flat 0.98, left-anchored. Reduced motion is a VALUE
             // folded into the spring key, so the first render after an OS flip retargets.
             bool reduce = Design.Reduced;
-            float scale = Surface.ScaleFor(isActive, reduce);
-            if (float.IsNaN(_seedOpacity)) _seedOpacity = Emphasis.OpacityOf(e);
+            float scale = neutral ? 1f : Surface.ScaleFor(isActive, reduce);
+            if (float.IsNaN(_seedOpacity)) _seedOpacity = TranscriptPresentation.RowOpacity(podcast, ownsPlayback, e);
             float blur = owner.Follow_.Peek() == FollowMode.Following ? owner.DofDeclaredFor(index) : 0f;
 
             // The scale springs retarget on the active flip (the only input of the scale rest), never per rung.
-            var key = DepKey.From((isActive ? 2 : 0) | (reduce ? 8 : 0));
+            var key = DepKey.From((isActive ? 2 : 0) | (reduce ? 8 : 0) | (neutral ? 16 : 0));
             UseSpring(AnimChannel.ScaleX, scale, s_scaleSpring, key);
             UseSpring(AnimChannel.ScaleY, scale, s_scaleSpring, key);
 
             Element textEl;
-            float lift = Wipe.LiftFor(large, reduce);
+            float lift = neutral ? 0f : Wipe.LiftFor(large, reduce);
             if (line.IsWordByWord && line.Syllables.Count > 0)
             {
                 // ALWAYS a two-child ZStack [glow, main], in every state: a line leaving the voice slot is an in-place
                 // update, never a child-type swap (a re-shape + blur-cache miss = the lines-above-active flicker).
-                float split = Wipe.ComputeSplit(line, (long)owner.NowMs.Peek());
-                if (split > 0f && split < 1f) split = Math.Clamp(split + Wipe.LeadFrac, 0f, 1f);
+                bool highlight = TranscriptPresentation.WordHighlight(podcast, ownsPlayback, line);
+                float split = highlight ? Wipe.ComputeSplit(line, (long)owner.NowMs.Peek()) : 0f;
+                if (!podcast && split > 0f && split < 1f) split = Math.Clamp(split + Wipe.LeadFrac, 0f, 1f);
                 float softness = owner.SoftnessOfLine(index);
-                ColorF sung = ink.Primary;
-                // Sung glyphs full-bright; unsung the same ink at the ABSOLUTE unsung alpha, sitting `lift` DIP low.
-                var mainWipe = new GlyphWipe(Before: sung, After: sung with { A = Lyrics.Wipe.UnsungAlpha },
-                    Split: split, Softness: softness, Lift: lift);
+                // Podcasts: the role-driven rung (accent on the sung glyph, plain ink otherwise — never a translucent
+                // wash). Music keeps its established alpha-faded unsung look untouched.
+                ColorF sung = neutral ? ink.Secondary
+                    : podcast ? RungInk(ink, TranscriptPresentation.InkOf(TranscriptPresentation.RoleOf(e), sungPart: true))
+                    : ink.Primary;
+                ColorF unsung = neutral ? ink.Secondary
+                    : podcast ? RungInk(ink, TranscriptPresentation.InkOf(TranscriptPresentation.RoleOf(e), sungPart: false))
+                    : sung with { A = Lyrics.Wipe.UnsungAlpha };
+                var mainWipe = new GlyphWipe(Before: sung, After: unsung, Split: split, Softness: softness, Lift: lift);
                 Element main = LineText(line.Text, sung, mainWipe, _onLine);
                 // The bloom glyphs mount only NEAR the focus (still dim + blurred, so the swap never pops on the focal
                 // row); same split, feather and lift as the main layer, so the halo never floats out from under it.
@@ -1672,7 +1878,12 @@ public static partial class Lyrics
                     HitTestVisible = false,
                     Children = [LineText(near ? line.Text : "", ink.Bloom with { A = Surface.LineSyncedHaloTextAlpha }, null, null)],
                 };
-                Element main = LineText(line.Text, isActive ? ink.Primary : ink.Secondary, null, _onLine) with
+                // Podcasts: the same role rule as the word-synced branch (the unsung/"After" reading — this branch
+                // never shows the sung/"Before" rung, there is no wipe). Music keeps its plain active/inactive split.
+                ColorF lineInk = podcast
+                    ? RungInk(ink, TranscriptPresentation.InkOf(TranscriptPresentation.RoleOf(e), sungPart: false))
+                    : isActive ? ink.Primary : ink.Secondary;
+                Element main = LineText(line.Text, lineInk, null, _onLine) with
                 {
                     BrushTransitionMs = Design.Motion.Fast,   // the Secondary↔Primary flip never snaps in one frame
                 };
@@ -1725,7 +1936,7 @@ public static partial class Lyrics
             // (no `with` clone per layer). `ViewCore.MeasureRunLength` rebuilds this style — the two change together.
             TextEl LineText(string text, ColorF color, GlyphWipe? wipe, Action<NodeHandle>? onRealized) => new(text)
             {
-                Size = m.FontSize, Weight = 700, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
+                Size = m.FontSize, Weight = m.Weight, Wrap = TextWrap.Wrap, LineHeight = m.LineHeight,
                 Color = color, MaxLines = 0, Trim = TextTrim.None,
                 Wipe = wipe, OnRealized = onRealized,
             };
@@ -1733,7 +1944,7 @@ public static partial class Lyrics
             // No wipe, no glow, no lift (a translation is not sung); everything else inherited from dofContent.
             TextEl SecondaryText(string text) => new(text)
             {
-                Size = m.FontSize * Surface.SecondaryFontRatio, Weight = 600, Wrap = TextWrap.Wrap,
+                Size = m.FontSize * Surface.SecondaryFontRatio, Weight = podcast ? m.Weight : (ushort)600, Wrap = TextWrap.Wrap,
                 LineHeight = m.LineHeight * Surface.SecondaryFontRatio,
                 Color = ink.Secondary, MaxLines = 0, Trim = TextTrim.None,
                 Margin = new Edges4(0f, Surface.SecondaryGapDip, 0f, 0f),
@@ -1741,6 +1952,15 @@ public static partial class Lyrics
         }
 
         static string? NonEmpty(string? s) => s is { Length: > 0 } ? s : null;
+
+        /// <summary>Resolve a pure <see cref="TranscriptPresentation.InkRung"/> against the live <see cref="Ink"/> —
+        /// the one place a rung becomes a theme colour.</summary>
+        static ColorF RungInk(Ink ink, InkRung rung) => rung switch
+        {
+            InkRung.Accent => ink.Accent,
+            InkRung.Primary => ink.Primary,
+            _ => ink.Secondary,
+        };
     }
 
     // ══ 5. THE TICKER AND THE STEPPER ════════════════════════════════════════════════════════════════════════════════
@@ -1777,6 +1997,8 @@ public static partial class Lyrics
             {
                 bool playing = Playback.IsPlaying.Value;
                 _ = Playback.PositionMs.Value;
+                _ = Playback.EpisodeSpeed.Value;
+                _ = Playback.CurrentId.Value;
                 if (!_edgeSubscribed) { _edgeSubscribed = true; return; }
                 if (ViewCore.ProbeSyncMode && playing) return;
                 owner.OnFrame(forceVisual: !playing);

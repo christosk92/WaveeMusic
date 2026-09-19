@@ -982,16 +982,13 @@ public static partial class Shell
     {
         var l = ChromeLayout.Value;
         var kids = new List<Element>(3);
-        float navW = 0f;
         if (l.ShowBack)
         {
             kids.Add(Embed.Comp(static () => new NavHistoryButton(forward: false)) with { Key = "chrome-back" });
-            navW += Layout.ChromeNavButtonW;
         }
         if (l.ShowForward)
         {
             kids.Add(Embed.Comp(static () => new NavHistoryButton(forward: true)) with { Key = "chrome-forward" });
-            navW += Layout.ChromeNavButtonW;
         }
         if (s_strip is { } strip) strip.IsAddTabButtonVisible = l.ShowNewTab;
         kids.Add(Embed.Comp(BuildTabStrip) with { Key = "chrome-tab-strip" });
@@ -999,7 +996,7 @@ public static partial class Shell
         {
             Key = "chrome-tabs-lane", Animate = TabLaneMotion,
             Direction = 0, AlignItems = FlexAlign.Center, Height = TitleBar.ExpandedHeight,
-            Width = navW + l.LeadClusterW, Shrink = 0f, ClipToBounds = true, Children = kids.ToArray(),
+            Width = l.TabIslandWidth, Shrink = 0f, ClipToBounds = true, Children = kids.ToArray(),
         };
     }
 

@@ -9,93 +9,86 @@ namespace Wavee;
 
 public readonly partial struct User
 {
+    /// <summary>Your Episodes, over the ONE track table (B2 plan §3.2/§3.5): the listen-later list is a real Spotify
+    /// playlist (<see cref="Spotify.Podcasts.SavedPlaylistUri"/>), so once <see cref="Spotify.Podcasts.SavedState"/>
+    /// discovers it the episodes are just <see cref="Track.TableSource.ForPlaylist"/> rows — the same selection bar,
+    /// menu and row template as any other episode-carrying table, no bespoke list here any more. The states this
+    /// component still owns are the ones ABOVE the table: has the listen-later playlist even been discovered yet
+    /// (<see cref="Spotify.Podcasts.SavedReadState"/> Pending/Empty/Failed) — Ready hands off to the table, which then
+    /// owns its OWN membership loading via the edge's state.</summary>
     sealed class SavedEpisodesReader : Component
     {
-        BoundItemsSource<Episode.RowItem>? _items;
-        readonly RepeatLayout _layout = RepeatLayout.VariableList(100f);
-        readonly Episode.RowContext _context = new()
-        {
-            Tone = static () => Tok.AccentDefault,
-            Play = static episode => Episode.Invoke(episode, () => Playback.PlayEpisode(episode.Id,
-                Spotify.Podcasts.SavedPlaylistUri is { Length: > 0 } uri ? EntityId.Parse(uri) : episode.Show.Id,
-                new Playback.EpisodeStart(Playback.EpisodeStartKind.Resume))),
-        };
-        Signal<string>? _error;
-        Signal<bool>? _loaded;
-        Action<Action>? _post;
-        CancellationTokenSource? _cancel;
+        static readonly Track.TableProfile s_profile = Track.TableProfile.From(
+            Detail.Config.Playlist with
+            {
+                Content = DetailContent.Episodes,
+                Heart = HeartMode.None,
+                Recommendations = false,
+                ShowTempo = false,
+                ShowVersions = false,
+                PlaysColumnOptIn = false,
+                ShowTrackArtist = false,
+            });
+
+        /// <summary>The one fixture the Fake demo carries for the listen-later playlist (present in
+        /// <c>assets/spotify/playlists.json</c>); discovery itself is not faked (<see cref="Spotify.Podcasts.ReadSavedAsync"/>
+        /// short-circuits under <c>--fake</c>), so this is the fixed point Fake mode resolves instead.</summary>
+        const string FakeSavedUri = "spotify:playlist:37i9dQZF1FgnTBfUlzkeKt";
 
         public override Element Render()
         {
-            _post = UsePost();
-            _error = UseSignal("");
-            _loaded = UseSignal(false);
             uint epoch = Entities.ScopeEpoch.Value;
+            var read = UseResource(ct => Platform.Args.Fake
+                ? Task.FromResult(new Spotify.Podcasts.Mutation(true, 200))
+                : Spotify.Podcasts.ReadSavedAsync(ct), new Spotify.Podcasts.Mutation(false, 0), DepKey.From((int)epoch));
+
+            string uri = Platform.Args.Fake ? FakeSavedUri : Spotify.Podcasts.SavedPlaylistUri;
+            int slot = uri.Length > 0 && Entities.Current.Playlists.TryGetSlot(EntityId.Parse(uri), out int s)
+                ? s : Table.None;
+
+            // Fake mode never runs discovery (ReadSavedAsync short-circuits to 501), so SavedState never reaches
+            // Ready there — the fixture playlist's OWN membership edge is what Fake mode has, so a resolved slot is
+            // Ready by itself.
+            var state = Platform.Args.Fake
+                ? (slot > Table.None ? Spotify.Podcasts.SavedReadState.Ready : Spotify.Podcasts.SavedReadState.Pending)
+                : Spotify.Podcasts.SavedState;
+
             UseEffect(() =>
             {
-                var cancel = _cancel = new CancellationTokenSource();
-                _ = Refresh(cancel.Token, epoch);
-                return () => { cancel.Cancel(); cancel.Dispose(); };
-            }, DepKey.From((int)epoch));
-            var rows = UseComputed(Rows);
-            _items ??= BoundItems.Project(rows, static x => x.Length, static (x, i) => x[i], default(Episode.RowItem));
-            _ = Spotify.Podcasts.SavedChanged.Value;
-            Element body;
-            if (!_loaded.Value && !Spotify.Podcasts.SavedReady)
-                body = Episode.SeedReaderRow(narrow: false);
-            else if (_error.Value.Length > 0 || (!Spotify.Podcasts.SavedReady && !Platform.Args.Fake))
-                body = new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.S, Padding = Edges4.All(Spacing.L),
-                    Children =
-                    [
-                        new TextEl(Loc.Get(Strings.Podcast.Reader.SaveUnavailable)) { Color = Tok.TextSecondary },
-                        Button.Standard(Loc.Get(Strings.Common.Retry), () => { if (_cancel is { } cancel) _ = Refresh(cancel.Token, epoch); }),
-                    ],
-                };
-            else if (rows.Value.Length == 0)
-                body = new TextEl(Loc.Get(Strings.Podcast.Reader.SavedEmpty)) { Color = Tok.TextSecondary };
-            else
-                body = ItemsView.CreateBound(_items, item => Episode.ReaderRow(item, _context, narrow: false), _layout,
-                    new ListOptions<Episode.RowItem> { ItemComparer = EqualityComparer<Episode.RowItem>.Default });
-            return new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, Children = [body] };
+                if (slot > Table.None) Entities.EnsureEdge(FetchEdge.PlaylistTracks, slot, 0);
+            }, DepKey.From(slot, (int)epoch));
+
+            return new SkelRegionEl(
+                Pending: () => state == Spotify.Podcasts.SavedReadState.Pending,
+                Failed: () => state == Spotify.Podcasts.SavedReadState.Failed,
+                Content: () => state == Spotify.Podcasts.SavedReadState.Ready && slot > Table.None
+                    ? TableOf(slot)
+                    : PodcastReaderUI.Quiet(Loc.Get(Strings.Podcast.Reader.SavedEmpty)),
+                ShimmerSource: () => new BoxEl { Direction = 1, Children = SeedRows() },
+                OnFailed: () => PodcastReaderUI.Failed(read.Refresh),
+                Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null);
         }
 
-        static Episode.RowItem[] Rows()
+        Element TableOf(int slot) => Track.Table(new Track.TableArgs
         {
-            _ = Entities.ScopeEpoch.Value;
-            _ = Spotify.Podcasts.SavedChanged.Value;
-            var table = Entities.Current.Episodes;
-            _ = table.Changed.Value;
-            var rows = new List<Episode.RowItem>();
-            if (Platform.Args.Fake)
-            {
-                for (int slot = 1; slot < Math.Min(table.Count, 7); slot++)
-                { var episode = new Episode(slot); rows.Add(new(episode, episode.Version)); }
-                return rows.ToArray();
-            }
-            foreach (var id in Spotify.Podcasts.SavedEpisodeIds)
-                if (table.TryGetSlot(id, out int slot))
-                {
-                    var episode = new Episode(slot);
-                    rows.Add(new(episode, episode.Version));
-                }
-            return rows.ToArray();
-        }
+            Source = Track.TableSource.ForPlaylist(new Playlist(slot)),
+            Profile = s_profile,
+            ShowToolbar = false,
+            Embedded = true,
+            ScrollKey = "saved-episodes:" + slot,
+        });
 
-        async Task Refresh(CancellationToken ct, uint epoch)
+        static Element[] SeedRows()
         {
-            try
-            {
-                if (!Platform.Args.Fake) await Spotify.Podcasts.ReadSavedAsync(ct).ConfigureAwait(false);
-                _post!(() => { if (Entities.Current.Epoch == epoch && !ct.IsCancellationRequested) { _error!.Value = ""; _loaded!.Value = true; } });
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                Log.Warn("podcast", "saved episodes read failed", ex);
-                _post!(() => { if (Entities.Current.Epoch == epoch && !ct.IsCancellationRequested) { _error!.Value = "failed"; _loaded!.Value = true; } });
-            }
+            var rows = new Element[6];
+            for (int i = 0; i < rows.Length; i++) rows[i] = Episode.SeedReaderRow(false);
+            return rows;
         }
     }
+}
+
+public static class SavedEpisodeLayout
+{
+    public static bool Compact(float width, bool previous)
+        => width < (previous ? 664f : 616f);
 }

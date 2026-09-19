@@ -14,11 +14,45 @@ namespace Wavee.Tests;
 public class ShellTabStripRulesTests
 {
     [Fact]
-    public void The_measured_extent_is_rounded_to_the_quantum_and_floored_at_one_tab()
+    public void The_measured_extent_rounds_up_without_clipping_and_has_one_tab_floor()
     {
         Assert.Equal(Shell.Layout.ChromeTabMinW, Shell.Chrome.TabExtentFromMetrics(0f));
-        Assert.Equal(330f, Shell.Chrome.TabExtentFromMetrics(334f));
+        Assert.Equal(340f, Shell.Chrome.TabExtentFromMetrics(334f));
         Assert.Equal(340f, Shell.Chrome.TabExtentFromMetrics(336f));
+    }
+
+    [Theory]
+    [InlineData(1600f, 640f)]
+    [InlineData(2400f, 1000f)]
+    [InlineData(1900f, 334f)]
+    public void Natural_tab_content_uses_available_room_without_the_old_fraction_or_cap(float width, float measured)
+    {
+        float extent = Shell.Chrome.TabExtentFromMetrics(measured);
+        var chrome = Shell.Chrome.Resolve(width, extent);
+        float available = width - chrome.FixedBudgetFor() - chrome.SearchWidth;
+        Assert.True(available >= extent);
+        Assert.True(chrome.LeadClusterW >= extent);
+        Assert.True(chrome.LeadClusterW <= available);
+        Assert.Equal(extent, chrome.LeadClusterW);
+    }
+
+    [Fact]
+    public void The_add_button_has_its_own_width_beside_the_full_tab_viewport()
+    {
+        var chrome = Shell.Chrome.Resolve(1900f, 640f);
+        float nav = (chrome.ShowBack ? Shell.Layout.ChromeNavButtonW : 0f)
+            + (chrome.ShowForward ? Shell.Layout.ChromeNavButtonW : 0f);
+        Assert.True(chrome.ShowNewTab);
+        Assert.Equal(chrome.LeadClusterW + nav + Shell.Layout.ChromeAddSlotW, chrome.TabIslandWidth);
+    }
+
+    [Fact]
+    public void Real_pressure_collapses_search_before_scrolling_tabs_and_preserves_fixed_chrome()
+    {
+        var chrome = Shell.Chrome.Resolve(900f, 900f);
+        Assert.Equal(Shell.MergedSearchMode.Icon, chrome.SearchMode);
+        Assert.True(chrome.LeadClusterW < 900f);
+        Assert.InRange(chrome.FixedBudgetFor() + chrome.SearchWidth + chrome.LeadClusterW, 0f, 900f);
     }
 
     [Fact]

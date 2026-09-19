@@ -11,7 +11,12 @@
     "artist": "ARTIEST",
     "songCount": "{count, plural, one {# nummer} other {# nummers}}",
     "today": "Vandaag",
-    "yesterday": "Gisteren"
+    "yesterday": "Gisteren",
+    "likedFacts": {
+      "sheetTitle": "Inzichten",
+      "sheetOpen": "Inzichten",
+      "sheetClose": "Sluiten"
+    }
   },
   "home": {
     "goodMorning": "Goedemorgen",
@@ -185,6 +190,13 @@
     },
     "progressUnavailable": "Je luistervoortgang is nu niet beschikbaar",
     "reader": {
+      "jumpDate": "Naar datum",
+      "undated": "Zonder datum",
+      "audiobook": "Luisterboek",
+      "chaptersCount": "{count, plural, one {# hoofdstuk} other {# hoofdstukken}}",
+      "findBook": "Zoeken in dit boek",
+      "chapterOrder": "Hoofdstukvolgorde",
+      "reverseChapterOrder": "Omgekeerde hoofdstukvolgorde",
       "about": "Over deze aflevering",
       "chapters": "Hoofdstukken",
       "transcript": "Transcript",
@@ -217,6 +229,15 @@
       "ratingSaved": "Je beoordeling is opgeslagen.",
       "loadMore": "Meer laden",
       "reactions": "Reacties",
+      "reactionAll": "Alle",
+      "reactionHeart": "Liefde",
+      "reactionLaugh": "Lachen",
+      "reactionSmile": "Opgelucht",
+      "reactionSurprise": "Verbaasd",
+      "reactionSad": "Verdrietig",
+      "reactionClap": "Applaus",
+      "reactionFire": "Vuur",
+      "reactionLike": "Leuk",
       "paywall": "Voor deze aflevering is toegang via Spotify vereist.",
       "preview": "Alleen een voorproefje is beschikbaar.",
       "video": "Video-aflevering",
@@ -232,7 +253,14 @@
       "play": "Afspelen",
       "pause": "Pauzeren",
       "consent": "Ik begrijp dat reacties openbaar onder mijn Spotify-profielnaam worden geplaatst."
-    }
+    },
+    "savedEmpty": "Nog geen opgeslagen afleveringen",
+    "commentsOff": "Reacties staan uit voor deze aflevering.",
+    "railAbout": "Over",
+    "peekFollows": "Loopt mee terwijl je luistert",
+    "peekPlay": "Speel af om het transcript te zien",
+    "react": "Reageer",
+    "repliesCount": "{count, plural, one {# reactie} other {# reacties}}"
   },
   "recents": {
     "itemCount": "{count, plural, one {# item} other {# items}}",
@@ -437,7 +465,8 @@
         "tryAll": "Schakel naar \"Alles\" om je volledige geschiedenis te zien.",
         "startNavigating": "Begin met navigeren — je geschiedenis verschijnt hier."
       }
-    }
+    },
+    "audiobooks": "Luisterboeken"
   },
   "sidebar": {
     "pinned": "Vastgemaakt",
@@ -834,6 +863,9 @@
     "errorSubtitle": "Controleer je verbinding en probeer het opnieuw."
   },
   "player": {
+    "seekBack10": "10 seconden terug",
+    "seekForward10": "10 seconden vooruit",
+    "closeTranscriptHint": "Transcript sluiten (Esc)",
     "nothingPlaying": "Er wordt niets afgespeeld",
     "loading": "Laden…",
     "cannotPlay": "Dit nummer kan niet worden afgespeeld",

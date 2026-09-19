@@ -258,7 +258,7 @@ public static partial class Rail
                 kids.Add(HeaderButton(Icons.Globe, Prefs.Lyrics.Tooltip(secondary),
                     () => Prefs.Lyrics.SetSecondaryLine(Prefs.Lyrics.Next(secondary, available)),
                     active: (available & Prefs.Lyrics.BitFor(secondary)) != 0));
-            kids.Add(HeaderButton(Icons.FullScreen, Loc.Get(Strings.Player.ExpandLyrics), static () => Shell.Ui.ImmersiveLyrics.Value = true));
+            kids.Add(HeaderButton(Icons.FullScreen, Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.ExpandLyrics), static () => Shell.Ui.ImmersiveLyrics.Value = true));
             kids.Add(Diagnostics.LyricsInspector.Button());
             kids.Add(CloseButton());
             return HeaderBox(kids.ToArray());
@@ -272,7 +272,7 @@ public static partial class Rail
 
     static string Title(Shell.RailMode m) => m switch
     {
-        Shell.RailMode.Lyrics => Loc.Get(Strings.Player.Lyrics),
+        Shell.RailMode.Lyrics => Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.Lyrics),
         Shell.RailMode.Queue => Loc.Get(Strings.Player.Queue),
         Shell.RailMode.Friends => Loc.Get(Strings.Friends.Title),
         Shell.RailMode.Video => Loc.Get(Strings.Player.Video),

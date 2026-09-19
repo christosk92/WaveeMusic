@@ -364,33 +364,48 @@ public readonly partial struct Track
         sealed record SearchProps(bool Expanded, float Width, bool Compact);
 
         /// <summary>The context band's search field. Its width is DERIVED: the band is <paramref name="availW"/> wide with
-        /// the gutter either side, and the right cluster is the three words plus one cluster gap — the identity block is
-        /// unmounted while search is open, so all of that room is the field's.</summary>
-        Element CompactSearch(float availW, float left)
+        /// the gutter either side, and the right cluster is its words plus one cluster gap — the identity block is
+        /// unmounted while search is open, so all of that room is the field's.
+        /// <para><paramref name="insights"/> = this arm hosts the facts sheet, so the cluster is FOUR words, not three
+        /// (<see cref="Detail.InsightsSheet.BandActionsWidth"/>). Threaded from the frame's own answer, never
+        /// re-derived — the field must reserve for exactly the cluster <see cref="BandActions"/> builds.</para></summary>
+        Element CompactSearch(float availW, float left, bool insights)
         {
-            Span<float> actions =
-            [
-                Detail.BandLayout.EstimateLabelWidth(Loc.Get(Strings.Detail.Filter.Find), Detail.BandLayout.ActionPadX),
-                Detail.BandLayout.EstimateLabelWidth(Loc.Get(Strings.Detail.Filter.Short), Detail.BandLayout.ActionPadX),
-                Detail.BandLayout.EstimateLabelWidth(Loc.Get(Strings.Detail.Play), Detail.BandLayout.ActionPadX),
-            ];
-            float room = availW - left * 2f - Detail.BandLayout.ActionsWidth(actions) - Detail.BandLayout.ClusterGap;
+            float claim = Detail.BandActionsClaim(Loc.Get(Strings.Detail.Filter.Find), Loc.Get(Strings.Detail.Filter.Short),
+                                                  Loc.Get(Strings.Detail.Play), insights);
+            float room = availW - left * 2f - claim - Detail.BandLayout.ClusterGap;
             float width = MathF.Max(CommandBarLayout.SearchIconWidth, MathF.Min(room, CommandBarLayout.SearchMax));
             return Embed.Comp(new SearchProps(false, width, true), () => new TableSearchHost(this)) with { Key = "compact-search-host" };
         }
 
-        /// <summary>The band's RIGHT cluster: Find · Filter · Play as plateless words — the same handlers the rest-state
-        /// search glyph, the funnel and the play FAB carry. Find keeps its node capture so a collapse restores focus.</summary>
-        Element BandActions() => new BoxEl
+        /// <summary>The band's RIGHT cluster: Find · Filter · [Insights ·] Play as plateless words — the same handlers the
+        /// rest-state search glyph, the funnel, the sheet's hero toggle and the play FAB carry. Find keeps its node
+        /// capture so a collapse restores focus.
+        /// <para><paramref name="insights"/> non-null ⇒ this arm hosts the facts SHEET and the pinned band is where its
+        /// toggle stays reachable after the hero has collapsed (Detail.Insights.cs §7 carries the whole argument, and
+        /// why the hero keeps its own). It sits between the view verbs and the terminal primary.</para></summary>
+        Element BandActions(Detail.InsightsToggle? insights)
         {
-            Direction = 0, Gap = Detail.BandLayout.ActionGap, Shrink = 0f, AlignItems = FlexAlign.Center,
-            Children =
-            [
-                Controls.TextAction(Loc.Get(Strings.Detail.Filter.Find), _toggleFind) with { Key = "band:find", OnRealized = _captureSearchButton },
-                Embed.Comp(() => new TableFilterButton(this, textMode: true)) with { Key = "band:filter" },
-                Controls.TextAction(Loc.Get(Strings.Detail.Play), _playAll, primary: true) with { Key = "band:play" },
-            ],
-        };
+            Element[] kids = insights is null
+                ?
+                [
+                    Controls.TextAction(Loc.Get(Strings.Detail.Filter.Find), _toggleFind) with { Key = "band:find", OnRealized = _captureSearchButton },
+                    Embed.Comp(() => new TableFilterButton(this, textMode: true)) with { Key = "band:filter" },
+                    Controls.TextAction(Loc.Get(Strings.Detail.Play), _playAll, primary: true) with { Key = "band:play" },
+                ]
+                :
+                [
+                    Controls.TextAction(Loc.Get(Strings.Detail.Filter.Find), _toggleFind) with { Key = "band:find", OnRealized = _captureSearchButton },
+                    Embed.Comp(() => new TableFilterButton(this, textMode: true)) with { Key = "band:filter" },
+                    Detail.InsightsBandAction(insights),
+                    Controls.TextAction(Loc.Get(Strings.Detail.Play), _playAll, primary: true) with { Key = "band:play" },
+                ];
+            return new BoxEl
+            {
+                Direction = 0, Gap = Detail.BandLayout.ActionGap, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Children = kids,
+            };
+        }
 
         void CaptureSearchButton(NodeHandle node)
         {
@@ -1257,6 +1272,17 @@ public readonly partial struct Track
             if (count <= 0) { _selectionPrevCount = 0; return new BoxEl(); }
             bool wasVisible = _selectionPrevCount > 0;
             _selectionPrevCount = count;
+
+            // B2 (plan §3.3): an episode-capable source may select episode rows, track rows, or both — the verb set
+            // (and hence the whole bar body) forks on the mix. An all-track selection (every OTHER table, always)
+            // falls straight through to the unchanged body below.
+            if (_latest.Source.HasEpisodes)
+            {
+                var (anyTrack, anyEpisode) = SelectedKindMix();
+                if (anyEpisode && !anyTrack) return EpisodeSelectionCommands(fit, count, wasVisible);
+                if (anyEpisode) return MixedSelectionCommands(fit, count, wasVisible);
+            }
+
             var tracks = SelectedTracks();
             var ctx = new ActionContext(ActionTarget.ForTracks(tracks, HostFor()), Actions.Services);
 
@@ -1297,6 +1323,69 @@ public readonly partial struct Track
             int start = TrackStart;
             _selection.DeselectAll();
             _selection.SelectRange(start, start + n - 1);
+        }
+
+        // ══ 7b. B2: THE EPISODE / MIXED SELECTION BARS (plan §3.3) ═════════════════════════════════════════════════════
+
+        /// <summary>All-episode selection: Play · Play next · Add to queue · Save/Unsave · Mark played/unplayed
+        /// (absolute pair by state) · Select all.</summary>
+        Element EpisodeSelectionCommands(int fit, int count, bool wasVisible)
+        {
+            Episode.EnsureActions();
+            var episodes = SelectedEpisodes();
+            var ctx = new ActionContext(ActionTarget.ForEpisodes(episodes), Actions.Services);
+            bool allPlayed = episodes.Count > 0;
+            for (int i = 0; i < episodes.Count && allPlayed; i++) allPlayed = Episode.Rules.Played(Episode.ReaderPctOf(episodes[i]));
+            var verbs = SelectionVerbs.For([EntityKind.Episode]);
+            return BuildCommandRow(fit, count, wasVisible, in ctx, verbs, allPlayed);
+        }
+
+        /// <summary>Mixed track+episode selection: Play · Play next · Add to queue · Select all — the three verbs every
+        /// kind agrees on. The transport verbs act on the TRACK subset only (today's <see cref="AppAction"/> table
+        /// reads a track set); a mixed selection whose Play/queue should also carry its episodes is a follow-up.</summary>
+        Element MixedSelectionCommands(int fit, int count, bool wasVisible)
+        {
+            var tracks = SelectedTracks();
+            var ctx = new ActionContext(ActionTarget.ForTracks(tracks, HostFor()), Actions.Services);
+            var verbs = SelectionVerbs.For([EntityKind.Track, EntityKind.Episode]);
+            return BuildCommandRow(fit, count, wasVisible, in ctx, verbs, false);
+        }
+
+        /// <summary>The command row every selection-bar variant shares: count · verbs (in the order
+        /// <see cref="SelectionVerbs.For"/> returns) · Select all · ✕. <see cref="ActionId.MarkPlayed"/> stands for the
+        /// absolute-state pair and is swapped for <see cref="ActionId.MarkUnplayed"/> here — the ONE place that
+        /// substitution happens for the bar, mirroring <c>Episode.Menu.cs</c>'s single-row menu.</summary>
+        Element BuildCommandRow(int fit, int count, bool wasVisible, in ActionContext ctx, ActionId[] verbs, bool allPlayed)
+        {
+            var kids = new List<Element>(12)
+            {
+                new BoxEl
+                {
+                    Key = "selection-count:" + count,
+                    Animate = wasVisible ? MotionRecipes.TextSwap : MotionRecipes.TextSwap with { Enter = default },
+                    MinWidth = fit == 2 ? 66f : float.NaN,
+                    Children = [new TextEl(Strings.Detail.SelectedCount(count)) { Size = 12f, Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
+                },
+                SelectionDivider(),
+            };
+            foreach (var raw in verbs)
+            {
+                if (raw == ActionId.SelectAll)
+                {
+                    kids.Add(SelectionDivider());
+                    kids.Add(Command(Icons.Accept, Loc.Get(Strings.Detail.SelectAll), fit, _selectAllTracks, null, true));
+                    continue;
+                }
+                var id = raw == ActionId.MarkPlayed && allPlayed ? ActionId.MarkUnplayed : raw;
+                if (VerbCommand(id, in ctx, fit) is { } cmd) kids.Add(cmd);
+            }
+            kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
+            kids.Add(ToolTip.Wrap(GlyphButton(Icons.Cancel, _exitSelection, null, null, true), Loc.Get(Strings.Detail.ClearSelection)));
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = 3f, Grow = 1f, MinWidth = 0f, ClipToBounds = true,
+                Children = kids.ToArray(),
+            };
         }
 
         /// <summary>Up to three stacked covers, de-duplicated by image (an album's tracks share one).</summary>

@@ -710,17 +710,33 @@ public readonly record struct AlbumTrackEdge(byte Disc, ushort Number);
 /// re-reads anyway.</para></summary>
 public readonly record struct FormatEdge(byte FormatId, ushort Kbps);
 
+/// <summary>Which table a <see cref="PlaylistTrackEdge"/>'s target slot indexes: a playlist mixes tracks and episodes
+/// on the same page (a show's own membership, <see cref="Edges.ShowEpisodes"/>, is always <see cref="Episode"/>), and
+/// nothing else about the edge says which. Byte-sized and not an <c>enum</c> so it drops into the payload struct with no
+/// padding (plan §3.1's exact contract: <c>PlaylistItemKind.Track = 0</c>, <c>PlaylistItemKind.Episode = 1</c>).</summary>
+public static class PlaylistItemKind
+{
+    public const byte Track = 0;
+    public const byte Episode = 1;
+}
+
 /// <summary>A playlist membership. Everything here was a field on 0.2.9's Track record and did not belong there: two
 /// playlists containing the same track disagree about all of it (D10).
 /// <para><paramref name="Flags"/> is for WIRE flags only; optimistic state is the table's
 /// <see cref="EdgePending"/> column (file header). The chart triple is written by the seed today and by the live chart
 /// decode when it lands (ch 31 GAP 12).</para>
+/// <para><paramref name="Kind"/> (<see cref="PlaylistItemKind"/>) is what the target slot indexes: <c>Track</c> means
+/// <c>Current.Tracks</c>, <c>Episode</c> means <c>Current.Episodes</c> — a page's per-row dispatch at commit
+/// (<c>Edges.Staging.cs</c>'s <c>Relation.PlaylistTracks</c> arm, mirroring <c>AlbumTracks</c>'s kind filter) decides
+/// it from the wire uri, never guessed from a flag on the target row. Defaults to <c>Track</c> so every positional
+/// caller that predates the mix (the fake-data seeds, a local optimistic insert) keeps landing where it always did.</para>
 /// <para>ON DISK every field is a <c>list_item</c> column (Store.Lists.cs) and the two identities travel as TEXT:
 /// <paramref name="ItemId"/> as its hex, <paramref name="AddedBy"/> as the adder's user URI — a slot and a
 /// <see cref="StringId"/> both mean nothing after a restart. The disk read stages them back exactly as the wire decoder
 /// does, so the commit interns the item id and allocates the adder's row the same way for both.</para></summary>
 public readonly record struct PlaylistTrackEdge(
-    StringId ItemId, int AddedAt, int AddedBy, byte ChartStatus, ushort ChartPos, ushort ChartPrev, byte Flags);
+    StringId ItemId, int AddedAt, int AddedBy, byte ChartStatus, ushort ChartPos, ushort ChartPrev, byte Flags,
+    byte Kind = PlaylistItemKind.Track);
 
 /// <summary>A library membership: liked track, saved album, followed artist, saved show, pin. The library IS this edge
 /// (G6) — there is no <c>IsLiked</c> column anywhere (P3). <c>AddedAt</c> is UNIX seconds.</summary>

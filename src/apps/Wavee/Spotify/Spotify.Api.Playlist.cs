@@ -174,8 +174,16 @@ public static partial class Spotify
             Entities.ForgetListRevision(scope, EdgeRelation.PlaylistTracks, p.Slot);
         }
 
+        /// <summary>The member's own uri, off the table its <see cref="PlaylistTrackEdge.Kind"/> actually names (plan
+        /// §3.1): a mixed playlist's episode row's <c>Targets</c> slot indexes <c>Current.Episodes</c>, and reading it
+        /// as a <c>Track</c> would format some UNRELATED track's uri into the REM/MOV op — a wrong-item edit, not just
+        /// a wrong string.</summary>
         static PlaylistMember MemberAt(in Membership m, int index)
-            => new(new Track(m.Targets[index]).Id.Text, Entities.Strings.Resolve(m.Payload[index].ItemId));
+        {
+            int slot = m.Targets[index];
+            string uri = m.Payload[index].Kind == PlaylistItemKind.Episode ? new Episode(slot).Id.Text : new Track(slot).Id.Text;
+            return new(uri, Entities.Strings.Resolve(m.Payload[index].ItemId));
+        }
 
         // ── remove rows (Track.MenuSeams.RemoveRows / TableProfile.RemoveRows) ────────────────────────────────────
 
@@ -265,7 +273,7 @@ public static partial class Spotify
                 ? new PlaylistOp(PlaylistOpKind.Move, Items: members, ItemsAsKey: true, Anchor: PlaylistMoveAnchor.First)
                 : new PlaylistOp(PlaylistOpKind.Move, Items: members, ItemsAsKey: true, Anchor: PlaylistMoveAnchor.AfterItem,
                                  AnchorItemId: Entities.Strings.Resolve(before.Payload[anchor].ItemId),
-                                 AnchorUri: new Track(before.Targets[anchor]).Id.Text);
+                                 AnchorUri: MemberAt(in before, anchor).Uri);
             // A reorder that lost a race is REPORTED (its own sentence), never silently rebased onto a moved list.
             Post(p, scope, op, retry409: false, ok: null,
                  failed: kind => { Restore(scope, p, in before); Fail(kind, PlaylistEditVerb.Reorder); });
@@ -543,7 +551,13 @@ public static partial class Spotify
             if (!p.IsValid || IsLocal(p) || !CanWrite(out _, out _)) return;
             if (!ReferenceEquals(s_skipScope, scope)) { s_skip.Clear(); s_skipScope = scope; }
             if (!s_skip.TryGetValue(p.Slot, out var skip)) s_skip[p.Slot] = skip = new HashSet<string>(StringComparer.Ordinal);
-            foreach (int t in p.TrackSlots) AddSkip(skip, t);
+            // The extender answers TRACKS only ("recommendedTracks", Spotify.Decode.Playlist.cs §3), so an episode
+            // member (plan §3.1: its slot indexes Current.Episodes, not Current.Tracks) is skipped here — reading it
+            // as a Track would read some UNRELATED track row into the skip set.
+            var trackEdges = p.TrackEdges;
+            var trackSlots = p.TrackSlots;
+            for (int i = 0; i < trackSlots.Length; i++)
+                if (i >= trackEdges.Length || trackEdges[i].Kind != PlaylistItemKind.Episode) AddSkip(skip, trackSlots[i]);
             foreach (int t in p.RecommendationSlots) AddSkip(skip, t);
             var skipIds = new List<string>(skip);
             string uri = p.Uri.Text;

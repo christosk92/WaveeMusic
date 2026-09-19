@@ -69,10 +69,14 @@ namespace Wavee;
 /// <param name="AddedBy">The adder's user uri (<c>spotify:user:&lt;name&gt;</c>), or null.</param>
 /// <param name="WirePos">The rootlist's wire position (<see cref="RootlistEdge.Position"/>), which a skipped
 /// non-playlist item makes differ from the row's index.</param>
+/// <param name="ItemKind">A playlist member's <see cref="PlaylistItemKind"/> (plan §3.1) — 0 Track, 1 Episode; the
+/// meaningless default for a rootlist row, whose own <paramref name="Kind"/> already says item vs. folder marker.
+/// The <c>list_item.item_kind</c> column round-trips it so a restored playlist's episode rows resolve into
+/// <c>Current.Episodes</c> without re-deriving the kind from the uri text a second time.</param>
 public readonly record struct ListRow(
     string Uri, string? ItemId, int AddedAt, string? AddedBy,
     byte ChartStatus, ushort ChartPos, ushort ChartPrev, byte Flags,
-    RootlistKind Kind, byte Depth, ushort WirePos, string? FolderId, string? FolderName);
+    RootlistKind Kind, byte Depth, ushort WirePos, string? FolderId, string? FolderName, byte ItemKind = PlaylistItemKind.Track);
 
 /// <summary>THE list-write gate and the list head's rules — pure, no table, no file, no clock (plan §2: "one revision
 /// gate: only a well-formed revision may be stored, on every writer"). 0.2.9 persisted a rootlist push's URI BYTES as a
@@ -170,7 +174,11 @@ public static partial class Store
     /// <c>ix_list_item_uri</c> answers "which lists hold this uri", the dealer's question (wave D3).</summary>
     const string ListDdl =
         "CREATE TABLE IF NOT EXISTS list_head(scope_id INT NOT NULL, list TEXT NOT NULL, revision TEXT NOT NULL, total INT NOT NULL, written_at INT NOT NULL, written_by TEXT NOT NULL, PRIMARY KEY(scope_id,list)) WITHOUT ROWID;\n" +
-        "CREATE TABLE IF NOT EXISTS list_item(scope_id INT NOT NULL, list TEXT NOT NULL, position INT NOT NULL, uri TEXT NOT NULL, item_id TEXT, added_at INT, added_by TEXT, chart_status INT, chart_pos INT, chart_prev INT, flags INT, kind INT, depth INT, wire_pos INT, folder_id TEXT, folder_name TEXT, PRIMARY KEY(scope_id,list,position)) WITHOUT ROWID;\n" +
+        // `item_kind` (plan §3.1, ledger row 12): a playlist member's PlaylistItemKind (0 Track, 1 Episode) — added
+        // here, never migrated, so opening this DDL text moves every install onto a fresh file (Store.cs's
+        // Fingerprint hashes it verbatim) and a playlist saved by the pre-fix decoder, which always assumed Track, is
+        // simply re-read from the network rather than trusted with the wrong table for its episode rows.
+        "CREATE TABLE IF NOT EXISTS list_item(scope_id INT NOT NULL, list TEXT NOT NULL, position INT NOT NULL, uri TEXT NOT NULL, item_id TEXT, added_at INT, added_by TEXT, chart_status INT, chart_pos INT, chart_prev INT, flags INT, kind INT, depth INT, wire_pos INT, folder_id TEXT, folder_name TEXT, item_kind INT, PRIMARY KEY(scope_id,list,position)) WITHOUT ROWID;\n" +
         "CREATE INDEX IF NOT EXISTS ix_list_item_uri ON list_item(scope_id, uri);\n";
 
     /// <summary>The list saves one <see cref="WriteBehind"/> prepared, held until its row job has been accepted.
@@ -335,7 +343,13 @@ public static partial class Store
     /// carries its packed id in <paramref name="ids"/> and an empty uri — the store thread formats its key
     /// (<see cref="KeyOf"/>), as every other write does; for a <paramref name="baseline"/> the uri is formatted here. A
     /// member with no identity is a hole, and a list with a hole is neither written nor replayed over. The gate is
-    /// <see cref="ListWrite.MayPersist"/> for a write and <see cref="ListWrite.IsSettled"/> for a baseline.</summary>
+    /// <see cref="ListWrite.MayPersist"/> for a write and <see cref="ListWrite.IsSettled"/> for a baseline.
+    /// <para>A <see cref="EdgeRelation.PlaylistTracks"/> row's target slot lives in a DIFFERENT table per row — the
+    /// edge's own <see cref="PlaylistTrackEdge.Kind"/> (<see cref="PlaylistItemKind"/>, plan §3.1) says which, the
+    /// same way <c>Edges.Staging.cs</c>'s commit decided it. <paramref name="show"/> (a <see cref="EdgeRelation.ShowEpisodes"/>
+    /// list) is ALWAYS episodes, so it short-circuits the per-row check; a plain playlist mixes the two on one page.
+    /// <c>id.Kind</c> — carried by the identity itself, never by which table it sits in — is what lets a GID member's
+    /// key format with the right <c>spotify:episode:</c>/<c>spotify:track:</c> prefix either way (<see cref="KeyOf"/>).</para></summary>
     static ListRow[]? SnapshotPlaylist(Scope scope, int parent, bool baseline, string? revision, bool wholeAnswer,
                                        out EntityId[] ids, out string key, bool show = false)
     {
@@ -353,26 +367,28 @@ public static partial class Store
         key = KeyText(playlists.Id[parent]);
         if (key.Length == 0) return null;
 
-        Table tracks = show ? scope.Episodes : scope.Tracks;
+        Table tracks = scope.Tracks, episodes = scope.Episodes;
         UserTable users = scope.Users;
         int n = targets.Length;
         ListRow[] rows = n == 0 ? Array.Empty<ListRow>() : new ListRow[n];
         EntityId[] packed = n == 0 || baseline ? Array.Empty<EntityId>() : new EntityId[n];
         for (int i = 0; i < n; i++)
         {
+            PlaylistTrackEdge edge = payload[i];
+            bool isEpisode = show || edge.Kind == PlaylistItemKind.Episode;
+            Table member = isEpisode ? episodes : tracks;
             int target = targets[i];
-            if (target <= Table.None || target >= tracks.Count) return null;
-            EntityId id = tracks.Id[target];
+            if (target <= Table.None || target >= member.Count) return null;
+            EntityId id = member.Id[target];
             if (id.Form == EntityForm.None) return null;
             string uri = id.Form == EntityForm.Text ? Entities.Strings.Resolve(id.TextId) : baseline ? KeyOf(in id, null) : "";
             if (baseline && uri.Length == 0) return null;
             if (!baseline) packed[i] = id;
-            PlaylistTrackEdge edge = payload[i];
             int by = edge.AddedBy;
             string? addedBy = by > Table.None && by < users.Count ? NullIfEmpty(KeyText(users.Id[by])) : null;
             rows[i] = new ListRow(uri, edge.ItemId.IsEmpty ? null : Entities.Strings.Resolve(edge.ItemId), edge.AddedAt,
                                   addedBy, edge.ChartStatus, edge.ChartPos, edge.ChartPrev, edge.Flags, RootlistKind.Item, 0, 0,
-                                  null, null);
+                                  null, null, isEpisode ? PlaylistItemKind.Episode : PlaylistItemKind.Track);
         }
         ids = packed;
         return rows;
@@ -508,15 +524,15 @@ public static partial class Store
     {
         using var insert = db.Write.CreateCommand();
         insert.Transaction = tx;
-        insert.CommandText = "INSERT INTO list_item(scope_id,list,position,uri,item_id,added_at,added_by,chart_status,chart_pos,chart_prev,flags,kind,depth,wire_pos,folder_id,folder_name) " +
-                             "VALUES($s,$l,$p,$u,$i,$a,$b,$cs,$cp,$cv,$f,$k,$d,$w,$fi,$fn);";
+        insert.CommandText = "INSERT INTO list_item(scope_id,list,position,uri,item_id,added_at,added_by,chart_status,chart_pos,chart_prev,flags,kind,depth,wire_pos,folder_id,folder_name,item_kind) " +
+                             "VALUES($s,$l,$p,$u,$i,$a,$b,$cs,$cp,$cv,$f,$k,$d,$w,$fi,$fn,$ik);";
         insert.Parameters.Add(new SqliteParameter("$s", s_scopeId));
         insert.Parameters.Add(new SqliteParameter("$l", list.Key));
         SqliteParameter position = Param(insert, "$p"), uri = Param(insert, "$u"), itemId = Param(insert, "$i"),
                         addedAt = Param(insert, "$a"), addedBy = Param(insert, "$b"), chartStatus = Param(insert, "$cs"),
                         chartPos = Param(insert, "$cp"), chartPrev = Param(insert, "$cv"), flags = Param(insert, "$f"),
                         kind = Param(insert, "$k"), depth = Param(insert, "$d"), wirePos = Param(insert, "$w"),
-                        folderId = Param(insert, "$fi"), folderName = Param(insert, "$fn");
+                        folderId = Param(insert, "$fi"), folderName = Param(insert, "$fn"), itemKind = Param(insert, "$ik");
         ListRow[] rows = list.Rows;
         for (int i = 0; i < rows.Length; i++)
         {
@@ -535,6 +551,7 @@ public static partial class Store
             wirePos.Value = (long)row.WirePos;
             folderId.Value = DbText(row.FolderId);
             folderName.Value = DbText(row.FolderName);
+            itemKind.Value = (long)row.ItemKind;
             insert.ExecuteNonQuery();
         }
     }
@@ -668,7 +685,7 @@ public static partial class Store
         ListMark mark = MarkOf(s);
         StagedId parent = Stage(s, parentText);
         using var items = db.Read.CreateCommand();
-        items.CommandText = "SELECT uri,item_id,added_at,added_by,chart_status,chart_pos,chart_prev,flags,kind,depth,wire_pos,folder_id,folder_name " +
+        items.CommandText = "SELECT uri,item_id,added_at,added_by,chart_status,chart_pos,chart_prev,flags,kind,depth,wire_pos,folder_id,folder_name,item_kind " +
                             "FROM list_item WHERE scope_id=$s AND list=$l ORDER BY position;";
         items.Parameters.Add(new SqliteParameter("$s", s_scopeId));
         items.Parameters.Add(new SqliteParameter("$l", key));
@@ -678,7 +695,7 @@ public static partial class Store
             ListRow row = new(ColumnText(read, 0) ?? "", ColumnText(read, 1), (int)ColumnInt(read, 2), ColumnText(read, 3),
                               (byte)ColumnInt(read, 4), (ushort)ColumnInt(read, 5), (ushort)ColumnInt(read, 6),
                               (byte)ColumnInt(read, 7), (RootlistKind)(byte)ColumnInt(read, 8), (byte)ColumnInt(read, 9),
-                              (ushort)ColumnInt(read, 10), ColumnText(read, 11), ColumnText(read, 12));
+                              (ushort)ColumnInt(read, 10), ColumnText(read, 11), ColumnText(read, 12), (byte)ColumnInt(read, 13));
             if (!StageRow(s, relation, in row)) return false;
             rows++;
         }

@@ -66,6 +66,10 @@ public enum ActionId : ushort
     // <see cref="ActionRules.ShowRouteFor"/>, never <see cref="ActionRules.RouteFor"/> (which would be the episode's
     // own route). Labels: <c>Strings.Podcast.Menu.MarkPlayed/MarkUnplayed/GoToShow</c>.
     MarkPlayed, MarkUnplayed, GoToShow,
+    /// <summary>Save/unsave an episode to Your Episodes from a MULTI-episode selection (Track.Table's batch bar, B2
+    /// plan §3.3) — a TOGGLE, unlike the mark pair, because "some selected are saved" has no absolute-state reading.
+    /// <c>Episode.Menu.cs</c>'s single-row row menu routes its inline save through this same id.</summary>
+    SaveEpisode,
 }
 
 /// <summary>The action icon-KEY vocabulary: an action carries a SEMANTIC key and never a raw glyph. The one
@@ -898,7 +902,11 @@ public readonly record struct ActionTarget(
     string Name,
     PlaylistHost Host,
     long QueueItemId = 0,
-    EntityUri ShowUri = default)
+    EntityUri ShowUri = default,
+    /// <summary>A MULTI-episode selection (Track.Table's batch bar, B2 plan §3.3) — <see cref="ForEpisode"/>'s single
+    /// row leaves this null, so every episode verb resolves the acting set through <c>EpisodesOf</c>
+    /// (<c>Episode.Menu.cs</c>): the selection list when present, else the one episode <see cref="Uri"/> names.</summary>
+    IReadOnlyList<Episode>? Episodes = null)
 {
     static readonly Track[] NoTracks = [];
 
@@ -935,6 +943,14 @@ public readonly record struct ActionTarget(
     /// "no 'Go to show' row" rather than a dead navigation.</summary>
     public static ActionTarget ForEpisode(EntityUri uri, string name, EntityUri showUri)
         => new(TargetKind.Episode, NoTracks, uri, name, PlaylistHost.None, ShowUri: showUri);
+
+    /// <summary>A MULTI-episode selection — Track.Table's batch bar (B2 plan §3.3), beside <see cref="ForTracks"/>'s
+    /// twin. No show ref: a mixed-show selection has no single "Go to show", and the batch bar offers none.</summary>
+    public static ActionTarget ForEpisodes(IReadOnlyList<Episode> episodes)
+        => new(TargetKind.Episode, NoTracks,
+            episodes is { Count: > 0 } ? episodes[0].Uri : default,
+            episodes is { Count: > 0 } ? episodes[0].Title : "",
+            PlaylistHost.None, Episodes: episodes);
 }
 
 /// <summary>The action context an <see cref="AppAction"/> receives: the WHAT (<see cref="Target"/>) + the HOW

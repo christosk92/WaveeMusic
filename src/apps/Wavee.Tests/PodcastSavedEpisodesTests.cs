@@ -14,8 +14,8 @@ public class PodcastSavedEpisodesTests
     {
         byte[] json = Encoding.UTF8.GetBytes("""
             {"data":{"me":{"libraryV3":{"totalCount":75,"items":[
-              {"data":{"__typename":"Playlist","format":"other","name":"Your Episodes","uri":"spotify:playlist:wrong"}},
-              {"data":{"__typename":"Playlist","format":"listen-later","name":"Gespeicherte Folgen","uri":"spotify:playlist:canonical"}}
+              {"item":{"data":{"__typename":"Playlist","format":"other","name":"Your Episodes","uri":"spotify:playlist:wrong"}}},
+              {"item":{"data":{"__typename":"Playlist","format":"listen-later","name":"Gespeicherte Folgen","uri":"spotify:playlist:canonical"}}}
             ]}}}}
             """);
         var result = Spotify.Podcasts.DecodeSavedDiscovery(json);
@@ -28,7 +28,7 @@ public class PodcastSavedEpisodesTests
     public void A_full_page_without_the_special_list_keeps_the_total_for_further_paging()
     {
         var result = Spotify.Podcasts.DecodeSavedDiscovery(Encoding.UTF8.GetBytes("""
-            {"data":{"me":{"libraryV3":{"totalCount":75,"items":[{"data":{"__typename":"Playlist","format":"other"}}]}}}}
+            {"data":{"me":{"libraryV3":{"totalCount":75,"items":[{"item":{"data":{"__typename":"Playlist","format":"other"}}}]}}}}
             """));
         Assert.Empty(result.Uri);
         Assert.True(result.Total > result.Count);
@@ -83,5 +83,49 @@ public class PodcastSavedEpisodesTests
         var add = Assert.Single(Spotify.Podcasts.SavedMutationOps(EpisodeUri, true, [], 1789823105123, "00112233445566778899"));
         Assert.True(add.AddFirst);
         Assert.Equal(1789823105123, Assert.Single(add.Items!).AddedAtMs);
+    }
+
+    // ── §D3.1: Empty/Failed split apart — a real 404 for the missing listen-later playlist, or a genuinely
+    // empty read, must both land Ready (never "unavailable"); only a real transport failure is Failed, and only
+    // when nothing has ever landed before. ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_zero_item_read_lands_ready_not_failed()
+    {
+        var (ready, failed) = Spotify.Podcasts.FoldSavedLanding(Spotify.Podcasts.SavedLandingOutcome.Data, previouslyReady: false);
+        Assert.True(ready);
+        Assert.False(failed);
+    }
+
+    [Fact]
+    public void The_discovery_exhausted_404_lands_ready_not_failed()
+    {
+        var (ready, failed) = Spotify.Podcasts.FoldSavedLanding(Spotify.Podcasts.SavedLandingOutcome.ConfirmedEmpty, previouslyReady: false);
+        Assert.True(ready);
+        Assert.False(failed);
+    }
+
+    [Fact]
+    public void A_first_read_transport_failure_is_failed_not_ready()
+    {
+        var (ready, failed) = Spotify.Podcasts.FoldSavedLanding(Spotify.Podcasts.SavedLandingOutcome.Failure, previouslyReady: false);
+        Assert.False(ready);
+        Assert.True(failed);
+    }
+
+    [Fact]
+    public void A_later_transport_failure_keeps_already_landed_data_and_is_not_failed()
+    {
+        var (ready, failed) = Spotify.Podcasts.FoldSavedLanding(Spotify.Podcasts.SavedLandingOutcome.Failure, previouslyReady: true);
+        Assert.True(ready);
+        Assert.False(failed);
+    }
+
+    [Fact]
+    public void A_failure_after_an_earlier_failure_stays_failed()
+    {
+        var (ready, failed) = Spotify.Podcasts.FoldSavedLanding(Spotify.Podcasts.SavedLandingOutcome.Failure, previouslyReady: false);
+        Assert.False(ready);
+        Assert.True(failed);
     }
 }
