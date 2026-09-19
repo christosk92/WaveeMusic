@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Wavee loc review</title>
+  <style>
+    :root { font-family: "Segoe UI", system-ui, sans-serif; color: #1b1b1b; background: #f6f6f6; }
+    body { max-width: 720px; margin: 24px auto; padding: 0 16px 48px; }
+    h1 { font-size: 20px; font-weight: 600; }
+    .meta { color: #616161; margin-bottom: 16px; }
+    .card { background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 16px; margin: 12px 0; }
+    .english { font-size: 18px; font-weight: 600; }
+    .where { color: #616161; font-size: 13px; margin: 4px 0 12px; }
+    .draft { background: #f0f7ff; padding: 8px 10px; border-radius: 4px; margin-bottom: 8px; }
+    textarea { width: 100%; min-height: 48px; font: inherit; padding: 8px; box-sizing: border-box; }
+    button { margin-right: 8px; margin-top: 8px; padding: 6px 12px; }
+    .chips span { display: inline-block; background: #eee; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 12px; margin-right: 4px; }
+    .err { color: #c42b1c; font-size: 13px; }
+    details { margin-top: 8px; color: #888; font-size: 12px; }
+    #drop { border: 1px dashed #bbb; padding: 16px; text-align: center; margin-bottom: 16px; background: #fff; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Wavee loc review</h1>
+  <div class="meta" id="progress"></div>
+  <div id="drop">Drop a packet JSON here, or <input type="file" id="file" accept="application/json" /></div>
+  <div id="cards"></div>
+  <p><button id="download" hidden>Download updated packet</button></p>
+  <script>
+    let packet = null;
+    const drop = document.getElementById("drop");
+    const file = document.getElementById("file");
+    file.onchange = e => loadFile(e.target.files[0]);
+    drop.ondragover = e => { e.preventDefault(); };
+    drop.ondrop = e => { e.preventDefault(); loadFile(e.dataTransfer.files[0]); };
+
+    function loadFile(f) {
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = () => { packet = JSON.parse(r.result); render(); };
+      r.readAsText(f);
+    }
+
+    function placeholders(s) {
+      const names = [];
+      const re = /\{([A-Za-z_][A-Za-z0-9_]*)/g;
+      let m;
+      while ((m = re.exec(s))) {
+        if (!["plural","select","other","one","few","many","zero","two","offset"].includes(m[1]) && !names.includes(m[1]))
+          names.push(m[1]);
+      }
+      return names;
+    }
+    function match(en, yours) {
+      const a = placeholders(en), b = placeholders(yours);
+      return a.length === b.length && a.every(x => b.includes(x));
+    }
+
+    function render() {
+      document.getElementById("title").textContent =
+        `Wavee ${packet.culture} · ${packet.packet}`;
+      const rows = packet.rows;
+      const approved = rows.filter(r => r.status === "approved" || r.status === "skip").length;
+      document.getElementById("progress").textContent =
+        `${approved} / ${rows.length} approved or skipped · ${packet.surface || ""}`;
+      const cards = document.getElementById("cards");
+      cards.innerHTML = "";
+      rows.forEach((row, i) => {
+        const el = document.createElement("div");
+        el.className = "card";
+        const chips = (row.placeholders || placeholders(row.english)).map(p => `<span>{${p}}</span>`).join("");
+        const err = row.yours && !match(row.english, row.yours)
+          ? `<div class="err">Keep placeholder names exactly as in English ({name}, {count}).</div>` : "";
+        el.innerHTML = `
+          <div class="english"></div>
+          <div class="where"></div>
+          ${row.ai_draft ? `<div class="draft">Draft: <span class="d"></span></div>` : ""}
+          <textarea data-i="${i}"></textarea>
+          ${err}
+          <div class="chips">ICU: ${row.icu || "none"} ${chips}</div>
+          <button data-act="approve" data-i="${i}">Approve draft</button>
+          <button data-act="save" data-i="${i}">Save edit</button>
+          <button data-act="skip" data-i="${i}">Skip (keep English)</button>
+          <details><summary>key</summary><code></code></details>`;
+        el.querySelector(".english").textContent = row.english;
+        el.querySelector(".where").textContent = row.where || "";
+        if (row.ai_draft) el.querySelector(".d").textContent = row.ai_draft;
+        el.querySelector("textarea").value = row.yours || row.ai_draft || "";
+        el.querySelector("code").textContent = row.key;
+        cards.appendChild(el);
+      });
+      document.getElementById("download").hidden = false;
+      cards.onclick = onClick;
+    }
+
+    function onClick(e) {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      const i = +btn.dataset.i;
+      const row = packet.rows[i];
+      const yours = btn.parentElement.querySelector("textarea").value.trim();
+      if (btn.dataset.act === "skip") { row.status = "skip"; row.yours = ""; }
+      else {
+        if (!match(row.english, yours)) { alert("Keep {placeholders} as written."); return; }
+        row.yours = yours;
+        row.status = "approved";
+      }
+      render();
+    }
+
+    document.getElementById("download").onclick = () => {
+      const blob = new Blob([JSON.stringify(packet, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (packet.packet || "packet") + ".json";
+      a.click();
+    };
+  </script>
+</body>
+</html>

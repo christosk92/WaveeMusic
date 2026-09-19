@@ -31,6 +31,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Wavee\Wavee.csproj" />
+    <ProjectReference Include="..\..\..\ops\loc\Wavee.LocPack\Wavee.LocPack.csproj" />
     <!-- the P/Invoke shims some tests use -->
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.WindowsApi\FluentGpu.WindowsApi.csproj" />
   </ItemGroup>

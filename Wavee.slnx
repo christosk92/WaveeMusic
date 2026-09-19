@@ -17,4 +17,7 @@
     <Project Path="src/apps/modules/Wavee.Module.Twitch/Wavee.Module.Twitch.csproj" />
     <Project Path="src/apps/modules/Wavee.Module.Radio/Wavee.Module.Radio.csproj" />
   </Folder>
+  <Folder Name="/Loc/">
+    <Project Path="ops/loc/Wavee.LocPack/Wavee.LocPack.csproj" />
+  </Folder>
 </Solution>

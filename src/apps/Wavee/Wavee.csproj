@@ -208,9 +208,14 @@
        ICU-format methods) into the `Wavee` namespace, so call sites use Loc.Get(Strings.Detail.Play). -->
   <PropertyGroup>
     <FluentGpuLocNamespace>Wavee</FluentGpuLocNamespace>
+    <!-- FGRP008 opt-in is deferred: Wavee's RadioItem values are ids (black/cream/vu), not copy, and would drown the log. -->
+    <!-- Loc completeness warnings stay visible but must not fail TreatWarningsAsErrors until satellites are filled. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);FLLOC001;FLLOC003;FLLOC004;FLLOC005;FLLOC006;FGRP008</WarningsNotAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <AdditionalFiles Include="assets\loc\en-US.json" FluentGpuLocBase="true" />
+    <AdditionalFiles Include="assets\loc\nl.json" />
+    <AdditionalFiles Include="assets\loc\ko-KR.json" />
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="FluentGpuLocBase" />
     <CompilerVisibleProperty Include="FluentGpuLocNamespace" />
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.SourceGen\FluentGpu.SourceGen.csproj"

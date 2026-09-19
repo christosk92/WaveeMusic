@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Wavee.LocPack</RootNamespace>
+    <AssemblyName>Wavee.LocPack</AssemblyName>
+    <!-- Tooling, not the app: skip AOT/Win32 posture from the repo baseline if inherited. -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+</Project>

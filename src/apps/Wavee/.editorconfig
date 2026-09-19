@@ -1,0 +1,10 @@
+# Analyzer severities for Wavee's loc completeness gates.
+# Warnings stay warnings (Wavee.csproj lists them in WarningsNotAsErrors) until satellites are filled.
+root = false
+
+[*.cs]
+dotnet_diagnostic.FLLOC003.severity = warning
+dotnet_diagnostic.FGRP008.severity = warning
+dotnet_diagnostic.FLLOC005.severity = suggestion
+dotnet_diagnostic.FLLOC006.severity = suggestion
+dotnet_diagnostic.FLLOC004.severity = warning

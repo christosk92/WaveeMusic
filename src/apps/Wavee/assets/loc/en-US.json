@@ -1,6 +1,7 @@
 {
   "$culture": "en-US",
-  "$comment": "Wavee base culture — every user-facing UI string. Other cultures override per-key and fall back here. Keys flatten to a `Wavee.Strings` class via FluentGpu.SourceGen (Strings.Detail.Play == \"detail.play\"); parameterized keys expose a typed format method.",
+  "$unusedAllow": [ "modulePage.openOn", "sidebar.template.curated", "sidebar.template.curatedSub" ],
+  "$comment": "Wavee base culture — every user-facing UI string. Other cultures override per-key and fall back here. Keys flatten to a `Wavee.Strings` class via FluentGpu.SourceGen (Strings.Detail.Play == \"detail.play\"); parameterized keys expose a typed format method. `$unusedAllow` is analyzer-only (FLLOC005 keepers).",
   "drag": {
     "$comment": "Drag & drop CAPTIONS: what a drop will do (Add to X, Move into X) and, for a refusal, why it will not. A refusing drop target is TRANSPARENT to the engine (discovery walks past it), so the refusal ones are the only thing that tells the user why a drag was turned away — the drag chip shows them beside its not-allowed glyph.",
     "cantEditPlaylist": "Can’t edit this playlist",
