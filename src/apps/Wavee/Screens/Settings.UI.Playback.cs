@@ -123,6 +123,7 @@ public static partial class Settings
             VideoQualityCombo(), RowGlyph(Tab.Playback, "videoQuality")),
         Row(Loc.Get(Strings.Settings.Playback.VideoMeteredQuality), Loc.Get(Strings.Settings.Playback.VideoMeteredQualitySub),
             MeteredVideoCombo(), RowGlyph(Tab.Playback, "videoMetered")),
+        VideoPrepareAheadRow(),
         VideoOverridesRow(),
 
         SectionHeader(Loc.Get(Strings.Settings.Playback.PlayerBar), SectionGlyph(Tab.Playback, "Player bar")),
@@ -454,6 +455,15 @@ public static partial class Settings
                 Platform.Network.SetMeteredVideoMaxHeight(Quality.MeteredVideoHeights[i]);
                 Bump();
             });
+
+    /// <summary>D15's off switch, DEFAULT ON. On, the video host fetches the licence for the playing video-capable track
+    /// and the next queued one before the user asks — the licence is ~80 % of a cold switch. Off, nothing is fetched
+    /// ahead and the native component's preload is the only warm left, which is why the sentence promises data and not
+    /// speed. The write persists and then re-decides the keeper's beat immediately, rather than at the next track.</summary>
+    static Element VideoPrepareAheadRow()
+        => Row(Loc.Get(Strings.Settings.Playback.VideoPrepareAhead), Loc.Get(Strings.Settings.Playback.VideoPrepareAheadSub),
+            Toggle(Playback.Video.PrepareAhead, afterWrite: static _ => Playback.Video.ApplyPrepareAhead()),
+            RowGlyph(Tab.Playback, "videoPrepareAhead"));
 
     /// <summary>The attached-videos SUMMARY (ch 27 W11's states): no roster store → the whole row greyed with NO control;
     /// 0 rows → "No videos attached yet" + Manage and no "Remove all"; N rows → the count + Manage + Remove all. The roster

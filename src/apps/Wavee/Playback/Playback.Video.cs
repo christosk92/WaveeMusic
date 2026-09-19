@@ -7,8 +7,9 @@
 // Budget: 1100 lines
 // Spec: plan; docs/plans/wavee/wavee-0.3-video-engine-implementation.md §3.1.5, §3.2.3, §3.4, §6.2 H1-H6
 //
-// Named partial: `Playback.Video.Source.cs` — what plays (the resolver tiers, the manifest memo, the v9 parse, the
-// licence relay). The pure video arithmetic is `Playback.Video.Rules.cs` (owner V).
+// Named partials: `Playback.Video.Source.cs` — what plays (the resolver tiers, the manifest memo, the v9 parse, the
+// licence relay); `Playback.Video.Warm.cs` — what is held in hand BEFORE the user asks (D15's keeper: the runtime and
+// the next two content keys). The pure video arithmetic is `Playback.Video.Rules.cs` (owner V).
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // WHAT THIS FILE IS. The decode half of video: open ONE long-lived `MediaPlayer` on a resolved `VideoSource`, keep it
@@ -32,6 +33,14 @@
 // seek to issue afterwards; transport verbs are acknowledged by events, so there is no Play re-assert. The protected
 // backend is PROCESS-LIFETIME here (not per player): a prefetch prepares a session on it and the next open of the same
 // init url takes that session — a rebuilt player must not orphan what was prepared.
+//
+// THE WARM HALF (§6.2 G1, D15). Two rules keep a switch cheap and keep it honest. (1) The PREFETCH/LOAD RACE: a row the
+// pump has claimed is never prefetched, and a load ADOPTS the prepare aimed at its own row instead of racing it — before
+// this, a lit badge's click opened two protected sessions in the same millisecond and destroyed one. Every prepared
+// session is now adopted or disposed; `Landed` is the only place one can come to rest. (2) The WARM KEEPER: while a
+// video surface is wanted, the content keys of the playing row and the next queued one are pre-acquired on a 10 s beat
+// (the licence is 2 010 ms of a measured 2 477 ms cold switch), which also brings the native runtime back up whenever it
+// shed. The beat stops when the surface closes, and the app lets go 30 s later — D15, and the engine's own window.
 //
 // WHY THE PUMP IS STILL SERIALIZED AND EPOCHED. One worker, one coalescing slot, one epoch: a load that arrives while
 // another is in flight REPLACES it (latest wins, C8), and every result goes back as a posted `Input` carrying the epoch
@@ -306,6 +315,13 @@ public static partial class Playback
 
         static bool s_warmed;
 
+        /// <summary>The Playback tab's switch, DEFAULT ON: may the app fetch a video licence before the user asks for
+        /// the video? Off leaves <see cref="Boot"/>'s native preload as the only warm, and the licence — ~80 % of a cold
+        /// switch — is then paid on the switch itself. Declared beside its only reader rather than in
+        /// <c>Platform.Keys</c>, the shape <c>Detail.SortKeys</c> already uses; the storage name follows the
+        /// <c>playback.video.*</c> family it belongs to.</summary>
+        public static readonly SettingKey<bool> PrepareAhead = new("playback.video.prepareAhead", true);
+
         /// <summary>Composition (`Video.Install`): route the engine's always-on <c>[video]</c> / <c>[video.native]</c>
         /// lines into the app's one log — the §4.3 gate reads them from the same file as the app's own lines.</summary>
         public static void InstallLog() => ProtectedVideoRuntime.LogSink = static line => Log.Info("video", line);
@@ -314,8 +330,11 @@ public static partial class Playback
         /// session and says so. Installed by `Video.Install`; invoked on the UI thread.</summary>
         public static Action<string, string>? OnOverrideFailed { get; set; }
 
-        /// <summary>Preload the native PlayReady component on FIRST USE, not at `Playback.Boot`. Idempotent; a missing
-        /// DLL degrades to a typed DRM error rather than a `DllNotFoundException` in the frame loop.</summary>
+        /// <summary>Preload the native PlayReady component — the ONE-SHOT half of the app's warm (the continuous half is
+        /// <see cref="KeepWarm"/>'s beat). Called by `Video.Install` at composition rather than on the first switch: the
+        /// DLL's load plus its whole MF/PlayReady import chain is part of what a cold <c>runtime.create</c> pays for, and
+        /// it is the only warm left when the user turns <see cref="PrepareAhead"/> off. Idempotent; a missing DLL
+        /// degrades to a typed DRM error rather than a `DllNotFoundException` in the frame loop.</summary>
         public static void Boot()
         {
             if (s_warmed) return;
@@ -337,6 +356,9 @@ public static partial class Playback
                 s_pending = new LoadRequest(source, Math.Max(0, fromMs), epoch);
                 s_pendingClear = false;
                 s_intentPaused = paused;
+                // THE CLAIM (§6.2 G1 rule 1), taken on the UI thread before any of the physical work: from this line on
+                // the badge-lit prefetch leaves this row alone, because its load is the fetch.
+                s_claim = new RowKey(source.PlayableUri, source.Key);
                 EnsureWorker();
             }
             if (Phase.Peek() is SwitchPhase.Idle or SwitchPhase.Failed or SwitchPhase.Playing or SwitchPhase.Presenting)
@@ -351,6 +373,7 @@ public static partial class Playback
                 s_pumpEpoch++;
                 s_pending = null;
                 s_pendingClear = true;
+                s_claim = RowKey.None;
                 EnsureWorker();
             }
         }
@@ -510,12 +533,28 @@ public static partial class Playback
             try { p?.SetAdaptiveMaxHeight(cap); } catch { /* fail-soft */ }
         }
 
-        // ── prefetch (plan §3.1.5, G-146) ───────────────────────────────────────────────────────────────────────────
+        // ── prefetch (plan §3.1.5, G-146, §6.2 G1) ──────────────────────────────────────────────────────────────────
+        //
+        // THE PREFETCH SLOT, all under `s_gate`. At most ONE prepare is claimed at a time (`s_preparingGate` non-null,
+        // aimed at `s_preparingRow`) and at most one landed session is parked (`s_prepared` for `s_preparedKey`). Every
+        // item that lands goes through `Landed`, which either parks it or disposes it on the spot — there is no third
+        // path, which is what makes "a prepared session is adopted or disposed, never stranded" a property of the code
+        // rather than of the timing.
+        //
+        // WHY THE GATE IS A SEPARATE TASK FROM THE PREPARE. `ProtectedMediaBackend.PrepareAtAsync` REGISTERS its session
+        // (by init url, the key the matching open takes it by) synchronously, before its first await; only the segment
+        // download is asynchronous. So the load that adopts a prepare waits on the REGISTRATION and not on the download:
+        // the moment the backend knows about the session, the open finds it, and the download the load was going to do
+        // anyway continues underneath the attach.
 
         static EntityId s_prefetchId;
         static PrefetchLevel s_prefetchLevel;
+        static TaskCompletionSource? s_preparingGate;
+        static RowKey s_preparingRow = RowKey.None;
+        static bool s_dropPreparing;
         static IPreparedItem? s_prepared;
         static string s_preparedKey = "";
+        static RowKey s_claim = RowKey.None;
 
         /// <summary>The level already reached for <paramref name="id"/> — the schedule's <c>Already</c>. UI thread.</summary>
         public static PrefetchLevel PrefetchedLevel(EntityId id) => id.Equals(s_prefetchId) ? s_prefetchLevel : PrefetchLevel.None;
@@ -523,29 +562,50 @@ public static partial class Playback
         /// <summary>Bring <paramref name="id"/>'s video to <paramref name="level"/> before anyone asks for it (UI thread;
         /// the work runs on an api thread): Manifest = the memoised resolve; ManifestAndLicense = + the licence at
         /// manifest time; Full = + the init and the segments at <paramref name="atMs"/> in a prepared session the next open
-        /// of the same source takes. The caller decides the level (<see cref="PrefetchSchedule.Decide"/>).</summary>
+        /// of the same source takes. The caller decides the level (<see cref="PrefetchSchedule.Decide"/>).
+        /// <para>A row the pump has already CLAIMED is refused outright (G1 rule 1): its load fetches everything this
+        /// would, and a prepare racing it opens a second protected session the switch never takes.</para></summary>
         public static void Prefetch(EntityId id, string manifestId, PrefetchLevel level, PrefetchReason why, int atMs)
         {
             if (level == PrefetchLevel.None || id.IsEmpty) return;
             if (id.Equals(s_prefetchId) && s_prefetchLevel >= level) return;
+            string uri = id.Text;                  // materialised ONCE: the row, the claim compare and the log all use it
+            var row = new RowKey(uri, manifestId);
+            RowKey claimed;
+            lock (s_gate) claimed = s_claim;
+            if (!PrefetchRace.ShouldPrefetch(in claimed, in row)) return;
+
             s_prefetchId = id;
             s_prefetchLevel = level;
-            LogLine(new VideoLog.PrefetchPlanned(Tail(id.Text), level, why, Platform.Network.IsMetered));
-            string gid = manifestId;
+            LogLine(new VideoLog.PrefetchPlanned(Tail(uri), level, why, Platform.Network.IsMetered));
             int at = Math.Max(0, atMs);
-            if (!Spotify.Api.Run(() => PrefetchWork(id, gid, level, at)))
-                s_prefetchLevel = PrefetchLevel.None;
+            // The slot is claimed HERE, on the UI thread, before the work that fills it is even queued: a load starting
+            // in the same frame must SEE the prepare that is about to exist, or it races it all over again.
+            bool prepare = level == PrefetchLevel.Full && ArmPrepare(in row);
+            if (Spotify.Api.Run(() => PrefetchWork(id, row, level, at, prepare))) return;
+            s_prefetchLevel = PrefetchLevel.None;
+            if (prepare) DisarmPrepare(in row);
         }
 
-        static void PrefetchWork(EntityId id, string manifestId, PrefetchLevel level, int atMs)
+        static void PrefetchWork(EntityId id, RowKey row, PrefetchLevel level, int atMs, bool prepare)
         {
-            VideoSource? source;
-            try { source = ResolveCore(id, manifestId, CancellationToken.None, forPlayback: false); }
-            catch (Exception ex) { Log.Warn("video", "prefetch resolve failed", ex); return; }
-            if (source is not { IsDrm: true } || level == PrefetchLevel.Manifest) return;
+            bool handedOver = false;
+            try
+            {
+                VideoSource? source;
+                try { source = ResolveCore(id, row.Key, CancellationToken.None, forPlayback: false); }
+                catch (Exception ex) { Log.Warn("video", "prefetch resolve failed", ex); return; }
+                if (source is not { IsDrm: true } || level == PrefetchLevel.Manifest) return;
 
-            StartLicense(source);
-            if (level == PrefetchLevel.Full) _ = PrepareQuietlyAsync(source, atMs);
+                // The key the manifest named is only known now: the slot learns it, so a load that knows the KEY and
+                // never saw the row still recognises this prepare as its own.
+                if (prepare) NamePrepare(in row, source.Key);
+                StartLicense(source);
+                if (!prepare) return;
+                handedOver = true;                 // from here the slot belongs to PrepareQuietlyAsync, which always frees it
+                _ = PrepareQuietlyAsync(source, atMs);
+            }
+            finally { if (prepare && !handedOver) DisarmPrepare(in row); }
         }
 
         /// <summary>The licence at MANIFEST time (PlayReady's proactive acquisition): by the moment the user asks for the
@@ -568,25 +628,122 @@ public static partial class Playback
             catch (Exception ex) { Log.Warn("video", "licence start failed", ex); }
         }
 
-        static async Task PrepareQuietlyAsync(VideoSource source, int atMs)
+        /// <summary>Claim the prefetch slot for <paramref name="row"/>, on the UI thread, before the work that fills it
+        /// is queued. False when a prepare is already claimed — one at a time, and the schedule re-asks on its next
+        /// edge.</summary>
+        static bool ArmPrepare(in RowKey row)
         {
-            try
+            IPreparedItem? superseded = null;
+            lock (s_gate)
             {
-                IPreparedItem item = await Backend.PrepareAtAsync(BuildMediaSource(source), TimeSpan.FromMilliseconds(atMs)).ConfigureAwait(false);
-                IPreparedItem? superseded;
-                lock (s_gate)
+                if (s_preparingGate is not null) return false;
+                s_preparingGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                s_preparingRow = row;
+                s_dropPreparing = false;
+                if (s_prepared is not null && !string.Equals(s_preparedKey, row.Key, StringComparison.Ordinal))
                 {
-                    superseded = ReferenceEquals(s_prepared, item) ? null : s_prepared;
-                    s_prepared = item;
-                    s_preparedKey = source.Key;
+                    superseded = s_prepared;
+                    s_prepared = null;
+                    s_preparedKey = "";
                 }
-                // An item the open already took disposes as a no-op; one nobody opened frees its store and its runtime ref.
-                if (superseded is not null) await superseded.DisposeAsync().ConfigureAwait(false);
             }
-            catch (Exception ex) { Log.Warn("video", "prefetch prepare failed", ex); }
+            if (superseded is not null) _ = superseded.DisposeAsync();
+            return true;
         }
 
-        /// <summary>Drop a prepared session that is not for <paramref name="keepKey"/> (a load of something else, a shutdown).</summary>
+        /// <summary>The slot learnt the key its row resolves to (api thread).</summary>
+        static void NamePrepare(in RowKey row, string key)
+        {
+            lock (s_gate)
+                if (s_preparingGate is not null && PrefetchRace.Same(in s_preparingRow, in row))
+                    s_preparingRow = s_preparingRow with { Key = key };
+        }
+
+        /// <summary>Give the slot back unfilled (the work was refused, the row has no DRM video, the resolve failed).</summary>
+        static void DisarmPrepare(in RowKey row)
+        {
+            bool ours;
+            lock (s_gate) ours = s_preparingGate is not null && PrefetchRace.Same(in s_preparingRow, in row);
+            if (ours) ClosePrepareSlot();
+        }
+
+        /// <summary>The registration is done (or will never happen): release anyone waiting to adopt this prepare. The
+        /// slot itself stays claimed until the item lands.</summary>
+        static void OpenPrepareGate()
+        {
+            TaskCompletionSource? gate;
+            lock (s_gate) gate = s_preparingGate;
+            gate?.TrySetResult();
+        }
+
+        /// <summary>Free the slot. The gate is completed on the way out whatever happened, so a load waiting to adopt can
+        /// never hang on a prepare that died.</summary>
+        static void ClosePrepareSlot()
+        {
+            TaskCompletionSource? gate;
+            lock (s_gate)
+            {
+                gate = s_preparingGate;
+                s_preparingGate = null;
+                s_preparingRow = RowKey.None;
+                s_dropPreparing = false;
+            }
+            gate?.TrySetResult();
+        }
+
+        static async Task PrepareQuietlyAsync(VideoSource source, int atMs)
+        {
+            ValueTask<IPreparedItem> pending;
+            try { pending = Backend.PrepareAtAsync(BuildMediaSource(source), TimeSpan.FromMilliseconds(atMs)); }
+            catch (Exception ex) { Log.Warn("video", "prefetch prepare failed", ex); ClosePrepareSlot(); return; }
+
+            OpenPrepareGate();                     // the backend has the session now — an adopting load may stop waiting
+            try { Landed(await pending.ConfigureAwait(false), source.Key); }
+            catch (Exception ex) { Log.Warn("video", "prefetch prepare failed", ex); ClosePrepareSlot(); }
+        }
+
+        /// <summary>THE landing place for a prepared session, and the only one (G1). It is parked for the load it was
+        /// fetched for, or disposed where it stands — <see cref="s_dropPreparing"/> is set by a load that claimed a
+        /// DIFFERENT row while this prepare was still in the air, so the session is dead before anyone could have seen
+        /// it. An item the open already took disposes as a no-op; one nobody opened frees its segment store and its
+        /// runtime reference.</summary>
+        static void Landed(IPreparedItem item, string key)
+        {
+            IPreparedItem? dead;
+            lock (s_gate)
+            {
+                bool keep = !s_dropPreparing;
+                dead = keep ? (ReferenceEquals(s_prepared, item) ? null : s_prepared) : item;
+                if (keep) { s_prepared = item; s_preparedKey = key; }
+            }
+            ClosePrepareSlot();
+            if (dead is not null) _ = dead.DisposeAsync();
+        }
+
+        /// <summary>G1 rule 2, the load's half. A prepare aimed at THIS row is adopted — the load waits (briefly, and
+        /// only when it is actually going to open) for the backend to have registered it, and the open then takes that
+        /// session by its init url. One aimed anywhere else is marked dead on arrival. Every path through here leaves the
+        /// in-flight prepare either owned by this load or condemned; none leaves it running for nobody.</summary>
+        static async Task ResolvePrepareAsync(RowKey loading, bool opening)
+        {
+            Task? gate = null;
+            lock (s_gate)
+            {
+                switch (PrefetchRace.FateOf(s_preparingGate is not null, in s_preparingRow, in loading))
+                {
+                    case PrepareFate.Drop: s_dropPreparing = true; break;
+                    case PrepareFate.Adopt when opening: gate = s_preparingGate!.Task; break;
+                }
+            }
+            if (gate is null) return;
+            try { await gate.WaitAsync(TimeSpan.FromMilliseconds(WarmPolicy.AdoptBudgetMs)).ConfigureAwait(false); }
+            catch (TimeoutException) { Log.Warn("video", "the prepare this switch would adopt never registered — opening cold"); }
+            catch (Exception ex) { Log.Warn("video", "adopting the prepared session failed", ex); }
+        }
+
+        /// <summary>Drop the PARKED session unless it is for <paramref name="keepKey"/> (a load of something else, a
+        /// shutdown, the shed). A session the open already took disposes as a no-op; one nobody opened frees its segment
+        /// store and its runtime reference here.</summary>
         static void ReleasePrepared(string? keepKey)
         {
             IPreparedItem? item;
@@ -600,6 +757,14 @@ public static partial class Playback
             _ = item.DisposeAsync();
         }
 
+        /// <summary>Condemn whatever is still in the air: it is disposed the moment it lands. The other half of "adopted
+        /// or disposed" — <see cref="ResolvePrepareAsync"/> resolves every prepare a LOAD races, and this resolves the
+        /// ones nothing will ever load (a shed, a shutdown).</summary>
+        static void CondemnPreparing()
+        {
+            lock (s_gate) if (s_preparingGate is not null) s_dropPreparing = true;
+        }
+
         /// <summary>Shut down for good. Drains the pump so a session is not torn down mid-open.</summary>
         public static void Shutdown()
         {
@@ -609,7 +774,9 @@ public static partial class Playback
             StopTicker();
             try { s_ticker?.Dispose(); } catch { }
             s_ticker = null;
-            ReleasePrepared(keepKey: null);
+            DisposeWarmTimer();
+            CondemnPreparing();                    // whatever is still landing dies on arrival…
+            ReleasePrepared(keepKey: null);        // …and whatever landed already is freed here
             DrainDisposals();
         }
 
@@ -666,7 +833,13 @@ public static partial class Playback
             req = req with { StartAtMs = HostRules.StartAt(req.StartAtMs, req.Source.DrmDescriptor?.DurationMs ?? 0) };
             SwitchAction plan = Plan(new SwitchInput(live is not null, faulted, liveKey, req.Source.Key, req.StartAtMs));
             Interlocked.Exchange(ref s_switchAtMs, FrameNowMs());
-            LogLine(new VideoLog.SwitchBegin(Tail(req.Source.Key), req.StartAtMs, plan, PrefetchedFull(req.Source.Key), req.Epoch));
+
+            // G1 rule 2, BEFORE the log line and before any open: adopt the prepare this very switch was fetched for, or
+            // condemn one aimed elsewhere. `warm=` is then the truth about the open that follows — which is what the
+            // §4.3 gate reads it for.
+            var row = new RowKey(req.Source.PlayableUri, req.Source.Key);
+            await ResolvePrepareAsync(row, plan is SwitchAction.Switch or SwitchAction.Rebuild).ConfigureAwait(false);
+            LogLine(new VideoLog.SwitchBegin(Tail(req.Source.Key), req.StartAtMs, plan, WarmFor(req.Source), req.Epoch));
             ReleasePrepared(keepKey: req.Source.Key);
 
             switch (plan)
@@ -690,9 +863,21 @@ public static partial class Playback
             }
         }
 
-        static bool PrefetchedFull(string key)
+        /// <summary>Was the warm path ACTUALLY in hand for this load — the `warm=` of `[video] switch.begin`? Either a
+        /// prepared session for its row is parked or registered (the open takes it by init url and the switch is one
+        /// attach), or its content key is already usable in the runtime's cache (the licence round trip, ~80 % of a cold
+        /// switch, is already paid). `warm=false` therefore means exactly one thing: this switch pays for everything.
+        /// <para>The runtime's own lock is taken OUTSIDE <see cref="s_gate"/>, never nested under it.</para></summary>
+        static bool WarmFor(VideoSource source)
         {
-            lock (s_gate) return s_prepared is not null && string.Equals(s_preparedKey, key, StringComparison.Ordinal);
+            lock (s_gate)
+            {
+                if (s_prepared is not null && string.Equals(s_preparedKey, source.Key, StringComparison.Ordinal)) return true;
+                if (s_preparingGate is { Task.IsCompleted: true } && !s_dropPreparing
+                    && string.Equals(s_preparingRow.Key, source.Key, StringComparison.Ordinal)) return true;
+            }
+            return source.DrmDescriptor?.DefaultKid is { Length: > 0 } kid
+                && ProtectedVideoRuntime.Shared.LicenseStateFor(kid) == LicenseCacheState.Usable;
         }
 
         static async Task BuildAndOpenAsync(LoadRequest req, long epoch)

@@ -358,12 +358,14 @@ public readonly partial struct Track
         }.Interactive(Interaction.Subtle);
     }
 
-    /// <summary>The thumb as <c>Controls.Artwork</c> lays it out (a square decode at 2× the displayed edge, the small-edge
-    /// placeholder tile beneath), with the url bound.</summary>
+    /// <summary>The thumb as <c>Controls.Artwork</c> lays it out (a square decode at the ONE shared
+    /// <see cref="RowArtDecodePx"/> — see its doc for why it is not <c>art * 2</c> — with the small-edge placeholder tile
+    /// beneath), with the url bound: the row's own cover, or its album's when it has none (<see cref="RowArtUrl"/>). The
+    /// tint below reads the SAME url, so a fallback cover is graded by its own palette and not left neutral.</summary>
     static Element BoundArtwork(BoundRow r, float art)
     {
-        int decodePx = (int)(art * 2f);
-        Func<string?> url = () => Controls.ArtUrl(r.P.Track.ForDisplay.ImageId);
+        const int decodePx = RowArtDecodePx;
+        Func<string?> url = () => RowArtUrl(r.P.Track.ForDisplay);
         return new BoxEl
         {
             ZStack = true, Width = art, Height = art, ClipToBounds = true,

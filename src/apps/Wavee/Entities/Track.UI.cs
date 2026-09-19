@@ -58,6 +58,11 @@ public readonly partial struct Track
         public const string Num = "c.num", Heart = "c.heart", Art = "c.art", Title = "c.title", Artist = "c.artist",
             Album = "c.album", By = "c.by", Date = "c.date", Video = "c.video", Plays = "c.plays", Tempo = "c.tempo",
             Duration = "c.dur", More = "c.more", Expand = "c.expand";
+        /// <summary>The TRAILING ♥ lane. Its OWN key, not <see cref="Heart"/>'s: the two are mutually exclusive, so
+        /// reusing one key would let the keyed diff MOVE the leading heart's node into the trailing ordinal instead of
+        /// remounting it — and the two cells differ in exactly the thing mount-only bound wiring decides (the reveal
+        /// wrapper's bound <c>Opacity</c>). Distinct keys make that swap a remount.</summary>
+        public const string HeartTrailing = "c.heart.t";
     }
 
     /// <summary>The per-row playback/library state the cells reflect.</summary>
@@ -111,9 +116,10 @@ public readonly partial struct Track
 
     /// <summary>THE width tracks for a column set, cached per (set, art): the header and the rows read the SAME array
     /// instance (ch 04 §0.1), and a scroll frame never rebuilds one (ch 01 §9, "Where the plan is wrong" 7). Order:
-    /// # · ♥ · art · Title* · Artist* · Album* · By · Date · Plays · Tempo · Duration · Video · Actions · Expand. The key
-    /// space is finite (a dozen flags × seven tiers × four art rungs), so the cache is never trimmed — trimming would
-    /// hand the header and the rows two different instances for one shape.</summary>
+    /// # · ♥ · art · Title* · Artist* · Album* · By · Date · Plays · Tempo · ♥(trailing) · Duration · Video · Actions ·
+    /// Expand. The key space is finite (a dozen flags × seven tiers × four art rungs), so the cache is never trimmed —
+    /// trimming would hand the header and the rows two different instances for one shape. The KEY is the whole
+    /// <see cref="ColumnSet"/>, so <see cref="ColumnSet.HeartTrailing"/> forks the cache by construction.</summary>
     public static TrackSize[] TracksFor(in ColumnSet set, float art)
     {
         var key = (set, art);
@@ -132,6 +138,9 @@ public readonly partial struct Track
         // The SAME gate the cell uses, so the width track and the cell can never disagree (a mismatch shifts every
         // later column).
         if (RowMetrics.ShowTempo(in set)) arr[i++] = TrackSize.Px(Lane.Tempo);
+        // The trailing ♥ — the SAME gate the cell reads, and it sits IMMEDIATELY before the duration (the reader's
+        // 28 | 1fr | 32 | 52), never after it: the duration is the row's last fact, and a heart past it reads as chrome.
+        if (RowMetrics.ShowHeartTrailing(in set)) arr[i++] = TrackSize.Px(Lane.HeartTrailing);
         arr[i++] = TrackSize.Px(Lane.Duration);
         if (set.Video) arr[i++] = TrackSize.Px(Lane.Video);
         if (set.Actions) arr[i++] = TrackSize.Px(Lane.Actions);
@@ -141,10 +150,16 @@ public readonly partial struct Track
     }
 
     /// <summary>How many cells (and width tracks) a set produces. ONE count for both, so a row always emits exactly one
-    /// cell per track.</summary>
+    /// cell per track.
+    /// <para>THREE builders size themselves from this: <see cref="Grid"/>, the bound twin <c>BoundGrid</c>
+    /// (Track.UI.Bound.cs) and the table's column header (Track.Table.Chrome.cs). Only <see cref="Grid"/> emits the
+    /// TRAILING ♥ cell today, because only the eager reader row sets <see cref="ColumnSet.HeartTrailing"/> — a bound
+    /// TABLE that sets it must gain the matching cell in <c>BoundGrid</c> and an empty header cell in the same
+    /// position first, or its cells and its tracks fall out of step by one.</para></summary>
     static int CellCount(in ColumnSet set)
         => 3 + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
            + (set.By ? 1 : 0) + (set.Date ? 1 : 0) + (set.Plays ? 1 : 0) + (RowMetrics.ShowTempo(in set) ? 1 : 0)
+           + (RowMetrics.ShowHeartTrailing(in set) ? 1 : 0)
            + (set.Video ? 1 : 0) + (set.Actions ? 1 : 0) + (set.Expand ? 1 : 0);
 
     // ══ 2. THE GRID ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -155,17 +170,42 @@ public readonly partial struct Track
     /// <see cref="MoreEnabled"/> would read false. <see cref="Art"/> 0 is treated as <c>RowMetrics.ThumbSize</c> for the
     /// same reason.</para>
     /// <para><see cref="AddedAt"/> and <see cref="NowUnixSeconds"/> are UNIX seconds; <see cref="NowUnixSeconds"/> 0
-    /// resolves the live clock (<c>Store.ToUnix(Entities.Now)</c> — <c>Entities.Now</c> itself is APP seconds).</para></summary>
+    /// resolves the live clock (<c>Store.ToUnix(Entities.Now)</c> — <c>Entities.Now</c> itself is APP seconds).</para>
+    /// <para><see cref="HeartRevealOnHover"/> applies to the TRAILING heart lane only
+    /// (<see cref="ColumnSet.HeartTrailing"/>): a liked row paints its heart at rest, an unliked one reveals the outline
+    /// on ROW hover. The leading ♥ lane is unaffected — it is painted at rest on every row, which is ch 01 §0.3.</para></summary>
     public readonly record struct GridOptions(
         bool ShowTrackArtist = false, float Art = RowMetrics.ThumbSize, Action? OnPlay = null, Action? OnLike = null,
         int AddedAt = 0, User AddedBy = default, byte ChartStatus = 0, bool LikePop = false, Element? ActionsCell = null,
         bool ShowAlbumInMeta = false, bool ShowListBadges = false, Element? ExpandCell = null, bool MoreEnabled = true,
-        IReadSignal<bool>? HoverPaused = null, Func<ColorF>? Accent = null, long NowUnixSeconds = 0);
+        IReadSignal<bool>? HoverPaused = null, Func<ColorF>? Accent = null, long NowUnixSeconds = 0,
+        bool HeartRevealOnHover = false);
 
     const float RowNotYetOutOpacity = 0.45f;   // ch 01 §0.7: the whole title column steps back, not a colour swap
     const float RowEqualizerHeight = 13f;
     const float RowTransportBox = 24f;
     const float RowMoreBox = 28f;
+
+    /// <summary>ONE decode size for every row thumbnail, on every density, in both the eager <see cref="Grid"/> and the
+    /// bound <c>BoundArtwork</c>. It used to be <c>art * 2</c>, and <c>Controls.Artwork</c>'s own doc says why that was
+    /// the bug: an explicit <c>decodePx</c> decodes a SQUARE at that exact literal and "a card and a detail cover that
+    /// pass the SAME literal resolve to ONE cached texture and neither re-decodes". The art ladder is 32 · 40 · 48
+    /// (<c>TableRules.ArtSizeFor</c>), so <c>art * 2</c> forked the SAME cover into three textures — 64, 80 and 96 —
+    /// and a density change re-decoded every visible row against a 40 MB image cache on Weak-tier GPUs. 96 is the top of
+    /// the ladder (Comfortable 48 DIP at 2×), so no density is ever under-sampled.</summary>
+    internal const int RowArtDecodePx = 96;
+
+    /// <summary>The cover a row paints: its OWN image, else its album's (ch 01 GAP, the same fallback
+    /// <c>Track.Table.Chrome.cs</c>'s pane thumbs and <c>Artist.Page.cs</c>'s video rail already make). A track row is
+    /// an entry in an album, and a producer that staged the row without a cover — a playlist item, a search hit, a
+    /// terminal "unavailable" verdict — leaves nothing but the flat placeholder tint behind otherwise. The album handle
+    /// is checked for validity first: <c>Column&lt;T&gt;</c> is an unguarded slab, so <c>Album.ImageId</c> on
+    /// <c>Table.None</c> is not a read to make. The bind re-fires when a late album row lands because
+    /// <c>RowPresentation</c> carries the album's <c>Version</c>.
+    /// <para>Public, not internal: this assembly has no <c>InternalsVisibleTo</c> (see <c>Playlist.UI.cs</c>), and the
+    /// fallback is a rule worth a fact rather than a rule worth re-deriving per surface.</para></summary>
+    public static string? RowArtUrl(Track d)
+        => Controls.ArtUrl(d.ImageId) ?? (d.Album.IsValid ? Controls.ArtUrl(d.Album.ImageId) : null);
 
     /// <summary>THE row cell (ch 01 §0.1, TrackRow.Grid). Plain and diffable — no <c>Animate</c> — so a host re-render
     /// patches cells in place. Every cell is keyed with <see cref="CellKey"/>; every wrapper takes <c>MinWidth = 0</c> +
@@ -210,9 +250,8 @@ public readonly partial struct Track
             cells[i++] = RowCenterCell(Heart(st.Saved, o.OnLike, o.LikePop, classic), CellKey.Heart);
 
         if (set.Thumb)
-            // decodePx tracks the DISPLAYED edge: a Comfortable 48-DIP thumb decodes at 96 px, not a stale 64.
-            cells[i++] = RowCenterCell(Controls.Artwork(Controls.ArtUrl(d.ImageId), art, art, Radii.Control,
-                                                        decodePx: (int)(art * 2f)), CellKey.Art);
+            cells[i++] = RowCenterCell(Controls.Artwork(RowArtUrl(d), art, art, Radii.Control,
+                                                        decodePx: RowArtDecodePx), CellKey.Art);
 
         bool showMeta = !classic && (artistInTitle || o.ShowAlbumInMeta || badge);
         Element titleLine = classic
@@ -251,6 +290,11 @@ public readonly partial struct Track
                                                    classic, tertiaryInk), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set))
             cells[i++] = RowEndCell(TempoCell(t, classicNow ? Tok.AccentTextPrimary : null, classic), CellKey.Tempo);
+
+        // The TRAILING ♥ — the same heart, on the right, immediately before the duration (the library reader's
+        // 28 | 1fr | 32 | 52). Mutually exclusive with the leading lane; the gate is shared with the width track.
+        if (RowMetrics.ShowHeartTrailing(in set))
+            cells[i++] = RowCenterCell(TrailingHeart(t, in st, in o, classic), CellKey.HeartTrailing);
 
         // A ruled-unavailable row with no instant states "Unavailable"; a pending track states WHEN (the live instant)
         // rather than a dash; 0 ms is the same unknown as a zero count. Unplayable is tested FIRST: with no instant the
@@ -477,6 +521,32 @@ public readonly partial struct Track
                 },
             ],
         }.Interactive(Interaction.Subtle);
+
+    /// <summary>The TRAILING ♥ cell's content (<see cref="ColumnSet.HeartTrailing"/>). At
+    /// <see cref="GridOptions.HeartRevealOnHover"/> false it is the plain <see cref="Heart"/> — painted at rest either
+    /// way, exactly like the leading lane. At true it wears the library reader's reveal: a LIKED row keeps its filled
+    /// heart at rest, an UNLIKED one is invisible until the ROW is hovered and then fades its outline in.
+    /// <para>The reveal rides a NON-interactive wrapper around the heart's own click target, so the hover progress it
+    /// reads is the ROW skin's (the PointerBit every <c>HoverOpacity</c> descendant inherits — the same idiom
+    /// <see cref="NumberCell"/>'s rest/reveal layers use, and the reason the reveal survives the pointer crossing onto
+    /// the heart itself). <c>HoverOpacity</c> is 1 in BOTH states, so the one thing that differs is the REST opacity:
+    /// 1 → 1 is a liked heart that does not move, 0 → 1 is the reveal.</para>
+    /// <para>That rest opacity is a BOUND <c>Prop</c> over <see cref="LikedNow"/> — the same subscribing read
+    /// <see cref="StateOf"/> makes — and not <c>st.Saved</c>, which is a value frozen when this element record was
+    /// built. An optimistic like writes the Liked edge and the bound channel re-resolves in the same frame, with no
+    /// render and no dependence on whoever owns this row re-running.</para></summary>
+    static Element TrailingHeart(Track t, in RowState st, in GridOptions o, bool classic)
+    {
+        Element heart = Heart(st.Saved, o.OnLike, o.LikePop, classic);
+        if (!o.HeartRevealOnHover) return heart;
+        var track = t;
+        return new BoxEl
+        {
+            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Opacity = Prop.Of(() => LikedNow(track) ? 1f : 0f), HoverOpacity = 1f,
+            Children = [heart],
+        };
+    }
 
     /// <summary>Per-slot like-edge detector: true only when the SAME row flipped unsaved → saved since this slot's last
     /// render. A recycle binds a different slot, so scrolling never reports an edge (ch 01 §9, parity 22).</summary>
@@ -936,9 +1006,12 @@ public readonly partial struct Track
     // ══ 4. THE EAGER ROW ═════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>What an eager row varies. Construct with a named argument (see <see cref="GridOptions"/>'s record-struct
-    /// note): <c>default</c> would read <see cref="ShowTrackArtist"/> false.</summary>
+    /// note): <c>default</c> would read <see cref="ShowTrackArtist"/> false.
+    /// <para><see cref="HeartRevealOnHover"/> is forwarded verbatim to <see cref="GridOptions.HeartRevealOnHover"/>: it
+    /// reaches the TRAILING ♥ lane only, and false (the default) leaves every existing caller's row untouched.</para></summary>
     public readonly record struct EagerRowOptions(bool ShowTrackArtist = true, bool Zebra = false, Element? ActionsCell = null,
-                                                  Action? OnLike = null, Func<ContextMenuModel?>? Menu = null);
+                                                  Action? OnLike = null, Func<ContextMenuModel?>? Menu = null,
+                                                  bool HeartRevealOnHover = false);
 
     /// <summary>A self-contained, EAGER interactive row for short preview lists (Home "Top tracks", Recents) — the SAME
     /// <see cref="Grid"/> inside a hover container that is the interactive ancestor, so the transport reveal, the
@@ -960,6 +1033,7 @@ public readonly partial struct Track
             => other is not null && other.Track == Track && other.DisplayIndex == DisplayIndex && other.Set == Set
                && ReferenceEquals(other.Tracks, Tracks) && other.RowH.Equals(RowH)
                && other.Options.ShowTrackArtist == Options.ShowTrackArtist && other.Options.Zebra == Options.Zebra
+               && other.Options.HeartRevealOnHover == Options.HeartRevealOnHover
                && ReferenceEquals(other.Options.ActionsCell, Options.ActionsCell);
 
         public override int GetHashCode() => HashCode.Combine(Track.Slot, DisplayIndex, Set, RowH);
@@ -984,7 +1058,53 @@ public readonly partial struct Track
             Action like = _like ??= LikeLatest;
             Func<ContextMenuModel?> menu = _menu ??= MenuLatest;
 
-            _ = Entities.Current.Tracks.Changed.Value;   // a hydrating title / duration repaints the row
+            // C1 (RC9 / D10): a whole-table `Tracks.Changed.Value` read here made EVERY mounted eager row re-render
+            // on every landing batch (14-25 rows x ~10 frames per click). `stamp` still WAKES on every batch — it
+            // reads `Tracks.Changed`, `Edges.TrackArtists.Changed` and `ScopeEpoch` — but a `Memo` only republishes
+            // (and only then does THIS row's render effect re-run) when the computed VALUE actually differs, so a
+            // batch that touched other rows costs this one nothing beyond the array reads below.
+            // Placed AFTER `_latest = p` (not up with `UsePropsOrDefault`/`UseSignal`/`UseContext`) on purpose:
+            // `Memo<T>`'s constructor calls `Recompute()` eagerly, so the FIRST time this hook is reached it must see
+            // this host's real props, or the memo would permanently cache the slot-0 sentinel's version. The hook's
+            // call SITE (file+line) stays fixed every render — only reachability is conditional on `p`, same as the
+            // whole-table read it replaces — so relative order among the earlier, always-called hooks is unchanged.
+            // The compute closure reads `_latest` (a field), never a value captured at construction — same as
+            // `PlayLatest`/`LikeLatest`/`MenuLatest` below. This is not belt-and-braces: `Recents.Page.cs`'s
+            // `RowSlot` (a virtualized, RECYCLED row scope) calls `SingleRow`/`ChildRow` -> this `EagerRow` with NO
+            // `Key` of its own, so when that scope recycles to a different track `EagerTrackRowHost` is REUSED in
+            // place — its props are re-pushed (a new `EagerRowProps`, new `Track.Slot`), never remounted. A slot
+            // captured once at this memo's construction would silently keep scoring the row the host was FIRST built
+            // for, forever. Reading `_latest.Track.Slot` live is what keeps the memo correct across that recycle.
+            //
+            // Two sources, confirmed separately:
+            //  - Title / duration / explicit / image live on the Tracks table itself: `Track.cs:591`'s
+            //    `t.Applied(slot, identity, auth, ref t.IdentityAuthority)` bumps `Version[slot]` for the WHOLE
+            //    Identity group (title, artist line, image, duration, flags incl. explicit) on every commit, so
+            //    `Tracks.Version[slot]` alone covers every column this row paints from the Tracks table.
+            //  - The artists line does NOT: `Grid`'s `artistInTitle`/`set.Artist` path calls `MetadataLine`/
+            //    `ArtistLinks`, which read `t.ArtistSlots` -> `Edges.TrackArtists.Targets(slot)` directly — a CSR
+            //    edge, not a Tracks column. `Track.Table.cs:1861-1867`'s bound row documents the exact same row
+            //    needing this: a disk-restored row no longer claims the `Artists` bit, so the edge can land in a
+            //    LATER drain than the row's own `Applied` call, and `Tracks.Version[slot]` does not move when it
+            //    does. `Edges.TrackArtists.Version(slot)` is the edge's own per-parent version (`Edges.cs:279`,
+            //    woken by its own `Changed`), so folding it in here keeps the credit line reactive without going
+            //    back to a whole-table read.
+            // Now-playing / liked state need NO addition: `StateOf` (used below) already carries its own narrow
+            // subscriptions (`Playback.CurrentId` always; `IsPlaying`/`Buffering`/`Pending.Load` only on the
+            // now-playing row) and `LikedNow` reads the Liked EDGE's own `Changed` (Track.UI.cs:108-113) — the heart
+            // was already independent of this whole-table read, not something this change has to preserve.
+            var stamp = UseComputed(() =>
+            {
+                _ = Entities.ScopeEpoch.Value;                            // a scope switch invalidates every slot
+                _ = Entities.Current.Tracks.Changed.Value;
+                _ = Entities.Current.Edges.TrackArtists.Changed.Value;
+                var tracks = Entities.Current.Tracks;
+                int slot = _latest?.Track.Slot ?? 0;
+                uint trackVer = (uint)slot < (uint)tracks.Count ? tracks.Version[slot] : 0u;
+                uint artistVer = Entities.Current.Edges.TrackArtists.Version(slot);
+                return (trackVer, artistVer);
+            });
+            _ = stamp.Value;   // subscribes; republishes only when THIS row's stamp moved
             var t = p.Track;
             var set = p.Set;
             var st = StateOf(t);
@@ -995,7 +1115,7 @@ public readonly partial struct Track
                 ShowTrackArtist: p.Options.ShowTrackArtist, Art: RowMetrics.ThumbSize,
                 OnPlay: play, OnLike: like, LikePop: pop,
                 ActionsCell: p.Options.ActionsCell ?? (set.Actions ? MoreCell(true, set.Classic) : null),
-                MoreEnabled: true, HoverPaused: hovered);
+                MoreEnabled: true, HoverPaused: hovered, HeartRevealOnHover: p.Options.HeartRevealOnHover);
             var grid = Grid(t, p.DisplayIndex, in st, in set, p.Tracks, p.RowH,
                             TitleCell(t, st.IsNow, set.Classic, marquee: false), in options);
 
@@ -1217,7 +1337,9 @@ public readonly partial struct Track
                 Corners = CornerRadius4.All(radius),
                 Children =
                 [
-                    Controls.Artwork(Controls.ArtUrl(t.ImageId), art, art, radius, decodePx: (int)MathF.Max(64f, art * 2f)),
+                    // Same fallback as the table row (`RowArtUrl`) and as the artist page's video rail: an art-FORWARD
+                    // cell with a flat placeholder where the sleeve should be is the worst place to lose it.
+                    Controls.Artwork(RowArtUrl(t), art, art, radius, decodePx: (int)MathF.Max(64f, art * 2f)),
                     overlay,
                 ],
             };

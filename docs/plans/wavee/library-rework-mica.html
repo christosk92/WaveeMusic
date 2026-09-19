@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wavee Collection Browser</title>
+<style>
+  /* ───────── lab + Wavee tokens (light first, dark below) ───────── */
+  :root{
+    --lab-bg:#e8ebf1; --lab-grad:linear-gradient(160deg,#dfe6f3 0%,#eef0f5 45%,#e3e9f4 100%);
+    --lab-panel:rgba(255,255,255,.66); --lab-stroke:rgba(0,0,0,.08); --lab-text:#1b1f27; --lab-muted:#5a6270;
+    --good:#1f8f4f; --bad:#b3261e; --warn:#8a5a00;
+
+    --mica:rgba(243,246,251,.86); --mica-edge:rgba(0,0,0,.10);
+    --layer:rgba(255,255,255,.55);      /* Tok.FillLayerDefault  (navigator) */
+    --card:rgba(255,255,255,.80);       /* Tok.FillCardDefault   (reading panes) */
+    --stroke-card:rgba(0,0,0,.09);      /* Tok.StrokeCardDefault (the hairline) */
+    --stroke-div:rgba(0,0,0,.06);
+    --ctrl:rgba(0,0,0,.045); --ctrl-hover:rgba(0,0,0,.08); --ctrl-on:rgba(0,0,0,.11);
+    --text-1:#1b1b1b; --text-2:#5d6470; --text-3:#8a919c;
+    --accent:#0f6cbd; --accent-text:#0a5aa0; --accent-subtle:rgba(15,108,189,.13); --on-accent:#fff;
+    --sel-plate:rgba(0,0,0,.05);
+    --shadow:0 18px 44px rgba(20,30,50,.20);
+    --shimmer-a:rgba(0,0,0,.06); --shimmer-b:rgba(0,0,0,.11);
+    --eq:#0f6cbd;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --lab-bg:#0e1014; --lab-grad:linear-gradient(160deg,#161c2a 0%,#111520 45%,#0e1219 100%);
+      --lab-panel:rgba(27,30,37,.82); --lab-stroke:rgba(255,255,255,.09); --lab-text:#f5f6f8; --lab-muted:#9da4b0;
+      --good:#7ee2a8; --bad:#ff9d9d; --warn:#ffd479;
+      --mica:rgba(32,32,36,.90); --mica-edge:rgba(255,255,255,.10);
+      --layer:rgba(255,255,255,.035); --card:rgba(255,255,255,.055);
+      --stroke-card:rgba(255,255,255,.09); --stroke-div:rgba(255,255,255,.07);
+      --ctrl:rgba(255,255,255,.055); --ctrl-hover:rgba(255,255,255,.10); --ctrl-on:rgba(255,255,255,.14);
+      --text-1:#f4f4f4; --text-2:#b6b6b6; --text-3:#8a8a8a;
+      --accent:#4cc2ff; --accent-text:#6fcbff; --accent-subtle:rgba(76,194,255,.16); --on-accent:#001b28;
+      --sel-plate:rgba(255,255,255,.06);
+      --shadow:0 20px 50px rgba(0,0,0,.55);
+      --shimmer-a:rgba(255,255,255,.06); --shimmer-b:rgba(255,255,255,.12);
+      --eq:#4cc2ff;
+    }
+  }
+  :root[data-theme="dark"]{
+    --lab-bg:#0e1014; --lab-grad:linear-gradient(160deg,#161c2a 0%,#111520 45%,#0e1219 100%);
+    --lab-panel:rgba(27,30,37,.82); --lab-stroke:rgba(255,255,255,.09); --lab-text:#f5f6f8; --lab-muted:#9da4b0;
+    --good:#7ee2a8; --bad:#ff9d9d; --warn:#ffd479;
+    --mica:rgba(32,32,36,.90); --mica-edge:rgba(255,255,255,.10);
+    --layer:rgba(255,255,255,.035); --card:rgba(255,255,255,.055);
+    --stroke-card:rgba(255,255,255,.09); --stroke-div:rgba(255,255,255,.07);
+    --ctrl:rgba(255,255,255,.055); --ctrl-hover:rgba(255,255,255,.10); --ctrl-on:rgba(255,255,255,.14);
+    --text-1:#f4f4f4; --text-2:#b6b6b6; --text-3:#8a8a8a;
+    --accent:#4cc2ff; --accent-text:#6fcbff; --accent-subtle:rgba(76,194,255,.16); --on-accent:#001b28;
+    --sel-plate:rgba(255,255,255,.06);
+    --shadow:0 20px 50px rgba(0,0,0,.55);
+    --shimmer-a:rgba(255,255,255,.06); --shimmer-b:rgba(255,255,255,.12);
+    --eq:#4cc2ff;
+  }
+
+  *{box-sizing:border-box}
+  html,body{min-height:100%}
+  body{margin:0; padding-block:30px 80px; padding-inline:20px; color:var(--lab-text);
+    background:var(--lab-bg) var(--lab-grad) fixed;
+    font-family:"Segoe UI Variable Text","Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif; font-size:14px; line-height:1.45}
+  h1,h2,h3,h4{font-family:"Segoe UI Variable Display","Segoe UI Variable","Segoe UI",system-ui,sans-serif; margin:0; text-wrap:balance}
+  .wrap{max-width:1500px; margin:0 auto}
+  .intro h1{font-size:30px; font-weight:600; letter-spacing:-.015em}
+  .intro p{color:var(--lab-muted); max-width:78ch; margin:8px 0 0}
+  .eyebrow{font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--lab-muted); font-weight:600}
+  code{background:rgba(127,127,127,.14); padding:1px 5px; border-radius:4px; font-size:12.5px}
+  a{color:var(--accent-text)}
+
+  /* lab controls */
+  .bar{display:flex; flex-wrap:wrap; gap:14px 22px; align-items:center; margin:20px 0 14px; padding:12px 14px;
+    background:var(--lab-panel); border:1px solid var(--lab-stroke); border-radius:10px; backdrop-filter:blur(20px)}
+  .grp{display:flex; align-items:center; gap:8px}
+  .grp .lbl{font-size:12px; color:var(--lab-muted)}
+  .seg{display:inline-flex; gap:2px; padding:2px; border-radius:6px; background:var(--ctrl); border:1px solid var(--stroke-card)}
+  .seg button{all:unset; cursor:pointer; font:inherit; font-size:12.5px; padding:4px 10px; border-radius:4px; color:var(--text-2)}
+  .seg button:hover{background:var(--ctrl-hover); color:var(--text-1)}
+  .seg button:focus-visible{outline:2px solid var(--accent)}
+  .seg button[aria-pressed="true"]{background:var(--ctrl-on); color:var(--text-1); font-weight:600}
+
+  /* ───────── the window ───────── */
+  .stage{overflow-x:auto; padding-bottom:6px}
+  .win{margin:0 auto; border-radius:10px; overflow:hidden; position:relative; isolation:isolate;
+    background:var(--mica); border:1px solid var(--mica-edge); box-shadow:var(--shadow);
+    -webkit-backdrop-filter:blur(30px) saturate(1.4); backdrop-filter:blur(30px) saturate(1.4);
+    display:grid; grid-template-rows:48px 1fr 72px; width:1440px; height:900px; max-width:100%;
+    transition:width .35s cubic-bezier(.2,.7,.2,1)}
+  .win::before{content:""; position:absolute; inset:0; z-index:-1; opacity:.55;
+    background:radial-gradient(60% 50% at 20% 0%, rgba(76,194,255,.14), transparent 70%), radial-gradient(50% 40% at 100% 100%, rgba(120,140,255,.10), transparent 70%)}
+  .win.w-md{width:1120px} .win.w-sm{width:760px}
+  .win svg{width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; flex:none}
+
+  .titlebar{display:flex; align-items:center; gap:4px; padding:0 6px 0 10px}
+  .tb{width:40px; height:34px; border-radius:6px; display:grid; place-items:center; color:var(--text-2)}
+  .tb:hover{background:var(--ctrl-hover); color:var(--text-1)}
+  .tab{display:flex; align-items:center; gap:8px; height:34px; padding:0 12px; font-weight:600; color:var(--text-1); position:relative}
+  .tab::after{content:""; position:absolute; left:10px; right:10px; bottom:0; height:3px; border-radius:2px; background:var(--accent)}
+  .omni{margin-left:auto; margin-right:auto; width:440px; max-width:34%; height:32px; border-radius:6px; background:var(--ctrl); border:1px solid var(--stroke-card);
+    display:flex; align-items:center; gap:8px; padding:0 10px; color:var(--text-3); font-size:13.5px}
+  .omni svg{margin-left:auto}
+  .avatar{width:28px; height:28px; border-radius:50%; background:radial-gradient(circle at 40% 35%, #f0c9a8, #6b4a2e 70%); margin:0 6px}
+  .tb.badge{position:relative} .tb.badge::after{content:"1"; position:absolute; top:5px; right:8px; min-width:15px; height:15px; border-radius:8px; background:var(--accent); color:var(--on-accent); font-size:10px; font-weight:700; display:grid; place-items:center}
+  .tb.close:hover{background:#c42b1c; color:#fff}
+
+  .body{display:grid; grid-template-columns:56px 1fr; min-height:0}
+  .rail{display:flex; flex-direction:column; align-items:center; gap:10px; padding:10px 0; border-right:1px solid var(--stroke-div)}
+  .rail i{width:34px; height:34px; border-radius:50%; display:block; opacity:.9}
+  .rail i.sq{border-radius:6px}
+  .content{min-width:0; min-height:0; display:grid; grid-template-columns:var(--leftW,340px) 16px 1fr; padding:8px 8px 0 0}
+  .win.w-sm .content{grid-template-columns:1fr; padding:8px 8px 0 8px}
+
+  /* navigator */
+  .nav{background:var(--layer); border-radius:8px 8px 0 0; display:flex; flex-direction:column; min-height:0; padding:12px 8px 0 12px}
+  .nav .title{font-family:"Segoe UI Variable Display","Segoe UI",sans-serif; font-size:28px; line-height:36px; font-weight:600; padding:4px 4px 0; display:flex; align-items:baseline; gap:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .nav .title small{font-size:14px; font-weight:400; color:var(--text-3); font-variant-numeric:tabular-nums}
+  .wordrail{display:flex; align-items:center; gap:14px; padding:12px 4px 0; font-size:13.5px; min-height:32px}
+  .wordrail button{all:unset; cursor:pointer; color:var(--text-1); opacity:.5; font:inherit; letter-spacing:-.005em; padding:2px 0; border-radius:3px; position:relative}
+  .wordrail button:hover{opacity:.85}
+  .wordrail button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .wordrail button[aria-pressed="true"]{opacity:1; font-weight:600}
+  .wordrail button[aria-pressed="true"]::after{content:""; position:absolute; left:0; right:0; bottom:-3px; height:2px; border-radius:1px; background:var(--accent)}
+  .wordrail .spacer{flex:1}
+  .wordrail .ico{all:unset; cursor:pointer; width:28px; height:28px; border-radius:4px; display:grid; place-items:center; color:var(--text-2)}
+  .wordrail .ico:hover{background:var(--ctrl-hover); color:var(--text-1)}
+  .wordrail .ico[aria-pressed="true"]{background:var(--ctrl-on); color:var(--text-1)}
+  .wordrail .ico svg{width:15px; height:15px}
+  .filter{margin:12px 4px 4px; height:32px; border-radius:5px; background:var(--ctrl); border:1px solid var(--stroke-card); display:flex; align-items:center; gap:8px; padding:0 8px 0 10px; color:var(--text-3); font-size:13.5px}
+  .filter input{all:unset; flex:1; min-width:0; color:var(--text-1); font:inherit}
+  .filter input::placeholder{color:var(--text-3)}
+  .listwrap{position:relative; flex:1; min-height:0; display:flex}
+  .list{flex:1; min-width:0; overflow:auto; padding:4px 0 12px 0; scrollbar-width:thin; scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ .list{scroll-behavior:auto} .win{transition:none} }
+  .row{display:flex; align-items:center; gap:12px; height:56px; padding:0 8px 0 4px; border-radius:5px; position:relative; cursor:default; color:var(--text-1)}
+  .row:hover{background:var(--ctrl)}
+  .row .art{width:40px; height:40px; border-radius:5px; flex:none}
+  .row .art.circ{border-radius:50%}
+  .row .two{flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; line-height:1.3}
+  .row .two i{font-style:normal; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px}
+  .row .two s{text-decoration:none; color:var(--text-2); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .row .n{font-size:12px; color:var(--text-3); font-variant-numeric:tabular-nums; flex:none}
+  .row.on{background:var(--sel-plate)}
+  .row.on::before{content:""; position:absolute; left:0; top:50%; width:3px; height:16px; margin-top:-8px; border-radius:1.5px; background:var(--accent)}
+  .row .np{width:12px; height:12px; flex:none; display:none}
+  .row.playing .np{display:block}
+  .letter{position:sticky; top:0; z-index:1; font-size:12px; font-weight:600; color:var(--text-3); letter-spacing:.06em; padding:10px 8px 4px; background:transparent}
+  .letter span{display:inline-block; padding:1px 6px; border-radius:4px; background:var(--card); border:1px solid var(--stroke-card)}
+  /* jump strip */
+  .jump{width:18px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; padding:6px 0; font-size:9.5px; color:var(--text-3); user-select:none; line-height:1.3}
+  .jump b{font-weight:400; cursor:pointer; padding:0 3px; border-radius:3px}
+  .jump b:hover{color:var(--text-1); background:var(--ctrl-hover)}
+  .jump b.on{color:var(--accent-text); font-weight:700}
+  .jump b.dim{opacity:.3; cursor:default}
+  .jump[hidden]{display:none}
+
+  /* grid view */
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:12px 10px; padding:6px 4px 12px 4px; flex:1; overflow:auto; align-content:start}
+  .card{position:relative; border-radius:6px; padding:6px; cursor:default}
+  .card:hover{background:var(--ctrl)}
+  .card.on{background:var(--sel-plate); outline:2px solid var(--accent); outline-offset:-2px}
+  .card .art{aspect-ratio:1; width:100%; border-radius:5px}
+  .card .art.circ{border-radius:50%}
+  .card i{display:block; font-style:normal; font-size:13px; margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .card s{display:block; text-decoration:none; color:var(--text-3); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+  /* grip */
+  .grip{position:relative}
+  .grip::before{content:""; position:absolute; left:50%; top:8px; bottom:8px; width:1px; background:var(--stroke-card)}
+  .grip:hover::after{content:""; position:absolute; left:50%; top:8px; bottom:8px; width:2px; margin-left:-1px; border-radius:1px; background:var(--accent); opacity:.8}
+
+  /* reading pane (shared) */
+  .pane{background:var(--card); border-radius:8px 8px 0 0; min-width:0; min-height:0; display:flex; flex-direction:column; position:relative; overflow:hidden}
+  .pane .scroll{flex:1; min-height:0; overflow:auto; scrollbar-width:thin; position:relative}
+  .wash{position:absolute; left:-10%; right:-10%; top:-30%; height:360px; filter:blur(70px) saturate(1.2); opacity:0; transition:opacity .4s; pointer-events:none; z-index:0}
+  .pane.washed .wash{opacity:.22}
+  .pane > .scroll > *{position:relative; z-index:1}
+
+  /* the Record pane: album header */
+  .rec{padding:20px 20px 12px}
+  .rec .head{display:flex; gap:18px; align-items:flex-end}
+  .rec .cover{width:128px; height:128px; border-radius:6px; flex:none; box-shadow:0 8px 24px rgba(0,0,0,.28)}
+  .rec .meta{min-width:0; flex:1; display:flex; flex-direction:column; gap:3px}
+  .pane .eyebrow{color:var(--text-3); letter-spacing:.09em}
+  .rec h2{font-size:28px; line-height:34px; font-weight:600; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; color:var(--text-1)}
+  .rec h2:hover{color:var(--accent-text); cursor:pointer}
+  .rec .artist{font-weight:600; color:var(--text-1)} .rec .artist:hover{color:var(--accent-text); cursor:pointer}
+  .rec .line{font-size:12.5px; color:var(--text-3)}
+  .cmds{display:flex; align-items:center; gap:10px; padding:14px 20px 8px}
+  .btn{all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:8px; height:36px; padding:0 18px 0 14px; border-radius:999px; background:var(--accent); color:var(--on-accent); font:inherit; font-weight:600}
+  .btn:hover{filter:brightness(1.07)} .btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .rnd{all:unset; cursor:pointer; width:36px; height:36px; border-radius:50%; display:grid; place-items:center; color:var(--text-2); background:var(--ctrl)}
+  .rnd:hover{background:var(--ctrl-hover); color:var(--text-1)} .rnd:focus-visible{outline:2px solid var(--accent)}
+  .rnd.liked{color:var(--accent-text)} .rnd.liked svg{fill:currentColor}
+  .cmds .open{margin-left:auto; all:unset; cursor:pointer; font-size:13px; color:var(--accent-text); display:inline-flex; gap:6px; align-items:center; padding:6px 8px; border-radius:4px}
+  .cmds .open:hover{background:var(--ctrl)}
+  .cmds .open svg{width:14px; height:14px}
+
+  /* tracks */
+  .tracks{padding:4px 12px 12px}
+  .thead{display:grid; grid-template-columns:36px 1fr 36px 56px; gap:8px; padding:6px 8px; font-size:12px; color:var(--text-3); border-bottom:1px solid var(--stroke-div); margin:0 8px 4px}
+  .thead .r{text-align:right}
+  .trow{display:grid; grid-template-columns:36px 1fr 36px 56px; gap:8px; align-items:center; height:44px; padding:0 8px; margin:0 8px; border-radius:5px; color:var(--text-1); cursor:default}
+  .trow:hover{background:var(--ctrl)}
+  .trow .num{color:var(--text-3); font-variant-numeric:tabular-nums; font-size:13px; text-align:center}
+  .trow .ttl{min-width:0; display:flex; flex-direction:column; line-height:1.25}
+  .trow .ttl i{font-style:normal; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .trow .ttl s{text-decoration:none; color:var(--text-2); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .trow .heart{color:var(--text-3); display:grid; place-items:center; opacity:0} .trow:hover .heart{opacity:1} .trow .heart.on{opacity:1; color:var(--accent-text)} .trow .heart.on svg{fill:currentColor}
+  .trow .dur{text-align:right; color:var(--text-2); font-variant-numeric:tabular-nums; font-size:13px}
+  .trow.playing .ttl i{color:var(--accent-text); font-weight:600}
+  .trow.playing .num{color:transparent; position:relative}
+  .trow.playing .num::before{content:""; position:absolute; left:50%; top:50%; width:14px; height:12px; transform:translate(-50%,-50%);
+    background:linear-gradient(var(--eq),var(--eq)) 0 100%/3px 60% no-repeat, linear-gradient(var(--eq),var(--eq)) 5px 100%/3px 100% no-repeat, linear-gradient(var(--eq),var(--eq)) 10px 100%/3px 40% no-repeat;
+    animation:eq 1s infinite alternate ease-in-out}
+  @keyframes eq{to{background-size:3px 100%,3px 35%,3px 80%}}
+  @media (prefers-reduced-motion: reduce){.trow.playing .num::before{animation:none}}
+  .also{padding:8px 20px 20px}
+  .also .eyebrow{margin-bottom:10px; display:block}
+  .also .strip{display:flex; gap:12px; overflow:auto; scrollbar-width:none; padding-bottom:4px}
+  .also .tile{width:96px; flex:none; cursor:default}
+  .also .tile .art{width:96px; height:96px; border-radius:5px}
+  .also .tile i{display:block; font-style:normal; font-size:12.5px; margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .also .tile s{display:block; text-decoration:none; font-size:11.5px; color:var(--text-3)}
+  .also .tile:hover i{color:var(--accent-text)}
+
+  /* skeleton (counted) */
+  .sk{background:linear-gradient(90deg,var(--shimmer-a) 25%,var(--shimmer-b) 50%,var(--shimmer-a) 75%); background-size:200% 100%; animation:sh 1.4s infinite linear; border-radius:4px}
+  @keyframes sh{to{background-position:-200% 0}}
+  @media (prefers-reduced-motion: reduce){.sk{animation:none}}
+  .trow.skel:hover{background:none}
+  .trow.skel .num{width:14px; height:12px; margin:0 auto}
+  .trow.skel .ttl b{display:block; height:13px; width:var(--w,55%)}
+  .trow.skel .dur{width:30px; height:12px; margin-left:auto}
+  .note-count{font-size:12px; color:var(--text-3); padding:6px 20px 0}
+
+  /* empty (no selection) */
+  .empty{flex:1; display:grid; place-items:center; text-align:center; color:var(--text-3); padding:40px}
+  .empty .ghost{width:120px; height:120px; border-radius:8px; border:1px dashed var(--stroke-card); margin:0 auto 14px; display:grid; place-items:center}
+  .empty .ghost svg{width:28px; height:28px; opacity:.5}
+  .empty b{display:block; color:var(--text-1); font-weight:600; font-size:15px; margin-bottom:4px}
+
+  /* ───────── artist canvas ───────── */
+  .canvas{display:grid; grid-template-columns:1fr; min-height:0; flex:1}
+  .canvas .scroll{position:relative}
+  .aband{padding:20px 20px 8px; display:flex; gap:16px; align-items:center}
+  .aband .avatar{width:72px; height:72px; margin:0; flex:none; box-shadow:0 8px 24px rgba(0,0,0,.28)}
+  .aband .meta{flex:1; min-width:0}
+  .aband h2{font-size:32px; line-height:38px; font-weight:600; letter-spacing:-.01em; color:var(--text-1)}
+  .aband h2:hover{color:var(--accent-text); cursor:pointer}
+  .aband .line{font-size:12.5px; color:var(--text-3); margin-top:2px}
+  .subrail{padding:6px 20px 10px; border-bottom:1px solid var(--stroke-div); margin:0 0 4px; position:sticky; top:0; z-index:3; background:var(--card); backdrop-filter:blur(20px)}
+  .subrail .wordrail{padding-top:4px}
+  .reader{display:grid; grid-template-columns:56px 1fr; gap:0}
+  .win.w-md .reader,.win.w-sm .reader{grid-template-columns:1fr}
+  .spine{position:sticky; top:52px; align-self:start; display:flex; flex-direction:column; gap:8px; padding:12px 0 12px 12px; max-height:calc(100% - 52px)}
+  .win.w-md .spine,.win.w-sm .spine{display:none}
+  .spine .dot{width:36px; height:36px; border-radius:4px; cursor:pointer; opacity:.5; transition:opacity .15s, transform .15s; position:relative}
+  .spine .dot:hover{opacity:.9} .spine .dot.on{opacity:1; transform:scale(1.08); box-shadow:0 0 0 2px var(--card), 0 0 0 4px var(--accent)}
+  .block{display:grid; grid-template-columns:120px 1fr; gap:16px; padding:16px 20px 8px 16px; border-top:1px solid var(--stroke-div)}
+  .block:first-of-type{border-top:0}
+  .win.w-md .block,.win.w-sm .block{grid-template-columns:88px 1fr}
+  .block .side{position:sticky; top:64px; align-self:start}
+  .block .cover{width:120px; height:120px; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.25)}
+  .win.w-md .block .cover,.win.w-sm .block .cover{width:88px; height:88px}
+  .block .side .y{font-size:12px; color:var(--text-3); margin-top:8px; font-variant-numeric:tabular-nums}
+  .block .bh{display:flex; align-items:center; gap:10px; min-height:36px}
+  .block .bh h3{font-size:20px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-1)}
+  .block .bh h3:hover{color:var(--accent-text); cursor:pointer}
+  .block .bh .line{font-size:12px; color:var(--text-3); white-space:nowrap}
+  .block .bh .acts{margin-left:auto; display:flex; gap:6px}
+  .block .bh .acts .rnd{width:32px; height:32px}
+  .block .bh .acts .rnd.play{background:var(--accent); color:var(--on-accent)}
+  .block .trow{height:36px; margin:0; grid-template-columns:28px 1fr 32px 52px}
+  .block .thead{display:none}
+  .block .tracks{padding:6px 0 8px}
+  .block.skel .bh h3{width:40%; height:18px} .block.skel .bh .line{width:120px; height:11px}
+  .loadmore{margin:8px 20px 20px; display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--text-3)}
+  .loadmore button{all:unset; cursor:pointer; color:var(--accent-text); padding:4px 8px; border-radius:4px}
+  .loadmore button:hover{background:var(--ctrl)}
+
+  /* crumbs (narrow) */
+  .crumbs{display:flex; align-items:center; gap:6px; padding:8px 12px 4px; font-size:13px; color:var(--text-2)}
+  .crumbs button{all:unset; cursor:pointer; color:var(--accent-text); display:inline-flex; align-items:center; gap:4px; padding:4px 6px; border-radius:4px}
+  .crumbs button:hover{background:var(--ctrl)}
+  .crumbs .cur{color:var(--text-1); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .win.w-sm .nav .title{display:none}
+
+  /* player bar */
+  .player{display:grid; grid-template-columns:260px 1fr 260px; align-items:center; padding:0 12px; border-top:1px solid var(--stroke-div)}
+  .player .np{display:flex; align-items:center; gap:10px; min-width:0}
+  .player .np .art{width:44px; height:44px; border-radius:4px; flex:none}
+  .player .np i{font-style:normal; font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .player .np s{text-decoration:none; font-size:12px; color:var(--text-2)}
+  .player .mid{display:flex; align-items:center; gap:12px; justify-content:center}
+  .player .mid .ctl{width:36px; height:36px; border-radius:50%; display:grid; place-items:center; color:var(--text-1)}
+  .player .mid .ctl.main{background:var(--ctrl-on)}
+  .player .seek{flex:1; max-width:480px; height:4px; border-radius:2px; background:var(--ctrl-on); position:relative}
+  .player .seek::before{content:""; position:absolute; left:0; top:0; bottom:0; width:48%; border-radius:2px; background:var(--accent)}
+  .player .t{font-size:12px; color:var(--text-2); font-variant-numeric:tabular-nums}
+  .player .right{display:flex; justify-content:flex-end; gap:8px; color:var(--text-2)}
+  .win.w-sm .player{grid-template-columns:1fr auto} .win.w-sm .player .right{display:none}
+
+  /* ───────── rationale ───────── */
+  .cols{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-top:26px}
+  .opt{background:var(--lab-panel); border:1px solid var(--lab-stroke); border-radius:12px; padding:18px 20px; backdrop-filter:blur(24px) saturate(140%)}
+  .opt h2{font-size:16px; font-weight:600; margin-bottom:10px}
+  .opt ul{margin:0; padding-left:18px; color:var(--lab-muted)} .opt li{margin:6px 0} .opt li b{color:var(--lab-text); font-weight:600}
+  .opt p{color:var(--lab-muted); margin:0 0 8px}
+  .yes{color:var(--good)} .no{color:var(--bad)} .mix{color:var(--warn)}
+  table.bugs{width:100%; border-collapse:collapse; font-size:13px}
+  table.bugs th{text-align:left; font-weight:600; padding:6px 8px; border-bottom:1px solid var(--lab-stroke); color:var(--lab-text)}
+  table.bugs td{padding:8px 8px; vertical-align:top; border-bottom:1px solid var(--lab-stroke); color:var(--lab-muted)}
+  table.bugs td:first-child{color:var(--lab-text); font-weight:600; white-space:nowrap}
+  .tblwrap{overflow-x:auto}
+  .sources{font-size:12.5px; color:var(--lab-muted); margin-top:18px} .sources a{margin-right:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <span class="eyebrow">Wavee 0.3 · library rework · prototype, 2026-09-17</span>
+    <h1>The Collection browser</h1>
+    <p>One browser, two pivots, <b>one</b> album pane. Albums keeps its master-detail split; Artists loses the empty tile grid and its third pane
+      for a Zune-style <em>reader</em>: the artist's albums stacked as art + track blocks with a cover spine to jump between them.
+      Sort is a word rail, alphabetical lists get letter groups and an A–Z strip, and every loading state is a <em>counted</em> shimmer, never a blank tile.
+      Everything below is live: click artists, albums, sort words, spine covers, tracks. Data is fake and marked as such.</p>
+  </div>
+
+  <div class="bar" role="toolbar" aria-label="Prototype controls">
+    <div class="grp"><span class="lbl">Page</span><div class="seg" id="segPage"><button aria-pressed="true" data-v="albums">Albums</button><button aria-pressed="false" data-v="artists">Artists</button></div></div>
+    <div class="grp"><span class="lbl">Window</span><div class="seg" id="segWidth"><button aria-pressed="true" data-v="lg">1440 wide</button><button aria-pressed="false" data-v="md">1120</button><button aria-pressed="false" data-v="sm">760 · drill-in</button></div></div>
+    <div class="grp"><span class="lbl">Theme</span><div class="seg" id="segTheme"><button aria-pressed="true" data-v="dark">Dark</button><button aria-pressed="false" data-v="light">Light</button></div></div>
+    <div class="grp"><span class="lbl">State</span><div class="seg" id="segState"><button aria-pressed="true" data-v="loaded">Loaded</button><button aria-pressed="false" data-v="loading">Selection loading</button><button aria-pressed="false" data-v="none">No selection</button></div></div>
+    <div class="grp"><span class="lbl">Art wash</span><div class="seg" id="segWash"><button aria-pressed="false" data-v="on">On</button><button aria-pressed="true" data-v="off">Off</button></div></div>
+  </div>
+
+  <div class="stage">
+  <div class="win w-lg" id="win">
+    <div class="titlebar">
+      <span class="tb"><svg viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></svg></span>
+      <span class="tb" style="opacity:.4"><svg viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></svg></span>
+      <span class="tab" id="tabName"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="1.5"/></svg>Albums</span>
+      <span class="omni">Search songs, artists, albums… <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg></span>
+      <span class="avatar"></span>
+      <span class="tb badge"><svg viewBox="0 0 16 16"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z"/><path d="M6.5 14h3"/></svg></span>
+      <span class="tb"><svg viewBox="0 0 16 16"><circle cx="6" cy="6" r="2.5"/><circle cx="11" cy="7" r="2"/><path d="M2 13c0-2.2 1.8-4 4-4s4 1.8 4 4"/></svg></span>
+      <span class="tb"><svg viewBox="0 0 16 16"><path d="M8 2v9M4 6l4-4 4 4"/></svg></span>
+      <span class="tb"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5 13 13M3 13l1.5-1.5M11.5 4.5 13 3"/></svg></span>
+      <span class="tb"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></span>
+      <span class="tb"><svg viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10"/></svg></span>
+      <span class="tb close"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></span>
+    </div>
+    <div class="body">
+      <div class="rail" id="rail"></div>
+      <div class="content" id="content"></div>
+    </div>
+    <div class="player">
+      <div class="np"><span class="art" style="background:linear-gradient(135deg,#4a3b2a,#c9a77a)"></span><span style="min-width:0"><i>Need You Now</i><s>Lady A</s></span></div>
+      <div class="mid">
+        <span class="ctl"><svg viewBox="0 0 16 16"><path d="M11 3 5 8l6 5z"/><path d="M4 3v10"/></svg></span>
+        <span class="ctl main"><svg viewBox="0 0 16 16"><path d="M6 3v10M10 3v10"/></svg></span>
+        <span class="ctl"><svg viewBox="0 0 16 16"><path d="m5 3 6 5-6 5z"/><path d="M12 3v10"/></svg></span>
+        <span class="t">1:58</span><span class="seek"></span><span class="t">-1:58</span>
+      </div>
+      <div class="right">
+        <span class="tb"><svg viewBox="0 0 16 16"><path d="M2 4h3l6 8h3M2 12h3l6-8h3"/></svg></span>
+        <span class="tb"><svg viewBox="0 0 16 16"><path d="M3 6a5 5 0 0 1 9-2M13 10a5 5 0 0 1-9 2"/></svg></span>
+        <span class="tb"><svg viewBox="0 0 16 16"><path d="M3 6v4h3l4 3V3L6 6z"/></svg></span>
+        <span class="tb"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1"/></svg></span>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="cols">
+    <div class="opt">
+      <h2>What changed, and why</h2>
+      <ul>
+        <li><b>One album pane, one look.</b> 0.2.10 already had one pane mounted twice, but width tiering and the notice bar made it look like two different pages. 0.3's <code>Album.Pane</code> has one anatomy at every width, demands the whole album on mount and re-projects when the store changes. The "minified view" notice and the Plays column are gone: plays, credits and recommendations live on the full page, which the title and <b>Open album</b> link to.</li>
+        <li><b>Artists: reader, not grid.</b> The middle grid of 140-px cards was three panes fighting for 1140 px, and it painted blank tiles when discography rows arrived unhydrated. The reader stacks the artist's albums as <em>art + tracks</em> blocks in a single scroll, the Zune "album view inside an artist" model. A 36-px cover <b>spine</b> at the left is the jump list; the current block highlights as you scroll.</li>
+        <li><b>Library first, catalogue second.</b> The reader opens on <em>in your library</em> (saved albums, all hydrated from the library snapshot). <em>All releases</em> appends the rest of the discography in batches with counted skeleton blocks, so there is never a tile that has nothing to say.</li>
+        <li><b>Word rails instead of dropdowns.</b> Sort is Zune's text pivot: active word at 100 %, the others at 50 %, an accent underline. It fits a 280-px column, needs no flyout, and reads as the same control everywhere.</li>
+        <li><b>Letters.</b> Alphabetical sort gets sticky letter groups and an A–Z strip on the column's edge (Zune's type-ahead jump, made visible). Letters with no rows are dimmed.</li>
+        <li><b>Rows say something.</b> Artist rows read "3 albums · 34 songs" rather than the literal word "Artist"; album rows keep artist + year.</li>
+      </ul>
+    </div>
+    <div class="opt">
+      <h2>The bugs, and the rule that kills each</h2>
+      <div class="tblwrap"><table class="bugs">
+        <tr><th>Seen</th><th>Cause, traced in 0.2.10</th><th>Rule in 0.3</th></tr>
+        <tr><td>Blank rows forever</td><td>Same pane, same query on both pages (<code>LibraryDetailPane</code>, mounted twice). The Albums page reads its album at the moment of selection, usually the persisted one, before anything warmed it. That first Rich ask either names the rows or, on one network blip, seals the album's Rich rung "exhausted" for 24 h — and the seal skips the very step that names disc rows (<code>AlbumHydration.ContinueAsync</code>). The pane never asks for the Full rung (only the full page's trailing band does) and never re-projects when the store changes later. The Artists page shows the same album fine only because the artist ladder already batched it.</td><td>The pane subscribes to the store and re-projects; it asks for the album's Full rung on selection like the full page does; a still-unnamed album invalidates its ledger seal instead of waiting a day. The shimmer is counted from the track count the library already holds.</td></tr>
+        <tr><td>Empty album tiles</td><td>The grid is <code>Artist.TopAlbums</code>, which holds the whole discography as gid-only stubs until the Open stub batch runs. The readiness check samples only <code>TopAlbums[0]</code>; the discography sort puts any hydrated card at index 0 (stubs have year 0), so one resident album makes the artist read "Open", the batch never runs, and every other tile stays a stub rendered verbatim: no art, empty name, caption collapsing to "ALBUM".</td><td>Readiness counts named cards, not the first one. The reader shows saved albums (always hydrated, from the library edges) first; catalogue releases are demanded in batches and a block appears only once hydrated — a stub is a counted skeleton block, never a bare card.</td></tr>
+        <tr><td>"Two album pages"</td><td>One component whose look diverged by width: the Plays lane is the first the relief ladder drops, so it survives in the 784-px Albums pane and vanishes in the 388-px Artists column; the "minified" notice appears only when the rows are gid-only. Two looks, one bug.</td><td>One anatomy at every width: cover 128, eyebrow, title, artist, meta line, Play / shuffle / ♥ / ⋯, <b>Open album ↗</b>. The pane owns #, title, heart and duration only. Plays, credits and recommendations belong to the full page.</td></tr>
+        <tr><td>Grid squeezed at 1140</td><td>280 + 440 + 388 with a 300-px floor on the middle pane, and a 220-px floor on the third.</td><td>Two panes: 280 + the rest. The reader lays art beside tracks, so width goes to titles, not gutters.</td></tr>
+        <tr><td>Failed load looks like loading</td><td>The pane has no failure arm: anything but Ready paints the six-bar skeleton for good.</td><td>A failed selection paints the header from the library row it already has, plus one strip: "Couldn't load the songs. Retry."</td></tr>
+      </table></div>
+    </div>
+    <div class="opt">
+      <h2>Zune: taken, adapted, left</h2>
+      <ul>
+        <li><b class="yes">Taken</b> — text as navigation (word rails), opacity-encoded state (100 / 85 / 50 %), the collection filtering left to right, the "all" row (<em>in your library</em> / <em>all releases</em>), album view inside the artist, type-ahead letter jump, content before chrome (one hairline between rungs, no card borders, no shadows on rows).</li>
+        <li><b class="mix">Adapted</b> — Zune's edge-bleeding lowercase Display type becomes Fluent's 28/36/600 PageHero; the faded artist canvas becomes an optional low-opacity art wash (toggle above). It breaks chapter 15 §0.8 ("accent-neutral surface") only if the CTA takes the cover colour, which it does not.</li>
+        <li><b class="no">Left</b> — the three-column artists ▸ albums ▸ songs browser at desktop widths (it is what produced the squeezed grid), the mixview constellation, zero-radius everything (the app is Fluent, radius 5/8 stays).</li>
+      </ul>
+    </div>
+    <div class="opt">
+      <h2>Chapter 15 amendments, if approved</h2>
+      <ul>
+        <li>§0.2 keeps the hairline rungs; §0.5's "four view types × three sizes" shrinks to <b>list / grid × S/M/L</b> for the navigator, and the discography column's second copy of the control is deleted with the column.</li>
+        <li>W2 is replaced by the reader (2 panes). W8's discography skeleton becomes counted skeleton blocks. W9's three placeholders become two.</li>
+        <li>§9 "Album.Page.cs must carry two components": confirmed — <code>Album.Page</code> (owner M) and <code>Album.Pane</code> (owner M, first deliverable of Wave 5, consumed by O and N). The Artists reader is <code>Artist.Reader</code> in <code>Artist.UI.cs</code> (owner N) and reuses the block from <code>Album.Pane</code>.</li>
+        <li>§7 data: the pane demands the whole album model (tracks, durations, hearts); the reader demands saved albums from the library edges, then the discography in 300-id batches per the query-layer rule. No page-side windows.</li>
+        <li>Persisted per kind: column width, sort word, view, size, scope word (<em>library</em>/<em>all</em>), selection. Filter text still not persisted.</li>
+      </ul>
+      <p class="sources">Reference reading:
+        <a href="https://github.com/project-dorado/dorado">Dorado (Zune 4.8 re-creation notes)</a>
+        <a href="https://davidvkimball.com/posts/zunes-design-language-and-how-it-evolved-into-windows-phone/">Zune design language</a>
+        <a href="https://www.tweaktown.com/news/13150/zune_software_4_0_15_minute_review/index.html">Zune 4.0 review</a></p>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ───────── fake data (names from the screenshots; tracks invented where unknown) ───────── */
+const ART = {
+  racine:['#f1e2c7','#c9a27a','√'], multitude:['#2d1b3d','#c94f7c','M'], cheese:['#f7d84a','#e07a2f','C'],
+  z05:['#dfe6ee','#8a98a8','05'], zstill:['#243043','#5f7a99','U'],
+  rosie:['#f3c6cf','#b64a5f','r'], sacrifice:['#1b2a44','#ff9b3d','S'], arcane:['#0f1f3a','#3ba7ff','A'],
+  j2006:['#4a4f58','#b8c0cc','06'], fine:['#dfe9e3','#6c9e86','F'], vault:['#9ec4e8','#3c6f9c','V'], yu:['#e8e0d2','#3b3a37','Y'],
+  ive:['#f2d9e6','#8c4a72','I'], savage:['#1c1c1c','#8e8e8e','SG'], henry:['#e7d9c9','#7c5a3a','H'], lauv:['#cfe3f7','#4a7cbf','L'],
+  phil:['#2b2b2b','#c9c9c9','P'], mj:['#111','#e0b04a','MJ']
+};
+const cover = (k, cls='art') => { const [a,b,g]=ART[k]; return `<span class="${cls}" style="background:linear-gradient(135deg,${a},${b});display:grid;place-items:center;color:rgba(0,0,0,.45);font-weight:800;font-family:'Segoe UI Variable Display','Segoe UI',sans-serif;font-size:.9em;letter-spacing:-.02em">${g}</span>`; };
+const coverStyle = k => { const [a,b]=ART[k]; return `background:linear-gradient(135deg,${a},${b})`; };
+
+const T = (s) => s.split('|').map(x=>{const [t,d]=x.split('@');return {t,d};});
+const ARTISTS = [
+  {id:'stromae', name:'Stromae', art:'racine', followed:true},
+  {id:'zakapa', name:'Urban Zakapa', art:'z05', followed:true},
+  {id:'jukjae', name:'Jukjae', art:'j2006', followed:true},
+  {id:'rose', name:'ROSÉ', art:'rosie', followed:true},
+  {id:'lol', name:'League of Legends', art:'sacrifice', followed:false},
+  {id:'vault', name:'vaultboy', art:'vault', followed:false},
+  {id:'yu', name:'Yu Takahashi', art:'yu', followed:true},
+  {id:'ive', name:'IVE', art:'ive', followed:true},
+  {id:'savage', name:'Savage Garden', art:'savage', followed:true},
+  {id:'henry', name:'Henry Moodie', art:'henry', followed:true},
+  {id:'lauv', name:'Lauv', art:'lauv', followed:true},
+  {id:'phil', name:'Phil Collins', art:'phil', followed:true},
+  {id:'mj', name:'Michael Jackson', art:'mj', followed:true},
+];
+const ALBUMS = [
+  {id:'racine', title:'racine carrée', artist:'stromae', year:2013, art:'racine', liked:true, played:3,
+   tracks:T('Ta fête@2:56|Papaoutai@3:52|Bâtard@3:29|Ave Cesaria@4:07|Tous les mêmes@3:33|Formidable@3:34|Moules frites@3:20|Carmen@3:09|Humain à l\'eau@3:28|Quand c\'est ?@3:16|Sommeil@3:41|Merci@3:04|AVF@3:56')},
+  {id:'multitude', title:'Multitude', artist:'stromae', year:2022, art:'multitude', liked:false, played:9,
+   tracks:T('Invaincu@3:07|Santé@3:10|La solassitude@3:24|Fils de joie@3:18|L\'enfer@3:16|C\'est que du bonheur@3:34|Riez@3:11|Mon amour@3:03|Déclaration@2:51|Mauvaise journée@3:19|Pas vraiment@3:18|Bonne journée@3:31')},
+  {id:'cheese', title:'Cheese', artist:'stromae', year:2010, art:'cheese', liked:false, played:14,
+   tracks:T('Bienvenue chez moi@3:13|Te quiero@3:12|Alors on danse@3:26|Dodo@3:34|Peace or Violence@3:22|Rail de musique@3:27|Silence@3:44|Summertime@3:18|House\'llelujah@3:33|Je cours@3:35')},
+  {id:'z05', title:'[05]', artist:'zakapa', year:2018, art:'z05', liked:false, played:1,
+   tracks:T('You\'re The Reason@4:17|As I Wished@4:15|Stagger@3:29|Alone@3:17|Thursday Night@3:32|Toxic@3:50|Where Am I@4:21|Rainy Day@3:55|Wish@3:41|Nowhere@4:02')},
+  {id:'zstill', title:'Still Missing You', artist:'zakapa', year:2020, art:'zstill', liked:false, played:11,
+   tracks:T('Still Missing You@3:58|Late Night@3:44|Grey@4:05|Just Like Before@3:37|Winter Song@4:12')},
+  {id:'rosie', title:'rosie', artist:'rose', year:2024, art:'rosie', liked:true, played:0,
+   tracks:T('number one girl@3:07|3am@2:57|two years@3:14|toxic till the end@3:04|drinks or coffee@2:41|APT.@2:49|gameboy@3:00|dance all night@3:10')},
+  {id:'sacrifice', title:'Sacrifice', artist:'lol', year:2024, art:'sacrifice', liked:false, played:2,
+   tracks:T('Sacrifice@2:58')},
+  {id:'arcane', title:'Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)', artist:'lol', year:2024, art:'arcane', liked:true, played:4,
+   tracks:T('Heavy Is The Crown@2:43|Paint The Town Blue@2:30|Renegade (We Never Run)@2:55|Hellfire@3:00|Blood Sweat & Tears@3:04|Fantastic@2:44|What Could Have Been@3:33|Come Play@2:36|I Can\'t Hear It Now@3:12|Spin The Wheel@2:51|Remember Me@3:20|The Line@3:09')},
+  {id:'j2006', title:'2006', artist:'jukjae', year:2021, art:'j2006', liked:false, played:5,
+   tracks:T('2006@3:52|Slow Down@3:31|Chances@3:44|Lately@3:18|Right Here@3:36')},
+  {id:'fine', title:'FINE', artist:'jukjae', year:2019, art:'fine', liked:false, played:6,
+   tracks:T('FINE@3:40|Wave@3:28|Quiet@3:12|Falling Slowly@3:55')},
+  {id:'vault', title:'ARE YOU EVER COMING BACK?', artist:'vault', year:2022, art:'vault', liked:false, played:7,
+   tracks:T('are you ever coming back?@2:44|everything sucks@2:36|not today@2:51|maybe@3:02')},
+  {id:'yu', title:'STARTING OVER', artist:'yu', year:2020, art:'yu', liked:false, played:8,
+   tracks:T('STARTING OVER@4:12|Mirror@3:48|Sunset Drive@3:33|Home@4:01|Blue Hour@3:57')},
+  {id:'ive', title:'I\'VE IVE', artist:'ive', year:2023, art:'ive', liked:false, played:10,
+   tracks:T('Blue Blood@3:11|I AM@3:26|Kitsch@2:57|Mine@2:56|Heroine@3:01|Lips@2:53')},
+  {id:'savage', title:'Affirmation', artist:'savage', year:1999, art:'savage', liked:false, played:12,
+   tracks:T('Affirmation@4:59|Hold Me@4:50|I Knew I Loved You@4:10|The Best Thing@4:14|Crash and Burn@4:41|Chained to You@4:08|The Animal Song@4:04')},
+  {id:'henry', title:'good old days', artist:'henry', year:2024, art:'henry', liked:false, played:13,
+   tracks:T('drunk text@3:17|pick up the phone@3:05|closure@3:10|good old days@3:26')},
+  {id:'lauv', title:'~how i\'m feeling~', artist:'lauv', year:2020, art:'lauv', liked:false, played:15,
+   tracks:T('Drugs & The Internet@3:24|Modern Loneliness@4:03|i\'m so tired…@2:42|Sad Forever@3:14|Feelings@3:13|Mean It@3:25')},
+  {id:'phil', title:'...But Seriously', artist:'phil', year:1989, art:'phil', liked:false, played:16,
+   tracks:T('Hang in Long Enough@4:44|That\'s Just the Way It Is@5:20|Do You Remember?@4:36|Something Happened on the Way to Heaven@4:52|Another Day in Paradise@5:22|I Wish It Would Rain Down@5:28')},
+  {id:'mj', title:'Thriller', artist:'mj', year:1982, art:'mj', liked:true, played:17,
+   tracks:T('Wanna Be Startin\' Somethin\'@6:03|Baby Be Mine@4:20|The Girl Is Mine@3:42|Thriller@5:57|Beat It@4:18|Billie Jean@4:54|Human Nature@4:06|P.Y.T. (Pretty Young Thing)@3:59|The Lady in My Life@5:00')},
+];
+/* catalogue-only releases (not in the library) — appear under "all releases" as counted skeletons that hydrate */
+const CATALOG = {
+  stromae:[{title:'Alors on danse (Remix)', year:2010, n:3, art:'cheese'},{title:'Santé (Remixes)', year:2021, n:4, art:'multitude'},{title:'Racine carrée Live', year:2015, n:22, art:'racine'}],
+  zakapa:[{title:'01', year:2011, n:10, art:'zstill'},{title:'02', year:2012, n:12, art:'z05'},{title:'03', year:2013, n:11, art:'zstill'},{title:'04', year:2016, n:9, art:'z05'}],
+  jukjae:[{title:'Room', year:2017, n:7, art:'fine'},{title:'Unbalance', year:2018, n:5, art:'j2006'}],
+};
+const byId = (arr,id)=>arr.find(x=>x.id===id);
+const artistOf = a => byId(ARTISTS,a.artist);
+const albumsOf = id => ALBUMS.filter(a=>a.artist===id);
+const dur = tracks => { const s=tracks.reduce((n,t)=>{const [m,ss]=t.d.split(':');return n+ +m*60+ +ss;},0); const h=Math.floor(s/3600), m=Math.round((s%3600)/60); return h?`${h} hr ${m} min`:`${m} min`; };
+const songsOf = id => albumsOf(id).reduce((n,a)=>n+a.tracks.length,0);
+const NOW = {album:'racine', track:1}; // "Papaoutai" is playing, for the equalizer row
+
+/* ───────── state ───────── */
+const S = { page:'albums', width:'lg', theme:'dark', state:'loaded', wash:false,
+  sort:{albums:'recents', artists:'recents'}, view:{albums:'list', artists:'list'},
+  selAlbum:'racine', selArtist:'stromae', scope:'library', asort:'newest', drill:false, catalogLoaded:{}, filter:'' };
+
+const ICO = {
+  play:'<svg viewBox="0 0 16 16"><path d="M4 3v10l9-5z"/></svg>',
+  shuffle:'<svg viewBox="0 0 16 16"><path d="M2 4h3l6 8h3M2 12h3l6-8h3M12 2l2 2-2 2M12 10l2 2-2 2"/></svg>',
+  heart:'<svg viewBox="0 0 16 16"><path d="M8 13.5 2.8 8.4A3 3 0 0 1 7 4.2l1 1 1-1a3 3 0 0 1 4.2 4.2z"/></svg>',
+  more:'<svg viewBox="0 0 16 16"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg>',
+  open:'<svg viewBox="0 0 16 16"><path d="M7 3H3v10h10V9M9 3h4v4M13 3 7 9"/></svg>',
+  list:'<svg viewBox="0 0 16 16"><path d="M3 4h10M3 8h10M3 12h10"/></svg>',
+  grid:'<svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5"/><rect x="9" y="2.5" width="4.5" height="4.5"/><rect x="2.5" y="9" width="4.5" height="4.5"/><rect x="9" y="9" width="4.5" height="4.5"/></svg>',
+  search:'<svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>',
+  back:'<svg viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></svg>',
+  check:'<svg viewBox="0 0 16 16"><path d="m3 8 3 3 7-7"/></svg>',
+  disc:'<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="1.5"/></svg>',
+  person:'<svg viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="3"/><path d="M2.5 14c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/></svg>',
+};
+
+/* ───────── ordering ───────── */
+const norm = s => s.replace(/^[\[\(~\.…]+/,'').replace(/^the /i,'').trim();
+const letterOf = s => { const c = norm(s)[0]?.toUpperCase() ?? '#'; return /[A-Z]/.test(c) ? c : '#'; };
+function orderAlbums(){
+  let rows = ALBUMS.filter(a => !S.filter || (a.title+' '+artistOf(a).name).toLowerCase().includes(S.filter.toLowerCase()));
+  const k = S.sort.albums;
+  if (k==='recents') rows.sort((a,b)=>a.played-b.played);                 // played = recency rank (0 = most recent)
+  if (k==='a–z')     rows.sort((a,b)=>norm(a.title).localeCompare(norm(b.title),undefined,{sensitivity:'base'}));
+  if (k==='artist')  rows.sort((a,b)=>artistOf(a).name.localeCompare(artistOf(b).name)||a.year-b.year);
+  if (k==='added')   rows.sort((a,b)=>b.year-a.year);
+  return rows;
+}
+function orderArtists(){
+  let rows = ARTISTS.filter(a => !S.filter || a.name.toLowerCase().includes(S.filter.toLowerCase()));
+  const k = S.sort.artists;
+  if (k==='recents') rows.sort((a,b)=>Math.min(...albumsOf(a.id).map(x=>x.played))-Math.min(...albumsOf(b.id).map(x=>x.played)));
+  if (k==='a–z')     rows.sort((a,b)=>norm(a.name).localeCompare(norm(b.name)));
+  if (k==='albums')  rows.sort((a,b)=>albumsOf(b.id).length-albumsOf(a.id).length||a.name.localeCompare(b.name));
+  return rows;
+}
+
+/* ───────── render: navigator ───────── */
+function wordRail(kind, words, sortKey){
+  const view = S.view[kind];
+  return `<div class="wordrail">
+    ${words.map(w=>`<button aria-pressed="${S.sort[kind]===w}" data-sort="${w}">${w}</button>`).join('')}
+    <span class="spacer"></span>
+    <button class="ico" aria-pressed="${view==='list'}" data-view="list" title="List">${ICO.list}</button>
+    <button class="ico" aria-pressed="${view==='grid'}" data-view="grid" title="Grid">${ICO.grid}</button>
+  </div>`;
+}
+function navigator(){
+  const isAlbums = S.page==='albums';
+  const rows = isAlbums ? orderAlbums() : orderArtists();
+  const alpha = S.sort[S.page]==='a–z';
+  const view = S.view[S.page];
+  const count = isAlbums ? ALBUMS.length : ARTISTS.length;
+  const title = isAlbums ? 'Albums' : 'Artists';
+  let body = '';
+  if (rows.length===0) body = `<div class="empty"><b>Nothing matches “${S.filter}”</b>Try fewer letters.</div>`;
+  else if (view==='grid'){
+    body = `<div class="grid">${rows.map(r => isAlbums
+      ? `<div class="card ${S.selAlbum===r.id?'on':''}" data-album="${r.id}">${cover(r.art)}<i>${r.title}</i><s>${artistOf(r).name} · ${r.year}</s></div>`
+      : `<div class="card ${S.selArtist===r.id?'on':''}" data-artist="${r.id}">${cover(r.art,'art circ')}<i>${r.name}</i><s>${albumsOf(r.id).length} albums</s></div>`).join('')}</div>`;
+  } else {
+    let last=null, html='';
+    for (const r of rows){
+      const name = isAlbums ? r.title : r.name;
+      if (alpha){ const L = letterOf(name); if (L!==last){ html += `<div class="letter" data-letter="${L}"><span>${L}</span></div>`; last=L; } }
+      html += isAlbums
+        ? `<div class="row ${S.selAlbum===r.id?'on':''} ${NOW.album===r.id?'playing':''}" data-album="${r.id}">${cover(r.art)}<span class="two"><i>${r.title}</i><s>${artistOf(r).name} · ${r.year}</s></span><span class="np" style="color:var(--accent-text)">${ICO.disc}</span></div>`
+        : `<div class="row ${S.selArtist===r.id?'on':''}" data-artist="${r.id}">${cover(r.art,'art circ')}<span class="two"><i>${r.name}</i><s>${albumsOf(r.id).length} album${albumsOf(r.id).length>1?'s':''} · ${songsOf(r.id)} songs</s></span></div>`;
+    }
+    body = `<div class="list" id="navList">${html}</div>`;
+  }
+  const present = new Set(rows.map(r=>letterOf(isAlbums?r.title:r.name)));
+  const jump = `<div class="jump" id="jump" ${alpha && view==='list' && rows.length ? '' : 'hidden'}>${'#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(L=>`<b class="${present.has(L)?'':'dim'}" data-jump="${L}">${L}</b>`).join('')}</div>`;
+  const words = isAlbums ? ['recents','a–z','artist','added'] : ['recents','a–z','albums'];
+  return `<div class="nav">
+    <div class="title">${title} <small>${count}</small></div>
+    ${wordRail(S.page, words)}
+    <label class="filter">${ICO.search}<input id="filterBox" placeholder="Filter" value="${S.filter}" aria-label="Filter ${title}"></label>
+    <div class="listwrap">${body}${jump}</div>
+  </div>`;
+}
+
+/* ───────── render: the one album pane ───────── */
+function trackRows(tracks, albumId, {compact=false, artistName=null, showArtist=false}={}){
+  return tracks.map((t,i)=>`<div class="trow ${NOW.album===albumId && NOW.track===i ? 'playing':''}">
+      <span class="num">${i+1}</span>
+      <span class="ttl"><i>${t.t}</i>${showArtist?`<s>${artistName}</s>`:''}</span>
+      <span class="heart ${(i%5===1)?'on':''}">${ICO.heart}</span>
+      <span class="dur">${t.d}</span></div>`).join('');
+}
+function skeletonRows(n, compact=false){
+  return Array.from({length:n},(_,i)=>`<div class="trow skel"><span class="num sk"></span><span class="ttl"><b class="sk" style="--w:${[62,44,55,70,38,50,66][i%7]}%"></b></span><span></span><span class="dur sk"></span></div>`).join('');
+}
+function albumPane(){
+  if (S.state==='none') return `<div class="pane"><div class="empty"><div><div class="ghost">${ICO.disc}</div><b>Pick an album</b>Its songs show here. Double-click to open the full page.</div></div></div>`;
+  const a = byId(ALBUMS, S.selAlbum); const ar = artistOf(a);
+  const loading = S.state==='loading';
+  const also = albumsOf(ar.id).filter(x=>x.id!==a.id);
+  return `<div class="pane ${S.wash?'washed':''}">
+    <div class="wash" style="${coverStyle(a.art)}"></div>
+    <div class="scroll">
+      <div class="rec">
+        <div class="head">
+          ${cover(a.art,'cover')}
+          <div class="meta">
+            <span class="eyebrow">Album · ${a.year}</span>
+            <h2 title="Open album">${a.title}</h2>
+            <span class="artist" data-goto-artist="${ar.id}">${ar.name}</span>
+            <span class="line">${a.tracks.length} songs · ${dur(a.tracks)}${loading?'':' · in your library since 2024'}</span>
+          </div>
+        </div>
+      </div>
+      <div class="cmds">
+        <button class="btn">${ICO.play} Play</button>
+        <button class="rnd" title="Shuffle">${ICO.shuffle}</button>
+        <button class="rnd ${a.liked?'liked':''}" title="Save">${ICO.heart}</button>
+        <button class="rnd" title="More">${ICO.more}</button>
+        <button class="open">Open album ${ICO.open}</button>
+      </div>
+      <div class="tracks">
+        <div class="thead"><span>#</span><span>Title</span><span></span><span class="r">⏱</span></div>
+        ${loading ? skeletonRows(a.tracks.length) : trackRows(a.tracks, a.id)}
+      </div>
+      ${loading ? `<div class="note-count">${a.tracks.length} rows because the library already knows the count — the shimmer is the shape of the answer, not a guess.</div>` : ''}
+      ${!loading && also.length ? `<div class="also"><span class="eyebrow">Also by ${ar.name} in your library</span><div class="strip">${also.map(x=>`<div class="tile" data-album="${x.id}">${cover(x.art)}<i>${x.title}</i><s>${x.year}</s></div>`).join('')}</div></div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* ───────── render: artist reader ───────── */
+function artistCanvas(){
+  if (S.state==='none') return `<div class="pane"><div class="empty"><div><div class="ghost">${ICO.person}</div><b>Pick an artist</b>Their albums in your library show here, art beside songs.</div></div></div>`;
+  const ar = byId(ARTISTS, S.selArtist);
+  const loading = S.state==='loading';
+  let lib = albumsOf(ar.id).slice();
+  if (S.asort==='newest') lib.sort((a,b)=>b.year-a.year);
+  if (S.asort==='oldest') lib.sort((a,b)=>a.year-b.year);
+  if (S.asort==='a–z') lib.sort((a,b)=>norm(a.title).localeCompare(norm(b.title)));
+  const cat = (S.scope==='all') ? (CATALOG[ar.id]||[]) : [];
+  const catReady = !!S.catalogLoaded[ar.id];
+  const blocks = lib.map(a => loading
+    ? `<div class="block skel" id="blk-${a.id}"><div class="side">${cover(a.art,'cover')}<div class="y">${a.year}</div></div><div><div class="bh"><h3 class="sk"></h3><span class="line sk"></span></div><div class="tracks">${skeletonRows(a.tracks.length,true)}</div></div></div>`
+    : `<div class="block" id="blk-${a.id}" data-block="${a.id}">
+        <div class="side">${cover(a.art,'cover')}<div class="y">${a.year} · ${a.tracks.length===1?'Single':'Album'}</div></div>
+        <div>
+          <div class="bh"><h3 data-open="${a.id}">${a.title}</h3><span class="line">${a.tracks.length} songs · ${dur(a.tracks)}</span>
+            <span class="acts"><button class="rnd play" title="Play">${ICO.play}</button><button class="rnd ${a.liked?'liked':''}" title="Save">${ICO.heart}</button><button class="rnd" title="More">${ICO.more}</button></span></div>
+          <div class="tracks">${trackRows(a.tracks, a.id, {compact:true})}</div>
+        </div></div>`).join('');
+  const catBlocks = cat.map((c,i) => catReady
+    ? `<div class="block" id="blk-cat-${i}" data-block="cat-${i}"><div class="side">${cover(c.art,'cover')}<div class="y">${c.year} · Album</div></div><div><div class="bh"><h3>${c.title}</h3><span class="line">${c.n} songs · not in your library</span><span class="acts"><button class="rnd play" title="Play">${ICO.play}</button><button class="rnd" title="Save">${ICO.heart}</button><button class="rnd" title="More">${ICO.more}</button></span></div><div class="tracks">${trackRows(Array.from({length:Math.min(c.n,4)},(_,k)=>({t:`Track ${k+1}`,d:'3:2'+k})),'cat')}${c.n>4?`<div class="loadmore" style="margin:2px 8px 6px"><button>Show all ${c.n} songs</button></div>`:''}</div></div></div>`
+    : `<div class="block skel" id="blk-cat-${i}"><div class="side"><span class="cover sk"></span><div class="y sk" style="width:60px;height:11px"></div></div><div><div class="bh"><h3 class="sk"></h3><span class="line sk"></span></div><div class="tracks">${skeletonRows(Math.min(c.n,6),true)}</div></div></div>`).join('');
+  const spine = [...lib.map(a=>({k:a.id, art:a.art, t:a.title})), ...(S.scope==='all' ? cat.map((c,i)=>({k:'cat-'+i, art:c.art, t:c.title, dim:!catReady})) : [])];
+  return `<div class="pane ${S.wash?'washed':''}">
+    <div class="wash" style="${coverStyle(ar.art)}"></div>
+    <div class="scroll" id="canvasScroll">
+      <div class="aband">
+        ${cover(ar.art,'avatar')}
+        <div class="meta"><h2 title="Go to artist">${ar.name}</h2>
+          <div class="line">In your library: ${lib.length} album${lib.length>1?'s':''} · ${songsOf(ar.id)} songs${ar.followed?' · following':''}</div></div>
+        <button class="btn">${ICO.play} Play all</button>
+        <button class="rnd" title="Shuffle">${ICO.shuffle}</button>
+        <button class="rnd ${ar.followed?'liked':''}" title="${ar.followed?'Following':'Follow'}">${ar.followed?ICO.check:ICO.heart}</button>
+        <button class="rnd" title="Go to artist page">${ICO.open}</button>
+      </div>
+      <div class="subrail"><div class="wordrail">
+        <button aria-pressed="${S.scope==='library'}" data-scope="library">in your library</button>
+        <button aria-pressed="${S.scope==='all'}" data-scope="all">all releases <small style="opacity:.7">· ${lib.length + (CATALOG[ar.id]||[]).length}</small></button>
+        <span class="spacer"></span>
+        <button aria-pressed="${S.asort==='newest'}" data-asort="newest">newest</button>
+        <button aria-pressed="${S.asort==='oldest'}" data-asort="oldest">oldest</button>
+        <button aria-pressed="${S.asort==='a–z'}" data-asort="a–z">a–z</button>
+      </div></div>
+      <div class="reader">
+        <div class="spine" id="spine">${spine.map((s,i)=>`<span class="dot ${i===0?'on':''}" data-jumpblock="${s.k}" title="${s.t}" style="${coverStyle(s.art)};${s.dim?'opacity:.25':''}"></span>`).join('')}</div>
+        <div>
+          ${blocks}
+          ${catBlocks}
+          ${S.scope==='all' && cat.length && !catReady ? `<div class="loadmore">Fetching ${cat.length} more releases from Spotify in one batch… <button data-hydrate="${ar.id}">(prototype: hydrate now)</button></div>` : ''}
+          ${S.scope==='all' && !cat.length ? `<div class="loadmore">Everything ${ar.name} has released is already in your library.</div>` : ''}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ───────── render: content + rail ───────── */
+function render(){
+  const win = document.getElementById('win');
+  win.className = 'win w-'+S.width;
+  document.documentElement.setAttribute('data-theme', S.theme);
+  document.getElementById('tabName').innerHTML = (S.page==='albums'?ICO.disc:ICO.person) + (S.page==='albums'?'Albums':'Artists');
+  const c = document.getElementById('content');
+  c.style.setProperty('--leftW', S.page==='albums' ? '340px' : '280px');
+  const detail = S.page==='albums' ? albumPane() : artistCanvas();
+  if (S.width==='sm'){
+    const sel = S.page==='albums' ? byId(ALBUMS,S.selAlbum)?.title : byId(ARTISTS,S.selArtist)?.name;
+    c.innerHTML = S.drill
+      ? `<div style="display:flex;flex-direction:column;min-height:0"><div class="crumbs"><button data-drillback>${ICO.back} ${S.page==='albums'?'Albums':'Artists'}</button><span>›</span><span class="cur">${sel}</span></div>${detail}</div>`
+      : navigator();
+  } else {
+    c.innerHTML = navigator() + `<div class="grip" title="Drag to resize"></div>` + detail;
+  }
+  document.getElementById('rail').innerHTML = ['racine','ive','rosie','arcane','henry','lauv','mj','phil','yu'].map((k,i)=>`<i class="${i===3?'sq':''}" style="${coverStyle(k)}"></i>`).join('');
+  wireSpine();
+}
+function wireSpine(){
+  const sc = document.getElementById('canvasScroll'); const spine = document.getElementById('spine'); if (!sc || !spine) return;
+  const blocks = [...sc.querySelectorAll('[data-block]')];
+  const dots = [...spine.querySelectorAll('.dot')];
+  sc.addEventListener('scroll', ()=>{
+    const top = sc.scrollTop + 120; let cur = 0;
+    blocks.forEach((b,i)=>{ if (b.offsetTop <= top) cur = i; });
+    dots.forEach((d,i)=>d.classList.toggle('on', i===cur));
+  }, {passive:true});
+}
+
+/* ───────── events (delegated) ───────── */
+document.addEventListener('click', e=>{
+  const t = e.target.closest('[data-v],[data-sort],[data-view],[data-album],[data-artist],[data-jump],[data-scope],[data-asort],[data-jumpblock],[data-hydrate],[data-drillback],[data-goto-artist]');
+  if (!t) return;
+  const seg = t.closest('.seg');
+  if (seg && t.dataset.v){
+    [...seg.children].forEach(b=>b.setAttribute('aria-pressed', b===t));
+    const v = t.dataset.v;
+    if (seg.id==='segPage'){ S.page=v; S.filter=''; S.drill=false; }
+    if (seg.id==='segWidth'){ S.width=v; S.drill=false; }
+    if (seg.id==='segTheme') S.theme=v;
+    if (seg.id==='segState') S.state=v;
+    if (seg.id==='segWash') S.wash = v==='on';
+    return render();
+  }
+  if (t.dataset.sort){ S.sort[S.page]=t.dataset.sort; return render(); }
+  if (t.dataset.view){ S.view[S.page]=t.dataset.view; return render(); }
+  if (t.dataset.album){ S.selAlbum=t.dataset.album; S.page='albums'; syncSeg('segPage','albums'); if (S.state==='none') {S.state='loaded'; syncSeg('segState','loaded');} if (S.width==='sm') S.drill=true; return render(); }
+  if (t.dataset.artist){ S.selArtist=t.dataset.artist; S.scope='library'; if (S.state==='none') {S.state='loaded'; syncSeg('segState','loaded');} if (S.width==='sm') S.drill=true; return render(); }
+  if (t.dataset.gotoArtist){ S.selArtist=t.dataset.gotoArtist; S.page='artists'; S.filter=''; syncSeg('segPage','artists'); return render(); }
+  if (t.dataset.jump){ const L=t.dataset.jump; const el=document.querySelector(`.letter[data-letter="${L}"]`); if (el){ const list=document.getElementById('navList'); list.scrollTo({top: el.offsetTop - list.offsetTop}); } return; }
+  if (t.dataset.scope){ S.scope=t.dataset.scope; return render(); }
+  if (t.dataset.asort){ S.asort=t.dataset.asort; return render(); }
+  if (t.dataset.jumpblock){ const b=document.getElementById('blk-'+t.dataset.jumpblock); const sc=document.getElementById('canvasScroll'); if (b&&sc) sc.scrollTo({top:b.offsetTop-56, behavior:'smooth'}); return; }
+  if (t.dataset.hydrate){ setTimeout(()=>{ S.catalogLoaded[t.dataset.hydrate]=true; render(); }, 600); t.textContent='hydrating…'; return; }
+  if (t.hasAttribute('data-drillback')){ S.drill=false; return render(); }
+});
+document.addEventListener('input', e=>{
+  if (e.target.id==='filterBox'){ S.filter=e.target.value; const pos=e.target.selectionStart; render(); const box=document.getElementById('filterBox'); box.focus(); box.setSelectionRange(pos,pos); }
+});
+function syncSeg(id, v){ [...document.getElementById(id).children].forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===v)); }
+
+/* initial theme follows the OS; the toggle above overrides */
+S.theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; syncSeg('segTheme', S.theme);
+render();
+</script>
+</body>
+</html>

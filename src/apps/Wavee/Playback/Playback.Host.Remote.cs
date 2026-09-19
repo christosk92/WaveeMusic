@@ -247,17 +247,31 @@ public static partial class Playback
 
     // ── 4. the seed (bug I): a mirrored cluster with a real current row and no Replace ever run ───────────────────
 
+    /// <inheritdoc cref="SeedQueueFromCluster(bool)"/>
+    static void SeedQueueFromCluster() => SeedQueueFromCluster(takeover: false);
+
     /// <summary>A cluster item just landed and folded (<see cref="FoldCluster"/> already ran, so <c>s_state</c> and
     /// <c>s_foreign</c> are both current): if it left a real <see cref="State.HasCurrent"/> next to a queue that never
     /// saw a <c>Queue.Replace</c>, seed it — from the cluster's own prev/next tracks when the mirrored owner is
     /// Foreign and carried any, else the bare current row alone. <see cref="Queue.DecideSeed"/> is the only thing that
-    /// decides; a queue that already answered "what plays next" (a real Play, or an earlier seed) is never touched.</summary>
-    static void SeedQueueFromCluster()
+    /// decides; a queue that already answered "what plays next" (a real Play, or an earlier seed) is never touched —
+    /// UNLESS <paramref name="takeover"/>.
+    ///
+    /// <para><paramref name="takeover"/> is the reducer's <c>Effects.TakeoverSeed</c> (A4), called from
+    /// <c>Playback.Host.cs</c>'s <c>Execute()</c> after a <c>DoResume</c>/<c>DoPlay</c> Step claimed a row the local
+    /// session never queued — a mirrored (Foreign) row that ownership has, by the time <c>Execute()</c> runs, already
+    /// folded to <see cref="Owner.Us"/>. So <paramref name="takeover"/> ALSO stands in for "was Foreign a moment
+    /// ago" when reading <c>s_foreign</c> — the cache <see cref="Owner.Foreign"/> would normally gate — because
+    /// nothing has cleared it since (only a FRESH cluster's own <see cref="FoldCluster"/> does that), and it
+    /// overrides <see cref="Queue.DecideSeed"/>'s "never re-seed a queue that left <c>EdgeState.Unknown</c>" rule so
+    /// the takeover replaces whatever unrelated rows were sitting there, even with no cluster rows cached at all
+    /// (then <see cref="Queue.SeedSource.CurrentOnly"/> still un-sticks the cursor).</para></summary>
+    static void SeedQueueFromCluster(bool takeover)
     {
         if (Entities.Current is null) return;
-        bool foreign = s_state.Own.Kind == Owner.Foreign;
+        bool foreign = takeover || s_state.Own.Kind == Owner.Foreign;
         bool hasClusterTracks = foreign && (s_foreign.PrevCount > 0 || s_foreign.NextCount > 0);
-        switch (Queue.DecideSeed(Queue.State, s_state.HasCurrent, hasClusterTracks, hasContext: false))
+        switch (Queue.DecideSeed(Queue.State, s_state.HasCurrent, hasClusterTracks, hasContext: false, takeover))
         {
             case Queue.SeedSource.Cluster:
                 SeedFromForeignQueue();

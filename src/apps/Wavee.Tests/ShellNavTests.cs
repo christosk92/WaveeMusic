@@ -698,25 +698,27 @@ public class DevicePickerTests
     [Fact]
     public void The_picker_is_two_sections_with_a_separator()
     {
-        var rows = Shell.DevicePickerRows([Local("a", "Speakers")], null, true, true, default, null);
+        var rows = Shell.DevicePickerRows([Local("a", "Speakers")], null, true, true, default, null, default, default);
         Assert.Equal(Shell.DevicePickerRowKind.Header, rows[0].Kind);
         Assert.Equal(Shell.DevicePickerRowKind.LocalDefault, rows[1].Kind);
         Assert.Equal(Shell.DevicePickerRowKind.LocalDevice, rows[2].Kind);
-        Assert.Equal(Shell.DevicePickerRowKind.Separator, rows[3].Kind);
-        Assert.Equal(Shell.DevicePickerRowKind.Header, rows[4].Kind);
+        Assert.Equal(Shell.DevicePickerRowKind.Quality, rows[3].Kind);
+        Assert.Equal(Shell.DevicePickerRowKind.Separator, rows[4].Kind);
+        Assert.Equal(Shell.DevicePickerRowKind.Header, rows[5].Kind);
     }
 
     [Fact]
     public void An_empty_connect_roster_gets_the_two_hint_rows()
     {
-        var rows = Shell.DevicePickerRows([], null, true, true, default, null);
+        var rows = Shell.DevicePickerRows([], null, true, true, default, null, default, default);
         Assert.Equal(2, rows.FindAll(static r => r.Kind == Shell.DevicePickerRowKind.Empty).Count);
     }
 
     [Fact]
     public void Unsupported_local_playback_disables_the_rows_and_says_why()
     {
-        var rows = Shell.DevicePickerRows([Local("a", "Speakers")], null, localSupported: false, true, default, null);
+        var rows = Shell.DevicePickerRows([Local("a", "Speakers")], null, localSupported: false, true, default, null,
+            default, default);
         var def = rows.Find(static r => r.Kind == Shell.DevicePickerRowKind.LocalDefault);
         Assert.False(def.Enabled);
         Assert.NotNull(def.Accelerator);
@@ -726,7 +728,7 @@ public class DevicePickerTests
     public void A_long_name_is_capped_so_the_flyout_cannot_grow_past_the_window()
     {
         string huge = new('x', 200);
-        var rows = Shell.DevicePickerRows([Local("a", huge)], "a", true, true, default, null);
+        var rows = Shell.DevicePickerRows([Local("a", huge)], "a", true, true, default, null, default, default);
         var row = rows.Find(static r => r.Kind == Shell.DevicePickerRowKind.LocalDevice);
         Assert.Equal(Shell.DevicePickerMaxLabelChars, row.Label.Length);
         Assert.EndsWith("…", row.Label, StringComparison.Ordinal);
@@ -735,11 +737,51 @@ public class DevicePickerTests
     [Fact]
     public void The_system_default_is_checked_only_when_we_are_the_active_output()
     {
-        var live = Shell.DevicePickerRows([], null, true, weAreActiveOutput: true, default, null);
+        var live = Shell.DevicePickerRows([], null, true, weAreActiveOutput: true, default, null, default, default);
         Assert.True(live.Find(static r => r.Kind == Shell.DevicePickerRowKind.LocalDefault).IsChecked);
 
-        var remote = Shell.DevicePickerRows([], null, true, weAreActiveOutput: false, default, null);
+        var remote = Shell.DevicePickerRows([], null, true, weAreActiveOutput: false, default, null, default, default);
         Assert.False(remote.Find(static r => r.Kind == Shell.DevicePickerRowKind.LocalDefault).IsChecked);
+    }
+
+    // ── the quality row: the player's own echo, never a loopback of the setting ────────────────────────────────────
+
+    [Fact]
+    public void The_quality_row_lives_in_this_computer_before_the_separator()
+    {
+        var rows = Shell.DevicePickerRows([Local("a", "Speakers")], null, true, true, default, null, default, default);
+        int quality = rows.FindIndex(static r => r.Kind == Shell.DevicePickerRowKind.Quality);
+        int separator = rows.FindIndex(static r => r.Kind == Shell.DevicePickerRowKind.Separator);
+        Assert.True(quality >= 0);
+        Assert.True(quality < separator);
+    }
+
+    [Fact]
+    public void Lossless_asked_but_ogg_320_observed_reports_320_and_says_so_is_below_setting()
+    {
+        var observed = new Playback.Audio.Opened(Spotify.Audio.Format.OggVorbis320, 200_000, 0f,
+            Playback.Audio.LabelFor(Spotify.Audio.Format.OggVorbis320, 0, 0), 320, false);
+        var rows = Shell.DevicePickerRows([], null, true, true, default, null, observed, Spotify.Audio.Quality.Lossless);
+        var row = rows.Find(static r => r.Kind == Shell.DevicePickerRowKind.Quality);
+
+        // The rung the row reports is the PLAYER's, not the setting's. Asserted through `LabelFor` (pure) rather than
+        // the rendered row: this host never loads the loc tables, so every `Strings.*` call answers "[key]" and a
+        // substring assertion on `row.Label` would be testing the localizer, not the decision.
+        Assert.Contains("320", observed.Label, StringComparison.Ordinal);
+        Assert.Equal(
+            Strings.Player.QualityBelowSetting(observed.Label, Loc.Get(Strings.Settings.Playback.QualityLossless)),
+            row.Label);
+        // …and it chose the DISAGREEMENT wording, not the contented one. "[key]" differs per key, so this still bites
+        // with no tables loaded — it is the assertion that would catch the row quietly echoing the setting.
+        Assert.NotEqual(Strings.Player.QualityPlaying(observed.Label), row.Label);
+    }
+
+    [Fact]
+    public void Nothing_playing_reports_the_idle_wording()
+    {
+        var rows = Shell.DevicePickerRows([], null, true, true, default, null, default, default);
+        var row = rows.Find(static r => r.Kind == Shell.DevicePickerRowKind.Quality);
+        Assert.Equal(Loc.Get(Strings.Player.QualityIdle), row.Label);
     }
 }
 

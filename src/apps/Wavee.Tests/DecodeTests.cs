@@ -414,12 +414,18 @@ public class DecodeTests
         // DurationMs 0 forever — `Album.Page.cs`'s `Ensure(… Identity | Video …)` never re-asks a row that already
         // Knows(Identity). The edge and its ordinal must still stand: the `#` lane must not shift for the tracks
         // around it, and the existing page ensure is what fetches `TrackV4` for the thin one.
+        //
+        // The album carries a COVER, like every real one: `AlbumV4` hands it down to each disc row in place, and
+        // `CommitTracks` withholds the `Image` bit from a Thin row that has no cover anywhere (`TrackImageBitTests`),
+        // so without it the two NAMED rows below would not Know the whole group either and the fact would stop
+        // distinguishing the thin row from its neighbours — which is the only thing it is about.
         TestScope.Fresh();
         var s = Staging.Rent();
         Spotify.Decode.AlbumV4(new Md.Album
         {
             Gid = Bs(Gid(21)),
             Name = "Thin Disc",
+            CoverGroup = Cover(30),
             Disc =
             {
                 new Md.Disc
@@ -482,8 +488,71 @@ public class DecodeTests
         Assert.False(artist.Knows(ArtistFields.Bio));
         Assert.False(artist.Knows(ArtistFields.Stats));
         Assert.Equal(2, Entities.Current.Edges.ArtistPopular.Count(artist.Slot));
-        Assert.Equal(1, Entities.Current.Edges.ArtistAlbums.Count(artist.Slot));
         Assert.Equal(1, Entities.Current.Edges.ArtistRelated.Count(artist.Slot));
+    }
+
+    [Fact]
+    public void ArtistV4_never_writes_the_discography_facets()
+    {
+        // The kind-8 answer's `album_group`/`single_group` (fields 5/6) are a short, untotalled seed — not the paged
+        // `Edges.ArtistAlbums`/`ArtistSingles` facets `Artist.Discography.cs` pages 20 at a time. Landing it there
+        // either freezes the facet Complete-and-short forever, or (below) replaces an already-paged answer with it —
+        // the 2026-09-18 "all releases · 19" bug, showing 1-3 cards under a correct total.
+        TestScope.Fresh();
+        var proto = new Md.Artist
+        {
+            Gid = Bs(Gid(41)),
+            Name = "roti.",
+            PortraitGroup = Cover(31),
+            AlbumGroup = { new Md.AlbumGroup { Album = { new Md.Album { Gid = Bs(Gid(21)) } } } },
+            SingleGroup = { new Md.AlbumGroup { Album = { new Md.Album { Gid = Bs(Gid(22)) } } } },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.ArtistV4(proto, s);
+        TestScope.CommitAndPublish(s);
+
+        var artist = ArtistOf(41);
+        Assert.True(artist.Knows(ArtistFields.Identity));
+        Assert.Equal(EdgeState.Unknown, Entities.Current.Edges.ArtistAlbums.State(artist.Slot));
+        Assert.Equal(0, Entities.Current.Edges.ArtistAlbums.Count(artist.Slot));
+        Assert.Equal(EdgeState.Unknown, Entities.Current.Edges.ArtistSingles.State(artist.Slot));
+        Assert.Equal(0, Entities.Current.Edges.ArtistSingles.Count(artist.Slot));
+    }
+
+    [Fact]
+    public void ArtistV4_does_not_shrink_an_already_paged_discography_facet()
+    {
+        // A real DiscographyAlbums page (20 rows, Partial against a 40 total) must survive a kind-8 answer for the
+        // same artist landing afterwards — the identity route the library navigator asks for every followed artist.
+        TestScope.Fresh();
+        StagedId artistId = EntityId.ForGid(EntityKind.Artist, Gid(42));
+
+        var page = Staging.Rent();
+        var run = page.Run(Relation.ArtistAlbums);
+        for (byte i = 0; i < 20; i++) run.Add(EntityId.ForGid(EntityKind.Album, Gid((byte)(60 + i))));
+        run.Page(in artistId, offset: 0, total: 40);
+        TestScope.CommitAndPublish(page);
+
+        var artist = ArtistOf(42);
+        Assert.Equal(EdgeState.Partial, Entities.Current.Edges.ArtistAlbums.State(artist.Slot));
+        Assert.Equal(20, Entities.Current.Edges.ArtistAlbums.Count(artist.Slot));
+        var before = Entities.Current.Edges.ArtistAlbums.Targets(artist.Slot).ToArray();
+
+        var s = Staging.Rent();
+        var proto = new Md.Artist
+        {
+            Gid = Bs(Gid(42)),
+            Name = "roti.",
+            AlbumGroup = { new Md.AlbumGroup { Album = { new Md.Album { Gid = Bs(Gid(20)) } } } },
+        }.ToByteArray();
+        Spotify.Decode.ArtistV4(proto, s);
+        TestScope.CommitAndPublish(s);
+
+        Assert.Equal(EdgeState.Partial, Entities.Current.Edges.ArtistAlbums.State(artist.Slot));
+        Assert.Equal(20, Entities.Current.Edges.ArtistAlbums.Count(artist.Slot));
+        Assert.Equal(40, Entities.Current.Edges.ArtistAlbums.Total(artist.Slot));
+        Assert.True(Entities.Current.Edges.ArtistAlbums.Targets(artist.Slot).SequenceEqual(before));
     }
 
     [Fact]

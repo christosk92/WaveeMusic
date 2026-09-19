@@ -35,6 +35,8 @@
 
 using System.Globalization;
 
+using SwitchPhase = Wavee.Playback.Video.SwitchPhase;
+
 namespace Wavee;
 
 public static partial class Video
@@ -1387,13 +1389,73 @@ public static partial class Video
         public const bool PreviewAccurate = false;
     }
 
-    /// <summary>The poster's loading affordance: the artwork shows at once, the spinner only for a join that outlasts
+    /// <summary>What a video surface is showing instead of — or as — the picture. ONE value for all four surfaces, so
+    /// they can never disagree about a load, and DERIVED from the host's events (<c>Playback.Video.Phase</c>,
+    /// <c>.FirstFrame</c>, <c>.Player</c>), never from a timer guess.</summary>
+    public enum JoinVisual : byte
+    {
+        /// <summary>The live stage, ALONE. While a player exists the engine element is the one loading affordance —
+        /// stacking the app's own overlay on it is how 0.2.9 got two spinners at once (ch 24 §9).</summary>
+        Video = 0,
+        /// <summary>The track's artwork at 0.4 over the letterbox and nothing else moving: a join still inside its
+        /// budget. A switch that lands fast therefore flashes nothing at all (ch 24 parity 75).</summary>
+        Poster = 1,
+        /// <summary>The poster PLUS the ring and "Loading…": a join that outlasted the budget and is still coming.</summary>
+        Working = 2,
+        /// <summary>The poster PLUS the fault line and NO ring: this one is not coming. In 0.2.9 a dead licence and a
+        /// slow one drew the identical picture; the whole point of reading <c>Phase</c> is that they no longer do.</summary>
+        Failed = 3,
+    }
+
+    /// <summary>A join's SHAPE — the four facts that say what the surface is looking at, without its clock.</summary>
+    /// <param name="Phase">The host's switch phase (<c>Playback.Video.Phase</c>), mirrored from the session's events.</param>
+    /// <param name="PlayerPresent">Is a player bound? (<c>Playback.Video.Player.Player is not null</c>.)</param>
+    /// <param name="Wanted">Does the placement resolve to a surface at all? (<see cref="PlacementCore.IsActive"/>.)
+    /// Nothing asked for is never "still coming".</param>
+    /// <param name="FrameSeen">Does the CURRENT source already have a picture? (<c>Playback.Video.FirstFrame</c> bumped
+    /// while this source key was live.) The join's end is an EVENT, which is what stops the clock and the budget with
+    /// it — and what makes a later re-buffer or seek behind that picture not a join at all.</param>
+    public readonly record struct JoinState(SwitchPhase Phase, bool PlayerPresent, bool Wanted, bool FrameSeen);
+
+    /// <summary>The loading picture, decided. The artwork shows at once and the ring only for a join that outlasts
     /// <see cref="Playback.Video.Budgets.JoiningNoSpinnerMs"/> — a spinner that flashes for 200 ms reports trouble that
-    /// did not happen.</summary>
+    /// did not happen (the video plan §3.4 rule 1, §6.2 K: "no spinner under 400 ms of Seeking").</summary>
     public static class Joining
     {
+        /// <summary>The join budget. Under it a surface shows the picture it already has (the previous frame while a
+        /// player is bound, the poster while none is) and claims nothing.</summary>
         public const int SpinnerDelayMs = Playback.Video.Budgets.JoiningNoSpinnerMs;
+
+        /// <summary>Has THIS join outlasted the budget? The one thing the clock decides — never what state we are in.</summary>
         public static bool ShowsSpinner(long elapsedMs) => elapsedMs >= SpinnerDelayMs;
+
+        /// <summary>Is a join in flight? With a player bound it is the four pre-picture phases; with NONE bound it is
+        /// anything but a failure — a mounted surface without a player is a manifest/licence round-trip in the air,
+        /// which is exactly the state ch 24 §0.8's poster exists for. A first frame ENDS the join, whatever the phase
+        /// says next: a re-buffer or a seek behind a picture that is already up is not a join and can never earn a
+        /// spinner (the previous frame stays — the video plan §3.2.3).</summary>
+        public static bool IsJoining(in JoinState s)
+            => s.Wanted && !s.FrameSeen && s.Phase != SwitchPhase.Failed
+               && (!s.PlayerPresent
+                   || s.Phase is SwitchPhase.Resolving or SwitchPhase.Licensing or SwitchPhase.Buffering or SwitchPhase.Attaching);
+
+        /// <summary>THE loading decision, for every surface.</summary>
+        /// <param name="joinElapsedMs">How long this join has run on the caller's monotonic clock (the surfaces use the
+        /// host timer's own, so the budget and the wake that samples it agree); 0 when no join is in flight.</param>
+        public static JoinVisual Decide(in JoinState s, long joinElapsedMs)
+        {
+            // A failure DURING a join the user asked for replaces the loading picture — that IS the ask: a slow licence
+            // and a dead one must not look alike. Gated on `Wanted` so a stale failure cannot flash on the NEXT time
+            // video is turned on, and on `!FrameSeen` because a failure that arrives after the video started is the
+            // demote path's story (a toast, then the surface turns off) — blanking a frame the user is already watching
+            // is the jarring half of "ugly".
+            if (s.Wanted && !s.FrameSeen && s.Phase == SwitchPhase.Failed) return JoinVisual.Failed;
+            // A briefly-null SOURCE must never tear the stage down (the pump lives on the mounted element) — the PLAYER
+            // is the discriminator, here as everywhere, and past this line there is none.
+            if (SurfaceMount.ShouldMountPlayerStage(s.PlayerPresent)) return JoinVisual.Video;
+            if (!s.Wanted) return JoinVisual.Poster;
+            return IsJoining(in s) && ShowsSpinner(joinElapsedMs) ? JoinVisual.Working : JoinVisual.Poster;
+        }
     }
 
     /// <summary>The fullscreen surface's focus-steal guard. The surface remounts fresh every time it mounts, so only the

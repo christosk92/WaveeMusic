@@ -712,11 +712,12 @@ public readonly partial struct Album
             // ready too, the section simply does not mount).
             bool aboutReady = billed.Length == 0 || new Artist(billed[0]).Knows(ArtistFields.Name);
             bool featuredReady = e.AlbumRecommendations.Readiness(slot) != EdgeState.Unknown;
-            // The watch-video card: a short release waits for every member's video verdict (asked with the rows in
-            // DemandTracked), so the card reveals with the band instead of landing a beat after it.
+            // The music-video section: every member's video verdict (asked with the rows in DemandTracked), at ANY
+            // release length, so the section reveals with the band instead of landing a beat after it and shoving
+            // About-the-artist down — it is the FIRST section in the band.
             var members = MemoryMarshal.Cast<int, Track>(a.IsValid ? a.TrackSlots : default);
             bool shortRelease = PageRules.IsShortRelease(a.IsValid && a.Knows(AlbumFields.Kind) ? a.Kind : AlbumKind.Album, members.Length);
-            bool videoReady = PageRules.VideoDecided(shortRelease, members);
+            bool videoReady = PageRules.VideoDecided(members);
             // Fans also like sits right under About: its edge has answered and every fan drawn knows its name, so the
             // chips land with the band instead of the header first and the faces a frame later.
             bool fansReady;
@@ -884,18 +885,65 @@ public readonly partial struct Album
 
         int _slot;
         readonly Func<SectionsStamp> _stamp;
+        readonly Action _demandVideos;
 
-        public SectionsHost() => _stamp = Stamp;
+        public SectionsHost()
+        {
+            _stamp = Stamp;
+            _demandVideos = DemandVideos;
+        }
 
         /// <summary>Which sections are present and what each one paints from (W2-A2): the album row and the members
-        /// (the watch-video card's title, meta, video flags and the seed track's play counts), the billing edge and
-        /// the lead artist's version (About the artist; the "More by" title), the fans' count and rows (the chips), and
-        /// each list relation's count plus edge version (its section header, its stack's key signature). The rows
-        /// INSIDE a list section are the stack's own gate (<c>StackHost</c>), not this one's.</summary>
+        /// (the video section's flags and stills and the seed track's play counts), the video COUNTERPART rows (their
+        /// own titles and durations, which land after the members do — they are not members, so the member fold cannot
+        /// see them), the billing edge and the lead artist's version (About the artist; the "More by" title), the fans'
+        /// count and rows (the chips), and each list relation's count plus edge version (its section header, its
+        /// stack's key signature). The rows INSIDE a list section are the stack's own gate (<c>StackHost</c>), not this
+        /// one's.</summary>
         readonly record struct SectionsStamp(uint Epoch, int Slot, uint Album, uint TracksEdge, EdgeState Tracks, ulong Members,
+                                             ulong Videos,
                                              uint ArtistsEdge, int Lead, uint LeadVersion, int Fans, ulong FanRows,
                                              int MoreBy, uint MoreByEdge, int Featured, uint FeaturedEdge,
                                              int Merch, uint MerchEdge, int Similar, uint SimilarEdge);
+
+        /// <summary>The fold over what the video section paints that the MEMBER fold does not already carry: each
+        /// selected video's still id and its counterpart row's version. A counterpart's identity lands later (see
+        /// <see cref="DemandVideos"/>), and without this the card would keep the song's title for the rest of the
+        /// session.</summary>
+        static ulong VideoFold(Table tracks, ReadOnlySpan<PageRules.AlbumVideo> videos)
+        {
+            ulong fold = RowFold.Seed;
+            for (int i = 0; i < videos.Length; i++)
+            {
+                fold = RowFold.Add(fold, videos[i].Thumb.Value);
+                fold = RowFold.Row(fold, tracks, videos[i].CounterpartSlot);
+            }
+            return fold;
+        }
+
+        /// <summary>The counterpart rows' identities. Kind 99 hands the page a video's uri and its still and NOTHING
+        /// else (<c>Spotify.Decode.cs</c>), so the video's own title and duration need one Prefetch ask — the same one
+        /// the versions drawer makes for the row it expands (<c>Track.Drawer.cs</c> <c>DemandVersions</c>). Until it
+        /// lands the card states the SONG's title and length, which is why a late answer is an upgrade and never a
+        /// blank.</summary>
+        void DemandVideos()
+        {
+            _ = Entities.ScopeEpoch.Value;
+            var scope = Entities.Current;
+            _ = scope.Tracks.Changed.Value;                    // a member learning its counterpart is the wake
+            var a = new Album(_slot);
+            if (!a.IsValid) return;
+            Span<PageRules.AlbumVideo> buffer = stackalloc PageRules.AlbumVideo[PageRules.VideoCap];
+            int count = PageRules.SelectVideos(MemoryMarshal.Cast<int, Track>(a.TrackSlots), buffer);
+            Span<int> wanted = stackalloc int[PageRules.VideoCap];
+            int n = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int slot = buffer[i].CounterpartSlot;
+                if (slot > Table.None && !new Track(slot).Knows(TrackFields.Identity)) wanted[n++] = slot;
+            }
+            if (n > 0) Entities.Ensure(scope.Tracks, wanted[..n], (uint)TrackFields.Identity, FetchPriority.Prefetch);
+        }
 
         SectionsStamp Stamp()
         {
@@ -928,8 +976,11 @@ public readonly partial struct Album
                 ? (seed >= 0 ? members[seed].RelatedArtistSlots : default)
                 : (lead > Table.None ? new Artist(lead).RelatedSlots : default);
             int fanCount = Math.Min(fans.Length, PageRules.FansCap);
+            Span<PageRules.AlbumVideo> videos = stackalloc PageRules.AlbumVideo[PageRules.VideoCap];
+            int videoCount = PageRules.SelectVideos(members, videos);
             return new SectionsStamp(epoch, slot, a.Version, e.AlbumTracks.Version(slot), e.AlbumTracks.State(slot),
                                      RowFold.Rows(scope.Tracks, memberSlots),
+                                     VideoFold(scope.Tracks, videos[..videoCount]),
                                      e.AlbumArtists.Version(slot), lead, RowFold.Version(scope.Artists, lead),
                                      fanCount, RowFold.Rows(scope.Artists, fans[..fanCount]),
                                      e.AlbumMoreBy.Count(slot), e.AlbumMoreBy.Version(slot),
@@ -945,6 +996,7 @@ public readonly partial struct Album
             // The gate (W2-A2): the twelve counters are subscribed inside the memo; the section stack below — seven
             // sections, each a card or a keyed stack — is rebuilt only when the stamp moved.
             _ = UseComputed(_stamp).Value;
+            UseEffect(_demandVideos);
             var e = Entities.Current.Edges;
 
             var a = new Album(p.AlbumSlot);
@@ -952,8 +1004,10 @@ public readonly partial struct Album
             var memberSlots = a.TrackSlots;
             var members = MemoryMarshal.Cast<int, Track>(memberSlots);
             bool shortRelease = PageRules.IsShortRelease(a.Knows(AlbumFields.Kind) ? a.Kind : AlbumKind.Album, members.Length);
-            bool hasVideo = false;
-            for (int i = 0; i < members.Length && !hasVideo; i++) hasVideo = members[i].HasVideo;
+            // ONE entry per video-bearing row, in track order — never the boolean `any` that drew a single card for
+            // three videos, and never gated on `shortRelease`, which hid every video on anything longer than an EP.
+            Span<PageRules.AlbumVideo> videoBuffer = stackalloc PageRules.AlbumVideo[PageRules.VideoCap];
+            var videos = videoBuffer[..PageRules.SelectVideos(members, videoBuffer)];
 
             var billed = a.ArtistSlots;
             var lead = billed.Length > 0 ? new Artist(billed[0]) : default;
@@ -967,11 +1021,11 @@ public readonly partial struct Album
             int slot = a.Slot;
             int featured = e.AlbumRecommendations.Count(slot), merch = e.AlbumMerch.Count(slot);
             int similar = e.AlbumSimilar.Count(slot), moreBy = e.AlbumMoreBy.Count(slot);
-            if (!PageRules.HasTrailingSections(shortRelease, hasVideo, about, fanCount, featured, merch, similar, moreBy, billed.Length))
+            if (!PageRules.HasTrailingSections(videos.Length > 0, about, fanCount, featured, merch, similar, moreBy, billed.Length))
                 return new BoxEl();   // nothing to show: the region eases to zero
 
             var sections = new List<Element>(7);
-            if (shortRelease && hasVideo) sections.Add(WatchVideoSection(a, members, PageRules.HasCustomVideo(members, s_hasOverride)));
+            if (videos.Length > 0) sections.Add(VideosSection(videos, PageRules.HasCustomVideo(members, s_hasOverride)));
             if (about) sections.Add(AboutSection(lead));
             if (fanCount > 0) sections.Add(Section(Loc.Get(Strings.Detail.FansAlsoLike), FansRow(fans[..fanCount])));
             if (moreBy > 0 && billed.Length > 0)
@@ -1219,82 +1273,259 @@ public readonly partial struct Album
         return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = SectionPad, Children = [card] };
     }
 
-    /// <summary>"Watch the official video" (short releases with a video): the cover as a 200×116 thumbnail under a 44 play
-    /// FAB, the eyebrow (the custom-video label when a row carries a user-attached mp4), the album title and meta. It
-    /// plays the ALBUM, not a video; no press fill, no scale; its section box has no bottom padding.</summary>
-    static Element WatchVideoSection(Album a, ReadOnlySpan<Track> members, bool customVideo)
+    // ── the music-video section (ch 05 W12; the 2026-09-17 rewrite) ──────────────────────────────────────────────────
+    //
+    // ONE thumbnail rule for both arms: EVERY still is the video's own (PageRules.SelectVideos → Track.VideoImageId,
+    // the counterpart's art, the song's art — in that order). The card used to draw `Album.ImageId`, so a music video
+    // was advertised with the album sleeve; the spec never said where the image came from, which is how that survived.
+    // ONE click rule for both arms: the card plays the VIDEO — that is, the SONG that owns it, because kind 99 keys a
+    // video on its song (Track.Drawer.cs PlayVersion does exactly this). It used to play the album.
+
+    /// <summary>The section's two arms (<see cref="PageRules.ArmFor"/>). ONE video keeps the hero card's geometry
+    /// (200×116 thumb under a 44 FAB) and its "WATCH THE OFFICIAL VIDEO" eyebrow — the single-video page is unchanged
+    /// apart from the corrected image, title, subtitle and click. TWO OR MORE get a HORIZONTAL SHELF through the shared
+    /// <c>PagedShelf</c>, so the edge fades, the pips and the page snap are the engine's and not hand-rolled. Its
+    /// section box has no bottom padding: About-the-artist supplies that step.</summary>
+    static Element VideosSection(ReadOnlySpan<PageRules.AlbumVideo> videos, bool customVideo)
     {
-        long totalMs = 0;
-        bool durationsKnown = Entities.Current.Edges.AlbumTracks.State(a.Slot) == EdgeState.Complete;
-        for (int i = 0; i < members.Length; i++)
+        Element body = PageRules.ArmFor(videos.Length) switch
         {
-            totalMs += members[i].DurationMs;
-            if (!members[i].Knows(TrackFields.Duration)) durationsKnown = false;
-        }
-        // A known count of 0 is "not known yet" (PageRules.SongCount): the realised members answer instead, so this
-        // card can never read "0 songs" beside the facts tile's "1 Song" and a one-row tracklist.
-        int count = PageRules.SongCount(a.Knows(AlbumFields.TrackCount) ? a.TrackCount : 0, members.Length);
-        string meta = Detail.Text.AlbumMeta(count, totalMs, durationsKnown, a.Year) ?? "";
-        var uri = a.Uri;
+            PageRules.VideoArm.Hero => VideoHero(in videos[0], customVideo),
+            PageRules.VideoArm.Shelf => VideoShelf(videos),
+            _ => new BoxEl(),
+        };
         return new BoxEl
         {
             Direction = 1, AlignSelf = FlexAlign.Stretch,
             Padding = new Edges4(Spacing.L, Spacing.XL, Spacing.L, 0f),
+            Children = [body],
+        };
+    }
+
+    /// <summary>The HERO arm's thumbnail and play FAB — 0.2.9's exact numbers, kept byte for byte. The shelf arm fits
+    /// its own 16:9 thumb to whatever card width the shelf hands it, between <see cref="VideoCardMinW"/> and
+    /// <see cref="VideoCardMaxW"/> (16:9 cards want more room than the 148–188 square-card shelf range), and lands on
+    /// the same 44 FAB at every reachable width.</summary>
+    const float VideoThumbW = 200f, VideoThumbH = 116f, VideoFab = 44f;
+    const float VideoCardMinW = 200f, VideoCardMaxW = 280f;
+
+    static Element VideoHero(in PageRules.AlbumVideo v, bool customVideo) => new BoxEl
+    {
+        Key = VideoKey(in v),
+        Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center,
+        Padding = new Edges4(Spacing.M, Spacing.M, Spacing.L, Spacing.M),
+        Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardSecondary,
+        BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, ClipToBounds = true,
+        HoverFill = Tok.FillCardDefault, Role = AutomationRole.Button, Cursor = CursorId.Hand,
+        Focusable = true, FocusVisualMargin = Design.FocusInsetBordered,
+        OnClick = WatchVideo(v.MemberSlot),
+        Children =
+        [
+            VideoThumb(v.Thumb, VideoThumbW, VideoThumbH),
+            new BoxEl
+            {
+                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS,
+                Children =
+                [
+                    Design.Type.Eyebrow(Loc.Get(customVideo ? Strings.VideoOverride.CustomLabel : Strings.Detail.WatchOfficialVideo))
+                        with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    Design.Type.RailHeader(VideoTitle(in v))
+                        with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                    new TextEl(VideoMeta(in v))
+                    {
+                        Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    },
+                ],
+            },
+        ],
+    };
+
+    /// <summary>The SHELF arm: one horizontal, page-snapping strip of video cards under a "Music videos" header — the
+    /// artist page's own video shelf (<c>Artist.Page.cs</c> <c>VideosShelf</c>), on the same shared
+    /// <see cref="PagedShelf"/>. Nothing here is hand-rolled: the edge feather is the control's <c>edgeFade</c> (which
+    /// reaches the viewport as the engine's <c>AutoEdgeFadeBand</c> scratch-buffer fade), the dots are its
+    /// <see cref="ShelfPager.Pips"/> (a stock <c>PipsPager</c>), and <see cref="ShelfSnap.Page"/> is what makes a
+    /// fling, a chevron and a pip all rest on a page boundary.
+    /// <para><c>measured: true</c> — an album has a handful of videos, so the strip lays them all out and sizes itself
+    /// to the tallest card instead of estimating a height (the <c>Concert.Page</c> / <c>Modules.UI</c> watch-shelf
+    /// idiom). That is also what keeps the strip from jumping: nothing is guessed and then corrected.</para>
+    /// <para>The shelf builds its OWN header row — <c>[header, spacer, pips, chevrons]</c> — so the header passed here
+    /// is just the title and the count, and the pager lands at the trailing edge.</para></summary>
+    static Element VideoShelf(ReadOnlySpan<PageRules.AlbumVideo> videos)
+    {
+        var items = videos.ToArray();
+        return PagedShelf.Create(items, s_videoCard,
+            header: VideoShelfHeader(items.Length),
+            pager: ShelfPager.Chevrons | ShelfPager.Pips,
+            minCardW: VideoCardMinW, maxCardW: VideoCardMaxW, gap: Spacing.M, headerGap: Spacing.M,
+            snap: ShelfSnap.Page, edgeFade: Design.Size.FadeShelf,
+            prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
+            measured: true, keyOf: s_videoKey, maxItems: PageRules.VideoCap);
+    }
+
+    // Reference-stable: a shelf re-render must not rebuild its card/key delegates (PagedShelf re-pushes them as props).
+    static readonly Func<PageRules.AlbumVideo, int, float, Element> s_videoCard = static (v, _, w) => VideoShelfCard(in v, w);
+    static readonly Func<PageRules.AlbumVideo, int, string> s_videoKey = static (v, _) => VideoKey(in v);
+
+    /// <summary>The shelf's title and count. The shelf's own row supplies the spacer and the pager after it.</summary>
+    static Element VideoShelfHeader(int count) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+        Children =
+        [
+            Design.Type.RailHeader(Loc.Get(Strings.Artist.MusicVideos))
+                with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            new TextEl(count.ToString(CultureInfo.CurrentCulture))
+            {
+                Size = 13f, Weight = 600, Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f,
+            },
+        ],
+    };
+
+    /// <summary>One shelf cell: the video's own still fitted 16:9 to the card width the shelf hands it, its title and
+    /// its duration, in the hero card's plate so the two arms read as one family.</summary>
+    static Element VideoShelfCard(in PageRules.AlbumVideo v, float width)
+    {
+        float inner = MathF.Max(96f, width - 2f * Spacing.S);
+        float thumbH = MathF.Round(inner * 9f / 16f);
+        string duration = v.DurationMs > 0 ? Track.Format.TrackTime(v.DurationMs) : "";
+        return new BoxEl
+        {
+            Key = VideoKey(in v),
+            Direction = 1, Gap = Spacing.S, Width = width, Shrink = 0f,
+            Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
+            Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardSecondary,
+            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, ClipToBounds = true,
+            HoverFill = Tok.FillCardDefault, Role = AutomationRole.Button, Cursor = CursorId.Hand,
+            Focusable = true, FocusVisualMargin = Design.FocusInsetBordered,
+            OnClick = WatchVideo(v.MemberSlot),
             Children =
             [
+                VideoThumb(v.Thumb, inner, thumbH),
+                Design.Type.TrackTitle(VideoTitle(in v))
+                    with { Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                duration.Length == 0
+                    ? new BoxEl()
+                    : Design.Type.TrackMeta(duration) with { Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            ],
+        };
+    }
+
+    /// <summary>The video's OWN still under the play FAB — never the album cover. The FAB is 44 at every width a shelf
+    /// card can reach, so the hero's badge and a cell's badge are the same object.</summary>
+    static Element VideoThumb(StringId thumb, float w, float h)
+    {
+        float fab = Math.Clamp(MathF.Min(w, h) * 0.38f, 28f, VideoFab);
+        return new BoxEl
+        {
+            Width = w, Height = h, Shrink = 0f, ZStack = true,
+            Corners = CornerRadius4.All(Radii.Control), ClipToBounds = true,
+            Children =
+            [
+                Controls.Artwork(Controls.ArtUrl(thumb), w, h, Radii.Control),
                 new BoxEl
                 {
-                    Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center,
-                    Padding = new Edges4(Spacing.M, Spacing.M, Spacing.L, Spacing.M),
-                    Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardSecondary,
-                    BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, ClipToBounds = true,
-                    HoverFill = Tok.FillCardDefault, Role = AutomationRole.Button, Cursor = CursorId.Hand,
-                    OnClick = () => Actions.Services.Play?.Invoke(uri),
+                    Width = w, Height = h, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     Children =
                     [
                         new BoxEl
                         {
-                            Width = 200f, Height = 116f, Shrink = 0f, ZStack = true,
-                            Corners = CornerRadius4.All(Radii.Control), ClipToBounds = true,
-                            Children =
-                            [
-                                Controls.Artwork(Controls.ArtUrl(a.ImageId), 200f, 116f, Radii.Control),
-                                new BoxEl
-                                {
-                                    Width = 200f, Height = 116f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                                    Children =
-                                    [
-                                        new BoxEl
-                                        {
-                                            Width = 44f, Height = 44f, Corners = CornerRadius4.All(22f), Fill = Tok.AccentDefault,
-                                            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                                            Children = [Icon(Icons.Play, 16f, Tok.TextOnAccentPrimary)],
-                                        },
-                                    ],
-                                },
-                            ],
-                        },
-                        new BoxEl
-                        {
-                            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS,
-                            Children =
-                            [
-                                Design.Type.Eyebrow(Loc.Get(customVideo ? Strings.VideoOverride.CustomLabel : Strings.Detail.WatchOfficialVideo))
-                                    with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                                Design.Type.RailHeader(a.Knows(AlbumFields.Title) ? a.Title : "")
-                                    with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                                new TextEl(meta)
-                                {
-                                    Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary,
-                                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                                },
-                            ],
+                            Width = fab, Height = fab, Corners = CornerRadius4.All(fab / 2f), Fill = Tok.AccentDefault,
+                            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                            Children = [Icon(Icons.Play, MathF.Round(fab * 0.36f), Tok.TextOnAccentPrimary)],
                         },
                     ],
                 },
             ],
         };
     }
+
+    /// <summary>The VIDEO's title: the counterpart row's once its identity has landed (<c>SectionsHost.DemandVideos</c>),
+    /// the song's until then — an upgrade, never a blank.</summary>
+    static string VideoTitle(in PageRules.AlbumVideo v)
+    {
+        var counterpart = new Track(v.CounterpartSlot);
+        if (counterpart.IsValid && !counterpart.TitleId.IsEmpty) return counterpart.Title;
+        var member = new Track(v.MemberSlot);
+        return member.IsValid ? member.Title : "";
+    }
+
+    /// <summary>The hero arm's subtitle: what this card IS, then how long it runs. Never the album's "N songs · M min ·
+    /// year" — that line described the RELEASE and was the third half of this bug.</summary>
+    static string VideoMeta(in PageRules.AlbumVideo v)
+    {
+        string kind = Loc.Get(Strings.Detail.Versions.MusicVideo);
+        return v.DurationMs > 0 ? kind + " · " + Track.Format.TrackTime(v.DurationMs) : kind;
+    }
+
+    /// <summary>WATCH this video. Playing the song is NOT enough: the reducer decides a row's media kind from
+    /// <c>videoWanted &amp;&amp; (flags &amp; VideoMask)</c> (<c>Playback.Transitions</c> <c>KindOfRow</c>), and
+    /// <c>videoWanted</c> comes from the placement state, whose <c>Requested</c> starts at
+    /// <c>SurfacePlacement.None</c> — so starting the song with the surface off gives exactly what it says: audio.
+    /// <para>The card therefore REQUESTS THE SURFACE FIRST and plays second (<see cref="PageRules.WatchAction"/>). It
+    /// requests through <c>State.FoldAvailability</c> + <c>State.OpenAt</c> — the rail's own <c>ShowVideoAt</c> pair,
+    /// which <c>Commit</c>s directly — and not through <c>FoldForTrack</c>, so <c>UpgradeGate.DeferUpgrade</c> (which
+    /// exists to withhold a MID-TRACK upgrade nobody asked for) can never swallow an explicit click. The commit posts
+    /// <c>Playback.SetVideoPlacement(true)</c>, and because the reducer's inbox is FIFO and folded in one batch, that
+    /// input lands before the load.</para></summary>
+    static Action WatchVideo(int memberSlot)
+    {
+        var member = new Track(memberSlot);
+        return () => Watch(member);
+    }
+
+    static void Watch(Track member)
+    {
+        if (!member.IsValid) return;
+        // ONE `hasVideo` for both halves of the decision. The gate below asks "can anything host this row's video right
+        // now"; RequestVideoSurface then STAMPS that same answer. Asking the gate a hardcoded `true` while the fold
+        // stamped the row's real bit is how a disagreement between them would reopen the original defect — the gate
+        // says "go", the fold stamps None, OpenAt resolves to nothing, and the song plays under a play badge with no
+        // word said.
+        bool hasVideo = member.HasVideo;
+        bool canHost = Video.UpgradeGate.AvailabilityFor(hasVideo, Video.State.HostCapability.Peek()) != Video.PlacementSet.None;
+        var playing = Playback.CurrentId.Peek();
+        bool deckRow = !playing.IsEmpty && playing == member.Id;
+        switch (PageRules.WatchFor(canHost, deckRow))
+        {
+            case PageRules.WatchAction.AudioOnly:
+                // Say it. A play badge over a video still that silently starts the song is the defect, not the fix.
+                Notify.Say(Loc.Get(Strings.Player.VideoUnavailable), InfoBarSeverity.Warning, dedupeKey: "album.video.nohost");
+                Playback.PlayContext(member.Id);
+                return;
+
+            case PageRules.WatchAction.SwitchInPlace:
+                // Already on the deck: the placement input alone re-decides the row's kind and reloads it on the video
+                // host at the carried position (DoVideoPlacement). Never PlayContext — that would restart it.
+                RequestVideoSurface(hasVideo);
+                if (!Playback.IsPlaying.Peek()) Playback.TogglePlay();
+                return;
+
+            default:
+                RequestVideoSurface(hasVideo);        // FIRST — see the summary; order is the contract
+                Playback.PlayContext(member.Id);
+                return;
+        }
+    }
+
+    /// <summary>Stamp the availability this row really has, then open at where the user likes to watch (G-150's
+    /// persisted <c>Preferred</c>, docked when nothing is remembered) — the player bar's own
+    /// <c>PlacementCore.TogglePrimary</c> opens at exactly that same <c>Preferred</c>, so a card click and the badge
+    /// land the surface in the same place.
+    /// <para>Two commits, in this order, and NOT <c>State.TogglePrimary</c>: that one is a TOGGLE (a second card click
+    /// would turn the surface off) and it runs the intent through <c>UpgradeGate.PrimaryClick</c>, whose
+    /// <c>DeferUpgrade</c> arm exists to withhold a mid-track upgrade nobody asked for. A click on a video card IS the
+    /// ask, so it must not be routed past a gate built to ignore un-asked-for ones.</para></summary>
+    static void RequestVideoSurface(bool hasVideo)
+    {
+        Video.State.FoldAvailability(hasVideo);
+        var preferred = Video.State.Surface.Peek().Preferred;
+        Video.State.OpenAt(preferred == Video.SurfacePlacement.None ? Video.SurfacePlacement.Docked : preferred);
+    }
+
+    static string VideoKey(in PageRules.AlbumVideo v)
+        => "video:" + v.MemberSlot.ToString(CultureInfo.InvariantCulture);
 
     // ── the trailing skeleton (W7): the section skeletons PageRules.SkeletonShape names, each with a 160×18 header bar ──
     // The sizes are PageRules.Skel* so PageRules.SkeletonHeight equals what is drawn. It deliberately UNDER-states (no

@@ -763,18 +763,27 @@ public static partial class Spotify
             return true;
         }
 
-        /// <summary>`metadata.Artist` (kind 8) → the artist's Identity, the popular-tracks run and the discography
-        /// runs. The overview's rich half — header image, bio, monthly listeners, the artist pick — is the
+        /// <summary>`metadata.Artist` (kind 8) → the artist's Identity, the popular-tracks run and the related-artists
+        /// run. The overview's rich half — header image, bio, monthly listeners, the artist pick — is the
         /// PATHFINDER's (`artistOverview`, Spotify.Decode.Pathfinder.cs) and this answer never claims it: a kind-8 row
-        /// that set <c>ArtistFields.Overview</c> would let a thin answer stop the page asking for the real one.</summary>
+        /// that set <c>ArtistFields.Overview</c> would let a thin answer stop the page asking for the real one.
+        ///
+        /// KIND 8 ANSWERS IDENTITY; THE DISCOGRAPHY FACETS ARE PAGED EDGES WITH THEIR OWN TOTALS AND ARE NEVER
+        /// WRITTEN FROM HERE. `ArtistFields.Identity` is what the library navigator demands for EVERY followed
+        /// artist, so this answer fires far more often than the discography ever needs to be re-asked. The wire's
+        /// `album_group`/`single_group` (fields 5/6) are a short, unordered, untotalled seed — nothing like
+        /// `Edges.ArtistAlbums`/`ArtistSingles`, which `Artist.Discography.cs`'s `DemandFacet`/`DemandNextPage` page in
+        /// at 20 a time against the server's real count. Landing that seed there either freezes the facet Complete at
+        /// 1-3 rows forever (`DemandFacet` only asks page 0 while `Unknown`) or REPLACES an already-paged 20-row
+        /// answer with the short one (`EdgeRun.End` → `EdgeTable.Replace`, an unconditional overwrite, Edges.cs) —
+        /// the 2026-09-18 "all releases · 19" bug, showing 1-3 cards under a correct total. So fields 5/6 are parsed
+        /// and dropped: no row, no edge, no relation write.</summary>
         public static void ArtistV4(ReadOnlySpan<byte> proto, Staging s)
         {
             var r = new ProtoReader(proto);
             ref var row = ref s.Artists.RowFor(default, Authority.Full, (uint)ArtistFields.Identity);
 
             var popular = s.Run(Relation.ArtistPopular);
-            var albums = s.Run(Relation.ArtistAlbums);
-            var singles = s.Run(Relation.ArtistSingles);
             var related = s.Run(Relation.ArtistRelated);
 
             while (r.Next())
@@ -794,10 +803,9 @@ public static partial class Spotify
                             }
                             break;
                         }
-                    // AlbumGroup { album[] } — the wire nests a group per release so a deluxe edition and its base
-                    // album travel together; the facet page reads them flat and re-groups from the album rows.
-                    case 5: Group(r.Message(), ref albums); break;
-                    case 6: Group(r.Message(), ref singles); break;
+                    // album_group / single_group (5/6): the untotalled seed the doc comment above rules out — skipped,
+                    // never staged. `Relation.ArtistAlbums`/`ArtistSingles` are written only by the paged discography
+                    // decoder (Spotify.Decode.Artist.cs).
                     case 15:                                           // related
                         {
                             var id = EntityId.ForGid(EntityKind.Artist, r.Message().Bytes(1));
@@ -820,25 +828,11 @@ public static partial class Spotify
             if (!s.Artists.Settle())
             {
                 related.Discard();
-                singles.Discard();
-                albums.Discard();
                 popular.Discard();
                 return;
             }
             popular.End(in artist, EdgeState.Complete, popular.Count);
-            albums.End(in artist, EdgeState.Complete, albums.Count);
-            singles.End(in artist, EdgeState.Complete, singles.Count);
             related.End(in artist, EdgeState.Complete, related.Count);
-
-            static void Group(ProtoReader group, ref EdgeRun run)
-            {
-                while (group.Next())
-                {
-                    if (group.Field != 1) { group.Skip(); continue; }
-                    var id = EntityId.ForGid(EntityKind.Album, group.Message().Bytes(1));
-                    if (!id.IsEmpty) run.Add(id);
-                }
-            }
         }
 
         /// <summary>`metadata.Show` (kind 11) → the show's Identity and About (ch 09 §7: publisher and description

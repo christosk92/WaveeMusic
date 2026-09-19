@@ -932,40 +932,36 @@ public static partial class Actions
         }
     }
 
-    // ══ 13. THE NOW-PLAYING MENU (G-195) ═══════════════════════════════════════════════════════════════════════════════
+    // ══ 13. THE NOW-PLAYING MENU SEAM (G-195) ══════════════════════════════════════════════════════════════════════════
     //
-    // The stage's identity strip and the player bar's title cluster share ONE right-click menu — both already call
-    // `Stage.NowPlayingMenu` (`Shell/Stage.UI.cs`, `Shell/Shell.PlayerBar.UI.cs:321`); nothing filled the seam. THIN ON
-    // PURPOSE: the full track-menu grammar (Add to playlist, Move ▸, Organize ▸, the deposit submenu, the destructive
-    // rows) is Wave 4.5's `Entities/Track.UI.cs` — this offers only what resolves through seams already in this file,
-    // so a verb neither wave has registered yet is simply ABSENT (`Menu.Row`'s own contract), never a promise that does
-    // nothing.
+    // The stage's identity strip and the player bar's title cluster share ONE right-click menu — both call
+    // `Stage.NowPlayingMenu` (`Shell/Stage.UI.cs`, `Shell/Shell.PlayerBar.UI.cs:322`), asked at OPEN time. This file
+    // owns the SEAM, not a composition: what it installs is the REAL track grammar (`Entities/Track.Menu.cs`), so the
+    // bar's menu IS the row's menu — the transport strip, Add to playlist ▸ / Move ▸, the navigation rows, Share ▸,
+    // View credits, Go to song radio and Video ▸. The thin eight-row duplicate that stood here until owner M's
+    // grammar landed (Wave 4.5) is gone with it: every row it had, `Track.Menu` has, and it was missing the one verb
+    // a now-playing right-click most obviously wants — Video ▸, the attach/replace/detach of a local file for the
+    // track that is playing RIGHT NOW (ch 01 GAP 7, G-220).
+    //
+    // TWO OPTIONS, and the second is the only thing a static seam cannot resolve for itself:
+    //   · `ShowGoToAlbum: true` — the bar belongs to no page, so both container rows belong (the album page is the
+    //     one that passes false, ch 01 §6.4 row 3b);
+    //   · `PickerOverlay` — the picker's overlay host comes from `UseContext(Overlay.Service)` inside a COMPONENT, and
+    //     the seam is a `Func<ContextMenuModel?>` with no such context (the call sites hold an overlay but hand it to
+    //     `WithContextMenu`, not to the factory). It uses the ambient overlay the last mounted page published —
+    //     `Track.DrawerOverlay`, the same fallback `Playlist.Page`'s `ActionOverlay` takes — and with none the
+    //     "More playlists…" row is simply disabled while the deposit submenu itself still works (`Track.Menu.cs`).
 
-    /// <summary>Install the shell seam this file owns. Called once by the composition root
-    /// (<see cref="Shell.InstallUi"/>).</summary>
-    public static void InstallUi() => Stage.NowPlayingMenu = NowPlayingMenu;
-
-    /// <summary>The now-playing menu: header → PlayNext/AddToQueue/Like/Radio → Go to album/artist/credits → Share.
-    /// Null while nothing is playing or the playable is not a track (an episode's menu is Wave 4.5's too).</summary>
-    public static ContextMenuModel? NowPlayingMenu()
+    /// <summary>Install the shell seam this file owns: the now-playing right-click, composed by the track grammar over
+    /// the current playable. Null while nothing is playing or the playable is not a track (an episode's menu is the
+    /// show grammar's). Called once by the composition root (<see cref="Shell.InstallUi"/>).</summary>
+    public static void InstallUi() => Stage.NowPlayingMenu = static () =>
     {
         var r = Playback.Current.Peek();
         if (r.IsNone || r.Kind != EntityKind.Track) return null;
         var track = new Track(r.Slot);
-        if (!track.IsValid) return null;
-
-        var ctx = new ActionContext(ActionTarget.ForNowPlaying(track), Services);
-        var rows = new List<MenuFlyoutItem>(8);
-        Menu.AddRows(rows, in ctx, [ActionId.PlayNext, ActionId.AddToQueue, ActionId.ToggleLike, ActionId.GoToSongRadio]);
-
-        var nav = new List<MenuFlyoutItem>(3);
-        Menu.AddRows(nav, in ctx, [ActionId.GoToAlbum, ActionId.GoToArtist, ActionId.ViewCredits]);
-        if (nav.Count > 0) { Menu.OpenGroup(rows); rows.AddRange(nav); }
-
-        if (Menu.Share(in ctx) is { } share) { Menu.OpenGroup(rows); rows.Add(share); }
-        if (rows.Count == 0) return null;
-
-        var header = Menu.Header(Controls.ArtUrl(track.ImageId), track.Title, null);
-        return new ContextMenuModel(rows, header);
-    }
+        return track.IsValid
+            ? Track.Menu([track], new Track.MenuOptions(ShowGoToAlbum: true, PickerOverlay: Track.DrawerOverlay))
+            : null;
+    };
 }

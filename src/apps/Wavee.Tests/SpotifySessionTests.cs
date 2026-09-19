@@ -118,10 +118,15 @@ public class SessionStepTests
         Step(ref s, Spotify.SessionEventKind.ClientTokenMinted);
         Step(ref s, Spotify.SessionEventKind.AccessTokenMinted);
 
-        // The transition into Online is the hello (headless plan §1.6 item 5): the connection id is in the session box.
+        // The first connection id: the hello (headless plan §1.6 item 5).
         Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(16, 4)));
-        // A second pusher frame on the live socket is not a new device.
-        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(20, 4)));
+        // B3: an EXACT repeat of the id already held (idempotent redelivery) is the only silent case.
+        Assert.Equal(Spotify.SessionEffects.None, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(16, 4)));
+        // B3: a DIFFERENT connection id while already Online is adopted but was silently swallowed before this fix
+        // (`wasOnline ? None : AnnounceDevice` — Spotify.cs:319, the "other devices do not show Wavee" bug) — the
+        // hello is owed to the id, not the phase transition.
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(20, 4)));
+        Assert.Equal(new Spotify.TokenRef(20, 4), s.ConnectionId);
 
         // A drop and a reconnect is a new connection id, and a new hello.
         Step(ref s, Spotify.SessionEventKind.Dropped, number: (long)Spotify.SessionFault.Network);
@@ -588,7 +593,10 @@ public class RequestFoldTests
             Fold(Spotify.RequestKind.ContextResolve, "spotify:album:x").Path);
         Assert.Equal("/context-resolve/v1/autoplay", Fold(Spotify.RequestKind.Autoplay).Path);
         Assert.Equal("/context-resolve/v1/autopodcast", Fold(Spotify.RequestKind.Autoplay, flag: true).Path);
-        Assert.Equal("/storage-resolve/files/audio/interactive/deadbeef",
+        // v2, with the wire audio format as its own segment: v1 was keyed by file id alone, so it signed every id into
+        // the Ogg namespace and a lossless body 404'd at byte 0. `Fold` leaves Number unset, hence the 0 here; the
+        // per-format segment is pinned properly by SpotifyAudioLadderTests.
+        Assert.Equal("/storage-resolve/v2/files/audio/interactive/0/deadbeef?product=0",
             Fold(Spotify.RequestKind.StorageResolve, "deadbeef").Path);
         Assert.Equal("/melody/v1/time", Fold(Spotify.RequestKind.ServerTime).Path);
         Assert.Equal("/user-profile-view/v3/profile/bob", Fold(Spotify.RequestKind.Profile, "bob").Path);

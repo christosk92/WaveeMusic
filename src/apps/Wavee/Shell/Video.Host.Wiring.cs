@@ -23,7 +23,8 @@
 //   4. `NaturalSeed` — the size a surface opens at before a frame exists (G-058): the frame, else the manifest, else
 //      the catalogue's kind-99 rendition size, else nothing (16:9).
 //   5. `HostObserver` — the leaf that runs the effects: the session mirror (`Playback.Video.Observe`), the live quality
-//      ceiling, the fold and the badge-lit prefetch (G-146).
+//      ceiling, the fold, the badge-lit prefetch (G-146) and the warm keeper's request (D15: the playing row and the
+//      next queued one, held warm while a video surface is wanted, dropped 30 s after it closes).
 // Every decision above is a pure function tested by `VideoHostRulesTests`; the leaf only reads signals and forwards.
 
 using FluentGpu.Dsl;
@@ -48,6 +49,10 @@ public static partial class Video
         Overrides.BrokenLink -= OnBrokenLink;
         Overrides.BrokenLink += OnBrokenLink;
         Playback.Video.InstallLog();
+        // At COMPOSITION, not on the first switch: the native component's load plus its whole MF/PlayReady import chain
+        // is part of what a cold `runtime.create` pays for, and it is the one warm that survives `PrepareAhead` being
+        // off. After `InstallLog`, so the warmup's own `[video.native]` lines land in the app's log.
+        Playback.Video.Boot();
         Playback.Video.OnOverrideFailed = OnOverrideFailed;
         Playback.Video.InstallResolver();   // IN FRONT of the resolver installed before (the modules' tier), never replacing it
         Playback.OnVideoDemoted = OnDemoted;
@@ -207,8 +212,11 @@ public static partial class Video
                 State.FoldForTrack(hasVideo, boundary);
             });
 
-            // The badge-lit prefetch (§3.1.5): the current row's video brought to the schedule's level while it plays as
-            // audio. The row playing on the video host needs none — its load IS the fetch.
+            // The badge-lit prefetch (§3.1.5) AND the warm keeper (D15), one effect because they read the same facts.
+            // The prefetch brings the CURRENT row's video to the schedule's level while it plays as audio — the row
+            // already playing on the video host needs none, its load IS the fetch. The keeper is the other half: while a
+            // video surface is wanted it holds the content keys of the playing row and the next queued one, which is
+            // what makes the second and third switch of a session near-instant and what keeps the native runtime up.
             UseSignalEffect(static () =>
             {
                 EntityRef row = Playback.Current.Value;
@@ -217,12 +225,27 @@ public static partial class Video
                 var placement = State.Surface.Value;
                 bool metered = Platform.Network.Metered.Value;
                 bool local = Playback.OwnerSignal.Value != Playback.Owner.Foreign;   // a controller's row is not ours to fetch
-                if (Platform.Args.Fake || onVideoHost || !local || id.Provider != EntityProvider.Spotify || !CurrentHasVideo(subscribe: true)) return;
-                var track = new Track(row.Slot);
-                string gid = Entities.Strings.Resolve(track.VideoGidId);
+                // Audio ALWAYS wins: while a track is opening, the keeper does not touch the api pool (§3.1.4). Reading
+                // the phase here is what re-runs this effect — and re-arms the beat — the moment the open lands.
+                bool audioBusy = Playback.PhaseSignal.Value == Playback.Phase.Loading;
+                if (Entities.Current is { } scope) _ = scope.Edges.Queue.Changed.Value;   // the next queued row moved
+                if (Platform.Args.Fake || !local || id.Provider != EntityProvider.Spotify)
+                {
+                    Playback.Video.KeepWarm(Playback.Video.WarmRequest.Off);
+                    return;
+                }
+
+                bool videoOn = PlacementPost.WantsVideo(in placement, State.HostCapability.Peek());
+                bool hasVideo = CurrentHasVideo(subscribe: true);
+                string gid = hasVideo ? Entities.Strings.Resolve(new Track(row.Slot).VideoGidId) : "";
+                NextVideoRow(out EntityId nextId, out string nextGid);
+                Playback.Video.KeepWarm(new Playback.Video.WarmRequest(
+                    videoOn, audioBusy, hasVideo ? id : default, gid, nextId, nextGid));
+
+                if (onVideoHost || !hasVideo) return;
                 var already = Playback.Video.PrefetchedLevel(id);
                 var input = new Playback.Video.PrefetchInput(
-                    HasVideo: true, VideoOn: PlacementPost.WantsVideo(in placement, State.HostCapability.Peek()), Metered: metered,
+                    HasVideo: true, VideoOn: videoOn, Metered: metered,
                     IsCurrent: true, MsToBoundary: 0, Already: already,
                     ManifestFresh: gid.Length > 0 ? Playback.Video.ManifestMemo.IsFresh(gid) : already != Playback.Video.PrefetchLevel.None);
                 var level = Playback.Video.PrefetchSchedule.Decide(in input);
@@ -231,6 +254,30 @@ public static partial class Video
             });
 
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+        }
+
+        /// <summary>How far down "Next up" the keeper looks for a row that carries a video. One key ahead is the promise
+        /// ("the next one is instant too"); looking further would pre-fetch for a queue the user has not committed to.</summary>
+        const int WarmLookahead = 3;
+
+        /// <summary>The next QUEUED row with a video, and the manifest id its catalogue row carries — the keeper's second
+        /// target, so the switch AFTER this one costs no licence round trip either. Empty when there is none.</summary>
+        static void NextVideoRow(out EntityId id, out string manifestId)
+        {
+            id = default;
+            manifestId = "";
+            if (Entities.Current is null || !Queue.UpNext(out int start, out int length)) return;
+            int n = Math.Min(WarmLookahead, length);
+            for (int i = start; i < start + n; i++)
+            {
+                EntityRef r = Queue.RefAt(i);
+                if (r.Kind != EntityKind.Track || r.IsNone) continue;
+                var t = new Track(r.Slot);
+                if (!t.IsValid || !t.HasVideo) continue;
+                id = t.Id;
+                manifestId = Entities.Strings.Resolve(t.VideoGidId);
+                return;
+            }
         }
 
         /// <summary>Does the playing row carry a video (catalogue or attachment)? Subscribing reads the tracks table's

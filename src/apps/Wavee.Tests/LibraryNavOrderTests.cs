@@ -7,6 +7,10 @@
 // same comparator (`LibraryNavSorter<LibraryRows>`); `LibraryRecencyTests` pins that the two paths agree.
 //
 // Added for 0.3: the persisted sort / view codes (shared with the sidebar's Library V3 — never renumber).
+//
+// Added by the 2026-09-17 library rework: the `Albums` arm (code 5, the artists rail's "albums" word) — saved-album count
+// desc, then title. The count arrives through `ILibraryNavRows.CountOf`, precomputed by the caller, so the comparator
+// itself never walks the library relations; `LibraryWordRailTests` pins which kinds offer the word.
 
 using Xunit;
 
@@ -90,6 +94,31 @@ public class LibraryNavOrderTests
     }
 
     [Fact]
+    public void Alphabetical_OrdersByTheGroupingLetterFirst_SoTheBandsAreContiguous()
+    {
+        // The a–z grouping files "The Beatles" under B, skips a leading quote, and puts an accented / CJK / digit initial
+        // under '#'. A plain ordinal title order disagrees with all three ("Ölüm" and "宇多田" sort after Z, "The …" under
+        // T), and rows whose letter flips back and forth are what overran LibraryLetters.Build (the 2026-09-18 crash).
+        var rows = new[]
+        {
+            F("t", "Thriller"), F("o", "Ölüm"), F("b", "The Beatles"), F("a", "Abbey Road"),
+            F("q", "\"Bad\""), F("n", "1999"), F("u", "宇多田ヒカル"),
+        };
+
+        var order = LibraryNavOrder.Order(rows, LibraryNavSort.Alphabetical, desc: false, NoPlays);
+
+        int last = -1;
+        foreach (int i in order)
+        {
+            int letter = LibraryLetters.Of(rows[i].Title);
+            Assert.True(letter >= last, "the grouping letter must never go backwards under a–z");
+            last = letter;
+        }
+        Assert.Equal(0, LibraryLetters.Of(rows[order[0]].Title));               // the '#' band leads
+        Assert.Equal("Thriller", rows[order[^1]].Title);                        // … and T closes it
+    }
+
+    [Fact]
     public void Creator_BySubtitleThenTitle()
     {
         var rows = new[]
@@ -119,6 +148,35 @@ public class LibraryNavOrderTests
 
         // Known years newest-first (2023, 2020); unknown years sink as a block, tie-broken by title ("A" < "M").
         Assert.Equal(new[] { 2, 0, 3, 1 }, order);
+    }
+
+    [Fact]
+    public void Albums_MostSavedAlbumsFirst_ThenTitle()
+    {
+        // The artists rail's third word. Counts: A 1, B 3, C 3, D 0 → B/C tie on 3 and break by title, and the artist
+        // with nothing saved sinks to the bottom without a block split (it is still an artist, not an unknown year).
+        var rows = new[] { F("a", "Adele"), F("b", "Blur"), F("c", "Bowie"), F("d", "Dio") };
+        int[] counts = [1, 3, 3, 0];
+
+        Assert.Equal(new[] { 1, 2, 0, 3 }, AlbumsOrder(rows, counts, desc: false));
+        // desc flips the whole comparison, tie-breaks included: fewest first, and the tie reads Bowie before Blur.
+        Assert.Equal(new[] { 3, 0, 2, 1 }, AlbumsOrder(rows, counts, desc: true));
+    }
+
+    [Fact]
+    public void Albums_WithNoCountsAtAll_IsPureTitleOrder()
+    {
+        // Every kind but Artist counts 0 (the word is not on their rails), so the arm degrades to alphabetical rather
+        // than to source order — a list that looks arbitrary is worse than one that looks sorted.
+        var rows = new[] { F("z", "Zulu"), F("a", "Alpha"), F("m", "Mike") };
+        Assert.Equal(new[] { 1, 2, 0 }, AlbumsOrder(rows, [0, 0, 0], desc: false));
+    }
+
+    static int[] AlbumsOrder(LibraryNavFacts[] rows, int[] counts, bool desc)
+    {
+        var order = new int[rows.Length];
+        new LibraryNavSorter<LibraryFactsRows>().Order(new LibraryFactsRows(rows, null, counts), LibraryNavSort.Albums, desc, order);
+        return order;
     }
 
     [Fact]
@@ -207,6 +265,7 @@ public class LibraryNavOrderTests
     [InlineData(2, LibraryNavSort.Alphabetical)]
     [InlineData(3, LibraryNavSort.Creator)]
     [InlineData(4, LibraryNavSort.ReleaseDate)]
+    [InlineData(5, LibraryNavSort.Albums)]
     public void TheSortCodesAreTheWire(int code, LibraryNavSort sort) => Assert.Equal(code, (int)sort);
 
     [Fact]
@@ -219,7 +278,9 @@ public class LibraryNavOrderTests
             Assert.False(string.IsNullOrWhiteSpace(key));
             Assert.True(keys.Add(key), $"sort code {code} reuses the loc key {key}");
         }
-        Assert.Equal(User.SortLabelKey(0), User.SortLabelKey(5));
+        // An out-of-range code reads as Recents. (5 is a real sort since the rework — the artists rail's "albums" —
+        // and its RAIL word is `LibraryWordRail.WordKey`; this pill's label table is the sidebar's, codes 0-4.)
+        Assert.Equal(User.SortLabelKey(0), User.SortLabelKey(6));
         Assert.Equal(User.SortLabelKey(0), User.SortLabelKey(-1));
     }
 

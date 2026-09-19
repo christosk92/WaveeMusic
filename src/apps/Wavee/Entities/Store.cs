@@ -825,12 +825,33 @@ public static partial class Store
     static Db Open(string path)
     {
         var write = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString());
-        write.Open();
-        Exec(write, Pragmas);
+        try
+        {
+            write.Open();
+            Exec(write, Pragmas);
+        }
+        catch (SqliteException ex) when (IsUnreadableFile(ex.SqliteErrorCode))
+        {
+            // THE PRAGMAS ARE THE FIRST STATEMENTS THAT TOUCH THE FILE, so a malformed one throws HERE — before
+            // `ReadFingerprint`'s unreadable-file verdict can ever run. 2026-09-18: `journal_mode=WAL` over a corrupt
+            // library.db raised SQLITE_CORRUPT on every launch, `Boot` caught it and the whole day ran memory-only
+            // (every page a cold network load, nothing persisted) with `store.fault step=open` as the only trace.
+            // Same verdict as a foreign file: it is a cache, delete it and start clean.
+            write.Dispose();
+            SqliteConnection.ClearAllPools();
+            bool gone = Delete(path);
+            Log.Event(WaveeLogLevel.Warning, "store", "store.dropped",
+                "the cache file could not be opened and was recreated", null, -1, null,
+                WaveeLogField.Of("why", $"unreadable:{ex.SqliteErrorCode}"), WaveeLogField.Of("deleted", gone));
+            if (!gone) throw;                                // undeletable AND unreadable: memory-only is the honest outcome
+            write = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString());
+            write.Open();
+            Exec(write, Pragmas);
+        }
 
         string ddl = Ddl();
         ulong want = Fingerprint(ddl);
-        if (ReadFingerprint(write) is { } have && have != want)
+        if (ReadFingerprint(write, out string why) is { } have && have != want)
         {
             // A CACHE, NOT A DOCUMENT (plan §4.4). Every row here can be asked for again; a migration would be a
             // second schema to keep correct forever, for data whose whole value is that it saves one round trip.
@@ -844,6 +865,16 @@ public static partial class Store
             // The file survived the delete (another process, an antivirus, a handle the pool did not release). Empty
             // it instead: `CREATE TABLE IF NOT EXISTS` over a table with the OLD columns is a silent no-op, and the
             // first read of a column this build expects would fail forever. Same outcome, one more statement.
+            // ALWAYS-ON (CLAUDE.md: no debug switches), and ONE line: losing the whole cache is the kind of thing a
+            // "why is nothing cached today" report has to be able to read off the log. `why` says which of the three
+            // verdicts fired — a stale schema, a foreign file, or a file sqlite itself could not read — and `deleted`
+            // says whether the file really went. BEFORE the drop, not after: `DropEverything` reads `sqlite_master`, so
+            // it is the one statement that can still throw on an undeletable MALFORMED file, and this line has to be in
+            // the log when it does (a `store.fault step=open` follows it and memory-only is then the honest outcome).
+            Log.Event(WaveeLogLevel.Warning, "store", "store.dropped",
+                "the cache file did not match this build and was recreated", null, -1, null,
+                WaveeLogField.Of("why", why), WaveeLogField.Of("found", $"{have:x16}"),
+                WaveeLogField.Of("want", $"{want:x16}"), WaveeLogField.Of("deleted", gone));
             if (!gone) DropEverything(write);
         }
         Exec(write, ddl);
@@ -866,20 +897,54 @@ public static partial class Store
         return new Db(path, write, read);
     }
 
-    static ulong? ReadFingerprint(SqliteConnection c)
+    /// <summary>The file's schema fingerprint, and <paramref name="why"/> for the log line if it loses. THREE outcomes,
+    /// and the difference between the last two is a whole session's persistence:
+    /// <list type="bullet">
+    /// <item>a real fingerprint — compare it with this build's and delete the file if it differs (<c>why = "stale"</c>).</item>
+    /// <item><c>0</c> — a FOREIGN file. It has a <c>meta</c> table with no schema row, or sqlite could not read it as a
+    /// database at all. 0 never equals a real fingerprint, so <see cref="Open"/> deletes and recreates it.</item>
+    /// <item><c>null</c> — a BRAND-NEW file: <c>meta</c> does not exist yet, so there is nothing to drop and the DDL
+    /// right after this simply creates it.</item>
+    /// </list>
+    /// <para>A MALFORMED FILE USED TO COME BACK <c>null</c> WITH THE BRAND-NEW ONES, and that was a whole-process
+    /// outage: every <see cref="SqliteException"/> read as "no meta table at all ⇒ nothing to drop", so a corrupt
+    /// <c>library.db</c> (SQLITE_CORRUPT, 11) skipped the delete-and-recreate path, <c>Exec(write, ddl)</c> threw on the
+    /// very next line, <see cref="Boot"/> caught it and ran MEMORY-ONLY for the rest of the process — no rows, no
+    /// palette, nothing persisted, every launch the same — with a <c>Debug.WriteLine</c> nobody sees in Release as the
+    /// only trace. One bad byte on disk cost the cache permanently; deleting the file costs one refetch.</para></summary>
+    static ulong? ReadFingerprint(SqliteConnection c, out string why)
     {
+        why = "stale";
         try
         {
             using var cmd = c.CreateCommand();
             cmd.CommandText = "SELECT value FROM meta WHERE key='schema';";
-            return cmd.ExecuteScalar() is string s && ulong.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out ulong v)
-                ? v : 0UL;                                   // a meta table with no fingerprint is a foreign file
+            if (cmd.ExecuteScalar() is string s && ulong.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out ulong v))
+                return v;
+            why = "foreign";                                 // a meta table with no fingerprint is a foreign file
+            return 0UL;
         }
-        catch (SqliteException)
+        catch (SqliteException ex) when (ex.SqliteErrorCode == SqliteGenericError)
         {
             return null;                                     // no meta table at all ⇒ a brand-new file, nothing to drop
         }
+        catch (SqliteException ex)
+        {
+            // THE FILE is the problem, not the missing table: SQLITE_CORRUPT (11), SQLITE_NOTADB (26), a truncated
+            // header, an encrypted file. It holds nothing this build can read, which is the same verdict as a foreign
+            // file — and unlike `null` it takes the delete path instead of leaving the store memory-only forever.
+            why = $"unreadable:{ex.SqliteErrorCode}";
+            return 0UL;
+        }
     }
+
+    /// <summary>SQLITE_ERROR — what <c>SELECT … FROM meta</c> raises when the TABLE does not exist (a file this build
+    /// has never written). Every other sqlite error on that one read is a statement about the FILE.</summary>
+    const int SqliteGenericError = 1;
+
+    /// <summary>The sqlite verdicts that are a statement about the FILE rather than the statement: SQLITE_CORRUPT (11)
+    /// and SQLITE_NOTADB (26). PURE.</summary>
+    internal static bool IsUnreadableFile(int sqliteErrorCode) => sqliteErrorCode is 11 or 26;
 
     /// <summary>WAL mode means three files, and a half-deleted set is worse than none. Returns whether the main file
     /// is actually gone — the caller has a fallback when it is not.</summary>
@@ -976,8 +1041,22 @@ public static partial class Store
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>Every store failure, in ONE always-on line (CLAUDE.md: always-on logs, no debug switches). It was a
+    /// <c>Debug.WriteLine</c>, which is compiled OUT of Release — so the one configuration the user runs reported a
+    /// dead cache as silence: <c>open</c> failing means memory-only for the whole process (<see cref="Boot"/>), and
+    /// <c>read</c>/<c>write</c>/<c>palette.*</c> failing means a cold start that never warms. `s_faults` already
+    /// counts them for the diagnostics page; this is what names them. Warning, not Error: the app is still correct
+    /// without a cache, it is only slower.
+    /// <para>Called from the STORE THREAD for every case but <c>open</c>; <c>Log.Event</c> is ring-locked and safe
+    /// from any thread.</para>
+    /// <para>ONE line and no stack, deliberately: a failing <c>write</c> faults once per batch, and a stack per batch
+    /// would bury the log it exists to inform. The type and the message are what the <c>Debug.WriteLine</c> printed and
+    /// what actually names the cause ("SqliteException: database disk image is malformed").</para></summary>
     static void Fault(string what, Exception ex)
-        => Debug.WriteLine($"[store] {what} failed: {ex.GetType().Name}: {ex.Message}");
+        => Log.Event(WaveeLogLevel.Warning, "store", "store.fault",
+            $"the store's {what} step failed: {ex.GetType().Name}: {ex.Message}", null, -1, null,
+            WaveeLogField.Of("step", what), WaveeLogField.Of("error", ex.GetType().Name),
+            WaveeLogField.Of("faults", s_faults));
 
     // ── the schema (CORE: pure text) ────────────────────────────────────────────────────────────────────────────────
 

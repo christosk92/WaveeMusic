@@ -2,7 +2,9 @@
 // the album surface's self-subscribing components: the billed-artist FACE PILE and its every-artist flyout (ch 05 §0.5,
 // W16, §6), the prerelease COUNTDOWN card in its three states incl. Bare (W13, §5's clock rule), the trailing section
 // STACK (W12: capped at 5, one-way "Show all N"), and the artist page's album DRAWER PANEL (W19: header, 32-pitch rows in
-// one or two column-major columns, shimmer cells, ready-empty + Retry, the two-node caret, selection + selection bar)
+// one or two column-major columns, shimmer cells, ready-empty + Retry, the two-node caret, selection + selection bar) —
+// plus the LIBRARY PANE STATICS (§5, library rework §5.5): the hero ⋯ menu over a handle, the 36-px command circle,
+// PaneHeader and PaneCommands, which Album.Pane and Artist.Reader paint
 //
 // Role: UI
 // Owner: M
@@ -940,4 +942,182 @@ public readonly partial struct Album
             return new DragPayload(DragKind.Track, uri, uri, first.Title, new EntityRef(EntityKind.Track, first.Slot), Tracks: tracks);
         }
     }
+
+    // ══ 5. THE LIBRARY PANE STATICS (library rework §5.5, wave L1) ════════════════════════════════════════════════════
+    //
+    // What `Album.Pane` (and `Artist.Reader`, which paints the same commands over one release block) calls: the hero ⋯ as
+    // a function of a HANDLE, the 36-px command circle, and the pane's header + command row. Every one is a VALUE over its
+    // arguments — no hooks, no signals, nothing read but the album it is handed — so a selection change re-skins both
+    // panes in place and neither remounts. Accent-NEUTRAL: nothing here reads a palette (ch 15 §0.8).
+
+    /// <summary>The pane covers' one edge — 128, the show twin's too (<c>Show.PaneHeader</c>).</summary>
+    public const float PaneCover = 128f;
+
+    /// <summary>The pane header's STATED height: the cover plus its own padding (128 + 20 + 12 = 160). Stated, not
+    /// content-derived, because a content-derived header is a header that MOVES: the text column reaches past the cover
+    /// the moment a title wraps to two lines, and everything under it — the command row, the column header, the first
+    /// row — slid ~9 DIP down on those albums and back up on the next one. With one number the rows below start on the
+    /// same DIP for every release, and the column that has to fit inside it is sized to fit (see
+    /// <see cref="PaneHeader"/>'s own note).</summary>
+    public const float PaneHeaderHeight = PaneCover + Spacing.XL + Spacing.M;
+
+    // ── the header's TYPE BUDGET ──────────────────────────────────────────────────────────────────────────────────────
+    // A stated height only helps if what goes in it FITS: an overflowing column would move the clipping instead of the
+    // layout. So the four lines and the gaps between them are numbers, `PaneHeader` lays itself out FROM those numbers,
+    // and `PaneHeaderTextHeight` adds them up — which makes "a two-line title cannot push the tracklist down" a pure
+    // assertion (AlbumPageRulesTests) rather than a screenshot. Raising the title back to the prototype's 28/34 now
+    // fails that test instead of shipping a 9-DIP jump.
+
+    /// <summary>Between the header's text lines.</summary>
+    public const float PaneHeaderGap = 3f;
+    /// <summary>The eyebrow's line box — <c>Design.Type.Eyebrow</c> is <c>Ui.Caption</c>, 12 / 16.</summary>
+    public const float PaneHeaderEyebrowLine = 16f;
+    /// <summary>The title link. 24 / 30 and not the prototype's 28 / 34: at 34 two lines alone spent 129 of the 128 the
+    /// cover leaves. A one-line title — the common case — reads the same at either size.</summary>
+    public const float PaneTitleSize = 24f;
+    /// <inheritdoc cref="PaneTitleSize"/>
+    public const float PaneTitleLine = 30f;
+    /// <summary>The title wraps to two lines and ellipsizes after them.</summary>
+    public const int PaneTitleMaxLines = 2;
+    /// <summary>The attribution's line box — <c>Detail.ArtistLine</c> sets its names 14 / 20.</summary>
+    public const float PaneHeaderAttributionLine = 20f;
+    /// <summary>The meta line, 12.5 / 16.</summary>
+    public const float PaneHeaderMetaSize = 12.5f;
+    /// <inheritdoc cref="PaneHeaderMetaSize"/>
+    public const float PaneHeaderMetaLine = 16f;
+
+    /// <summary>What the block leaves its text column: everything it states, less its own padding — the cover's 128.</summary>
+    public const float PaneHeaderTextBudget = PaneHeaderHeight - Spacing.XL - Spacing.M;
+
+    /// <summary>The text column's height for a title of <paramref name="titleLines"/> lines: the four line boxes and the
+    /// three gaps. The title link's 2-DIP inset is cancelled by its own negative margin, so it contributes nothing.</summary>
+    public static float PaneHeaderTextHeight(int titleLines)
+        => PaneHeaderEyebrowLine + PaneTitleLine * Math.Clamp(titleLines, 1, PaneTitleMaxLines)
+           + PaneHeaderAttributionLine + PaneHeaderMetaLine + 3f * PaneHeaderGap;
+
+    /// <summary>The pane's ⋯ (the album page's W20 hero menu over a handle), built at OPEN from the live model:
+    /// Add to playlist ▸ (the track menu's own deposit submenu over the album's rows) · Play next · Add to queue (the
+    /// container verbs). No owner rows on an album. Null when nothing is offerable — the caller draws no menu.</summary>
+    // TODO(library-rework): Album.Page.MoreMenu() duplicates this; fold when that file is free.
+    public static ContextMenuModel? MoreMenu(Album a, IOverlayService? overlay)
+    {
+        if (!a.IsValid) return null;
+        var slots = a.TrackSlots;
+        var rows = new List<MenuFlyoutItem>(3);
+        if (slots.Length > 0)
+        {
+            var tracks = new Track[slots.Length];
+            for (int i = 0; i < tracks.Length; i++) tracks[i] = new Track(slots[i]);
+            if (Track.Menu(tracks, new Track.MenuOptions(ShowGoToAlbum: false, PickerOverlay: overlay)) is { } model)
+            {
+                string add = Loc.Get(Strings.Detail.AddToPlaylist);
+                for (int i = 0; i < model.Rows.Count; i++)
+                    if (string.Equals(model.Rows[i].Label, add, StringComparison.Ordinal)) { rows.Add(model.Rows[i]); break; }
+            }
+        }
+        var ctx = new ActionContext(ActionTarget.ForAlbum(a.Uri, a.Title), Actions.Services);
+        if (Actions.Menu.Row(ActionId.PlayContextNext, in ctx) is { } next) rows.Add(next);
+        if (Actions.Menu.Row(ActionId.AddContextToQueue, in ctx) is { } queue) rows.Add(queue);
+        return rows.Count == 0 ? null : new ContextMenuModel(rows);
+    }
+
+    /// <summary>A 36-px subtle circle with a glyph and a tooltip name — the pane's and the reader's secondary verb. The
+    /// rest face is the recipe's (<c>Interactive</c> OWNS Fill: transparent at rest, subtle on hover — the same ghost
+    /// circle the detail rail's FAB is), and the Standard scale tier answers the press.</summary>
+    public static Element CommandCircle(string glyph, string name, Action tap) => Controls.Named(new BoxEl
+    {
+        Width = 36f, Height = 36f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Corners = Radii.Circle(36f),
+        HoverScale = Design.Motion.ScaleStandard.Hover, PressScale = Design.Motion.ScaleStandard.Press,
+        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = tap,
+        Children = [Icon(glyph, 16f, Tok.TextSecondary)],
+    }.Interactive(Interaction.Subtle), name);
+
+    /// <summary>Cover 128 (r 6, <c>Elevation.Card</c>) · eyebrow · the title LINK 24/30/600 (2 lines, accent on hover) ·
+    /// the attribution (<c>Detail.ArtistLine(id.Artists)</c>, or a show's publisher line) · meta 12.5/16.
+    /// <c>AlignItems End</c>: the text block sits on the cover's baseline, the prototype's stance.
+    /// <para>The block is <see cref="PaneHeaderHeight"/> tall, ALWAYS, and the text column is budgeted to fit inside the
+    /// 128 the cover leaves: 16 eyebrow + 60 title (two 30-DIP lines; the 2-DIP link inset is cancelled by its own
+    /// negative margin) + 20 attribution + 16 meta + three 3-DIP gaps = 121. That budget is why the title is 24/30 and
+    /// not the prototype's 28/34 — at 34 a two-line title alone put the column at 129 and pushed the whole tracklist
+    /// down. A one-line title is the common case and reads the same; a wrapped one now costs nothing below it. The
+    /// <c>MinHeight 0</c> / <c>ClipToBounds</c> on the column and on the block are the BACKSTOP for a locale whose
+    /// metrics overrun the budget anyway: it clips, it never reflows.</para></summary>
+    public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta) => new BoxEl
+    {
+        Direction = 0, Gap = 18f, AlignItems = FlexAlign.End, Shrink = 0f,
+        Height = PaneHeaderHeight, ClipToBounds = true,
+        Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
+        Children =
+        [
+            new BoxEl
+            {
+                Width = PaneCover, Height = PaneCover, Shrink = 0f, Corners = Radii.CardAll, ClipToBounds = true, Shadow = Elevation.Card,
+                Children = [Controls.Artwork(cover, PaneCover, PaneCover, Radii.Card, decodePx: 256)],
+            },
+            new BoxEl
+            {
+                Direction = 1, Grow = 1f, Basis = 0f, Gap = PaneHeaderGap, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
+                Children =
+                [
+                    Design.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary },
+                    new BoxEl
+                    {
+                        Corners = Radii.ControlAll, Direction = 1,
+                        Padding = new Edges4(Spacing.S, Spacing.XXS, Spacing.S, Spacing.XXS),
+                        Margin = new Edges4(-Spacing.S, -Spacing.XXS, -Spacing.S, -Spacing.XXS),
+                        Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
+                        Children =
+                        [
+                            new TextEl(title)
+                            {
+                                Size = PaneTitleSize, LineHeight = PaneTitleLine, Weight = 600,
+                                Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
+                                BrushTransitionMs = Design.Motion.Faster, MaxLines = PaneTitleMaxLines,
+                                Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                            },
+                        ],
+                    }.Interactive(Interaction.Subtle),
+                    attribution,
+                    new TextEl(meta)
+                    {
+                        Size = PaneHeaderMetaSize, LineHeight = PaneHeaderMetaLine, Color = Tok.TextTertiary,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    },
+                ],
+            },
+        ],
+    };
+
+    /// <summary>Play (the SYSTEM accent — the one stated exception) · shuffle · save · more (36 circles each) · spacer ·
+    /// "Open album ↗" (a 13-px accent text link with the OpenInNewWindow glyph — a hyperlink, not a capsule). Never a
+    /// second accent CTA (ch 15 §0.8). <paramref name="save"/> and <paramref name="more"/> are the caller's hosts (the
+    /// SaveButton is keyed per uri, the ⋯ needs the overlay), so this row stays a pure value.</summary>
+    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open) => new BoxEl
+    {
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, Shrink = 0f,
+        Padding = new Edges4(Spacing.XL, Spacing.M, Spacing.XL, Spacing.S),
+        Children =
+        [
+            Controls.Play(Tok.AccentDefault, play),
+            CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle),
+            save, more,
+            new BoxEl { Grow = 1f },
+            new BoxEl
+            {
+                Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, Corners = Radii.ControlAll, Shrink = 0f,
+                Padding = new Edges4(Spacing.S, 6f, Spacing.S, 6f),
+                Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, BrushTransitionMs = Design.Motion.Faster,
+                Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
+                Children =
+                [
+                    new TextEl(Loc.Get(Strings.Library.OpenAlbum))
+                    {
+                        Size = 13f, LineHeight = 18f, Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary,
+                    },
+                    Icon(Icons.OpenInNewWindow, 14f, Tok.AccentTextPrimary),
+                ],
+            },
+        ],
+    };
 }

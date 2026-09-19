@@ -321,9 +321,12 @@ public class PlaybackStepTests
         var s = PlayingQueueOf(3);
         var fx = new Playback.Effects();
 
+        // Playback.SeekTarget.Clamp reserves a small tail (A3) so a seek can never itself land the deck exactly at
+        // the duration — the same inaudible instant a stale mirror used to ratchet to (A2).
+        int expected = 180_000 - Playback.SeekTarget.TailGuardMs;
         Playback.Step(ref s, Playback.Input.Seek(999_999, nowMs: 2_000), ref fx);
-        Assert.Equal(180_000, fx.SeekMs);
-        Assert.Equal(180_000, s.PosMs);
+        Assert.Equal(expected, fx.SeekMs);
+        Assert.Equal(expected, s.PosMs);
 
         fx.Clear();
         Playback.Step(ref s, Playback.Input.Seek(-5, nowMs: 2_000), ref fx);
@@ -455,6 +458,84 @@ public class PlaybackStepTests
         Assert.Equal(1f, s.Volume);                                      // …and our own volume stays ours
         Assert.True(fx.Fetch);                                           // we have no row for the phone's track yet
         Assert.Equal(remote, fx.FetchId);
+    }
+
+    [Fact]
+    public void DoTick_never_folds_a_mirrored_rows_position_because_Own_Kind_is_not_Us()
+    {
+        // A2: the fold that used to ratchet a stale mirror straight into the duration clamp is gated on ownership —
+        // `Owner.Foreign` (and `Nobody`) never fold, whatever `Phase` says.
+        var s = PlayingQueueOf(3);
+        ulong phone = Playback.DeviceHash("phone");
+        var fx = new Playback.Effects();
+        var frame = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, phone, 1_000);
+        EntityId remote = EntityId.ForGid(EntityKind.Track, (UInt128)0xF00DUL);
+        var mirrored = new Playback.RemoteState(true, remote, true, false, false,
+            10_000, 1_000, 200_000, false, RepeatMode.Off, -1, false, false, false);
+        Playback.Step(ref s, Playback.Input.Cluster(in frame, in mirrored, nowMs: 1_000), ref fx);
+        Assert.Equal(Playback.Owner.Foreign, s.Owner);
+        Assert.Equal(Playback.Phase.Playing, s.Phase);
+        Assert.Equal(10_000, s.PosMs);
+        long posQpcBefore = s.PosQpc;
+
+        fx.Clear();
+        Playback.Step(ref s, Playback.Input.Tick(nowMs: 60_000), ref fx);
+
+        Assert.Equal(10_000, s.PosMs);                                   // not folded — Position() extrapolates instead
+        Assert.Equal(posQpcBefore, s.PosQpc);
+        Assert.False(fx.SmtcTimeline);                                   // proves the fold branch did not run at all
+        Assert.Equal(69_000, s.Position(60_000));                        // …and the bar still moves, via extrapolation
+    }
+
+    [Fact]
+    public void A_mirrored_row_stale_for_hours_resumes_without_reloading_at_the_duration()
+    {
+        // The exact trace this plan starts from: "Closer" mirrors as playing 90 s into a 244_960 ms row, the phone
+        // then goes silent for hours, and pressing play must not load at the duration (the old DoTick ratchet) NOR
+        // find a Cursor.IsNone deck with nothing to seed (A4's takeover).
+        TestScope.Fresh();
+        var s = Playback.State.Initial;
+        s.Us = Playback.DeviceHash("wavee-device");
+        var fx = new Playback.Effects();
+        ulong phone = Playback.DeviceHash("phone");
+
+        var frame = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, phone, 1_000);
+        EntityId closer = EntityId.ForGid(EntityKind.Track, (UInt128)0xC105E5UL);
+        var closerContext = EntityId.ForGid(EntityKind.Playlist, (UInt128)0xA1BEUL);
+        var remote = new Playback.RemoteState(true, closer, true, false, false,
+            90_000, 1_000, 244_960, false, RepeatMode.Off, -1, NoPrev: false, NoNext: false, NoSeek: false,
+            Context: closerContext);
+        Playback.Step(ref s, Playback.Input.Cluster(in frame, in remote, nowMs: 1_000), ref fx);
+
+        Assert.Equal(Playback.Owner.Foreign, s.Owner);
+        Assert.True(s.Parked);
+        Assert.True(s.Cursor.IsNone);
+        Assert.Equal(90_000, s.PosMs);
+
+        // The phone drops out of the cluster later — Nobody/FromForeign, the departed snapshot stays on screen
+        // (`Ownership.ShowsLocalNowPlaying`), and routing goes local again.
+        var dropFrame = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, 0, 2_000);
+        Playback.Step(ref s, Playback.Input.Cluster(in dropFrame, default, nowMs: 2_000), ref fx);
+        Assert.Equal(Playback.Owner.Nobody, s.Owner);
+        Assert.True(s.RoutesLocal);
+
+        // Three hours pass with nothing folding a position (A2's gate — Own.Kind is never Us here).
+        long t = 2_000;
+        for (int n = 0; n < 3; n++)
+        {
+            t += 3_600_000;
+            Playback.Step(ref s, Playback.Input.Tick(t), ref fx);
+        }
+        Assert.Equal(90_000, s.PosMs);                                   // never ratcheted to the duration
+
+        fx.Clear();
+        Playback.Step(ref s, Playback.Input.Resume(nowMs: t), ref fx);
+
+        Assert.True(fx.Load);
+        Assert.NotEqual(244_960, fx.LoadFromMs);                         // never the duration
+        Assert.Equal(90_000, fx.LoadFromMs);                             // resumes exactly where the mirror left it
+        Assert.True(fx.TakeoverSeed);                                    // A4: the host must re-seed the queue
+        Assert.Equal(closerContext, s.Context);                          // A4: the context is adopted, not left stale
     }
 
     [Fact]
@@ -805,7 +886,7 @@ public class PlaybackStepTests
         Playback.Step(ref s, Playback.Input.Controller(in cmd, nowMs: 1_000), ref fx);
 
         Assert.True(fx.Seek);
-        Assert.Equal(180_000, fx.SeekMs);
+        Assert.Equal(180_000 - Playback.SeekTarget.TailGuardMs, fx.SeekMs);
     }
 
     // ── R4-1: context paging (G-242) ────────────────────────────────────────────────────────────────────────────────

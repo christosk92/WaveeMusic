@@ -1,6 +1,6 @@
 // ── Entities/Track.Menu.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// The named partial of Track.UI.cs: the track context-menu COMPOSITION (ch 01 §6.4) and the thirteen track VERBS
-// registered into AppActions.
+// The named partial of Track.UI.cs: the track context-menu COMPOSITION (ch 01 §6.4) and the eighteen track VERBS
+// registered into AppActions (the five Video ▸ ones in the named partial Track.Menu.Video.cs).
 //
 // Role: UI
 // Owner: M
@@ -413,7 +413,7 @@ public readonly partial struct Track
             if (tracks[i].Slot > 0) enqueue(tracks[i].Uri);
     }
 
-    // ══ 4. THE THIRTEEN VERBS ════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 4. THE EIGHTEEN VERBS ════════════════════════════════════════════════════════════════════════════════════════
 
     static bool s_actionsInstalled;
 
@@ -424,9 +424,11 @@ public readonly partial struct Track
         if (!s_actionsInstalled) InstallActions();
     }
 
-    /// <summary>Register the thirteen track verbs into <see cref="AppActions"/> — Play · PlayNext · AddToQueue ·
+    /// <summary>Register the eighteen track verbs into <see cref="AppActions"/> — Play · PlayNext · AddToQueue ·
     /// ToggleLike · CopyLink · GoToAlbum · GoToArtist · GoToSongRadio · ViewCredits · CopySpotifyUri · OpenInSpotifyWeb ·
-    /// RemoveFromThisPlaylist · RemoveFromQueue. Idempotent (and <c>AppActions.Register</c> is first-wins per id). Each
+    /// RemoveFromThisPlaylist · RemoveFromQueue, plus the five Video ▸ verbs of <c>Track.Menu.Video.cs</c> (AttachVideo ·
+    /// ReplaceVideo · LocateVideo · ShowVideoInExplorer · RemoveVideo). Idempotent (and <c>AppActions.Register</c> is
+    /// first-wins per id). Each
     /// verb runs through a seam — <c>Actions.Services</c>, <c>Playback</c>/<c>Queue</c>, <c>User.Me</c>,
     /// <see cref="MenuSeams"/> — and is DISABLED while that seam is absent, never a silent no-op. Every IsEnabled/Label is
     /// a one-shot snapshot at menu open (a menu closes on invoke).</summary>
@@ -603,6 +605,11 @@ public readonly partial struct Track
                 if (url.Length > 0) c.S.OpenExternal?.Invoke(url);
             },
         });
+
+        // ── the Video ▸ submenu (Track.Menu.Video.cs) ────────────────────────────────────────────────────────────────
+        // Without this call `VideoItem`'s `Actions.Menu.Row(ActionId.*Video, …)` finds nothing and the whole submenu is
+        // dropped — the rows and their verbs ship together or not at all.
+        InstallVideoActions();
 
         // ── destructive ──────────────────────────────────────────────────────────────────────────────────────────────
         AppActions.Register(new AppAction

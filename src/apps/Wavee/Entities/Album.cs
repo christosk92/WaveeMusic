@@ -954,8 +954,11 @@ public readonly partial struct Album
         /// <summary>A trailing section's row cap; "Fans also like"'s chip cap; the similar-albums ask.</summary>
         public const int StackCap = 5, FansCap = 8, SimilarLimit = 24;
 
-        /// <summary><c>ReleaseKind == Single || tracks is &gt; 0 and &lt;= 2</c> — gates the watch-video card and switches
-        /// "Fans also like" to the seed track's related artists.</summary>
+        /// <summary><c>ReleaseKind == Single || tracks is &gt; 0 and &lt;= 2</c> — switches "Fans also like" to the seed
+        /// track's related artists and shapes the trailing skeleton (a short release reserves no rows block).
+        /// <para>It NO LONGER gates the music-video section (2026-09-17). It did, and a full-length album with three
+        /// music videos therefore surfaced nothing at all: the section is a function of
+        /// <see cref="SelectVideos"/> alone, at any length.</para></summary>
         public static bool IsShortRelease(AlbumKind kind, int trackCount) => kind == AlbumKind.Single || trackCount is > 0 and <= 2;
 
         /// <summary>The song count a meta line prints. A count of 0 is "not known yet", never "no songs" (the row-wide
@@ -979,8 +982,8 @@ public readonly partial struct Album
         /// <see cref="TrailingDeadlineMs"/>, while any of the sections that sit directly under the rows is still
         /// unresolved: About the artist (<paramref name="aboutReady"/> — the lead artist's name is known, or there is no
         /// billed artist), Featured on (<paramref name="featuredReady"/> — the recommendations edge has answered or
-        /// failed) and the watch-video card (<paramref name="videoReady"/>, <see cref="VideoDecided"/> — a short
-        /// release's members all know whether they have a video; a full album never waits). The deadline releases the
+        /// failed) and the music-video section (<paramref name="videoReady"/>, <see cref="VideoDecided"/> — every
+        /// member knows whether it has a video, at any release length). The deadline releases the
         /// reserve whatever is still out (a stuck ask must never hold the visible skeleton), and the below-the-fold
         /// relations (merch, more-by, similar) stay Prefetch and are NOT part of this gate: they resolve later and
         /// update in place. Fans also like (<paramref name="fansReady"/>: the related edge answered and every drawn fan
@@ -994,11 +997,15 @@ public readonly partial struct Album
             return !(aboutReady && featuredReady && fansReady && videoReady);
         }
 
-        /// <summary>Whether the watch-video card's verdict is in: a full album never shows one, so it is decided at once;
-        /// a short release waits until every member knows its <see cref="TrackFields.Video"/> group.</summary>
-        public static bool VideoDecided(bool shortRelease, ReadOnlySpan<Track> members)
+        /// <summary>Whether the music-video section's verdict is in: every member knows its
+        /// <see cref="TrackFields.Video"/> group. The page asks the members for <c>Row | Video</c> in ONE batch with the
+        /// tracklist (<c>Album.Page.cs</c> <c>DemandTracked</c>), so this is normally true the moment the rows hydrate —
+        /// and <see cref="TrailingDeadlineMs"/> is the fail-soft cap for a long album whose rows page in.
+        /// <para>It used to short-circuit to true for anything longer than an EP, because the section itself was
+        /// gated on <see cref="IsShortRelease"/>; it is not any more, so the reserve waits for the verdict whatever
+        /// the release length and the section can never shove About-the-artist down a frame after the reveal.</para></summary>
+        public static bool VideoDecided(ReadOnlySpan<Track> members)
         {
-            if (!shortRelease) return true;
             for (int i = 0; i < members.Length; i++)
                 if (!members[i].Knows(TrackFields.Video)) return false;
             return true;
@@ -1046,11 +1053,14 @@ public readonly partial struct Album
             => !resolved && tracklist == EdgeState.Failed && !knowsTitle;
 
         /// <summary>Does the trailing band exist at all? <paramref name="moreBy"/> is the album payload's more-by run or
-        /// the artist's top albums — the two 0.2.9 arms — and needs a billed artist to title it.</summary>
-        public static bool HasTrailingSections(bool shortRelease, bool hasVideo, bool about, int fans, int featured, int merch,
+        /// the artist's top albums — the two 0.2.9 arms — and needs a billed artist to title it.
+        /// <para><paramref name="hasVideo"/> is <see cref="SelectVideos"/>'s count &gt; 0 and stands on its own. It used
+        /// to be <c>shortRelease &amp;&amp; hasVideo</c>, which is why a full-length album whose only trailing content
+        /// was its music videos showed an empty band.</para></summary>
+        public static bool HasTrailingSections(bool hasVideo, bool about, int fans, int featured, int merch,
                                                int similar, int moreBy, int billedArtists)
         {
-            if (shortRelease && hasVideo) return true;
+            if (hasVideo) return true;                    // any length: the section is NOT a short-release privilege
             if (about || fans > 0 || featured > 0 || merch > 0 || similar > 0) return true;
             return moreBy > 0 && billedArtists > 0;
         }
@@ -1095,6 +1105,85 @@ public readonly partial struct Album
             for (int i = 0; i < tracks.Length; i++)
                 if (hasOverride(tracks[i])) return true;
             return false;
+        }
+
+        // ── the music-video section (2026-09-17: one card per video, its OWN still, at any release length) ────────────
+
+        /// <summary>How many music videos the album's section draws. Matches the artist page's own shelf cap
+        /// (<c>ArtistSections.VideoCap</c>) so the two surfaces agree about "a shelf of videos".</summary>
+        public const int VideoCap = 16;
+
+        /// <summary>ONE music video the album offers.
+        /// <para><paramref name="MemberSlot"/> is the ALBUM ROW that owns it, and it is what plays: kind 99 keys the
+        /// video on the SONG (<c>video_associations.proto</c>), which is exactly why the drawer's own play verb targets
+        /// the parent and not the counterpart (<c>Track.Drawer.cs</c> <c>PlayVersion</c>).</para>
+        /// <para><paramref name="CounterpartSlot"/> is the video's own track row when kind 99 named one
+        /// (<c>Table.None</c> otherwise — a self-contained video answers with renditions and no
+        /// <c>associated_uri</c>, and a user-attached mp4 has no counterpart at all). It carries the video's own title
+        /// and duration once somebody has asked for its identity.</para>
+        /// <para><paramref name="Thumb"/> is the VIDEO's own 16:9 still, never the album cover. That omission is the
+        /// whole bug this record exists to close: the card drew <c>Album.ImageId</c> and therefore showed the sleeve
+        /// under a play badge for every video on the release.</para></summary>
+        public readonly record struct AlbumVideo(int MemberSlot, int CounterpartSlot, StringId Thumb, int DurationMs);
+
+        /// <summary>Which arm the music-video section draws. ONE video keeps the 0.2.9 hero card — its geometry is what
+        /// the single-video page has always looked like. TWO OR MORE become a HORIZONTAL SHELF (edge fades + pips), not
+        /// a wrapping grid: four videos in a 2×2 block was tried and rejected (2026-09-17).</summary>
+        public enum VideoArm : byte { None, Hero, Shelf }
+
+        public static VideoArm ArmFor(int videoCount)
+            => videoCount <= 0 ? VideoArm.None : videoCount == 1 ? VideoArm.Hero : VideoArm.Shelf;
+
+        /// <summary>What an explicit "watch this video" click does. A click on a video card is an INSTRUCTION, not an
+        /// availability "upgrade": <c>Video.UpgradeGate.DeferUpgrade</c> deliberately withholds the mid-track upgrade
+        /// nobody asked for, and it must never swallow this one — which is why the caller commits through the direct
+        /// <c>Video.State.FoldAvailability</c> + <c>OpenAt</c> pair (the rail's own <c>ShowVideoAt</c> idiom) rather
+        /// than <c>FoldForTrack</c>.</summary>
+        public enum WatchAction : byte
+        {
+            /// <summary>No placement can host a video right now (<c>UpgradeGate.AvailabilityFor(true, hostCapable)</c>
+            /// is empty: no rail room, no second window, no fullscreen hook). The card SAYS so and starts the song — it
+            /// does not quietly play audio from under a play badge, which is the whole defect this enum exists for.</summary>
+            AudioOnly,
+            /// <summary>This row is already on the deck: request the surface and let the reducer re-decide the row's
+            /// kind (<c>Playback.Transitions</c> <c>DoVideoPlacement</c> → <c>ReloadHost</c> at the carried position).
+            /// SWITCH, never restart.</summary>
+            SwitchInPlace,
+            /// <summary>Request the surface FIRST, then start the row. The order is the contract: the reducer's inbox is
+            /// FIFO and folded in one batch, so the placement input lands before the load and <c>KindOfRow</c> already
+            /// reads <c>videoWanted = true</c>. Play first and the user gets a beat of audio and then a switch.</summary>
+            RequestThenPlay,
+        }
+
+        public static WatchAction WatchFor(bool canHostVideo, bool isDeckRow)
+            => !canHostVideo ? WatchAction.AudioOnly
+             : isDeckRow ? WatchAction.SwitchInPlace
+             : WatchAction.RequestThenPlay;
+
+        /// <summary>The album's videos, in TRACK ORDER, written into <paramref name="into"/>; returns the count (capped
+        /// by the span). One entry per member that <see cref="Track.HasVideo"/> — the catalogue association OR the
+        /// user's own mp4 — because kind 99 carries at most ONE counterpart per track, so N videos on an album means N
+        /// video-bearing rows. There is no album-level video edge to read.
+        /// <para>The still is the drawer's exact ladder (<c>Track.Drawer.cs</c> <c>Thumb</c>): the member's own
+        /// <see cref="Track.VideoImageId"/> first, then the counterpart row's image, and only then the song's own art —
+        /// the last rung is the honest fallback for a user-attached mp4, which has no still anywhere.</para>
+        /// <para>The duration is the COUNTERPART's when it has one (a video is not the same length as its song); the
+        /// song's otherwise, and 0 means "say nothing".</para></summary>
+        public static int SelectVideos(ReadOnlySpan<Track> members, Span<AlbumVideo> into)
+        {
+            int n = 0;
+            for (int i = 0; i < members.Length && n < into.Length; i++)
+            {
+                var m = members[i];
+                if (!m.HasVideo) continue;
+                var counterpart = m.VideoCounterpart;
+                var thumb = !m.VideoImageId.IsEmpty ? m.VideoImageId
+                          : counterpart.IsValid && !counterpart.ImageId.IsEmpty ? counterpart.ImageId
+                          : m.ImageId;
+                int durationMs = counterpart.IsValid && counterpart.DurationMs > 0 ? counterpart.DurationMs : m.DurationMs;
+                into[n++] = new AlbumVideo(m.Slot, counterpart.IsValid ? counterpart.Slot : global::Wavee.Table.None, thumb, durationMs);
+            }
+            return n;
         }
 
         /// <summary>The face pile's <c>+N</c>. FIXED (ch 05 §0.5): with billed artists it is everything not DRAWN — 0.2.9

@@ -512,6 +512,21 @@ public static partial class Entities
             // The manifest id is the same kind of fact (G-056): a key carried by TrackV4 alone, never cleared by an
             // answer that does not carry it, and not a group anyone renders.
             if (!row.VideoGid.IsEmpty) t.SetText(ref t.VideoGid, slot, s.Intern(row.VideoGid));
+            // THE USER'S OWN ATTACHED MP4 (G-220), folded in OUTSIDE the Video arm below and deliberately so. The
+            // roster (`Video.Overrides`) is the only thing that ever ORIGINATES `VideoOverride`, it speaks at
+            // `Authority.Local` and no provider answer speaks for it — while the arm below runs only for a row that
+            // STAGED the Video group and whose authority `Accepts` let through. A row that lands AFTER the attach (a
+            // page mounted later, or a restart, where the device-wide roster loads long before any track slot exists)
+            // carries no Video group at all, and an arm that never runs can never light the bit. Set-only: clearing
+            // is the mirror's own job on a detach (`Shell/Video.Overrides.Mirror.cs`), and the arm below preserves
+            // this bit for exactly the same reason. ONE probe — of an index that is EMPTY, and returns before it
+            // hashes anything, in every session where the user has curated nothing — and it answers for both columns
+            // the gap names: the bit every surface reads, and the path the row is supposed to carry.
+            if (Video.OverrideMirror.TryPath(t.Id[slot], out string attachedVideo))
+            {
+                t.Flags[slot] |= (uint)TrackFlags.VideoOverride;
+                t.SetText(ref t.LocalVideo, slot, Entities.Strings.Intern(attachedVideo));
+            }
 
             if ((known & (uint)TrackFields.Identity) != 0
                 && t.Accepts(slot, (uint)TrackFields.Identity, auth, in t.IdentityAuthority))
@@ -539,7 +554,41 @@ public static partial class Entities
                 // batch (`TrackShape.Load`) now deliberately withholds the `Artists` bit (bug C), and marking the
                 // group Known unconditionally here would silently re-grant it regardless of what the row actually
                 // staged, defeating that mask one line downstream of it.
-                t.Applied(slot, known & (uint)TrackFields.Identity, auth, ref t.IdentityAuthority);
+                uint identity = known & (uint)TrackFields.Identity;
+                // AND THE `Image` BIT IS NOT A THIN ANSWER'S TO GIVE (2026-09-18 — the row-thumbnail variant of the
+                // artist half of bug C, `ArtistImageBitTests`). `Identity` is one six-bit constant, so a playlist
+                // item, a search hit or a pathfinder row that staged the group while carrying NO cover — a cover is
+                // optional in all three shapes (`Spotify.Decode.Playlist.cs`, `Spotify.Decode.Pathfinder.cs`) — used
+                // to seal `Image` known over an empty column. `Fetch.NeedOf = wanted & ~Known & ~Asked` then sees no
+                // hole, so every demand whose wanted set is Image-shaped and nothing wider — `User.Cover.cs`'s
+                // `Ensure(Image | Album)`, `Sidebar.MosaicTrackFields` — asks for nothing and the art stays the flat
+                // placeholder forever, unaskable. Withhold the bit instead, exactly as `Spotify.Decode.cs` withholds
+                // a 0 `TrackCount` and an absent artist portrait: an empty column nobody answered for is a hole.
+                //
+                // AUTHORITY IS THE GATE, and `Thin` is the only rung that loses the bit — the same "who speaks for
+                // the group" rule `ArtistUnion`'s `overview ||` follows. A `Full` answer (TrackV4, and the terminal
+                // `UnavailableTrack` verdict for a track that does not exist for this account), a `Local` row (a
+                // file's own tags: a cover-less mp3 is a fact) and a `Seed` row all speak for the WHOLE entity —
+                // "no cover" is their answer and there is nothing further to ask. Demoting their bit would re-ask
+                // nothing (`Fetch.Answer` seals `Asked` on success); it would only make `TrackFields.Face` — which
+                // is `Identity` minus `Artists`, `Image` INCLUDED — unknowable, and `TableRules.RowHasData` reads
+                // exactly that group: the row would shimmer as LOADING forever instead of painting the blank row
+                // the verdict describes (the fake local-files rows, `Entities.Fake.Library.cs`, are the same shape).
+                // A thin mention has no verdict behind it, and that is the whole distinction.
+                if (auth == Authority.Thin && row.Image.IsEmpty && t.Image[slot].IsEmpty)
+                {
+                    identity &= ~(uint)TrackFields.Image;
+                    // A WITHHELD BIT IS A HOLE, NOT A STALE OR FAILED ONE. `Applied` clears `Stale` and `Failed` for
+                    // the bits it is handed, so the one bit it will not see has to be cleared here or it keeps marks
+                    // that outlive their meaning: an invalidated row re-answered by a thin, cover-less answer would
+                    // read `IsStale(Identity)` true forever (that is `(Stale & group) != 0`, any bit) even though the
+                    // answer arrived, and `Failed` would still claim a terminal refusal the answer just retired.
+                    // `NeedOf` already asks for a bit that is not Known; the marks would only mislead every OTHER
+                    // reader — the pane that turns a shimmer into a Retry strip, the planner's `Settled` set.
+                    t.Stale[slot] &= ~(uint)TrackFields.Image;
+                    t.Failed[slot] &= ~(uint)TrackFields.Image;
+                }
+                t.Applied(slot, identity, auth, ref t.IdentityAuthority);
             }
 
             // The cold groups share ONE authority column (plan §4.2's `ExtrasAuthority`): they arrive from different

@@ -339,13 +339,24 @@ public static partial class Queue
         CurrentOnly = 3,
     }
 
-    /// <summary>The seed decision (see <see cref="SeedSource"/>). PURE: an <see cref="EdgeState"/> and three bools in,
-    /// one enum out, nothing dereferenced. A queue that already left <see cref="EdgeState.Unknown"/> — by a real Play
-    /// or an earlier seed — is never touched again from here, which is what keeps a late cluster from clobbering a
-    /// queue the listener already built by hand.</summary>
-    public static SeedSource DecideSeed(EdgeState state, bool hasCurrent, bool hasClusterTracks, bool hasContext)
+    /// <summary>The seed decision (see <see cref="SeedSource"/>). PURE: an <see cref="EdgeState"/>, three bools and
+    /// <paramref name="takeover"/> in, one enum out, nothing dereferenced. A queue that already left
+    /// <see cref="EdgeState.Unknown"/> — by a real Play or an earlier seed — is never touched again from here, which
+    /// is what keeps a late cluster heartbeat from clobbering a queue the listener already built by hand.
+    ///
+    /// <para><paramref name="takeover"/> is the ONE deliberate exception, added for A4 (playback plan, Wave A): the
+    /// user claiming a MIRRORED row (<c>Playback.DoResume</c>'s parked branch, <c>DoPlay</c> over the same row) is
+    /// not "a late cluster" — it is the listener adopting the session that row already belongs to, atomically, and
+    /// the local queue must answer "what plays next" for THAT session rather than keep whatever it held before
+    /// mirroring started (or nothing at all). It overrides the <see cref="EdgeState.Unknown"/> gate only; a queue
+    /// with no cluster rows and no context still lands <see cref="SeedSource.CurrentOnly"/> rather than staying
+    /// silent, which is what un-sticks a permanently cursor-less mirrored row even when the cluster's own prev/next
+    /// went stale first.</para></summary>
+    public static SeedSource DecideSeed(EdgeState state, bool hasCurrent, bool hasClusterTracks, bool hasContext,
+        bool takeover = false)
     {
-        if (state != EdgeState.Unknown || !hasCurrent) return SeedSource.None;
+        if (!hasCurrent) return SeedSource.None;
+        if (state != EdgeState.Unknown && !takeover) return SeedSource.None;
         if (hasClusterTracks) return SeedSource.Cluster;
         if (hasContext) return SeedSource.Context;
         return SeedSource.CurrentOnly;

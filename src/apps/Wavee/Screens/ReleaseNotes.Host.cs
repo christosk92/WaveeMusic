@@ -210,11 +210,11 @@ public static partial class ReleaseNotes
         get
         {
             if (Volatile.Read(ref s_github) is { } live) return live;
-            var client = new HttpClient(new SocketsHttpHandler
+            var client = new HttpClient(Wire.Handler("github", new SocketsHttpHandler
             {
                 PooledConnectionLifetime = TimeSpan.FromMinutes(2), PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
                 MaxConnectionsPerServer = 4, AutomaticDecompression = DecompressionMethods.All,
-            }) { Timeout = TimeSpan.FromSeconds(15) };
+            })) { Timeout = TimeSpan.FromSeconds(15) };
             string arch = RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64";
             if (!client.DefaultRequestHeaders.UserAgent.TryParseAdd(Platform.Version.UserAgent(RuntimeInformation.OSDescription, arch)))
                 client.DefaultRequestHeaders.UserAgent.TryParseAdd("Wavee");   // GitHub only requires SOME user-agent

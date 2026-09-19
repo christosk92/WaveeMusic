@@ -9,7 +9,9 @@
 //
 // Pure: no scope, no engine.
 
+using FluentGpu.Foundation;
 using Xunit;
+using RowMetrics = Wavee.Track.RowMetrics;
 using TableRules = Wavee.Track.TableRules;
 
 namespace Wavee.Tests;
@@ -129,6 +131,119 @@ public sealed class TrackRowStyleRulesTests
         Assert.Equal(new Track.TrailingColumns(Video: true, Actions: false, Expand: true), modern);
         Assert.True(TableRules.ShowClassicInlineVideo(true, hasVideo: true, tier: 3));
         Assert.False(TableRules.ShowClassicInlineVideo(true, hasVideo: true, tier: 4));
+    }
+
+    /// <summary>The trailing lane is ONE width. Modern still TRADES the "…" lane for the film lane on a release that
+    /// carries a video — the cell changes, so the row shows a film glyph at rest and the "…" on hover — but while the two
+    /// lanes were 28 and 40 that trade also MOVED every column to its left: the duration clock and its header sat 12 DIP
+    /// apart on two albums selected one after the other in the library pane. Pinned on the width TRACKS, because that
+    /// array is what the column header, the rows and the shimmer all lay themselves out from.</summary>
+    [Fact]
+    public void TrailingLane_IsOneWidthWhetherOrNotTheReleaseCarriesAVideo()
+    {
+        var film = TableRules.TrailingColumns(classic: false, hasVideo: true, showVersions: false, tier: 1);
+        var dots = TableRules.TrailingColumns(classic: false, hasVideo: false, showVersions: false, tier: 1);
+
+        Assert.Equal(new Track.TrailingColumns(Video: true, Actions: false, Expand: false), film);
+        Assert.Equal(new Track.TrailingColumns(Video: false, Actions: true, Expand: false), dots);
+        Assert.Equal(Track.Lane.Actions, Track.Lane.Video);
+
+        // The embedded album arm, both ways round (Track.Table.Chrome.EmbeddedColumns' lanes).
+        var withFilm = new Track.ColumnSet(
+            Album: false, By: false, Date: false, Video: film.Video, Plays: false, Heart: true, Thumb: false,
+            Actions: film.Actions, Tier: 1);
+        var withDots = withFilm with { Video = dots.Video, Actions = dots.Actions };
+        var a = Track.TracksFor(in withFilm, Design.Size.Thumb32);
+        var b = Track.TracksFor(in withDots, Design.Size.Thumb32);
+
+        Assert.Equal(b.Length, a.Length);
+        for (int i = 0; i < a.Length; i++)
+            Assert.Equal(b[i], a[i]);
+    }
+
+    // ── the TRAILING ♥ lane (the library reader's row) ──────────────────────────────────────────────────────────────
+    //
+    // The reader's row is `28 (number) | 1fr (title) | 32 (heart) | 52 (duration)`: the same heart, moved to the RIGHT
+    // and sat immediately before the duration. Two facts hold it there — the lane's POSITION (a heart after the clock
+    // reads as chrome, and one lane out of place shifts every column after it) and its exclusivity with the leading ♥.
+
+    /// <summary>The reader's four tracks, in order, from the lane table — not from four literals beside it.</summary>
+    [Fact]
+    public void TracksFor_HeartTrailing_PutsTheHeartLaneImmediatelyBeforeTheDuration()
+    {
+        var reader = new Track.ColumnSet(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: false,
+                                         Thumb: false, Actions: false, HeartTrailing: true);
+        var tracks = Track.TracksFor(in reader, Design.Size.Thumb32);
+
+        Assert.Equal(4, tracks.Length);
+        Assert.Equal(TrackSize.Px(Track.Lane.Num), tracks[0]);
+        Assert.Equal(TrackSize.Star(Track.Lane.TitleStar), tracks[1]);
+        Assert.Equal(TrackSize.Px(Track.Lane.HeartTrailing), tracks[2]);
+        Assert.Equal(TrackSize.Px(Track.Lane.Duration), tracks[3]);
+
+        // The prototype's literal row, so a lane silently re-sized is a failure here and not a visual regression.
+        Assert.Equal(28f, Track.Lane.Num);
+        Assert.Equal(32f, Track.Lane.HeartTrailing);
+        Assert.Equal(52f, Track.Lane.Duration);
+    }
+
+    /// <summary>It still sits between the last fact and the clock when the whole trailing cluster is up: Tempo/Plays end
+    /// left of it, and Video / "…" / the chevron stay AFTER the duration. Spelled as the WHOLE sequence, because several
+    /// lanes share a width (art 32 = the trailing heart, Plays 52 = the duration) and an index search for one of them
+    /// would find the other.</summary>
+    [Fact]
+    public void TracksFor_HeartTrailing_SitsBetweenTheLastFactAndTheClock()
+    {
+        var set = new Track.ColumnSet(Album: false, By: false, Date: false, Video: false, Plays: true, Heart: false,
+                                      Thumb: true, Actions: true, Tier: 0, Tempo: true, Expand: true, HeartTrailing: true);
+        var tracks = Track.TracksFor(in set, Design.Size.Thumb32);
+
+        Assert.Equal(
+            new[]
+            {
+                TrackSize.Px(Track.Lane.Num), TrackSize.Px(Design.Size.Thumb32), TrackSize.Star(Track.Lane.TitleStar),
+                TrackSize.Px(Track.Lane.Plays), TrackSize.Px(Track.Lane.Tempo),
+                TrackSize.Px(Track.Lane.HeartTrailing), TrackSize.Px(Track.Lane.Duration),
+                TrackSize.Px(Track.Lane.Actions), TrackSize.Px(Track.Lane.Expand),
+            },
+            tracks);
+    }
+
+    /// <summary>Heart and HeartTrailing are mutually exclusive, and a set that asks for both NORMALIZES to the leading
+    /// lane — one gate (<see cref="RowMetrics.ShowHeartTrailing"/>) that the width tracks, the cell count and the cell
+    /// all read, so the three can never disagree about how many lanes there are.</summary>
+    [Fact]
+    public void HeartTrailing_WithTheLeadingHeart_NormalizesToTheLeadingLane()
+    {
+        var both = new Track.ColumnSet(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: true,
+                                       Thumb: false, Actions: false, HeartTrailing: true);
+        var leadingOnly = both with { HeartTrailing = false };
+        var trailingOnly = both with { Heart = false };
+
+        Assert.False(RowMetrics.ShowHeartTrailing(in both));
+        Assert.True(RowMetrics.ShowHeartTrailing(in trailingOnly));
+
+        var tracks = Track.TracksFor(in both, Design.Size.Thumb32);
+        var lead = Track.TracksFor(in leadingOnly, Design.Size.Thumb32);
+        Assert.Equal(lead.Length, tracks.Length);
+        for (int i = 0; i < tracks.Length; i++) Assert.Equal(lead[i], tracks[i]);
+        // # · ♥(leading, 28) · Title* · duration — the trailing 32 is nowhere in it.
+        Assert.Equal(TrackSize.Px(Track.Lane.Heart), tracks[1]);
+        Assert.DoesNotContain(TrackSize.Px(Track.Lane.HeartTrailing), tracks);
+    }
+
+    /// <summary>The trailing lane forks the width-track CACHE: the key is the whole ColumnSet, so the reader's set and
+    /// the same set without the heart never share one array (the header/rows "same instance" rule cuts both ways).</summary>
+    [Fact]
+    public void TracksFor_HeartTrailing_IsPartOfTheCacheKey()
+    {
+        var hearted = new Track.ColumnSet(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: false,
+                                          Thumb: false, Actions: false, HeartTrailing: true);
+        var bare = hearted with { HeartTrailing = false };
+
+        Assert.Same(Track.TracksFor(in hearted, 32f), Track.TracksFor(in hearted, 32f));
+        Assert.NotSame(Track.TracksFor(in hearted, 32f), Track.TracksFor(in bare, 32f));
+        Assert.Equal(3, Track.TracksFor(in bare, 32f).Length);
     }
 
     /// <summary>The chevron lane follows the "…" lane's width gate in BOTH skins: present down to tier 5, gone at tier 6.

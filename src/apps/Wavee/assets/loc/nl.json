@@ -98,6 +98,48 @@
     }
   },
 
+  "library": {
+    "selectAlbum": "Pick an album",
+    "selectArtist": "Pick an artist",
+    "openAlbum": "Open album",
+    "playAll": "Play all",
+    "playAlbum": "Play {name}",
+    "alsoBy": "Also by {name} in your library",
+    "inYourLibrary": "In your library: {albums}{songs}",
+    "oneAlbum": "1 album",
+    "nAlbums": "{n, plural, one {# album} other {# albums}}",
+    "nSongs": " · {n, plural, one {# song} other {# songs}}",
+    "savedIn": "saved {year}",
+    "songsFailed": "Couldn’t load the songs.",
+    "fetchingMore": "Fetching {n} more releases…",
+    "fetchingReleases": "Fetching releases…",
+    "allInLibrary": "Everything {name} has released is already in your library.",
+    "oneSong": "1 song",
+    "nSongsOnly": "{n, plural, one {# song} other {# songs}}",
+    "oneLikedSong": "1 liked song",
+    "nLikedSongs": "{n, plural, one {# liked song} other {# liked songs}}",
+    "emptyLibraryTitle": "Nothing from {name} in your library yet",
+    "emptyLibraryAction": "Show all releases",
+    "rail": {
+      "recents": "recents",
+      "alphabetical": "a–z",
+      "creator": "artist",
+      "recentlyAdded": "added",
+      "releaseDate": "year",
+      "albums": "albums"
+    },
+    "scope": {
+      "inLibrary": "in your library",
+      "allReleases": "all releases",
+      "allShort": "all"
+    },
+    "readerSort": {
+      "newest": "newest",
+      "oldest": "oldest",
+      "alphabetical": "a–z"
+    }
+  },
+
   "settings": {
     "title": "Instellingen",
     "sidebar": {

@@ -304,7 +304,9 @@ public readonly partial struct Track
         public bool ShowToolbar { get; init; } = true;
         /// <summary>Library master-detail pane (no hero, no recs).</summary>
         public bool Embedded { get; init; }
-        /// <summary>HasTrailing body under the rows (album trailing, M Wave 5).</summary>
+        /// <summary>HasTrailing body under the rows (album trailing, M Wave 5). Non-null on an <see cref="Embedded"/>
+        /// table is also the opt-IN to the trailing geometry: the host keeps the profile's <c>HasTrailing</c> instead of
+        /// dropping it, so the rows and this band share ONE scroller (<c>TableHost.ConfigOf</c>).</summary>
         public Func<Element>? Trailing { get; init; }
         /// <summary>The table writes "play the VISIBLE order from the top" into [0].</summary>
         public Action?[]? PlayAllCell { get; init; }
@@ -358,7 +360,18 @@ public readonly partial struct Track
         }
 
         TableProfile P => _latest.Profile;
-        Detail.Config Cfg => _latest.Embedded ? _latest.Profile.Config with { HasTrailing = false } : _latest.Profile.Config;
+        Detail.Config Cfg => ConfigOf(_latest);
+
+        /// <summary>The config the host actually lays out with. An EMBEDDED table has no trailing band by default — the
+        /// library pane mounts no About/Fans/More-by — so the album family's <c>HasTrailing</c> is dropped rather than
+        /// left to grow a slot nothing fills. It is dropped only when the caller asked for NOTHING, though: a pane that
+        /// does hand over a <see cref="TableArgs.Trailing"/> thunk means it, and forcing the flag off there is what put
+        /// the album pane's rows in a nested scroller with the "Also by" strip pinned below it (a 5-track EP showed 3½
+        /// rows in a 550-DIP pane). With the band honoured, <see cref="TrailingBody"/>'s ONE outer scroller carries the
+        /// rows and the band together and the column header stays fixed above it.</summary>
+        static Detail.Config ConfigOf(TableArgs args)
+            => args.Embedded && args.Trailing is null ? args.Profile.Config with { HasTrailing = false } : args.Profile.Config;
+
         bool VerticalArm => _latest.Vertical is not null && !_latest.Embedded;
         int TrackStart => VerticalArm && !Cfg.HasTrailing ? Detail.VerticalLayout.PrefixCount : 0;
         bool Editable => _latest.Profile.Editable?.Invoke() ?? false;
@@ -525,7 +538,7 @@ public readonly partial struct Track
                 ? Entities.Current.Tracks.Changed.Value + (sort.Column == SortColumn.Album ? Entities.Current.Albums.Changed.Value : 0u)
                 : 0u;
             uint likes = filters.LikedOnly ? Entities.Current.Edges.Liked.Changed.Value : 0u;
-            var cfg = args.Embedded ? args.Profile.Config with { HasTrailing = false } : args.Profile.Config;
+            var cfg = ConfigOf(args);
             return new Snapshot(src.Context.Id, src.Version, src.Count, src.State, sort, query.Trim(), filters, data, likes,
                 Prefs.Appearance.TrackRowStyle() == 1, Prefs.Appearance.TrackArtworkHidden(), Prefs.Appearance.Marquee(),
                 TempoColumnPref(), PlaysColumnPref(), cfg);
@@ -1143,8 +1156,12 @@ public readonly partial struct Track
             Element[] children = vertical && spec is not null
                 ? [HeroRoot(spec), ChromeRoot(in shape, chips, lens), content]
                 : [content];
+            // Keyed by the route/pane identity: a host that PERSISTS across contents (the library pane re-skins in place)
+            // must not hand the next album the previous one's offset, and a ScrollEl restores by node, not by a key of
+            // its own. A page mounts one per route anyway, so this only ever costs the pane a fresh viewport.
             return ScrollView(new BoxEl { Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, Children = children }) with
             {
+                Key = "trail:" + _latest.ScrollKey,
                 Grow = 1f,
                 EdgeCues = vertical ? ScrollEdgeCues.None : ScrollEdgeCues.Auto,
             };

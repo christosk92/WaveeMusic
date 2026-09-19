@@ -2,8 +2,12 @@
 //
 // A port of 0.2.9's LibrarySearchTests (LibrarySearchIndex: artist ▸ matching albums ▸ matching tracks). The decisions
 // are unchanged; the library is 0.3's — rows in the scope's tables and the relations as edges (FollowedArtists /
-// SavedAlbums off the account row, ArtistAlbums, AlbumTracks) instead of an InMemoryStore — and a hit is a SLOT with
+// SavedAlbums off the account row, AlbumArtists, AlbumTracks) instead of an InMemoryStore — and a hit is a SLOT with
 // ranges into the result's flat runs instead of a record tree.
+//
+// 2026-09-18: the artists scope searches THE LIBRARY (User.cs §11: every library artist, over the saved albums billed
+// to them and the liked songs credited to them) — not the followed artists' paged catalogue facets, which are resident
+// only for artists whose reader was opened and left "aes" / "hold on" finding nothing on a 300-artist library.
 
 using Xunit;
 
@@ -57,14 +61,18 @@ public class LibrarySearchTests
         int bj = TrackRow("bj", "Billie Jean"), bi = TrackRow("bi", "Beat It"), smooth = TrackRow("smooth", "Smooth Criminal");
         E.AlbumTracks.ReplaceRun(thriller, [bj, bi], default);
         E.AlbumTracks.ReplaceRun(bad, [smooth], default);
-        E.ArtistAlbums.ReplaceRun(mj, [thriller, bad], default);
+        E.AlbumArtists.ReplaceRun(thriller, [mj], default);
+        E.AlbumArtists.ReplaceRun(bad, [mj], default);
+        E.SavedAlbums.ReplaceRun(Me, [thriller, bad], default);
         E.FollowedArtists.ReplaceRun(Me, [mj], default);
 
-        // Queen is resident but NOT followed → must never surface in an artists-scope search.
+        // Queen is resident — with a catalogue facet, even — but nothing of theirs is followed, saved or liked → must
+        // never surface in an artists-scope search.
         int queen = ArtistRow("q", "Queen");
         int opera = AlbumRow("opera", "A Night at the Opera");
         int bohemian = TrackRow("bohemian", "Bohemian Rhapsody");
         E.AlbumTracks.ReplaceRun(opera, [bohemian], default);
+        E.AlbumArtists.ReplaceRun(opera, [queen], default);
         E.ArtistAlbums.ReplaceRun(queen, [opera], default);
 
         return new ArtistLibrary(mj, thriller, bad, bj, bi, smooth);
@@ -124,6 +132,34 @@ public class LibrarySearchTests
     }
 
     [Fact]
+    public void LikedSong_OfAnArtistYouDoNotFollow_IsFound_ThroughItsLikedOnlyRelease()
+    {
+        // The 2026-09-18 report: "hold on" found nothing although "Hold On Tight" (aespa, on a soundtrack that is not
+        // saved) is a liked song and aespa is in the navigator. No follow, no saved album, no catalogue facet.
+        SeedArtistLibrary();
+        int aespa = ArtistRow("aespa", "aespa");
+        int tetris = AlbumRow("tetris", "Tetris (Motion Picture Soundtrack)", 2023);
+        int hold = TrackRow("hold", "Hold On Tight");
+        Entities.Current.Tracks.Album[hold] = tetris;
+        E.TrackArtists.ReplaceRun(hold, [aespa], default);
+        E.Liked.ReplaceRun(Me, [hold], default);
+
+        var byTrack = Run(LibrarySearchScope.Artists, "hold on");
+        Assert.Equal(1, byTrack.Artists.Length);
+        Assert.Equal(aespa, byTrack.Artists[0].Slot);
+        Assert.Equal(LibraryMatchKind.Track, byTrack.Artists[0].Match.Kind);
+        var albums = byTrack.AlbumsOf(byTrack.Artists[0]);
+        Assert.Equal(1, albums.Length);
+        Assert.Equal(tetris, albums[0].Slot);
+        Assert.Equal(hold, byTrack.TracksOf(albums[0])[0].Slot);
+
+        var byName = Run(LibrarySearchScope.Artists, "aes");
+        Assert.Equal(1, byName.Artists.Length);
+        Assert.True(byName.Artists[0].MatchLen > 0);
+        Assert.Equal(1, byName.AlbumsOf(byName.Artists[0]).Length);      // the name matched → what the library holds of them
+    }
+
+    [Fact]
     public void ExcludesUnfollowedArtistsContent()
     {
         SeedArtistLibrary();
@@ -154,7 +190,9 @@ public class LibrarySearchTests
         int bad = AlbumRow("bad", "Bad");
         E.AlbumTracks.ReplaceRun(thriller, [TrackRow("bj", "Billie Jean")], default);
         E.AlbumTracks.ReplaceRun(bad, [TrackRow("tr", "Thriller Reprise")], default);   // matches on TRACK only
-        E.ArtistAlbums.ReplaceRun(mj, [bad, thriller], default);
+        E.AlbumArtists.ReplaceRun(thriller, [mj], default);
+        E.AlbumArtists.ReplaceRun(bad, [mj], default);
+        E.SavedAlbums.ReplaceRun(Me, [bad, thriller], default);
         E.FollowedArtists.ReplaceRun(Me, [mj], default);
 
         var r = Run(LibrarySearchScope.Artists, "thriller");

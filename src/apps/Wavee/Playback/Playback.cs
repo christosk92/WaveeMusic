@@ -193,6 +193,75 @@ public static partial class Playback
             => IsTerminal(fault) && origin == LoadOrigin.Advance && !repeatTrack && consecutive < MaxConsecutive;
     }
 
+    /// <summary>Where a RESUME (never a fresh <c>Play</c> — that one always starts where it was asked to) should
+    /// actually start, given the position and duration already on the deck. PURE: no queue, no clock. The verdict
+    /// names its own intent and stops there — <see cref="VerdictKind.StartNext"/> hands the CALLER the decision to
+    /// go find that row (<c>Playback.Transitions.cs</c>'s <c>NaturalNext</c>), because a Wave-3 reducer file does not
+    /// reach into Wave 1's queue for a lookup it can just as well be handed back.
+    ///
+    /// <para>Exists because the OLD rule was "resume at <c>PosMs</c>, whatever it is": right for a row the local pump
+    /// tracked continuously, wrong for a MIRRORED row whose <c>PosMs</c> is a single cluster snapshot that can sit
+    /// unfolded for hours (A2 stops <c>DoTick</c> from ratcheting it to the duration in the meantime, but a snapshot
+    /// legitimately taken a second before the remote's own track ended is STILL "the end" once it is resumed) —
+    /// reloading exactly there is the inaudible instant this whole plan exists to stop shipping
+    /// (<c>docs/plans/wavee/explain-why-palyback-is-indexed-cat.md</c>, "what happened" #1-4).</para></summary>
+    public readonly record struct ResumeStart(ResumeStart.VerdictKind Kind, int Ms)
+    {
+        /// <summary>The three shapes a resume can take.</summary>
+        public enum VerdictKind : byte
+        {
+            /// <summary>Resume exactly at <see cref="ResumeStart.Ms"/>.</summary>
+            StartAt,
+            /// <summary>Close enough to the end that this row is effectively over: start the row
+            /// <c>NaturalNext</c> names, or fall back to 0 on the same row when it names none.</summary>
+            StartNext,
+            /// <summary>Nothing to resume from (a non-positive position): start over, at 0.</summary>
+            StartAtZero,
+        }
+
+        /// <summary>Within this much of a KNOWN duration, a resume means "start the next row" rather than reload an
+        /// instant nobody will hear. A tighter number than <c>Playback.Transitions.ResumeTailMs</c> (an EPISODE'S
+        /// saved resume point, found and applied automatically): a resume PRESS is the listener acting now, on
+        /// whatever the deck shows now, not a stale point picked up later.</summary>
+        public const int ResumeEndEpsilonMs = 1_500;
+
+        static readonly ResumeStart Next = new(VerdictKind.StartNext, 0);
+        static readonly ResumeStart Zero = new(VerdictKind.StartAtZero, 0);
+
+        /// <summary>The verdict for a position/duration pair. <paramref name="durationMs"/> ≤ 0 (unknown) can never
+        /// be judged "near the end", so it always resumes exactly at <paramref name="posMs"/> (clamped to 0).</summary>
+        public static ResumeStart For(int posMs, int durationMs)
+        {
+            if (posMs <= 0) return Zero;
+            if (durationMs > 0 && posMs >= durationMs - ResumeEndEpsilonMs) return Next;
+            return new ResumeStart(VerdictKind.StartAt, posMs);
+        }
+    }
+
+    /// <summary>Where a committed SEEK actually lands — the one clamp <see cref="DoSeek"/> and a controller's
+    /// <c>SeekTo</c> (folded through the very same <see cref="DoSeek"/>) both run through, so a drag and a remote
+    /// command agree (<c>PlaybackStepTests.A_controllers_seek_goes_through_the_same_clamp_as_a_local_one</c>). PURE:
+    /// two numbers in, one out.</summary>
+    public static class SeekTarget
+    {
+        /// <summary>How far before the very end a seek is still allowed to land. The same reasoning as
+        /// <c>Video.HostRules.StartClampGuardMs</c> from the other host, sized for audio's much shorter open: a seek
+        /// that lands EXACTLY at the duration hands the pump the identical inaudible instant a stale mirror used to
+        /// (A2) — except this time it is the LOCAL listener asking for it. The guard lands it a moment earlier
+        /// instead, where the natural end can still fire on its own once playback actually gets there.</summary>
+        public const int TailGuardMs = 750;
+
+        /// <summary>Clamp a requested position into <c>[0, durationMs - TailGuardMs]</c> (never past 0 either way).
+        /// An unknown duration (≤ 0) clamps only the lower bound — there is no upper one to reserve a tail against.</summary>
+        public static int Clamp(int requestedMs, int durationMs)
+        {
+            int ms = requestedMs < 0 ? 0 : requestedMs;
+            if (durationMs <= 0) return ms;
+            int cap = durationMs > TailGuardMs ? durationMs - TailGuardMs : 0;
+            return ms > cap ? cap : ms;
+        }
+    }
+
     /// <summary>A recoverable interruption affecting the active stream. Deliberately coarse: byte-range and retry
     /// detail stay in diagnostics while playback surfaces only what the chrome can say — ch 20 W10's "Reconnecting"
     /// band and the top-edge sweep read exactly this.</summary>
@@ -818,6 +887,10 @@ public static partial class Playback
     /// <param name="NoPrev">Restriction: previous is disallowed (a non-empty <c>disallow_skipping_prev</c>).</param>
     /// <param name="NoNext">Restriction: next is disallowed.</param>
     /// <param name="NoSeek">Restriction: seeking is disallowed.</param>
+    /// <param name="Context">The remote's own context uri, <c>default</c> when the cluster carried none. Never
+    /// painted directly (<see cref="MirrorRemote"/> only CACHES it, into <see cref="State.MirrorContext"/>) — a
+    /// takeover (A4) is what adopts it into <see cref="State.Context"/>, atomically with the queue reseed, so the
+    /// header never names a session the rows do not yet match.</param>
     public readonly record struct RemoteState(
         bool HasTrack,
         EntityId Track,
@@ -832,7 +905,8 @@ public static partial class Playback
         int Volume,
         bool NoPrev,
         bool NoNext,
-        bool NoSeek);
+        bool NoSeek,
+        EntityId Context = default);
 
     /// <summary>THE playback state. One value, written on the UI thread only (C1), copied freely, and the single
     /// source every playback surface binds through the host's signals.
@@ -858,6 +932,12 @@ public static partial class Playback
         /// <summary>Where in <c>Edges.Queue</c> the session is (bucket, index). A VALUE, re-validated, never a row
         /// pointer: the same recording may legitimately sit in the queue twice.</summary>
         public QueueCursor Cursor;
+        /// <summary>The last MIRRORED remote's own context uri (<see cref="RemoteState.Context"/>), cached by
+        /// <see cref="MirrorRemote"/> while <see cref="Owner.Foreign"/> owns playback. Never painted directly — only
+        /// a TAKEOVER (A4: <c>DoResume</c>'s parked branch, <c>DoPlay</c> over the same row) adopts it into
+        /// <see cref="Context"/>, atomically with the queue reseed the host runs for <see cref="Effects.TakeoverSeed"/>,
+        /// so the header never names a session the rows do not yet match.</summary>
+        public EntityId MirrorContext;
 
         // ── the transport ──
         public Phase Phase;
@@ -1393,6 +1473,15 @@ public static partial class Playback
         // ── persistence ──
         public bool Snapshot;
 
+        // ── takeover (A4) ──
+        /// <summary>The user just claimed a MIRRORED row (<c>DoResume</c>'s parked branch, <c>DoPlay</c> over the
+        /// same row): the host must re-seed the local queue from the cluster data it still holds, UNCONDITIONALLY —
+        /// bypassing <c>Queue.DecideSeed</c>'s normal "never touch a queue that left <c>EdgeState.Unknown</c>" rule
+        /// (its own <c>takeover</c> parameter is exactly this override). The 3-10 line hook
+        /// <c>Playback.Host.cs</c>'s <c>Execute()</c> needs is <c>if (s_fx.TakeoverSeed) SeedQueueFromCluster(takeover: true);</c>
+        /// — see <c>Playback.Host.Remote.cs</c>.</summary>
+        public bool TakeoverSeed;
+
         /// <summary>Back to empty. ONE assignment, so a new slot can never be forgotten here.</summary>
         public void Clear() => this = default;
 
@@ -1400,7 +1489,7 @@ public static partial class Playback
         public readonly bool Any => Load || Start || Stop || PauseHost || ResumeHost || Seek || Volume
             || PrepareNext || PublishState || SendRemote || Transfer || Fetch || Smtc || SmtcTimeline || Snapshot
             || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage
-            || VideoDemoted || SkippedUnavailable;
+            || VideoDemoted || SkippedUnavailable || TakeoverSeed;
     }
 
     // ── 9. Step — the reducer ───────────────────────────────────────────────────────────────────────────────────────
@@ -1500,10 +1589,17 @@ public static partial class Playback
             if (at >= 0) { cursor = Queue.CursorOf(at); row = Queue.RefAt(at); id = row.Id; fromMs = 0; }
         }
 
+        // A4: claiming the row currently MIRRORED from a foreign device — it has no cursor of its own (nothing local
+        // ever queued it) — is a TAKEOVER, not an ordinary click: the context comes from the cluster we cached, never
+        // from the click's own (possibly stale) `i.Context`, and the host re-seeds prev/next + cursor atomically
+        // (fx.TakeoverSeed) once this Step lands.
+        bool takeover = s.Cursor.IsNone && !id.IsEmpty && id.Equals(s.CurrentId);
+        EntityId context = takeover && !s.MirrorContext.IsEmpty ? s.MirrorContext : i.Context;
+
         Ownership.Claim(ref s.Own, cause, ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
         ReportEnd(ref s, ref fx, inbound ? PlayReason.Remote : PlayReason.ClickRow, s.Position(i.NowMs));
-        if (!i.Context.Equals(s.Context)) ResetRefill(ref s);
-        s.Context = i.Context;
+        if (!context.Equals(s.Context)) ResetRefill(ref s);
+        s.Context = context;
         s.StartedPlayingAtMs = i.NowMs;
         s.HasBeenPlayingForMs = 0;
         s.AutoSkips = 0;                                  // a chosen row is a fresh intent: the guard starts over
@@ -1512,6 +1608,7 @@ public static partial class Playback
         s.StartReason = inbound ? PlayReason.Remote : PlayReason.ClickRow;
         EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused);
         if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
+        if (takeover) fx.TakeoverSeed = true;
         fx.Snapshot = true;
     }
 
@@ -1633,15 +1730,40 @@ public static partial class Playback
         if (!s.HasCurrent || s.Error != Fault.None) return;
         if (s.Parked || s.Phase == Phase.Ended)
         {
-            // No host holds this row (a restore, a stop, a lost ownership, the end): resuming it is LOADING it, at the
-            // position the deck shows — a new playback as far as the newest-starter rule goes, so it restamps.
+            // No host holds this row (a restore, a stop, a lost ownership, the end): resuming it is LOADING it — a
+            // new playback as far as the newest-starter rule goes, so it restamps.
+            //
+            // A4: a MIRRORED row this session never queued (no cursor of its own) resumes as a TAKEOVER — the
+            // context is adopted from the cluster we cached and the host re-seeds prev/next + cursor atomically
+            // (fx.TakeoverSeed) once this Step lands.
+            bool takeover = s.Cursor.IsNone;
+            if (takeover && !s.MirrorContext.IsEmpty) s.Context = s.MirrorContext;
+
             Ownership.Claim(ref s.Own, ClaimCause.UserPlay, ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
             s.StartedPlayingAtMs = i.NowMs;
             s.HasBeenPlayingForMs = 0;
-            PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, KindOfRow(s.Current, s.VideoWanted), s.PosMs, paused: false);
+
+            // A3: a row parked within ResumeStart.ResumeEndEpsilonMs of its own end resumes into the NEXT row
+            // instead of an inaudible instant at the tail (A2 stops DoTick from ratcheting a mirrored row's PosMs to
+            // the duration, but a position that legitimately IS near the end must still not reload right at it).
+            EntityRef row = s.Current;
+            EntityId id = s.CurrentId;
+            QueueCursor cursor = s.Cursor;
+            int fromMs;
+            ResumeStart verdict = ResumeStart.For(s.PosMs, s.DurationMs);
+            if (verdict.Kind == ResumeStart.VerdictKind.StartNext)
+            {
+                EntityRef next = NaturalNext(in s, out QueueCursor nextCursor);
+                if (!next.IsNone) { row = next; id = next.Id; cursor = nextCursor; }
+                fromMs = 0;
+            }
+            else fromMs = verdict.Ms;
+
+            PutOnDeck(ref s, in i, row, id, cursor, KindOfRow(row, s.VideoWanted), fromMs, paused: false);
             s.StartReason = PlayReason.PlayButton;
             EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused: false);
-            if (!s.CurrentId.IsEmpty && !RowNamesId(s.Current, s.CurrentId)) { fx.Fetch = true; fx.FetchId = s.CurrentId; fx.FetchEpoch = s.Epoch; }
+            if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
+            if (takeover) fx.TakeoverSeed = true;
             return;
         }
         Ownership.Claim(ref s.Own, ClaimCause.UserResume, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, acknowledged: true);
@@ -1660,7 +1782,7 @@ public static partial class Playback
     {
         if (s.NoSeek) return;
         if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.SeekTo, ref fx, i.IntArg, false); return; }
-        int ms = i.IntArg < 0 ? 0 : s.DurationMs > 0 && i.IntArg > s.DurationMs ? s.DurationMs : i.IntArg;
+        int ms = SeekTarget.Clamp(i.IntArg, s.DurationMs);
         if (s.Parked)
         {
             // Nothing live to seek: the parked deck just moves where its eventual load will start.
@@ -1957,6 +2079,51 @@ public static partial class Playback
         fx.TransportEpoch = s.Epoch;
     }
 
+    /// <summary>Where a MIRRORED row's position comes from, A2: extrapolate ONCE, from the CLUSTER's own clock, and
+    /// say when the report itself is too old to trust as "still playing".
+    ///
+    /// <para>The bug this replaces: <see cref="MirrorRemote"/> used to stamp the mirrored position with OUR frame
+    /// clock (<c>s.PosQpc = i.NowMs</c>) and leave it to <see cref="DoTick"/>, which folded <see cref="State.Position"/>
+    /// back into <c>PosMs</c> every second with NO owner test. A row a local pump never drives has nothing else
+    /// moving it forward, so a "playing" mirror that stopped hearing from its owner simply ratcheted, one second at a
+    /// time, straight into <see cref="State.Position"/>'s own duration clamp and sat there — the next Resume then
+    /// loaded at exactly the end (<c>docs/plans/wavee/explain-why-palyback-is-indexed-cat.md</c>, "what happened"
+    /// #1-4). <see cref="DoTick"/> now folds only for <see cref="Owner.Us"/>; a mirrored row's <c>PosMs</c> is
+    /// written exactly once per cluster, here, and <see cref="State.Position"/>'s existing extrapolation off
+    /// <c>PosQpc</c> keeps the bar moving between clusters with nothing re-folding it.</para></summary>
+    public static class MirrorSnapshot
+    {
+        /// <summary>One projected mirror fact: the position to paint, whether the remote is still audibly playing,
+        /// and whether the report was already too old to trust as "playing" at all.</summary>
+        public readonly record struct Projected(int PosMs, bool Playing, bool Stale);
+
+        /// <summary>Extrapolate a remote's reported position ONCE, from its OWN clock — never <c>nowMs</c>, a local
+        /// receipt time a slow dealer round trip (or the seconds since the last heartbeat) can already have skewed
+        /// well past what the report itself says. A playing report whose age (the server-clock gap between
+        /// <paramref name="wireTimestampMs"/> and <paramref name="serverNowMs"/>) already exceeds what was left of
+        /// the row is STALE — the track ended on the owner, whether that was noticed then or only now — and mirrors
+        /// as PAUSED at the row's end, never ratcheted past it.</summary>
+        /// <param name="positionAsOfMs">The remote's own position, true at <paramref name="wireTimestampMs"/>.</param>
+        /// <param name="wireTimestampMs">The server clock <paramref name="positionAsOfMs"/> was true at
+        /// (<see cref="RemoteState.TimestampMs"/>).</param>
+        /// <param name="serverNowMs">The server clock this very push carries (<see cref="ClusterFrame.ServerTs"/>) —
+        /// the best "now" available without reading one. 0 (not carried) means no extrapolation happens, which is
+        /// honest: a push with no server time cannot be aged against anything.</param>
+        /// <param name="playing">The remote's own intent, already folded with is_paused by the caller.</param>
+        /// <param name="durationMs">The row's duration; ≤ 0 (unknown) can never be judged stale either.</param>
+        public static Projected Project(long positionAsOfMs, long wireTimestampMs, long serverNowMs, bool playing, int durationMs)
+        {
+            long pos = positionAsOfMs < 0 ? 0 : positionAsOfMs;
+            if (durationMs > 0 && pos > durationMs) pos = durationMs;
+            if (!playing || durationMs <= 0) return new Projected((int)pos, playing, false);
+
+            long elapsed = serverNowMs > wireTimestampMs ? serverNowMs - wireTimestampMs : 0;
+            long remaining = durationMs - pos;
+            if (elapsed >= remaining) return new Projected(durationMs, false, true);
+            return new Projected((int)(pos + elapsed), true, false);
+        }
+    }
+
     static void MirrorRemote(ref State s, in Input i, ref Effects fx)
     {
         ref readonly RemoteState r = ref i.Remote;
@@ -1968,12 +2135,16 @@ public static partial class Playback
             fx.FetchId = r.Track;
             fx.FetchEpoch = s.Epoch;
         }
-        s.Phase = r.IsPlaying && !r.IsPaused ? Phase.Playing : r.HasTrack ? Phase.Paused : Phase.Idle;
+        int durMs = (int)Math.Clamp(r.DurationMs, 0, int.MaxValue);
+        MirrorSnapshot.Projected proj = MirrorSnapshot.Project(r.PositionAsOfMs, r.TimestampMs, i.Frame.ServerTs,
+            r.IsPlaying && !r.IsPaused, durMs);
+        s.Phase = !r.HasTrack ? Phase.Idle : proj.Playing ? Phase.Playing : Phase.Paused;
         s.Buffering = r.IsBuffering;
         s.Error = Fault.None;
-        s.PosMs = (int)Math.Clamp(r.PositionAsOfMs, 0, int.MaxValue);
+        s.PosMs = proj.PosMs;
         s.PosQpc = i.NowMs;
-        s.DurationMs = (int)Math.Clamp(r.DurationMs, 0, int.MaxValue);
+        s.DurationMs = durMs;
+        if (!r.Context.IsEmpty) s.MirrorContext = r.Context;   // cached for a later takeover (A4); never painted here
         s.Shuffle = r.Shuffling;
         s.Repeat = r.Repeat;
         s.NoNext = r.NoNext;
@@ -2242,7 +2413,10 @@ public static partial class Playback
     /// other effect: a tick that announced would be a PUT per second.</summary>
     static void DoTick(ref State s, in Input i, ref Effects fx)
     {
-        if (s.Phase == Phase.Playing)
+        // A2: fold only OUR OWN pump's position. A mirrored (Foreign) or departed (Nobody) row has nothing here
+        // driving it forward — folding it anyway is the exact ratchet-to-the-duration bug this gate exists to stop;
+        // `State.Position` still extrapolates it for display, off the single snapshot `MirrorRemote` wrote.
+        if (s.Phase == Phase.Playing && s.Own.Kind == Owner.Us)
         {
             int now = s.Position(i.NowMs);
             s.HasBeenPlayingForMs += Math.Max(0, now - s.PosMs);

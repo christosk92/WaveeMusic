@@ -154,10 +154,14 @@ public static partial class Spotify
         }
 
         /// <summary>Drop everything queued. Called when the session epoch bumps — every one of those items describes a
-        /// world that no longer exists (C4).</summary>
+        /// world that no longer exists (C4). A held announce (B2) and the content-dedup key (B2) describe that same
+        /// world — CloseAll can mean a sign-out, and a held snapshot or a suppressed re-send must never leak into
+        /// whichever account is signed in next.</summary>
         public static void Clear()
         {
             while (TryDequeue(out Item item)) Release(item);
+            lock (s_publishLock) { s_hasHeld = false; s_heldSnapshot = default; s_heldReason = default; }
+            s_hasPublishedKey = false;
         }
 
         // ── 2. in: the dealer ────────────────────────────────────────────────────────────────────────────────────────
@@ -256,7 +260,7 @@ public static partial class Spotify
         /// timer this file owns).</summary>
         public const int PublishDebounceMs = 50;
 
-        static readonly Lock PublishGate = new();
+        static readonly Lock s_publishLock = new();
         static Timer? s_debounce;
         static uint s_messageId;
         static PutReason s_pendingReason;
@@ -276,11 +280,11 @@ public static partial class Spotify
         /// one writer is <c>Playback.Ownership.IsActiveOnWire</c>.</para></summary>
         public static void PublishState(in Playback.Snapshot snapshot, PutReason reason)
         {
-            // No dealer connection, no device to announce to: arm no timer and wake no api thread for a PUT the flush would
-            // drop anyway. The hello on reaching Online announces whatever the state is by then.
-            if (Current.ConnectionId.IsEmpty) return;
-            lock (PublishGate)
+            lock (s_publishLock)
             {
+                // No dealer connection: hold it (B2) rather than drop it — a PublishState that used to vanish silently
+                // (P2) is the reason a phone kept showing a stale row for 2h23m (2026-09-18).
+                if (GateOrHold(in snapshot, reason, hasConnectionId: !Current.ConnectionId.IsEmpty)) return;
                 s_pendingSnapshot = snapshot;
                 s_pendingReason = reason;
                 s_pendingActive = snapshot.IsActive;
@@ -293,9 +297,92 @@ public static partial class Spotify
         /// waits 50 ms is a device the picker does not show for 50 ms longer than it has to.</summary>
         public static void PublishNow(in Playback.Snapshot snapshot, PutReason reason)
         {
-            if (Current.ConnectionId.IsEmpty) return;              // as PublishState: nothing to announce to
-            lock (PublishGate) { s_pendingSnapshot = snapshot; s_pendingReason = reason; s_pendingActive = snapshot.IsActive; }
-            Api.Run(Flush);
+            bool proceed;
+            lock (s_publishLock)
+            {
+                proceed = !GateOrHold(in snapshot, reason, hasConnectionId: !Current.ConnectionId.IsEmpty);
+                if (proceed) { s_pendingSnapshot = snapshot; s_pendingReason = reason; s_pendingActive = snapshot.IsActive; }
+            }
+            if (proceed) Api.Run(Flush);
+        }
+
+        // ── 3a-gate. the owed announce (B2) ──────────────────────────────────────────────────────────────────────────
+        //
+        // While the connection id is empty (backoff, handshake, login — seconds to a minute) `PublishState` /
+        // `PublishNow` used to return silently (Connect.cs:281,296,447 before this fix) and the fact they carried was
+        // gone: nothing was retained, nothing was logged. A phone kept showing Wavee's stale row for 2h23m because of
+        // exactly this (2026-09-18). Now every announce passes ONE pure gate.
+
+        /// <summary>Where an announce goes when it cannot go straight to the wire. PURE.</summary>
+        public enum PublishOutcome : byte
+        {
+            /// <summary>A connection id exists: send it now.</summary>
+            Send,
+            /// <summary>No connection id, and worth remembering — the next connection's hello supersedes it.</summary>
+            Hold,
+            /// <summary>No connection id, and NOT worth remembering.</summary>
+            Drop,
+        }
+
+        /// <summary>The pure half of the owed-announce latch. PURE — no lock, no log, no state.</summary>
+        public static class PublishGate
+        {
+            /// <summary><paramref name="hasConnectionId"/> always sends. Without one, everything but
+            /// <see cref="PutReason.BecameInactive"/> is worth holding for the connection this session is still
+            /// waiting on (newest wins — the caller's job). A held <see cref="PutReason.BecameInactive"/> would be this
+            /// session's FIRST word to a connection it never said hello to — 0.2.9 never sent one either, and holding it
+            /// here would resurrect it for whichever account is signed in when the NEXT connection id arrives, which is
+            /// exactly the sign-out race this file must not reopen. <paramref name="hasHeld"/> decides nothing here — the
+            /// caller reads it for its OWN "log once, not per call" rule.</summary>
+            public static PublishOutcome Decide(bool hasConnectionId, PutReason reason, bool hasHeld)
+                => hasConnectionId ? PublishOutcome.Send
+                 : reason == PutReason.BecameInactive ? PublishOutcome.Drop
+                 : PublishOutcome.Hold;
+        }
+
+        // The one slot (newest wins) and its log-once latch. Guarded by `s_publishLock` — the same lock every writer
+        // of `s_pending*` already takes, so the held snapshot and the pending one never race each other.
+        static Playback.Snapshot s_heldSnapshot;
+        static PutReason s_heldReason;
+        static bool s_hasHeld;
+
+        /// <summary>Called with <see cref="s_publishLock"/> already held. Returns true when the caller must stop — the
+        /// announce was HELD (stored, logged once) or DROPPED; false means proceed to send.</summary>
+        static bool GateOrHold(in Playback.Snapshot snapshot, PutReason reason, bool hasConnectionId)
+        {
+            PublishOutcome outcome = PublishGate.Decide(hasConnectionId, reason, s_hasHeld);
+            if (outcome == PublishOutcome.Send) return false;
+            if (outcome == PublishOutcome.Hold)
+            {
+                bool firstHold = !s_hasHeld;
+                s_heldSnapshot = snapshot;
+                s_heldReason = reason;
+                s_hasHeld = true;
+                // Once per HOLD, not per call — a paused foreign mirror ticking `DoTick` every second must not spam this.
+                if (firstHold) Log.Info("spotify", "put-state held (" + reason + ") — no connection id");
+            }
+            return true;
+        }
+
+        /// <summary>The held slot is moot the moment a connection id exists again: the next thing this session sends
+        /// under it — the hello, always, since <see cref="AnnounceDevice"/> calls it unconditionally when the id is
+        /// new — captures LIVE state, which is a strict superset of whatever was stale-held. Replaying the held
+        /// snapshot instead would risk announcing a position/track that is minutes old by the time a connection
+        /// finally comes back — so this drains it (says what it drops, once) rather than resending it.</summary>
+        static void ClearHeld()
+        {
+            bool wasHeld;
+            PutReason reason;
+            Playback.Snapshot snapshot;
+            lock (s_publishLock)
+            {
+                wasHeld = s_hasHeld;
+                reason = s_heldReason;
+                snapshot = s_heldSnapshot;
+                s_hasHeld = false; s_heldSnapshot = default; s_heldReason = default;
+            }
+            if (wasHeld) Log.Info("spotify", "put-state held (" + reason + ") drained track=" + snapshot.Track.Text
+                + " — connection id restored, the hello carries current state instead");
         }
 
         // ── 3a. the hello (headless plan §1.6 item 5) ────────────────────────────────────────────────────────────────
@@ -317,6 +404,9 @@ public static partial class Spotify
             // G-023: Online is where play registration starts — its batcher, its heartbeat and the resume-point ticker —
             // rather than on the first registration event (idempotent; a headless run registers its plays too).
             Telemetry.Boot();
+            // B3: this fires for every NEW connection id, not merely the first — the fresh id is exactly what makes a
+            // held announce moot (B2), whether or not a hello actually goes out under it.
+            ClearHeld();
             if (!AnnounceOnOnline) return;
             Hello?.Invoke();
         }
@@ -398,7 +488,7 @@ public static partial class Spotify
                     return;
                 }
                 uint messageId;
-                lock (PublishGate) messageId = ++s_messageId;
+                lock (s_publishLock) messageId = ++s_messageId;
                 Playback.Snapshot snapshot = inactive.WithMessageId(messageId);
                 bool queued = Api.Run(() =>
                 {
@@ -426,25 +516,106 @@ public static partial class Spotify
             finally { ArrayPool<byte>.Shared.Return(rented); }
         }
 
+        // ── 3d. the content key (B2) ─────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>What makes a PlayerStateChanged / VolumeChanged put-state redundant: the SAME content, latched
+        /// only on a 2xx so a lost or rejected put is retried by the very next publish. Never consulted for
+        /// NewDevice / NewConnection / BecameInactive — those are identity and lifecycle announces, not state, and a
+        /// picker that never sees them again is worse than one extra PUT. PURE.</summary>
+        public readonly record struct PublishKey(bool Active, EntityId Track, EntityId Context, bool Playing,
+            bool Paused, bool Shuffle, Decode.RepeatMode Repeat, long PositionSec, int Volume, int NextTracksSignature)
+        {
+            /// <summary>Position is truncated to whole SECONDS — the pump's own ticker moves it every drain, and a key
+            /// that changed every second would never suppress anything.</summary>
+            public static PublishKey Of(in Playback.Snapshot s) => new(s.IsActive, s.Track, s.Context, s.IsPlaying,
+                s.IsPaused, s.Shuffling, s.Repeat, s.PositionAsOfMs / 1000, s.Volume, NextSignature(in s.Wire));
+
+            /// <summary>FNV-ish fold over the next-tracks window's identities — the same family as
+            /// <see cref="TraceKey"/>, just over <see cref="EntityId"/> instead of bytes.</summary>
+            static int NextSignature(in Playback.WireExtras wire)
+            {
+                if (wire.Window is not { } window) return 0;
+                ReadOnlySpan<Playback.WireRow> next = window.Next;
+                int h = unchecked((int)2166136261);
+                for (int i = 0; i < next.Length; i++) h = unchecked((h ^ next[i].Id.GetHashCode()) * 16777619);
+                return h;
+            }
+        }
+
+        static bool s_hasPublishedKey;
+        static PublishKey s_lastPublishedKey;
+
+        /// <summary>Is <paramref name="key"/> the same content the last ACCEPTED PlayerStateChanged / VolumeChanged
+        /// already told the service? Every other reason always sends — NewDevice / NewConnection / BecameInactive are
+        /// identity and lifecycle announces, never deduped, however unchanged the player half looks. PURE — the two
+        /// latch fields are passed in rather than read, so the rule is testable with no static state.</summary>
+        public static bool IsRedundant(PutReason reason, in PublishKey key, bool hasPublishedKey, in PublishKey lastPublished)
+            => reason is PutReason.PlayerStateChanged or PutReason.VolumeChanged
+               && hasPublishedKey && key.Equals(lastPublished);
+
+        // ── 3e. the flush, serialised (B1) ───────────────────────────────────────────────────────────────────────────
+
+        static readonly Lock s_flushGate = new();
+        static bool s_flushing, s_flushAgain;
+
+        /// <summary>PublishNow and the debounce timer both land here from an api worker — up to 4 of them (P4 in the
+        /// api pool). Without a gate two Flushes can send out of msgId order (the wire order the ownership fence
+        /// assumes, C5): the running one keeps <see cref="s_flushGate"/> and loops until nothing is left rather than
+        /// letting a second call run beside it; a call that finds it busy sets the re-arm flag and returns — never
+        /// lost, because `s_pending*` (the debounce's own coalescing) already holds the newest snapshot regardless of
+        /// how many Flush calls stacked up waiting.</summary>
         static void Flush()
+        {
+            lock (s_flushGate)
+            {
+                if (s_flushing) { s_flushAgain = true; return; }
+                s_flushing = true;
+            }
+            try
+            {
+                while (true)
+                {
+                    FlushOnce();
+                    lock (s_flushGate)
+                    {
+                        if (!s_flushAgain) { s_flushing = false; return; }
+                        s_flushAgain = false;
+                    }
+                }
+            }
+            catch
+            {
+                lock (s_flushGate) { s_flushing = false; s_flushAgain = false; }
+                throw;
+            }
+        }
+
+        /// <summary>API THREAD, and never two of these at once (see <see cref="Flush"/>): mint, gate, encode, send.</summary>
+        static void FlushOnce()
         {
             PutReason reason;
             bool isActive;
             uint messageId;
             Playback.Snapshot snapshot;
-            lock (PublishGate)
+            bool proceed;
+            lock (s_publishLock)
             {
                 reason = s_pendingReason;
                 isActive = s_pendingActive;
-                messageId = ++s_messageId;
                 // The id is minted HERE, inside the window, so the ten captures that coalesced into this one PUT all
                 // travel under the number that actually goes on the wire — the number the response quotes, which is
-                // what the ownership fence reads (C5).
+                // what the ownership fence reads (C5). Minted even when the gate below holds or drops it: message ids
+                // need not be gapless, and a hold must still capture the snapshot under a stable id for its log line.
+                messageId = ++s_messageId;
                 snapshot = s_pendingSnapshot.WithMessageId(messageId);
+                // The connection could have dropped between PublishState/PublishNow's own gate check and this api-thread
+                // flush; re-check here rather than trust a decision made possibly milliseconds ago on another thread.
+                proceed = !GateOrHold(in snapshot, reason, hasConnectionId: !Current.ConnectionId.IsEmpty);
             }
+            if (!proceed) return;
 
-            string connectionId = ConnectionId();
-            if (connectionId.Length == 0) return;                  // no dealer, no device: nothing to announce to
+            PublishKey key = PublishKey.Of(in snapshot);
+            if (IsRedundant(reason, in key, s_hasPublishedKey, in s_lastPublishedKey)) return;   // already told (B2)
 
             // Sized to the snapshot: a 50 + 50 window with its rows' metadata is several times the old fixed 64 KB (G-240).
             byte[] rented = ArrayPool<byte>.Shared.Rent(Decode.PutStateCapacity(in snapshot));
@@ -457,6 +628,11 @@ public static partial class Spotify
                 if (written <= 0) return;
                 TracePut(in snapshot, reason, frameToUnixMs);
 
+                // B1: bind the claim to this msgId BEFORE the request leaves, not after a 2xx. A failed PUT used to
+                // leave `ClaimMsgId==0`, so `Ownership.PutFailed` (Playback.cs) was a guaranteed no-op and a claim sat
+                // Protected — and audible — for the full 5 s expiry instead of hearing about the failure at once.
+                Playback.Post(Playback.Input.PutSent(messageId, isActive));
+
                 var args = new RequestArgs { Id = OurDeviceId, Body = rented.AsSpan(0, written) };
                 Api.Result result = Api.Send(RequestKind.ConnectStatePut, args, CancellationToken.None);
                 if (!result.Ok)
@@ -465,20 +641,30 @@ public static partial class Spotify
                     // not a failure, and warning about it trains the reader to ignore the warning that matters.
                     PutRejection rejection = RejectionOf(reason, result.Status);
                     if (rejection == PutRejection.SoftAck) return;
-                    Log.Warn("spotify", "put-state " + reason + " rejected (" + result.Status + ")");
+                    Log.Warn("spotify", "put-state " + reason + " rejected status=" + result.Status
+                        + " msgId=" + messageId + " track=" + snapshot.Track.Text);
                     // No verdict will come for this put. Say so, or a claim bound to it sits Protected — and audible —
                     // until its 5 s window expires (C5).
                     Playback.Post(Playback.Input.PutVerdict(messageId, accepted: false));
+                    // The service does not have this content either: let the NEXT publish of the same state resend it
+                    // instead of the key silently suppressing it forever (B2).
+                    s_hasPublishedKey = false;
                     if (rejection == PutRejection.Reannounce) MaybeReannounce();
                     return;
                 }
 
-                Log.Info("spotify", "put-state " + reason + " active=" + isActive + " msgId=" + messageId
-                    + " cluster=" + result.Body.Length + "B");
+                // B5: everything the diagnostics page's cards already show, in the log the user actually sends —
+                // 2026-09-16/18's "why is Wavee invisible" both traced back to state this line never carried.
+                Log.Info("spotify", "put-state " + reason + " active=" + isActive
+                    + " track=" + snapshot.Track.Text + " pos=" + snapshot.PositionAsOfMs
+                    + " playing=" + snapshot.IsPlaying + " paused=" + snapshot.IsPaused
+                    + " ctx=" + snapshot.Context.Text + " msgId=" + messageId + " cluster=" + result.Body.Length + "B"
+                    + " owner=" + (isActive ? "us" : "-") + " claim=" + (isActive ? messageId.ToString() : "-")
+                    + " startedAt=" + snapshot.StartedPlayingAtMs + " hasBeenMs=" + snapshot.HasBeenPlayingForMs
+                    + " origin=" + snapshot.Reason);
 
-                // Bind the claim to the id this put went out under: its RESPONSE — and only its response — is the
-                // verdict the fence reads (C5). Without this the claim never binds and P1/P3/P4 can never fire.
-                Playback.Post(Playback.Input.PutSent(messageId, isActive));
+                s_hasPublishedKey = true;
+                s_lastPublishedKey = key;
 
                 // The RESPONSE is a Cluster, and it is the judge: it says whether the service adopted our claim. It
                 // goes into the same mailbox as a push, marked `PutResponse` below, so the ownership fold has

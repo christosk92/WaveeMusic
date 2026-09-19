@@ -417,11 +417,37 @@ public static partial class Playback
     /// must close before the next opens), so it is drained here, per Step, and never coalesced (G-076).</summary>
     static void StepOne(in Input i)
     {
+        Owner ownerBefore = s_state.Own.Kind;
+        ulong deviceBefore = s_state.Own.Device;
+        ClaimPhase claimBefore = s_state.Own.Claim;
         Step(ref s_state, in i, ref s_fx);
+        LogOwnerTransition(ownerBefore, deviceBefore, claimBefore);
         if (s_fx.Play.Events == PlayEvents.None) return;
         PlayReport report = s_fx.Play;
         s_fx.Play = default;
         RunPlayReport(in report);
+    }
+
+    /// <summary>B5: the ONE always-on line that answers "did we just gain, lose or hand off Connect ownership, and
+    /// why" — the diagnostics page has the verdict; the log the user actually sends did not (2026-09-16/18's
+    /// invisibility reports both traced back to state no log line carried). Compares <c>s_state.Own</c> before and
+    /// after the Step that just ran — the pure fold (<c>Playback.Ownership.Fold</c>, owner D's file) stays free of
+    /// logging, so this is the ONLY place a transition is noted. A Kind change or a Device change is exactly what the
+    /// fold's own StopHost / ClaimRejected rows produce (`ToForeign` sets one or the other every time), so diffing the
+    /// public state is a complete, precise proxy for those internal flags without threading them out of the fold.</summary>
+    static void LogOwnerTransition(Owner ownerBefore, ulong deviceBefore, ClaimPhase claimBefore)
+    {
+        Owner ownerAfter = s_state.Own.Kind;
+        ulong deviceAfter = s_state.Own.Device;
+        if (ownerAfter == ownerBefore && deviceAfter == deviceBefore) return;
+
+        string cause = claimBefore == ClaimPhase.Protected && ownerAfter == Owner.Foreign ? "claim-rejected"
+            : ownerAfter == Owner.Foreign ? "takeover"
+            : ownerAfter == Owner.Nobody ? s_state.Own.Cause.ToString()
+            : ownerAfter == Owner.Us ? "claimed"
+            : "cluster";
+        Log.Info("playback", "connect.owner " + ownerBefore + " → " + ownerAfter + " (" + cause + ")"
+            + " fx=" + (s_fx.Stop ? "Stop" : "-") + " claim=" + s_state.Own.Claim + " claimMsg=" + s_state.Own.ClaimMsgId);
     }
 
     /// <summary>Fold an input made on the UI thread: inline when a drain is running (so it lands in THIS drain's
@@ -478,7 +504,8 @@ public static partial class Playback
             d.IsPlaying, d.IsPaused, d.IsBuffering,
             d.PositionAsOfMs, d.TimestampMs, d.DurationMs,
             d.Shuffling, d.Repeat, d.ActiveVolume,
-            d.NoPrev, d.NoNext, d.NoSeek);
+            d.NoPrev, d.NoNext, d.NoSeek,
+            Identify(buffer.Utf8(d.ContextUri)));   // the owner's context: what a takeover adopts (A4)
 
         StepOne(Input.Cluster(in frame, in remote, now));
         s_state.ActiveDeviceSlot = Devices.SlotOf(s_state.ActiveDevice);
@@ -531,6 +558,9 @@ public static partial class Playback
 
         // Order matters exactly once: a host that must STOP before the next stream opens has to stop first, and an
         // adoption only means something when no load replaced the voice it names.
+        // A takeover re-seeds the queue and the cursor from the owner's last cluster BEFORE the load it rides with: the
+        // seed bumps the queue version, and the watch re-arms the next row inside this drain (A4).
+        if (s_fx.TakeoverSeed) SeedQueueFromCluster(takeover: true);
         if (s_fx.Stop) StopHost();
         if (s_fx.Load) LoadHost(s_fx.LoadRow, s_fx.LoadId, s_fx.LoadKind, s_fx.LoadEpoch, s_fx.LoadFromMs, s_fx.LoadPaused, s_fx.LoadWhy);
         else if (s_fx.Adopt) PumpAdopt(s_fx.AdoptFrom, s_fx.AdoptTo);

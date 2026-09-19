@@ -70,8 +70,17 @@ public class FootprintGateTests(ITestOutputHelper output)
     /// app would re-fetch a whole TrackV4 per track to ask one question about it. The new gate keeps the same ~12 % of
     /// headroom over the new measurement, and stays under the plan's original "10k tracks in &lt; 1.5 MB" sentence —
     /// it is still a tripwire for a STRUCTURAL regression (a managed object per row, a second identity map, a per-row
-    /// string), and no other column may take this as a precedent without the same argument.</para></summary>
-    const long GidLayoutBudget = 1_470_000;
+    /// string), and no other column may take this as a precedent without the same argument.</para>
+    ///
+    /// <para><b>RAISED A SECOND TIME, 2026-09-18: 1,470,000 → 1,560,000 (+90,000 B).</b> The library rework adds one
+    /// column, <c>Table.Failed</c> (<c>Column&lt;uint&gt;</c>, 4 B/row, +40,004 B here): the per-row record of which
+    /// groups' last ask ended in a terminal failure, set by <c>Fetch.Failed</c> and cleared on a re-ask, which is what
+    /// lets the library album pane paint an honest Retry strip instead of a skeleton forever (ch 15 W24) — the only
+    /// alternative was a managed object per failed slot, the very shape this gate forbids. The measurement before the
+    /// column was ~1,473,000 B (the 2026-09-13 estimate of 1,354,000 was stale — the gate had ~0.2 % of headroom left),
+    /// and 1,513,480 B after it; the new gate keeps ~3 % of headroom and stays a tripwire for the structural
+    /// regressions named above. Same argument, same rule: no further column without it.</para></summary>
+    const long GidLayoutBudget = 1_560_000;
 
     /// <summary>THE TEXT BUDGET, per row rather than absolute, because the two populations are deliberately different
     /// sizes and the only comparable number is per-row. A text-form row pays the same ~109 B of columns and then, on

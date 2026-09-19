@@ -317,6 +317,13 @@ public static partial class Platform
         public static SettingKey<bool> LibraryAlbumDesc(string kind) => new("library." + kind + ".album.desc", false);
         public static SettingKey<int> LibraryAlbumView(string kind) => new("library." + kind + ".album.view", 3);   // Grid
         public static SettingKey<int> LibraryAlbumSize(string kind) => new("library." + kind + ".album.size", 1);
+        /// <summary>The artists reader's scope (0 = in your library · 1 = all releases). Per kind for symmetry with the
+        /// other library keys; only "artists" reads it today.</summary>
+        public static SettingKey<int> LibraryScope(string kind) => new("library." + kind + ".scope", 0);
+        // LibraryAlbumDesc / LibraryAlbumView / LibraryAlbumSize: ORPHANED by the 2026-09-17 library rework (the
+        // discography grid they drove is gone). Kept and unread — a persisted string never changes — so do not renumber,
+        // repurpose or delete one: a user's store.json still carries them, and LibraryAlbumSort is still read (the
+        // reader's own sort, whose old 0-4 discography values clamp to 0).
 
         /// <summary>Per-DESIGN sidebar pane state (`sidebar.&lt;slug&gt;.*`; slugs are "classic"/"library-v3"/"curated"
         /// and are PERSISTED — never rename one). The tier default is passed IN, from the design table that owns it, so

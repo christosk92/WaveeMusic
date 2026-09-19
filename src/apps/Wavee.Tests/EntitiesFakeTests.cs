@@ -75,7 +75,7 @@ public class EntitiesFakeTests
 
         Assert.True(me.IsValid);
         Assert.Equal(166, me.Count(LibraryEdgeKind.Liked));
-        Assert.Equal(13, me.Count(LibraryEdgeKind.SavedAlbums));
+        Assert.Equal(18, me.Count(LibraryEdgeKind.SavedAlbums));   // 13 base + the 5 library-rework letter/failure albums (Entities.Fake.Library.cs)
         Assert.Equal(12, me.Count(LibraryEdgeKind.FollowedArtists));
         Assert.Equal(8, me.Count(LibraryEdgeKind.SavedShows));
         Assert.Equal(5, me.Count(LibraryEdgeKind.Pins));

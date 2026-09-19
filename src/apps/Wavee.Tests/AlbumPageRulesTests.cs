@@ -158,12 +158,11 @@ public class AlbumPageRulesTests
                      Rules.SkeletonHeight(new Rules.TrailingShape(false, false, 2)));
     }
 
+    // No members, nothing to wait for. (A full album no longer short-circuits: see AlbumVideoSectionTests — the
+    // section is not a short-release privilege any more, so its verdict is not either.)
     [Fact]
-    public void VideoDecided_AFullAlbumNeverWaits()
-    {
-        Assert.True(Rules.VideoDecided(shortRelease: false, ReadOnlySpan<Track>.Empty));
-        Assert.True(Rules.VideoDecided(shortRelease: false, [new Track(3)]));   // the row's bits are never read
-    }
+    public void VideoDecided_NoMembers_IsDecided()
+        => Assert.True(Rules.VideoDecided(ReadOnlySpan<Track>.Empty));
 
     [Fact]
     public void UnresolvedPreRelease_OnlyWhenNothingNamedIt_TheAskFailed_AndNoTitleLanded()
@@ -179,17 +178,15 @@ public class AlbumPageRulesTests
     [Fact]
     public void HasTrailingSections_EveryArm()
     {
-        Assert.False(Rules.HasTrailingSections(false, false, false, 0, 0, 0, 0, 0, 0));
-        Assert.True(Rules.HasTrailingSections(true, true, false, 0, 0, 0, 0, 0, 0));    // the watch-video card
-        Assert.False(Rules.HasTrailingSections(true, false, false, 0, 0, 0, 0, 0, 0));  // short but no video
-        Assert.False(Rules.HasTrailingSections(false, true, false, 0, 0, 0, 0, 0, 0));  // a video on a full album is not a card
-        Assert.True(Rules.HasTrailingSections(false, false, true, 0, 0, 0, 0, 0, 0));   // about the artist
-        Assert.True(Rules.HasTrailingSections(false, false, false, 1, 0, 0, 0, 0, 0));  // fans
-        Assert.True(Rules.HasTrailingSections(false, false, false, 0, 1, 0, 0, 0, 0));  // featured on
-        Assert.True(Rules.HasTrailingSections(false, false, false, 0, 0, 1, 0, 0, 0));  // merch
-        Assert.True(Rules.HasTrailingSections(false, false, false, 0, 0, 0, 1, 0, 0));  // similar
-        Assert.True(Rules.HasTrailingSections(false, false, false, 0, 0, 0, 0, 6, 1));  // more by, titled by the lead
-        Assert.False(Rules.HasTrailingSections(false, false, false, 0, 0, 0, 0, 6, 0)); // more by with nobody to name it
+        Assert.False(Rules.HasTrailingSections(false, false, 0, 0, 0, 0, 0, 0));
+        Assert.True(Rules.HasTrailingSections(true, false, 0, 0, 0, 0, 0, 0));    // the music-video section, at ANY length
+        Assert.True(Rules.HasTrailingSections(false, true, 0, 0, 0, 0, 0, 0));    // about the artist
+        Assert.True(Rules.HasTrailingSections(false, false, 1, 0, 0, 0, 0, 0));   // fans
+        Assert.True(Rules.HasTrailingSections(false, false, 0, 1, 0, 0, 0, 0));   // featured on
+        Assert.True(Rules.HasTrailingSections(false, false, 0, 0, 1, 0, 0, 0));   // merch
+        Assert.True(Rules.HasTrailingSections(false, false, 0, 0, 0, 1, 0, 0));   // similar
+        Assert.True(Rules.HasTrailingSections(false, false, 0, 0, 0, 0, 6, 1));   // more by, titled by the lead
+        Assert.False(Rules.HasTrailingSections(false, false, 0, 0, 0, 0, 6, 0));  // more by with nobody to name it
     }
 
     [Fact]
@@ -372,7 +369,7 @@ public class AlbumPageRulesTableTests
         Assert.Equal(a, one[0]);
     }
 
-    // ── VideoDecided (the watch-video card's reserve on a short release) ────────────────────────────────────────────
+    // ── VideoDecided (the music-video section's reserve — at ANY release length since 2026-09-17) ───────────────────
 
     static Track Member(string uri, bool videoKnown)
     {
@@ -383,14 +380,14 @@ public class AlbumPageRulesTableTests
     }
 
     [Fact]
-    public void VideoDecided_AShortRelease_WaitsUntilEveryMemberKnowsItsVideoGroup()
+    public void VideoDecided_WaitsUntilEveryMemberKnowsItsVideoGroup()
     {
         TestScope.Fresh();
         Track[] undecided = [Member("spotify:track:v0", true), Member("spotify:track:v1", false)];
-        Assert.False(Rules.VideoDecided(shortRelease: true, undecided));
+        Assert.False(Rules.VideoDecided(undecided));
         Track[] decided = [Member("spotify:track:v2", true), Member("spotify:track:v3", true)];
-        Assert.True(Rules.VideoDecided(shortRelease: true, decided));
-        Assert.True(Rules.VideoDecided(shortRelease: true, ReadOnlySpan<Track>.Empty));   // no members: nothing to wait for
+        Assert.True(Rules.VideoDecided(decided));
+        Assert.True(Rules.VideoDecided(ReadOnlySpan<Track>.Empty));   // no members: nothing to wait for
     }
 
     // ── the similar-albums seed the planner resolves ────────────────────────────────────────────────────────────────
@@ -405,5 +402,35 @@ public class AlbumPageRulesTableTests
         Entities.Current.Edges.AlbumTracks.ReplaceRun(album, [rows[0].Slot, rows[1].Slot], default);
         Assert.Equal("spotify:track:seed1", Album.SimilarSeedUri(album));
         Assert.Null(Album.SimilarSeedUri(0));
+    }
+
+    // ── the library pane header's height budget (Entities/Album.UI.cs, 2026-09-18) ───────────────────────────────────
+    //
+    // The header used to be content-height, so an album whose title wrapped to two lines was ~9 DIP taller than the one
+    // selected before it and every row under it moved. It states one height now — and a stated height is only honest
+    // while what goes in it fits, which is what these two facts are.
+
+    /// <summary>The block states the cover plus its own padding, so the cover is never the thing that clips.</summary>
+    [Fact]
+    public void PaneHeader_StatesTheCoverPlusItsOwnPadding()
+    {
+        Assert.Equal(160f, Album.PaneHeaderHeight);
+        Assert.Equal(Album.PaneCover, Album.PaneHeaderTextBudget);
+        Assert.True(Album.PaneHeaderHeight > Album.PaneCover, "the cover would touch the block's edges");
+    }
+
+    /// <summary>A WRAPPED title fits the budget with room to spare — the fact that keeps the tracklist still. It is the
+    /// title's own metrics that buy it: at the prototype's 34-DIP line two lines alone overran the cover by a DIP.</summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(9)]   // clamped to the two lines the title actually paints
+    public void PaneHeader_TextColumnFitsTheBudgetAtEveryTitleLength(int lines)
+    {
+        Assert.True(Album.PaneHeaderTextHeight(lines) <= Album.PaneHeaderTextBudget,
+            $"{lines}-line title: {Album.PaneHeaderTextHeight(lines)} does not fit {Album.PaneHeaderTextBudget}");
+        Assert.Equal(Album.PaneHeaderTextHeight(Album.PaneTitleMaxLines), Album.PaneHeaderTextHeight(9));
+        // A two-line title costs exactly one more line than a one-line one: nothing else in the column moves with it.
+        Assert.Equal(Album.PaneTitleLine, Album.PaneHeaderTextHeight(2) - Album.PaneHeaderTextHeight(1));
     }
 }

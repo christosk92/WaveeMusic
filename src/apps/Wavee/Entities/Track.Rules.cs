@@ -52,6 +52,12 @@ public readonly partial struct Track
         public const float NumCaretSlot = 9f;
         /// <summary>Exactly the 28-DIP like hit target.</summary>
         public const float Heart = 28f;
+        /// <summary>The TRAILING ♥ lane (<see cref="ColumnSet.HeartTrailing"/>), the one that sits just before the
+        /// duration — 32, not <see cref="Heart"/>'s 28. The leading heart lives in the row's opening cluster, where 28 is
+        /// already the gutter's rhythm; the trailing one stands against the duration clock and pays 2 DIP of air on each
+        /// side of the SAME 28-DIP hit target, so the glyph never touches "3:47". A set carries exactly ONE of the two,
+        /// so the two numbers can never both be in one grid.</summary>
+        public const float HeartTrailing = 32f;
         /// <summary>The art lane — one number with <see cref="RowMetrics.ThumbSize"/>.</summary>
         public const float Thumb = 32f;
         /// <summary>Added by: a 24-DIP avatar + 8 gap + ~100 of name.</summary>
@@ -64,10 +70,16 @@ public readonly partial struct Track
         public const float Tempo = 80f;
         /// <summary>"1:59:59" (an episode in a playlist), not just "59:59".</summary>
         public const float Duration = 52f;
-        /// <summary>The trailing film / hover-"…" lane.</summary>
-        public const float Video = 28f;
         /// <summary>The trailing "…" lane when Video is off (a 28-DIP button + air).</summary>
         public const float Actions = 40f;
+        /// <summary>The trailing film / hover-"…" lane — the SAME number as <see cref="Actions"/>, and that is the point.
+        /// A set carries exactly ONE of the two (<see cref="TableRules.TrailingColumns"/> trades them), so two widths made
+        /// the trailing lane a function of whether any row on THIS release happens to carry a video: the duration clock
+        /// (and every header left of it) sat 12 DIP further right on an album with a video than on the one selected before
+        /// it, which in the library pane is a visible jump on every selection. It was 28 because 28 is the film glyph's
+        /// hit target; the lane also has to hold the hover "…", which is the 40 the other arm reserves. One width, so the
+        /// swap is a glyph change and never a reflow.</summary>
+        public const float Video = Actions;
         /// <summary>The expand chevron's hit target.</summary>
         public const float Expand = 26f;
 
@@ -84,16 +96,23 @@ public readonly partial struct Track
     }
 
     /// <summary>Which optional lanes a track row shows; #, Title and Duration are always present. Cell (and track) order:
-    /// # · ♥ · thumb · Title · Artist · Album · AddedBy · DateAdded · Plays · Tempo · Duration · Video · Actions · Expand.
+    /// # · ♥ · thumb · Title · Artist · Album · AddedBy · DateAdded · Plays · Tempo · ♥(trailing) · Duration · Video ·
+    /// Actions · Expand.
     /// SHARED by the header and every row builder, and it is the width-track CACHE KEY (ch 01 §9): a value record with no
     /// mutable field, or the cache forks. <paramref name="Actions"/> is the "…" lane when Video is off (Video carries the
     /// "…" on hover when on — the lane is reserved once); <paramref name="Tier"/> is the width tier the set was built for,
     /// so header, rows and tracks derive the SAME padding/gap; <paramref name="Tempo"/> means "this surface wants BPM·Key"
     /// (the tier gate is <see cref="RowMetrics.ShowTempo"/>); <paramref name="Artist"/> is Classic's dedicated lane;
-    /// <paramref name="Classic"/> rides with the shape so persistent rows re-skin live.</summary>
+    /// <paramref name="Classic"/> rides with the shape so persistent rows re-skin live.
+    /// <para><paramref name="HeartTrailing"/> is the library reader's row (<c>28 | 1fr | 32 | 52</c>): the SAME heart, on
+    /// the RIGHT, immediately before the duration, at <see cref="Lane.HeartTrailing"/>. MUTUALLY EXCLUSIVE with
+    /// <paramref name="Heart"/> — a row states its like once — and the gate both the width track and the cell read is
+    /// <see cref="RowMetrics.ShowHeartTrailing"/>, which normalizes a set that asks for both by keeping the LEADING
+    /// heart (the lane every existing surface already reserves). It is NOT on the relief ladder: the ladder yields
+    /// trailing lanes for the tiered TABLE, and the only surface that sets this builds one fixed set at one width.</para></summary>
     public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Video, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
-                                            bool Artist = false, bool Classic = false);
+                                            bool Artist = false, bool Classic = false, bool HeartTrailing = false);
 
     /// <summary>What the list is sorted by; <see cref="Index"/> = the context's own order. PERSISTED — new columns append
     /// and existing values never move.</summary>
@@ -200,7 +219,10 @@ public readonly partial struct Track
 
         /// <summary>Classic folds VIDEO into the Title line and keeps ONE trailing command lane; both skins keep the
         /// disclosure chevron (the drawer restates what relief took away — a row affordance, not a skin flourish), under
-        /// the same width gate as the "…" lane.</summary>
+        /// the same width gate as the "…" lane.
+        /// <para>Modern trades the "…" lane for the film lane when any row has a video — a trade of CELL, never of
+        /// width: both lanes are <see cref="Lane.Actions"/> wide (see <see cref="Lane.Video"/>), so a release with a
+        /// video and one without lay their duration column out on the same DIP.</para></summary>
         public static TrailingColumns TrailingColumns(bool classic, bool hasVideo, bool showVersions, int tier)
         {
             bool hasTrailingRoom = tier < 6;
@@ -361,6 +383,13 @@ public readonly partial struct Track
 
         /// <summary>BPM·Key shows only when asked AND tier ≤ 3 — read by the row AND the tracks, so they never disagree.</summary>
         public static bool ShowTempo(in ColumnSet set) => set.Tempo && set.Tier <= 3;
+
+        /// <summary>The TRAILING ♥ lane, gated the one way the width track, the cell count and the cell all read — a
+        /// mismatch between any two of them shifts every later column. <see cref="ColumnSet.Heart"/> and
+        /// <see cref="ColumnSet.HeartTrailing"/> are mutually exclusive, and a set that asks for both NORMALIZES to the
+        /// leading heart rather than throwing: the flags come from static per-surface sets, so the failure a throw would
+        /// buy is a crash on a surface nobody exercised, while the normalization is one lane in one place.</summary>
+        public static bool ShowHeartTrailing(in ColumnSet set) => set.HeartTrailing && !set.Heart;
 
         /// <summary>The x of the row's ARTWORK CENTRE from the skin's left edge — the leading lanes (# · ♥) and their gaps
         /// plus half the art. DERIVED from the lane table, not a constant: the leading cluster is # alone, # + ♥, or
@@ -1081,6 +1110,8 @@ public readonly partial struct Track
                 AvailabilityKnown: ruled,
                 // The RULED verdict bit — `Unplayable` (no instant) and a pending release (instant ahead) both read true
                 // here; `NotYetOut` is what separates them for the strip (a date beside "Unavailable" is a contradiction).
+                // It is a verdict about THE AUDIO. It is not, and never was, a statement about the row's music video —
+                // which is why the strip's label names its subject ("Audio unavailable"); see `Facts.For`'s flag run.
                 Unavailable: ruled && !t.IsPlayable,
                 NotYetOut: t.NotYetOut(nowUnixSeconds));
         }
@@ -1154,11 +1185,21 @@ public readonly partial struct Track
             if (input.Tags is { Count: > 0 } tags)
                 facts.Add(new Fact(FactKind.Descriptors, FactForm.Chips, "", Chips: tags));
 
-            // Marks, not values: the label is the whole fact.
+            // Marks, not values: the label is the whole fact. The drawer middot-joins this whole run onto ONE line, so
+            // every label here must name its OWN subject — two flags side by side must never read as one sentence.
             if (input.Explicit) facts.Add(new Fact(FactKind.Explicit, FactForm.Flag, ""));
             if (options.HasVideo) facts.Add(new Fact(FactKind.Video, FactForm.Flag, ""));
             if (input.Local) facts.Add(new Fact(FactKind.LocalFile, FactForm.Flag, ""));
             // Only a RULED row; a not-yet-out row already states WHEN, and "Unavailable" beside a date reads as a contradiction.
+            //
+            // THE TWO ARE INDEPENDENT AND MUST READ THAT WAY (2026-09-17). `Video` says a music video EXISTS for this
+            // song; this one is the AUDIO's availability verdict — `Unplayable`, i.e. region-locked or withdrawn — and
+            // it knows nothing about the video. Bare, the run printed "Music video · Unavailable", which every reader
+            // took to mean the VIDEO was unavailable. There is no fourth fact line to move it to (`Track.Drawer.cs`
+            // builds exactly three: heroes, prose, marks) and the prose line would sit it beside the Released date,
+            // which is the contradiction the guard above exists to prevent — so the fix is the LABEL:
+            // `detail.trackFacts.unavailable` reads "Audio unavailable", not "Unavailable".
+            // `AlbumVideoSectionTests` pins the independence so a future refactor cannot fuse them back.
             if (!notYetOut && input.AvailabilityKnown && input.Unavailable)
                 facts.Add(new Fact(FactKind.Unavailable, FactForm.Flag, ""));
 

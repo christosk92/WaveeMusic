@@ -112,6 +112,50 @@ public class QueueSeedTests
         Assert.Equal(Queue.SeedSource.None, source);
     }
 
+    // ── the TAKEOVER override (A4, playback plan Wave A): the user claiming a mirrored row ───────────────────────────
+    //
+    // A takeover is not "a late cluster" — it is the listener adopting the session that row already belongs to. It
+    // overrides the Unknown gate ONLY (a real current row is still required, and a takeover with nothing to seed
+    // from still lands CurrentOnly rather than staying silent — that is what un-sticks a permanently cursor-less
+    // mirrored row even once the cluster's own prev/next have gone stale).
+
+    [Theory]
+    [InlineData(EdgeState.Partial)]
+    [InlineData(EdgeState.Complete)]
+    public void A_takeover_reseeds_from_the_cluster_even_though_the_queue_already_left_Unknown(EdgeState state)
+    {
+        Queue.SeedSource source = Queue.DecideSeed(state,
+            hasCurrent: true, hasClusterTracks: true, hasContext: false, takeover: true);
+        Assert.Equal(Queue.SeedSource.Cluster, source);
+    }
+
+    [Theory]
+    [InlineData(EdgeState.Partial)]
+    [InlineData(EdgeState.Complete)]
+    public void A_takeover_with_no_cluster_rows_still_lands_the_bare_current_row_rather_than_staying_silent(EdgeState state)
+    {
+        Queue.SeedSource source = Queue.DecideSeed(state,
+            hasCurrent: true, hasClusterTracks: false, hasContext: false, takeover: true);
+        Assert.Equal(Queue.SeedSource.CurrentOnly, source);
+    }
+
+    [Fact]
+    public void A_takeover_still_answers_None_with_no_current_row_to_hang_it_off()
+    {
+        Queue.SeedSource source = Queue.DecideSeed(EdgeState.Complete,
+            hasCurrent: false, hasClusterTracks: true, hasContext: true, takeover: true);
+        Assert.Equal(Queue.SeedSource.None, source);
+    }
+
+    [Fact]
+    public void A_takeover_on_an_already_Unknown_queue_behaves_exactly_like_a_normal_seed()
+    {
+        // takeover changes nothing when the gate it overrides was never going to refuse in the first place.
+        Queue.SeedSource source = Queue.DecideSeed(EdgeState.Unknown,
+            hasCurrent: true, hasClusterTracks: true, hasContext: false, takeover: true);
+        Assert.Equal(Queue.SeedSource.Cluster, source);
+    }
+
     // ── the seed RETRY decision (bug: a boot-time context resolve asked before the session authorises) ──────────────
     //
     // `Queue.SeedRetryOn` is the pure half of the fix for a second, milder form of bug I: the launch restore's context

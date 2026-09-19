@@ -29,7 +29,11 @@
 // every decoder stages and the wire writes back; `Entities.Now` is APP seconds (P7), so the optimistic write converts
 // ONCE with `Store.ToUnix` (before the fix an optimistic like dated itself to January 1970).
 //
-// §8-§10: the library page's CORE (ch 15 §8) — breakpoint, select-in-place commit, the ONE ordering rule, recency, search.
+// §8-§11: the library page's CORE (ch 15 §8) — breakpoint, select-in-place commit, the ONE ordering rule, recency, search,
+// and (the 2026-09-17 library rework) §9b's letter groups + album-pane readiness and §11's per-artist library reads —
+// which the 2026-09-18 correction widened from "saved albums" to saved albums ∪ the albums your liked songs sit on.
+// THE FILE IS OVER ITS STATED BUDGET (1,388 lines against 1,040) and was already over it before the rework: the library
+// page's CORE — §8 through §11 — is the natural split into a `User.Library.cs` when somebody has a reason to touch it.
 // Rules: single writer, UI thread (C1); no LINQ, no hot-path closures, no async, no boxing (P8/P9); ref-counted text (P6).
 
 using System.Buffers;
@@ -626,8 +630,10 @@ public readonly record struct LibrarySelectionCommit(string? SelectedKey, string
     public bool IsNone => SelectedKey is null && AlbumKey is null && !ClearFilter && Depth is null;
 
     /// <summary>Artist → select it and RESET the discography key, collapsed depth 1. Album in the albums view → the
-    /// master selection, depth 1. Album in the artists view → the discography pick WITH its owning artist, depth 2.
-    /// The filter is always cleared (the search view is gated on a non-empty query).</summary>
+    /// master selection, depth 1. Album in the artists view → the album pick WITH its owning artist, collapsed depth
+    /// <b>1</b> (was 2): the artists page is TWO rungs now, not three — the reader is the second one, and it reads the
+    /// album key once as its initial spine target. The filter is always cleared (the search view is gated on a
+    /// non-empty query).</summary>
     public static LibrarySelectionCommit For(LibrarySelectKind kind, bool artistsView, bool collapsed, string uri,
                                              string ownerArtistUri = "")
     {
@@ -637,7 +643,7 @@ public readonly record struct LibrarySelectionCommit(string? SelectedKey, string
         if (!artistsView)
             return new("album:" + uri, null, ClearFilter: true, collapsed ? 1 : null);
         return new(string.IsNullOrEmpty(ownerArtistUri) ? null : "artist:" + ownerArtistUri,
-                   "album:" + uri, ClearFilter: true, collapsed ? 2 : null);
+                   "album:" + uri, ClearFilter: true, collapsed ? 1 : null);
     }
 
     public static LibrarySelectionCommit ForArtist(bool artistsView, bool collapsed, string uri)
@@ -649,9 +655,58 @@ public readonly record struct LibrarySelectionCommit(string? SelectedKey, string
 
 // ── 9. the ONE library ordering rule (ch 15 §8, LibraryNavOrder verbatim over an allocation-free row view) ─────────
 
-/// <summary>The sort keys the library pickers offer (rows 0..4). The int codes are PERSISTED
-/// (<c>library.&lt;kind&gt;.sort</c>) and shared with the sidebar's Library V3 — never renumber.</summary>
-public enum LibraryNavSort : byte { Recents = 0, RecentlyAdded = 1, Alphabetical = 2, Creator = 3, ReleaseDate = 4 }
+/// <summary>The sort keys the library pickers offer. The int codes are PERSISTED (<c>library.&lt;kind&gt;.sort</c>) and
+/// shared with the sidebar's Library V3 (codes 0-3) — never renumber, only APPEND: a user's persisted 3 has to keep
+/// meaning "artist" across every release. <see cref="Albums"/> is the rework's new word (artists by how many releases
+/// of theirs are in your library, most first); WHICH kind offers which code is <see cref="LibraryWordRail"/>, not this
+/// enum.</summary>
+public enum LibraryNavSort : byte { Recents = 0, RecentlyAdded = 1, Alphabetical = 2, Creator = 3, ReleaseDate = 4, Albums = 5 }
+
+/// <summary>Which words a kind's rail shows, in RAIL ORDER, as persisted codes — ONE pure table, so the rail, the page
+/// and the tests read the same source instead of three lists drifting apart. The rail is the word pivot that replaced the
+/// sort pill: there is no "sort by" menu any more, so a code a kind does not offer has to be CLAMPED at the read rather
+/// than merely left unlabelled (<see cref="Clamp"/>).</summary>
+public static class LibraryWordRail
+{
+    // `static readonly` arrays rather than collection expressions in the property: a `ReadOnlySpan<T>` over one is a
+    // field load, and the rail re-reads its words on every render of the column header.
+    static readonly LibraryNavSort[] s_albums = [LibraryNavSort.Recents, LibraryNavSort.Alphabetical, LibraryNavSort.Creator, LibraryNavSort.RecentlyAdded, LibraryNavSort.ReleaseDate];
+    static readonly LibraryNavSort[] s_artists = [LibraryNavSort.Recents, LibraryNavSort.Alphabetical, LibraryNavSort.Albums];
+    static readonly LibraryNavSort[] s_shows = [LibraryNavSort.Recents, LibraryNavSort.Alphabetical, LibraryNavSort.RecentlyAdded];
+
+    /// <summary>The kind's words. Albums (and any unnamed kind) get the five-word rail; an artists rail has no "artist"
+    /// word (it would sort artists by themselves) and no "year" (an artist has no release date) but does have "albums";
+    /// a shows rail has neither.</summary>
+    public static ReadOnlySpan<LibraryNavSort> WordsFor(EntityKind kind) => kind switch
+    {
+        EntityKind.Artist => s_artists,
+        EntityKind.Show => s_shows,
+        _ => s_albums,
+    };
+
+    /// <summary>A persisted code this kind's rail does not offer — a value an older build wrote, or 5 read on the albums
+    /// page — reads as <see cref="LibraryNavSort.Recents"/>. The persisted value is NOT rewritten: switching kinds must
+    /// not destroy the other kind's choice, so the clamp lives at the read and nowhere else.</summary>
+    public static LibraryNavSort Clamp(EntityKind kind, int code)
+    {
+        var words = WordsFor(kind);
+        for (int i = 0; i < words.Length; i++) if ((int)words[i] == code) return words[i];
+        return LibraryNavSort.Recents;
+    }
+
+    /// <summary>The rail word's loc KEY per code. The rail has its OWN keys (<c>library.rail.*</c>, the lowercase words)
+    /// rather than the pill's Title-Case <c>library.sort.*</c> labels, because the sidebar's Library V3 shares those for
+    /// codes 0-3 and its pills would have gone lowercase with them (plan §5.9's decision).</summary>
+    public static string WordKey(LibraryNavSort sort) => sort switch
+    {
+        LibraryNavSort.RecentlyAdded => Strings.Library.Rail.RecentlyAdded,   // "added"
+        LibraryNavSort.Alphabetical => Strings.Library.Rail.Alphabetical,     // "a-z"
+        LibraryNavSort.Creator => Strings.Library.Rail.Creator,               // "artist"
+        LibraryNavSort.ReleaseDate => Strings.Library.Rail.ReleaseDate,       // "year"
+        LibraryNavSort.Albums => Strings.Library.Rail.Albums,                 // "albums"
+        _ => Strings.Library.Rail.Recents,                                    // "recents"
+    };
+}
 
 /// <summary>What an order needs from a row, as a RECORD — the test fixture shape and 0.2.9's own.</summary>
 public readonly record struct LibraryNavFacts(string Uri, string Title, string Subtitle, int Year, string? CoverUrl);
@@ -668,10 +723,15 @@ public interface ILibraryNavRows
     string Subtitle(int row);
     ReadOnlySpan<char> Uri(int row, Span<char> scratch);
     string Cover(int row);
+    /// <summary>What the row COUNTS for <see cref="LibraryNavSort.Albums"/>: an artist row's library RELEASE count
+    /// (<see cref="User.LibraryReleaseCountOf"/> — saved albums plus the liked-only ones, §11), 0 for every other kind
+    /// (which is why only the artists rail offers that word). Named <c>CountOf</c> and not the plan's
+    /// <c>Count(int)</c> because one type cannot carry a property and a method of the same name.</summary>
+    int CountOf(int row);
 }
 
 /// <summary><see cref="ILibraryNavRows"/> over the record fixtures.</summary>
-public readonly struct LibraryFactsRows(LibraryNavFacts[] rows, long[]? played) : ILibraryNavRows
+public readonly struct LibraryFactsRows(LibraryNavFacts[] rows, long[]? played, int[]? counts = null) : ILibraryNavRows
 {
     public int Count => rows.Length;
     public long PlayedAt(int row) => played is null ? 0 : played[row];
@@ -680,6 +740,9 @@ public readonly struct LibraryFactsRows(LibraryNavFacts[] rows, long[]? played) 
     public string Subtitle(int row) => rows[row].Subtitle;
     public ReadOnlySpan<char> Uri(int row, Span<char> scratch) => rows[row].Uri;
     public string Cover(int row) => rows[row].CoverUrl ?? "";
+    /// <summary>The fixture's counts, parallel to the rows; null counts 0 everywhere, which is every fixture that is not
+    /// exercising the <see cref="LibraryNavSort.Albums"/> arm.</summary>
+    public int CountOf(int row) => counts is null ? 0 : counts[row];
 }
 
 /// <summary>A reusable sorter with cached comparison delegates: ordering allocates NOTHING after construction (ch 15 §9).</summary>
@@ -688,16 +751,18 @@ public sealed class LibraryNavSorter<TRows> where TRows : ILibraryNavRows
     static readonly StringComparer Name = StringComparer.OrdinalIgnoreCase;
     TRows _rows = default!;
     int _sign = 1;
-    readonly Comparison<int> _recents, _added, _alphabetical, _creator, _release;
+    readonly Comparison<int> _recents, _added, _alphabetical, _creator, _release, _albums;
 
     public LibraryNavSorter()
     {
         _recents = Recents; _added = Added; _alphabetical = Alphabetical; _creator = Creator; _release = Release;
+        _albums = Albums;
     }
 
     /// <summary>Write the permutation into <paramref name="into"/> (≥ Count). Recents: played newest-first, then never-played
     /// in source order (the block split survives desc). RecentlyAdded: source order. Alphabetical / Creator: title /
-    /// subtitle, then title, then uri. ReleaseDate: year desc, unknown years sink. Desc reverses the tie-breaks too.</summary>
+    /// subtitle, then title, then uri. ReleaseDate: year desc, unknown years sink. Albums: saved-album count desc, then
+    /// title. Desc reverses the tie-breaks too.</summary>
     public void Order(in TRows rows, LibraryNavSort sort, bool desc, Span<int> into)
     {
         int n = rows.Count;
@@ -711,6 +776,7 @@ public sealed class LibraryNavSorter<TRows> where TRows : ILibraryNavRows
             LibraryNavSort.Alphabetical => _alphabetical,
             LibraryNavSort.Creator => _creator,
             LibraryNavSort.ReleaseDate => _release,
+            LibraryNavSort.Albums => _albums,
             _ => _added,
         });
         _rows = default!;
@@ -726,7 +792,17 @@ public sealed class LibraryNavSorter<TRows> where TRows : ILibraryNavRows
     }
 
     int Added(int a, int b) => _sign * a.CompareTo(b);
-    int Alphabetical(int a, int b) => _sign * ByTitle(a, b);
+    /// <summary>The LETTER first, then the title. The letter is <see cref="LibraryLetters.Of"/> — the same function the
+    /// a–z grouping bands by — because a plain ordinal title order does NOT agree with it: "The Beatles" files under B,
+    /// a leading quote is skipped, and an accented/CJK/digit initial is '#' while ordinal sorts it after Z. Ordering by
+    /// title alone handed <see cref="LibraryLetters.Build"/> rows whose letter changed back and forth, which opened a
+    /// band per flip (the same letter many times over) and, past 27 extra headers, overran its buffers — the
+    /// 2026-09-18 IndexOutOfRange in <c>ComputeShape</c> once the artists list grew to hundreds of rows.</summary>
+    int Alphabetical(int a, int b)
+    {
+        int c = LibraryLetters.Of(_rows.Title(a)).CompareTo(LibraryLetters.Of(_rows.Title(b)));
+        return _sign * (c != 0 ? c : ByTitle(a, b));
+    }
 
     int Creator(int a, int b)
     {
@@ -739,6 +815,15 @@ public sealed class LibraryNavSorter<TRows> where TRows : ILibraryNavRows
         int ya = _rows.Year(a), yb = _rows.Year(b);
         if (ya > 0 != yb > 0) return ya > 0 ? -1 : 1;           // unknown years sink as a block
         int c = yb.CompareTo(ya);
+        return _sign * (c != 0 ? c : ByTitle(a, b));
+    }
+
+    /// <summary>Most releases in your library first (<see cref="ILibraryNavRows.CountOf"/>), then title. No block split
+    /// for zero (unlike an unknown year): an artist with nothing of theirs saved or liked is still an artist — a row the
+    /// followed set put there — and title order below the counted rows reads as one list. Desc flips it whole.</summary>
+    int Albums(int a, int b)
+    {
+        int c = _rows.CountOf(b).CompareTo(_rows.CountOf(a));
         return _sign * (c != 0 ? c : ByTitle(a, b));
     }
 
@@ -804,11 +889,12 @@ public static class LibraryNavOrder
 
 /// <summary><see cref="ILibraryNavRows"/> over slots of ONE kind in a caller-owned buffer, plus the column reads, the
 /// title filter and the play-recency read the page and the search share. UI thread (C1).</summary>
-public readonly struct LibraryRows(EntityKind kind, int[] slots, int count, long[]? played = null) : ILibraryNavRows
+public readonly struct LibraryRows(EntityKind kind, int[] slots, int count, long[]? played = null, int[]? counts = null) : ILibraryNavRows
 {
     readonly EntityKind _kind = kind;
     readonly int[] _slots = slots;
     readonly long[]? _played = played;
+    readonly int[]? _counts = counts;
     readonly int _count = count;
 
     public int Count => _count;
@@ -819,6 +905,26 @@ public readonly struct LibraryRows(EntityKind kind, int[] slots, int count, long
     public string Subtitle(int row) => SubtitleOf(_kind, _slots[row]);
     public ReadOnlySpan<char> Uri(int row, Span<char> scratch) => UriOf(IdOf(_kind, _slots[row]), scratch);
     public string Cover(int row) => Entities.Strings.Resolve(ImageOf(_kind, _slots[row]));
+
+    /// <summary>The library RELEASE count behind <see cref="LibraryNavSort.Albums"/>. PRECOMPUTED when the caller passed
+    /// a counts buffer (<see cref="FillCounts"/>), which the page does: a comparator that walked the saved-albums and
+    /// liked relations per comparison would be O(n log n · (saved · billed + liked)) on one click. The live read is the
+    /// one-off path.</summary>
+    public int CountOf(int row)
+        => _counts is not null ? _counts[row]
+         : _kind == EntityKind.Artist ? User.LibraryAlbumCountOf(_slots[row]) : 0;
+
+    /// <summary>Fill <paramref name="into"/> with each slot's library release count — the Albums sort's precomputed input
+    /// and the twin of <see cref="FillPlayed"/>. Artists only; every other kind counts 0 and never offers the word.
+    /// <para>ONE walk of the library for the WHOLE list (<see cref="User.FillReleaseCounts"/>), not one read per row.
+    /// The count reads the liked relation now (§11), and a per-row read over thousands of liked tracks times the
+    /// hundreds of rows the widened navigator carries is a stall on every reorder — the same reason the buffer exists at
+    /// all. It answers exactly what <see cref="User.LibraryReleaseCountOf"/> answers per slot.</para></summary>
+    public static void FillCounts(EntityKind kind, ReadOnlySpan<int> slots, Span<int> into)
+    {
+        if (kind != EntityKind.Artist) { into[..slots.Length].Clear(); return; }
+        User.FillReleaseCounts(slots, into);
+    }
 
     public static EntityId IdOf(EntityKind kind, int slot) => kind switch
     {
@@ -901,6 +1007,178 @@ public readonly struct LibraryRows(EntityKind kind, int[] slots, int count, long
         }
         return n;
     }
+}
+
+// ── 9b. the letter groups and the album pane's readiness (the rework's derived facts; plan §5.1) ──────────────────
+
+/// <summary>Letter groups over an ALPHABETICALLY sorted navigator: a FLAT index space that interleaves up to 27 header
+/// items ("#", A-Z) with the rows. A header is a flat item whose <see cref="RowOf"/> is -1; every other flat item is a
+/// row. Everything here is a pure function of the sorted titles — the page keys its list on <see cref="Key"/>, the
+/// sticky overlay reads <see cref="StickyLetterAt"/>, the jump strip reads <see cref="Present"/> and
+/// <see cref="HeaderFlat"/> — so no surface has to probe the rows to know where a band starts (derived facts live on the
+/// model). Reused across computes: the arrays grow and never shrink, so a rebuild per filter keystroke allocates nothing
+/// once warm. The page owns ONE instance. UI thread (C1).</summary>
+public sealed class LibraryLetters
+{
+    /// <summary>'#' (0) plus A-Z (1..26). 27 fits a <c>uint</c> bitmask, which is what <see cref="Present"/> is.</summary>
+    public const int Count = 27;
+    /// <summary>The letter header's main-axis extent — the ONE number the offsets, the extents and the sticky overlay
+    /// share, so a header can never be laid out at one height and scrolled at another.</summary>
+    public const float HeaderExtent = 28f;
+
+    int[] _headerFlat = new int[Count];     // letter -> the flat index of its header, -1 when the letter has no rows
+    int[] _flatToRow = new int[64];         // flat index -> row index, or -1 for a header
+    byte[] _flatLetter = new byte[64];      // flat index -> the header's letter / the row's group
+    float[] _offset = new float[65];        // flat index -> main-axis offset (prefix sum); [FlatCount] = the total
+    int _flatCount, _rows;
+    uint _present;                          // bit i = letter i has at least one row
+
+    public int FlatCount => _flatCount;
+    /// <summary>How many ROWS the last build covered (<see cref="FlatCount"/> minus its headers).</summary>
+    public int Rows => _rows;
+    public bool IsHeader(int flat) => (uint)flat < (uint)_flatCount && _flatToRow[flat] < 0;
+    public int RowOf(int flat) => (uint)flat < (uint)_flatCount ? _flatToRow[flat] : -1;
+    public int LetterOf(int flat) => (uint)flat < (uint)_flatCount ? _flatLetter[flat] : -1;
+    public bool Has(int letter) => (uint)letter < Count && (_present & (1u << letter)) != 0;
+    public int HeaderFlat(int letter) => (uint)letter < Count ? _headerFlat[letter] : -1;
+    public float OffsetOf(int flat) => _offset[Math.Clamp(flat, 0, _flatCount)];
+    public float TotalExtent => _offset[_flatCount];
+    /// <summary>"Which letters exist" as ONE value: bit i = letter i has rows. The jump strip renders its 27 cells from
+    /// it without a second pass over the rows, and a test pins a whole grouping in one comparison.</summary>
+    public uint Present => _present;
+
+    /// <summary>The letter of a title: leading punctuation, brackets and quotes are skipped, then a leading "the " (the
+    /// article files under the real word — "the Beatles" is B; a bare "The" is a title and files under T). A first
+    /// character outside A-Z — a digit, CJK, an accented letter, an empty title — is '#' (index 0), because
+    /// <c>OrdinalIgnoreCase</c>, which the alphabetical comparator uses, folds A-Z and nothing else.</summary>
+    public static int Of(ReadOnlySpan<char> title)
+    {
+        int i = 0;
+        while (i < title.Length && !char.IsLetterOrDigit(title[i])) i++;
+        var rest = title[i..];
+        if (rest.Length > 4 && rest[3] == ' ' && rest[..3].Equals("the", StringComparison.OrdinalIgnoreCase)) rest = rest[4..];
+        if (rest.Length == 0) return 0;
+        char c = char.ToUpperInvariant(rest[0]);
+        return c is >= 'A' and <= 'Z' ? c - 'A' + 1 : 0;
+    }
+
+    /// <summary>Rebuild for <paramref name="rows"/>, which must already be in ALPHABETICAL order: the grouping is one
+    /// pass that opens a band when the letter changes, so an unsorted list would open a letter twice and the later header
+    /// would win <see cref="HeaderFlat"/>. O(n), allocation-free once warm. Generic over the row view (the plan wrote
+    /// <c>in LibraryRows</c>) so the rule is testable without a live scope, exactly as <c>LibraryNavOrder.OrderKey</c>
+    /// is.</summary>
+    public void Build<TRows>(in TRows rows, float rowExtent) where TRows : ILibraryNavRows
+    {
+        _rows = rows.Count;
+        // WORST CASE, not the sorted case: a band opens on every letter CHANGE, so rows that are not grouped by letter
+        // can open up to one header per row. The sorter orders by this same letter (LibraryNavSorter.Alphabetical), so
+        // the sorted case is `rows + 27` — but sizing for it let a disagreement between the two overrun the buffers and
+        // take the app loop down. A grouping helper must never be able to crash on its input.
+        Grow(_rows * 2 + 1);
+        _present = 0; _flatCount = 0;
+        for (int l = 0; l < Count; l++) _headerFlat[l] = -1;
+        int last = -1; float off = 0f;
+        for (int r = 0; r < _rows; r++)
+        {
+            int letter = Of(rows.Title(r));
+            if (letter != last)
+            {
+                _headerFlat[letter] = _flatCount; _present |= 1u << letter;
+                _flatToRow[_flatCount] = -1; _flatLetter[_flatCount] = (byte)letter; _offset[_flatCount] = off;
+                _flatCount++; off += HeaderExtent; last = letter;
+            }
+            _flatToRow[_flatCount] = r; _flatLetter[_flatCount] = (byte)letter; _offset[_flatCount] = off;
+            _flatCount++; off += rowExtent;
+        }
+        _offset[_flatCount] = off;
+    }
+
+    /// <summary>A flat item's extent: the header band, or a row. The analytic seed for the list's extents.</summary>
+    public float ExtentOf(int flat, float rowExtent) => IsHeader(flat) ? HeaderExtent : rowExtent;
+
+    /// <summary>The letter whose band contains <paramref name="offset"/> — the sticky overlay's one input. Binary search
+    /// over the prefix sums; -1 above the first header, and for an empty build.</summary>
+    public int StickyLetterAt(float offset)
+    {
+        int lo = 0, hi = _flatCount - 1, hit = -1;
+        while (lo <= hi) { int mid = (lo + hi) >> 1; if (_offset[mid] <= offset) { hit = mid; lo = mid + 1; } else hi = mid - 1; }
+        return hit < 0 ? -1 : _flatLetter[hit];
+    }
+
+    /// <summary>A stable identity of the GROUPING (letter -> header flat index), folded FNV-1a: the navigator's remount
+    /// key part. Two builds of the same grouping agree; a different grouping does not. Selection is not in it.</summary>
+    public ulong Key()
+    {
+        ulong h = 14695981039346656037UL;
+        for (int l = 0; l < Count; l++) { h ^= (uint)(_headerFlat[l] + 1); h *= 1099511628211UL; }
+        return h;
+    }
+
+    // Grow discards the old contents on purpose: its only caller is Build, which rewrites every cell it will read.
+    void Grow(int n)
+    {
+        if (_flatToRow.Length >= n) return;
+        int size = Math.Max(n, _flatToRow.Length * 2);
+        _flatToRow = new int[size]; _flatLetter = new byte[size]; _offset = new float[size + 1];
+    }
+}
+
+/// <summary>The album pane's readiness: THREE not-yet states and Ready, where ch 15 W24 had two. The third is the whole
+/// point — a pane that cannot tell "still coming" from "the ask failed" paints a skeleton forever, which is 0.2.10's
+/// defect A.</summary>
+public enum AlbumPaneState : byte { Header, Rows, Failed, Ready }
+
+/// <summary>The two ROW-level facts the readiness rule takes, as one value so the richer
+/// <see cref="AlbumPaneReadiness.Of(bool,EdgeState,bool,AlbumRowFacts)"/> is a real overload of the five-argument one
+/// (five bools in the same positions could not be). They travel together because they are asked of the same rows in the
+/// same walk.</summary>
+/// <param name="AnyUntitled">A listed row whose own TITLE has not landed — the only row fact that still gates: a
+/// tracklist with a blank line in it is loading, not ready.</param>
+/// <param name="AnyFailed">A listed row whose <c>TrackFields.Row</c> batch is <c>Table.Failed</c>.</param>
+public readonly record struct AlbumRowFacts(bool AnyUntitled, bool AnyFailed);
+
+/// <summary>The pane's readiness rule: pure over the album's known bits and its tracks edge, so the pane never paints a
+/// skeleton it cannot leave and the whole state table is a test rather than a per-render probe.</summary>
+public static class AlbumPaneReadiness
+{
+    /// <summary>The rule, over the album's identity bit, its tracks edge, and the two row facts:
+    /// <list type="bullet">
+    /// <item><b>Header</b> — the row's identity has not answered (the navigator's own demand; short-lived).</item>
+    /// <item><b>Rows</b> — identity known and the tracks edge Unknown/Partial, or Complete with a row still UNTITLED and
+    /// nothing failed: the counted shimmer.</item>
+    /// <item><b>Failed</b> — the tracks edge failed, OR the edge is Complete, a row is untitled and that row batch failed
+    /// (<c>Table.IsFailed</c>): the Retry strip, never a notice about a "minified" album.</item>
+    /// <item><b>Ready</b> — identity plus a Complete edge whose every row knows its own title.</item>
+    /// </list>
+    /// An edge failure outranks a missing identity's shimmer on purpose: a failed list is answerable (Retry), and the
+    /// identity the navigator is still fetching is not this pane's to wait on forever.
+    /// <para>A row whose CREDITED ARTIST has no name is NOT a gate (the 2026-09-18 correction). Nobody demands
+    /// <c>ArtistFields.Name</c> for a track's credits, so that bit can simply never land — and the pane, which had it
+    /// folded into one "unnamed" flag with the missing titles, then shimmered forever: 0.2.10's defect A wearing a
+    /// second hat. The unnamed credit is a notice (<c>Detail.NoticeRules</c>, <c>DetailNotice.MinifiedAlbum</c>), and a
+    /// notice is shown OVER a rendered list, not instead of one.</para></summary>
+    public static AlbumPaneState Of(bool knowsIdentity, EdgeState tracks, bool edgeFailed, AlbumRowFacts rows)
+    {
+        if (!knowsIdentity) return AlbumPaneState.Header;
+        if (edgeFailed) return AlbumPaneState.Failed;
+        if (tracks != EdgeState.Complete) return AlbumPaneState.Rows;
+        if (!rows.AnyUntitled) return AlbumPaneState.Ready;
+        return rows.AnyFailed ? AlbumPaneState.Failed : AlbumPaneState.Rows;
+    }
+
+    /// <summary>The five-argument shape the pane and the reader call today, kept so their call sites (named argument
+    /// <c>anyUnnamed:</c> included) keep compiling — with the corrected semantics: <paramref name="anyUnnamed"/> is
+    /// ACCEPTED AND IGNORED, because it mixes "this row has no title" with "a credited artist of this row has no name"
+    /// and only the first of those may hold a pane in its skeleton (see the overload's remarks). A caller that can tell
+    /// the two apart passes <see cref="AlbumRowFacts"/> instead and gets the untitled gate back.</summary>
+    public static AlbumPaneState Of(bool knowsIdentity, EdgeState tracks, bool edgeFailed, bool anyUnnamed, bool rowsFailed)
+        => Of(knowsIdentity, tracks, edgeFailed, new AlbumRowFacts(AnyUntitled: false, AnyFailed: rowsFailed));
+
+    /// <summary>The COUNTED shimmer: the album's own track count when it knows it, the listed edge length when it does
+    /// not, 6 when neither has answered — never 0, because a zero-row shimmer is a blank pane, and a blank pane reads as
+    /// an empty album rather than as loading.</summary>
+    public static int ShimmerRows(bool knowsCount, int trackCount, int listed)
+        => knowsCount && trackCount > 0 ? trackCount : listed > 0 ? listed : 6;
 }
 
 // ── 10. the cache-only library search (ch 15 §7 DATA GAP 5; 0.2.9 LibrarySearchIndex over the resident tables) ──────
@@ -1020,22 +1298,45 @@ public readonly partial struct User
             hits.Seen.Clear();
             var saved = e.SavedAlbums.Targets(me);
             for (int i = 0; i < saved.Length; i++)
-                if (saved[i] > Table.None && hits.Seen.Add(saved[i])) SearchAlbum(hits, e, saved[i], parentMatched: false, q);
+                if (saved[i] > Table.None && hits.Seen.Add(saved[i])) SearchAlbum(hits, saved[i], e.AlbumTracks.Targets(saved[i]), parentMatched: false, q);
             StableSort(hits.AlbumRun(0, hits.AlbumCount), s_albumRank);
             return hits;
         }
 
-        var followed = e.FollowedArtists.Targets(me);
-        for (int i = 0; i < followed.Length; i++)
+        // THE LIBRARY, not the catalogue. This used to walk the FOLLOWED artists and their three discography facets —
+        // two wrong sets at once: the navigator lists followed ∪ saved-album ∪ liked-song artists (§11), so an artist
+        // you only have likes from could be on screen and unfindable; and the facets are paged catalogue edges that are
+        // resident only for artists whose reader has been opened (kind 8 no longer seeds them), so even a followed
+        // artist usually searched an empty set. "Search your library" means: every library artist, over what the
+        // library HOLDS of them — the saved albums' tracklists and the liked songs (§11's LibraryReleasesOf).
+        int artistTotal = LibraryArtistsOf(t_searchArtists ??= new int[512]);
+        if (artistTotal > t_searchArtists.Length)
         {
-            int artist = followed[i];
+            t_searchArtists = new int[Math.Max(artistTotal, t_searchArtists.Length * 2)];
+            artistTotal = LibraryArtistsOf(t_searchArtists);
+        }
+        int[] artists = t_searchArtists;
+        Span<int> releases = stackalloc int[128];
+        Span<bool> likedOnly = stackalloc bool[128];
+        Span<int> likedRows = stackalloc int[LibraryHits.TracksPerAlbumCap];
+        for (int i = 0; i < artistTotal && i < artists.Length; i++)
+        {
+            int artist = artists[i];
             if (artist <= Table.None) continue;
             int at = LibraryRows.TitleOf(EntityKind.Artist, artist).AsSpan().IndexOf(q, StringComparison.OrdinalIgnoreCase);
             int albumStart = hits.AlbumCount, trackMark = hits.TrackCount;
-            hits.Seen.Clear();
-            SearchReleases(hits, e, e.ArtistAlbums.Targets(artist), at >= 0, q);
-            SearchReleases(hits, e, e.ArtistSingles.Targets(artist), at >= 0, q);
-            SearchReleases(hits, e, e.ArtistCompilations.Targets(artist), at >= 0, q);
+            int relCount = Math.Min(LibraryReleasesOf(artist, releases, likedOnly), releases.Length);
+            for (int r = 0; r < relCount; r++)
+            {
+                int album = releases[r];
+                if (album <= Table.None) continue;
+                // A saved album searches its whole tracklist when that list is resident; a liked-only release — and a
+                // saved one whose list has not been fetched yet — searches the liked songs the library holds on it.
+                var listed = likedOnly[r] ? default : e.AlbumTracks.Targets(album);
+                if (listed.Length > 0) { SearchAlbum(hits, album, listed, at >= 0, q); continue; }
+                int n = Math.Min(LikedTracksOfAlbum(artist, album, likedRows), likedRows.Length);
+                SearchAlbum(hits, album, likedRows[..n], at >= 0, q);
+            }
             int albumCount = hits.AlbumCount - albumStart;
             if (at < 0 && albumCount == 0) { hits.AlbumCount = albumStart; hits.TrackCount = trackMark; continue; }
             var run = hits.AlbumRun(albumStart, albumCount);
@@ -1048,18 +1349,13 @@ public readonly partial struct User
         return hits;
     }
 
-    static void SearchReleases(LibraryHits hits, Edges e, ReadOnlySpan<int> releases, bool parentMatched, ReadOnlySpan<char> q)
-    {
-        for (int i = 0; i < releases.Length; i++)
-            if (releases[i] > Table.None && hits.Seen.Add(releases[i])) SearchAlbum(hits, e, releases[i], parentMatched, q);
-    }
+    [ThreadStatic] static int[]? t_searchArtists;
 
-    static void SearchAlbum(LibraryHits hits, Edges e, int album, bool parentMatched, ReadOnlySpan<char> q)
+    static void SearchAlbum(LibraryHits hits, int album, ReadOnlySpan<int> tracks, bool parentMatched, ReadOnlySpan<char> q)
     {
         int at = LibraryRows.TitleOf(EntityKind.Album, album).AsSpan().IndexOf(q, StringComparison.OrdinalIgnoreCase);
         bool albumMatched = at >= 0 || parentMatched;
         int trackStart = hits.TrackCount;
-        var tracks = e.AlbumTracks.Targets(album);
         for (int i = 0; i < tracks.Length && hits.TrackCount - trackStart < LibraryHits.TracksPerAlbumCap; i++)
         {
             if (tracks[i] <= Table.None) continue;
@@ -1109,5 +1405,373 @@ public readonly partial struct User
             span[lo..i].CopyTo(span[(lo + 1)..(i + 1)]);
             span[lo] = item;
         }
+    }
+}
+
+// ── 11. "in your library" for an artist (the reader's releases, the navigator's rows and its artist set) ────────────
+//
+// WHAT "IN YOUR LIBRARY" MEANS (the 2026-09-18 correction). Until now it was `LibraryAlbumsOf` alone — saved albums
+// billed to the artist — and liked songs counted for NOTHING: an account that hearts tracks and saves no albums had an
+// empty Artists tab, and an artist whose only presence is one liked feature showed "Artist" instead of a release. The
+// rule is now TWO groups, in this order:
+//
+//   1. SAVED albums billed to the artist   → the block lists the album's WHOLE tracklist (it is the album you saved)
+//   2. albums holding ≥ 1 LIKED track credited to the artist, minus group 1
+//                                          → the block lists ONLY those liked tracks (you did not save the album)
+//
+// and the Artists navigator itself is followed ∪ (1) ∪ (2)'s artists (`LibraryArtistsOf`).
+//
+// WHO DEMANDS THE RELATIONS. `Edges.SavedAlbums` / `Edges.Liked` are the account's own relations, demanded once per
+// scope by the library page (`User.Page.Library.cs`) and the sidebar. The two IDENTITY relations these reads filter
+// through are NOT persisted and are NOT demanded here — this file only ever READS, so that a navigator row may call it
+// while it renders:
+//   · `Edges.AlbumArtists` lands with `AlbumFields.Identity`, demanded by the library page's rows and by the reader;
+//   · `Edges.TrackArtists` lands with `TrackFields.Identity`, demanded by the page's Artists arm (it has to, or group 2
+//     is invisible) and by the reader's blocks.
+// A relation that has not answered simply contributes nothing — every number here is a fact about what is KNOWN, never
+// a probe that asks for more.
+
+public readonly partial struct User
+{
+    /// <summary>The dedup scratch for <see cref="LibraryReleasesOf"/> and <see cref="LibraryArtistsOf"/>: ONE reusable
+    /// set per thread, cleared at acquire. A linear rescan of the output span cannot do the job — both helpers answer a
+    /// TOTAL through an EMPTY span (the count-only call), and the liked relation can carry thousands of tracks, which
+    /// would make the rescan O(n · artists). These run on edges (a library publish, a selection change), not per frame,
+    /// so one warm set that never shrinks is the whole cost. <c>[ThreadStatic]</c> rather than a plain static because
+    /// the test host runs unrelated classes in parallel; the UI only ever has one thread here (C1). Nothing below nests
+    /// two scratch uses — that is the invariant that lets them share one set.</summary>
+    [ThreadStatic] static HashSet<int>? t_seen;
+
+    static HashSet<int> Scratch()
+    {
+        var seen = t_seen ??= new HashSet<int>(64);
+        seen.Clear();                                     // a slot from a dead scope is a wrong answer, not a stale one
+        return seen;
+    }
+
+    /// <summary>The saved albums billed to <paramref name="artistSlot"/>: <c>Edges.SavedAlbums</c> (parent = me) filtered
+    /// through <c>Edges.AlbumArtists</c>. The saved-only PRIMITIVE — group 1 of the rule in this section's header; what a
+    /// surface wants is almost always <see cref="LibraryReleasesOf"/>, which adds the liked-only albums. Asks for
+    /// NOTHING (see the header on who demands the two relations), O(saved · billed), allocation-free. Returns the TOTAL,
+    /// which may exceed <paramref name="into"/>: the caller either sizes a buffer and reads again (the reader) or only
+    /// wanted the number (an empty span).</summary>
+    public static int LibraryAlbumsOf(int artistSlot, Span<int> into)
+    {
+        Scope? scope = Entities.Current;
+        if (scope is null || scope.MeSlot <= Table.None || artistSlot <= Table.None) return 0;
+        var saved = scope.Edges.SavedAlbums.Targets(scope.MeSlot);
+        int n = 0;
+        for (int i = 0; i < saved.Length; i++)
+        {
+            var billed = scope.Edges.AlbumArtists.Targets(saved[i]);
+            for (int j = 0; j < billed.Length; j++)
+                if (billed[j] == artistSlot) { if (n < into.Length) into[n] = saved[i]; n++; break; }
+        }
+        return n;
+    }
+
+    /// <summary>THE "in your library" release list for an artist: the saved albums billed to it FIRST, in
+    /// <see cref="LibraryAlbumsOf"/> order, then — deduplicated against them and against each other, in LIKED-EDGE order
+    /// (newest liked first) — the albums holding at least one liked track credited to the artist.
+    /// <paramref name="likedOnly"/>[i] is <c>false</c> for the first group (the block lists the album's whole tracklist)
+    /// and <c>true</c> for the second (the block lists only <see cref="LikedTracksOfAlbum"/>).
+    /// <para>A saved album that ALSO holds liked tracks of the artist stays in group 1 and appears once: you saved it, so
+    /// you get all of it. A saved album that is NOT billed to the artist but carries one of its liked tracks (a
+    /// compilation, a soundtrack) is group 2 — the artist's presence there is the track, not the record.</para>
+    /// Returns the TOTAL, which may exceed the spans (same contract as <see cref="LibraryAlbumsOf"/>); both spans may be
+    /// empty, which is the counting call. Allocation-free bar the shared <see cref="Scratch"/> set.</summary>
+    public static int LibraryReleasesOf(int artistSlot, Span<int> albums, Span<bool> likedOnly)
+    {
+        Scope? scope = Entities.Current;
+        if (scope is null || scope.MeSlot <= Table.None || artistSlot <= Table.None) return 0;
+
+        int n = LibraryAlbumsOf(artistSlot, albums);                       // group 1 — may exceed `albums`
+        for (int i = 0; i < n && i < likedOnly.Length; i++) likedOnly[i] = false;
+
+        var e = scope.Edges;
+        var liked = e.Liked.Targets(scope.MeSlot);
+        if (liked.Length == 0) return n;
+
+        var seen = Scratch();                                              // group 2's own dedup (two liked tracks, one album)
+        for (int i = 0; i < liked.Length; i++)
+        {
+            int track = liked[i];
+            if (track <= Table.None) continue;
+            int album = scope.Tracks.Album[track];
+            if (album <= Table.None) continue;                             // a liked row with no album is a song, not a release
+            if (!CreditedTo(e, track, artistSlot)) continue;
+            if (IsSavedAndBilled(scope, album, artistSlot)) continue;      // already group 1, wherever it sits in that order
+            if (!seen.Add(album)) continue;
+            if (n < albums.Length) albums[n] = album;
+            if (n < likedOnly.Length) likedOnly[n] = true;
+            n++;
+        }
+        return n;
+    }
+
+    /// <summary>The liked tracks on <paramref name="albumSlot"/> credited to <paramref name="artistSlot"/>, in
+    /// LIKED-EDGE order (newest first) — the rows a group-2 block of <see cref="LibraryReleasesOf"/> paints, which is
+    /// why it is that order and not the album's own. Returns the TOTAL; <paramref name="tracks"/> may be short or empty.
+    /// O(liked), allocation-free.</summary>
+    public static int LikedTracksOfAlbum(int artistSlot, int albumSlot, Span<int> tracks)
+    {
+        Scope? scope = Entities.Current;
+        if (scope is null || scope.MeSlot <= Table.None || artistSlot <= Table.None || albumSlot <= Table.None) return 0;
+        var e = scope.Edges;
+        var liked = e.Liked.Targets(scope.MeSlot);
+        int n = 0;
+        for (int i = 0; i < liked.Length; i++)
+        {
+            int track = liked[i];
+            if (track <= Table.None || scope.Tracks.Album[track] != albumSlot) continue;
+            if (!CreditedTo(e, track, artistSlot)) continue;
+            if (n < tracks.Length) tracks[n] = track;
+            n++;
+        }
+        return n;
+    }
+
+    /// <summary>How many releases this artist has in your library — <see cref="LibraryReleasesOf"/> counted through two
+    /// empty spans, so counting allocates no buffer.</summary>
+    public static int LibraryReleaseCountOf(int artistSlot) => LibraryReleasesOf(artistSlot, default, default);
+
+    /// <summary>The navigator row's "3 albums" and the <see cref="LibraryNavSort.Albums"/> sort key. It is the RELEASE
+    /// count (saved + liked-only), not the saved-album count any more, because that is the list the row's "in your
+    /// library" now stands for — a row that read one number and opened onto a longer list was the defect. The sort word
+    /// still reads as "albums" and still ranks the artists you have most of first, which is what it always meant.</summary>
+    public static int LibraryAlbumCountOf(int artistSlot) => LibraryReleaseCountOf(artistSlot);
+
+    /// <summary>The songs line, "· 34 songs": the track counts of the SAVED albums (group 1 — you have the whole record)
+    /// plus the individual liked tracks credited to the artist that sit ANYWHERE else (group 2's rows, and the liked
+    /// rows whose album has not answered — a song you liked is a song you have, even before its album is a row). A liked
+    /// track ON a group-1 album is already inside that album's count and is NOT added twice.
+    /// <para>An album whose track count has not answered contributes 0, and a caller whose sum is 0 drops the songs
+    /// clause rather than claiming an empty discography: the number is a fact about what is KNOWN. Bounded at 128 saved
+    /// albums per artist, because the row must not allocate and a longer sum is not a number anyone reads as exact.</para></summary>
+    public static int LibrarySongCountOf(int artistSlot)
+    {
+        Scope? scope = Entities.Current;
+        if (scope is null || scope.MeSlot <= Table.None || artistSlot <= Table.None) return 0;
+
+        Span<int> slots = stackalloc int[128];
+        int n = Math.Min(LibraryAlbumsOf(artistSlot, slots), slots.Length);
+        int songs = 0;
+        for (int i = 0; i < n; i++) { var a = new Album(slots[i]); if (a.Knows(AlbumFields.TrackCount)) songs += a.TrackCount; }
+
+        var e = scope.Edges;
+        var liked = e.Liked.Targets(scope.MeSlot);
+        for (int i = 0; i < liked.Length; i++)
+        {
+            int track = liked[i];
+            if (track <= Table.None || !CreditedTo(e, track, artistSlot)) continue;
+            int album = scope.Tracks.Album[track];
+            if (album > Table.None && IsSavedAndBilled(scope, album, artistSlot)) continue;   // counted by its album
+            songs++;
+        }
+        return songs;
+    }
+
+    /// <summary>THE artists navigator's set: the followed artists FIRST, in followed-edge order, then everybody else in
+    /// FIRST-SEEN order — the artists billed on your saved albums (in saved-edge order, then billing order), then the
+    /// artists credited on your liked tracks (in liked-edge order, then credit order). Deduplicated; an invalid slot is
+    /// never a row. Returns the TOTAL, which may exceed <paramref name="into"/> (an empty span counts).
+    /// <para>Followed-first is not cosmetic: following is a deliberate act and those rows must not sink under a hundred
+    /// artists you merely have a track of, whatever the rail's word then does to the order.</para>
+    /// O(followed + saved · billed + liked · credited) through the shared <see cref="Scratch"/> set.</summary>
+    public static int LibraryArtistsOf(Span<int> into)
+    {
+        Scope? scope = Entities.Current;
+        if (scope is null || scope.MeSlot <= Table.None) return 0;
+        var e = scope.Edges;
+        int me = scope.MeSlot, n = 0;
+        var seen = Scratch();
+
+        var followed = e.FollowedArtists.Targets(me);
+        for (int i = 0; i < followed.Length; i++) Take(seen, followed[i], into, ref n);
+
+        var saved = e.SavedAlbums.Targets(me);
+        for (int i = 0; i < saved.Length; i++)
+        {
+            if (saved[i] <= Table.None) continue;
+            var billed = e.AlbumArtists.Targets(saved[i]);
+            for (int j = 0; j < billed.Length; j++) Take(seen, billed[j], into, ref n);
+        }
+
+        var liked = e.Liked.Targets(me);
+        for (int i = 0; i < liked.Length; i++)
+        {
+            if (liked[i] <= Table.None) continue;
+            var credited = e.TrackArtists.Targets(liked[i]);
+            for (int j = 0; j < credited.Length; j++) Take(seen, credited[j], into, ref n);
+        }
+        return n;
+
+        // The total counts every distinct artist; the span only takes what fits (the caller resizes and reads again).
+        static void Take(HashSet<int> set, int artist, Span<int> dst, ref int written)
+        {
+            if (artist <= Table.None || !set.Add(artist)) return;
+            if (written < dst.Length) dst[written] = artist;
+            written++;
+        }
+    }
+
+    /// <summary>The whole navigator's release counts in ONE walk of the library: <c>O(artists + saved · billed +
+    /// liked · credited)</c> where a read per row would be <c>O(artists · (saved · billed + liked))</c> — with a
+    /// thousand artist rows and ten thousand liked tracks that difference is the reorder's whole frame budget. Each
+    /// <paramref name="into"/>[i] ends as <see cref="LibraryReleaseCountOf"/> of <paramref name="artists"/>[i] exactly;
+    /// an invalid or repeated slot answers the same number it would alone. <paramref name="into"/> must be at least as
+    /// long as <paramref name="artists"/>.
+    /// <para>Two more <c>[ThreadStatic]</c> scratches (<see cref="t_counts"/>, <see cref="t_pairs"/>), cleared per call
+    /// and warm thereafter — the same bargain as <see cref="Scratch"/>, and neither is nested inside it.</para></summary>
+    public static void FillReleaseCounts(ReadOnlySpan<int> artists, Span<int> into)
+    {
+        into[..artists.Length].Clear();
+        Scope? scope = Entities.Current;
+        if (scope is null || scope.MeSlot <= Table.None || artists.Length == 0) return;
+
+        var counts = t_counts ??= new Dictionary<int, int>(64);
+        counts.Clear();
+        for (int i = 0; i < artists.Length; i++) if (artists[i] > Table.None) counts[artists[i]] = 0;
+        if (counts.Count == 0) return;
+
+        var e = scope.Edges;
+        int me = scope.MeSlot;
+
+        // Group 1: every saved album adds one to each artist it is BILLED to (once, however often it is billed).
+        var saved = e.SavedAlbums.Targets(me);
+        for (int i = 0; i < saved.Length; i++)
+        {
+            if (saved[i] <= Table.None) continue;
+            var billed = e.AlbumArtists.Targets(saved[i]);
+            for (int j = 0; j < billed.Length; j++)
+            {
+                if (Repeats(billed, j)) continue;
+                if (counts.TryGetValue(billed[j], out int c)) counts[billed[j]] = c + 1;
+            }
+        }
+
+        // Group 2: every (album, credited artist) pair a liked track introduces, minus the pairs group 1 already holds.
+        var liked = e.Liked.Targets(me);
+        if (liked.Length == 0) { Write(artists, into, counts); return; }
+        var pairs = t_pairs ??= new HashSet<long>(128);
+        pairs.Clear();
+        for (int i = 0; i < liked.Length; i++)
+        {
+            int track = liked[i];
+            if (track <= Table.None) continue;
+            int album = scope.Tracks.Album[track];
+            if (album <= Table.None) continue;
+            var credited = e.TrackArtists.Targets(track);
+            for (int j = 0; j < credited.Length; j++)
+            {
+                int artist = credited[j];
+                if (Repeats(credited, j)) continue;
+                if (!counts.TryGetValue(artist, out int c)) continue;       // not a row this list asked about
+                if (IsSavedAndBilled(scope, album, artist)) continue;
+                if (pairs.Add(((long)album << 32) | (uint)artist)) counts[artist] = c + 1;
+            }
+        }
+        Write(artists, into, counts);
+
+        static void Write(ReadOnlySpan<int> rows, Span<int> dst, Dictionary<int, int> map)
+        {
+            for (int i = 0; i < rows.Length; i++) dst[i] = map.TryGetValue(rows[i], out int v) ? v : 0;
+        }
+    }
+
+    /// <summary>The whole navigator's SONG counts in ONE walk — the batch twin of <see cref="LibrarySongCountOf"/>, and
+    /// the same bargain as <see cref="FillReleaseCounts"/>: <c>O(artists + saved · billed + liked · credited)</c> where a
+    /// read per row is <c>O(artists · (saved · billed + liked))</c>. The navigator's second line is this number for every
+    /// row, so it is a per-LIST fact, never a per-row read. Each <paramref name="into"/>[i] is
+    /// <see cref="LibrarySongCountOf"/> of <paramref name="artists"/>[i]; <paramref name="into"/> must be at least as
+    /// long as <paramref name="artists"/>.
+    /// <para>The ONE documented divergence from the per-slot read: that one bounds its saved-album sum at 128 albums per
+    /// artist because it stack-allocates their slots, and this one has no buffer to bound — so an artist with more than
+    /// 128 saved albums counts them ALL here. Both answer the same number for every row anyone has ever seen, and the
+    /// batch is the more honest of the two.</para></summary>
+    public static void FillSongCounts(ReadOnlySpan<int> artists, Span<int> into)
+    {
+        into[..artists.Length].Clear();
+        Scope? scope = Entities.Current;
+        if (scope is null || scope.MeSlot <= Table.None || artists.Length == 0) return;
+
+        var songs = t_songs ??= new Dictionary<int, int>(64);
+        songs.Clear();
+        for (int i = 0; i < artists.Length; i++) if (artists[i] > Table.None) songs[artists[i]] = 0;
+        if (songs.Count == 0) return;
+
+        var e = scope.Edges;
+        int me = scope.MeSlot;
+
+        // Group 1: a SAVED album gives every artist it is billed to its whole track count. An album whose track count
+        // has not answered adds nothing — the number is a fact about what is KNOWN, never a guess.
+        var saved = e.SavedAlbums.Targets(me);
+        for (int i = 0; i < saved.Length; i++)
+        {
+            if (saved[i] <= Table.None) continue;
+            var album = new Album(saved[i]);
+            if (!album.Knows(AlbumFields.TrackCount) || album.TrackCount <= 0) continue;
+            int tracks = album.TrackCount;
+            var billed = e.AlbumArtists.Targets(saved[i]);
+            for (int j = 0; j < billed.Length; j++)
+            {
+                if (Repeats(billed, j)) continue;
+                if (songs.TryGetValue(billed[j], out int c)) songs[billed[j]] = c + tracks;
+            }
+        }
+
+        // Group 2: a liked track counts ONE for each artist credited on it — unless its album is that artist's group 1,
+        // where the album's own track count already counted it.
+        var liked = e.Liked.Targets(me);
+        for (int i = 0; i < liked.Length; i++)
+        {
+            int track = liked[i];
+            if (track <= Table.None) continue;
+            int album = scope.Tracks.Album[track];                      // a liked row with no album still counts as a song
+            var credited = e.TrackArtists.Targets(track);
+            for (int j = 0; j < credited.Length; j++)
+            {
+                int artist = credited[j];
+                if (Repeats(credited, j)) continue;
+                if (!songs.TryGetValue(artist, out int c)) continue;     // not a row this list asked about
+                if (album > Table.None && IsSavedAndBilled(scope, album, artist)) continue;
+                songs[artist] = c + 1;
+            }
+        }
+
+        for (int i = 0; i < artists.Length; i++) into[i] = songs.TryGetValue(artists[i], out int v) ? v : 0;
+    }
+
+    [ThreadStatic] static Dictionary<int, int>? t_counts;
+    [ThreadStatic] static Dictionary<int, int>? t_songs;
+    [ThreadStatic] static HashSet<long>? t_pairs;
+
+    /// <summary>Has this entry already appeared earlier in the same billing / credit list? Those lists are a handful of
+    /// slots, so the scan beats a set — and a repeated credit must not count its album twice (the per-slot reads stop at
+    /// the FIRST match, so this is what keeps the two paths saying the same number).</summary>
+    static bool Repeats(ReadOnlySpan<int> list, int at)
+    {
+        if (list[at] <= Table.None) return true;                    // an invalid slot is never a row, never a count
+        for (int i = 0; i < at; i++) if (list[i] == list[at]) return true;
+        return false;
+    }
+
+    /// <summary>Is <paramref name="artistSlot"/> one of the track's credited artists (<c>Edges.TrackArtists</c>)? An
+    /// un-hydrated track has no credits and so credits nobody — the honest answer, not a guess.</summary>
+    static bool CreditedTo(Edges e, int trackSlot, int artistSlot)
+    {
+        var credited = e.TrackArtists.Targets(trackSlot);
+        for (int i = 0; i < credited.Length; i++) if (credited[i] == artistSlot) return true;
+        return false;
+    }
+
+    /// <summary>Is this album group 1 for the artist — saved by me AND billed to it? The membership half is the reverse
+    /// index's O(1) probe, so this is the billing scan and nothing else.</summary>
+    static bool IsSavedAndBilled(Scope scope, int albumSlot, int artistSlot)
+    {
+        if (!scope.Edges.SavedAlbums.Contains(scope.MeSlot, albumSlot)) return false;
+        var billed = scope.Edges.AlbumArtists.Targets(albumSlot);
+        for (int i = 0; i < billed.Length; i++) if (billed[i] == artistSlot) return true;
+        return false;
     }
 }

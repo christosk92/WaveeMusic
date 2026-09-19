@@ -492,3 +492,97 @@ public class SpotifyConnectHelloTests
         Assert.True(Spotify.Connect.AnnounceOnOnline);
     }
 }
+
+/// <summary>B2: the owed-announce latch. `PublishGate.Decide` replaces the three silent returns on an empty
+/// connection id (Connect.cs, formerly ~281/296/447) — every reason but `BecameInactive` is worth holding for the
+/// connection this session is still waiting on; `BecameInactive` preserves the drop the code always did, because
+/// holding it would make it this session's FIRST word to a connection it never said hello to.</summary>
+public class SpotifyConnectPublishGateTests
+{
+    [Theory]
+    [InlineData(true, Spotify.Connect.PutReason.PlayerStateChanged, false, Spotify.Connect.PublishOutcome.Send)]
+    [InlineData(true, Spotify.Connect.PutReason.NewDevice, false, Spotify.Connect.PublishOutcome.Send)]
+    [InlineData(true, Spotify.Connect.PutReason.BecameInactive, true, Spotify.Connect.PublishOutcome.Send)]
+    [InlineData(false, Spotify.Connect.PutReason.PlayerStateChanged, false, Spotify.Connect.PublishOutcome.Hold)]
+    [InlineData(false, Spotify.Connect.PutReason.VolumeChanged, true, Spotify.Connect.PublishOutcome.Hold)]
+    [InlineData(false, Spotify.Connect.PutReason.NewDevice, false, Spotify.Connect.PublishOutcome.Hold)]
+    [InlineData(false, Spotify.Connect.PutReason.PickerOpened, false, Spotify.Connect.PublishOutcome.Hold)]
+    [InlineData(false, Spotify.Connect.PutReason.SpircHello, true, Spotify.Connect.PublishOutcome.Hold)]
+    [InlineData(false, Spotify.Connect.PutReason.BecameInactive, false, Spotify.Connect.PublishOutcome.Drop)]
+    [InlineData(false, Spotify.Connect.PutReason.BecameInactive, true, Spotify.Connect.PublishOutcome.Drop)]
+    public void A_connection_id_always_sends_its_absence_holds_everything_but_BecameInactive(bool hasConnectionId,
+        Spotify.Connect.PutReason reason, bool hasHeld, Spotify.Connect.PublishOutcome expected)
+        => Assert.Equal(expected, Spotify.Connect.PublishGate.Decide(hasConnectionId, reason, hasHeld));
+}
+
+/// <summary>B2: the content key that suppresses an identical PlayerStateChanged / VolumeChanged re-send. Never
+/// NewDevice / NewConnection / BecameInactive — those are identity/lifecycle, not state.</summary>
+public class SpotifyConnectPublishKeyTests
+{
+    static readonly EntityId Track1 = EntityId.Parse("spotify:track:4uLU6hMCjMI75M1A2tKUQC");
+    static readonly EntityId Track2 = EntityId.Parse("spotify:track:0VjIjW4GlUZAMYd2vXMi3b");
+    static readonly EntityId Ctx = EntityId.Parse("spotify:playlist:37i9dQZF1DXcBWIGoYBM5M");
+
+    static Playback.Snapshot Snap(EntityId track, EntityId context, bool playing, bool paused, bool shuffle,
+        long posMs, int volume)
+        => new(default, true, Playback.PublishReason.PlayerStateChanged, 0, volume, 0, 0, 0,
+            !track.IsEmpty, track, context, "", posMs, 0, 180_000,
+            playing, paused, false, shuffle, Wavee.Spotify.Decode.RepeatMode.Off, Playback.PlayableKind.Audio);
+
+    [Fact]
+    public void The_same_second_of_position_is_the_same_key()
+    {
+        var a = Snap(Track1, Ctx, true, false, false, 30_050, 40_000);
+        var b = Snap(Track1, Ctx, true, false, false, 30_950, 40_000);       // still second 30 — the pump ticks 200 ms
+        Assert.Equal(Spotify.Connect.PublishKey.Of(in a), Spotify.Connect.PublishKey.Of(in b));
+    }
+
+    [Fact]
+    public void Crossing_a_second_boundary_is_a_different_key()
+    {
+        var a = Snap(Track1, Ctx, true, false, false, 30_950, 40_000);
+        var b = Snap(Track1, Ctx, true, false, false, 31_050, 40_000);
+        Assert.NotEqual(Spotify.Connect.PublishKey.Of(in a), Spotify.Connect.PublishKey.Of(in b));
+    }
+
+    [Theory]
+    [InlineData(0)]  // a different track
+    [InlineData(1)]  // playing vs paused
+    [InlineData(2)]  // shuffle
+    [InlineData(3)]  // volume
+    public void Any_of_the_latched_fields_changing_is_a_different_key(int which)
+    {
+        var a = Snap(Track1, Ctx, true, false, false, 30_000, 40_000);
+        var b = which switch
+        {
+            0 => Snap(Track2, Ctx, true, false, false, 30_000, 40_000),
+            1 => Snap(Track1, Ctx, false, true, false, 30_000, 40_000),
+            2 => Snap(Track1, Ctx, true, false, true, 30_000, 40_000),
+            _ => Snap(Track1, Ctx, true, false, false, 30_000, 20_000),
+        };
+        Assert.NotEqual(Spotify.Connect.PublishKey.Of(in a), Spotify.Connect.PublishKey.Of(in b));
+    }
+
+    [Theory]
+    [InlineData(Spotify.Connect.PutReason.PlayerStateChanged, true)]
+    [InlineData(Spotify.Connect.PutReason.VolumeChanged, true)]
+    [InlineData(Spotify.Connect.PutReason.NewDevice, false)]
+    [InlineData(Spotify.Connect.PutReason.PickerOpened, false)]
+    [InlineData(Spotify.Connect.PutReason.BecameInactive, false)]
+    [InlineData(Spotify.Connect.PutReason.SpircHello, false)]
+    public void Only_PlayerStateChanged_and_VolumeChanged_are_ever_suppressed(Spotify.Connect.PutReason reason, bool suppressible)
+    {
+        var snapshot = Snap(Track1, Ctx, true, false, false, 30_000, 40_000);
+        Spotify.Connect.PublishKey key = Spotify.Connect.PublishKey.Of(in snapshot);
+        // The exact same key is already latched — an identity/lifecycle reason must still send.
+        Assert.Equal(suppressible, Spotify.Connect.IsRedundant(reason, in key, true, in key));
+    }
+
+    [Fact]
+    public void A_key_is_never_redundant_before_anything_has_been_latched()
+    {
+        var snapshot = Snap(Track1, Ctx, true, false, false, 30_000, 40_000);
+        Spotify.Connect.PublishKey key = Spotify.Connect.PublishKey.Of(in snapshot);
+        Assert.False(Spotify.Connect.IsRedundant(Spotify.Connect.PutReason.PlayerStateChanged, in key, false, in key));
+    }
+}

@@ -986,6 +986,17 @@ public abstract class Table : Publishable
     /// cleared by <see cref="Applied"/>, zeroed with the row. Never persisted: a restart re-derives it from the clock.
     /// 4 B/row (FootprintGateTests: +40,004 B at 10k rows).</summary>
     public Column<uint> Stale;
+    /// <summary>THE GROUPS WHOSE LAST ASK TERMINALLY FAILED (the per-row twin of <c>EdgeTable.IsFailed</c>). Before it,
+    /// a row whose batch died had exactly the same marks as a row nobody had asked about yet — <c>Fetch.Failed</c>
+    /// un-asks the groups and records nothing — so a pane could not tell "still coming" from "the ask failed" and
+    /// painted a skeleton forever (the library rework's defect A). Set by <c>Fetch.Failed</c>'s TERMINAL arm only: a
+    /// retryable 429/503 that re-queues the same batch is not a failure, it is a wait. Cleared on commit
+    /// (<see cref="Applied"/>) and the moment the planner asks the group again (<c>Fetch.Plan</c>); zeroed with the row.
+    /// <b>Never persisted</b> — like
+    /// <see cref="Asked"/>, <see cref="Inflight"/> and <see cref="Stale"/> it is a fact about THIS session's asks, and
+    /// the per-kind persistence writes <c>row.Known &amp; PersistedFields</c> and nothing else. 4 B/row (the same
+    /// arithmetic as the two marks before it: +40,004 B at FootprintGateTests' 10k rows).</summary>
+    public Column<uint> Failed;
 
     /// <summary>THE row's identity, packed (see the class summary and <see cref="EntityId"/>). Read it freely — kind,
     /// provider and the gid are field loads. WRITE it only through <see cref="Alloc(EntityId)"/> / <see cref="Bind"/> /
@@ -1041,6 +1052,7 @@ public abstract class Table : Publishable
         Inflight[slot] = 0;
         Asked[slot] = 0;
         Stale[slot] = 0;
+        Failed[slot] = 0;
         FetchedAt[slot] = 0;
         Touched[slot] = Entities.Now;
         MarkDirty();
@@ -1072,6 +1084,7 @@ public abstract class Table : Publishable
             Inflight[slot] = 0;
             Asked[slot] = 0;
             Stale[slot] = 0;
+            Failed[slot] = 0;
             FetchedAt[slot] = 0;
             Touched[slot] = Entities.Now;
         }
@@ -1104,6 +1117,7 @@ public abstract class Table : Publishable
         Inflight[slot] = 0;
         Asked[slot] = 0;
         Stale[slot] = 0;
+        Failed[slot] = 0;
         Free.Push(slot);
         MarkDirty();
     }
@@ -1301,6 +1315,11 @@ public abstract class Table : Publishable
     /// <summary>Is any bit of <paramref name="groups"/> filled but marked <see cref="Stale"/> on this row?</summary>
     public bool IsStale(int slot, uint groups) => (Stale[slot] & groups) != 0;
 
+    /// <summary>Did the last ask for any bit of <paramref name="groups"/> terminally FAIL on this row (<see cref="Failed"/>)?
+    /// The question a pane asks to turn a shimmer into a Retry strip: false while a retry is still pending, false again
+    /// the moment the planner re-asks. Out-of-range slots answer false, so a caller may pass a stale slot.</summary>
+    public bool IsFailed(int slot, uint groups) => (uint)slot < (uint)Count && (Failed[slot] & groups) != 0;
+
     /// <summary>The groups the planner counts as done: filled AND current. What <c>Known</c> was to the planner before
     /// the fifth mark; a page keeps reading <c>Known</c>, because a stale row still renders.</summary>
     public uint Settled(int slot) => Known[slot] & ~Stale[slot];
@@ -1326,6 +1345,7 @@ public abstract class Table : Publishable
     {
         Known[slot] |= group;
         Stale[slot] &= ~group;
+        Failed[slot] &= ~group;          // an answer retires the failure mark, whichever ask eventually carried it
         // Fully qualified: inside Table the FIELD `Authority` hides the type name in every expression position.
         if (incoming > (Wavee.Authority)groupAuthority[slot]) groupAuthority[slot] = (byte)incoming;
         if (incoming > (Wavee.Authority)Authority[slot]) Authority[slot] = (byte)incoming;
@@ -1405,6 +1425,7 @@ public abstract class Table : Publishable
         Inflight.EnsureCapacity(capacity);
         Asked.EnsureCapacity(capacity);
         Stale.EnsureCapacity(capacity);
+        Failed.EnsureCapacity(capacity);
         Id.EnsureCapacity(capacity);
         // Load ≤ 0.75 → capacity * 4/3, rounded up to a power of two (the mask is the whole probe's arithmetic).
         int buckets = 32;

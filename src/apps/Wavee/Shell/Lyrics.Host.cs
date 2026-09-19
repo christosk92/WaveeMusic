@@ -114,12 +114,12 @@ public static partial class Lyrics
     public sealed class HttpFetch : IHttpWithStatus
     {
         /// <summary>One pooled handler for every third-party lyrics host. Named so a connection dump attributes it.</summary>
-        static readonly HttpClient Client = new(new SocketsHttpHandler
+        static readonly HttpClient Client = new(Wire.Handler("lyrics", new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
             AutomaticDecompression = System.Net.DecompressionMethods.All,
             MaxConnectionsPerServer = 4,
-        })
+        }))
         { Timeout = TimeSpan.FromSeconds(20) };
 
         readonly string _userAgent;

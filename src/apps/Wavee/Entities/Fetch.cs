@@ -520,6 +520,9 @@ public static partial class Fetch
                 uint groups = NeedOf(table, slot, wanted);
                 needs[i] = groups;
                 table.Asked[slot] |= groups;
+                // A group being asked again is, by definition, no longer failed: the mark exists to tell a surface
+                // "nothing is coming", and something is. (`Ensure` reaches here; so does a Retry through `Refresh`.)
+                table.Failed[slot] &= ~groups;
                 table.Inflight[slot] = stamp;
                 table.Touched[slot] = now;
             }
@@ -1039,7 +1042,7 @@ public static partial class Fetch
             if (table is not null)
             {
                 if (batch.Subject == FetchSubject.Edge) EdgesFailed(batch, table, status);
-                else Unask(batch, table, batch.Wanted);
+                else { Unask(batch, table, batch.Wanted); MarkFailed(batch, table); }
                 // An authentication refusal is the one terminal failure the session itself will answer: remember what
                 // was un-asked so the next Online transition re-plans it (`Resume`) — the page has already mounted
                 // and nothing else will ask again.
@@ -1076,6 +1079,27 @@ public static partial class Fetch
             uint unask = groups & ~table.Settled(slot);
             if (unask != 0) table.Asked[slot] &= ~unask;
         }
+    }
+
+    /// <summary>Record the terminal failure ON THE ROWS (<c>Table.Failed</c>), so a surface can tell "still coming" from
+    /// "the ask failed" instead of shimmering forever — the row twin of <c>EdgeTable</c>'s failure. Only the terminal arm
+    /// of <see cref="Failed"/> calls it: a retryable 429/503 re-queues the same rows and is a wait, not a failure. A group
+    /// the row already KNOWS is not marked (a route that failed for a group another route filled changes nothing), and a
+    /// slot recycled since the plan is not this batch's to touch. The table is marked dirty, so its <c>Changed</c> signal
+    /// bumps at the next publication and the panes' readiness memos re-run.</summary>
+    static void MarkFailed(FetchBatch batch, Table table)
+    {
+        bool any = false;
+        for (int i = 0; i < batch.Count; i++)
+        {
+            int slot = batch.Slots[i];
+            if (slot <= Table.None || slot >= table.Count || table.Id[slot] != batch.Ids[i]) continue;
+            uint groups = batch.Wanted & ~table.Settled(slot);
+            if (groups == 0) continue;
+            table.Failed[slot] |= groups;
+            any = true;
+        }
+        if (any) table.MarkDirty();
     }
 
     /// <summary>Remember a terminally refused batch for <see cref="Resume"/>: one entry per row (or parent) that still

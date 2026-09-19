@@ -467,12 +467,12 @@ public static partial class Spotify
 
     // ── 7. HTTP (the three mints and the clock probe) ────────────────────────────────────────────────────────────────
 
-    static readonly HttpClient Http = new(new SocketsHttpHandler
+    static readonly HttpClient Http = new(Wire.Handler("session", new SocketsHttpHandler
     {
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
         AutomaticDecompression = System.Net.DecompressionMethods.All,
         ConnectTimeout = TimeSpan.FromSeconds(15),
-    })
+    }))
     { Timeout = TimeSpan.FromSeconds(30) };
 
     /// <summary>A synchronous protobuf POST. Shell threads only — it blocks (C9).</summary>
@@ -931,6 +931,7 @@ public static partial class Spotify
             codec.Encode(cmd, payload, frame);
             stream.Write(frame[..n]);
         }
+        Wire.NoteSocket("ap", "cmd=0x" + cmd.ToString("x2"), n);
     }
 
     /// <summary>Send on the SESSION's channel (the audio-key path and the locale publish). False when there is none.</summary>
@@ -1548,6 +1549,7 @@ public static partial class Spotify
         var ws = s_dealer;
         if (ws is null || ws.State != WebSocketState.Open) return;
         byte[] copy = utf8.ToArray();   // the async send outlives the span
+        Wire.NoteSocket("dealer", Wire.DealerKind(utf8), copy.Length);
         lock (DealerSendGate)
         {
             try { ws.SendAsync(copy.AsMemory(), WebSocketMessageType.Text, true, CancellationToken.None).GetAwaiter().GetResult(); }

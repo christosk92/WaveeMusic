@@ -310,13 +310,17 @@ public static partial class Spotify
             case SessionEventKind.DealerOnline:
             {
                 if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
-                bool wasOnline = s.Phase == SessionPhase.Online;
+                TokenRef previousConnectionId = s.ConnectionId;
                 s.ConnectionId = e.Text;
                 s.Phase = SessionPhase.Online;
                 s.Fault = SessionFault.None;
                 s.Attempt = 0;
-                // The hello is owed to the TRANSITION: a second pusher frame on a live socket is not a new device.
-                return wasOnline ? SessionEffects.None : SessionEffects.AnnounceDevice;
+                // B3: the hello is owed to a NEW connection id, not a phase transition. The old rule (`wasOnline ?
+                // None : AnnounceDevice`) silently swallowed a genuinely new id that arrived while already Online —
+                // adopted into `s.ConnectionId`, never announced, so the picker kept showing a device that had
+                // quietly changed connections underneath it. An exact repeat of the id already held (idempotent
+                // redelivery) is the only case that announces nothing.
+                return previousConnectionId == e.Text ? SessionEffects.None : SessionEffects.AnnounceDevice;
             }
 
             case SessionEventKind.Dropped:
@@ -1695,8 +1699,17 @@ public static partial class Spotify
                 return new Request(Verb.Get, ApiHost.Spclient, w.Written, Common | HeaderSet.AcceptJson, default);
 
             case RequestKind.StorageResolve:
-                w.Append("/storage-resolve/files/audio/interactive/");
+                // v2, and the format segment is the whole point. v1 (`/storage-resolve/files/audio/interactive/{id}`)
+                // is a url SIGNER keyed by the file id alone, so whatever the id's format it signs a url into the OGG
+                // object namespace: a FLAC id resolved through it answers a mirror set whose host never had that
+                // object, and every body range 404s at byte 0 while the id-keyed head service happily serves 80 KiB of
+                // the same id. `Args.Number` is the wire format (`metadata.proto` AudioFile.Format: 0/1/2 Ogg, 16
+                // FLAC, 22 FLAC 24-bit); `?product=0` is the captured desktop form.
+                w.Append("/storage-resolve/v2/files/audio/interactive/");
+                w.Append(args.Number);
+                w.Append("/");
                 w.AppendEscaped(args.Id);
+                w.Append("?product=0");
                 return new Request(Verb.Get, ApiHost.Spclient, w.Written, Common | HeaderSet.AcceptProtobuf, default);
 
             case RequestKind.ServerTime:

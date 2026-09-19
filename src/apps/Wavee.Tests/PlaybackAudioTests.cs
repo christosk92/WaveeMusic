@@ -619,49 +619,35 @@ public class PlaybackSilentSinkTests
     }
 
     [Fact]
-    public void A_followed_endpoint_drains_the_tail_while_the_drained_mixer_s_silence_is_never_queued()
+    public void An_endpoint_that_is_never_fed_filler_reads_empty_after_the_tail()
     {
-        // The engine ends a session only when its mixer is drained AND the buffered sink is empty, but its RT feed keeps
-        // rendering the drained mixer's silence into the sink. Queued, that filler refilled the sink every wake: the
-        // session never reached Ended and its clock ran past the end. The first write that finds the mixer drained can
-        // still carry the voice's last frames (the block is mixed, then written) and is queued; every later block is not.
+        // The engine used to end a session only when its mixer was drained AND the buffered sink was empty, while its
+        // RT feed kept rendering the drained mixer's silence into the sink regardless — queued, that filler refilled
+        // the sink every wake and the session never reached Ended, its clock running past the end. The fix lives in
+        // the engine now (PcmAudioSession.RenderBlock / DrainVerdict): once a session's mixer is drained, RenderBlock
+        // stops rendering and submitting anything at all, so NO buffered sink — this silent one included — is ever fed
+        // trailing filler again. This endpoint therefore needs no special "was this write the drained mixer's tail?"
+        // detection of its own; it only has to behave like any other finite buffered sink and read empty once its
+        // real content has drained and nothing further ever arrives.
         long now = 0;
         var format = new MixFormat(48_000, 2);
         var endpoint = new Playback.Audio.PacedSilentEndpoint(format, capacityMs: 100, clock: () => now, ticksPerSecond: 1_000);
-        var mixer = new CrossfadeMixer(format.Channels, 480);
-        endpoint.Follow(mixer);
         var block = new float[480 * 2];
 
-        mixer.AddVoice(new MixVoice { Id = 1, Src = new SignalGeneratorSource(2, 48_000, 0d, 0f, 48_000), Env = GainEnvelope.Constant });
-        mixer.ConsumeSeq = 480;
-        mixer.PublishDrained(mixer.ConsumeSeq);                         // content still playing
         endpoint.Start();
-        Assert.Equal(480, endpoint.Write(block, 480));
+        Assert.Equal(480, endpoint.Write(block, 480));                  // the content's last real block — queued, like any content
         Assert.Equal(480, endpoint.PaddingFrames);
 
-        mixer.Clear();                                                  // the voice retired inside the next block
-        mixer.ConsumeSeq = 960;
-        mixer.PublishDrained(mixer.ConsumeSeq);
-        Assert.Equal(200, endpoint.Write(block, 200));                  // the voice's last block: queued...
-        Assert.Equal(280, endpoint.Write(block, 280));                  // ...and so is its remainder, at the same mixer frame
-        Assert.Equal(960, endpoint.PaddingFrames);
-
-        mixer.ConsumeSeq = 1_440;                                       // the drained mixer's silence
-        Assert.Equal(480, endpoint.Write(block, 480));                  // accepted...
-        Assert.Equal(960, endpoint.PaddingFrames);                      // ...into nothing
-        now = 20;                                                       // the queued tail plays out in 20 ms
-        mixer.ConsumeSeq = 1_920;
-        Assert.Equal(480, endpoint.Write(block, 480));
-        Assert.Equal(endpoint.CapacityFrames, endpoint.WritableFrames); // empty: the engine's Ended gate opens
-        now = 500;
+        now = 20;                                                       // the queued tail plays out in 10 ms (480 frames @ 48 kHz)
+        Assert.Equal(endpoint.CapacityFrames, endpoint.WritableFrames); // empty: nothing else was ever written —
+                                                                          // the engine's Ended gate opens with no help from here
         Assert.True(endpoint.TryGetPlayed(out long played, out _));
-        Assert.Equal(960L, played);                                     // the clock holds at the end of the content
+        Assert.Equal(480L, played);                                     // the clock holds at the end of the content
 
-        mixer.AddVoice(new MixVoice { Id = 2, Src = new SignalGeneratorSource(2, 48_000, 0d, 0f, 48_000), Env = GainEnvelope.Constant });
-        mixer.ConsumeSeq = 2_400;
-        mixer.PublishDrained(mixer.ConsumeSeq);                         // a voice installed: content again
-        Assert.Equal(480, endpoint.Write(block, 480));
-        Assert.Equal(480, endpoint.PaddingFrames);
+        now = 500;                                                      // no further writes ever arrive: the empty state holds
+        Assert.Equal(endpoint.CapacityFrames, endpoint.WritableFrames);
+        Assert.True(endpoint.TryGetPlayed(out played, out _));
+        Assert.Equal(480L, played);
     }
 
     [Fact]

@@ -23,7 +23,8 @@
 //                 the byte rate (0.2.9's `ReadAheadPolicy`, `Wavee.Sdk/Streams/RangedHttpSource.cs:43-61`), capped at
 //                 16 MiB. `ReadAt` copies or waits, bounded (8 s), and returns 0 only at a true EOF. A wait that runs
 //                 out is `Starved` — NEVER the end (D5): the readers wait again, the pump reports "Reconnecting" after
-//                 1.5 s and fails the load as `Fault.Network` after 90 s (`Playback.Audio.StarvePolicy`).
+//                 1.5 s and fails the load as `Fault.Network` after 90 s (`Playback.Audio.StarvePolicy`) — or after 6 s
+//                 when the mirrors are REFUSING rather than slow, because an answer does not change by being waited on.
 //   · `Fetcher` — ONE consumer task on the pool (P10: one consumer, strict sequence — no dedicated OS thread), a
 //                 BOUNDED queue (C8: depth 8, DropOldest) and an in-flight `CancellationTokenSource` a seek cancels
 //                 (C4). librespot and 0.2.9 never cancel, so a scrub of ten seeks queues ten fetches; here the tenth
@@ -34,6 +35,11 @@
 // THE TIMELINE THE LOG PRINTS (always on, category "audio"): audio.open.begin → audio.head → audio.open → audio.first
 // (the first byte the decoder got, and from WHICH store) → audio.len → audio.splice → audio.range (per landed range,
 // src=cdn|local) → audio.tail → audio.ring (the window filled). A seek prints audio.retarget; a stall audio.underrun.
+// audio.head carries storage-resolve's own status and verdict AND the host it answered with, so an open that never
+// re-resolves still says where its mirror set came from and which edge it names. A REFUSAL prints audio.mirror ONCE PER MIRROR of the refused range (the host and the HTTP status
+// — the one fact `IRangeSource` used to drop, and then, gated per process, all but the first mirror of), then
+// audio.range …refused n=, then audio.resolve with the service's status and verdict; a lossless open that never got a
+// body byte prints audio.nobody and `Spotify.Audio.Open` answers it with audio.demote.
 //
 // COORDINATES. FILE offsets are the raw Spotify object — what a Range header, the CTR block index and the cache's
 // chunk index speak; the head file is the CLEAR version of the same bytes from 0 (why `HeadGainDb` reads byte 144, and
@@ -310,7 +316,22 @@ public static partial class Spotify
                 try
                 {
                     int status = (int)response.StatusCode;
-                    if (status is not (200 or 206)) { response.Dispose(); return null; }        // a REFUSAL: the next mirror
+                    // 206 is the only answer a Spotify CDN gives a Range, and it is the only one librespot,
+                    // go-librespot and the desktop client accept — but this seam also carries PODCAST ENCLOSURES on
+                    // hosts that ignore Range and 200 the whole file from byte 0, which G-118's read-past
+                    // (`RangeReply.SkipFor`) exists to make usable. So 200 stays accepted and is bounded there; it is
+                    // the STATUS of a refusal, never a 200, that this file used to drop.
+                    if (status is not (200 or 206))                                             // a REFUSAL: the next mirror
+                    {
+                        // A 416 answers `Content-Range: bytes * /N` — the file's TRUE length, on the one reply that
+                        // carries no body to learn it from. `OpenAsync` answers null, so nothing downstream will ever
+                        // see it: it goes on the line rather than on the floor.
+                        long named = response.Content.Headers.ContentRange is { HasLength: true, Length: { } whole }
+                            ? whole : -1;
+                        LogRefusal(url, start, status, response.ReasonPhrase, named);
+                        response.Dispose();
+                        return null;
+                    }
                     long total = response.Content.Headers.ContentRange is { HasLength: true, Length: { } n } ? n
                         : status == 200 ? response.Content.Headers.ContentLength ?? -1 : -1;
                     long from = status == 200 ? 0 : response.Content.Headers.ContentRange?.From ?? start;
@@ -318,6 +339,71 @@ public static partial class Spotify
                     return new HttpReply(response, body, total, from);
                 }
                 catch { response.Dispose(); throw; }                        // a FAULT: FetchRangeAsync maps it (next mirror)
+            }
+
+            /// <summary>How long one refused RANGE's reporting window stays open. It is not a mute: a range that is
+            /// still being refused this much later opens a fresh window, because a refusal that outlives its evidence
+            /// is worth saying again.</summary>
+            const int RefusalLogEveryMs = 5_000;
+
+            /// <summary>How many mirrors one refused range may name. Three is the usual mirror set and the live and
+            /// prepared bodies can be refusing the same offset at once, so eight covers both with room to spare while
+            /// still being a bound (C8).</summary>
+            const int RefusalLinesPerRange = 8;
+
+            static readonly Lock RefusalGate = new();
+            static long s_refusalRange = -1;
+            static long s_refusalOpenedAt;
+            static int s_refusalLines;
+
+            /// <summary>WHY a mirror refused — the one fact this seam used to drop on the floor. The status exists for
+            /// exactly the three lines above it: `OpenAsync` answers null and everything downstream can only ever learn
+            /// "not this url", so a 403 (the token expired), a 404 (the file is not on this mirror) and a 410 (it has
+            /// been withdrawn) all reached the log as the same silence. Host only, never the url: a CDN url carries a
+            /// signed token.
+            ///
+            /// <para>GATED PER REFUSED RANGE, and that is the half that mattered. The gate used to be one line per
+            /// PROCESS per 5 s, so a body whose three mirrors all refused printed mirror 0 and swallowed the other two
+            /// — which is the exact shape that hid the lossless 404 for a release: "one mirror said no" and "every url
+            /// we were given is wrong" read identically. A range's mirrors are the evidence, so they are reported
+            /// together or not at all.</para></summary>
+            static void LogRefusal(string url, long start, int status, string? reason, long namedLength)
+            {
+                if (!OpenRefusalWindow(start)) return;
+                Log.Warn("audio", $"audio.mirror host={HostOf(url)} at={start} status={status} "
+                                  + $"reason={(string.IsNullOrEmpty(reason) ? "-" : reason)}"
+                                  + (namedLength >= 0 ? $" len={namedLength}" : ""));
+            }
+
+            /// <summary>May this refusal of the range at <paramref name="start"/> be reported? A new offset opens a new
+            /// window at once (the fetcher has ONE range in flight per body, so a new offset means the last one is
+            /// finished with); inside a window the budget is <see cref="RefusalLinesPerRange"/> mirrors.</summary>
+            static bool OpenRefusalWindow(long start)
+            {
+                long now = Environment.TickCount64;
+                lock (RefusalGate)
+                {
+                    if (start != s_refusalRange || now - s_refusalOpenedAt >= RefusalLogEveryMs)
+                    {
+                        s_refusalRange = start;
+                        s_refusalOpenedAt = now;
+                        s_refusalLines = 0;
+                    }
+                    if (s_refusalLines >= RefusalLinesPerRange) return false;
+                    s_refusalLines++;
+                    return true;
+                }
+            }
+
+            /// <summary>`https://host/path?token` → `host`. An index walk rather than <c>Uri</c>: this runs on a
+            /// refusal, and a url that does not parse must still produce a line rather than a second failure. The HOST
+            /// is the most of a CDN url that may ever reach a log — the rest of it is a signed token.</summary>
+            internal static string HostOf(string url)
+            {
+                int scheme = url.IndexOf("//", StringComparison.Ordinal);
+                int from = scheme < 0 ? 0 : scheme + 2;
+                int slash = url.IndexOf('/', from);
+                return slash < 0 ? url[from..] : url[from..slash];
             }
 
             sealed class HttpReply(HttpResponseMessage response, System.IO.Stream body, long total, long from) : IRangeReply
@@ -424,7 +510,9 @@ public static partial class Spotify
             Local = 0,
             /// <summary>The CDN answered.</summary>
             Cdn,
-            /// <summary>Every mirror refused; the url set was dropped.</summary>
+            /// <summary>Every mirror refused; the url set was dropped. This is what <see cref="Body.Refusing"/> reports
+            /// and, when it happens before a lossless open has landed its first body byte, what becomes
+            /// <see cref="Fault.Refused"/> and the Ogg 320 demotion.</summary>
             Refused,
             /// <summary>Superseded by a seek (dropped from the queue, or cancelled in flight).</summary>
             Stale,
@@ -1242,13 +1330,16 @@ public static partial class Spotify
             readonly Func<string, string[]?>? _reresolve;
             readonly Action<Action>? _dispatch;
             readonly ManualResetEventSlim _tailLanded = new(false);
+            readonly ManualResetEventSlim _firstBody = new(false);
             readonly long _t0 = Stopwatch.GetTimestamp();
             string[] _mirrors;
             byte[]? _head;
             long _fileLength, _proven, _nextResolveAt;
+            long _bodyBytes, _landedAt, _refusedAt;
             long _tailGranule = -1, _tailCandidate = -1;
             int _lengthKnown, _mirror, _disposed, _firstServed, _proof, _tailQueued, _sizeDeclared, _ringLogged;
             int _firstStore, _firstServedMs = -1, _gainBits, _peakBits, _gainKnown, _promoted, _resolving, _resolves;
+            int _refusals;
 
             /// <summary>The window a seek's interrupt lasts when the caller names none (see <see cref="Ring.Interrupt"/>).</summary>
             public const int DefaultInterruptMs = 1_000;
@@ -1335,6 +1426,18 @@ public static partial class Spotify
             public bool Prepared { get; }
             /// <summary>Storage-resolves this body ran for itself (expired urls, or a cache-opened body's first miss).</summary>
             public int Resolves => Volatile.Read(ref _resolves);
+
+            /// <summary>BODY bytes landed, from the CDN or the disk cache. The clear head is deliberately NOT one of
+            /// them: a head-served start is what makes a body that never arrives look like a track that is playing.</summary>
+            public long BodyBytes => Interlocked.Read(ref _bodyBytes);
+
+            /// <summary>Ranges that ran out of mirrors — every url answered a non-2xx for the same bytes (G-115).</summary>
+            public int Refusals => Volatile.Read(ref _refusals);
+
+            /// <summary>Is the mirror set refusing RIGHT NOW? True when the last thing to happen to this body was a
+            /// refused range rather than a landed byte. A COUNT would be wrong here: a body that refused once at second
+            /// three, re-resolved and played happily would still be "refused" when it stalls forty minutes later.</summary>
+            public bool Refusing => Volatile.Read(ref _refusedAt) > Volatile.Read(ref _landedAt);
             /// <summary>How long the playing read has waited without a byte (<see cref="Ring.StallMs"/>).</summary>
             public long StallMs => _ring.StallMs;
             public string FileIdHex { get; }
@@ -1365,6 +1468,19 @@ public static partial class Spotify
                 Volatile.Write(ref s_liveBody, this);
                 if (!Prepared) return;
                 _ring.Grow(Ring.ReadAheadSeconds(_metered, _fetcher.BytesPerSecond, _ring.FileBytesPerSecond));
+            }
+
+            /// <summary>Wait, bounded, for the FIRST body byte — or for the mirrors to refuse, whichever comes first.
+            /// True when a byte landed. This is what a lossless open asks before it trusts the rung it picked: the head
+            /// answers the first reads whatever the body does, so without this the only symptom of a mirror set that
+            /// refuses every range is half a second of audio and then nothing (D7,
+            /// <see cref="LosslessFallback.DemoteForNoBody"/>). Blocks the open's own thread; a cancelled
+            /// <paramref name="ct"/> throws, as the rest of the open does.</summary>
+            public bool WaitForFirstBody(int timeoutMs, CancellationToken ct)
+            {
+                if (BodyBytes > 0 || Disposed) return BodyBytes > 0;
+                _firstBody.Wait(Math.Max(0, timeoutMs), ct);
+                return BodyBytes > 0;
             }
 
             /// <summary>Wait, bounded, for the last Ogg page's granule (the exact length a gapless join is scheduled from,
@@ -1540,7 +1656,11 @@ public static partial class Spotify
                 }
                 if (ct.IsCancellationRequested) return new FetchResult(-1, headersAt);
                 InvalidateMirrors(FileIdHex);
-                Log.Warn("audio", $"audio.range file={FileIdHex} at={start} len=0 src=cdn mirrors={mirrors.Length} refused");
+                Interlocked.Increment(ref _refusals);
+                Volatile.Write(ref _refusedAt, Environment.TickCount64);
+                _firstBody.Set();                          // a refusal is an ANSWER: the open's first-body wait ends here
+                Log.Warn("audio", $"audio.range file={FileIdHex} at={start} len=0 src=cdn mirrors={mirrors.Length} "
+                                  + $"refused n={Refusals}");
                 RequestResolve("refused");
                 return new FetchResult(0, headersAt);
 
@@ -1594,14 +1714,22 @@ public static partial class Spotify
                     try
                     {
                         string[]? urls = _reresolve(FileIdHex);
+                        // The seam answers URLS; WHY it answered them is on the service's own reply, which `Resolve`
+                        // just recorded. Without it a fresh url set that the CDN then refuses is indistinguishable in
+                        // the log from a service that refused us outright — the same line, ten times, for 52 seconds.
+                        ResolveAnswer answer = LastResolve(FileIdHex);
                         if (urls is { Length: > 0 } && !Disposed)
                         {
                             Volatile.Write(ref _mirrors, urls);
                             _mirror = 0;
                             Interlocked.Increment(ref _resolves);
-                            Log.Info("audio", $"audio.resolve file={FileIdHex} why={why} mirrors={urls.Length} ms={ElapsedMs()}");
+                            Log.Info("audio", $"audio.resolve file={FileIdHex} why={why} mirrors={urls.Length} "
+                                              + $"status={answer.Status} verdict={answer.Verdict} refusals={Refusals} "
+                                              + $"ms={ElapsedMs()}");
                         }
-                        else Log.Warn("audio", $"audio.resolve file={FileIdHex} why={why} answered no mirrors");
+                        else Log.Warn("audio", $"audio.resolve file={FileIdHex} why={why} mirrors=0 "
+                                               + $"status={answer.Status} verdict={answer.Verdict} refusals={Refusals} "
+                                               + $"ms={ElapsedMs()} answered no mirrors");
                     }
                     catch (Exception ex) { Log.Warn("audio", "audio re-resolve failed", ex); }
                     finally
@@ -1650,6 +1778,13 @@ public static partial class Spotify
 
             void Observe(long start, ReadOnlySpan<byte> plain)
             {
+                if (plain.Length > 0)
+                {
+                    // The one funnel for landed body bytes — a CDN range and a disk chunk both come through here — and
+                    // therefore the one place that can say "this body has served something of its own".
+                    Volatile.Write(ref _landedAt, Environment.TickCount64);
+                    if (Interlocked.Add(ref _bodyBytes, plain.Length) == plain.Length) _firstBody.Set();
+                }
                 if (Volatile.Read(ref _head) is { } head && start < head.Length) ProveHeadAt(start, plain);
                 if (start == 0 && !GainKnown && plain.Length >= HeaderGainBytes)
                 {
@@ -1747,6 +1882,7 @@ public static partial class Spotify
                 Volatile.Write(ref _head, null);
                 _ring.WakeWaiters();
                 _tailLanded.Set();
+                _firstBody.Set();                           // nothing will land now: an open still waiting must come back
                 ReadAheadBudget.Return(_ring.Release());
                 Interlocked.CompareExchange(ref s_liveBody, null, this);
             }
@@ -1856,7 +1992,7 @@ public static partial class Spotify
         public readonly record struct OpenSeams(
             IRangeSource Source, ChunkDiskCache? Disk,
             Func<string, CancellationToken, byte[]> Head,
-            Func<string, CancellationToken, Mirrors> Resolve,
+            Func<FileRef, CancellationToken, Mirrors> Resolve,
             KeySource Key,
             Func<string, CancellationToken, long> ExternalLength,
             Func<Action, bool> Run,
@@ -1886,6 +2022,10 @@ public static partial class Spotify
         public static Opened OpenBody(in FileChoice choice, OpenSeams seams, CancellationToken ct, bool prepared = false)
         {
             string fileIdHex = choice.FileIdHex;
+            // The id AND the format, together, because that pair is what storage-resolve signs a url for. It is a
+            // local rather than `choice.Ref` at every use because `choice` is an `in` parameter and the re-resolve
+            // closure below has to capture it.
+            FileRef file = choice.Ref;
             Log.Info("audio", $"audio.open.begin file={fileIdHex} fmt={choice.Fmt} prepared={(prepared ? 1 : 0)}");
             long t0 = Stopwatch.GetTimestamp();
             Action<Action> dispatch = work => { if (!seams.Run(work)) work(); };
@@ -1919,18 +2059,28 @@ public static partial class Spotify
             if (headInline) pending.Signal();
             bool resolveInline = cached || !seams.Run(() =>
             {
-                try { mirrors = seams.Resolve(fileIdHex, ct); } finally { pending.Signal(); }
+                try { mirrors = seams.Resolve(file, ct); } finally { pending.Signal(); }
             });
             if (resolveInline) pending.Signal();
 
             Span<byte> key = stackalloc byte[AudioKey.KeyLength];
             Fault fault = seams.Key(fileIdHex, choice.FileId, choice.TrackGid, key, ApEligible(choice.Fmt), ct);
             if (headInline && cachedChunk0 is null) head = seams.Head(fileIdHex, ct);
-            if (resolveInline && !cached) mirrors = seams.Resolve(fileIdHex, ct);
+            if (resolveInline && !cached) mirrors = seams.Resolve(file, ct);
             pending.Wait(ct);
 
+            // `verdict=` is the service's own answer for this file, and it belongs HERE rather than only on the
+            // re-resolve line: an open that never re-resolves (`resolves=0`) used to print a mirror count and nothing
+            // about where it came from, so a url set signed for the wrong object namespace and a url set the account is
+            // not entitled to read exactly alike. "unasked" is the honest reading of a cached open, which asks nothing.
+            // …and the HOST it answered with, because that is where the format lands: the lossless objects live on a
+            // different edge from the Ogg ones (`audio-fa-l.` rather than `audio-fa.`), so the host is the one thing on
+            // this line that says out loud which namespace the url set was signed for. Host only — the rest is a token.
+            ResolveAnswer answer = LastResolve(fileIdHex);
             Log.Info("audio", $"audio.head file={fileIdHex} bytes={head.Length} cached={(cachedChunk0 is null ? 0 : 1)} "
-                              + $"mirrors={(mirrors.Ok ? mirrors.Urls.Length : 0)} resolve={(cached ? "lazy" : "asked")} key={fault} "
+                              + $"mirrors={(mirrors.Ok ? mirrors.Urls.Length : 0)} resolve={(cached ? "lazy" : "asked")} "
+                              + $"host={(mirrors.Ok ? HttpRangeSource.HostOf(mirrors.Urls[0]) : "-")} "
+                              + $"status={answer.Status} verdict={answer.Verdict} key={fault} "
                               + $"ms={(long)Stopwatch.GetElapsedTime(t0).TotalMilliseconds}");
             if (fault != Fault.None)
             {
@@ -1958,7 +2108,7 @@ public static partial class Spotify
                 : skip + Math.Max(Ring.SlotBytes, choice.DurationMs * NominalBytesPerSecond(choice.Fmt) / 1000);
             Func<string, string[]?> reresolve = hex =>
             {
-                Mirrors fresh = seams.Resolve(hex, CancellationToken.None);
+                Mirrors fresh = seams.Resolve(new FileRef(hex, file.Wire), CancellationToken.None);
                 return fresh.Ok ? fresh.Urls : null;
             };
             var body = new Body(seams.Source, mirrors.Ok ? mirrors.Urls : Array.Empty<string>(), key.ToArray(), skip, length, cached,
@@ -1966,6 +2116,27 @@ public static partial class Spotify
                 prepared: prepared, gainKnown: gainKnown, reresolve: reresolve, dispatch: dispatch, decrypt: decrypt);
             if (!prepared) Volatile.Write(ref s_liveBody, body);
             body.Start();
+
+            // D7's FIRST-BODY DEADLINE, and the reason the head is not an unqualified good. An 80 KiB clear head is
+            // about 0.6 s of a 1000 kbit/s FLAC, and it is served whether or not a single body byte ever arrives — so a
+            // mirror set that refuses every range produces a track that starts, plays for half a second, and is silence
+            // for the rest of its 4 minutes. The wait below ends the instant a byte lands OR the mirrors refuse, so a
+            // healthy open pays its first slot's latency and a refused one gives the rung up in about a second; the
+            // answer is `Fault.Refused`, which `Open` turns into the Ogg 320 rung — a different file id on a different
+            // mirror set, which is the only thing left that has not said no.
+            if (choice.Fmt is Format.Flac or Format.Flac24)
+            {
+                long firstBodyT0 = Stopwatch.GetTimestamp();
+                body.WaitForFirstBody(LosslessFallback.FirstBodyMs, ct);
+                long waitedMs = (long)Stopwatch.GetElapsedTime(firstBodyT0).TotalMilliseconds;
+                if (LosslessFallback.DemoteForNoBody(choice.Fmt, body.BodyBytes, body.Refusing, waitedMs))
+                {
+                    Log.Warn("audio", $"audio.nobody file={fileIdHex} fmt={choice.Fmt} waitMs={waitedMs} "
+                                      + $"refusals={body.Refusals} head={body.HeadBytes} resolves={body.Resolves}");
+                    body.Dispose();
+                    return Opened.Failed(Fault.Refused);
+                }
+            }
             return new Opened(new BodyStream(body), choice.Fmt, body.Length, choice.DurationMs, body.GainDb, fileIdHex,
                 Fault.None, body, body.Peak);
         }
@@ -1998,12 +2169,13 @@ public static partial class Spotify
         {
             if (!choice.Ok || choice.ExternalUrl is { Length: > 0 } || choice.FileIdHex.Length == 0) return;
             string fileIdHex = choice.FileIdHex;
+            FileRef file = choice.Ref;
             byte[] fileId = choice.FileId, gid = choice.TrackGid;
             bool apEligible = ApEligible(choice.Fmt);
             Api.Run(() => HeadCache.Fetch(fileIdHex, CancellationToken.None));
             Api.Run(() =>
             {
-                Mirrors warm = Resolve(fileIdHex, CancellationToken.None);
+                Mirrors warm = Resolve(file, CancellationToken.None);
                 Span<byte> key = stackalloc byte[AudioKey.KeyLength];
                 Fault fault = Key(fileIdHex, fileId, gid, key, apEligible, CancellationToken.None);
                 Log.Info("audio", $"audio.prefetch file={fileIdHex} mirrors={(warm.Ok ? warm.Urls.Length : 0)} key={fault}");

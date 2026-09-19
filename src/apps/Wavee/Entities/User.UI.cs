@@ -1,21 +1,29 @@
 // ── Entities/User.UI.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// the library's row shapes and small controls: the sort/view pill + its flyout panel, the crumb bar, the column grip,
-// the BOUND navigator/discography rows and cards (and their grid selection chrome), the search-row shapes, "Go to
-// artist", and the library mutation seam (`LibrarySeam`) the shared save/follow affordances read
+// the library's row shapes and small controls: the WORD RAILS (the navigator's sort rail, the reader's scope and sort
+// rails) + the view toggle and its trimmed panel, the letter header / sticky letter overlay / A-Z jump strip, the crumb
+// bar, the column grip, the BOUND navigator rows and cards (and their grid selection chrome), the search-row shapes, and
+// the library mutation seam (`LibrarySeam`) the shared save/follow affordances read
 //
 // Role: UI
 // Owner: O
-// Wave: 5
+// Wave: 5 (the rails/letters: the 2026-09-17 library rework, waves L1-L2)
 // Budget: 600 lines (+30 % = 780)
-// Spec: ch 15 §1-§6, §9 (0.2.9 LibrarySortView.cs, LibraryPage.cs row/card/grip/search-row builders); contract §2.6
+// Spec: ch 15 §1-§6, §9 (0.2.9 LibrarySortView.cs, LibraryPage.cs row/card/grip/search-row builders); contract §2.6;
+//       library-rework-implementation.md §5.2 (the rails, the letters, the strip, the two subtitle caches)
 //
-// ZERO ALLOCATION ON A SCROLL FRAME. Every navigator/discography row is an `ItemsView.CreateBound` slot: the template
-// runs ONCE per slot and every per-item value is a bind over `BoundItemScope<LibraryNavItem>` (a slot + its row
-// version), so a recycle rewrites the slot's item signal and re-fires only those binds — no `List<Element>` per row,
-// no remount. Handlers resolve the CURRENT item at invocation (`Peek`), never a mount-time capture.
+// DELETED IN WAVE L2 (no legacy paths — their consumers went with them): `SortViewPill` / `SortPanel` and their two
+// hosts (the word rail replaced the sort pill outright), `DiscoRow` / `DiscoCard` / `DiscoSubtitle` / `AlbumCode` (the
+// discography grid pane is gone; `Artist.Reader` stacks art + tracks blocks instead) and `GoToArtistLink` (the reader's
+// doorway is a `Controls.Named` icon button). `SortLabelKey` / `SortLabel` / `ViewGlyph` / `IsGridView` /
+// `IsCompactView` STAY: the sidebar's Library V3 shares the codes and `ViewPanel` still draws the view glyphs.
 //
-// PROPS FREEZE AT MOUNT: the pill and its panel receive the four Signal INSTANCES plus two per-kind constants, which is
-// the only shape that is safe to freeze (ch 15 §1.2 "four places it bites", item 1).
+// ZERO ALLOCATION ON A SCROLL FRAME. Every navigator row is an `ItemsView.CreateBound` slot: the template runs ONCE per
+// slot and every per-item value is a bind over `BoundItemScope<LibraryNavItem>` (a slot + its row version), so a
+// recycle rewrites the slot's item signal and re-fires only those binds — no `List<Element>` per row, no remount.
+// Handlers resolve the CURRENT item at invocation (`Peek`), never a mount-time capture.
+//
+// PROPS FREEZE AT MOUNT: every rail, the view toggle and its panel receive Signal INSTANCES plus per-kind constants,
+// which is the only shape that is safe to freeze (ch 15 §1.2 "four places it bites", item 1).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -28,7 +36,13 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 /// <summary>One navigator / discography slot: the row's kind and slot plus its row VERSION, so a fact landing on the row
-/// changes the item (and re-fires the slot's binds) even though the slot did not move.</summary>
+/// changes the item (and re-fires the slot's binds) even though the slot did not move.
+/// <para><b>The version is the row's whole re-render trigger.</b> The bound item signal is equality-gated (engine
+/// <c>BoundItemsSource.BindItem</c>), so a bind only re-fires when this record CHANGES: whatever a row's text or art
+/// reads has to be inside <see cref="Version"/>. <see cref="Of"/> is the plain case — the entity's own row version —
+/// and a caller whose row displays a fact off ANOTHER table folds that in itself (the navigator's
+/// <c>LibraryPage.FillRowVersions</c>: the album row's billed-artist name, the artist row's release/song counts). The
+/// list must NOT be remounted to refresh a row; that was the 0.2.10 remount storm.</para></summary>
 public readonly record struct LibraryNavItem(EntityKind Kind, int Slot, uint Version)
 {
     public static LibraryNavItem Of(EntityKind kind, int slot)
@@ -42,7 +56,9 @@ public readonly partial struct User
 {
     // ══ 1. THE PERSISTED CODES (shared with the sidebar's Library V3 — never renumber) ═══════════════════════════════
 
-    /// <summary>Sort code → its loc KEY. Codes 0..4 are persisted (<c>library.&lt;kind&gt;.sort</c>); unknown → Recents.</summary>
+    /// <summary>Sort code → its Title-Case loc KEY. Codes 0..4 are persisted (<c>library.&lt;kind&gt;.sort</c>); unknown →
+    /// Recents. The library's own rail reads the lowercase <c>library.rail.*</c> keys through
+    /// <see cref="LibraryWordRail.WordKey"/> — these labels are the SIDEBAR's (Library V3's pills share the codes).</summary>
     public static string SortLabelKey(int code) => code switch
     {
         1 => Strings.Library.Sort.RecentlyAdded,
@@ -54,26 +70,182 @@ public readonly partial struct User
 
     public static string SortLabel(int code) => Loc.Get(SortLabelKey(code));
 
-    /// <summary>View code (0 CompactList · 1 List · 2 CompactGrid · 3 Grid) → the pill's trailing glyph.</summary>
+    /// <summary>View code (0 CompactList · 1 List · 2 CompactGrid · 3 Grid) → its glyph (the view toggle's and the view
+    /// panel's four cells; the sidebar's own switch reads the same codes).</summary>
     public static string ViewGlyph(int view) => view >= 2 ? Icons.ViewGrid : Icons.ViewList;
 
     public static bool IsGridView(int view) => view >= 2;
     public static bool IsCompactView(int view) => view is 0 or 2;
 
-    // ══ 2. THE SORT / VIEW PILL AND ITS PANEL (W6) ═══════════════════════════════════════════════════════════════════
+    // ══ 2. THE WORD RAILS (W8 — Zune's text pivot; it REPLACED the sort pill, which is deleted) ═══════════════════════
 
-    /// <summary>The pill: sort glyph · active label · direction chevron · divider · view glyph; a tap toggles the flyout.</summary>
-    public static Element SortViewPill(Signal<int> sort, Signal<bool> desc, Signal<int> view, Signal<int> size,
-                                       bool hasCreator, bool hasRelease)
-        => Embed.Comp(() => new SortPillHost(sort, desc, view, size, hasCreator, hasRelease));
+    internal const float RailWordSize = 13.5f;
+    internal const float RailWordLine = 18f;
+    internal const float RailWordGap = 14f;
+    internal const float RailHeight = 32f;
 
-    /// <summary>The flyout body — its own component so the rows track the live signals.</summary>
-    public static Element SortPanel(Signal<int> sort, Signal<bool> desc, Signal<int> view, Signal<int> size,
-                                    bool hasCreator, bool hasRelease)
-        => Embed.Comp(() => new SortPanelHost(sort, desc, view, size, hasCreator, hasRelease));
+    /// <summary>The ink/underline fade every rail word shares: the 83-ms WinUI BrushTransition (plan §7).</summary>
+    static readonly FluentGpu.Animation.MotionTokenDef RailInkFade = FluentGpu.Animation.MotionTok.ControlFaster;
 
-    sealed class SortPillHost(Signal<int> sort, Signal<bool> desc, Signal<int> view, Signal<int> size, bool hasCreator, bool hasRelease)
-        : Component
+    /// <summary>The navigator's sort rail: the kind's words (<see cref="LibraryWordRail.WordsFor"/>) in rail order, the
+    /// active one 100 % ink / 600 over a 2-DIP accent underline, the rest 50 % (85 % on hover). Tapping the ACTIVE word
+    /// flips the direction and a 10-px chevron after it says which way. The rail holds the two Signal INSTANCES, so
+    /// nothing here is frozen at mount — the words themselves are a per-kind constant and are built once.</summary>
+    public static Element WordRail(EntityKind kind, Signal<int> sort, Signal<bool> desc)
+        => Embed.Comp(() => new WordRailHost(kind, sort, desc));
+
+    sealed class WordRailHost(EntityKind kind, Signal<int> sort, Signal<bool> desc) : Component
+    {
+        Element[]? _words;   // built ONCE: every state rides a bind, so the rail never re-renders on a sort change
+
+        public override Element Render()
+        {
+            if (_words is null)
+            {
+                var words = LibraryWordRail.WordsFor(kind);
+                _words = new Element[words.Length];
+                for (int i = 0; i < words.Length; i++) _words[i] = Word(words[i]);
+            }
+            return RailBar(_words);
+        }
+
+        Element Word(LibraryNavSort code)
+        {
+            int c = (int)code;
+            Func<bool> isOn = () => sort.Value == c;
+            return RailWord(
+                Loc.Bind(LibraryWordRail.WordKey(code)), isOn,
+                () => { if (sort.Peek() == c) desc.Value = !desc.Peek(); else { sort.Value = c; desc.Value = false; } },
+                () => isOn() && desc.Value);
+        }
+    }
+
+    /// <summary>The reader's scope rail (W3/W4): "in your library" · "all releases · N" — the same word visuals with no
+    /// direction flip. The total rides a <see cref="Prop{T}"/> so the facets answering re-fires ONE text bind instead of
+    /// re-rendering the rail, and the count is formatted through a hoisted cache (never inside the thunk).
+    /// <para><paramref name="compact"/> is the narrow reader's word: "all · N" instead of "all releases · N" while it
+    /// answers true. It is a PREDICATE read INSIDE the bound text, so a column drag across the breakpoint re-fires one
+    /// text bind and never re-renders the rail; null — the default, and what the two-argument call still is — is the
+    /// long word forever.</para></summary>
+    public static Element ScopeRail(Signal<int> scope, Prop<int> total, Func<bool>? compact = null)
+    {
+        Func<bool> inLibrary = () => scope.Value == 0;
+        // TWO caches, one per word: ONE cache keyed on the count alone would rewrite its entry on every crossing of the
+        // breakpoint (the same N, the other word), which is exactly the formatting the cache exists to avoid.
+        Prop<string> all = compact is { } isCompact
+            ? Prop.Of(() => isCompact()
+                ? s_allShort.Get(total.Current(), static n => AllShortText(n))
+                : s_allReleases.Get(total.Current(), static n => AllReleasesText(n)))
+            : Prop.Of(() => s_allReleases.Get(total.Current(), static n => AllReleasesText(n)));
+        return RailBar(
+        [
+            RailWord(Loc.Bind(Strings.Library.Scope.InLibrary), inLibrary, () => scope.Value = 0),
+            RailWord(all, () => scope.Value != 0, () => scope.Value = 1),
+        ]);
+    }
+
+    static readonly FormatCache<int> s_allReleases = new(), s_allShort = new();
+
+    static string AllReleasesText(int total) => ScopeWordText(Strings.Library.Scope.AllReleases, total);
+
+    static string AllShortText(int total) => ScopeWordText(Strings.Library.Scope.AllShort, total);
+
+    /// <summary>"&lt;word&gt; · N", or the bare word while the total is 0 — a facet that has not answered says nothing
+    /// rather than "· 0".</summary>
+    static string ScopeWordText(string key, int total)
+    {
+        string word = Loc.Get(key);
+        return total > 0 ? word + " · " + FormatCache.Int(total) : word;
+    }
+
+    /// <summary>The reader's own sort rail: newest · oldest · a–z (the reader-local <c>Artist.ReaderSort</c> codes, NOT
+    /// <see cref="LibraryNavSort"/>) — no direction flip, so a word is a plain set.</summary>
+    public static Element ReaderSortRail(Signal<int> sort)
+    {
+        var words = new Element[3];
+        for (int i = 0; i < words.Length; i++)
+        {
+            int c = i;
+            words[i] = RailWord(Loc.Bind(ReaderSortKey(c)), () => sort.Value == c, () => sort.Value = c);
+        }
+        return RailBar(words);
+    }
+
+    static string ReaderSortKey(int code) => code switch
+    {
+        1 => Strings.Library.ReaderSort.Oldest,
+        2 => Strings.Library.ReaderSort.Alphabetical,
+        _ => Strings.Library.ReaderSort.Newest,
+    };
+
+    // Named RailBar, not Rail: `Wavee.Rail` is the shell rail class, and a member named Rail would shadow it inside User.
+    static Element RailBar(Element[] words) => new BoxEl
+    {
+        Direction = 0, Height = RailHeight, Gap = RailWordGap, AlignItems = FlexAlign.Center, Shrink = 0f, Children = words,
+    };
+
+    /// <summary>One rail word. <c>TextEl.Weight</c> is a plain <c>ushort</c> (engine <c>Dsl/Element.cs:669</c>), so the
+    /// active 600 is TWO STACKED RUNS whose ink cross-fades over 83 ms — never a bound weight. The 600 run measures the
+    /// stack (a ZStack takes its max child), so activating a word never shifts the rail by a fraction of a DIP.</summary>
+    static Element RailWord(Prop<string> label, Func<bool> isOn, Action tap, Func<bool>? chevron = null)
+    {
+        Element ink = new BoxEl
+        {
+            ZStack = true, Shrink = 0f,
+            Children =
+            [
+                RailInk(label, 400, Prop.Of(() => isOn() ? ColorF.Transparent : Tok.TextPrimary)),
+                RailInk(label, 600, Prop.Of(() => isOn() ? Tok.TextPrimary : ColorF.Transparent)),
+            ],
+        };
+        Element head = chevron is null
+            ? ink
+            : new BoxEl
+            {
+                Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Children =
+                [
+                    ink,
+                    new BoxEl
+                    {
+                        Width = 10f, Height = 10f, Shrink = 0f, Visible = Prop.Of(chevron),
+                        Children = [Icon(Icons.ChevronDown, 10f, Tok.TextSecondary)],
+                    },
+                ],
+            };
+        return new BoxEl
+        {
+            Direction = 1, Gap = 3f, Shrink = 0f, Padding = new Edges4(0f, 2f, 0f, 0f),
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = tap,
+            Opacity = Prop.Of(() => isOn() ? 1f : 0.5f), HoverOpacity = 0.85f, Transition = RailInkFade,
+            Children =
+            [
+                head,
+                new BoxEl
+                {
+                    Height = 2f, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(1f),
+                    Fill = Prop.Of(() => isOn() ? Tok.AccentDefault : ColorF.Transparent),
+                    BrushTransitionMs = Design.Motion.Faster,
+                },
+            ],
+        };
+    }
+
+    static TextEl RailInk(Prop<string> label, ushort weight, Prop<ColorF> ink) => new(label)
+    {
+        Size = RailWordSize, LineHeight = RailWordLine, Weight = weight, CharSpacing = -5f, MaxLines = 1,
+        Color = ink, BrushTransitionMs = Design.Motion.Faster,
+        AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
+    };
+
+    // ══ 3. THE VIEW TOGGLE AND THE TRIMMED VIEW PANEL ════════════════════════════════════════════════════════════════
+
+    /// <summary>The toggle beside the rail: list (1) / grid (3) glyphs, then "…" for the trimmed <see cref="ViewPanel"/>
+    /// (the compact variants + S/M/L). View codes stay 0..3 and stay persisted; the list/grid glyphs keep whichever
+    /// compactness the persisted code already carried.</summary>
+    public static Element ViewToggle(Signal<int> view, Signal<int> size) => Embed.Comp(() => new ViewToggleHost(view, size));
+
+    sealed class ViewToggleHost(Signal<int> view, Signal<int> size) : Component
     {
         NodeHandle _anchor;
         OverlayHandle? _handle;
@@ -81,16 +253,16 @@ public readonly partial struct User
         public override Element Render()
         {
             var overlay = UseContext(Overlay.Service);
-            int s = sort.Value; bool d = desc.Value; int v = view.Value;   // subscribe → the pill reflects the state
+            int v = view.Value;   // subscribe → the pressed glyph follows the persisted code
 
-            void Toggle()
+            void Flyout()
             {
                 if (Controls.IsNullOverlay(overlay)) return;
                 if (_handle is { IsOpen: true } open) { open.Close(); return; }
                 _handle = overlay.Open(
                     () => _anchor,
-                    () => SortPanel(sort, desc, view, size, hasCreator, hasRelease),
-                    FlyoutPlacement.BottomEdgeAlignedLeft,
+                    () => ViewPanel(view, size),
+                    FlyoutPlacement.BottomEdgeAlignedRight,
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
                     { ConstrainToRootBounds = false });
                 _handle.ClosedAction = () => _handle = null;
@@ -98,66 +270,53 @@ public readonly partial struct User
 
             return new BoxEl
             {
-                Direction = 0, Height = 32f, AlignItems = FlexAlign.Center, Gap = 5f, Shrink = 0f,
-                Padding = new Edges4(10f, 0f, 8f, 0f), Corners = Radii.ControlAll,
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                OnRealized = h => _anchor = h, OnClick = Toggle,
+                Direction = 0, Gap = Spacing.XXS, AlignItems = FlexAlign.Center, Shrink = 0f, OnRealized = h => _anchor = h,
                 Children =
                 [
-                    Icon(Icons.Sort, 14f, Tok.TextSecondary),
-                    new TextEl(SortLabel(s)) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    Icon(d ? Icons.ChevronDown : Icons.ChevronUp, 12f, Tok.TextTertiary),
-                    new BoxEl { Width = 1f, Height = 16f, Fill = Tok.StrokeDividerDefault },
-                    Icon(ViewGlyph(v), 14f, Tok.TextSecondary),
+                    ViewIcon(Icons.ViewList, !IsGridView(v), () => view.Value = IsCompactView(view.Peek()) ? 0 : 1),
+                    ViewIcon(Icons.ViewGrid, IsGridView(v), () => view.Value = IsCompactView(view.Peek()) ? 2 : 3),
+                    ViewIcon(Icons.More, false, Flyout),
                 ],
-            }.Interactive(Interaction.Subtle);
+            };
         }
+
+        static Element ViewIcon(string glyph, bool on, Action tap) => new BoxEl
+        {
+            Width = 28f, Height = 28f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Corners = CornerRadius4.All(4f), Fill = on ? Tok.FillSubtleTertiary : Tok.FillSubtleTransparent,
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = tap,
+            Children = [Icon(glyph, 15f, on ? Tok.TextPrimary : Tok.TextSecondary)],
+        }.Interactive(Interaction.Subtle);
     }
 
-    sealed class SortPanelHost(Signal<int> sort, Signal<bool> desc, Signal<int> view, Signal<int> size, bool hasCreator, bool hasRelease)
-        : Component
+    /// <summary>The old sort flyout minus its sort rows — the rail owns sorting now: "View as" + (grid only) "Size". The
+    /// same rows, the same code; the <c>hasCreator</c>/<c>hasRelease</c> flags went with the deleted sort rows.</summary>
+    public static Element ViewPanel(Signal<int> view, Signal<int> size) => Embed.Comp(() => new ViewPanelHost(view, size));
+
+    sealed class ViewPanelHost(Signal<int> view, Signal<int> size) : Component
     {
         static readonly string[] SizeLabels = ["S", "M", "L"];
         static readonly float[] ViewGlyphSizes = [14f, 16f, 12f, 15f];
 
         public override Element Render()
         {
-            int s = sort.Value; bool d = desc.Value; int v = view.Value; _ = size.Value;   // subscribe
-            var rows = new List<Element>(12) { Header(Loc.Get(Strings.Library.SortBy)), SortRow(0, s, d), SortRow(1, s, d), SortRow(2, s, d) };
-            if (hasCreator) rows.Add(SortRow(3, s, d));
-            if (hasRelease) rows.Add(SortRow(4, s, d));
-            rows.Add(new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, Margin = Edges4.All(4f) });
-            rows.Add(Header(Loc.Get(Strings.Library.ViewAs)));
-            rows.Add(ViewToggles(v));
-            if (v >= 2)
+            int v = view.Value; _ = size.Value;   // subscribe
+            // M1 (RC10 / D12): the Size header + bar used to be ADDED/REMOVED as `v` crossed list<->grid, so the OPEN
+            // flyout changed height under the cursor mid-click. It is now always in the tree — same row count, same
+            // Gap, every time — and for a list view (v < 2, where S/M/L does nothing, D13) the wrapper is dimmed and
+            // taken out of hit-testing instead of removed, so the popup's size never moves while it is open.
+            BoxEl sizeBank = new()
             {
-                rows.Add(Header(Loc.Get(Strings.Library.Size)));
-                rows.Add(SelectorBar.Create(SizeLabels, size));
-            }
+                Direction = 1, Gap = 1f,
+                Children = [PanelHeader(Loc.Get(Strings.Library.Size)), SelectorBar.Create(SizeLabels, size)],
+            };
+            if (v < 2) sizeBank = sizeBank with { Opacity = 0.4f, HitTestVisible = false };   // Opacity/HitTestVisible are BoxEl-only
+            Element[] rows = [PanelHeader(Loc.Get(Strings.Library.ViewAs)), ViewToggles(v), sizeBank];
             // PopupChrome.Popup supplies the one WinUI FlyoutPresenter acrylic, stroke, corners and shadow.
-            return new BoxEl { Direction = 1, Gap = 1f, MinWidth = 230f, Padding = Edges4.All(Spacing.XS), Children = rows.ToArray() };
+            return new BoxEl { Direction = 1, Gap = 1f, MinWidth = 200f, Padding = Edges4.All(Spacing.XS), Children = rows };
         }
 
-        // A different key → sort = key, desc = false; the active key → flip desc. The flyout stays open.
-        Element SortRow(int key, int active, bool d)
-        {
-            bool on = active == key;
-            return new BoxEl
-            {
-                Direction = 0, Height = 32f, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Padding = new Edges4(10f, 0f, 8f, 0f), Corners = CornerRadius4.All(5f),
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                OnClick = () => { if (sort.Peek() == key) desc.Value = !desc.Peek(); else { sort.Value = key; desc.Value = false; } },
-                Children =
-                [
-                    new TextEl(SortLabel(key)) { Size = 14f, Weight = (ushort)(on ? 600 : 400), Color = on ? Tok.AccentTextPrimary : Tok.TextPrimary, Grow = 1f, Basis = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    on ? Icon(d ? Icons.ChevronDown : Icons.ChevronUp, 11f, Tok.AccentTextPrimary) : new BoxEl(),
-                    on ? Icon(Icons.Check, 12f, Tok.AccentTextPrimary) : new BoxEl { Width = 12f },
-                ],
-            }.Interactive(Interaction.Subtle);
-        }
-
-        // Glyph-only cells (ch 15 §3: the four view labels are resolved by 0.2.9 and never drawn — item 88 keeps it so).
+        // Glyph-only cells (ch 15 §3: the four view labels are resolved by 0.2.9 and never drawn).
         Element ViewToggles(int v)
         {
             var cells = new Element[4];
@@ -176,18 +335,107 @@ public readonly partial struct User
             return new BoxEl { Direction = 0, Gap = 4f, Padding = new Edges4(2f, 2f, 2f, 4f), Children = cells };
         }
 
-        static Element Header(string t) => new BoxEl
+        static Element PanelHeader(string t) => new BoxEl
         {
             Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XXS),
             Children = [Design.Type.Eyebrow(t) with { Color = Tok.TextTertiary }],
         };
     }
 
-    // ══ 3. CRUMBS, GRIP, PANES, LINKS ════════════════════════════════════════════════════════════════════════════════
+    // ══ 4. THE LETTERS: THE HEADER ITEM, THE STICKY OVERLAY, THE A–Z STRIP (W2) ═══════════════════════════════════════
 
-    /// <summary>The collapsed layout's breadcrumb (W14-W17): on the navigator's layer rung, a 1-DIP divider under it.</summary>
+    static readonly string[] s_letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+
+    /// <summary>Letter index (0 = "#", 1..26 = A..Z — <see cref="LibraryLetters.Of"/>'s space) → its glyph.</summary>
+    public static string LetterText(int letter) => letter <= 0 || letter > s_letters.Length ? "#" : s_letters[letter - 1];
+
+    /// <summary>The inline header item (the flat projection's <c>ContentType 1</c>, extent
+    /// <see cref="LibraryLetters.HeaderExtent"/>): the letter on a small card plate. A header row carries
+    /// <c>Slot = -(letter + 1)</c>, so the plate reads its letter out of the slot and nothing else.</summary>
+    public static Element LetterHeader(BoundItemScope<LibraryNavItem> scope) => new BoxEl
+    {
+        Height = LibraryLetters.HeaderExtent, Direction = 0, AlignItems = FlexAlign.End, HitTestVisible = false,
+        Padding = new Edges4(Spacing.S, 0f, Spacing.S, Spacing.XS),
+        Children = [LetterPlate(scope.Text(static it => LetterText(-it.Slot - 1)))],
+    };
+
+    /// <summary>The pinned twin of <see cref="LetterHeader"/>: a ZStack overlay over the list, pushed by the distance the
+    /// page derives from the scroll geometry (Recents' <c>StickyDayHeader</c> idiom — a bound transform, so a scroll frame
+    /// never re-renders it). Always mounted; before any letter is under the top it is simply transparent, which is cheaper
+    /// than collapsing it (a presence flip would relayout the overlay).</summary>
+    public static Element StickyLetter(IReadSignal<int> letter, IReadSignal<float> push) => new BoxEl
+    {
+        // "nav:sticky" (§3.3 / A1): a stable key on the ROOT so the navigator host can place this overlay as a KEYED
+        // sibling of the keyed list — a key on a component's single-child slot is inert (RC1), but this element is
+        // returned straight into a `Children` array, where `ReconcileChildren` honors it.
+        Key = "nav:sticky",
+        Height = LibraryLetters.HeaderExtent, Direction = 0, AlignItems = FlexAlign.End, HitTestVisible = false,
+        AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+        Padding = new Edges4(Spacing.S, 0f, Spacing.S, Spacing.XS),
+        Opacity = Prop.Of(() => letter.Value >= 0 ? 1f : 0f),
+        Transform = Prop.Of(() => Affine2D.Translation(0f, push.Value)),
+        Children = [LetterPlate(Prop.Of(() => LetterText(letter.Value)))],
+    };
+
+    static Element LetterPlate(Prop<string> text) => new BoxEl
+    {
+        Padding = new Edges4(6f, 1f, 6f, 1f), Corners = CornerRadius4.All(4f), Fill = Tok.FillCardDefault,
+        BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+        Children = [new TextEl(text) { Size = 12f, LineHeight = 16f, Weight = 600, CharSpacing = 60f, Color = Tok.TextTertiary }],
+    };
+
+    /// <summary>The A–Z strip on the navigator's right edge: 27 rows of 18 × 13. A present letter is full ink and the one
+    /// under the viewport top is accent/700 (two stacked runs again — <c>Weight</c> is not bindable); an absent letter sits
+    /// at 30 % and its tap NO-OPS, because <paramref name="jump"/> resolves through <c>LibraryLetters.HeaderFlat</c> and
+    /// finds nothing. <paramref name="present"/> is the letters' bitmask, <paramref name="current"/> the sticky letter.</summary>
+    public static Element JumpStrip(IReadSignal<uint> present, IReadSignal<int> current, Action<int> jump)
+    {
+        var rows = new Element[LibraryLetters.Count];
+        for (int l = 0; l < rows.Length; l++)
+        {
+            int letter = l;
+            Func<bool> here = () => (present.Value & (1u << letter)) != 0;
+            Func<bool> now = () => current.Value == letter;
+            string text = LetterText(letter);
+            rows[l] = new BoxEl
+            {
+                Width = 18f, Height = 13f, ZStack = true, Corners = CornerRadius4.All(3f),
+                // 27 letters must not become 27 tab stops: the strip is a pointer affordance beside a typeahead list.
+                Role = AutomationRole.Button, TabStop = false, Cursor = CursorId.Hand, HoverFill = Tok.FillSubtleSecondary,
+                Opacity = Prop.Of(() => here() ? 1f : 0.3f), Transition = RailInkFade, OnClick = () => jump(letter),
+                Children =
+                [
+                    StripInk(text, 400, Prop.Of(() => now() ? ColorF.Transparent : Tok.TextTertiary)),
+                    StripInk(text, 700, Prop.Of(() => now() ? Tok.AccentTextPrimary : ColorF.Transparent)),
+                ],
+            };
+        }
+        return new BoxEl
+        {
+            // "nav:strip" (§3.3 / A1): same reasoning as StickyLetter's "nav:sticky" — a stable key on the ROOT so
+            // the navigator host can place this strip as a KEYED sibling, not lose it to an inert single-child key.
+            Key = "nav:strip",
+            Direction = 1, Width = 18f, Shrink = 0f, Justify = FlexJustify.Center,
+            Padding = new Edges4(0f, Spacing.XS, 0f, Spacing.XS), Children = rows,
+        };
+    }
+
+    static TextEl StripInk(string text, ushort weight, Prop<ColorF> ink) => new(text)
+    {
+        Size = 9.5f, LineHeight = 12f, Weight = weight, Color = ink, BrushTransitionMs = Design.Motion.Fast,
+        AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
+    };
+
+    // ══ 5. CRUMBS, GRIP, PANES ═══════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The collapsed layout's breadcrumb (W14-W17): on the navigator's layer rung, a 1-DIP divider under it.
+    /// <para>KEYED. It is the first child of the collapsed library's root and the nav column is the first child of the
+    /// wide one, so with both unkeyed the reconciler paired the two by ordinal and reused ONE node for both — which
+    /// handed the nav column this box's static <c>Width</c> in place of its own bound one (bind wiring is mount-only).
+    /// The key is what makes the crossing a remount.</para></summary>
     public static Element CrumbBar(IReadOnlyList<string> crumbs, Action<int> onPick) => new BoxEl
     {
+        Key = "lib:crumbs",
         Direction = 1, Shrink = 0f, Fill = Tok.FillLayerDefault,
         Children =
         [
@@ -214,33 +462,28 @@ public readonly partial struct User
     internal static BoxEl NavPanel => new() { Direction = 1, ClipToBounds = true, Fill = Tok.FillLayerDefault };
     internal static BoxEl ReadingPane => new() { Direction = 1, ClipToBounds = true, Fill = Tok.FillCardDefault };
 
-    /// <summary>"Go to artist" — a HyperlinkButton (accent ink, 4-radius, trailing ↗), never a capsule.</summary>
-    public static Element GoToArtistLink(Action onClick) => new BoxEl
-    {
-        Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Corners = Radii.ControlAll,
-        Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS),
-        Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-        BrushTransitionMs = Design.Motion.Faster,
-        Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
-        HoverScale = Design.Motion.ScaleStandard.Hover, PressScale = Design.Motion.ScaleStandard.Press,
-        OnClick = onClick,
-        Children =
-        [
-            new TextEl(Loc.Get(Strings.Detail.GoToArtist))
-            {
-                Size = 14f, LineHeight = 20f, Weight = 600,
-                Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary, PressedColor = Tok.AccentTextTertiary,
-            },
-            Icon(Icons.OpenInNewWindow, 14f, Tok.AccentTextPrimary),
-        ],
-    };
+    // ══ 6. THE BOUND ROWS AND CARDS (W1-W5, W19, W22) ═══════════════════════════════════════════════════════════════
 
-    // ══ 4. THE BOUND ROWS AND CARDS (W1-W5, W19, W22) ═══════════════════════════════════════════════════════════════
+    /// <summary>The navigator LIST row's PLATE height (W1): the selected backplate itself — 56, 40 compact — which is the
+    /// prototype's row rhythm and the number <see cref="NavRow"/> sets as its explicit height.</summary>
+    public const float NavRowPlate = 56f, NavRowCompactPlate = 40f;
 
-    static readonly FormatCache<int> s_discoSubtitles = new();
+    /// <summary>The margin the engine's bound list chrome puts around every plate (<c>SelectorVisualsBound</c>'s
+    /// <c>s_backplateMargin {4,2,4,2}</c>) — the vertical half, because the main axis is the only one the list's extents
+    /// add up. It is part of the row and NOT of the plate: the 2-DIP gap between plates is the ListView language.</summary>
+    public const float NavRowMarginY = 2f;
 
-    /// <summary>A navigator LIST row (extent 40 compact / 60): 40×40 art (r 20 artist / 5 album, show) + title 14/20/600 +
-    /// subtitle 12/16 — compact drops both the art and the subtitle. Wears the bound AccentPill chrome.</summary>
+    /// <summary>The navigator LIST row's OUTER extents — the analytic seed the page hands <c>RepeatLayout.Extents</c>,
+    /// which MUST agree with what the row MEASURES: the measured list corrects a row to its measurement, so a seed that
+    /// counted the plate and forgot its 2+2 margin was 4 DIP short PER ROW, and the pinned letter, the jump strip, the
+    /// scrollbar thumb and every bring-into-view drifted by a whole row every fourteen. The plate + its margin is the
+    /// one number both halves read, and <see cref="LibraryLetters"/>' offsets are summed at it.</summary>
+    public const float NavRowExtent = NavRowPlate + 2f * NavRowMarginY,
+                       NavRowCompactExtent = NavRowCompactPlate + 2f * NavRowMarginY;
+
+    /// <summary>A navigator LIST row (plate 40 compact / 56, outer extent 44 / 60): 40×40 art (r 20 artist / 5 album,
+    /// show) + title 14/20/600 + subtitle 12/16 — compact drops both the art and the subtitle. Wears the bound
+    /// AccentPill chrome.</summary>
     public static Element NavRow(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact)
     {
         bool circular = kind == EntityKind.Artist;
@@ -249,10 +492,7 @@ public readonly partial struct User
             Direction = 1, Grow = 1f, Basis = 0f, Gap = 1f, MinWidth = 0f,
             Children = compact
                 ? [TitleText(scope, 14f, 20f), new BoxEl()]
-                : [TitleText(scope, 14f, 20f),
-                   kind == EntityKind.Artist
-                       ? new TextEl(Loc.Get(Strings.Search.TypeArtist)) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }
-                       : new TextEl(scope.Text(static it => LibraryRows.SubtitleOf(it.Kind, it.Slot))) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
+                : [TitleText(scope, 14f, 20f), NavSubtitle(scope, kind)],
         };
         Element content = new BoxEl
         {
@@ -260,7 +500,12 @@ public readonly partial struct User
             Draggable = DragOf(scope),
             Children = compact ? [text] : [ArtBox(scope, 40f, circular ? 20f : 5f), text],
         };
-        return SelectorVisualsBound.AccentPill(scope.Row, content) with { Cursor = CursorId.Hand };
+        // The PLATE height, not the row extent: the chrome's own 2+2 margin is what makes the outer extent the seed
+        // (`NavRowExtent`). Setting the extent here would measure 60 + 4 and drift the letters by 4 DIP a row.
+        return SelectorVisualsBound.AccentPill(scope.Row, content) with
+        {
+            Cursor = CursorId.Hand, Height = compact ? NavRowCompactPlate : NavRowPlate,
+        };
     }
 
     /// <summary>A navigator GRID card: the fill-width square cover (r Full artist / 6) + title 12/16/600 (compact drops it),
@@ -280,55 +525,72 @@ public readonly partial struct User
         return BorderChrome(scope.Row, content);
     }
 
-    /// <summary>A discography LIST row (extent 44 compact / 60): art 40 (wrapper r 4, art 5) + title + "2007 · ALBUM".</summary>
-    public static Element DiscoRow(BoundItemScope<LibraryNavItem> scope, bool compact)
-    {
-        Element text = new BoxEl
-        {
-            Direction = 1, Grow = 1f, Basis = 0f, Gap = 1f, MinWidth = 0f,
-            Children = [TitleText(scope, 14f, 20f), compact ? new BoxEl() : DiscoSubtitle(scope)],
-        };
-        Element content = new BoxEl
-        {
-            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
-            Draggable = DragOf(scope),
-            Children = compact ? [text] : [ArtBox(scope, 40f, 5f), text],
-        };
-        return SelectorVisualsBound.AccentPill(scope.Row, content) with { Cursor = CursorId.Hand };
-    }
-
-    /// <summary>A discography GRID card: pad 4, gap 4, cover r 6, title, and "year · KIND" when not compact.</summary>
-    public static Element DiscoCard(BoundItemScope<LibraryNavItem> scope, bool compact)
-    {
-        Element art = FillArt(scope, 6f);
-        Element content = new BoxEl
-        {
-            Direction = 1, Gap = Spacing.XS, ClipToBounds = true, Padding = Edges4.All(Spacing.XS), Draggable = DragOf(scope),
-            Children = compact ? [art, TitleText(scope, 12f, 16f)] : [art, TitleText(scope, 12f, 16f), DiscoSubtitle(scope)],
-        };
-        return BorderChrome(scope.Row, content);
-    }
-
     static TextEl TitleText(in BoundItemScope<LibraryNavItem> scope, float size, float line)
         => new(scope.Text(static it => LibraryRows.TitleOf(it.Kind, it.Slot)))
         {
             Size = size, LineHeight = line, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
         };
 
-    // "2007 · ALBUM" through a hoisted cache keyed by (year, kind): a recycle never concatenates.
-    static TextEl DiscoSubtitle(in BoundItemScope<LibraryNavItem> scope)
-        => new(scope.Text(static it => AlbumCode(it.Slot), s_discoSubtitles, static code => (code >> 3 > 0 ? (code >> 3) + " · " : "")
-                                                                                          + Detail.Text.KindLabel((AlbumKind)(code & 7))))
-        {
-            Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-        };
+    static readonly FormatCache<int> s_artistCounts = new();
+    static readonly FormatCache<long> s_albumSubtitles = new();
 
-    static int AlbumCode(int slot)
+    /// <summary>The navigator row's second line. An ARTIST row says what the library HOLDS of them — "3 albums · 34 songs"
+    /// (ch 15 §7 gap 10: it used to say the literal word "Artist") — an ALBUM row "artist · year", and a SHOW row keeps its
+    /// publisher. Every one of them is a bind through a HOISTED cache, so a recycle looks a string up and never formats.</summary>
+    static TextEl NavSubtitle(in BoundItemScope<LibraryNavItem> scope, EntityKind kind) => kind switch
     {
-        var a = new Album(slot);
-        int year = a.IsValid && a.Knows(AlbumFields.Year) ? a.Year : 0;
-        int kind = a.IsValid && a.Knows(AlbumFields.Kind) ? (int)a.Kind : (int)AlbumKind.Album;
-        return (year << 3) | (kind & 7);
+        EntityKind.Artist => SubtitleText(scope.Text(static it => ArtistCountCode(it.Slot), s_artistCounts, static code => ArtistCountText(code))),
+        EntityKind.Album => SubtitleText(scope.Text(static it => AlbumSubtitleKey(it.Slot), s_albumSubtitles, static key => AlbumSubtitleText(key))),
+        _ => SubtitleText(scope.Text(static it => LibraryRows.SubtitleOf(it.Kind, it.Slot))),
+    };
+
+    static TextEl SubtitleText(Prop<string> text) => new(text)
+    {
+        Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+    };
+
+    // The counts packed into one int key (albums << 12 | songs, each clamped to 12 bits): two numbers, so the cache holds
+    // one string per distinct pair rather than one per artist.
+    static int ArtistCountCode(int slot)
+        => (Math.Min(LibraryAlbumCountOf(slot), 4095) << 12) | Math.Min(LibrarySongCountOf(slot), 4095);
+
+    static string ArtistCountText(int code) => ArtistCountLine(code >> 12, code & 4095);
+
+    /// <summary>"3 albums · 34 songs" — and, for an artist whose whole presence in your library is liked TRACKS (§11's
+    /// group 2: nothing of theirs saved, one liked feature), "12 songs" on its own. The bare word "Artist" survives for
+    /// 0/0 ONLY, which is a followed artist nothing of whose library has answered yet — before the rework it was what an
+    /// artist with fifty liked songs and no saved album read as. (<c>nSongs</c> carries its own " · " because it is the
+    /// continuation of the albums clause; <c>nSongsOnly</c> is the standalone line and does not.)
+    /// <para>THREE branches, no counting. <c>nAlbums</c> / <c>nSongs</c> / <c>nSongsOnly</c> are ICU plurals and pick
+    /// their own singular, so the <c>== 1</c> arms that used to reach for <c>oneAlbum</c> / <c>oneSong</c> are gone. They
+    /// were also wrong the moment only ONE half was singular: an artist with one album and one song composed the
+    /// hand-picked "1 album" with a <c>nSongs</c> that had no singular branch yet and read "1 album · 1 songs". A
+    /// plural rule belongs to the message, never to the caller — and a language whose "one" category is not the number
+    /// 1 (Russian's 21, Welsh's 2) can only be spelled inside the ICU entry.</para>
+    /// <para>Public, not private: this assembly has no <c>InternalsVisibleTo</c> (see <c>Playlist.UI.cs</c>), and the
+    /// rule is pinned by a fact rather than by reading this source.</para></summary>
+    public static string ArtistCountLine(int albums, int songs)
+        => albums <= 0
+            ? (songs <= 0 ? Loc.Get(Strings.Search.TypeArtist) : Strings.Library.NSongsOnly(songs))
+            : Strings.Library.NAlbums(albums) + (songs > 0 ? Strings.Library.NSongs(songs) : "");
+
+    // "artist · year" keyed by (the billed artist's NAME id, the year): the album slot would have done for the CACHE, but
+    // keying on the name's id means a name that lands after the year re-keys instead of serving the stale line forever.
+    static long AlbumSubtitleKey(int slot)
+    {
+        var scope = Entities.Current;
+        var billed = scope.Edges.AlbumArtists.Targets(slot);
+        int name = billed.Length > 0 && billed[0] > Table.None ? scope.Artists.Name[billed[0]].Value : 0;
+        int year = LibraryRows.YearOf(EntityKind.Album, slot);
+        return ((long)(uint)name << 16) | (uint)Math.Clamp(year, 0, 0xFFFF);
+    }
+
+    static string AlbumSubtitleText(long key)
+    {
+        string artist = Entities.Strings.Resolve(new StringId((int)(uint)(key >> 16)));
+        int year = (int)(key & 0xFFFF);
+        if (year <= 0) return artist;
+        return artist.Length > 0 ? artist + " · " + FormatCache.Int(year) : FormatCache.Int(year);
     }
 
     static string? ArtOf(in LibraryNavItem it) => Controls.ArtUrl(LibraryRows.ImageOf(it.Kind, it.Slot));
@@ -417,7 +679,7 @@ public readonly partial struct User
         };
     }
 
-    // ══ 5. THE SEARCH-ROW SHAPES (W11-W13, W23, W26) ════════════════════════════════════════════════════════════════
+    // ══ 7. THE SEARCH-ROW SHAPES (W11-W13, W23, W26) ════════════════════════════════════════════════════════════════
 
     /// <summary>Retained hits stay put; only a real insert/remove/reorder animates (90 ms in, 70 ms out).</summary>
     internal static readonly LayoutTransition SearchRowChange = new(
@@ -511,7 +773,7 @@ public readonly partial struct User
         Children = [new TextEl(text) { Size = 14f, LineHeight = 20f, Color = Tok.TextTertiary }],
     };
 
-    // ══ 6. THE LIBRARY SEAM (contract §2.6 → Controls.Library) ═══════════════════════════════════════════════════════
+    // ══ 8. THE LIBRARY SEAM (contract §2.6 → Controls.Library) ═══════════════════════════════════════════════════════
 
     /// <summary>The save/follow affordances' one seam. <c>IsSaved</c> SUBSCRIBES (the scope epoch + the relation's
     /// <c>Changed</c>) so a heart re-skins the frame the optimistic edge lands; a pending remove reads unsaved. Tracks,

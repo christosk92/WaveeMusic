@@ -219,6 +219,8 @@ public static partial class Shell
                     // library — ONE folder for "everything Wavee wrote", which is what the Storage tab measures and
                     // what factory reset wipes.
                     ImageCacheDirectory = Path.Combine(Platform.LocalFolder, "cache", "images"),
+                    // Every cover-art request in the same `wire.call` log as the api's (no storm count: a grid IS a burst).
+                    ImageHttpHandler = static inner => Wire.Handler("images", inner, storms: false),
                     // The sign-in launch into the tray: the window exists, the tree mounts, nothing paints until the icon
                     // (or a second launch) shows it.
                     StartHidden = startHidden,

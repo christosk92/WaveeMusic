@@ -1,6 +1,7 @@
 // ── Entities/Show.UI.cs ────────────────────────────────────────────────────────────────────────────────────────────
 // the episode column's static pieces: the status/order toolbar, the "Listen next" banner, the section header, the empty
-// arm (its own empty-SHOW copy), the load-more pill and the figure-space cold seed the list's skeleton derives from
+// arm (its own empty-SHOW copy), the load-more pill and the figure-space cold seed the list's skeleton derives from —
+// plus PaneHeader, the library pane's 128-cover show header (the twin of Album.PaneHeader, library rework §5.4)
 //
 // Role: UI
 // Owner: M
@@ -164,4 +165,14 @@ public readonly partial struct Show
             Children = kids,
         };
     }
+
+    /// <summary>The library pane's show header — the twin of <see cref="Album.PaneHeader"/>: the same 128 cover (r 6,
+    /// <c>Elevation.Card</c>), the same title link (28/34/600, 2 lines) and the same meta rung, with the publisher line
+    /// standing where an album bills its artists (<paramref name="attribution"/>). ONE geometry for both kinds, so a
+    /// selection crossing album → show moves nothing but the words (library rework §5.4).
+    /// <para>A forward, not a copy: it stays a named seam so the day a show wants its own stance, THIS body changes and
+    /// the album's is left alone. The signature is byte-identical to the album's on purpose — <c>LibraryShowPane</c> only
+    /// re-points its call.</para></summary>
+    public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta)
+        => Album.PaneHeader(cover, eyebrow, title, open, attribution, meta);
 }

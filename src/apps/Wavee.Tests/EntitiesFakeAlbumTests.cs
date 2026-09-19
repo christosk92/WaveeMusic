@@ -385,7 +385,7 @@ public class EntitiesFakeAlbumTests
         Assert.True(Episode.Rules.IsEmptyShow(sh8.TotalEpisodes, sh8.EpisodeSlots.Length, Episode.Rules.Status.All));
         Assert.False(Wavee.User.Me.Has(LibraryEdgeKind.SavedShows, sh8.Slot));
         Assert.Equal(8, Wavee.User.Me.Count(LibraryEdgeKind.SavedShows));    // the base seed's count still stands
-        Assert.Equal(13, Wavee.User.Me.Count(LibraryEdgeKind.SavedAlbums));
+        Assert.Equal(18, Wavee.User.Me.Count(LibraryEdgeKind.SavedAlbums));   // 13 base + the 5 library-rework albums (Entities.Fake.Library.cs)
     }
 
     // ── determinism (ch 31 §7.2, §8 assertions 1-2) ─────────────────────────────────────────────────────────────────

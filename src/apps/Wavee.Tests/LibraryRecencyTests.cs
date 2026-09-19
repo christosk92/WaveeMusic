@@ -5,6 +5,13 @@
 // becomes a string. What is pinned here is the read (text form, gid form, the non-Dictionary fallback, never-played)
 // and that the page's allocation-free path — slots in a buffer, `LibraryNavSorter<LibraryRows>` — orders and keys
 // EXACTLY as the record rule 0.2.9's tests pin (`LibraryNavOrderTests`). `RecentsRecency.Stamps` itself is owner P's.
+//
+// Added by the 2026-09-17 library rework: the artists navigator's counts. "3 albums · 34 songs" and the `Albums` sort are
+// pure reads over the SAME relations the navigator already demanded (`SavedAlbums` off the account row ∩ `AlbumArtists`),
+// so they are pinned here, against real edges, beside the other slot-path facts — a count that asked for anything would be
+// a fetch on a render. What is pinned here is the SAVED-ALBUM half, on an account that has liked nothing; the 2026-09-18
+// correction widened `LibraryAlbumCountOf` to the whole release list (saved ∪ the albums your liked songs sit on) and that
+// half — with `LibraryReleasesOf`, `LikedTracksOfAlbum` and `LibraryArtistsOf` — is `LibraryReleasesTests`.
 
 using System.Collections.ObjectModel;
 using FluentGpu.Foundation;
@@ -30,6 +37,28 @@ public class LibraryRecencyTests
         var t = Entities.Current.Albums;
         int slot = t.Slot(uri.AsSpan());
         t.SetText(ref t.Title, slot, Entities.Strings.Intern(title));
+        return slot;
+    }
+
+    static int ArtistRow(string uri, string name)
+    {
+        var t = Entities.Current.Artists;
+        int slot = t.Slot(uri.AsSpan());
+        t.SetText(ref t.Name, slot, Entities.Strings.Intern(name));
+        return slot;
+    }
+
+    /// <summary>A saved album billed to <paramref name="artists"/>, with a KNOWN track count.</summary>
+    static int SavedAlbum(string key, string title, int tracks, params int[] artists)
+    {
+        var t = Entities.Current.Albums;
+        int slot = AlbumRow("spotify:album:" + key, title);
+        if (tracks >= 0)
+        {
+            t.TrackCount[slot] = tracks;
+            t.Known[slot] |= (uint)AlbumFields.TrackCount;
+        }
+        Entities.Current.Edges.AlbumArtists.ReplaceRun(slot, artists, default);
         return slot;
     }
 
@@ -159,5 +188,114 @@ public class LibraryRecencyTests
 
         n = LibraryRows.Filter(EntityKind.Album, source, "   ", into);
         Assert.Equal(new[] { a, b, c }, into[..n]);   // the empty-slot marker is never a row
+    }
+
+    // ── the artists navigator's counts (the rework's "3 albums · 34 songs" and the Albums sort) ────────────────────
+
+    [Fact]
+    public void LibraryAlbumsOf_IsSavedAlbumsIntersectedWithTheArtistsBilling()
+    {
+        var scope = Entities.Current;
+        scope.MeSlot = scope.Users.Slot("spotify:user:counts".AsSpan());
+        int mj = ArtistRow("spotify:artist:mj", "Michael Jackson");
+        int prince = ArtistRow("spotify:artist:prince", "Prince");
+        int nobody = ArtistRow("spotify:artist:nobody", "Nobody Saved");
+
+        int thriller = SavedAlbum("thriller", "Thriller", 9, mj);
+        int bad = SavedAlbum("bad", "Bad", 11, mj);
+        int duet = SavedAlbum("duet", "A Duet", 1, mj, prince);
+        _ = SavedAlbum("dangerous", "Dangerous", 14, mj);                    // billed to MJ but NOT in the library
+        scope.Edges.SavedAlbums.ReplaceRun(scope.MeSlot, [thriller, bad, duet], default);
+
+        // The saved albums, in the library's own order, and the total is the return value.
+        Span<int> into = stackalloc int[8];
+        int n = User.LibraryAlbumsOf(mj, into);
+        Assert.Equal(3, n);
+        Assert.Equal(new[] { thriller, bad, duet }, into[..n].ToArray());
+        Assert.Equal(3, User.LibraryAlbumCountOf(mj));
+        Assert.Equal(1, User.LibraryAlbumCountOf(prince));            // only the duet
+        Assert.Equal(0, User.LibraryAlbumCountOf(nobody));
+        Assert.Equal(0, User.LibraryAlbumCountOf(Table.None));
+
+        // A short buffer still answers the TOTAL (the caller resizes) and never writes past its end.
+        Span<int> two = stackalloc int[2];
+        two[0] = two[1] = -1;
+        Assert.Equal(3, User.LibraryAlbumsOf(mj, two));
+        Assert.Equal(new[] { thriller, bad }, two.ToArray());
+
+        // the songs line: 9 + 11 + 1, and only over the SAVED albums.
+        Assert.Equal(21, User.LibrarySongCountOf(mj));
+        Assert.Equal(1, User.LibrarySongCountOf(prince));
+        Assert.Equal(0, User.LibrarySongCountOf(nobody));
+    }
+
+    [Fact]
+    public void LibrarySongCountOf_SkipsAnAlbumWhoseTrackCountHasNotAnswered()
+    {
+        // The count is a fact about what is KNOWN: an album still loading contributes 0 rather than a guess, and the row
+        // drops the "songs" clause when the sum is 0 instead of claiming an empty discography.
+        var scope = Entities.Current;
+        scope.MeSlot = scope.Users.Slot("spotify:user:counts-unknown".AsSpan());
+        int artist = ArtistRow("spotify:artist:unknown-counts", "Unnamed");
+        int known = SavedAlbum("known", "Known", 4, artist);
+        int pending = SavedAlbum("pending", "Pending", -1, artist);           // the track count has not answered
+        scope.Edges.SavedAlbums.ReplaceRun(scope.MeSlot, [known, pending], default);
+
+        Assert.Equal(2, User.LibraryAlbumCountOf(artist));
+        Assert.Equal(4, User.LibrarySongCountOf(artist));
+    }
+
+    [Fact]
+    public void Albums_OverSlots_OrdersByTheSavedAlbumCount_ThroughAPrecomputedBuffer()
+    {
+        var scope = Entities.Current;
+        scope.MeSlot = scope.Users.Slot("spotify:user:counts-sort".AsSpan());
+        int adele = ArtistRow("spotify:artist:adele", "Adele");
+        int blur = ArtistRow("spotify:artist:blur", "Blur");
+        int bowie = ArtistRow("spotify:artist:bowie", "Bowie");
+        int dio = ArtistRow("spotify:artist:dio", "Dio");
+
+        int a1 = SavedAlbum("a1", "21", 11, adele);
+        int b1 = SavedAlbum("b1", "Parklife", 16, blur);
+        int b2 = SavedAlbum("b2", "13", 13, blur);
+        int b3 = SavedAlbum("b3", "Blur", 14, blur);
+        int c1 = SavedAlbum("c1", "Low", 11, bowie);
+        int c2 = SavedAlbum("c2", "Heroes", 10, bowie);
+        int c3 = SavedAlbum("c3", "Hunky Dory", 11, bowie);
+        scope.Edges.SavedAlbums.ReplaceRun(scope.MeSlot, [a1, b1, b2, b3, c1, c2, c3], default);
+
+        int[] slots = [adele, blur, bowie, dio];
+        var counts = new int[slots.Length];
+        LibraryRows.FillCounts(EntityKind.Artist, slots, counts);
+        Assert.Equal(new[] { 1, 3, 3, 0 }, counts);
+
+        var perm = new int[slots.Length];
+        new LibraryNavSorter<LibraryRows>()
+            .Order(new LibraryRows(EntityKind.Artist, slots, slots.Length, null, counts), LibraryNavSort.Albums, desc: false, perm);
+
+        // 3 (Blur), 3 (Bowie) — the tie breaks by title — then 1 (Adele), then the artist with nothing saved.
+        Assert.Equal(new[] { 1, 2, 0, 3 }, perm);
+
+        // With no precomputed buffer the same order comes out of the live read (the one-off path), so the page's
+        // optimisation can never be the thing that decides the order.
+        var live = new int[slots.Length];
+        new LibraryNavSorter<LibraryRows>()
+            .Order(new LibraryRows(EntityKind.Artist, slots, slots.Length), LibraryNavSort.Albums, desc: false, live);
+        Assert.Equal(perm, live);
+    }
+
+    [Fact]
+    public void FillCounts_ForAnyKindButArtist_IsZeroEverywhere()
+    {
+        // Albums and shows do not offer the word (LibraryWordRailTests), and the comparator must not invent a number for
+        // them: the arm degrades to title order.
+        var scope = Entities.Current;
+        scope.MeSlot = scope.Users.Slot("spotify:user:counts-kind".AsSpan());
+        int a = AlbumRow("spotify:album:count-kind-a", "A");
+        int b = AlbumRow("spotify:album:count-kind-b", "B");
+        var counts = new int[2];
+        LibraryRows.FillCounts(EntityKind.Album, [a, b], counts);
+        Assert.Equal(new[] { 0, 0 }, counts);
+        Assert.Equal(0, new LibraryRows(EntityKind.Album, [a, b], 2).CountOf(0));
     }
 }

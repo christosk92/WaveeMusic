@@ -54,6 +54,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Google.Protobuf;
+using Md = Wavee.Protocol.Metadata;
 using Xm = Wavee.Protocol.ExtendedMetadata;
 
 namespace Wavee;
@@ -182,13 +183,13 @@ public static partial class Spotify
 
         // ── 3. the runner ────────────────────────────────────────────────────────────────────────────────────────────
 
-        static readonly HttpClient Client = new(new SocketsHttpHandler
+        static readonly HttpClient Client = new(global::Wavee.Wire.Handler("api", new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
             AutomaticDecompression = System.Net.DecompressionMethods.All,
             ConnectTimeout = TimeSpan.FromSeconds(15),
             MaxConnectionsPerServer = 8,
-        })
+        }))
         { Timeout = TimeSpan.FromSeconds(30) };
 
         const string PathfinderHost = "https://api-partner.spotify.com";
@@ -1998,12 +1999,16 @@ public static partial class Spotify
 
         // ── 12. storage resolve (the CDN mirrors for one audio file) ─────────────────────────────────────────────────
 
-        /// <summary>Where the bytes of <paramref name="fileIdHex"/> live. Format-agnostic — the file id IS the key —
-        /// and the answer is a `StorageResolveResponse` with a mirror list and a TTL. <see cref="Audio"/> is the
-        /// caller, and the only one.</summary>
-        public static Result StorageResolve(string fileIdHex, CancellationToken ct)
+        /// <summary>Where the bytes of <paramref name="fileIdHex"/> live: the mirror list and the TTL, as a
+        /// `StorageResolveResponse`. <see cref="Audio"/> is the caller, and the only one.
+        ///
+        /// <para>NOT format-agnostic, which is what the v1 route pretended. The service signs a url per (format, file
+        /// id) pair, so <paramref name="wireFormat"/> — the catalogue's own `AudioFile.Format` for the very file this
+        /// id names — goes in the path as its own segment. Resolving a FLAC id without it signs a url into the Ogg
+        /// object namespace and every byte of the answer 404s.</para></summary>
+        public static Result StorageResolve(string fileIdHex, Md.AudioFile.Types.Format wireFormat, CancellationToken ct)
         {
-            var args = new RequestArgs { Id = fileIdHex };
+            var args = new RequestArgs { Id = fileIdHex, Number = (long)wireFormat };
             return Send(RequestKind.StorageResolve, args, ct);
         }
     }

@@ -822,8 +822,12 @@ public static partial class Stage
         int active = Playback.ActiveDeviceSlot.Peek();
         bool remote = Playback.OwnerSignal.Peek() == Playback.Owner.Foreign;
         string? activeId = (uint)active < (uint)connect.Length ? connect[active].Id : null;
+        // The verification row: the player's own echo, never a loopback of the setting (user's exact ask).
+        var observed = Playback.Audio.PlayingOpened;
+        var asked = (Spotify.Audio.Quality)Math.Clamp(Platform.Settings.Get(Platform.Keys.PlaybackQuality),
+            Platform.Network.QualityMin, Platform.Network.QualityMax);
         var rows = Shell.DevicePickerRows(Playback.Audio.Devices.Peek(), Playback.Audio.SelectedOutputId.Peek(),
-            Playback.Audio.Supported.Peek(), !remote, connect, activeId);
+            Playback.Audio.Supported.Peek(), !remote, connect, activeId, observed, asked);
         var items = new List<MenuFlyoutItem>(rows.Count);
         foreach (var r in rows)
         {
@@ -841,7 +845,8 @@ public static partial class Stage
                     for (int i = 0; i < roster.Length; i++)
                         if (string.Equals(roster[i].Id, id, StringComparison.OrdinalIgnoreCase)) { Playback.TransferTo(i); return; }
                 }, Icons.Devices),
-                _ => new MenuFlyoutItem(r.Label, default, false, null),     // section headers and empty hints
+                // Header, Empty and Quality: a disabled command row (section headers, hints, and the quality echo alike).
+                _ => new MenuFlyoutItem(r.Label, default, false, null),
             });
         }
         return items;

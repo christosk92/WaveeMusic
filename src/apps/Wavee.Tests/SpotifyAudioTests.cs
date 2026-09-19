@@ -312,6 +312,83 @@ public class SpotifyAudioLadderTests
         Assert.Equal(Spotify.Audio.Format.OggVorbis320, choice.Fmt);
     }
 
+    // ── the CDN route: a file id is only half the address ───────────────────────────────────────────────────────────
+    //
+    // Storage-resolve SIGNS a url, and it signs one per (format, file id) pair. The route without the format in it is
+    // therefore a route that guesses, and it guesses Ogg: a lossless id resolved through v1 came back with a perfectly
+    // well-formed mirror set whose host had no such object, so every body range 404'd at byte 0 while the head service
+    // — which IS keyed by the id alone — served 80 KiB of the same id and made the track look like it was playing.
+    // The three facts below are what that bug needed and did not have.
+
+    /// <summary>The numbers are the WIRE's (`metadata.proto` AudioFile.Format) and they are what goes in the path. They
+    /// are pinned as literals because a renumbering would not break a build — it would 404 every body.</summary>
+    [Theory]
+    [InlineData(Md.AudioFile.Types.Format.OggVorbis96, 0)]
+    [InlineData(Md.AudioFile.Types.Format.OggVorbis160, 1)]
+    [InlineData(Md.AudioFile.Types.Format.OggVorbis320, 2)]
+    [InlineData(Md.AudioFile.Types.Format.FlacFlac, 16)]
+    [InlineData(Md.AudioFile.Types.Format.FlacFlac24Bit, 22)]
+    public void The_wire_format_numbers_are_what_the_cdn_route_carries(Md.AudioFile.Types.Format wire, int number)
+        => Assert.Equal(number, (int)wire);
+
+    /// <summary>…and the route is v2, with that number as a segment of its own and `?product=0` behind the id — the
+    /// captured desktop form, and go-librespot's. `Spotify.Build` is pure, so the whole address is one assertion.</summary>
+    [Theory]
+    [InlineData(Md.AudioFile.Types.Format.OggVorbis320, "/storage-resolve/v2/files/audio/interactive/2/deadbeef?product=0")]
+    [InlineData(Md.AudioFile.Types.Format.FlacFlac, "/storage-resolve/v2/files/audio/interactive/16/deadbeef?product=0")]
+    [InlineData(Md.AudioFile.Types.Format.FlacFlac24Bit, "/storage-resolve/v2/files/audio/interactive/22/deadbeef?product=0")]
+    public void Storage_resolve_names_the_format_in_its_own_path_segment(Md.AudioFile.Types.Format wire, string expected)
+        => Assert.Equal(expected, StorageResolvePath("deadbeef", wire));
+
+    static string StorageResolvePath(string fileIdHex, Md.AudioFile.Types.Format wire)
+    {
+        var session = default(Spotify.Session);
+        var args = new Spotify.RequestArgs { Id = fileIdHex, Number = (long)wire };
+        Span<char> path = stackalloc char[512];
+        var request = Spotify.Build(session, Spotify.RequestKind.StorageResolve, args, path);
+        return new string(request.Path);
+    }
+
+    /// <summary>The choice carries the CATALOGUE's format beside ours, because ours is lossy on purpose — `FormatOf`
+    /// collapses the four MP3 rungs into one, since no decoder cares which — and a choice holding only that could not
+    /// reconstruct the number the route needs. Lossless is where the difference stops being a rounding: a FLAC that
+    /// resolves as an Ogg is a 404, not a lower bitrate.</summary>
+    [Fact]
+    public void A_lossless_choice_carries_the_flac_wire_format_and_not_a_collapsed_one()
+    {
+        Md.Track track = Track(0x44, File(Md.AudioFile.Types.Format.OggVorbis320, 0x20));
+        var lossless = new Af.AudioFilesExtensionResponse();
+        lossless.Files.Add(new Af.ExtendedAudioFile { File = File(Md.AudioFile.Types.Format.FlacFlac, 0xF1) });
+
+        Spotify.Audio.FileChoice flac = Spotify.Audio.Choose(track, lossless, Spotify.Audio.Quality.Lossless, 0, Market);
+        Assert.Equal(Md.AudioFile.Types.Format.FlacFlac, flac.Wire);
+        // …and it reaches the CDN that way: `Ref` is the pair storage-resolve is asked with.
+        Assert.Equal(Md.AudioFile.Types.Format.FlacFlac, flac.Ref.Wire);
+        Assert.Equal(flac.FileIdHex, flac.Ref.Hex);
+
+        // 24-bit is its own number, and the Ogg rung of the very same track is its own again: one file id, one format.
+        lossless.Files.Add(new Af.ExtendedAudioFile { File = File(Md.AudioFile.Types.Format.FlacFlac24Bit, 0xF2) });
+        Assert.Equal(Md.AudioFile.Types.Format.FlacFlac24Bit,
+            Spotify.Audio.Choose(track, lossless, Spotify.Audio.Quality.Lossless, 0, Market).Wire);
+        Assert.Equal(Md.AudioFile.Types.Format.OggVorbis320,
+            Spotify.Audio.Choose(track, null, Spotify.Audio.Quality.VeryHigh320, 0, Market).Wire);
+    }
+
+    /// <summary>The collapse the wire format survives, on the rung where ours cannot tell: an MP3 320 file is
+    /// `Format.Mp3` to the decoder and MP3_320 (4) to the CDN, so the route asks for the object that exists rather
+    /// than for MP3_256's.</summary>
+    [Fact]
+    public void An_mp3_choice_keeps_the_rung_our_own_format_collapses()
+    {
+        Md.Track track = Track(0x66, File(Md.AudioFile.Types.Format.Mp3320, 0x32));
+
+        Spotify.Audio.FileChoice choice = Spotify.Audio.Choose(track, null, Spotify.Audio.Quality.VeryHigh320, 0, Market);
+
+        Assert.Equal(Spotify.Audio.Format.Mp3, choice.Fmt);
+        Assert.Equal(Md.AudioFile.Types.Format.Mp3320, choice.Wire);
+        Assert.Equal(4, (int)choice.Wire);
+    }
+
     /// <summary>An episode with an external url skips the key and the CDN entirely: it is a plain MP3 on somebody
     /// else's host.</summary>
     [Fact]
@@ -335,6 +412,12 @@ public class SpotifyAudioLadderTests
     }
 
     // ── gap batch B4: what a failure means, the lossless fallback, whose gain a body opens with ─────────────────────────
+    //
+    // …and the third way a lossless open fails, which none of the rules below could see when they were written: the
+    // ladder, the mirrors and the key can ALL succeed and the body still never arrive, because the CDN refuses every
+    // range. The clear head hides it — the track starts, plays half a second and goes silent — so the three facts about
+    // a refused body (it falls back like a refused key, it is decided before the head runs out, and the pump does not
+    // wait ninety seconds for it) are pinned here beside the rules they extend.
 
     /// <summary>G-038: a TRACK_V4 read that never reached a server, a 5xx or a 429 is the network being unlucky — retryable —
     /// and only an answer that says "nothing here" is the terminal Restricted.</summary>
@@ -362,6 +445,78 @@ public class SpotifyAudioLadderTests
     public void Only_a_lossless_file_whose_key_is_refused_falls_back(Spotify.Audio.Format format, Spotify.Audio.Fault fault,
         bool fallsBack)
         => Assert.Equal(fallsBack, Spotify.Audio.LosslessFallback.Decide(format, fault));
+
+    /// <summary>…and so does a lossless file whose BODY was refused. The key is only one of the two ways a lossless
+    /// open can hold nothing: a FLAC opened cleanly off its clear head, every CDN mirror then refused every range, and
+    /// the track played half a second and went silent for 57 s. The 320 rung is a different file id on a different
+    /// mirror set, so the demotion is the one move left; a non-lossless rung has nothing below it to fall to, and a
+    /// network fault is still a retry rather than a downgrade.</summary>
+    [Theory]
+    [InlineData(Spotify.Audio.Format.Flac, true)]
+    [InlineData(Spotify.Audio.Format.Flac24, true)]
+    [InlineData(Spotify.Audio.Format.OggVorbis320, false)]
+    [InlineData(Spotify.Audio.Format.OggVorbis160, false)]
+    [InlineData(Spotify.Audio.Format.Mp3, false)]
+    public void A_refused_body_falls_back_exactly_where_a_refused_key_does(Spotify.Audio.Format format, bool fallsBack)
+        => Assert.Equal(fallsBack, Spotify.Audio.LosslessFallback.Decide(format, Spotify.Audio.Fault.Refused));
+
+    /// <summary>THE FIRST-BODY DEADLINE. The clear head serves the opening ~0.6 s of a FLAC whether or not the body
+    /// ever starts, so "it is playing" is not evidence that it will keep playing. A lossless open that has landed zero
+    /// BODY bytes is demoted the moment its mirrors refuse, and otherwise once the bound passes; one landed byte ends
+    /// the question for good, and a non-lossless rung is never demoted by this rule at all.</summary>
+    [Theory]
+    [InlineData(Spotify.Audio.Format.Flac, 0L, true, 40L, true)]              // refused at once: the ~1 s downgrade
+    [InlineData(Spotify.Audio.Format.Flac24, 0L, false, 3_000L, true)]        // never refused, never arrived: the bound
+    [InlineData(Spotify.Audio.Format.Flac, 0L, false, 2_999L, false)]         // still inside the bound: keep waiting
+    [InlineData(Spotify.Audio.Format.Flac, 65_536L, true, 9_000L, false)]     // bytes landed: a starve, not a dead rung
+    [InlineData(Spotify.Audio.Format.Flac24, 1L, false, 90_000L, false)]      // one byte is enough to disprove it
+    [InlineData(Spotify.Audio.Format.OggVorbis320, 0L, true, 9_000L, false)]  // nothing below 320 to demote to
+    public void A_lossless_open_that_never_got_a_body_byte_is_demoted(Spotify.Audio.Format format, long bodyBytes,
+        bool refusing, long waitedMs, bool demotes)
+        => Assert.Equal(demotes, Spotify.Audio.LosslessFallback.DemoteForNoBody(format, bodyBytes, refusing, waitedMs));
+
+    /// <summary>A refused demotion does not SUPPRESS a later lossless attempt the way a missing key does, and that is
+    /// the difference between a diagnosis and a dead end. A key that cannot be had is deterministic — this build has no
+    /// deriver, or this account has no entitlement — so the 320 answer is sticky and no later play of the track pays
+    /// for the same verdict twice. A refused body is a server saying no this minute on an account that DOES have
+    /// lossless: keeping that for half an hour would quietly cost the user lossless on a track that is fine, and would
+    /// make the bug unreproducible — the retry meant to gather evidence would be served the cached rung and never reach
+    /// a mirror, so not one `audio.mirror` or `audio.resolve` line would be printed.</summary>
+    [Theory]
+    [InlineData(Spotify.Audio.Fault.NoDeriver, true)]
+    [InlineData(Spotify.Audio.Fault.NoKey, true)]
+    [InlineData(Spotify.Audio.Fault.Refused, false)]
+    public void Only_a_deterministic_lossless_failure_is_remembered(Spotify.Audio.Fault fault, bool sticky)
+        => Assert.Equal(sticky ? Spotify.Audio.ChoiceTtlMs : Spotify.Audio.RefusedChoiceTtlMs,
+                        Spotify.Audio.LosslessFallback.RememberFor(fault));
+
+    /// <summary>…and "not remembered" has to hold on the clock, not only in the mapping: a refused demotion is
+    /// SUPPRESSION — seconds, enough that a retry loop cannot hammer a dead url set — and never memory.</summary>
+    [Fact]
+    public void A_refused_demotion_is_suppression_and_not_memory()
+    {
+        long refused = Spotify.Audio.LosslessFallback.RememberFor(Spotify.Audio.Fault.Refused);
+        Assert.InRange(refused, 1_000L, 10_000L);
+        Assert.True(refused * 100 < Spotify.Audio.ChoiceTtlMs,
+            $"a refused demotion held for {refused} ms is memory, not suppression");
+    }
+
+    /// <summary>D5's patience, and the one fact it was missing. Ninety seconds is right for a link that is SLOW —
+    /// bytes are coming, just not yet — and wrong for a mirror set that answered a non-2xx to every range, because an
+    /// answer does not change by being waited on. A refused body still shows "Reconnecting" first (a re-resolve really
+    /// can fix expired urls) and then fails in seconds; a slow one keeps the full budget.</summary>
+    [Theory]
+    [InlineData(0L, false, Playback.Audio.StarvePolicy.Verdict.Flowing)]
+    [InlineData(0L, true, Playback.Audio.StarvePolicy.Verdict.Flowing)]      // refused, but nothing has waited yet
+    [InlineData(1_500L, true, Playback.Audio.StarvePolicy.Verdict.Recovering)]
+    [InlineData(5_999L, true, Playback.Audio.StarvePolicy.Verdict.Recovering)]
+    [InlineData(6_000L, true, Playback.Audio.StarvePolicy.Verdict.Failed)]   // one re-resolve cycle, then it is over
+    [InlineData(6_000L, false, Playback.Audio.StarvePolicy.Verdict.Recovering)]
+    [InlineData(89_999L, false, Playback.Audio.StarvePolicy.Verdict.Recovering)]
+    [InlineData(90_000L, false, Playback.Audio.StarvePolicy.Verdict.Failed)]
+    public void A_refused_body_fails_fast_where_a_slow_one_keeps_the_full_budget(long stallMs, bool refused,
+        Playback.Audio.StarvePolicy.Verdict expected)
+        => Assert.Equal(expected, Playback.Audio.StarvePolicy.Decide(stallMs, refused));
 
     /// <summary>D7: a build that cannot derive a lossless key never asks for the lossless rung.</summary>
     [Fact]

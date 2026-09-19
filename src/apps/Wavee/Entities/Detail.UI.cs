@@ -3,7 +3,8 @@
 // the 4-mode responsive ladder with both anti-flicker fail-safes, the Hero page-layout override, the centred two-column
 // row (MaxWidth 1600), the per-scope rail prefs + Splitter grip + resist fade + the 96-DIP compact strip, the notice
 // strip, the page tone plane and shell tint leaves, the accent and the page-body drop target — plus the rail family
-// (Rail, CompactRail, ShowHeader), NoticeBar, PlayPill and Satellite.
+// (Rail, CompactRail, ShowHeader), NoticeBar, PlayPill, Satellite, the More button and the billed-artist ATTRIBUTION
+// LINE every detail-frame hero and library pane heads its meta with (ArtistLine).
 // The vertical hero, the context band, the skeleton band and the band helpers are the named partial Detail.UI.Hero.cs.
 //
 // Role: UI
@@ -1521,19 +1522,23 @@ public static partial class Detail
         Children = [Icon(glyph, glyphSize, Tok.TextSecondary)],
     };
 
-    /// <summary>The rail's 40-DIP FAB: round, the Emphatic scale tier, the Subtle interaction fill.</summary>
-    static BoxEl Fab(string glyph, Action? onClick) => new BoxEl
+    /// <summary>The rail's 40-DIP FAB: round, the Emphatic scale tier, the Subtle interaction fill. <paramref name="size"/>
+    /// is the rail's edge by default; the library panes ask for their own 36 so the ⋯ matches the command circles beside it
+    /// (<c>Album.CommandCircle</c>) instead of standing 4 DIP taller than every one of them.</summary>
+    static BoxEl Fab(string glyph, Action? onClick, float size = RailFabSize, float glyphSize = 16f) => new BoxEl
     {
-        Width = RailFabSize, Height = RailFabSize, Shrink = 0f,
+        Width = size, Height = size, Shrink = 0f,
         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Corners = CornerRadius4.All(RailFabSize / 2f),
+        Corners = CornerRadius4.All(size / 2f),
         HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
-        Children = [Icon(glyph, 16f, Tok.TextSecondary)],
+        Children = [Icon(glyph, glyphSize, Tok.TextSecondary)],
     }.Interactive(Interaction.Subtle);
 
-    /// <summary>The More button: its flyout is built lazily AT OPEN from the newest menu factory.</summary>
-    static Element MoreButton(Func<ContextMenuModel?> menu, float size, float glyphSize, bool round)
+    /// <summary>The More button: its flyout is built lazily AT OPEN from the newest menu factory. <c>internal</c> because the
+    /// library's panes (<c>Album.Pane</c>, <c>Artist.Reader</c>) head their command rows with the SAME ⋯ — one menu host, so
+    /// a surface never grows a second one (library rework §5.0).</summary>
+    internal static Element MoreButton(Func<ContextMenuModel?> menu, float size, float glyphSize, bool round)
         => Embed.Comp(new MoreProps(size, glyphSize, round, menu), static () => new MoreHost());
 
     sealed record MoreProps(float Size, float Glyph, bool Round, Func<ContextMenuModel?> Menu)
@@ -1567,7 +1572,7 @@ public static partial class Detail
             _ = _props.Value;
             var p = _latest!;
             var overlay = UseContext(Overlay.Service);
-            BoxEl button = (p.Round ? Fab(Icons.More, null) : SatelliteBox(Icons.More, null, p.Size, p.Glyph)) with
+            BoxEl button = (p.Round ? Fab(Icons.More, null, p.Size, p.Glyph) : SatelliteBox(Icons.More, null, p.Size, p.Glyph)) with
             {
                 OnClick = null, ClickRequestsContext = true,
             };
@@ -1576,4 +1581,29 @@ public static partial class Detail
         }
     }
 
+    // ── the billed-artist attribution line ───────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The billed artists as one comma-joined run of 14/20/600 links (accent on hover), each one shrinkable and
+    /// clipped so a long bill yields instead of pushing the meta line out. An empty bill is an EMPTY BOX, never a blank
+    /// row of air: the header's gap must not open for an attribution that does not exist. A detail-frame piece, shared by
+    /// the library's album pane, the show pane's publisher slot and the artist reader (library rework §5.5).</summary>
+    internal static Element ArtistLine(IReadOnlyList<Controls.Face>? artists)
+    {
+        if (artists is not { Count: > 0 }) return new BoxEl();
+        var kids = new Element[artists.Count * 2 - 1];
+        for (int i = 0, k = 0; i < artists.Count; i++)
+        {
+            if (i > 0) kids[k++] = new TextEl(", ") { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextSecondary };
+            var face = artists[i];
+            var label = new TextEl(face.Name)
+            {
+                Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextSecondary, HoverColor = Tok.AccentTextPrimary,
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+            };
+            kids[k++] = face.OnClick is { } go
+                ? new BoxEl { Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = go, Shrink = 1f, MinWidth = 0f, Children = [label] }
+                : label;
+        }
+        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids };
+    }
 }

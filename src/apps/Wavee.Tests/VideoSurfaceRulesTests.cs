@@ -1137,4 +1137,95 @@ public sealed class VideoOverridesRosterTests : IDisposable
         Assert.Equal(ManagerSection.Results, OverrideUx.RootSection(roster.Count, "beta", OverrideUx.Search(roster, "beta").Count));
         Assert.Equal("spotify:track:b", Assert.Single(OverrideUx.Search(roster, "beta.mp4")).Uri);
     }
+
+    // ── the Video ▸ verbs' shared enablement gate (Track.Menu.Video.cs) ─────────────────────────────────────────────
+    //
+    // The five verbs' IsEnabled predicates are all `Track.OffersVideoVerb`, which is `OverrideUx.MenuFor` over the live
+    // roster — so a row `VideoItem` builds and the verb behind it can never disagree. These facts pin that agreement in
+    // the three states the submenu actually has; no window, no action table, no entity store.
+
+    [Fact]
+    public void With_nothing_attached_the_submenu_offers_only_attach()
+    {
+        Assert.True(Track.OffersVideoVerb(MenuItems.Attach, A));
+        Assert.False(Track.OffersVideoVerb(MenuItems.Replace, A));
+        Assert.False(Track.OffersVideoVerb(MenuItems.Locate, A));
+        Assert.False(Track.OffersVideoVerb(MenuItems.ShowInExplorer, A));
+        Assert.False(Track.OffersVideoVerb(MenuItems.Remove, A));
+    }
+
+    [Fact]
+    public void With_a_healthy_attachment_the_submenu_offers_replace_reveal_and_remove_but_never_attach()
+    {
+        Video.Overrides.Attach(A, @"C:\v\a.mp4", "k", 1);
+        Assert.Equal(OverrideTier.UseOverride, Video.Overrides.Decide(A).Tier);
+
+        Assert.False(Track.OffersVideoVerb(MenuItems.Attach, A));      // the uri is the primary key: attach IS replace
+        Assert.True(Track.OffersVideoVerb(MenuItems.Replace, A));
+        Assert.True(Track.OffersVideoVerb(MenuItems.ShowInExplorer, A));
+        Assert.True(Track.OffersVideoVerb(MenuItems.Remove, A));
+        Assert.False(Track.OffersVideoVerb(MenuItems.Locate, A));      // nothing to repair
+    }
+
+    [Fact]
+    public void With_a_broken_link_the_submenu_offers_locate_and_never_reveal()
+    {
+        Video.Overrides.Attach(A, @"C:\v\gone.mp4", "k", 1);
+        Video.Overrides.FileExists = static _ => false;
+        Assert.Equal(OverrideTier.Broken, Video.Overrides.Decide(A).Tier);
+
+        Assert.True(Track.OffersVideoVerb(MenuItems.Locate, A));
+        Assert.True(Track.OffersVideoVerb(MenuItems.Replace, A));
+        Assert.True(Track.OffersVideoVerb(MenuItems.Remove, A));
+        Assert.False(Track.OffersVideoVerb(MenuItems.ShowInExplorer, A));   // revealing a file that is gone is a lie
+        Assert.False(Track.OffersVideoVerb(MenuItems.Attach, A));
+    }
+
+    [Fact]
+    public void Without_a_playable_uri_or_a_roster_no_video_verb_is_offered()
+    {
+        Assert.False(Track.OffersVideoVerb(MenuItems.Attach, null));
+        Assert.False(Track.OffersVideoVerb(MenuItems.Attach, ""));
+
+        Video.Overrides.Attach(null);                                  // the feature's kill switch (Dispose restores it)
+        Assert.False(Track.OffersVideoVerb(MenuItems.Attach, A));
+        Assert.False(Track.OffersVideoVerb(MenuItems.Remove, A));
+    }
+}
+
+// ── the Video ▸ verbs are actually REGISTERED ────────────────────────────────────────────────────────────────────────
+
+/// <summary>The defect this pins: the submenu shipped in `Track.Menu.cs` while the five verbs behind it did not, so
+/// `Actions.Menu.Row` returned null for every row and `VideoItem` dropped the submenu entirely. In the Entities
+/// collection because it calls the same `Track.InstallActions()` `BootOrderingTests` does, and `AppActions` is a
+/// process-wide table.</summary>
+[Collection(EntitiesCollection.Name)]
+public class VideoMenuVerbRegistrationTests
+{
+    [Fact]
+    public void Install_registers_the_five_video_verbs_the_submenu_asks_for()
+    {
+        Track.InstallActions();
+
+        Assert.NotNull(AppActions.Find(ActionId.AttachVideo));
+        Assert.NotNull(AppActions.Find(ActionId.ReplaceVideo));
+        Assert.NotNull(AppActions.Find(ActionId.LocateVideo));
+        Assert.NotNull(AppActions.Find(ActionId.ShowVideoInExplorer));
+        Assert.NotNull(AppActions.Find(ActionId.RemoveVideo));
+
+        // Detach is the one destructive row, and it is the one that carries the flag (it sits behind the separator).
+        Assert.True(AppActions.Find(ActionId.RemoveVideo)!.Destructive);
+        Assert.False(AppActions.Find(ActionId.AttachVideo)!.Destructive);
+
+        // Semantic icon keys, never glyphs — the pair that must differ so a submenu reads at a glance.
+        Assert.Equal(ActionIcons.Video, AppActions.Find(ActionId.AttachVideo)!.IconKey);
+        Assert.Equal(ActionIcons.Replace, AppActions.Find(ActionId.ReplaceVideo)!.IconKey);
+        Assert.Equal(ActionIcons.Locate, AppActions.Find(ActionId.LocateVideo)!.IconKey);
+        Assert.Equal(ActionIcons.RevealFolder, AppActions.Find(ActionId.ShowVideoInExplorer)!.IconKey);
+        Assert.Equal(ActionIcons.Remove, AppActions.Find(ActionId.RemoveVideo)!.IconKey);
+
+        // None of the five is a toggle row.
+        Assert.False(AppActions.Find(ActionId.AttachVideo)!.IsToggle);
+        Assert.False(AppActions.Find(ActionId.RemoveVideo)!.IsToggle);
+    }
 }

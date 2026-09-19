@@ -452,28 +452,46 @@ public static partial class Spotify
             {
                 // Drifted since the ask went out (an optimistic write, a concurrent full walk, a scope hiccup):
                 // never guess which of the delta's items still apply — fall back to the full, authoritative walk.
-                Entities.RefreshEdge(EdgeFor(set), me);
+                ForfeitLedger(set, username, me, "baseline", relation.Count(me), baselineCount);
                 return;
             }
 
+            // Counted over what THIS relation can hold, never over the raw answer: `collection` is ONE wire set for
+            // two relations (liked tracks, saved albums), so a delta asked for one carries the other's items too, and
+            // counting those made every such delta "fail to reconcile" (2026-09-18).
+            added = 0;
+            removed = 0;
             foreach (var item in items)
             {
                 if (!TryResolveDeltaTarget(scope, set, item.Uri, out int targetSlot, out byte flags)) continue;
-                if (item.Removed) relation.Remove(me, targetSlot);
-                else relation.Insert(me, targetSlot, new LibraryEdge(item.AddedAt, flags), at: 0);
+                if (item.Removed) { relation.Remove(me, targetSlot); removed++; }
+                else { relation.Insert(me, targetSlot, new LibraryEdge(item.AddedAt, flags), at: 0); added++; }
             }
 
             if (!LibrarySyncLedger.PostApplyMatches(baselineCount, relation.Count(me), added, removed))
             {
                 // The delta's own items did not reconcile with what actually landed (a duplicate add, a remove that
-                // named nothing we held): discard it — never persist the new token — and ask again. With nothing
-                // trustworthy in the ledger, that next ask is a full walk, not another delta.
-                Entities.RefreshEdge(EdgeFor(set), me);
+                // named nothing we held): discard it — never persist the new token — and ask again.
+                ForfeitLedger(set, username, me, "reconcile", relation.Count(me), baselineCount + added - removed);
                 return;
             }
 
             Store.MetaSet(Api.CollectionMetaKey(username, set), LibrarySyncLedger.Encode(newSyncToken, relation.Count(me)));
             Entities.Publish();
+        }
+
+        /// <summary>A delta that cannot be trusted FORFEITS its ledger entry before the relation is asked for again.
+        /// Without the erase the re-ask was handed the SAME token and count (<c>Fetch.FillRevisions</c> reads this
+        /// key), took the delta path again, failed the same check again and re-asked again — an unbounded
+        /// <c>/collection/v2/delta</c> loop, hundreds of 200s a minute, for as long as the app ran (2026-09-18). An
+        /// empty entry decodes as <see cref="LedgerEntry.Empty"/>, so the next ask is the FULL walk — which the doc on
+        /// <see cref="ApplyCollectionDelta"/> always promised and the code never did.</summary>
+        static void ForfeitLedger(LibraryEdgeKind set, string username, int me, string why, int have, int want)
+        {
+            Log.Warn("library", "collection delta discarded (" + set + ", " + why + ": have " + have + ", want " + want
+                                 + ") — ledger forfeited, falling back to the full walk");
+            Store.MetaSet(Api.CollectionMetaKey(username, set), "");
+            Entities.RefreshEdge(EdgeFor(set), me);
         }
 
         static FetchEdge EdgeFor(LibraryEdgeKind set) => set switch

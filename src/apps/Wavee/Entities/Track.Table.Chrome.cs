@@ -4,6 +4,8 @@
 // (66 → 160…280 over 260 ms, Reflow), the context band's words Find · Filter · Play, the column header (one ColumnSet +
 // one TrackSize[] with the rows, keyed cells, sort carets), the Sort / Row size / More flyouts, the 368-wide filter card
 // and the selection command bar's commands. The TableHost partial of Track.Table.cs.
+// Plus, at STRUCT level, the embedded arm's lane constants and its host-free header shim (§6) — what the library's panes
+// shimmer under before a tracklist has answered (library rework §5.5).
 //
 // Role: UI
 // Owner: M
@@ -117,10 +119,13 @@ public readonly partial struct Track
             Element[] children = !vertical && _latest.ShowToolbar
                 ? [new BoxEl { Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, 0f, 0f, Spacing.XS), Children = stack.ToArray() }]
                 : stack.ToArray();
+            // The 8 DIP above the header is AIR UNDER THE TOOLBAR, so an arm with no toolbar must not pay it: the
+            // embedded pane's shimmer draws `TableHeaderShim(compact: true)`, which states none, and the 8 the real
+            // chrome used to add anyway moved every row down by that much on the frame the shimmer released.
             return new BoxEl
             {
                 Key = "chrome", Direction = 1,
-                Padding = new Edges4(padX, vertical ? 0f : Spacing.S, padX, 0f),
+                Padding = new Edges4(padX, vertical || !_latest.ShowToolbar ? 0f : Spacing.S, padX, 0f),
                 Children = children,
             };
         }
@@ -1406,4 +1411,114 @@ public readonly partial struct Track
             }
         }
     }
+
+    // ══ 6. THE EMBEDDED ARM: THE LANE CONSTANTS + THE HEADER SHIM (library rework §5.5, wave L1) ══════════════════════
+    //
+    // What a pane that has no table YET shimmers with: the lane set the embedded album table converges to, its width
+    // tracks, and the column header ALONE. The real header is a component on TableHost (it reads the live sort, the check
+    // lane and the measured tier), so a surface with no host cannot mount it — hence this shim, built from the same
+    // GridEl over the same TrackSize[] with the same gap, header height and hairline, so the crossing from the shim to
+    // the real header is a cross-fade and never a reflow.
+    //
+    // WHY A CONSTANT SET, NOT A COMPUTED ONE: the live shape is a memo over the MEASURED tier, the relief ladder and the
+    // appearance prefs (TableHost.ComputeShape) — none of which exists before the table mounts. At `ShowPlays = false`
+    // the album arm's lanes are the SAME at every tier 0-4: Album / By / Date / Plays / Tempo / Artist / Expand are all
+    // off for an album source (Detail.Config.Album carries ShowArtThumb false, so Thumb is off too, and a profile with no
+    // Drawer seam has no Expand lane), and Heart folds only at tier ≥ 5 — a pane under 300 DIP, which the library's
+    // master-detail never gives the album column. So the compact-tier set below is EXACT for every width this surface
+    // has, and it is derived from the same rules the table applies rather than spelled out lane by lane.
+
+    /// <summary>The tier the embedded pane converges to: the 720-859 rung the ~784-DIP album column lands on (W1). Tiers
+    /// 0-3 share <see cref="RowMetrics.PadXFor"/> and <see cref="RowMetrics.ColGapFor"/>, so the shim's geometry is
+    /// identical across all of them; the number only has to be one of them.</summary>
+    public const int EmbeddedTier = 1;
+
+    /// <summary>The embedded album table's lanes at <c>ShowPlays = false</c>: <c># · ♥ · Title* · ⏱ · …</c>. The ONE
+    /// constant the pane's shimmer, its header shim and its width tracks all read (library rework §5.5).
+    /// <para>A release with a video track trades the "…" lane for the film lane (<c>TableRules.TrailingColumns</c>) — a
+    /// trade of CELL, not of width, since 2026-09-18: both are <c>Lane.Actions</c> wide. So the shim can show the common
+    /// arm without knowing what the rows will carry, and the real header lands on exactly the shim's geometry.</para></summary>
+    public static readonly ColumnSet EmbeddedColumns = new(
+        Album: false, By: false, Date: false, Video: false, Plays: false, Heart: true, Thumb: false,
+        Actions: true, Tier: EmbeddedTier);
+
+    /// <summary>The width tracks for <see cref="EmbeddedColumns"/> — the SAME cached instance the real rows would get
+    /// (<see cref="TracksFor"/>), so the shimmer rows and the header shim share the array the table itself hands out.
+    /// <para>A property over a lazy holder, NOT a <c>static readonly</c> field: field initializers of a partial type run
+    /// in an order C# does not specify across FILES, and this one would have to read <c>Track.UI.cs</c>'s track cache. The
+    /// holder is initialized on first touch instead, by which point the struct's own statics are in.</para></summary>
+    public static TrackSize[] EmbeddedTracks => EmbeddedLanes.Tracks;
+
+    static class EmbeddedLanes
+    {
+        // Art is irrelevant here (the set carries no Thumb lane) but it is part of the cache key, so pass the ladder's
+        // own default rung rather than a zero that would fork the cache.
+        internal static readonly TrackSize[] Tracks = TracksFor(in EmbeddedColumns, RowMetrics.ThumbSize);
+    }
+
+    /// <summary>The embedded table's column header, WITHOUT a host: <c>#</c> (centred between the same two caret slots the
+    /// real <c>IndexSortCell</c> reserves, so it sits over the row numbers), an empty ♥ lane, "Title", the clock and an
+    /// empty "…" lane, then the band's single 1-DIP hairline. Inert on purpose — there is nothing to sort yet.
+    /// <para><paramref name="compact"/> is the register: true = the pane's (no air above the header, because no toolbar
+    /// sits over it — the embedded arm), false = the full table's two-column chrome, which pays <c>Spacing.S</c> above it.
+    /// The horizontal padding is the chrome's own <c>PadXFor(tier)</c> in both cases, so a caller adds NONE of its own.</para>
+    /// <para>The colours are the default sort's (Index): the <c>#</c> reads as the active header, everything else as
+    /// tertiary — exactly what the real header paints the instant it replaces this one.</para></summary>
+    public static Element TableHeaderShim(bool compact)
+    {
+        var set = EmbeddedColumns;
+        var tracks = EmbeddedTracks;
+        var cells = new List<Element>(tracks.Length);
+        cells.Add(new BoxEl
+        {
+            Key = CellKey.Num, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
+            Children =
+            [
+                new BoxEl { Width = Lane.NumCaretSlot, Shrink = 0f },
+                new BoxEl
+                {
+                    Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Children = [ShimLabel(Loc.Get(Strings.Detail.Column.Number), active: true)],
+                },
+                new BoxEl { Width = Lane.NumCaretSlot, Shrink = 0f },
+            ],
+        });
+        if (set.Heart) cells.Add(new BoxEl { Key = CellKey.Heart });
+        cells.Add(new BoxEl
+        {
+            Key = CellKey.Title, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start,
+            MinWidth = 0f, ClipToBounds = true,
+            Children = [ShimLabel(Loc.Get(Strings.Detail.Column.Title), active: false)],
+        });
+        cells.Add(new BoxEl
+        {
+            Key = CellKey.Duration, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+            MinWidth = 0f, ClipToBounds = true,
+            Children = [Icon(Icons.Clock, 14f, Tok.TextTertiary)],
+        });
+        if (set.Actions) cells.Add(new BoxEl { Key = CellKey.More });
+
+        float padX = RowMetrics.PadXFor(set.Tier);
+        return new BoxEl
+        {
+            Key = "header:shim", Direction = 1, ClipToBounds = true,
+            Padding = new Edges4(padX, compact ? 0f : Spacing.S, padX, 0f),
+            Children =
+            [
+                new GridEl
+                {
+                    Columns = tracks, ColGap = RowMetrics.ColGapFor(set.Tier),
+                    RowHeight = TableRules.HeaderHeightFor(classic: false), Children = cells.ToArray(),
+                },
+                new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
+            ],
+        };
+    }
+
+    /// <summary>The header label at the Modern rung (12/600), in the real header's two colours.</summary>
+    static TextEl ShimLabel(string text, bool active) => new(text)
+    {
+        Size = 12f, Weight = 600, Color = active ? Tok.TextSecondary : Tok.TextTertiary,
+        MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+    };
 }

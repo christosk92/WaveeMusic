@@ -501,11 +501,11 @@ public static partial class Update
             IPackageUpdater updater = PackageIdentity.IsPackaged
                 ? new PackageUpdater { RestartArgument = Platform.RelaunchedAfterUpdateFlag }
                 : new NullPackageUpdater();
-            var http = new HttpClient(new SocketsHttpHandler
+            var http = new HttpClient(Wire.Handler("update", new SocketsHttpHandler
             {
                 PooledConnectionLifetime = TimeSpan.FromMinutes(2), PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
                 MaxConnectionsPerServer = 4, AutomaticDecompression = DecompressionMethods.All,
-            }) { Timeout = TimeSpan.FromSeconds(15) };
+            })) { Timeout = TimeSpan.FromSeconds(15) };
             // The product token the E2E proves the in-app checker by ("Wavee/…"); GitHub refuses a request without one.
             http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", me.UserAgent(RuntimeInformation.OSDescription, Arch));
             http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/vnd.github+json");

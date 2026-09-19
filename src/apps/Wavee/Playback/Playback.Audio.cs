@@ -32,7 +32,8 @@
 //      `Prefetching`) is a bounded WAIT and not a short read, and why a wait that runs out is `Starved` and the reader
 //      waits AGAIN (D5): a slow-but-alive CDN must never silently end a track. The pump owns the budget — "Reconnecting"
 //      after 1.5 s, `Fault.Network` after 90 s (`StarvePolicy`) — and a Stop or a superseding Load closes the bytes, which
-//      is the only thing that ends a starving read.
+//      is the only thing that ends a starving read. The 90 s is for a link that is SLOW; a mirror set that refused every
+//      range has answered, and waiting out an answer is the one thing that cannot work, so it fails after 6 s instead.
 //
 //   3. NEVER ROUTE A 0 ms CROSSFADE THROUGH THE CROSSFADE PATH. `GainEnvelope.Fade(…, 0 frames)` folds to
 //      `Constant`, which is two voices at unity for the whole tail — not a butt-join. `EffectiveFadeMs` is the ONLY
@@ -146,7 +147,13 @@ public static partial class Playback
 
         /// <summary>What a starving read means to the pump (D5): nothing while bytes flow or the wait is short, the
         /// "Reconnecting" band once it has waited <see cref="StallReportMs"/>, and a network fault — never the end of the
-        /// track — once it has waited <see cref="StallFailMs"/>. PURE; the tick folds it once per 200 ms.</summary>
+        /// track — once it has waited <see cref="StallFailMs"/>. PURE; the tick folds it once per 200 ms.
+        ///
+        /// <para>D5's patience has ONE fact it never had: whether the bytes are late or REFUSED. Ninety seconds is the
+        /// right budget for a link that is slow or flapping, because bytes are coming — just not yet. It is the wrong
+        /// budget for a mirror set that answered a non-2xx to every range, because that is an answer, and an answer does
+        /// not change by being waited on. A refused body therefore fails fast (<see cref="RefusedFailMs"/>) where a slow
+        /// one keeps the full 90 s.</para></summary>
         public static class StarvePolicy
         {
             /// <summary>Longer than a far seek's probe on a healthy link, shorter than a listener's patience.</summary>
@@ -155,10 +162,20 @@ public static partial class Playback
             /// <summary>0.2.9's blocking read budget.</summary>
             public const int StallFailMs = 90_000;
 
+            /// <summary>And the budget for a mirror set that REFUSED: one re-resolve cycle
+            /// (<see cref="Spotify.Audio.Body.ResolveBackoffMs"/>) plus its round trip. That is exactly long enough for
+            /// the body to have asked storage-resolve again and been handed a FRESH url set — if the stall survives
+            /// that, the new urls refused too and eighty-four more seconds of silence buy nothing.</summary>
+            public const int RefusedFailMs = Spotify.Audio.Body.ResolveBackoffMs + 1_000;
+
             public enum Verdict : byte { Flowing, Recovering, Failed }
 
-            public static Verdict Decide(long stallMs)
-                => stallMs >= StallFailMs ? Verdict.Failed
+            /// <summary>The verdict for one read's wait. PURE.</summary>
+            /// <param name="stallMs">How long the live body's read has waited without a byte.</param>
+            /// <param name="refused">The live body's mirrors are refusing RIGHT NOW
+            /// (<see cref="Spotify.Audio.Body.Refusing"/>) rather than merely being slow.</param>
+            public static Verdict Decide(long stallMs, bool refused = false)
+                => stallMs >= (refused ? RefusedFailMs : StallFailMs) ? Verdict.Failed
                  : stallMs >= StallReportMs ? Verdict.Recovering
                  : Verdict.Flowing;
         }
@@ -320,7 +337,13 @@ public static partial class Playback
         static PlaybackState s_lastState = PlaybackState.Idle;
         static long s_lastPositionPostMs, s_lastWorkLogMs;
         static long s_nextVoiceId;
-        static int s_gaplessArmed, s_endingSoonSent, s_endedHold;
+        static int s_endedHold;
+        // The endgame's per-track state (EndgamePlan, G-112): `s_armLogged` gates the once-per-track `[gapless] arm`
+        // diagnostic; `s_lastEndgameAskMs`/`s_endgameAskCount` drive the re-asking nudge (a sentinel of -1 means "never
+        // asked this track"). All three reset wherever a new track becomes active or a seek re-arms the endgame.
+        static bool s_armLogged;
+        static long s_lastEndgameAskMs = -1;
+        static int s_endgameAskCount;
 
         // the prepared slot (B)
         static IPreparedItem? s_prepItem;
@@ -457,19 +480,8 @@ public static partial class Playback
                 maxBlock: 1024,
                 driveWithOwnThread: false,
                 onSessionCreated: static session =>
-                {
-                    FollowSilentSession(session);
-                    new AudioFeedThread(session, sampleRate: session.Format.SampleRate).Start();
-                },
+                    new AudioFeedThread(session, sampleRate: session.Format.SampleRate).Start(),
                 decoderFactory: TakePendingDecoder);
-
-        /// <summary>Point a paced silent endpoint at its session's mixer, so a drained session's trailing silence drains
-        /// instead of refilling the sink and <c>Ended</c> can arrive (<see cref="PacedSilentEndpoint"/>, THE TAIL). Before
-        /// the feed renders.</summary>
-        static void FollowSilentSession(PcmAudioSession session)
-        {
-            if (session.Sink is PacedSilentEndpoint paced) paced.Follow(session.Mixer);
-        }
 
         /// <summary>Read the persisted DSP preferences. Seeded BEFORE the first open, so a session never renders one
         /// block with a flat EQ and then ramps.</summary>
@@ -766,8 +778,9 @@ public static partial class Playback
                 s_loadEpoch = epoch;
                 s_id = id;
                 s_activeKind = kind;
-                s_gaplessArmed = 0;
-                s_endingSoonSent = 0;
+                s_armLogged = false;
+                s_lastEndgameAskMs = -1;
+                s_endgameAskCount = 0;
                 s_endedHold = 0;
             }
 
@@ -809,8 +822,9 @@ public static partial class Playback
             {
                 Task done = await Task.WhenAny(open, Task.Delay(OpenWatchMs)).ConfigureAwait(false);
                 if (ReferenceEquals(done, open)) break;
-                if (StarvePolicy.Decide(StallOf(bytes)) != StarvePolicy.Verdict.Failed) continue;
-                Log.Warn("audio", $"open starved for {StallOf(bytes)} ms — failing the load");
+                if (StarvePolicy.Decide(StallOf(bytes), RefusedOf(bytes)) != StarvePolicy.Verdict.Failed) continue;
+                Log.Warn("audio", $"open starved for {StallOf(bytes)} ms reason={(RefusedOf(bytes) ? "refused" : "slow")}"
+                                  + " — failing the load");
                 try { bytes.Close(); } catch { }
                 try { await open.ConfigureAwait(false); } catch { }
                 return Fault.Network;
@@ -823,6 +837,10 @@ public static partial class Playback
 
         /// <summary>How long a live Spotify body's read has waited without a byte; 0 for any other source.</summary>
         static long StallOf(IMediaByteSource? bytes) => bytes is RingSource ring ? ring.Body.StallMs : 0;
+
+        /// <summary>Is a live Spotify body's mirror set refusing right now (the last thing that happened to it was a
+        /// range every url said no to)? False for a local file, a module stream or a podcast enclosure.</summary>
+        static bool RefusedOf(IMediaByteSource? bytes) => bytes is RingSource ring && ring.Body.Refusing;
 
         static async Task OpenSessionAsync(IMediaByteSource bytes, Opened opened, EntityRef row, uint epoch,
             int fromMs, long chain, CancellationToken token, bool autoResume)
@@ -954,7 +972,6 @@ public static partial class Playback
         {
             IAudioEndpoint endpoint = SilentSink(format);
             var session = new PcmAudioSession(format, endpoint.Sink, endpoint.Clock, 1024, driveWithOwnThread: false, endpoint);
-            FollowSilentSession(session);
             session.Configure(PcmAudioPlayer.BuildGraphSpec(effects, format));
             if (effects is not null) session.BindEffects(effects);
             var feed = new AudioFeedThread(session, sampleRate: format.SampleRate);   // attaches itself; the session disposes it
@@ -1769,7 +1786,17 @@ public static partial class Playback
                 // Land: the page the plan resumes at primes the decoder; the peek fixes the first frame's granule from
                 // the first page granule ahead (never from OffsetGranule, which ENDS that page); the clock drops what
                 // precedes the target inside the packet that holds it.
-                if (!ReadWindowAt(plan.Offset, plan.WindowBytes, landing: true)) { _eof = true; return -1; }
+                if (!ReadWindowAt(plan.Offset, plan.WindowBytes, landing: true))
+                {
+                    // The landing window never arrived. The decoder is NOT primed here, so unlike the FLAC arm this
+                    // cannot keep waiting on the ring — the track ends, as it did before. What it no longer does is
+                    // throw: −1 is the engine's `InvalidOperationException("Decoder could not seek to the requested
+                    // frame.")`, and a seek that failed because the bytes are missing is a fact about the link, not a
+                    // bug in the caller. The seek completes at the target and `Read`'s 0 ends it a tick later.
+                    _eof = true;
+                    Log.Warn("audio", $"audio.seek.short codec=vorbis target={target} page={plan.Offset} eof=1");
+                    return VorbisClock.MixFrameOf(target, _rate, _target.SampleRate, _origin);
+                }
                 long start = PeekLanding();
                 _dec.Prime();
                 _clock = VorbisClock.At(start);
@@ -2373,8 +2400,9 @@ public static partial class Playback
                 s_anchorClock = s_joinFrame;
                 s_anchorPlayheadMs = 0;
                 s_joinPending = false;
-                s_endingSoonSent = 0;
-                s_gaplessArmed = 0;
+                s_armLogged = false;
+                s_lastEndgameAskMs = -1;
+                s_endgameAskCount = 0;
             }
             // Post-hand-off seeks must reach B, not the retired primary — that is the whole job of this call.
             if (voice is not null)
@@ -2432,8 +2460,9 @@ public static partial class Playback
                 s_prepId = default;
                 s_prepDurMs = 0;
                 s_prepOverlap = false;
-                s_endingSoonSent = 0;
-                s_gaplessArmed = 0;
+                s_armLogged = false;
+                s_lastEndgameAskMs = -1;
+                s_endgameAskCount = 0;
                 if (item.AudioVoice is { } fadeVoice)
                 {
                     try { sess.SetActiveVoice(id, fadeVoice, TimeSpan.FromMilliseconds(s_activeDurMs), item.TotalFrames); }
@@ -2526,7 +2555,7 @@ public static partial class Playback
             MediaPlayer? p = Volatile.Read(ref s_player);
             if (p is null) return;
             try { await p.SeekAsync(TimeSpan.FromMilliseconds(Math.Max(0, ms)), SeekMode.Accurate).ConfigureAwait(false); }
-            catch (Exception ex) { Log.Warn("audio", "seek failed", ex); return; }
+            catch (Exception ex) { SeekFailed(ms, ex); return; }
 
             lock (s_gate)
             {
@@ -2542,10 +2571,34 @@ public static partial class Playback
                     s_anchorPlayheadMs = Math.Max(0, ms);
                 }
                 // A seek back out of the endgame window re-arms it: the reducer prepares again when it reopens.
-                if (s_activeDurMs > 0 && ms < s_activeDurMs - EndingSoonMs(EffectiveFadeMs, s_activeDurMs)) s_endingSoonSent = 0;
+                if (s_activeDurMs > 0 && ms < s_activeDurMs - EndingSoonMs(EffectiveFadeMs, s_activeDurMs))
+                { s_lastEndgameAskMs = -1; s_endgameAskCount = 0; }
             }
             if (t0 != 0) RecordSeek(ms, t0, before);
             PostSignal(AudioSignal.Seeked, epoch == 0 ? s_loadEpoch : epoch, ms);
+        }
+
+        /// <summary>A seek the decoder could not land — `Decoder could not seek to the requested frame` is the engine
+        /// giving up after its own probes read nothing, which is what a seek into a ring that never filled looks like
+        /// from the far side. A HANDLED outcome, and the handling is the part that was missing: the PARKED target is
+        /// released, because `ActivePositionMs` reports a pending target rather than the real playhead (the bar sat at
+        /// the place the seek was aiming for, on a track that was not moving) and `s_pendingSeekQueued` latches — one
+        /// swallowed failure and the `Ready` arm never queues another seek for the rest of the track.
+        ///
+        /// <para>No fault is posted here. A seek fails because the BYTES are not there, and the body that has them is
+        /// already being folded by <see cref="FoldStall"/> — which now fails a refused body in seconds. Two verdicts for
+        /// one cause would be one fault too many; the line below is what ties them together in the log.</para></summary>
+        static void SeekFailed(int ms, Exception ex)
+        {
+            IMediaByteSource? live;
+            lock (s_gate)
+            {
+                live = s_bytes;
+                s_pendingSeekMs = -1;
+                s_pendingSeekQueued = false;
+            }
+            Log.Warn("audio", $"audio.seek.failed to={ms} stallMs={StallOf(live)} "
+                              + $"refusing={(RefusedOf(live) ? 1 : 0)} why={ex.GetType().Name}", ex);
         }
 
         /// <summary>A seek on a silent VOICE session: a fresh silent session holding what is left of the track from
@@ -2571,7 +2624,7 @@ public static partial class Playback
                     s_pendingSeekMs = -1;
                     s_activeStartMs = -start.PositionOffsetMs;
                     s_activePrimaryId = fresh.PrimaryVoiceIdValue;
-                    if (ms < durMs - EndingSoonMs(EffectiveFadeMs, durMs)) s_endingSoonSent = 0;
+                    if (ms < durMs - EndingSoonMs(EffectiveFadeMs, durMs)) { s_lastEndgameAskMs = -1; s_endgameAskCount = 0; }
                 }
             }
             if (!adopted)
@@ -2640,28 +2693,33 @@ public static partial class Playback
             // (0) the starve rule (D5): a starving read is "Reconnecting", then a network fault — never the end of the track.
             if (!silent && FoldStall(epoch, pos)) return;
 
-            // (a) the arm SNAPSHOT. Diagnostic, not the commit: `reason` is what tells a log reader why a boundary was
-            // a hard cut, which is otherwise indistinguishable from a boundary that simply had no next track.
+            // (a)+(b) the endgame (G-112): EndgamePlan is evaluated fresh every tick, replacing the once-per-load
+            // `s_gaplessArmed`/`s_endingSoonSent` latches — an unprepared endgame that asked once and got nothing kept
+            // asking never again (the diagnosed bug: a stalled re-seed left nothing to prepare, so the reducer was
+            // never nudged a second time). The arm line still logs once per track (diagnostic — `reason` is what
+            // tells a log reader why a boundary was a hard cut); the ask re-fires every ~3 s while the window stays
+            // open with nothing prepared and nothing in flight.
             long activePos = pos;
-            if (state == PlaybackState.Playing && !s_crossfadeInFlight && !s_joinPending
-                && s_activeDurMs > 0 && s_gaplessArmed == 0
-                && activePos >= s_activeDurMs - ArmLeadMs(fadeMs))
+            bool prepared = s_prepItem is { IsReady: true };
+            bool handOffInFlight = s_crossfadeInFlight || s_joinPending;
+            EndgamePlan plan = EndgamePlan.Decide(activePos, s_activeDurMs, fadeMs, prepared, s_prepOverlap,
+                handOffInFlight, s_armLogged, s_lastEndgameAskMs, FrameNowMs());
+
+            if (state == PlaybackState.Playing && plan.LogArm)
             {
-                s_gaplessArmed = 1;
-                bool primed = s_prepItem is { IsReady: true };
+                s_armLogged = true;
                 int reason = s_prepItem is null && Volatile.Read(ref s_prepInFlight) == 0 ? 4
                            : s_prepItem is null ? 2
                            : !s_prepOverlap ? 3 : 0;
-                Log.Info("audio", $"[gapless] arm remainMs={s_activeDurMs - activePos} fadeMs={fadeMs} "
-                    + $"primed={primed} overlap={s_prepOverlap} reason={reason} clock={sess.SampleClock}");
+                Log.Info("audio", $"[gapless] arm remainMs={plan.RemainMs} fadeMs={fadeMs} "
+                    + $"primed={prepared} overlap={s_prepOverlap} reason={reason} clock={sess.SampleClock}");
             }
 
-            // (b) the endgame window, once per load (G-112): the reducer prepares the next row now.
-            if (state == PlaybackState.Playing && s_endingSoonSent == 0 && s_activeDurMs > 0
-                && !s_crossfadeInFlight && !s_joinPending
-                && activePos >= s_activeDurMs - EndingSoonMs(fadeMs, s_activeDurMs))
+            if (state == PlaybackState.Playing && plan.Action == EndgameAction.Ask)
             {
-                s_endingSoonSent = 1;
+                s_lastEndgameAskMs = FrameNowMs();
+                s_endgameAskCount++;
+                Log.Info("audio", $"[gapless] ask n={s_endgameAskCount} remainMs={plan.RemainMs}");
                 PostEndingSoon(epoch);
             }
 
@@ -2767,21 +2825,29 @@ public static partial class Playback
         /// <summary>Fold the live body's stall into the reducer (D5, G-102): "Reconnecting" (<c>RecoveryKind.Network</c> +
         /// Buffering) once a read has waited <see cref="StarvePolicy.StallReportMs"/>, cleared (+ Buffered) the moment bytes
         /// flow again, and <see cref="Fault.Network"/> once it has waited <see cref="StarvePolicy.StallFailMs"/> — the
-        /// reducer's Stop then closes the body, which is what ends the read. True when the load failed.</summary>
+        /// reducer's Stop then closes the body, which is what ends the read. True when the load failed.
+        ///
+        /// <para>A body whose mirrors are REFUSING gets <see cref="StarvePolicy.RefusedFailMs"/> instead: the user still
+        /// sees "Reconnecting" first (a re-resolve really can fix expired urls), but the load fails in seconds rather
+        /// than holding a silent track for a minute and a half. The FAULT is the same `Network` either way — what the
+        /// user can do about it is the same, and only the log line needs to know which it was.</para></summary>
         static bool FoldStall(uint epoch, long posMs)
         {
             IMediaByteSource? live;
             lock (s_gate) live = s_bytes;
             long stallMs = StallOf(live);
-            switch (StarvePolicy.Decide(stallMs))
+            bool refused = RefusedOf(live);
+            switch (StarvePolicy.Decide(stallMs, refused))
             {
                 case StarvePolicy.Verdict.Failed:
-                    Log.Warn("audio", $"audio.starve stallMs={stallMs} — the link never came back; failing the load");
+                    Log.Warn("audio", $"audio.starve stallMs={stallMs} reason={(refused ? "refused" : "slow")} "
+                                      + "— failing the load");
                     PostFault(Fault.Network, epoch);
                     return true;
                 case StarvePolicy.Verdict.Recovering when !s_recovering:
                     s_recovering = true;
-                    Log.Warn("audio", $"audio.starve stallMs={stallMs} posMs={posMs} — reconnecting");
+                    Log.Warn("audio", $"audio.starve stallMs={stallMs} posMs={posMs} "
+                                      + $"reason={(refused ? "refused" : "slow")} — reconnecting");
                     Post(Input.Recovering(RecoveryKind.Network, epoch));
                     PostSignal(AudioSignal.Buffering, epoch, posMs);
                     return false;
@@ -3113,7 +3179,10 @@ public static partial class Playback
         static Fault MapFault(Spotify.Audio.Fault f) => f switch
         {
             Spotify.Audio.Fault.None => Fault.None,
-            Spotify.Audio.Fault.Offline or Spotify.Audio.Fault.Network => Fault.Network,
+            // A refused body reaches here only when the 320 demotion did not apply (the rung was already Ogg, or the
+            // ladder had nothing else to offer). Retryable, like the network: a fresh open re-resolves the mirrors, and
+            // a url set that expired under a long pause is exactly the case a retry fixes.
+            Spotify.Audio.Fault.Offline or Spotify.Audio.Fault.Network or Spotify.Audio.Fault.Refused => Fault.Network,
             Spotify.Audio.Fault.NoDeriver => Fault.RuntimeMissing,
             _ => Fault.Unavailable,
         };
@@ -3280,12 +3349,12 @@ public static partial class Playback
         /// count is the authoritative clock, QPC-stamped in the same 100 ns domain the session projects with. A starved
         /// stretch LOSES time (the clock stalls at what was written), as a device's played count does, instead of bursting
         /// ahead when data returns. Allocation-free; one lock (the feed, the clock tick and a disposer call in).
-        /// <para>THE TAIL. The engine publishes <c>Ended</c> only once the mixer is drained AND the buffered sink is empty
-        /// (<c>WritableFrames &gt;= CapacityFrames</c>), yet its RT feed keeps rendering the drained mixer's silence into
-        /// the sink, so a sink that queues that filler is refilled every wake and never reads empty — a silent session sat
-        /// in <c>Playing</c> forever with its clock running past the end. A <see cref="Follow"/>ed endpoint therefore
-        /// accepts the drained mixer's trailing silence without queuing or "playing" it: the content's tail drains, the
-        /// clock holds at the content's end, and the gate opens (see <see cref="IsTrailingFillerLocked"/>).</para></summary>
+        /// <para>THE TAIL is the engine's problem to solve, not this endpoint's: <c>PcmAudioSession.RenderBlock</c>
+        /// (<c>DrainVerdict</c>) now stops rendering/submitting anything once a session's mixer is drained, so a drained
+        /// mixer's trailing silence never reaches <see cref="Write"/> here at all. This endpoint just has to behave like
+        /// any other finite buffered sink and read empty once its content has drained and nothing further arrives — the
+        /// engine's <c>Ended</c> gate (mixer drained AND <c>WritableFrames &gt;= CapacityFrames</c>) then opens on its
+        /// own, the same way it does for a real device.</para></summary>
         public sealed class PacedSilentEndpoint : IAudioEndpoint, IBufferedAudioSink, IAudioClockSource
         {
             /// <summary>The buffer a WASAPI shared-mode client gets by default, and what the feed's sizing assumes.</summary>
@@ -3296,10 +3365,6 @@ public static partial class Playback
             readonly long _ticksPerSecond;
             long _written, _played, _lastTicks;
             bool _started;
-            // The session's mixer (set once, before the feed renders) and the mixer frame of the first write that found it
-            // drained; -1 while content is still playing.
-            CrossfadeMixer? _mixer;
-            long _drainedAtSeq = -1;
 
             /// <param name="format">The mix format the "device" opened at.</param>
             /// <param name="capacityMs">The buffer, in milliseconds of audio.</param>
@@ -3330,23 +3395,11 @@ public static partial class Playback
 
             public int WritableFrames { get { lock (_gate) { AdvanceLocked(); return CapacityFrames - (int)(_written - _played); } } }
 
-            /// <summary>Follow the session this endpoint feeds, so the drained mixer's trailing silence is recognised as
-            /// filler rather than content. Call once, after the session is constructed and before its feed renders.</summary>
-            public void Follow(CrossfadeMixer mixer)
-            {
-                lock (_gate)
-                {
-                    _mixer = mixer;
-                    _drainedAtSeq = -1;
-                }
-            }
-
             public int Write(ReadOnlySpan<float> src, int frames)
             {
                 lock (_gate)
                 {
                     AdvanceLocked();
-                    if (IsTrailingFillerLocked()) return Math.Max(0, frames);   // accepted into nothing: never queued, never played
                     int room = CapacityFrames - (int)(_written - _played);
                     int accepted = Math.Clamp(frames, 0, Math.Max(0, room));
                     _written += accepted;
@@ -3381,7 +3434,6 @@ public static partial class Playback
                     _written = 0;
                     _played = 0;
                     _lastTicks = _now();
-                    _drainedAtSeq = -1;   // a reset rewinds the mixer's frame count too
                 }
             }
 
@@ -3418,21 +3470,6 @@ public static partial class Playback
             }
 
             public void Dispose() => Stop();
-
-            /// <summary>Is this write the drained mixer's trailing silence? <c>Write</c> runs on the render thread right after
-            /// the block it carries was mixed, so the mixer's <c>ConsumeSeq</c> is the frame count up to the end of that
-            /// block (a partial accept's remainder is re-submitted before the next mix, at the same count). The FIRST write
-            /// that finds the mixer drained may still carry the voice's last frames and is queued — as is any remainder of
-            /// it; every write after the count has moved past that frame is pure filler. A mixer that is no longer drained
-            /// (a voice was installed) re-arms the rule.</summary>
-            bool IsTrailingFillerLocked()
-            {
-                if (_mixer is not { } mixer) return false;
-                if (!mixer.DrainedPublished) { _drainedAtSeq = -1; return false; }
-                long seq = mixer.ConsumeSeq;
-                if (_drainedAtSeq < 0 || seq < _drainedAtSeq) { _drainedAtSeq = seq; return false; }
-                return seq > _drainedAtSeq;
-            }
 
             /// <summary>Consume queued frames for the time elapsed since the last look. Whole frames only; the remainder
             /// of a tick stays on the clock so the pace does not drift.</summary>
@@ -4007,7 +4044,21 @@ public static partial class Playback
                                   + $"tier={plan.Tier} ms={System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds:0}");
                 while (true)
                 {
-                    if (!NextBlock()) { _eof = true; return -1; }
+                    if (!NextBlock())
+                    {
+                        // The bytes the decode-forward needed never arrived — a ring that starved for its whole bound,
+                        // a body a superseding load closed, or an interrupt for the next seek of a scrub. NOT −1: the
+                        // engine turns −1 into `InvalidOperationException("Decoder could not seek to the requested
+                        // frame.")`, which is how a CDN that refused every range surfaced as a crash-shaped line after
+                        // 56 s of waiting. The contract's own words are "the frame actually reached", and that is the
+                        // plan's landing — within one FLAC block of the target. `_eof` only when the source really is
+                        // at its end; otherwise the next `Read` waits on the ring like any other read (D5), and the
+                        // pump's starve fold — never the seek — is what decides the track is over.
+                        _eof = _src.Length is { } len && _winStart + _winLen >= len;
+                        Log.Warn("audio", $"audio.seek.short codec=flac target={target} landed={_samplePos} "
+                                          + $"eof={(_eof ? 1 : 0)} interrupted={(_interrupted ? 1 : 0)}");
+                        return ToMix(_samplePos);
+                    }
                     if (_samplePos + _hold > target)
                     {
                         int drop = (int)(target - _samplePos);

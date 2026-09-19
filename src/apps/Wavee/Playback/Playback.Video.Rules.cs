@@ -99,6 +99,93 @@ public static partial class Playback
                 => segmentLengthMs <= 0 ? 1 : (int)((PrefetchAheadMs + segmentLengthMs - 1) / segmentLengthMs);
         }
 
+        // ── 2b. the prefetch/load race, and the warm keeper (§3.1.5, §6.2 G1, D15) ──────────────────────────────────
+
+        /// <summary>A row's TWO identities: the playable uri (known the moment a row is named) and the resolved source
+        /// key (known only once its manifest landed). Either half is enough to say two mentions are the same row, which
+        /// is what the race below is decided on — the prefetch names a row before its key exists, and the load names a
+        /// key whose row the pump was never told.</summary>
+        public readonly record struct RowKey(string Uri, string Key)
+        {
+            public static readonly RowKey None = new("", "");
+
+            public bool IsNone => Uri.Length == 0 && Key.Length == 0;
+        }
+
+        /// <summary>What becomes of a prepare that is still in the air when a load starts.</summary>
+        public enum PrepareFate : byte
+        {
+            /// <summary>Nothing is in flight — the load opens on whatever it finds.</summary>
+            Idle,
+            /// <summary>The prepare is for the row being loaded: the load WAITS for it and opens onto its session.</summary>
+            Adopt,
+            /// <summary>The prepare is for some other row: its session is dead on arrival and is disposed the moment it
+            /// lands, never left running for nobody.</summary>
+            Drop,
+        }
+
+        /// <summary>The prefetch/load race, decided in ONE place (§6.2 G1). Before these two rules a lit badge's click
+        /// opened two protected sessions in the same millisecond — the prefetch's (paused, never taken) and the load's —
+        /// and only the second was ever destroyed, on a machine with 128 MB of shared VRAM.</summary>
+        public static class PrefetchRace
+        {
+            /// <summary>The same row? Either identity matching is enough; two unknowns never match, because an empty
+            /// side is an ABSENCE and not an identity.</summary>
+            public static bool Same(in RowKey a, in RowKey b)
+                => (a.Uri.Length > 0 && b.Uri.Length > 0 && string.Equals(a.Uri, b.Uri, StringComparison.Ordinal))
+                || (a.Key.Length > 0 && b.Key.Length > 0 && string.Equals(a.Key, b.Key, StringComparison.Ordinal));
+
+            /// <summary>RULE 1 — a row the pump has already CLAIMED (a Load queued for it, opening it, or live on it) is
+            /// never prefetched: its load IS the fetch, and a prepare racing that load is the second session the switch
+            /// never takes.</summary>
+            public static bool ShouldPrefetch(in RowKey claimed, in RowKey row) => !row.IsNone && !Same(in claimed, in row);
+
+            /// <summary>RULE 2 — a load ADOPTS the prepare aimed at its own row instead of racing it, and DROPS one aimed
+            /// anywhere else rather than letting it land unowned. The two arms are TOTAL over "a prepare is in flight",
+            /// which is what turns "every prepared session is adopted or disposed" from a hope into a property.</summary>
+            public static PrepareFate FateOf(bool preparing, in RowKey preparingRow, in RowKey loading)
+                => !preparing ? PrepareFate.Idle
+                 : Same(in preparingRow, in loading) ? PrepareFate.Adopt
+                 : PrepareFate.Drop;
+        }
+
+        /// <summary>D15's keeper. The licence is ~80 % of a cold switch (measured: 2 010 ms of a 2 477 ms first frame),
+        /// and the native runtime's create is most of the rest (521 ms) — so while a video surface is wanted the app
+        /// keeps the content keys of the playing row and the next queued one in hand, and lets go
+        /// <see cref="ShedMs"/> after the surface closes. Pure: the host supplies the facts and owns the timer.</summary>
+        public static class WarmPolicy
+        {
+            /// <summary>The beat. Deliberately well under <see cref="ShedMs"/>: the engine destroys its native runtime
+            /// that long after the last session detaches, and a beat landing inside the window brings it back before the
+            /// user's next switch has to pay <see cref="Budgets.FirstVideoOfProcessMs"/> all over again.</summary>
+            public const int HeartbeatMs = 10_000;
+
+            /// <summary>D15's "30 s after off" — the same window as the engine's own
+            /// <c>ProtectedVideoRuntime.WarmIdleDisposeMs</c>, so the app never outlives the runtime it warmed and never
+            /// extends its life either.</summary>
+            public const int ShedMs = 30_000;
+
+            /// <summary>How long a load waits for the prepare it is adopting before giving up and opening cold. It waits
+            /// only for the backend to have REGISTERED the prepare, not for its download, and the fallback is the cold
+            /// open it would otherwise have done — so a stalled prepare costs nothing that was not already lost.</summary>
+            public const int AdoptBudgetMs = 1_500;
+
+            /// <summary>Is the keeper beating? Only while a video surface is wanted AND the user left pre-acquisition on
+            /// — stopping the licence POSTs for videos nobody may watch is the setting's whole job.</summary>
+            public static bool Beats(bool videoOn, bool prepareAhead) => videoOn && prepareAhead;
+
+            /// <summary>Does the keeper let go? At once when the setting is off, and <see cref="ShedMs"/> after the last
+            /// surface closed — never while one is showing, however long it has been open.</summary>
+            public static bool Sheds(bool videoOn, bool prepareAhead, long msSinceOff)
+                => !prepareAhead || (!videoOn && msSinceOff >= ShedMs);
+
+            /// <summary>Does this beat ask for a key? Audio ALWAYS wins (§3.1.4): a licence POST never shares the api
+            /// pool with a track the user has just started. A key already usable — or one whose challenge is already in
+            /// flight — is never asked for twice, because a second challenge for one KID is the one the CDM rejects.</summary>
+            public static bool Acquires(bool videoOn, bool prepareAhead, bool audioBusy, bool keyInHand)
+                => Beats(videoOn, prepareAhead) && !audioBusy && !keyInHand;
+        }
+
         // ── 3. the seek planner (§3.2.2) ────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The seek modes the UI has (Media3's SeekParameters, reduced to what a scrubber needs).</summary>

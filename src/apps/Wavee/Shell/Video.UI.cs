@@ -25,8 +25,11 @@
 //   3. The stage key is PLAYER identity only (the binding generation): a video→video skip keeps the element mounted
 //      and pumping. Every frozen element prop that can change under a live stage is folded into the key.
 //   4. A no-player state is the current track's artwork at 0.4 over the letterbox — never a black rectangle — on ALL
-//      FOUR surfaces (the pop-out's bare rect was a 0.2.9 defect, W14b). The spinner waits out the join budget
-//      (`Joining`), and uses the on-media ink (the 0.2.9 `TextOnAccentPrimary` was black-on-black in dark, §4.5).
+//      FOUR surfaces (the pop-out's bare rect was a 0.2.9 defect, W14b). What sits OVER that poster is decided by
+//      `Joining.Decide` from the host's EVENTS (`Playback.Video.Phase` / `.FirstFrame` / `.Player`, folded once by
+//      `JoinWatch` into `Video.JoinNow`) — never by a timer guess. The ring waits out the join budget and only the
+//      budget, a failure draws a different picture from a slow licence, and the ink is the on-media ladder (the 0.2.9
+//      `TextOnAccentPrimary` was black-on-black in dark, §4.5).
 //   5. Hover chrome costs no signal and no re-render: `Opacity 0 / HoverOpacity 1` under a container that earns hover
 //      with a no-op `OnPointerExit`.
 //
@@ -54,6 +57,11 @@ public static partial class Video
     /// <summary>How much bottom space the page must keep clear while the mini player sits ANCHORED at its home (its height
     /// plus the gap; 0 once the user places it, or when it is not mounted). The content host insets its bottom by this.</summary>
     public static readonly FloatSignal FloatingSurfaceReserve = new(0f);
+
+    /// <summary>What every surface's video area shows — ONE value, folded from the host's switch events by
+    /// <see cref="JoinWatch"/> (mounted once, by <see cref="PipLayer"/>). Read it with <c>.Value</c> inside a render:
+    /// it changes long after any surface mounted, so it can only ever reach a child as a signal.</summary>
+    public static readonly Signal<JoinVisual> JoinNow = new(JoinVisual.Poster);
 
     // MOUNT POINT (stage B contract)
     /// <summary>The right rail's ONE docked card (the Cap face), full-bleed at the rail's width, pinned above the header
@@ -100,9 +108,10 @@ public static partial class Video
 
     // MOUNT POINT (stage B contract)
     /// <summary>The shell's top-Z video layer: the in-window mini player (a pass-through layer where only the card takes
-    /// input), the pop-out window's lifecycle owner (`Video.Host.cs`'s controller leaf) and the host observer
-    /// (`Video.Host.Wiring.cs`: the session mirror, the availability fold, the badge-lit prefetch) — each mounted exactly
-    /// once here. It also installs the pop-out's content and title factories.</summary>
+    /// input), the pop-out window's lifecycle owner (`Video.Host.cs`'s controller leaf), the host observer
+    /// (`Video.Host.Wiring.cs`: the session mirror, the availability fold, the badge-lit prefetch) and the join watcher
+    /// (the switch events → <see cref="JoinNow"/>) — each mounted exactly once here. It also installs the pop-out's
+    /// content and title factories.</summary>
     public static Element PipLayer()
     {
         PopOut.ContentFactory ??= static () => new PopOutRoot();
@@ -115,6 +124,7 @@ public static partial class Video
                 Embed.Comp(static () => new PipSurface()),
                 Embed.Comp(static () => new PopOut { Settings = Platform.Settings }),
                 Embed.Comp(static () => new HostObserver()),
+                Embed.Comp(static () => new JoinWatch()),
             ],
         };
     }
@@ -261,12 +271,16 @@ public static partial class Video
         Children = url is { Length: > 0 } ? [Controls.ArtworkFill(url, 0f)] : [],
     };
 
-    /// <summary>The "no player yet" composition every surface shares: the live art over the letterbox, and the join
-    /// spinner that waits out the budget.</summary>
-    static Element Poster() => new BoxEl
+    /// <summary>The "no picture yet" composition every surface shares: the live art over the letterbox, and — only for
+    /// the two states that have something to say — the notice over it. The ground is the SAME keyed
+    /// <see cref="LivePoster"/> in every state, so the notice appearing or the fault replacing it never re-fades the
+    /// artwork underneath and never reflows the card.</summary>
+    static Element Poster(JoinVisual visual) => new BoxEl
     {
         Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = Tok.MediaLetterbox,
-        Children = [LivePoster.Make(), Embed.Comp(static () => new JoinOverlay())],
+        Children = visual is JoinVisual.Working or JoinVisual.Failed
+            ? [LivePoster.Make(), JoinNotice(visual)]
+            : [LivePoster.Make()],
     };
 
     /// <summary>The CURRENT track's art, read inside its OWN render — so a stage whose key survives a source switch never
@@ -282,36 +296,125 @@ public static partial class Video
         internal static Element Make() => Embed.Comp(static () => new LivePoster()) with { Key = "live-poster" };
     }
 
-    /// <summary>The loading affordance over a poster: nothing for <see cref="Joining.SpinnerDelayMs"/>, then a 20-DIP ring
-    /// and "Loading…" in on-media ink. Mounted only past the delay, so the spinner never animates unseen.</summary>
-    sealed class JoinOverlay : Component
+    /// <summary>What sits over the poster once the host has something to say. Inside the join budget there is no notice
+    /// at all — not a hidden one, none — so a switch that lands fast flashes nothing (ch 24 parity 75) and the ring
+    /// never animates unseen. Past the budget: the 20-DIP ring and "Loading…". On a failure: a warning glyph and the
+    /// fault's own line, and NO ring, because "not coming" must not draw the same picture as "still coming".
+    /// <para>The notice fades in rather than popping. An opacity channel is legal in this subtree and ONLY here: a
+    /// poster is mounted exactly while no player is bound, so there is no video hole below it for an ancestor opacity
+    /// to wash out (§0.1). The `Key` makes Working → Failed a real swap, so the new notice plays its own entrance
+    /// instead of the words changing under the user.</para></summary>
+    static Element JoinNotice(JoinVisual visual)
     {
-        readonly Signal<bool> _shown = new(false);
+        bool failed = visual == JoinVisual.Failed;
+        var stack = new BoxEl
+        {
+            Key = failed ? "join:failed" : "join:working",
+            Direction = 1, AlignItems = FlexAlign.Center, Gap = Spacing.S, HitTestVisible = false,
+            // Reduced motion is the DEFAULT terminal — a hard cut, read as a VALUE, never a branch at the call site.
+            Enter = Design.Reduced ? default : new EnterExit(Opacity: 0f, Active: true),
+            Children = failed ? FailedLine() : WorkingLine(),
+        };
+        return new BoxEl
+        {
+            Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            HitTestPassThrough = true,
+            Children = [stack],
+        };
+    }
+
+    /// <summary>"Still coming": the 20-DIP indeterminate ring and "Loading…", both in ON-MEDIA ink.</summary>
+    static Element[] WorkingLine() =>
+    [
+        ProgressRing.Indeterminate(size: 20f, foreground: Tok.OnMediaPrimary),
+        new TextEl(Loc.Get(Strings.Player.Loading))
+        {
+            Size = 12f, Weight = 600, Color = Tok.OnMediaSecondary,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        },
+    ];
+
+    /// <summary>"Not coming": a static warning glyph and the fault's OWN line — no ring, because a ring means wait. The
+    /// line is bound reactively: the reducer types the fault, and it can land after this notice mounted.</summary>
+    static Element[] FailedLine() =>
+    [
+        new TextEl(Icons.StatusWarning) { Size = 18f, FontFamily = Theme.IconFont, Color = Tok.OnMediaPrimary },
+        new TextEl(Prop.Of(static () => Loc.Get(Shell.PlayerBarRules.FaultTitleKey(Playback.Error.Value))))
+        {
+            Size = 12f, Weight = 600, Color = Tok.OnMediaPrimary,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        },
+    ];
+
+    /// <summary>The ONE consumer of the host's switch events, and the only clock anywhere in the loading path. It folds
+    /// <c>Playback.Video.Phase</c> / <c>.FirstFrame</c> / <c>.Player</c> and the placement into <see cref="JoinNow"/>,
+    /// which all four surfaces read — so no surface decides anything about a load and four of them can never disagree.
+    /// Mounted once by <see cref="PipLayer"/>; renders nothing.
+    /// <para>WHY THE CLOCK IS SHAPED LIKE THIS. It starts on the JOIN's leading edge and runs for the whole join, not
+    /// per phase: re-arming at every step would take the ring away again at `Resolving → Licensing`, a flicker inside
+    /// the exact two seconds the user called ugly. And it is the join's edge, never the MOUNT: the 0.2.9 overlay armed
+    /// a `DepKey.Empty` timeout of its own, so the first join earned the 400 ms and every later one found it already
+    /// spent and showed the ring instantly. The clock is the host timer's own (`TimerHandle.NowMs`) so the budget and
+    /// the wake that samples it can never disagree — and the headless harness's virtual clock drives both.</para></summary>
+    sealed class JoinWatch : Component
+    {
+        /// <summary>The grace timer's wake. Read by the fold, written by nothing else: the budget is SPENT, not polled.</summary>
+        readonly Signal<int> _budget = new(0);
+
+        TimerHandle _grace;
+        double _startedMs;               // the timer clock's stamp this join began at — the SAME clock the wake rides
+        long _frameEpochWas;             // the last `FirstFrame` value seen, so a BUMP is an edge and not a level
+        string _framedKey = "";          // …and the SOURCE that bump belonged to: that source has a picture
+        bool _joiningWas;
+        (JoinVisual Visual, Playback.Video.SwitchPhase Phase) _logged = ((JoinVisual)255, (Playback.Video.SwitchPhase)255);
 
         public override Element Render()
         {
-            UseTimeout(() => _shown.Value = true, Joining.SpinnerDelayMs, DepKey.Empty);
-            return new BoxEl
+            // ONE wake per join — the only reason the fold ever runs when no signal moved. The hook declares the budget;
+            // the JOIN re-arms it imperatively below, so nothing about the loading picture waits on a re-render.
+            _grace = UseTimeout(() => _budget.Value = _budget.Peek() + 1, Joining.SpinnerDelayMs, DepKey.Empty);
+
+            UseSignalEffect(() =>
             {
-                Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                HitTestPassThrough = true,
-                Children =
-                [
-                    Flow.Show(() => _shown.Value, new BoxEl
-                    {
-                        Direction = 1, AlignItems = FlexAlign.Center, Gap = Spacing.S, HitTestVisible = false,
-                        Children =
-                        [
-                            ProgressRing.Indeterminate(size: 20f, foreground: Tok.OnMediaPrimary),
-                            new TextEl(Loc.Get(Strings.Player.Loading))
-                            {
-                                Size = 12f, Weight = 600, Color = Tok.OnMediaSecondary,
-                                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                            },
-                        ],
-                    }),
-                ],
-            };
+                var phase = Playback.Video.Phase.Value;
+                var binding = Playback.Video.Player.Value;
+                long frame = Playback.Video.FirstFrame.Value;
+                int buffered = Playback.Video.Buffered.Value;   // the join's progress heartbeat — it rides the log line
+                string key = Playback.Video.Source.Value?.Key ?? "";
+                bool wanted = PlacementCore.IsActive(State.Surface.Value);
+                _ = _budget.Value;                              // the budget's wake re-runs this fold and nothing else
+
+                // `FirstFrame` bumps once per source; remember WHICH source it bought a picture for. Keying the answer
+                // on the source (not on the join) is what keeps a teardown → null-source → new-source sequence ONE join
+                // instead of three, each restarting the budget and pushing the ring out by another 400 ms.
+                if (frame != _frameEpochWas) { _frameEpochWas = frame; _framedKey = key; }
+                bool framed = key.Length > 0 && string.Equals(_framedKey, key, StringComparison.Ordinal);
+
+                var shape = new JoinState(phase, binding.Player is not null, wanted, framed);
+                bool joining = Joining.IsJoining(in shape);
+                // The budget is earned ONCE per join, on its leading edge: a step from `Resolving` to `Licensing` is the
+                // same join and must not take the ring away again.
+                if (joining && !_joiningWas)
+                {
+                    _startedMs = _grace.NowMs;
+                    _grace.Restart();
+                }
+                _joiningWas = joining;
+
+                long elapsed = joining ? (long)Math.Max(0d, _grace.NowMs - _startedMs) : 0L;
+                var visual = Joining.Decide(in shape, elapsed);
+                JoinNow.Value = visual;                          // equal writes coalesce: a buffer bump wakes nobody
+
+                // ALWAYS-ON, deduplicated on the pair that matters: what is drawn, and why. "Still loading" and "dead"
+                // were indistinguishable in the log for the same reason they were indistinguishable on screen.
+                if ((visual, phase) == _logged) return;
+                _logged = (visual, phase);
+                Log.Info(State.LogCategory, $"video join visual={visual} phase={phase} player={shape.PlayerPresent} " +
+                    $"wanted={wanted} framed={framed} elapsedMs={elapsed} buffered={buffered} " +
+                    $"gen={binding.Generation} key={Show(key)}");
+            });
+
+            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
     }
 
@@ -483,8 +586,8 @@ public static partial class Video
         {
             _ = Playback.Video.Source.Value;                 // subscribe → a source switch re-renders, never remounts
             var binding = Playback.Video.Player.Value;       // subscribe → poster ↔ hole
-            if (!SurfaceMount.ShouldMountPlayerStage(binding.Player is not null) || binding.Player is not { } player)
-                return Poster();
+            var join = JoinNow.Value;                        // subscribe → the host's EVENTS own the loading picture
+            if (join != JoinVisual.Video || binding.Player is not { } player) return Poster(join);
 
             bool suppress = State.Transport.Value != TransportOwner.Docked;
             Element element = Embed.Comp(() => new MediaPlayerElement
@@ -659,7 +762,8 @@ public static partial class Video
         {
             _ = Playback.Video.Source.Value;
             var binding = Playback.Video.Player.Value;
-            if (!SurfaceMount.ShouldMountPlayerStage(binding.Player is not null)) return Poster();
+            var join = JoinNow.Value;
+            if (join != JoinVisual.Video) return Poster(join);
             var stage = Embed.Comp(static () => new PlayerStage(
                 new StageHost(TransportOwner.Docked, static () => State.OpenAt(SurfacePlacement.Fullscreen)), hostFullscreen: false))
                 with { Key = "pipstage:" + GenKey(binding.Generation) };
@@ -848,10 +952,10 @@ public static partial class Video
         {
             var vp = UseContextSignal(Viewport.Size);
             var binding = Playback.Video.Player.Value;
-            bool live = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null);
+            var join = JoinNow.Value;
             // THIS window's own fullscreen mode (never SurfacePlacement.Fullscreen). Read with .Value: it is in the key.
             bool hostFullscreen = State.DetachedFullscreen.Value;
-            Element body = live
+            Element body = join == JoinVisual.Video
                 ? new BoxEl
                 {
                     Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
@@ -861,7 +965,7 @@ public static partial class Video
                             with { Key = "stage:" + GenKey(binding.Generation) + (hostFullscreen ? ":f1" : ":f0") },
                     ],
                 }
-                : Poster();
+                : Poster(join);
             return new BoxEl
             {
                 Direction = 1,
@@ -995,10 +1099,11 @@ public static partial class Video
         {
             _ = Playback.Video.Source.Value;
             var binding = Playback.Video.Player.Value;
-            Element child = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null)
+            var join = JoinNow.Value;
+            Element child = join == JoinVisual.Video
                 ? Embed.Comp(static () => new PlayerStage(new StageHost(TransportOwner.Fullscreen, static () => State.ExitFullscreen()), hostFullscreen: true))
                     with { Key = "fsstage:" + GenKey(binding.Generation) }
-                : Poster();   // a placement MOVE is close-then-open: cover the gap, never a black screen
+                : Poster(join);   // a placement MOVE is close-then-open: cover the gap, never a black screen
             return new BoxEl
             {
                 Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = ColorF.Transparent,

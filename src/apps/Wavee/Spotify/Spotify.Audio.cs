@@ -20,8 +20,11 @@
 //      that rung is missing, falls to the NEAREST available one preferring LOWER bitrates — never exceed a bandwidth
 //      choice the user made. A track with no playable file falls through to the first `alternative[]` that has one,
 //      and that alternative's gid is what the audio key is asked for.
-//   3. THE CDN. `/storage-resolve/files/audio/interactive/{fileIdHex}` answers a mirror list and a TTL. Keyed by the
-//      FILE id, so it is format-agnostic and shared by every quality of the same file.
+//   3. THE CDN. `/storage-resolve/v2/files/audio/interactive/{wireFormat}/{fileIdHex}?product=0` answers a mirror list
+//      and a TTL. The FORMAT segment is not decoration: the service signs a url per (format, file id) pair, and the v1
+//      route without it signs into the Ogg object namespace whatever it is handed — which is why a FLAC id used to
+//      resolve to mirrors that 404 every range while the id-keyed head service served 80 KiB of the same id. The
+//      answers are still CACHED by file id alone, because a file id has exactly one format.
 //   4. THE KEY. The AP's 0x0c/0x0d exchange first (`Spotify.RequestAudioKey`, owner D). AP audio-key service is
 //      ACCOUNT-WIDE: one refusal means it will not serve any track this session, so it is tried once and latched off,
 //      and everything after that goes to the deriver seam below. FLAC IS NOT ELIGIBLE FOR THAT PATH AT ALL — see the
@@ -57,6 +60,15 @@
 // WHAT A FAILURE MEANS (G-038, D7). A metadata read that never reached a server, a 5xx or a 429 is `Fault.Network` (the bar
 // retries); only an answer that says "nothing here" is `Fault.Restricted`. A lossless file whose key is refused plays its
 // Ogg 320 rung instead of failing, and a build that cannot derive a lossless key never asks for the lossless rung at all.
+//
+// …AND A REFUSED BODY IS THE THIRD WAY (`Fault.Refused`, `LosslessFallback.DemoteForNoBody`). A lossless open can succeed
+// in every step above — file id, mirrors, key, 80 KiB of clear head — and STILL never be handed a body byte, because the
+// mirrors answer a non-2xx to every range. The head then plays for about half a second and the track is silence: observed
+// once as 57 s of nothing followed by a skip. So a lossless `Open` waits, briefly and interruptibly, for the first body
+// byte, and a refusal (or a deadline with zero bytes landed) demotes the whole open to the Ogg 320 rung — a different file
+// id on a different mirror set — rather than starving on the rung that said no. That demotion is NOT remembered the way a
+// refused key is: a key that cannot be had is a fact about the build, a refused body is a server saying no this minute, so
+// the 320 answer is kept for seconds rather than half an hour and the next attempt asks for lossless again.
 
 using System.Security.Cryptography;
 using Google.Protobuf;
@@ -104,16 +116,38 @@ public static partial class Spotify
             Network,
             /// <summary>The session is not online. Nothing was asked.</summary>
             Offline,
+            /// <summary>The file id resolved, the key was had, and every CDN mirror still refused the BODY — either at
+            /// once, or by never landing a byte inside the open's first-body deadline. Distinct from
+            /// <see cref="Network"/> on purpose: a refusal is an ANSWER, so the one thing that cannot help is waiting for
+            /// it to change (D5's 90 s of patience is for a link that is slow, not for one that said no), and for a
+            /// lossless file it is what the Ogg 320 demotion exists for (D7, <see cref="LosslessFallback.Decide"/>).</summary>
+            Refused,
         }
+
+        /// <summary>A file id and the format its bytes are in — everything the CDN needs to NAME the object, which is
+        /// more than the id. Storage-resolve signs a url per (format, file id) pair, so a resolve that knows only the
+        /// id is a resolve that guesses the format, and the guess is Ogg.</summary>
+        public readonly record struct FileRef(string Hex, Md.AudioFile.Types.Format Wire);
 
         /// <summary>Which file the ladder picked, and everything the next three steps need. A VALUE.
         /// <see cref="Peak"/> is the catalogue's LINEAR true peak when the catalogue carried the gain (lossless), else 0 —
-        /// an Ogg body's peak is read from its own header at open (byte 148).</summary>
+        /// an Ogg body's peak is read from its own header at open (byte 148).
+        ///
+        /// <para><see cref="Wire"/> is the catalogue's OWN format for this file id, carried beside <see cref="Fmt"/>
+        /// rather than derived from it because <see cref="Fmt"/> is lossy on purpose (<see cref="FormatOf"/> collapses
+        /// the four MP3 rungs into one, since no decoder cares). Storage-resolve does care: the number goes in the url
+        /// it signs. It is read by exactly that one route, so a choice that never reaches it — a failed one, an
+        /// external episode url — leaves it at its default rather than claiming a format it does not have.</para></summary>
         public readonly record struct FileChoice(
             byte[] FileId, string FileIdHex, byte[] TrackGid, Format Fmt, long DurationMs, float GainDb,
-            string? ExternalUrl, Fault Fault, float Peak = 0f)
+            string? ExternalUrl, Fault Fault, float Peak = 0f,
+            Md.AudioFile.Types.Format Wire = Md.AudioFile.Types.Format.OggVorbis96)
         {
             public bool Ok => Fault == Audio.Fault.None && (FileId.Length > 0 || ExternalUrl is { Length: > 0 });
+
+            /// <summary>What <see cref="Resolve"/> is asked with: the id and the format under which the CDN filed it.</summary>
+            public FileRef Ref => new(FileIdHex, Wire);
+
             public static FileChoice Failed(Audio.Fault fault) => new([], "", [], Format.Unknown, 0, 0f, null, fault);
         }
 
@@ -164,20 +198,58 @@ public static partial class Spotify
         /// <c>NetworkPolicy</c>); null reads as unmetered. Read per open: a metered link gets the 10 s read-ahead tier.</summary>
         public static Func<bool>? MeteredConnection { get; set; }
 
-        /// <summary>D7, the lossless rung and its fallback, as two pure rules. The AP never serves a FLAC key and a
+        /// <summary>D7, the lossless rung and its fallback, as pure rules. The AP never serves a FLAC key and a
         /// public-only build has no deriver, so a Lossless setting there is VeryHigh320 from the start (no AUDIO_FILES
         /// request, no refused key); and when a deriver IS installed but refuses one file, that file plays its Ogg 320
-        /// rung instead of failing — the plan's gate: "the public-only build plays the 320 rung".</summary>
+        /// rung instead of failing — the plan's gate: "the public-only build plays the 320 rung".
+        ///
+        /// <para>A refused BODY joins the same fallback but not the same memory, which is the distinction the rest of
+        /// this class turns on: a key that cannot be had is a fact about the build, a mirror set that refuses is a fact
+        /// about one minute on one server. <see cref="Decide"/> and <see cref="DemoteForNoBody"/> say WHEN to fall back;
+        /// <see cref="RememberFor"/> says for how long that answer is allowed to outlive the failure.</para></summary>
         public static class LosslessFallback
         {
             /// <summary>Should an open that failed with <paramref name="fault"/> on <paramref name="fmt"/> re-run the
-            /// ladder at VeryHigh320? Only a lossless file whose key could not be had.</summary>
+            /// ladder at VeryHigh320? A lossless file whose key could not be had — and a lossless file whose BODY was
+            /// refused: the 320 rung is a DIFFERENT file id on a different mirror set, which is the only thing left that
+            /// has not said no. A network fault is still retried rather than downgraded; it is the link, not the file.</summary>
             public static bool Decide(Format fmt, Fault fault)
-                => fmt is Format.Flac or Format.Flac24 && fault is Fault.NoDeriver or Fault.NoKey;
+                => fmt is Format.Flac or Format.Flac24 && fault is Fault.NoDeriver or Fault.NoKey or Fault.Refused;
 
             /// <summary>The quality the ladder is asked for: Lossless only when this build can derive a lossless key.</summary>
             public static Quality Effective(Quality asked, bool canDerive)
                 => asked == Quality.Lossless && !canDerive ? Quality.VeryHigh320 : asked;
+
+            /// <summary>How long a lossless open waits for its FIRST body byte before it gives the rung up. The clear
+            /// head is 80 KiB — about 0.6 s of a 1000 kbit/s FLAC — so an open whose body has not started by now is
+            /// half a second of audio followed by silence for the rest of the track. The wait ENDS EARLY the moment the
+            /// mirrors refuse (measured: every mirror refused and the re-resolve answered at 1.4 s), so this bound only
+            /// governs a link that is merely too slow to carry lossless at all; and it is far under the ring's 8 s read
+            /// bound, so the demotion lands before the first underrun rather than after the seventh.</summary>
+            public const int FirstBodyMs = 3_000;
+
+            /// <summary>Must a lossless open that has served only its clear head be demoted to the Ogg 320 rung? Yes
+            /// once its mirror set is refusing, or once <see cref="FirstBodyMs"/> has passed with not one body byte
+            /// landed. <paramref name="bodyBytes"/> deliberately excludes the head: the head is what makes this failure
+            /// invisible — the track starts, plays for half a second and then starves. PURE.</summary>
+            public static bool DemoteForNoBody(Format fmt, long bodyBytes, bool refusing, long waitedMs)
+                => fmt is Format.Flac or Format.Flac24 && bodyBytes == 0 && (refusing || waitedMs >= FirstBodyMs);
+
+            /// <summary>How long the demoted (Ogg 320) answer is remembered for, given what demoted it — the one place
+            /// the two kinds of lossless failure part company.
+            ///
+            /// <para>A key that cannot be had is DETERMINISTIC: this build has no deriver, or this account has no
+            /// entitlement, and asking again this session gets the same answer. Remembering it for the full
+            /// <see cref="ChoiceTtlMs"/> is what stops every track paying for the same verdict twice.</para>
+            ///
+            /// <para>A REFUSED body is not a fact about the track at all. The entitlement is there, the ladder picked a
+            /// real FLAC, the key was had — and a mirror set answered no, this minute, for reasons on the server's side.
+            /// Sticking that to the uri for half an hour would quietly cost the user lossless on a track that is fine,
+            /// and — worse for anyone trying to diagnose it — would make the bug unreproducible: a retry would be served
+            /// the cached 320 rung and never reach a mirror, so the `audio.mirror` and `audio.resolve` lines the retry
+            /// was FOR would never be printed. It is therefore suppression, not memory: just long enough
+            /// (<see cref="RefusedChoiceTtlMs"/>) that a retry loop cannot hammer a dead url set. PURE.</para></summary>
+            public static long RememberFor(Fault fault) => fault == Fault.Refused ? RefusedChoiceTtlMs : ChoiceTtlMs;
         }
 
         static int s_fallbackLogged;
@@ -249,24 +321,29 @@ public static partial class Spotify
         }
 
         /// <summary>Pick one file out of a `file[]` list. The list is walked twice — once to project the formats, once
-        /// to take the winner — so <see cref="PickRung"/> stays a span fold with no protobuf on it.</summary>
-        static (byte[] FileId, Format Fmt) PickFile(IReadOnlyList<Md.AudioFile> files, Quality quality)
+        /// to take the winner — so <see cref="PickRung"/> stays a span fold with no protobuf on it. The WIRE format of
+        /// the winner comes back beside ours: this is the only place that still holds it, and the CDN needs it.</summary>
+        static (byte[] FileId, Format Fmt, Md.AudioFile.Types.Format Wire) PickFile(
+            IReadOnlyList<Md.AudioFile> files, Quality quality)
         {
             int n = files.Count;
-            if (n == 0) return ([], Format.Unknown);
+            if (n == 0) return ([], Format.Unknown, default);
             Span<Format> formats = n <= 32 ? stackalloc Format[n] : new Format[n];
             for (int i = 0; i < n; i++)
                 formats[i] = files[i].FileId.Length == 0 ? Format.Unknown : FormatOf(files[i].Format);
             int pick = PickRung(formats, quality);
-            return pick < 0 ? ([], Format.Unknown) : (files[pick].FileId.ToByteArray(), formats[pick]);
+            return pick < 0
+                ? ([], Format.Unknown, default)
+                : (files[pick].FileId.ToByteArray(), formats[pick], files[pick].Format);
         }
 
         /// <summary>FLAC out of an AUDIO_FILES payload — 24-bit preferred over 16-bit. The audio KEY still uses the
         /// track's own gid: the FLAC is an alternative ENCODING of the same track, not an alternative track.</summary>
-        static (byte[] FileId, Format Fmt) PickFlac(Af.AudioFilesExtensionResponse response)
+        static (byte[] FileId, Format Fmt, Md.AudioFile.Types.Format Wire) PickFlac(Af.AudioFilesExtensionResponse response)
         {
             byte[] best = [];
             Format bestFormat = Format.Unknown;
+            Md.AudioFile.Types.Format bestWire = default;
             int bestRank = 0;
             foreach (Af.ExtendedAudioFile extended in response.Files)
             {
@@ -282,8 +359,9 @@ public static partial class Spotify
                 bestRank = rank;
                 best = file.FileId.ToByteArray();
                 bestFormat = rank == 2 ? Format.Flac24 : Format.Flac;
+                bestWire = file.Format;
             }
-            return (best, bestFormat);
+            return (best, bestFormat, bestWire);
         }
 
         /// <summary>Spotify loudness normalization: gain = target (−14 LUFS) − the track's loudness, capped so the true
@@ -376,36 +454,36 @@ public static partial class Spotify
         {
             if (quality == Quality.Lossless && lossless is not null)
             {
-                (byte[] flacId, Format flacFormat) = PickFlac(lossless);
+                (byte[] flacId, Format flacFormat, Md.AudioFile.Types.Format flacWire) = PickFlac(lossless);
                 if (flacId.Length > 0)
                 {
                     Af.NormalizationParams? np = lossless.DefaultFileNormalizationParams;
                     float gain = np is not null ? NormalizationGain(np.LoudnessDb, np.TruePeakDb) : 0f;
                     float peak = np is not null ? PeakLinear(np.TruePeakDb) : 0f;
                     return new FileChoice(flacId, Hexed(flacId), track.Gid.ToByteArray(), flacFormat,
-                        track.HasDuration ? track.Duration : fallbackDurationMs, gain, null, Fault.None, peak);
+                        track.HasDuration ? track.Duration : fallbackDurationMs, gain, null, Fault.None, peak, flacWire);
                 }
             }
 
             if (Allowed(track, market))
             {
-                (byte[] fileId, Format format) = PickFile(track.File, quality);
+                (byte[] fileId, Format format, Md.AudioFile.Types.Format wire) = PickFile(track.File, quality);
                 if (fileId.Length > 0)
                     return new FileChoice(fileId, Hexed(fileId), track.Gid.ToByteArray(), format,
-                        track.HasDuration ? track.Duration : fallbackDurationMs, 0f, null, Fault.None);
+                        track.HasDuration ? track.Duration : fallbackDurationMs, 0f, null, Fault.None, 0f, wire);
             }
 
             foreach (Md.Track alternative in track.Alternative)
             {
                 if (!Allowed(alternative, market)) continue;
-                (byte[] altId, Format altFormat) = PickFile(alternative.File, quality);
+                (byte[] altId, Format altFormat, Md.AudioFile.Types.Format altWire) = PickFile(alternative.File, quality);
                 if (altId.Length == 0) continue;
                 long duration = alternative.HasDuration ? alternative.Duration
                     : track.HasDuration ? track.Duration : fallbackDurationMs;
                 // The alternative's OWN gid: the audio key is bound to the (file, track) pair and the alternative is a
                 // different track row on the wire even though the user thinks it is the same song.
                 return new FileChoice(altId, Hexed(altId), alternative.Gid.ToByteArray(), altFormat,
-                    duration, 0f, null, Fault.None);
+                    duration, 0f, null, Fault.None, 0f, altWire);
             }
 
             return FileChoice.Failed(Fault.NoFile);
@@ -420,10 +498,10 @@ public static partial class Spotify
             if (episode.HasExternalUrl && episode.ExternalUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 return new FileChoice(gid, Hexed(gid), gid, Format.Mp3, duration, 0f, episode.ExternalUrl, Fault.None);
 
-            (byte[] fileId, Format format) = PickFile(episode.Audio, quality);
+            (byte[] fileId, Format format, Md.AudioFile.Types.Format wire) = PickFile(episode.Audio, quality);
             return fileId.Length == 0
                 ? FileChoice.Failed(Fault.NoFile)
-                : new FileChoice(fileId, Hexed(fileId), gid, format, duration, 0f, null, Fault.None);
+                : new FileChoice(fileId, Hexed(fileId), gid, format, duration, 0f, null, Fault.None, 0f, wire);
         }
 
         static string Hexed(ReadOnlySpan<byte> bytes)
@@ -535,15 +613,80 @@ public static partial class Spotify
             public bool Ok => Fault == Audio.Fault.None && Urls.Length > 0;
         }
 
+        /// <summary>WHAT storage-resolve answered for one file, kept so the line that REPORTS a refusal can name it. A
+        /// re-resolve reaches the log through a urls-only seam, so without this the `audio.resolve` line reads exactly
+        /// the same whether the service 403'd us, answered 200 with RESTRICTED (this account may not stream this file),
+        /// or answered a perfectly good url set the CDN then refused — three different bugs, one line.</summary>
+        /// <param name="Status">The HTTP status of the storage-resolve request itself.</param>
+        /// <param name="Verdict">The service's own `StorageResolveResponse.Result`, or why there was none.</param>
+        /// <param name="Mirrors">How many urls came back with it.</param>
+        public readonly record struct ResolveAnswer(int Status, string Verdict, int Mirrors)
+        {
+            /// <summary>Nothing has been asked for this file yet (or it fell out of the four slots).</summary>
+            public static ResolveAnswer Unasked => new(0, "unasked", 0);
+        }
+
         const int MirrorCacheMax = 64;
         static readonly Lock MirrorGate = new();
         static readonly Dictionary<string, Mirrors> MirrorCache = new(MirrorCacheMax, StringComparer.OrdinalIgnoreCase);
         static readonly Queue<string> MirrorOrder = new(MirrorCacheMax);
 
-        /// <summary>Resolve (and cache) the mirror list. The TTL the service sends is honoured at 80 % — the last fifth
-        /// is the window a long track needs to finish streaming on a url it already opened.</summary>
-        public static Mirrors Resolve(string fileIdHex, CancellationToken ct)
+        /// <summary>Four files' worth of last answer (C8): the playing one, the prepared one and the two prefetched.</summary>
+        const int ResolveAnswerSlots = 4;
+        static readonly Lock AnswerGate = new();
+        static readonly string[] s_answerKeys = ["", "", "", ""];
+        static readonly ResolveAnswer[] s_answers = new ResolveAnswer[ResolveAnswerSlots];
+        static int s_answerNext;
+
+        /// <summary>The last storage-resolve answer for <paramref name="fileIdHex"/>, or
+        /// <see cref="ResolveAnswer.Unasked"/>. Read by the body's re-resolve log line.</summary>
+        public static ResolveAnswer LastResolve(string fileIdHex)
         {
+            lock (AnswerGate)
+            {
+                for (int i = 0; i < ResolveAnswerSlots; i++)
+                    if (string.Equals(s_answerKeys[i], fileIdHex, StringComparison.OrdinalIgnoreCase)) return s_answers[i];
+            }
+            return ResolveAnswer.Unasked;
+        }
+
+        /// <summary>Remember what the service said, and hand the mirrors straight back — every `return` of
+        /// <see cref="Resolve"/> goes through here, so there is no arm that answers without recording why.</summary>
+        static Mirrors Answered(string fileIdHex, Mirrors mirrors, int status, string verdict)
+        {
+            var answer = new ResolveAnswer(status, verdict, mirrors.Urls.Length);
+            lock (AnswerGate)
+            {
+                int slot = -1;
+                for (int i = 0; i < ResolveAnswerSlots; i++)
+                    if (string.Equals(s_answerKeys[i], fileIdHex, StringComparison.OrdinalIgnoreCase)) { slot = i; break; }
+                if (slot < 0) { slot = s_answerNext; s_answerNext = (s_answerNext + 1) % ResolveAnswerSlots; }
+                s_answerKeys[slot] = fileIdHex;
+                s_answers[slot] = answer;
+            }
+            return mirrors;
+        }
+
+        /// <summary>The service's verdict as the log spells it. Literals, not `ToString()`: an enum name costs a
+        /// reflection lookup and an allocation on a line that runs on every refused range.</summary>
+        static string VerdictOf(St.StorageResolveResponse.Types.Result result) => result switch
+        {
+            St.StorageResolveResponse.Types.Result.Cdn => "cdn",
+            St.StorageResolveResponse.Types.Result.Storage => "storage",
+            St.StorageResolveResponse.Types.Result.Restricted => "restricted",
+            _ => "unknown",
+        };
+
+        /// <summary>Resolve (and cache) the mirror list. The TTL the service sends is honoured at 80 % — the last fifth
+        /// is the window a long track needs to finish streaming on a url it already opened.
+        ///
+        /// <para>Asked with a <see cref="FileRef"/> rather than a hex id because the ROUTE needs the format
+        /// (<c>…/interactive/{wireFormat}/{fileId}</c>) — the url the service signs is per (format, id) pair. The CACHE
+        /// is still keyed by the id alone, and correctly so: a file id names one object in one format, so the two keys
+        /// are the same key.</para></summary>
+        public static Mirrors Resolve(FileRef file, CancellationToken ct)
+        {
+            string fileIdHex = file.Hex;
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             lock (MirrorGate)
             {
@@ -551,16 +694,18 @@ public static partial class Spotify
             }
 
             Interlocked.Increment(ref s_statResolves);
-            Api.Result result = Api.StorageResolve(fileIdHex, ct);
-            if (!result.Ok) return new Mirrors([], 0, Fault.Network);
+            Api.Result result = Api.StorageResolve(fileIdHex, file.Wire, ct);
+            if (!result.Ok) return Answered(fileIdHex, new Mirrors([], 0, Fault.Network), result.Status, "http");
 
             St.StorageResolveResponse parsed;
             try { parsed = St.StorageResolveResponse.Parser.ParseFrom(result.Bytes); }
-            catch (InvalidProtocolBufferException) { return new Mirrors([], 0, Fault.Network); }
+            catch (InvalidProtocolBufferException)
+            { return Answered(fileIdHex, new Mirrors([], 0, Fault.Network), result.Status, "unparsable"); }
 
             if (parsed.Result == St.StorageResolveResponse.Types.Result.Restricted)
-                return new Mirrors([], 0, Fault.Restricted);
-            if (parsed.Cdnurl.Count == 0) return new Mirrors([], 0, Fault.Network);
+                return Answered(fileIdHex, new Mirrors([], 0, Fault.Restricted), result.Status, "restricted");
+            if (parsed.Cdnurl.Count == 0)
+                return Answered(fileIdHex, new Mirrors([], 0, Fault.Network), result.Status, "no-cdnurl");
 
             var urls = new string[parsed.Cdnurl.Count];
             for (int i = 0; i < urls.Length; i++) urls[i] = parsed.Cdnurl[i];
@@ -574,7 +719,7 @@ public static partial class Spotify
                 while (MirrorOrder.Count > MirrorCacheMax && MirrorOrder.TryDequeue(out string? oldest))
                     MirrorCache.Remove(oldest);
             }
-            return mirrors;
+            return Answered(fileIdHex, mirrors, result.Status, VerdictOf(parsed.Result));
         }
 
         /// <summary>Forget one file's mirrors — called when a body fetch fails, because a dead mirror stays dead for
@@ -771,15 +916,26 @@ public static partial class Spotify
         /// every range a file has in flight (`EnableMultipleHttp2Connections = false`), which is what makes a cancelled
         /// range an `RST_STREAM` rather than a dropped TCP connection. No `Timeout`: a range's deadline is its own
         /// `CancellationToken` on the fetch task, and a client-wide timeout would also kill a legitimately long
-        /// 512 KiB body on a slow link.</summary>
-        static readonly HttpClient Cdn = new(new SocketsHttpHandler
+        /// 512 KiB body on a slow link.
+        ///
+        /// <para>It sends the session's `User-Agent` (`Identity.UserAgent`, the same string every spclient request
+        /// carries). librespot, go-librespot and the desktop client all name themselves to the CDN; we sent nothing at
+        /// all, which is a difference no honest client has and the audio edge is free to treat as it likes.</para></summary>
+        static readonly HttpClient Cdn = NewCdnClient();
+
+        static HttpClient NewCdnClient()
         {
-            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-            ConnectTimeout = TimeSpan.FromSeconds(10),
-            MaxConnectionsPerServer = 4,
-            EnableMultipleHttp2Connections = false,
-        })
-        { Timeout = Timeout.InfiniteTimeSpan };
+            var client = new HttpClient(Wire.Handler("cdn", new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+                MaxConnectionsPerServer = 4,
+                EnableMultipleHttp2Connections = false,
+            }, storms: false))
+            { Timeout = Timeout.InfiniteTimeSpan };
+            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", Identity.UserAgent);
+            return client;
+        }
 
         /// <summary>The quality the user chose, capped where the plan says it must be: a metered connection first
         /// (<see cref="Platform.Network.EffectiveQuality()"/> — the metered cap applies to the lossless rung exactly as
@@ -811,13 +967,22 @@ public static partial class Spotify
             Opened opened = Open(choice, ct, prepared);
             if (!LosslessFallback.Decide(choice.Fmt, opened.Fault)) return opened;
 
-            if (Interlocked.Exchange(ref s_fallbackLogged, 1) == 0)
-                Log.Warn("audio", $"lossless key unavailable ({opened.Fault}) — playing the Ogg 320 rung instead (logged once)");
+            // A refused body is a per-TRACK event and always worth a line; a key that cannot be had is a property of the
+            // BUILD, so it is latched to one line rather than repeated for every track of the session.
+            if (opened.Fault == Fault.Refused)
+                Log.Warn("audio", $"audio.demote file={choice.FileIdHex} fmt={choice.Fmt} why=refused rung=OggVorbis320");
+            else if (Interlocked.Exchange(ref s_fallbackLogged, 1) == 0)
+                Log.Warn("audio", $"audio.demote file={choice.FileIdHex} fmt={choice.Fmt} why={opened.Fault} "
+                                  + "rung=OggVorbis320 (logged once)");
             Md.Track? track = resolved.Track ?? TrackMetadata(uri, ct, out _);
             if (track is null) return opened;
             FileChoice ogg = Choose(track, null, Quality.VeryHigh320, fallbackDurationMs, Api.Market);
             if (!ogg.Ok) return opened;
-            RememberChoice(new CachedChoice(uri, quality, ogg, track, Environment.TickCount64));
+            // The demotion decides its own shelf life (`LosslessFallback.RememberFor`): sticky for a key that cannot be
+            // had, seconds for a refused body — otherwise one bad mirror set costs the user lossless on this track for
+            // half an hour and swallows the very retry that was meant to diagnose it.
+            RememberChoice(new CachedChoice(uri, quality, ogg, track, Environment.TickCount64,
+                                            LosslessFallback.RememberFor(opened.Fault)));
             return Open(ogg, ct, prepared);
         }
 
@@ -848,10 +1013,25 @@ public static partial class Spotify
         // lossless fallback re-chooses over. File ids do not move; the mirrors and keys under them have their own caches.
 
         const int ChoiceCacheMax = 4;
-        const long ChoiceTtlMs = 30 * 60_000;
 
-        /// <summary>One remembered ladder answer, with the track it came from (null for an episode).</summary>
-        readonly record struct CachedChoice(string Uri, Quality Quality, FileChoice Choice, Md.Track? Track, long AtMs);
+        /// <summary>How long a ladder answer is good for. A file id does not move, so this is only a bound on how stale
+        /// a catalogue read may be.</summary>
+        public const long ChoiceTtlMs = 30 * 60_000;
+
+        /// <summary>…and how long a REFUSED lossless demotion is good for, which is a different question entirely. A
+        /// refused body is not a fact about the track — the account has the entitlement, the file id resolved, the key
+        /// was had, and then some mirror set said no THIS MINUTE. Remembering the 320 rung for half an hour would cost
+        /// the user lossless on that track for half an hour, and it would hide the refusal itself: the retry meant to
+        /// gather evidence would be served the cached rung and never reach a mirror, so not one `audio.mirror` or
+        /// `audio.resolve` line would be printed. So it is kept only long enough to stop a retry loop hammering a dead
+        /// url set — the same scale as the pump's refused starve budget (`Playback.Audio.StarvePolicy.RefusedFailMs`).</summary>
+        public const long RefusedChoiceTtlMs = 6_000;
+
+        /// <summary>One remembered ladder answer, with the track it came from (null for an episode). <paramref name="TtlMs"/>
+        /// is per ENTRY rather than per cache because the lossless demotion's answer is worth remembering for a very
+        /// different length of time depending on what demoted it (<see cref="LosslessFallback.RememberFor"/>).</summary>
+        readonly record struct CachedChoice(string Uri, Quality Quality, FileChoice Choice, Md.Track? Track, long AtMs,
+            long TtlMs = ChoiceTtlMs);
 
         static readonly Lock ChoiceGate = new();
         static readonly CachedChoice[] s_choices = new CachedChoice[ChoiceCacheMax];
@@ -864,7 +1044,7 @@ public static partial class Spotify
             {
                 foreach (CachedChoice c in s_choices)
                 {
-                    if (c.Uri is not null && c.Quality == quality && now - c.AtMs < ChoiceTtlMs
+                    if (c.Uri is not null && c.Quality == quality && now - c.AtMs < c.TtlMs
                         && string.Equals(c.Uri, uri, StringComparison.Ordinal)) return c;
                 }
             }

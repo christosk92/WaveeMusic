@@ -453,6 +453,29 @@ public class StoreTests : IDisposable
     }
 
     [Fact]
+    public void A_file_sqlite_cannot_read_is_deleted_and_the_store_still_opens()
+    {
+        // 2026-09-18: a malformed library.db threw at the FIRST pragma, before the fingerprint read could call it
+        // unreadable, and every launch that day ran memory-only. Garbage on disk is a cache miss, never an outage.
+        File.WriteAllBytes(_dbPath, new byte[8192].Select(static (_, i) => (byte)(i * 31 + 7)).ToArray());
+
+        Scope scope = Boot();
+
+        Assert.True(Store.IsOpen);
+        Write(("spotify:track:a", "Alpha", 1, Identity, 3, 1, 1));   // and it persists like any fresh file
+        Assert.True(Store.IsOpen);
+        _ = scope;
+    }
+
+    [Theory]
+    [InlineData(11, true)]    // SQLITE_CORRUPT
+    [InlineData(26, true)]    // SQLITE_NOTADB
+    [InlineData(1, false)]    // SQLITE_ERROR: the statement, not the file
+    [InlineData(5, false)]    // SQLITE_BUSY: another writer, never a reason to delete
+    public void Only_a_verdict_about_the_file_deletes_it(int code, bool unreadable)
+        => Assert.Equal(unreadable, Store.IsUnreadableFile(code));
+
+    [Fact]
     public void The_same_schema_keeps_the_file()
     {
         Scope scope = Boot();

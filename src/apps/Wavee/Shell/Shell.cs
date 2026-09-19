@@ -1225,6 +1225,7 @@ public static partial class Shell
         Separator,       // divider between sections
         LocalDefault,    // the "System default" radio (DeviceId == "")
         LocalDevice,     // a specific this-computer output radio
+        Quality,         // disabled: the ACTUAL playing quality, echoed from the player — never a setting loopback
         ConnectDevice,   // a Spotify Connect device radio (click = transfer)
         Empty,           // a disabled placeholder row (no-devices / hint)
     }
@@ -1262,7 +1263,9 @@ public static partial class Shell
         bool localSupported,
         bool weAreActiveOutput,
         ReadOnlySpan<Playback.Devices.Row> connect,
-        string? activeConnectId)
+        string? activeConnectId,
+        Playback.Audio.Opened observed,
+        Spotify.Audio.Quality askedQuality)
     {
         var rows = new List<DevicePickerRow>(local.Length + connect.Length + 6);
         // stale-truthful "Unavailable" only when local playback is genuinely unsupported
@@ -1280,6 +1283,8 @@ public static partial class Shell
                            && string.Equals(d.Id, selectedLocalId, StringComparison.OrdinalIgnoreCase),
                 Enabled: localSupported, DeviceId: d.Id, Accelerator: acc, LocalKind: d.Kind));
         }
+
+        rows.Add(QualityRow(observed, askedQuality));
 
         rows.Add(new DevicePickerRow(DevicePickerRowKind.Separator, ""));
         rows.Add(new DevicePickerRow(DevicePickerRowKind.Header, Loc.Get(Strings.Player.SpotifyConnect), Enabled: false));
@@ -1301,6 +1306,37 @@ public static partial class Shell
         }
         return rows;
     }
+
+    /// <summary>The verification row: what the player is ACTUALLY echoing, never a loopback of the setting (the
+    /// user's own wording — "so we can verify the quality is being selected and played"). <paramref name="observed"/>
+    /// is the player's own echo (<c>Playback.Audio.PlayingOpened</c>); its <c>Label</c> is empty exactly when
+    /// nothing has been opened yet (<see cref="Playback.Audio.Opened"/> default / the silent-endpoint open). The
+    /// "below setting" wording fires ONLY when the observed format sits on the quality ladder at all — an AAC/ICY
+    /// radio stream (<see cref="Spotify.Audio.Rung"/> = −1) is not a claim about the Spotify quality setting, so it
+    /// never disagrees with it.</summary>
+    static DevicePickerRow QualityRow(Playback.Audio.Opened observed, Spotify.Audio.Quality askedQuality)
+    {
+        if (string.IsNullOrEmpty(observed.Label))
+            return new DevicePickerRow(DevicePickerRowKind.Quality, Loc.Get(Strings.Player.QualityIdle), Enabled: false);
+
+        int observedRung = Spotify.Audio.Rung(observed.Format);
+        int askedRung = Spotify.Audio.TargetRung(askedQuality);
+        string text = observedRung >= 0 && observedRung < askedRung
+            ? Strings.Player.QualityBelowSetting(observed.Label, Loc.Get(AskedQualityLabel(askedQuality)))
+            : Strings.Player.QualityPlaying(observed.Label);
+        return new DevicePickerRow(DevicePickerRowKind.Quality, text, Enabled: false);
+    }
+
+    /// <summary>The setting's own name for <paramref name="quality"/> — the same four labels the Settings page's
+    /// quality combo offers (<c>Settings.UI.Playback.QualityLabels</c>), so "Lossless unavailable" reads exactly
+    /// like the row the user picked it from.</summary>
+    static string AskedQualityLabel(Spotify.Audio.Quality quality) => quality switch
+    {
+        Spotify.Audio.Quality.Normal96 => Strings.Settings.Playback.QualityNormal,
+        Spotify.Audio.Quality.High160 => Strings.Settings.Playback.QualityHigh,
+        Spotify.Audio.Quality.VeryHigh320 => Strings.Settings.Playback.QualityVeryHigh,
+        _ => Strings.Settings.Playback.QualityLossless,
+    };
 
     // ── 7.2 where a now-playing span goes ───────────────────────────────────────────────────────────────────────────
 

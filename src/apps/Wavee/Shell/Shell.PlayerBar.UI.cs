@@ -1130,7 +1130,12 @@ public static partial class Shell
             var connect = Playback.Devices.Rows;
             int remote = DeviceRoster.RemoteSlot(owner, activeSlot, connect);
             string? activeId = (uint)activeSlot < (uint)connect.Length ? connect[activeSlot].Id : null;
-            var rows = DevicePickerRows(local, selected, supported, weAreActiveOutput: remote < 0, connect, activeId);
+            // The verification row: the player's own echo, never a loopback of the setting (user's exact ask).
+            var observed = Playback.Audio.PlayingOpened;
+            var asked = (Spotify.Audio.Quality)Math.Clamp(Platform.Settings.Get(Platform.Keys.PlaybackQuality),
+                Platform.Network.QualityMin, Platform.Network.QualityMax);
+            var rows = DevicePickerRows(local, selected, supported, weAreActiveOutput: remote < 0, connect, activeId,
+                observed, asked);
 
             var items = new MenuFlyoutItem[rows.Count];
             for (int i = 0; i < rows.Count; i++) items[i] = MapDeviceRow(rows[i]);
@@ -1141,7 +1146,8 @@ public static partial class Shell
             var parts = new TemplateParts();
             parts.Set<ScrollEl>(MenuFlyout.PartScrollViewer, s => s with { MaxHeight = maxH });
 
-            int version = HashCode.Combine(roster, (byte)owner, activeSlot, local.Length, selected, supported, maxH);
+            int version = HashCode.Combine(roster, (byte)owner, activeSlot, local.Length, selected, supported, maxH,
+                HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked));
             return new BoxEl
             {
                 Direction = 1,
@@ -1156,7 +1162,9 @@ public static partial class Shell
             {
                 DevicePickerRowKind.Separator => MenuFlyoutItem.Separator,
                 // A disabled command row stands in as the section header (MenuFlyout has no header kind; neither does WinUI).
-                DevicePickerRowKind.Header or DevicePickerRowKind.Empty => new MenuFlyoutItem(row.Label, default, false),
+                // Quality rides the same disabled-row shape: it is informational, never a radio.
+                DevicePickerRowKind.Header or DevicePickerRowKind.Empty or DevicePickerRowKind.Quality
+                    => new MenuFlyoutItem(row.Label, default, false),
                 DevicePickerRowKind.LocalDefault => MenuFlyoutItem.RadioItem(row.Label, row.IsChecked,
                         row.Enabled ? static () => BarSelectLocalOutput(null) : null, Icons.ThisPc, row.Enabled)
                     with { AcceleratorText = row.Accelerator },

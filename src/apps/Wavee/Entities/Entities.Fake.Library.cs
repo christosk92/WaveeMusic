@@ -104,6 +104,7 @@ public static partial class Entities
                 StageExtras(s);
                 StageLocal(s);
                 StageTrackKnowns(s);
+                StageQAlbums(s);
                 Commit(s);
             }
             finally
@@ -118,6 +119,8 @@ public static partial class Entities
             LandTags();
             LandCredits();
             LandContentFilters();
+            LandQAlbums();
+            ExtendSavedAlbums(now0);
         }
 
         static TextRef Text(Staging s, string value) => value.Length == 0 ? default : s.AddText(Utf8(value));
@@ -528,6 +531,171 @@ public static partial class Entities
         {
             var me = new global::Wavee.User(Current.MeSlot);
             if (me.IsValid) me.SetContentFilters(ChipTitles, ChipTokens);
+        }
+
+        // ══ 3. THE LIBRARY-REWORK ADDITIONS (wave L1, owner Q — ch `library-rework-implementation.md` §9) ═════════════
+        //
+        // The base seed (Entities.Fake.cs) already leaves every one of the 12 followed artists with EXACTLY the
+        // AlbumArtists billing `Billed()` (Entities.Fake.Album.cs) assigns across al0-al12: ar0 = {al0, al12} (2),
+        // ar3 = {al3, al4} (2), ar5 = {al2, al5} (2), ar1/ar6/ar7/ar8/ar9/ar10/ar11 = one album each, and — because
+        // `Billed`'s default case never lands on it (al4's compilation override takes the slot Wrap(4,12)=4 would
+        // otherwise reach) — ar4 (Nova Kite) already has ZERO. So the reworked pages' two hard shapes (>=2 followed
+        // artists with >=2 saved albums each, >=1 followed artist with 0) exist in the seed TODAY; nothing about
+        // al0-al12's own AlbumArtists edges, or the base FollowedArtists list, needs to move. What is missing is a
+        // THIRD saved album on at least one of those artists, and a saved album whose tracklist is Failed (W5's
+        // strip) — five new album rows, entirely new uris, added here rather than by reassigning anyone else's
+        // fixture (Entities.Fake.Album.cs and Entities.Fake.Artist.cs are untouched).
+        //
+        // Q0 "…But Seriously" -> ar0 (Christos: al0, al12, alq0 = 3)
+        // Q1 "[05]"           -> ar1 (Alex Rivers: al1, alq1 = 2, and +alq4 below = 3)
+        // Q2 "The Wall"       -> ar3 (The Wavee Collective: al3, al4, alq2 = 3) — AlbumTracks seeded FAILED
+        // Q3 "새벽의 노래"      -> ar6 (Half Moon Radio: al6, alq3 = 2)
+        // Q4 "88 Nights"      -> ar1 (Alex Rivers again: al1, alq1, alq4 = 3)
+        //
+        // Titles exercise the letter rule (ch 31 §8's LibraryLetters, plan §9): an ellipsis-led title, a bracket-led
+        // title, an article-led title ("The …"), a Hangul title and a digit-led title — five distinct first-glyph
+        // classes among the Albums library's letter groups.
+        //
+        // Every artist here (including ar4) already has >=2 catalogue-only releases NOT in SavedAlbums: ArtistSeed's
+        // own `FacetCount` gives every non-showcase artist 2 ArtistAlbums + 3 ArtistSingles + 1 ArtistCompilations,
+        // each under its own `spotify:album:dg{artist}…` uri — a disjoint namespace from `alq*`/`al*`, so none of
+        // them was ever a candidate for SavedAlbums. Nothing to add there.
+        //
+        // THE FAILED EDGE: `EdgeTableBase.MarkFailed` (Edges.cs) is the real mark a live 5xx lands through —
+        // `Readiness(parent)` reads `EdgeState.Failed` for exactly as long as `State(parent)` stays Unknown and a
+        // failure mark is set (Edges.cs:128-135). Q2's AlbumTracks run is simply never committed (no `ReplaceRun`),
+        // then `MarkFailed` is called — the same door `Fetch.Edges.cs`'s `EdgesFailed` calls for a real terminal
+        // answer. The fake decoder path CAN express this. What it can NOT do: `--fake` seeds identity through this
+        // same `Staging`/`Commit` path and then runs no second transport (ch 31 §0.1) — `alq2`'s uri parses to
+        // `EntityProvider.Spotify` (`Entities.ProviderOf`, every `spotify:` uri does, seed or not) with no live
+        // session behind it, so a page's own Retry (which un-asks the page — `MarkFailed`'s own doc) re-plans a
+        // fetch that has nowhere real to land. The strip renders correctly on first paint; whether Retry can ever
+        // "land the rows" against this fixture specifically is a page/transport question, out of this file's reach —
+        // flagged for the orchestrator rather than worked around here.
+
+        /// <summary>al0-al12 are the base seed's, al13/al14 the album seed's prerelease/waterfall — Q's five are a
+        /// disjoint uri family (<c>alq0</c>..<c>alq4</c>), never reachable through <c>AlbumUri</c>'s own
+        /// <c>Wrap(i, AlbumCount)</c>.</summary>
+        const int QAlbumCount = 5;
+
+        /// <summary>Q2, "The Wall": the one saved album whose <c>AlbumTracks</c> run is seeded FAILED rather than committed.</summary>
+        const int QFailedAlbum = 2;
+
+        static readonly string[] s_qAlbumTitles = ["…But Seriously", "[05]", "The Wall", "새벽의 노래", "88 Nights"];
+
+        /// <summary>The billed (and sole) artist of each Q album, as a fixture index into the base 12.</summary>
+        static readonly int[] s_qAlbumArtist = [0, 1, 3, 6, 1];
+        static readonly AlbumKind[] s_qAlbumKind = [AlbumKind.Album, AlbumKind.EP, AlbumKind.Album, AlbumKind.Album, AlbumKind.Compilation];
+        static readonly ushort[] s_qAlbumYear = [2016, 2019, 2011, 2021, 2014];
+        static readonly int[] s_qAlbumTracks = [9, 5, 11, 7, 14];
+
+        static string QAlbumUri(int q) => "spotify:album:alq" + q.ToString(CultureInfo.InvariantCulture);
+        static string QTrackUri(int q, int k) => "spotify:track:trq" + q.ToString(CultureInfo.InvariantCulture) + "n" + k.ToString(CultureInfo.InvariantCulture);
+
+        /// <summary>Q's five album rows (Title/Image/Year/TrackCount/Kind — <c>AlbumFields.Identity</c>) and,
+        /// for every album except <c>QFailedAlbum</c>, its named member tracks with durations. Q2 stages NO
+        /// track rows at all: its <c>AlbumTracks</c> run stays Unknown until <c>LandQAlbums</c> marks it Failed.</summary>
+        static void StageQAlbums(Staging s)
+        {
+            for (int q = 0; q < QAlbumCount; q++)
+            {
+                ref var album = ref s.Albums.RowFor(Text(s, QAlbumUri(q)), Authority.Seed, (uint)AlbumFields.Identity);
+                album.Title = Text(s, s_qAlbumTitles[q]);
+                album.Image = Text(s, Cover(q + 30));
+                album.Year = s_qAlbumYear[q];
+                album.TrackCount = s_qAlbumTracks[q];
+                album.Kind = (byte)s_qAlbumKind[q];
+
+                if (q == QFailedAlbum) continue;
+
+                string artistName = s_artistNames[s_qAlbumArtist[q]];
+                for (int k = 0; k < s_qAlbumTracks[q]; k++)
+                {
+                    ref var track = ref s.Tracks.RowFor(Text(s, QTrackUri(q, k)), Authority.Seed, (uint)(TrackFields.Row | TrackFields.Year));
+                    track.Title = Text(s, s_titles[Wrap(q * 11 + k, s_titles.Length)]);
+                    track.ArtistLine = Text(s, artistName);
+                    track.Image = Text(s, Cover(q + k + 30));
+                    track.AlbumUri = Text(s, QAlbumUri(q));
+                    track.DurationMs = 150_000 + (k * 41_000 + q * 7_000) % 180_000;
+                    track.PlayCount = (uint)(400_000 + k * 37_000 + q * 91_000);
+                    track.Year = s_qAlbumYear[q];
+                }
+            }
+        }
+
+        /// <summary>The relations Q's albums need: <c>AlbumArtists</c> (one billed artist each), <c>AlbumTracks</c>
+        /// (a real run for every album except Q2, which gets <c>EdgeTableBase.MarkFailed</c> instead), the
+        /// member tracks' own <c>TrackArtists</c> run, and the star (<c>Album.DeriveTopTrack</c>) for the albums that
+        /// actually have rows to rank.</summary>
+        static void LandQAlbums()
+        {
+            var e = Current.Edges;
+            // Every span is sized once, outside the loop, and re-sliced per album (the same shape LandExtras above
+            // uses for its own scratch) — never a fresh stackalloc per iteration.
+            Span<int> targets = stackalloc int[16];
+            Span<AlbumTrackEdge> numbers = stackalloc AlbumTrackEdge[16];
+            Span<int> oneArtist = stackalloc int[1];
+
+            for (int q = 0; q < QAlbumCount; q++)
+            {
+                int albumSlot = SlotOf(EntityKind.Album, QAlbumUri(q));
+                if (albumSlot == Table.None) continue;
+
+                int artistSlot = SlotOf(EntityKind.Artist, ArtistUri(s_qAlbumArtist[q]));
+                targets[0] = artistSlot;
+                e.AlbumArtists.ReplaceRun(albumSlot, targets[..1], default);
+
+                if (q == QFailedAlbum)
+                {
+                    e.AlbumTracks.MarkFailed(albumSlot, 0, 503);
+                    continue;
+                }
+
+                int count = s_qAlbumTracks[q];
+                for (int k = 0; k < count; k++)
+                {
+                    targets[k] = SlotOf(EntityKind.Track, QTrackUri(q, k));
+                    numbers[k] = new AlbumTrackEdge(1, (ushort)(k + 1));
+                }
+                e.AlbumTracks.ReplaceRun(albumSlot, targets[..count], numbers[..count]);
+
+                oneArtist[0] = artistSlot;
+                for (int k = 0; k < count; k++)
+                    e.TrackArtists.ReplaceRun(targets[k], oneArtist, default);
+
+                global::Wavee.Album.DeriveTopTrack(albumSlot);
+            }
+        }
+
+        /// <summary>Re-states the WHOLE <c>SavedAlbums</c> relation — the base seed's 13 (untouched, same ids, same
+        /// <c>AddedAt</c> formula) plus Q's five — because <c>User.Replace</c> replaces a relation wholesale; there
+        /// is no "add one row" primitive for a whole-run edge (ch 31 §0.1's own commit path). Extends the base
+        /// seed's 13 <c>i</c>-keyed <c>now0 - i·3d</c> formula into Q's five rather than inventing a second one.
+        ///
+        /// <para><b>Pinned-test note:</b> this bumps <c>User.Me.Count(LibraryEdgeKind.SavedAlbums)</c> from 13 to 18.
+        /// <c>Wavee.Tests/EntitiesFakeTests.cs</c>'s <c>The_library_has_the_registers_four_sets_plus_liked_and_pins</c>
+        /// asserts 13 — that assertion needs to become 18 (reported, not edited here; ADD rows, never edit a pinned
+        /// test).</para></summary>
+        static void ExtendSavedAlbums(long now0)
+        {
+            var me = new global::Wavee.User(Current.MeSlot);
+            if (!me.IsValid) return;
+
+            const int total = AlbumCount + QAlbumCount;
+            Span<int> slots = stackalloc int[total];
+            Span<LibraryEdge> payload = stackalloc LibraryEdge[total];
+            for (int i = 0; i < AlbumCount; i++)
+            {
+                slots[i] = SlotOf(EntityKind.Album, AlbumUri(i));
+                payload[i] = new LibraryEdge((int)(now0 - i * 3L * 86_400), 0);
+            }
+            for (int q = 0; q < QAlbumCount; q++)
+            {
+                int i = AlbumCount + q;
+                slots[i] = SlotOf(EntityKind.Album, QAlbumUri(q));
+                payload[i] = new LibraryEdge((int)(now0 - i * 3L * 86_400), 0);
+            }
+            me.Replace(LibraryEdgeKind.SavedAlbums, slots, payload);
         }
     }
 }
