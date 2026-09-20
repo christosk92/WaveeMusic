@@ -349,9 +349,9 @@ public readonly partial struct User
         };
     }
 
-    static TextEl StripInk(string text, ushort weight, Prop<ColorF> ink) => new(text)
+    static TextEl StripInk(string text, ushort weight, Prop<ColorF> ink) => Design.Type.MicroMeta(text) with
     {
-        Size = 9.5f, LineHeight = 12f, Weight = weight, Color = ink, BrushTransitionMs = Design.Motion.Fast,
+        Weight = weight, Color = ink, BrushTransitionMs = Design.Motion.Fast,
         AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
     };
 

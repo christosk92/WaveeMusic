@@ -1,4 +1,4 @@
-// ── Entities/Entities.cs — CORE (owner A, wave 1; plan §2, §4.1 — over the 1,240-line budget since the packed
+﻿// ── Entities/Entities.cs — CORE (owner A, wave 1; plan §2, §4.1 — over the 1,240-line budget since the packed
 //    identity landed, §2 being the whole of the difference) ────────────────────────────────────────
 //
 // THE FOUNDATION. Everything else in Entities/ binds to what is in this file: the uri parse, the column slab, the
@@ -1039,9 +1039,25 @@ public abstract class Table : Publishable
 
     /// <summary>Allocate a row for <paramref name="id"/> — a recycled slot if one is free, else a new one. Never
     /// returns <see cref="None"/>. The row starts with <c>Known = 0</c>: it exists, and nothing about it is known yet,
-    /// which is exactly the state a page renders as a skeleton.</summary>
+    /// which is exactly the state a page renders as a skeleton.
+    /// <para><b>A CROSS-KIND ALLOCATION IS REPORTED, NOT REFUSED.</b> This table indexes ONE <see cref="Kind"/>, and a
+    /// caller handing it an id of another kind has mis-filed an entity: the row exists, nothing will ever fill it
+    /// (no route asks this table for that kind), and the surface renders a permanent hole. That is exactly how the
+    /// saved ALBUMS in a contaminated Liked edge became blank rows in the Liked Songs table
+    /// (<c>Store.ApplyLibraryEdge</c>, which now drops them before they reach here).
+    /// <para>It is reported rather than refused because <see cref="Alloc"/> may not fail: <see cref="Slot(EntityId)"/>
+    /// promises a row, and a text-form id that no provider claims legitimately parses as
+    /// <see cref="EntityKind.Unknown"/> (a Local Files track is the standing example), so a hard reject here would
+    /// break the very rows that depend on the text form. An <see cref="EntityKind.Unknown"/> id is therefore accepted
+    /// silently; a DEFINITE disagreement — both kinds known, and different — is the mis-filing worth a line in the
+    /// log, so the next one is found in minutes rather than by reading a cache by hand.</para></para></summary>
     public int Alloc(EntityId id)
     {
+        if (id.Kind != EntityKind.Unknown && Kind != EntityKind.Unknown && id.Kind != Kind)
+            Log.Event(WaveeLogLevel.Warning, "entities", "entity.miskind",
+                "a row was allocated in a table that does not index its kind; nothing will ever fill it",
+                null, -1, null,
+                WaveeLogField.Of("table", Kind.ToString()), WaveeLogField.Of("id", id.Kind.ToString()));
         int slot;
         if (Free.Count > 0) { slot = Free.Pop(); }
         else { slot = Count++; EnsureCapacity(Count); }

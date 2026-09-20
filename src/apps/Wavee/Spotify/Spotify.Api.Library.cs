@@ -413,30 +413,42 @@ public static partial class Spotify
             else (relation, kind) = Decode.LibraryRelationOf(set);
             EdgeRun run = s.Run(relation);
 
-            EdgeRun otherRun = default;
+            // TWO RUNS MAY NOT BE OPEN ON ONE STAGING AT ONCE. A run is a CONTIGUOUS slice of the shared edge list
+            // (`StagedEdgeList.Append`: start + length), so appending to a second run BETWEEN two appends of the first
+            // puts the second's children inside the first's slice. With one page that is invisible; from the second
+            // page on, the main run's slice swallows whatever the other run staged from page one — which is exactly
+            // how saved ALBUMS ended up inside a 349-item Liked list (18 of them: `entity.miskind table=Track
+            // id=Album`, then `store.edge.dropped relation=Liked dropped=18` on every launch thereafter). `Discard`
+            // and `Compact` would have sliced the wrong rows too.
+            //
+            // So the shared relation's children are COLLECTED while the pages stream and staged in ONE contiguous run
+            // after the main one closes. The page bodies are still decoded and discarded as they land (G-042's whole
+            // point); only the identified children are held, which is what the second run was holding anyway. One list
+            // per full walk, and a full walk is the rare path.
+            Relation otherRelation = default;
             EntityKind otherKind = default;
+            List<(StagedId Target, int At)>? otherItems = null;
             if (shared)
             {
-                (Relation otherRelation, EntityKind otherEntityKind) = Decode.LibraryRelationOf(otherSet);
-                otherKind = otherEntityKind;
-                otherRun = s.Run(otherRelation);
+                (otherRelation, otherKind) = Decode.LibraryRelationOf(otherSet);
+                otherItems = new List<(StagedId, int)>(CollectionPageSize);
             }
 
             string token = "", lastSyncToken = "";
             bool terminal = false;
             for (int page = 0; page < MaxCollectionPages; page++)
             {
-                if (Stale(batch)) { run.Discard(); if (shared) otherRun.Discard(); return; }
+                if (Stale(batch)) { run.Discard(); otherItems?.Clear(); return; }
                 Result result = CollectionPage(CollectionPageBody(username, wire, token, CollectionPageSize), CancellationToken.None);
                 if (!result.Ok)
                 {
                     run.Discard();
-                    if (shared) otherRun.Discard();
+                    otherItems?.Clear();
                     outcome.Note(in result);                           // half a library is not an answer
                     return;
                 }
                 Decode.LibraryPageItems(result.Body, isPins ? null : kind, s, ref run);
-                if (shared) Decode.LibraryPageItems(result.Body, otherKind, s, ref otherRun);
+                if (otherItems is not null) Decode.LibraryPageItems(result.Body, otherKind, s, otherItems);
                 lastSyncToken = SyncTokenOf(result.Body);
                 token = NextPageToken(result.Body);
                 if (token.Length == 0) { terminal = true; break; }
@@ -447,7 +459,7 @@ public static partial class Spotify
                 // The page cap fired without a real terminal: a whole-list rewrite from a truncated crawl would delete
                 // real rows (0.2.10's production bug this gap-fix exists to close) — commit nothing, trust nothing.
                 run.Discard();
-                if (shared) otherRun.Discard();
+                otherItems?.Clear();
                 Log.Warn("library", "collection walk hit the page cap (" + MaxCollectionPages + ") without a terminal page ("
                                      + wire + "); nothing committed this pass");
                 outcome.Note(0);
@@ -455,9 +467,19 @@ public static partial class Spotify
             }
 
             int walkedCount = run.Count;
-            int otherWalkedCount = shared ? otherRun.Count : 0;
+            int otherWalkedCount = otherItems?.Count ?? 0;
             run.EndEvenIfEmpty(in parent);
-            if (shared) otherRun.EndEvenIfEmpty(in parent);
+            if (otherItems is not null)
+            {
+                // Now, and only now, is the edge list free for a second contiguous slice.
+                EdgeRun otherRun = s.Run(otherRelation);
+                for (int i = 0; i < otherItems.Count; i++)
+                {
+                    var target = otherItems[i].Target;
+                    otherRun.Add(in target).At = otherItems[i].At;
+                }
+                otherRun.EndEvenIfEmpty(in parent);
+            }
             outcome.Note(200);
 
             PersistLedgerIfTrustworthy(username, set, walkedCount, lastSyncToken);

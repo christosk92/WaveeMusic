@@ -496,6 +496,18 @@ public static partial class Playback
         int start = transfer
             ? (load.HasCurrent ? RemotePlan.StartIndex(buffer, context, load.CurrentUid.IsEmpty ? load.Current.Uid : load.CurrentUid, load.Current.Uri, -1) : -1)
             : RemotePlan.StartIndex(buffer, context, load.SkipToUid, load.SkipToUri, load.SkipToIndex);
+        // ALWAYS-ON: the user asked for a specific row and the resolved context does not contain it. Silently starting
+        // at row 0 is indistinguishable, from the outside, from "the click did nothing but a different song began" —
+        // which is exactly how it was reported. Name the uri we wanted and what the context actually is, so the next
+        // occurrence says WHY (a relinked uri, a shorter context page, a stale row) instead of only that it happened.
+        if (start < 0 && !transfer && !load.SkipToUri.IsEmpty && context.Length > 0)
+            Log.Warn("playback", "context start row is not in the resolved context: want="
+                + System.Text.Encoding.UTF8.GetString(buffer.Utf8(load.SkipToUri))
+                + " context=" + (load.ContextUri.IsEmpty ? "(none)" : System.Text.Encoding.UTF8.GetString(buffer.Utf8(load.ContextUri)))
+                + " rows=" + context.Length
+                + " first=" + System.Text.Encoding.UTF8.GetString(buffer.Utf8(context[0].Uri))
+                + " last=" + System.Text.Encoding.UTF8.GetString(buffer.Utf8(context[^1].Uri))
+                + " -> starting at row 0");
         if (start < 0 && (!transfer || (!load.HasCurrent && load.AlwaysPlaySomething)) && context.Length > 0) start = 0;
 
         int cap = RemotePlan.MaxRows;

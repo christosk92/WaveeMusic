@@ -438,7 +438,14 @@ public static partial class Entities
                 // (`Spotify.Decode.cs`'s kind-138 handler) stages `AlbumFields.Title` alone when it read a name, with
                 // no `row.Image` — and an unguarded write here would blank a cover a fuller live answer already set.
                 if (!row.Title.IsEmpty) t.SetText(ref t.Title, slot, s.Intern(row.Title));
-                if (!row.Image.IsEmpty) t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                // Emptiness guards the BLANKING; Detail.CoverLatch.AcceptsImage guards the DOWNGRADE — a later 64 of
+                // the same art must not replace a visible 640 (the soft-cover report).
+                if (!row.Image.IsEmpty)
+                {
+                    var incomingImage = s.Intern(row.Image);
+                    if (Detail.CoverLatch.AcceptsImage(t.Image[slot], incomingImage))
+                        t.SetText(ref t.Image, slot, incomingImage);
+                }
                 t.Year[slot] = row.Year;
                 // Guarded on the row's OWN `TrackCount` bit, the way Title/Image are guarded on emptiness: a count of
                 // 0 is "not known yet", and every producer that has none withholds the bit (`AlbumV4` without discs,

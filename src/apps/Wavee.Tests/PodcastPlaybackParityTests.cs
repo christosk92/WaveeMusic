@@ -83,6 +83,23 @@ public class PodcastPlaybackParityTests
     }
 
     [Fact]
+    public void Speed_applies_to_episodes_and_to_tracks_while_video_is_up()
+    {
+        Assert.True(Playback.SpeedApplies(EntityKind.Episode, videoWanted: false));
+        Assert.False(Playback.SpeedApplies(EntityKind.Track, videoWanted: false));
+        Assert.True(Playback.SpeedApplies(EntityKind.Track, videoWanted: true));
+        var track = EntityId.ForGid(EntityKind.Track, 1);
+        Assert.Equal(1f, Playback.RateFor(track, videoWanted: false));
+        float prior = Playback.EpisodeSpeed.Peek();
+        try
+        {
+            Playback.EpisodeSpeed.Value = 1.25f;
+            Assert.Equal(1.25f, Playback.RateFor(track, videoWanted: true));
+        }
+        finally { Playback.EpisodeSpeed.Value = prior; }
+    }
+
+    [Fact]
     public void Speed_write_uses_the_captured_global_content_value_shape()
     {
         byte[] body = Playback.SpeedSettingsBody(1.9f);

@@ -943,7 +943,7 @@ public static partial class Deck
         static string FormatLine()
         {
             var badge = Playback.StreamFormat.Value;
-            return badge.IsEmpty ? "" : Entities.Strings.Resolve(badge).ToUpperInvariant();
+            return badge.IsEmpty ? "" : Entities.Strings.Resolve(badge);
         }
 
         /// <summary>The dial arc plus the ticks on one side of 0 dB, in the 100×82 view box — built and interned once.</summary>
@@ -1198,7 +1198,7 @@ public static partial class Deck
         static string FormatCell()
         {
             var badge = Playback.StreamFormat.Value;
-            return badge.IsEmpty ? "---" : Entities.Strings.Resolve(badge).ToUpperInvariant();
+            return badge.IsEmpty ? "---" : Entities.Strings.Resolve(badge);
         }
     }
 

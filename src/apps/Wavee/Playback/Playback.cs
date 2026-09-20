@@ -1002,7 +1002,7 @@ public static partial class Playback
         /// <summary>How many claims/announces this session has minted. Diagnostics; the wire's message id is the
         /// host's, because the glue owns the debounce that decides how many PUTs actually go out.</summary>
         public float EpisodeRate;
-        public readonly float ContentRate => CurrentId.Kind == EntityKind.Episode && EpisodeRate > 0 ? EpisodeRate : 1f;
+        public readonly float ContentRate => SpeedApplies(CurrentId.Kind, VideoWanted) && EpisodeRate > 0 ? EpisodeRate : 1f;
         public uint PublishSeq;
 
         // ── the connect bookkeeping the PUT body carries ──

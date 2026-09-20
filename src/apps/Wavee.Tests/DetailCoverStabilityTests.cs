@@ -6,10 +6,11 @@
 //   · a MOSAIC is `CoverLatch.Reduce(coverUrl: "", leadTile)` — the same reduction `ImageSource.ReducedUrl` applied
 //     before comparing, so every mosaic fact survives as a fact about the lead tile's url;
 //   · `Image` records became urls, so `Assert.Same`/`.Url` compare the url strings.
-// One assertion could not survive: `PreferVisible_NoPreviewFallback…`'s `chosen.LargestUrl == loaded.Url` — the 0.2.9
-// latch ENRICHED the kept record with the incoming's largest rendition, and a 0.3 cover is one url in one column, so
-// there is nothing to enrich (the decode bucket, not the url, now picks the rendition).
+// One assertion was rewritten: `PreferVisible_NoPreviewFallback…` used to keep the visible 300 forever when the
+// same-art 640 landed (0.3 dropped 0.2.9's largest-rendition enrich because it assumed decodePx selected size).
+// The stored URL IS the rendition, so PreferVisible must upgrade a larger same-art id and never downgrade.
 
+using Wavee;
 using Xunit;
 using Breakpoints = Wavee.Detail.Breakpoints;
 using CoverLatch = Wavee.Detail.CoverLatch;
@@ -85,10 +86,27 @@ public class DetailCoverStabilityTests
         Assert.Equal(VerticalLayout.ArtworkDecodePx(artSize), VerticalLayout.ArtworkDecodePx(artSize, widthMeasured: true));
     }
 
+    [Fact]
+    public void PlaylistHeaderCoverDecode_IsAtLeastThePaintedSizeAndTheArtworkLadder()
+    {
+        Assert.Equal(512, Playlist.HeaderCoverDecodePx(232f, 1f));
+        Assert.True(Playlist.HeaderCoverDecodePx(232f, 2f) >= 512);
+        Assert.True(Playlist.HeaderCoverDecodePx(232f, 2f) >= Design.ImageDecodeScale.For(232f, 2f));
+    }
+
+    [Fact]
+    public void PreferVisible_KeepsTheSharperId_WhenIdentityIsAlreadyKnown()
+    {
+        string? visible = CoverLatch.PreferVisible(Thumb64, null);
+        Assert.Equal(Hero640, CoverLatch.PreferVisible(Hero640, visible));
+        Assert.Equal(Hero640, CoverLatch.PreferVisible(Thumb64, Hero640));
+    }
+
     // ── 2d.1: SameArt / PreferVisible over mosaics + the no-preview fallback latch ─────────────────────────────────
 
     // Real id shapes: 40 hex = 16-char size/kind marker + 24-char art identity.
     const string Art = "a149cc5f2c8074884fc06a80";
+    const string Thumb64 = "https://i.scdn.co/image/ab67616d00004851" + Art;
     const string Card300 = "https://i.scdn.co/image/ab67616d00001e02" + Art;
     const string Hero640 = "https://i.scdn.co/image/ab67616d0000b273" + Art;
     const string OtherArt = "https://i.scdn.co/image/ab67616d0000b27392144c5952844a7c0086b141";
@@ -154,7 +172,7 @@ public class DetailCoverStabilityTests
     }
 
     [Fact]
-    public void PreferVisible_MosaicVsSingleTile_KeepsVisible_ForTheSameLeadArt()
+    public void PreferVisible_MosaicVsSingleTile_UpgradesToTheLargerLeadArt()
     {
         const string visibleSingle = Card300;
         string? incomingMosaic = CoverLatch.Reduce("", Hero640);
@@ -162,11 +180,11 @@ public class DetailCoverStabilityTests
         string? chosen = CoverLatch.PreferVisible(incomingMosaic, visibleSingle);
 
         Assert.NotNull(chosen);
-        Assert.Equal(visibleSingle, chosen);
+        Assert.Equal(incomingMosaic, chosen);   // same art, larger prefix → take the 640 mosaic lead
     }
 
     [Fact]
-    public void PreferVisible_NoPreviewFallback_LatchesAgainstTheLastPublishedCover()
+    public void PreferVisible_NoPreviewFallback_UpgradesTheLastPublishedCoverTo640()
     {
         // The no-preview cover latch (deep link / search hit): `previewCover ?? lastPublished`.
         string? preview = null;
@@ -177,7 +195,16 @@ public class DetailCoverStabilityTests
         string? chosen = CoverLatch.PreferVisible(loaded, fallback);
 
         Assert.NotNull(chosen);
-        Assert.Equal(lastPublished, chosen);   // same art → keep the visible rendition, not the fresh hash
+        Assert.Equal(loaded, chosen);   // same art, larger prefix → take the 640 incoming
+    }
+
+    [Fact]
+    public void PreferVisible_ALater64_DoesNotReplaceAVisible640()
+    {
+        string? visible = CoverLatch.PreferVisible(Hero640, null);
+        Assert.Equal(Hero640, visible);
+        visible = CoverLatch.PreferVisible(Thumb64, visible);
+        Assert.Equal(Hero640, visible);
     }
 
     [Fact]
@@ -221,15 +248,15 @@ public class DetailCoverStabilityTests
     // that latch must produce for the hero specifically.
 
     [Fact]
-    public void ArtistHero_ImageThenHeader_SameArtIdentity_KeepsTheVisibleImage()
+    public void ArtistHero_ImageThenHeader_SameArtIdentity_UpgradesToTheLargerRendition()
     {
         string? visible = CoverLatch.PreferVisible(Card300, null);   // the avatar (Image) mounts first
         Assert.Equal(Card300, visible);
 
-        // The overview lands and offers Hero640 — the SAME 24-char identity, just another rendition — so the hero
-        // must keep painting the image it already decoded rather than re-fade the identical photo.
+        // The overview lands and offers Hero640 — the SAME 24-char identity, a larger size prefix — so the hero
+        // must take the sharper hash rather than keep the 300 it decoded from the card.
         visible = CoverLatch.PreferVisible(Hero640, visible);
-        Assert.Equal(Card300, visible);
+        Assert.Equal(Hero640, visible);
     }
 
     [Fact]

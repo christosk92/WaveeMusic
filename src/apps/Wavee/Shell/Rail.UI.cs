@@ -91,6 +91,10 @@ public static partial class Rail
             {
                 Grow = 1f, Corners = RailCorners, ClipToBounds = true,
                 Fill = Prop.Of(static () => Shell.Ui.RailFits.Value && Shell.Ui.RailOpen.Value ? ColorF.Transparent : Design.Colors.FileArea),
+                OnBoundsChanged = static r =>
+                {
+                    if (MathF.Abs(Shell.Ui.RailBodyHeight.Peek() - r.H) > 0.5f) Shell.Ui.RailBodyHeight.Value = r.H;
+                },
             };
             // The ONE docked hairline, LEFT + TOP, drawn topmost so content cannot cover it. Floating: the ring is the arm's.
             Element edge = new BoxEl
@@ -153,7 +157,8 @@ public static partial class Rail
                     [
                         Splitter.Create(Shell.Ui.DockedVideoHeight, CommitCap, new Splitter.SplitterOptions
                         {
-                            Min = Shell.DockedVideoNaturalH(railWidth), Max = Shell.DockedVideoMaxH,
+                            Min = Shell.DockedVideoNaturalH(railWidth),
+                            Max = Shell.DockedCapCeiling(Shell.Ui.RailBodyHeight.Peek()),
                             Axis = SplitterAxis.Vertical, ShowIndicator = false,
                         }),
                     ],
@@ -166,7 +171,8 @@ public static partial class Rail
     /// clears the pin at the next source) and persists it.</summary>
     static void CommitCap()
     {
-        float h = Shell.ClampDockedVideoHeight(Shell.Ui.DockedVideoHeight.Peek(), Shell.Ui.RailWidth.Peek());
+        float h = Shell.ClampDockedVideoHeight(Shell.Ui.DockedVideoHeight.Peek(), Shell.Ui.RailWidth.Peek(),
+            Shell.Ui.RailBodyHeight.Peek());
         Shell.Ui.DockedVideoHeight.Value = h;
         Shell.Ui.DockedVideoHeightPinned.Value = true;
         Platform.Settings.Set(Platform.Keys.ShellDockedVideoHeight, h);
@@ -397,7 +403,16 @@ public static partial class Rail
                 if (item.Children is not [BoxEl content, var pill]) return item;
                 var kids = new Element[content.Children.Length];
                 for (int i = 0; i < kids.Length; i++)
-                    kids[i] = content.Children[i] is TextEl t && t.FontFamily is null ? t with { Size = 13f } : content.Children[i];
+                {
+                    if (content.Children[i] is TextEl t && t.FontFamily is null)
+                    {
+                        var rung = t.Weight is 600 or 650 or 700 or 540
+                            ? global::Wavee.Design.Type.DenseTitle("")
+                            : global::Wavee.Design.Type.DenseMeta("");
+                        kids[i] = t with { Size = rung.Size, LineHeight = rung.LineHeight, Weight = rung.ResolvedWeight };
+                    }
+                    else kids[i] = content.Children[i];
+                }
                 return item with { Children = [content with { Padding = new Edges4(12f, 3f, 12f, 2f), Gap = 7f, Children = kids }, pill] };
             },
         };

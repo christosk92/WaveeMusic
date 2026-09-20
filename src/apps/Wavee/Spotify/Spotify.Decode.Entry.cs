@@ -264,6 +264,29 @@ public static partial class Spotify
             }
         }
 
+        /// <summary>The COLLECTING twin of <see cref="LibraryPageItems(ReadOnlySpan{byte},EntityKind?,Staging,ref EdgeRun)"/>
+        /// — same walk, same filter, but the identified children go into <paramref name="into"/> instead of straight
+        /// into a run. It exists because a <see cref="EdgeRun"/> is a CONTIGUOUS slice of the staging's one edge list,
+        /// so the shared <c>collection</c> walk cannot keep two runs open across its pages: the second relation's
+        /// children are collected while the pages stream and staged in one run after the first one closes
+        /// (<c>Spotify.Api.Library.CollectionFullWalk</c>). PURE over the arena, exactly like the twin.</summary>
+        public static void LibraryPageItems(ReadOnlySpan<byte> page, EntityKind? kindFilter, Staging s,
+                                            List<(StagedId Target, int At)> into)
+        {
+            var r = new ProtoReader(page);
+            while (r.Next())
+            {
+                if (r.Field != 1 || r.Wire != 2) { r.Skip(); continue; }
+                var item = r.Message();
+                CollectionItem(ref item, out ReadOnlySpan<byte> uri, out int at, out bool removed);
+                if (removed || uri.IsEmpty) continue;
+                if (kindFilter is { } kind && EntityUri.KindOf(uri) != kind) continue;
+                var target = Identity(s, uri);
+                if (target.IsEmpty) continue;
+                into.Add((target, at));
+            }
+        }
+
         /// <summary>Stage 2's decode: a collection-v2 <c>DeltaResponse</c> — <c>delta_update_possible</c> (field 1, the
         /// return value), every item (field 2, adds AND removes: unlike <see cref="LibraryPageItems"/>, a removal
         /// tombstone is kept, not dropped — a delta is the one place a removal is information rather than "absent from

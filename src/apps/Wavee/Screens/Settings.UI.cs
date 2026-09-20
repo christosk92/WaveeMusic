@@ -749,7 +749,7 @@ public static partial class Settings
         {
             Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Children = [new TextEl(Loc.Get("settings.logs.unavailable")) { Size = 13f, Color = Tok.TextSecondary }],
+            Children = [Design.Type.DenseMeta(Loc.Get("settings.logs.unavailable")) with { Color = Tok.TextSecondary }],
         };
     }
 

@@ -266,7 +266,13 @@ public static partial class Settings
             Children =
             [
                 new TextEl(label) { Size = 12f, Color = Tok.TextSecondary, Shrink = 0f },
-                new TextEl(value) { Size = 13f, Weight = 600, Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap },
+                new TextEl(value)
+                {
+                    Size = global::Wavee.Design.Type.DenseTitle("").Size,
+                    LineHeight = global::Wavee.Design.Type.DenseTitle("").LineHeight,
+                    Weight = global::Wavee.Design.Type.DenseTitle("").ResolvedWeight,
+                    Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap,
+                },
             ],
         };
 

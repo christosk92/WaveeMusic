@@ -1,4 +1,4 @@
-// ── Spotify/Spotify.Decode.Pathfinder.cs ───────────────────────────────────────────────────────────────────────────
+﻿// ── Spotify/Spotify.Decode.Pathfinder.cs ───────────────────────────────────────────────────────────────────────────
 // the Utf8JsonReader pathfinder folds. Named on day one — the plan's own "if > 2k" now holds
 //
 // Role: CORE
@@ -261,8 +261,13 @@ public static partial class Spotify
             // The cover also carries the provider's extracted colour; the other image fields never do.
             else if (r.ValueTextEquals("coverArt"u8))
             { r.Read(); var url = ImageNode(ref r, s, ref n.CoverHex); if (n.Image.IsEmpty) n.Image = url; }
+            // `avatar` is the USER node's own spelling — `ownerV2.data` is
+            // `{ __typename, avatar, name, uri, username }` (assets/spotify/icedamericano.json), and without it
+            // here a playlist owner's portrait never reached `Node.Image` at all: the vocabulary knew every
+            // spelling but the one the only node kind that HAS an avatar actually uses.
             else if (r.ValueTextEquals("avatarImage"u8) || r.ValueTextEquals("images"u8)
-                  || r.ValueTextEquals("image"u8) || r.ValueTextEquals("headerImage"u8))
+                  || r.ValueTextEquals("image"u8) || r.ValueTextEquals("headerImage"u8)
+                  || r.ValueTextEquals("avatar"u8))
             { r.Read(); var url = FirstUrl(ref r, s); if (n.Image.IsEmpty) n.Image = url; }
             // The album's own cover is the track/episode's fallback art (S3): a pathfinder track hit carries no
             // `image`/`coverArt` of its own — only its album does — so the child's cover is captured while it is
@@ -470,6 +475,13 @@ public static partial class Spotify
                         // `Ensure(… Identity …)` on it must be answered again rather than reading a permanent blank
                         // title. Mirrors the Artist arm's Image-driven degrade below, keyed on Name instead.
                         uint known = n.Name.IsEmpty ? 0 : (uint)TrackFields.Identity;
+                        // ...and a hit that carried NO COVER does not get to claim one either (bug C, the track
+                        // variant - `ArtistImageBitTests` is the artist twin of exactly this). `Identity` is a GROUP
+                        // (Title|Artists|Album|Duration|Explicit|Image), so sealing it whole on the strength of a name
+                        // marked `Image` known with nothing behind it; `Fetch.NeedOf = wanted & ~Known` then saw no
+                        // hole to fill and the artwork was never asked for by anyone. That is the blank cover on an
+                        // artist's top tracks past the first few rows, and on a playlist's thin rows.
+                        if (n.Image.IsEmpty) known &= ~(uint)TrackFields.Image;
                         if (n.PlayCount > 0) known |= (uint)TrackFields.PlayCount;
                         // Only a RULED row speaks for availability: an unruled one must never be dimmed by omission.
                         if (n.Ruled) known |= (uint)TrackFields.Availability;
@@ -567,7 +579,19 @@ public static partial class Spotify
                     }
                 case EntityKind.User:
                     {
-                        ref var row = ref s.Users.RowFor(n.Uri, authority, (uint)UserFields.Identity);
+                        // A nameless mention (S4's shape again, this time an `ownerV2`/`addedBy` stub that carries a
+                        // uri and an avatar but no `displayName`) must not seal Identity: the row still lands — the
+                        // avatar is a real edge target for whatever thin thing mentioned it — but `UserFields` has no
+                        // finer split than one Identity bit covering both Name and Image (unlike the Show arm's
+                        // separate Title/Image bits), so `CommitUsers` applies both together or neither. Sealing the
+                        // bit here on an empty name would let `Entities.Ensure`'s `wanted & ~known` see the group as
+                        // already answered and never ask the profile for the name it never received — exactly what
+                        // let a playlist header's owner segment go blank forever ("<owner> · N songs · …" rendering
+                        // as "· N songs · …", the avatar the only trace the owner ever existed). A page that asks
+                        // `Ensure(… Identity …)` on it must be answered again rather than reading a permanent blank
+                        // name. Mirrors the Track arm's identical Name-gated guard above, verbatim.
+                        uint known = n.Name.IsEmpty ? 0 : (uint)UserFields.Identity;
+                        ref var row = ref s.Users.RowFor(n.Uri, authority, known);
                         row.Name = n.Name;
                         row.Image = n.Image;
                         return n.Uri;

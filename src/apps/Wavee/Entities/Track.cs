@@ -554,7 +554,14 @@ public static partial class Entities
                 if (!row.ArtistLine.IsEmpty) t.SetText(ref t.ArtistLine, slot, s.Intern(row.ArtistLine));
                 // An answer that carries no cover never blanks the one a playlist item already set — nothing
                 // legitimately removes an image (Fix 4).
-                if (!row.Image.IsEmpty) t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                if (!row.Image.IsEmpty)
+                {
+                    // …nor a THINNER rendition of the same cover replace a sharper one already visible
+                    // (Detail.CoverLatch.AcceptsImage).
+                    var incomingImage = s.Intern(row.Image);
+                    if (Detail.CoverLatch.AcceptsImage(t.Image[slot], incomingImage))
+                        t.SetText(ref t.Image, slot, incomingImage);
+                }
                 t.DurationMs[slot] = row.DurationMs;
                 if (!row.AlbumUri.IsEmpty) t.Album[slot] = s.Slot(Current.Albums, in row.AlbumUri);
                 t.Flags[slot] = (t.Flags[slot] & ~(uint)TrackFlags.IdentityMask)
@@ -712,7 +719,7 @@ public static partial class Entities
 /// <see cref="TrackFields.Artists"/> bit, see below — and the six cold groups whose facts are answered values
 /// (<see cref="TrackFields.PlayCount"/>, <see cref="TrackFields.Year"/>,
 /// <see cref="TrackFields.Availability"/>, <see cref="TrackFields.Isrc"/>, <see cref="TrackFields.Canonical"/>,
-/// <see cref="TrackFields.Video"/> — the counterpart's URI only, not its still or the user's own mp4 — and
+/// <see cref="TrackFields.Video"/> — the counterpart's uri, the VERDICT flag, the still and the natural size (only the user's own mp4 is left out, since the curation roster re-applies it) — and
 /// <see cref="TrackFields.Audio"/>).
 ///
 /// <para><b>Deliberately NOT persisted:</b> <see cref="TrackTable.ArtistLine"/> — it reads as the credit line
@@ -766,6 +773,15 @@ public sealed class TrackShape : KindShape
         new("camelot_color", StoreType.Int),
         new("identity_auth", StoreType.Int, StoreColumnFlags.Authority),
         new("extras_auth", StoreType.Int, StoreColumnFlags.Authority),
+        // The rest of the VIDEO group. `video_uri` alone was a bit with no fact behind it: the verdict lives in
+        // `TrackFlags.HasVideo`, and a SELF-CONTAINED music video answers with files and no counterpart uri
+        // (Spotify.Decode.VideoAssociations), so the uri column was empty for exactly the rows that have one.
+        // A restore then read Video as KNOWN with HasVideo false, `NeedOf = wanted & ~Known` found no hole, and
+        // kind 99 was never asked again - the film mark was gone for good on every cached track.
+        new("video_flags", StoreType.Int),
+        new("video_image", StoreType.Text),
+        new("video_w", StoreType.Int),
+        new("video_h", StoreType.Int),
     ];
 
     const uint ExtrasFields = (uint)(TrackFields.PlayCount | TrackFields.Year | TrackFields.Availability
@@ -818,7 +834,15 @@ public sealed class TrackShape : KindShape
             else { w.Null(7); w.Null(8); }
             if ((known & (uint)TrackFields.Isrc) != 0) w.Text(9, row.Isrc); else w.Null(9);
             if ((known & (uint)TrackFields.Canonical) != 0) w.Id(10, s, row.CanonicalUri); else w.Null(10);
-            if ((known & (uint)TrackFields.Video) != 0) w.Id(11, s, row.VideoUri); else w.Null(11);
+            if ((known & (uint)TrackFields.Video) != 0)
+            {
+                w.Id(11, s, row.VideoUri);
+                w.Int(18, (long)(row.Flags & (uint)TrackFlags.VideoMask));
+                w.Text(19, row.VideoImage);
+                w.Int(20, row.VideoW);
+                w.Int(21, row.VideoH);
+            }
+            else { w.Null(11); w.Null(18); w.Null(19); w.Null(20); w.Null(21); }
             if ((known & (uint)TrackFields.Audio) != 0)
             {
                 w.Int(12, row.Tempo);
@@ -846,10 +870,14 @@ public sealed class TrackShape : KindShape
         row.Year = (ushort)r.Int(6);
         row.AvailableAt = (int)r.Int(7);
         uint availFlags = (uint)r.Int(8);
-        row.Flags = identityFlags | availFlags;
+        uint videoFlags = (uint)r.Int(18);
+        row.Flags = identityFlags | availFlags | videoFlags;
         row.Isrc = r.Text(9);
         row.CanonicalUri = r.Text(10);
         row.VideoUri = r.Text(11);
+        row.VideoImage = r.Text(19);
+        row.VideoW = (ushort)r.Int(20);
+        row.VideoH = (ushort)r.Int(21);
         row.Tempo = (ushort)r.Int(12);
         row.Key = (byte)r.Int(13);
         row.Camelot = (byte)r.Int(14);

@@ -352,9 +352,9 @@ public readonly partial struct User
             Children =
             [
                 Icon(Icons.HeartFill, 16f, Design.OnMedia.Ink),
-                new TextEl(Loc.Get(Strings.Detail.LikedSongs))
+                Design.Type.DenseTitle(Loc.Get(Strings.Detail.LikedSongs)) with
                 {
-                    Size = 12.5f, LineHeight = 16f, Weight = 600, Color = Design.OnMedia.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    Color = Design.OnMedia.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
             ],
         };

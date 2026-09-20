@@ -221,6 +221,59 @@ public class EdgesStagingTests
         Assert.True(edges.Contains(me, TrackOf(11).Slot));     // membership IS the edge (G6, P3)
     }
 
+    /// <summary>ONE RUN AT A TIME, and this is why the shared <c>collection</c> walk collects instead of opening two
+    /// (<c>Spotify.Api.Library.CollectionFullWalk</c>). A run is a CONTIGUOUS slice of the staging's one edge list
+    /// (<c>StagedEdgeList.Append</c>: start + length), so a second run opened while the first is still taking children
+    /// puts its own children INSIDE the first's slice. `collection` is one wire set feeding two relations and its
+    /// answer is PAGED, so from page two on the Liked run's slice swallowed the saved ALBUMS staged from page one —
+    /// 18 of them on a real account, which is where `entity.miskind table=Track id=Album` and the repeating
+    /// `store.edge.dropped relation=Liked dropped=18` came from. This pins the shape that replaced it: the paged
+    /// relation takes every page, closes, and only then does the second relation open its own run.</summary>
+    [Fact]
+    public void A_second_relation_staged_after_the_paged_one_closes_keeps_both_slices_intact()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        StagedId parent = s.Text("spotify:user:tester");
+
+        // "Page one" names two liked tracks and one saved album; "page two" names two more tracks and one more album.
+        // The albums are COLLECTED — never staged into an open run — while the paged relation is still taking children.
+        var collected = new List<(StagedId Target, int At)>();
+        var liked = s.Run(Relation.Liked);
+        liked.Add(Gid(EntityKind.Track, 10)).At = 11;
+        liked.Add(Gid(EntityKind.Track, 11)).At = 12;
+        collected.Add((Gid(EntityKind.Album, 90), 13));
+        liked.Add(Gid(EntityKind.Track, 12)).At = 14;
+        liked.Add(Gid(EntityKind.Track, 13)).At = 15;
+        collected.Add((Gid(EntityKind.Album, 91), 16));
+        liked.EndEvenIfEmpty(in parent);
+
+        var albums = s.Run(Relation.SavedAlbums);
+        for (int i = 0; i < collected.Count; i++)
+        {
+            var target = collected[i].Target;
+            albums.Add(in target).At = collected[i].At;
+        }
+        albums.EndEvenIfEmpty(in parent);
+
+        TestScope.CommitAndPublish(s);
+
+        int me = Me().Slot;
+        var likedEdges = Entities.Current.Edges.Liked;
+        var albumEdges = Entities.Current.Edges.SavedAlbums;
+
+        // Four tracks and nothing else: no album ever entered the Liked slice, so nothing mints an Album id in Tracks.
+        Assert.True(likedEdges.Targets(me).SequenceEqual(
+            [TrackOf(10).Slot, TrackOf(11).Slot, TrackOf(12).Slot, TrackOf(13).Slot]));
+        Assert.True(albumEdges.Targets(me).SequenceEqual([AlbumOf(90).Slot, AlbumOf(91).Slot]));
+
+        // The payloads travelled with their own run, so edge i still describes target i on BOTH sides.
+        Assert.Equal(11, likedEdges.Payload(me)[0].AddedAt);
+        Assert.Equal(15, likedEdges.Payload(me)[3].AddedAt);
+        Assert.Equal(13, albumEdges.Payload(me)[0].AddedAt);
+        Assert.Equal(16, albumEdges.Payload(me)[1].AddedAt);
+    }
+
     // ── the cross-kind relations carry the table each target belongs to ────────────────────────────────────────────
 
     [Fact]

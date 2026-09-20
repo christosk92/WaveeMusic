@@ -1095,14 +1095,19 @@ public static partial class Shell
     static readonly LayoutTransition BarFaceMotion = new(
         TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut), SizeMode.Auto);
 
-    /// <summary>The primary play/pause: NO plate (the XML doc of 0.2.9 said "a filled accent circle"; the code painted
-    /// none, and code wins) — primary ink, pressed secondary, scale-only hover/press.</summary>
+    /// <summary>The primary play/pause: a filled Fluent/WinUI transport circle (same verb as Stage.Play). Disabled, the
+    /// plate falls back to a subtle rest and the glyph to disabled ink.</summary>
     static BoxEl BarPrimaryButton(string glyphText, PrimaryVerb verb, float box, float glyphSize)
     {
         bool enabled = verb != PrimaryVerb.None;
         return new BoxEl
         {
             Width = box, Height = box, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Corners = Radii.Circle(box),
+            Fill = enabled ? Tok.AccentDefault : Tok.FillSubtleSecondary,
+            HoverFill = enabled ? Tok.AccentSecondary : Tok.FillSubtleSecondary,
+            PressedFill = enabled ? Tok.AccentTertiary : Tok.FillSubtleSecondary,
+            BrushTransitionMs = Design.Motion.Faster,
             HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
             IsEnabled = enabled, Cursor = enabled ? CursorId.Hand : null,
@@ -1112,7 +1117,7 @@ public static partial class Shell
                 new TextEl(glyphText)
                 {
                     Size = glyphSize, FontFamily = FluentGpu.Dsl.Theme.IconFont,
-                    Color = enabled ? Tok.TextPrimary : Tok.TextDisabled, HoverColor = Tok.TextPrimary, PressedColor = Tok.TextSecondary,
+                    Color = enabled ? Tok.TextOnAccentPrimary : Tok.TextDisabled,
                 },
             ],
         };

@@ -1072,7 +1072,7 @@ public readonly partial struct Show
                 return new BoxEl
                 {
                     Direction = 1, Width = width, MinWidth = 0f,
-                    Children = [new TextEl(Loc.Get(Strings.Podcast.ProgressUnavailable)) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f }],
+                    Children = [Ui.Caption(Loc.Get(Strings.Podcast.ProgressUnavailable)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f }],
                 };
             int sum = st.Played + st.InProgress + st.ToGo;
             float played = sum > 0 ? st.Played / (float)sum : 0f, progress = sum > 0 ? st.InProgress / (float)sum : 0f;
@@ -1086,7 +1086,7 @@ public readonly partial struct Show
                 Children =
                 [
                     Controls.LedgerBar(played, progress, _toneRead),
-                    new SpanTextEl(line) { Size = 12f, LineHeight = Detail.RailLayout.LedgerLineHeight, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f },
+                    new SpanTextEl(line) { Size = Ui.Caption("").Size, LineHeight = Detail.RailLayout.LedgerLineHeight, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f },
                 ],
             };
         }
@@ -1142,8 +1142,8 @@ public readonly partial struct Show
                 Children =
                 [
                     Icon(Icons.FavoriteStarFill, 13f) with { Color = Prop.Of(_toneRead) },
-                    new TextEl(average) { Size = 12.5f, LineHeight = 16f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1 },
-                    new TextEl(count) { Size = 12.5f, LineHeight = 16f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                    Design.Type.DenseTitle(average) with { Color = Tok.TextPrimary, MaxLines = 1 },
+                    Design.Type.DenseMeta(count) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
                 ],
             };
             var show = _m.Peek().Show;

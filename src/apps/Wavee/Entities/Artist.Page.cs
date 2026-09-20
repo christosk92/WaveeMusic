@@ -103,9 +103,11 @@ public readonly partial struct Artist
 
         // ── geometry: plain latched FIELDS (idempotent functions of the width — ch 08 §9 traps) ──
         readonly Signal<float> _heroWidth = new(ArtistHeroLayout.WideWidth);
+        readonly Signal<int> _layoutEpoch = new(0);
         ArtistHeroTier _tier = ArtistHeroTier.Wide;
         ArtistHeroMetrics _metrics = ArtistHeroLayout.For(ArtistHeroLayout.WideWidth, ArtistHeroTier.Wide);
         float _width = ArtistHeroLayout.WideWidth;
+        bool _measured;
         bool _topBandWide = true;
         int _bioMode;
         bool _bioModeInitialized;
@@ -140,11 +142,6 @@ public readonly partial struct Artist
         Element? _body;
         IOverlayService? _overlay;
 
-        // ch 08 BUG F, restored to 0.2.10's model: the WHOLE page is one reveal unit (the page-level `region` below),
-        // so the only extra plumbing left is the group TOKEN the chart's own inner region (Artist.UI.Chart.cs) joins —
-        // `routeKey` itself, set once per Compose() call (below) so `TopBand` can hand it to the chart.
-        string _topGroup = "";
-
         // DemandRows' cached stamps (ch 08 render-cost fix — RowStamp is declared in Album.Page.cs, same namespace):
         // one per relation whose Ensure call walks a growing slot span, so an unrelated table drain that merely wakes
         // this effect (six of its seven subscriptions are table-wide) does not also re-walk every shelf's rows. This
@@ -162,7 +159,7 @@ public readonly partial struct Artist
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
         readonly Action _demand, _demandRows, _publishAccent, _publishTheme, _resolveSpy, _bumpPivot, _retry;
-        readonly Action _play, _shuffle, _radio;
+        readonly Action _play, _shuffle, _radio, _scrollToTop;
         readonly Action<NodeHandle> _captureViewport;
         readonly Action<RectF> _measure;
         readonly Action<bool> _onStuck;
@@ -193,13 +190,22 @@ public readonly partial struct Artist
             _play = Play;
             _shuffle = Shuffle;
             _radio = Radio;
+            _scrollToTop = ScrollToTop;
             _captureViewport = h => _viewport = h;
+            _onStuck = v => _compact.SetIfChanged(v);
             _measure = r =>
             {
                 // The 0.5-DIP write floor: a smaller one writes every frame of a resize (ch 08 §9 traps).
-                if (r.W > 0f && MathF.Abs(r.W - _heroWidth.Peek()) > 0.5f) _heroWidth.Value = r.W;
+                if (r.W <= 0f) return;
+                if (!_measured)
+                {
+                    _measured = true;
+                    _heroWidth.Value = r.W;
+                    _layoutEpoch.Value++;
+                    return;
+                }
+                if (MathF.Abs(r.W - _heroWidth.Peek()) > 0.5f) _heroWidth.Value = r.W;
             };
-            _onStuck = v => _compact.SetIfChanged(v);
             // A COARSE key: the 24-DIP write floor, the viewport height in 4-DIP steps and the at-end edge.
             _projectScroll = static g => HashCode.Combine(
                 (int)(g.OffsetY / 24f),
@@ -273,6 +279,7 @@ public readonly partial struct Artist
 
             _overlay = UseContext(Overlay.Service);
             var shellSlot = UseContext(ShellMaterial.Slot);
+            float scale = UseContext(Viewport.Scale);
             var a = _artist;
             UseEffect(_demand, DepKey.From(a.Slot, (int)scopeEpoch));   // once per artist per scope
             UseEffect(_demandRows);                                       // re-runs as the lists land
@@ -285,6 +292,7 @@ public readonly partial struct Artist
             _classic = Prefs.Appearance.TrackRowStyle() == 1;
             _showArtwork = !Prefs.Appearance.TrackArtworkHidden();
 
+            _ = _layoutEpoch.Value;
             _width = MathF.Max(1f, _heroWidth.Value);
             _metrics = ArtistHeroLayout.For(_width, _tier);
             _tier = _metrics.Tier;
@@ -296,45 +304,45 @@ public readonly partial struct Artist
 
             string routeKey = p.RouteKey;
             string? paletteUrl = a.IsValid ? Controls.ArtUrl(a.PaletteImageId) : null;
-            // The hero photo's incoming candidate — the avatar the launching card already carried, later the header
-            // once the overview lands — latched so the two only swap when the art identity genuinely differs (ch 08
-            // BUG E; Detail.cs's CoverLatch is the same contract album/playlist covers already use).
-            // Do not select the launching card's avatar while the page is still a skeleton. The overview can replace
-            // that avatar with the artist header a few frames later; choosing only at the reveal boundary makes the
-            // hero paint once, with the final candidate, instead of flashing avatar -> header.
+            // Latch the hero only once the overview is known so a launching card's avatar cannot paint, then swap to
+            // the header. Do not clear a latched url after the first reveal — that unmounted HeroArt and flashed the
+            // flat placeholder over already-visible copy.
             if (_ready)
             {
                 string? heroCandidate = a.IsValid ? Controls.ArtUrl(a.HeroImageId) : null;
                 _heroUrl = Detail.CoverLatch.PreferVisible(heroCandidate, _heroUrl);
             }
-            else
+            else if (!_heroGateOpened)
             {
                 _heroUrl = null;
             }
 
-            // Start the final hero decode during the skeleton and make the reveal wait for that exact cache entry. The
-            // old order revealed the page at Overview readiness, painted a flat placeholder, then swapped the photo in
-            // later. That was the visible flash and made the hero look as if it resized. The page still withholds the
-            // photo until the overview is complete, so an avatar cannot flash before the final header is known.
-            string? heroUrl = a.IsValid ? Controls.ArtUrl(a.HeroImageId) : null;
+            // Decode at the MEASURED width, and only after the overview has chosen the final art. Decoding against
+            // the default WideWidth during the skeleton made the page wait on a 1440-wide cache entry, then HeroArt
+            // mounted at the real width and decoded again — a flat hero in between. UseContext(Viewport.Scale) is
+            // unconditional: a hero url appearing used to add that hook mid-life and remount the whole page.
+            string? heroUrl = _heroUrl;
+            // Always call UseImage so the hook count never changes when the url/measure lands (the same remount
+            // class as a conditional UseContext(Viewport.Scale)). Empty src is a no-op binding.
+            int dw = 8, dh = 8;
             bool heroImageReady = true;
-            if (heroUrl is { Length: > 0 } hero)
+            string heroBind = heroUrl ?? "";
+            if (_measured && heroBind.Length > 0)
             {
                 float photoH = ArtistHeroLayout.PhotoHeightFor(_metrics);
-                if (_heroDecodeW <= 0 && _width > 100f)
+                if (_heroDecodeW <= 0)
                 {
                     _heroDecodeW = Math.Clamp((int)MathF.Round(_width), 320, 1920);
                     _heroDecodeH = Math.Max(1, (int)MathF.Round(_heroDecodeW * (photoH / _width)));
                 }
                 int baseW = _heroDecodeW > 0 ? _heroDecodeW : Math.Clamp((int)MathF.Round(_width), 320, 1920);
                 int baseH = _heroDecodeH > 0 ? _heroDecodeH : Math.Max(1, (int)MathF.Round(baseW * (photoH / _width)));
-                float scale = UseContext(Viewport.Scale);
-                int dw = Design.ImageDecodeScale.For(baseW, scale);
-                int dh = Math.Max(1, Design.ImageDecodeScale.For(baseH, scale));
-                var heroImage = UseImage(hero, dw, dh, ImagePriority.Visible, blurHash: null,
-                    transition: ImageTransition.None);
-                heroImageReady = heroImage.State is ImageState.Ready or ImageState.Failed;
+                dw = Design.ImageDecodeScale.For(baseW, scale);
+                dh = Math.Max(1, Design.ImageDecodeScale.For(baseH, scale));
             }
+            var heroImage = UseImage(heroBind, dw, dh, ImagePriority.Visible, blurHash: null);
+            if (heroBind.Length > 0)
+                heroImageReady = heroImage.State is ImageState.Ready or ImageState.Failed;
 
             // A 0-size leaf: the watch, the tone and the claim live there, never in this render. Gated on the incoming
             // art being USABLE (ch 08 BUG D) — never on Knows(Overview): a claim whose cover is already graded (the
@@ -344,24 +352,34 @@ public readonly partial struct Artist
             Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
                 owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey);
 
-            // ch 08 BUG F, restored to 0.2.10's model (git show 90b56e82:…/ArtistPage.cs ~:93-136): the WHOLE page —
-            // hero photo, hero text, magazine, top tracks — is ONE reveal unit, gated on the overview alone. A same-day
-            // fix (ch 08 BUG E #1) once OR'd in `Detail.CoverLatch.IsUsable(_heroUrl)` so a card's avatar painted before
-            // the whole eight-field-group overview landed; that broke the "renders as a unit" contract (verified/bio/
-            // stats popping in above and below the title after the rest had already settled) and is reverted here. The
-            // The photo→header swap is prevented by selecting `_heroUrl` only after this gate opens; the latch still
-            // protects later same-art CDN-size changes.
-            _bodyReady = _ready && (_heroGateOpened || heroImageReady);
+            // ONE visual swap: overview + measured width + the first hero decode + chart settled. Snap, not FadeOnly:
+            // waiting for the bitmap then fading the whole tree from 0 hid the photo again (stillwrong.mp4).
+            bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a));
+            _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled);
             if (_bodyReady) _heroGateOpened = true;
             _body = _bodyReady ? Compose(a, paletteUrl, _heroUrl, washes, routeKey) : null;
             UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch));   // a new section set → re-resolve the spy
 
-            // ONE boundary: the derived shimmer while the overview is unknown, the magazine once it is, the shared error
-            // state WITH Retry when it failed (W23 + 0.3's Retry). FadeOnly: no translate, no stagger (parity 75).
+            // ONE region, and the shimmer is DERIVED — `PageShimmer` is a ShimmerSource (a representative tree at the
+            // loaded page's geometry), never a tree to mount. Rendering it directly painted its own placeholder copy
+            // as if it were data: "Artist name", "A first sentence of the biography stands in this line.",
+            // "10,000,000 Monthly listeners", "Top track title" (evenworsenow.mp4).
+            //
+            // Reveal.Soft - the page-level reveal the rest of the app uses (Concert.Page's Region): the whole tree
+            // blur-rises in as ONE (Opacity + TranslateY + Blur -> rest) over the shimmer dissolving out beneath it.
+            // Not None, which means "the content animates its own entrance" - and this content has none, so the swap
+            // landed as a hard cut with nothing moving at all (shitttt.mp4).
+            //
+            // The reveal is safe to animate now in a way it was NOT before, which is the whole point of the gate
+            // above: `BodyReady` has already waited for the measured width, the DECODED hero bitmap and a settled
+            // chart, so the tree that rises is complete. What broke earlier (stillwrong.mp4) was revealing at
+            // overview-readiness and animating a tree whose photo had not landed - the header appeared, then vanished
+            // behind its own second fade. Group null, not routeKey: the chart's inner region (Artist.UI.Chart.cs) must
+            // NOT join this one, or top tracks plays a second wave after the page has already revealed.
             Element region = new SkelRegionEl(
                 Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                OnFailed: _failedPanelFn, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default,
-                Group: routeKey, SmoothResize: false);
+                OnFailed: _failedPanelFn, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
+                Group: null, SmoothResize: false);
 
             Element scroll = ScrollView(new BoxEl
             {
@@ -404,13 +422,6 @@ public readonly partial struct Artist
             ColorF accent = _accent.Value;
             var m = _metrics;
             float width = _width;
-            // ch 08 BUG F, restored to 0.2.10's model: the chart's OWN inner region (Artist.UI.Chart.cs) joins the
-            // SAME group the page-level region above already uses — `routeKey` itself, not a separate token — so top
-            // tracks settles in the SAME one settle window as the hero and the magazine (SkelGroupCoordinator: every
-            // registered member must be Done before ANY of them plays its reveal). There is no separate magazine
-            // region any more: the whole page is one gate, one group.
-            _topGroup = routeKey;
-
             // ── what is present (ch 08 §7's readiness column) ──
             // Keep edge-backed section slots in the page plan while their first answer is pending. Without this,
             // every late edge answer inserts a new sibling into the magazine and shifts all following anchors/cards.
@@ -444,15 +455,29 @@ public readonly partial struct Artist
             int[] fans = fanCount > 0 ? fanSlots[..fanCount].ToArray() : [];
 
             // ── the sections, their anchors and the pivot, in one pass ──
+            // Everything after Compilations collapses into ONE "Details" tab: only the first present member of
+            // ArtistSections.IsDetailsGroup becomes a destination (Biography is unconditional, so Details always
+            // shows), the rest still render in place but without their own pivot entry.
             var sections = new Element[n];
             int pivots = 0, hash = 17;
+            bool detailsAssigned = false;
             for (int i = 0; i < n; i++)
             {
                 var s = _plan[i];
                 // EVERY section keyed: sections appear mid-stream as data lands, and keyless siblings would pair against
                 // their neighbours' old subtrees (ArtistPage.cs:213-221).
                 Element body = SectionBody(s, a, accent, fans, related ? a.RelatedSlots.Length : fanCount) with { Key = s_secKeys[(int)s] };
-                if (!ArtistSections.IsDestination(s)) { sections[i] = body; continue; }
+                bool isDest;
+                if (ArtistSections.IsDetailsGroup(s))
+                {
+                    isDest = !detailsAssigned;
+                    detailsAssigned = true;
+                }
+                else
+                {
+                    isDest = ArtistSections.IsDestination(s);
+                }
+                if (!isDest) { sections[i] = body; continue; }
                 _pivot[pivots++] = s;
                 hash = unchecked(hash * 31 + (int)s + 1);
                 // A layout-neutral anchor: no size, no padding, no flex of its own.
@@ -525,18 +550,14 @@ public readonly partial struct Artist
 
         static string PivotLabel(ArtistSection s) => s switch
         {
-            ArtistSection.Popular => Loc.Get(Strings.Artist.TopTracks),
             ArtistSection.Albums => Loc.Get(Strings.Artist.Albums),
             ArtistSection.Singles => Loc.Get(Strings.Artist.SinglesEps),
             ArtistSection.Compilations => Loc.Get(Strings.Artist.Compilations),
-            ArtistSection.AppearsOn => Loc.Get(Strings.Artist.AppearsOn),
-            ArtistSection.MusicVideos => Loc.Get(Strings.Artist.MusicVideos),
-            ArtistSection.Playlists => Loc.Get(Strings.Artist.PlaylistsDiscovery),
-            ArtistSection.Concerts => Loc.Get(Strings.Artist.UpcomingConcerts),
-            ArtistSection.Merch => Loc.Get(Strings.Artist.Merch),
-            ArtistSection.Biography => Loc.Get(Strings.Artist.Biography),
-            ArtistSection.Gallery => Loc.Get(Strings.Artist.Gallery),
-            ArtistSection.Related or ArtistSection.Fans => Loc.Get(Strings.Detail.FansAlsoLike),
+            // Everything past Compilations shares one tab (ArtistSections.IsDetailsGroup): whichever member is
+            // first present becomes the single "Details" destination, so the label is the same regardless of which.
+            ArtistSection.AppearsOn or ArtistSection.MusicVideos or ArtistSection.Playlists or ArtistSection.Concerts
+                or ArtistSection.Merch or ArtistSection.Biography or ArtistSection.Gallery or ArtistSection.Related
+                or ArtistSection.Fans => Loc.Get(Strings.Artist.Details),
             ArtistSection.Upcoming => Loc.Get(Strings.Artist.Upcoming),
             ArtistSection.LatestRelease => Loc.Get(Strings.Artist.LatestRelease),
             _ => "",
@@ -574,9 +595,11 @@ public readonly partial struct Artist
             string uri = a.Uri.Text;
             string name = a.Name;
             float actionH = Detail.BandLayout.Height - 2f * Spacing.M;
+            // No "Overview" pivot tab: the title itself is the way back to the top of the page.
             Element title = new BoxEl
             {
                 Direction = 1, MinWidth = 0f, Shrink = 1f, MaxWidth = Detail.BandLayout.TitleCap,
+                Cursor = CursorId.Hand, OnClick = _scrollToTop,
                 Children = [Detail.BandTitle(name)],
             };
             // The pivot is the ONLY elastic lane; the title and the actions never drop (W28).
@@ -630,6 +653,10 @@ public readonly partial struct Artist
                 alignmentRatio: 0f, animate: !Design.Reduced);
         }
 
+        /// <summary>The band title's click target: no "Overview" pivot tab, so the title itself is the way back to the
+        /// hero. A raw offset, not <see cref="GoToSection"/> — the top of the page has no section anchor to bring in.</summary>
+        void ScrollToTop() => FluentGpu.Scroll.ScrollIntoView.ScrollTo(Context, _viewport, 0f, animate: !Design.Reduced);
+
         /// <summary>THE SPY: one AbsoluteRect per pivot section, only on a scroll step the 24-DIP projector let through,
         /// stopping at the first unrealized section; the pivot re-renders only when the answer changes.</summary>
         void ResolveSpy()
@@ -666,15 +693,10 @@ public readonly partial struct Artist
             bool upcomingInRail = ArtistSections.UpcomingInRail(pick, a.HasPreRelease && a.HasUpcoming);
             IReadSignal<ColorF> accentSignal = _accent;
             Func<ColorF> accentFn = _accentFn;
-            // `_topGroup` == `routeKey`, the SAME token the page-level region uses (a LOCAL copy, like
-            // `accentSignal`/`accentFn` above — the closure below may run on a later measure pass): the chart's own
-            // inner SkelRegionEl (Artist.UI.Chart.cs) joins it, so top tracks settles in the SAME window as the hero
-            // and the magazine instead of trailing behind as its own wave (ch 08 BUG F).
-            string topGroup = _topGroup;
             return Responsive.Of(w =>
             {
                 bool wide = _topBandWide = ArtistSections.TopBandWide(w, _topBandWide);
-                Element tracks = Chart(a, accentSignal, topGroup);
+                Element tracks = Chart(a, accentSignal);
                 if (!pick && !upcomingInRail) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [tracks] };
                 Element featured = pick
                     ? PickCard(a, accentFn, horizontal: !wide) with { Key = wide ? "featured:pick:rail" : "featured:pick:band" }
@@ -690,7 +712,7 @@ public readonly partial struct Artist
                         new BoxEl { Direction = 1, Grow = wide ? 1f : 0f, Basis = wide ? 0f : float.NaN, MinWidth = 0f, Children = [featured] },
                     ],
                 };
-            }, fallback: ArtistSections.PreMeasureWidth);
+            }, fallback: MathF.Max(1f, _width - 2f * _metrics.Gutter));
         }
 
         // ── 2.4 demand, colour, verbs ───────────────────────────────────────────────────────────────────────────────
@@ -1136,12 +1158,12 @@ public readonly partial struct Artist
                         ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Control),
                         Children = [Controls.ArtworkFill(image, Radii.Control)],
                     },
-                    new TextEl(name)
+                    Design.Type.DenseTitle(name) with
                     {
-                        Size = 13f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2,
+                        Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2,
                         Trim = TextTrim.CharacterEllipsis,
                     },
-                    new TextEl(price) { Size = 13f, Weight = 700, Color = Tok.AccentTextPrimary, MaxLines = 1 },
+                    Design.Type.DenseTitle(price) with { Weight = 700, Color = Tok.AccentTextPrimary, MaxLines = 1 },
                 ],
             };
         };
@@ -1296,7 +1318,7 @@ public readonly partial struct Artist
                     };
                 }
                 return new BoxEl { Direction = 1, MinWidth = 0f, Children = [band] };
-            }, fallback: ArtistSections.PreMeasureWidth);
+            }, fallback: MathF.Max(1f, _width - 2f * _metrics.Gutter));
         }
 
         static string FactLabel(ArtistFactKind kind) => kind switch
@@ -1340,7 +1362,7 @@ public readonly partial struct Artist
                     Children =
                     [
                         Icon(Icons.Link, 13f, Tok.TextSecondary),
-                        new TextEl(name) { Size = 13f, Weight = 600, Color = Tok.TextPrimary },
+                        Design.Type.DenseTitle(name) with { Color = Tok.TextPrimary },
                     ],
                 };
             }
@@ -1372,7 +1394,7 @@ public readonly partial struct Artist
                                     Size = 14f, Color = Tok.TextPrimary, Grow = 1f, Basis = 0f, MinWidth = 0f,
                                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                                 },
-                                new TextEl(CountLabel(cities[i].Listeners)) { Size = 13f, Color = Tok.TextSecondary },
+                                Design.Type.DenseMeta(CountLabel(cities[i].Listeners)) with { Color = Tok.TextSecondary },
                             ],
                         },
                         new BoxEl
@@ -1606,8 +1628,10 @@ public readonly partial struct Artist
                         Design.Type.Eyebrow(Entities.Strings.Resolve(a.TourEyebrowId)) with { Color = Design.Accent.Decor },
                         new TextEl(Entities.Strings.Resolve(a.TourHeadlineId))
                             { Size = 16f, Weight = 700, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                        new TextEl(Entities.Strings.Resolve(a.TourSublineId))
-                            { Size = 13f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        Design.Type.DenseMeta(Entities.Strings.Resolve(a.TourSublineId)) with
+                        {
+                            Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                        },
                     ],
                 },
                 Icon(Icons.ChevronRight, 16f, Tok.TextSecondary),

@@ -710,6 +710,20 @@ public class SidebarProjectionEdgeFacts
         return Entities.Playlist(EntityUri.Parse(uri));
     }
 
+    static Album StageColdAlbum(Staging s, string uri)
+    {
+        ref var row = ref s.Albums.Add();
+        row.Id = s.Text(uri);
+        return Entities.Album(EntityUri.Parse(uri));
+    }
+
+    static Artist StageColdArtist(Staging s, string uri)
+    {
+        ref var row = ref s.Artists.Add();
+        row.Id = s.Text(uri);
+        return Entities.Artist(EntityUri.Parse(uri));
+    }
+
     static string[] Names(IReadOnlyList<SidebarLibraryEntry> l)
     {
         var a = new string[l.Count];
@@ -1316,6 +1330,42 @@ public class SidebarProjectionEdgeFacts
         Assert.NotEqual(before, Entities.Current.Playlists.Asked[p.Slot]);
     }
 
+    [Fact]
+    public void EnsureIdentity_True_AsksForAVisibleAlbumsIdentity_WhenItHasNotLandedYet()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var al = StageColdAlbum(s, "spotify:album:cold");
+        TestScope.CommitAndPublish(s);
+        uint before = Entities.Current.Albums.Asked[al.Slot];
+
+        var me = Me();
+        SetSavedAlbums(me, (al, 0));
+
+        Build(me, SidebarEntryKindMask.Album, ensureIdentity: true);
+
+        Assert.NotEqual(before, Entities.Current.Albums.Asked[al.Slot]);
+        Assert.False(Assert.Single(Build(me, SidebarEntryKindMask.Album, ensureIdentity: true).Rows).IdentityKnown);
+    }
+
+    [Fact]
+    public void EnsureIdentity_True_AsksForAVisibleArtistsIdentity_WhenItHasNotLandedYet()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var ar = StageColdArtist(s, "spotify:artist:cold");
+        TestScope.CommitAndPublish(s);
+        uint before = Entities.Current.Artists.Asked[ar.Slot];
+
+        var me = Me();
+        SetFollowedArtists(me, ar);
+
+        Build(me, SidebarEntryKindMask.Artist, ensureIdentity: true);
+
+        Assert.NotEqual(before, Entities.Current.Artists.Asked[ar.Slot]);
+        Assert.False(Assert.Single(Build(me, SidebarEntryKindMask.Artist, ensureIdentity: true).Rows).IdentityKnown);
+    }
+
     /// <summary>The structural full/tree passes (`Sidebar.Host.Rebuild`'s `build.All`/`build.Tree`) call `Build` with
     /// `ensureIdentity` left at its default false — this is the fact that guards against ever flipping that default,
     /// which would ask for a whole hundreds-deep rootlist's identity on every rebuild.</summary>
@@ -1910,15 +1960,15 @@ public class SidebarProjectionEnsurePredicateFacts
             SidebarProjection.ResolveFolderPinState(EdgeState.Partial, foundInProjection: false));
     }
 
-    /// <summary>Trap 5, the pin-band TITLE half: a PIN (any resolvable kind — album/artist/show, not just folder)
-    /// whose Identity has not landed must not show the raw id/uri fallback as its title. Scoped to pins alone —
-    /// a non-pinned row's fallback is untouched by this predicate regardless of `identityKnown`.</summary>
+    /// <summary>A row whose Identity has not landed must not show the raw id/uri fallback as its title — pins
+    /// (trap 5) and Library V3 album/artist/show rows (URI-only collection-v2) alike. ShortUri is only for a
+    /// resolved nameless entity.</summary>
     [Fact]
-    public void ShouldShowUriFallbackTitle_NeverForAPendingPin_AlwaysForANonPinnedRow()
+    public void ShouldShowUriFallbackTitle_OnlyWhenIdentityIsKnown()
     {
-        Assert.False(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: true, identityKnown: false));   // pending
-        Assert.True(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: true, identityKnown: true));     // known → normal
-        Assert.True(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: false, identityKnown: false));   // not a pin at all
+        Assert.False(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: true, identityKnown: false));
+        Assert.True(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: true, identityKnown: true));
+        Assert.False(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: false, identityKnown: false));
         Assert.True(SidebarProjection.ShouldShowUriFallbackTitle(isPinned: false, identityKnown: true));
     }
 }
@@ -2970,5 +3020,66 @@ public class SidebarLibraryFingerprintPlaylistTracksTests
         Entities.Current.Tracks.Bump(track.Slot, (uint)TrackFields.Identity);
 
         Assert.NotEqual(afterMembership, SidebarLibraryFingerprint.Of(in me, default));
+    }
+}
+
+public class SidebarPlaylistCountTests
+{
+    [Fact]
+    public void Known_row_fact_wins_when_it_is_a_real_count()
+    {
+        SidebarProjection.PlaylistCount(trackCountKnown: true, trackCount: 22, membershipResident: true, membershipTotal: 22,
+            out bool known, out int count);
+        Assert.True(known);
+        Assert.Equal(22, count);
+    }
+
+    [Fact]
+    public void Known_zero_does_not_beat_a_resident_membership()
+    {
+        SidebarProjection.PlaylistCount(trackCountKnown: true, trackCount: 0, membershipResident: true, membershipTotal: 22,
+            out bool known, out int count);
+        Assert.True(known);
+        Assert.Equal(22, count);
+    }
+
+    [Fact]
+    public void Unknown_row_fact_falls_back_to_resident_membership()
+    {
+        SidebarProjection.PlaylistCount(trackCountKnown: false, trackCount: 0, membershipResident: true, membershipTotal: 8,
+            out bool known, out int count);
+        Assert.True(known);
+        Assert.Equal(8, count);
+    }
+
+    [Fact]
+    public void Nothing_known_stays_unknown()
+    {
+        SidebarProjection.PlaylistCount(trackCountKnown: false, trackCount: 0, membershipResident: false, membershipTotal: 0,
+            out bool known, out int count);
+        Assert.False(known);
+        Assert.Equal(0, count);
+    }
+
+    /// <summary>A membership can be RESIDENT and still know nothing about length: a Partial page whose answer carried
+    /// no total reads 0, and so does a Failed edge. Neither means "this playlist has 0 songs" — that sentence belongs
+    /// to the row fact alone (bug A1's last corner, the "0 songs on every playlist" report).</summary>
+    [Fact]
+    public void A_resident_membership_with_no_total_is_not_a_count()
+    {
+        SidebarProjection.PlaylistCount(trackCountKnown: false, trackCount: 0, membershipResident: true, membershipTotal: 0,
+            out bool known, out int count);
+        Assert.False(known);
+        Assert.Equal(0, count);
+    }
+
+    /// <summary>…and the row fact still states a REAL zero, so a genuinely empty playlist is not silenced.</summary>
+    [Fact]
+    public void The_row_fact_still_states_a_genuine_zero()
+    {
+        SidebarProjection.PlaylistCount(trackCountKnown: true, trackCount: 0, membershipResident: true, membershipTotal: 0,
+            out bool known, out int count);
+        Assert.True(known);
+        Assert.Equal(0, count);
     }
 }

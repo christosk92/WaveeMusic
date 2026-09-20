@@ -76,6 +76,10 @@ public static partial class Video
         /// component asks ONE question of ONE value.</summary>
         public static readonly Signal<TransportOwner> Transport = new(TransportOwner.GlobalBar);
 
+        /// <summary>Main-window host fullscreen, published from <see cref="Commit"/> so a stay-mounted hole restyles
+        /// without a generation remount. Pop-out uses <see cref="DetachedFullscreen"/> on its own HWND.</summary>
+        public static readonly Signal<bool> MainHostFullscreen = new(false);
+
         /// <summary>The resolved placement — what should be mounted right now.</summary>
         public static SurfacePlacement Resolved => PlacementCore.Resolve(Surface.Peek());
 
@@ -95,19 +99,15 @@ public static partial class Video
             var resolved = PlacementCore.Resolve(next);
             DetachedFullscreen.Value = DetachedFullscreenRule.After(DetachedFullscreen.Peek(), resolved);
             Transport.Value = PlacementCore.TransportOwnerFor(resolved);
+            MainHostFullscreen.Value = resolved == SurfacePlacement.Fullscreen;
             if (before.Equals(next)) return;
             if (PlacementPost.ShouldPost(in before, in next, HostCapability.Peek(), out bool wanted)) Playback.SetVideoPlacement(wanted);
             if (next.Preferred != before.Preferred) PersistPreferred(next.Preferred);
-            Log.Event(WaveeLogLevel.Debug, LogCategory, "placement",
-                "video placement " + PlacementCore.Resolve(before) + " -> " + resolved,
-                fields:
-                [
-                    WaveeLogField.Of("requested", next.Requested.ToString()),
-                    WaveeLogField.Of("preferred", next.Preferred.ToString()),
-                    WaveeLogField.Of("available", next.Available.ToString()),
-                    WaveeLogField.Of("live", next.Live.ToString()),
-                    WaveeLogField.Of("transport", Transport.Peek().ToString()),
-                ]);
+            long gen = Playback.Video.Player.Peek().Generation;
+            Log.Info(LogCategory, "video placement " + PlacementCore.Resolve(before) + " -> " + resolved
+                + " requested=" + next.Requested + " preferred=" + next.Preferred + " live=" + next.Live
+                + " transport=" + Transport.Peek() + " hostFs=" + MainHostFullscreen.Peek()
+                + " gen=" + gen + " hole=" + (MainWindowHole.Owns(resolved) ? "main" : "other"));
         }
 
         // ── the verbs (every one of them a Commit) ──────────────────────────────────────────────────────────────────
@@ -195,6 +195,18 @@ public static partial class Video
         /// <summary>The window's open size and its floor, in DIP.</summary>
         public const float DefaultWidthDip = 640f, DefaultHeightDip = 360f, MinWidthDip = 320f, MinHeightDip = 180f;
 
+        /// <summary>Move the LIVE pop-out window by a delta in PHYSICAL px. Installed by the owner (which holds the
+        /// handle) while this component is mounted; null when there is no owner.
+        /// <para><b>Why the app moves the window instead of the OS.</b> The documented way to drag a chromeless window
+        /// is <c>WM_NCLBUTTONDOWN</c>/<c>HTCAPTION</c>, and it is what Chromium, Electron and WinUI 3 use, because it
+        /// is the only route to Aero Snap. It also hands the UI thread to a modal loop that samples MOUSE-move deltas,
+        /// and the measurements say that does not work here: an 8-second drag rendered at 21 fps (490 keep-alive ticks,
+        /// 167 frames — <c>[window.move] end ms=7891 ticks=490 paints=167</c>), and on a precision touchpad short
+        /// presses produced 31 ms loops that never took. Driving the move from the engine's own pointer stream is
+        /// smooth on mouse, touchpad and touch alike — the same stream every scroll in the app already uses — and it
+        /// ends deterministically on release. The price is Aero Snap, deliberately paid.</para></summary>
+        public static Action<float, float>? DragBy;
+
         /// <summary>Builds the window's ROOT content. Installed by `Video.UI.cs` (stage 2) at composition. Null means
         /// no pop-out surface is compiled in, which is a real and HANDLED state: the owner reports the close
         /// immediately, so the model falls back to the mini player instead of leaving a toggle lit over a window that
@@ -224,7 +236,22 @@ public static partial class Video
             {
                 Playback.Video.CanOpenDetachedWindow = () => ContentFactory is not null
                     && (hooks.CanOpenDetachedWindow?.Invoke() ?? false);
-                return () => Playback.Video.CanOpenDetachedWindow = null;
+                // The title band that moves the window lives in the window's OWN AppHost and cannot reach this handle,
+                // so the owner lends it one delegate. `handle` is a stable Ref, read at call time, so this survives
+                // every open/close without re-installing.
+                DragBy = (dxPx, dyPx) =>
+                {
+                    if (handle.Value is not { IsOpen: true } live) return;
+                    var b = live.BoundsPx;
+                    if (b.W <= 0f || b.H <= 0f) return;          // the backend cannot report it — do not guess an origin
+                    if (dxPx == 0f && dyPx == 0f) return;
+                    live.SetBounds(new RectF(b.X + dxPx, b.Y + dyPx, b.W, b.H));
+                };
+                return () =>
+                {
+                    Playback.Video.CanOpenDetachedWindow = null;
+                    DragBy = null;
+                };
             }, DepKey.Empty);
 
             // Reactive reconcile: it READS the resolved placement, so it re-runs whenever that changes and drives the
@@ -307,12 +334,23 @@ public static partial class Video
                     st.Get(Platform.Keys.VideoWindowRect), out float rx, out float ry, out float rw, out float rh))
                 restored = new RectF(rx, ry, rw, rh);
 
+            // ALWAYS-ON cost line. Opening the pop-out builds a SECOND AppHost, device resources and swapchain on the
+            // UI thread, so a slow one is a hard freeze of the whole app with nothing else in the log to show for it
+            // ("it mega froze going from the player to the out-of-process window"). Time the two halves separately —
+            // the content tree and the host's window creation are very different suspects.
             var content = ContentFactory;
-            var win = content is null ? null : hooks.OpenDetachedWindow?.Invoke(new DetachedWindowRequest(
-                TitleFactory(), new Size2(DefaultWidthDip, DefaultHeightDip), content(),
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            var tree = content?.Invoke();
+            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            var win = tree is null ? null : hooks.OpenDetachedWindow?.Invoke(new DetachedWindowRequest(
+                TitleFactory(), new Size2(DefaultWidthDip, DefaultHeightDip), tree,
                 AlwaysOnTop: Prefs.AlwaysOnTop(Settings),
                 InitialBoundsPx: restored,
                 MinClientSizeDip: new Size2(MinWidthDip, MinHeightDip)));
+            long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
+            double ms(long a, long b) => (b - a) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            Log.Info(State.LogCategory, $"pop-out open contentMs={ms(t0, t1):0.#} windowMs={ms(t1, t2):0.#} " +
+                $"totalMs={ms(t0, t2):0.#} restored={(restored.W > 0 ? "yes" : "no")} opened={win is not null}");
             handle.Value = win;
             if (win is null)
             {

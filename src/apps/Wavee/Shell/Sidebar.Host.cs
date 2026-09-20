@@ -3143,8 +3143,8 @@ public sealed class SidebarProjectionBinder : ISidebarProjectionSnapshot
                 // free — the resident membership's Total, so a pin and its rootlist row never disagree about a count.
                 bool trackCountKnown = p.Knows(PlaylistFields.TrackCount);
                 bool membershipResident = p.MembershipState != EdgeState.Unknown;
-                bool countKnown = trackCountKnown || membershipResident;
-                int trackCount = trackCountKnown || !membershipResident ? p.TrackCount : p.MembershipTotal;
+                SidebarProjection.PlaylistCount(trackCountKnown, p.TrackCount, membershipResident, p.MembershipTotal,
+                    out bool countKnown, out int trackCount);
                 // D2 (the cache plan §3.4): a count is a ROW fact and never a reason to read the list — only a
                 // cover-less mosaic asks the membership edge, at Prefetch (`ResolvePins`' flush), same as a listed pin.
                 bool needsMembership = mosaic is null && p.ImageId.IsEmpty && p.MembershipState == EdgeState.Unknown;

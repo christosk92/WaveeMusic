@@ -203,7 +203,7 @@ public readonly partial struct Track
         if (!o.ShowAlbum) input = input with { AlbumName = null, AlbumUri = default };
         var by = o.AddedBy;
         string? byName = by.IsValid && by.Knows(UserFields.Identity) && !by.NameId.IsEmpty ? Entities.Strings.Resolve(by.NameId) : null;
-        if (by.IsValid && byName is null) input = input with { AddedByRaw = EntityUri.IdOf(by.Uri.Text).ToString() };
+        // No uri-fragment stand-in: an unresolved adder states nothing rather than a guess that reads as data.
         return Facts.For(in input, new FactsOptions(
             TempoPending: !t.Knows(TrackFields.Audio), PlaysPending: !t.Knows(TrackFields.PlayCount), HasVideo: t.HasVideo,
             AddedByName: byName, AddedByProfile: byName is null ? default : by,
@@ -434,9 +434,9 @@ public readonly partial struct Track
                     Children =
                     [
                         // 13.5 / 540 is 0.2.9's own version-title cut (TrackVersionsPanel.cs:311-316), ported as pixels.
-                        new TextEl(version.Knows(TrackFields.Title) ? version.Title : "")
+                        Design.Type.DenseTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
                         {
-                            Size = 13.5f, Weight = 540, Color = isNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
+                            Weight = 540, Color = isNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
                             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                         },
                         new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = meta.ToArray() },
@@ -613,7 +613,7 @@ public readonly partial struct Track
                     Children = [LoadingBar(12f, 120f), LoadingBar(14f, 220f), LoadingBar(14f, 190f), LoadingBar(14f, 210f)],
                 },
                 DrawerRules.CreditsView.List => CreditsList(scope.Edges, parent),
-                _ => new TextEl(Loc.Get(Strings.Menu.NoCredits)) { Size = 13f, Color = Tok.TextSecondary },
+                _ => Design.Type.DenseMeta(Loc.Get(Strings.Menu.NoCredits)) with { Color = Tok.TextSecondary },
             };
             return new BoxEl { Direction = 1, MinWidth = 0f, MaxWidth = 440f, Children = [body] };
         }
@@ -643,19 +643,24 @@ public readonly partial struct Track
     // A credit linked to an artist slot is an accent link; an unlinked contributor is plain text.
     static Element CreditRow(string name, string role, int artistSlot)
     {
+        var creditTitle = Design.Type.DenseTitle("");
         Element label = artistSlot > 0
             ? new SpanTextEl(new TextSpan[] { new(name, OnClick: () => GoToArtist(new Artist(artistSlot))) })
             {
-                Size = 13f, Weight = 650, Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                Size = creditTitle.Size, LineHeight = creditTitle.LineHeight, Weight = 650,
+                Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             }
-            : new TextEl(name) { Size = 13f, Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+            : Design.Type.DenseTitle(name) with
+            {
+                Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+            };
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
             Children =
             [
                 new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [label] },
-                role.Length == 0 ? new BoxEl() : new TextEl(role) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                role.Length == 0 ? new BoxEl() : Design.Type.MicroMeta(role) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             ],
         };
     }

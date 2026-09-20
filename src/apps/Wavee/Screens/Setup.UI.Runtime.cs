@@ -598,11 +598,11 @@ public static partial class Setup
 
     /// <summary>Body copy: 13, TextSecondary unless overridden, wrapping.</summary>
     public static Element RuntimeText(string text, ColorF? color = null)
-        => new TextEl(text) { Size = 13f, LineHeight = 18f, Color = color ?? Tok.TextSecondary, Wrap = TextWrap.Wrap };
+        => Design.Type.DenseMeta(text) with { Color = color ?? Tok.TextSecondary, Wrap = TextWrap.Wrap };
 
     /// <summary>The lead sentence: 16 TextPrimary, wrapping.</summary>
     public static Element RuntimeLead(string text)
-        => new TextEl(text) { Size = 16f, LineHeight = 22f, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap };
+        => Design.Type.SheetTitle(text) with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap };
 
     /// <summary>An inline status block — an 18-DIP severity glyph beside a 14/600 heading over wrapped body copy
     /// (clean dialog content, not a box-in-a-box InfoBar). The Failed body may be an arbitrary sentence.</summary>
@@ -617,8 +617,8 @@ public static partial class Setup
                 Direction = 1, Gap = 4f, Grow = 1f, MinWidth = 0f,
                 Children =
                 [
-                    new TextEl(heading) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
-                    new TextEl(body) { Size = 13f, LineHeight = 18f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
+                    Design.Type.TrackTitle(heading) with { Wrap = TextWrap.Wrap },
+                    Design.Type.DenseMeta(body) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
                 ],
             },
         ],
@@ -636,12 +636,12 @@ public static partial class Setup
         Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
         Children =
         [
-            new TextEl(label)
+            Design.Type.DenseTitle(label) with
             {
-                Size = 13f, LineHeight = 18f, Weight = 600, Color = Tok.TextPrimary,
+                Color = Tok.TextPrimary,
                 Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             },
-            new TextEl(value) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, Shrink = 0f },
+            Design.Type.TrackMeta(value) with { Shrink = 0f },
         ],
     };
 
@@ -665,10 +665,7 @@ public static partial class Setup
             RuntimeMetricRow(m.DownloadLabel.Value ?? Loc.Get(Strings.Playback.Runtime.Downloading),
                 RuntimeRules.DownloadBytes(received, total)),
             bar,
-            new TextEl(Loc.Get(Strings.Playback.Runtime.DownloadBlocking))
-            {
-                Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap,
-            });
+            Ui.Caption(Loc.Get(Strings.Playback.Runtime.DownloadBlocking)) with { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap });
     }
 
     static BoxEl RuntimeFactBox(float pad, float gap, params Element[] rows) => new()
@@ -684,10 +681,10 @@ public static partial class Setup
         Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
         Children =
         [
-            new TextEl(label) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, Width = labelWidth, Shrink = 0f },
-            new TextEl(RuntimeRules.OrDash(value))
+            Ui.Caption(label) with { Color = Tok.TextSecondary, Width = labelWidth, Shrink = 0f },
+            Ui.Caption(RuntimeRules.OrDash(value)) with
             {
-                Size = 12f, LineHeight = 16f, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 Grow = 1f, MinWidth = 0f,
             },
         ],
@@ -711,7 +708,7 @@ public static partial class Setup
         Children =
         [
             InfoBadge.Icon(InfoBadgeSeverity.Success),
-            new TextEl(Loc.Get(Strings.Playback.Runtime.Ready)) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary },
+            Design.Type.TrackTitle(Loc.Get(Strings.Playback.Runtime.Ready)),
         ],
     };
 
@@ -722,10 +719,11 @@ public static partial class Setup
     {
         var sigKids = new List<Element>(3)
         {
-            new TextEl(Loc.Get(Strings.Playback.Runtime.DetailSignature))
-                { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, Width = labelWidth, Shrink = 0f },
-            new TextEl(RuntimeSignatureSummary(facts))
-                { Size = 12f, LineHeight = 16f, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Grow = 1f, MinWidth = 0f },
+            Ui.Caption(Loc.Get(Strings.Playback.Runtime.DetailSignature)) with { Color = Tok.TextSecondary, Width = labelWidth, Shrink = 0f },
+            Ui.Caption(RuntimeSignatureSummary(facts)) with
+            {
+                Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Grow = 1f, MinWidth = 0f,
+            },
         };
         if (facts.Signature is not null)
             sigKids.Add(Button.Standard(Loc.Get(Strings.Playback.Runtime.DetailSignature), () => Shell.OpenSignatureDialog(overlay, facts)) with
@@ -793,8 +791,8 @@ public static partial class Setup
                 Direction = 1, Grow = 1f, MinWidth = 0f, Gap = 1f,
                 Children =
                 [
-                    new TextEl(title) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary },
-                    new TextEl(caption) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
+                    Design.Type.TrackTitle(title),
+                    Ui.Caption(caption) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
                 ],
             },
             new TextEl(Icons.ChevronRightMed) { Size = 12f, FontFamily = Theme.IconFont, Color = Tok.TextTertiary, Shrink = 0f },

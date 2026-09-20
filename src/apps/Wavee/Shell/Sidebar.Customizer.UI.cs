@@ -226,9 +226,9 @@ public static partial class Sidebar
                         {
                             Color = global::Wavee.Design.Accent.Decor, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },
-                        new TextEl(Loc.Get(CzLoc.Title))
+                        global::Wavee.Design.Type.SheetTitle(Loc.Get(CzLoc.Title)) with
                         {
-                            Size = 16f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                            Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },
                     ],
                 },
@@ -304,9 +304,9 @@ public static partial class Sidebar
                     Width = 6f, Height = 6f, Shrink = 0f, Corners = Radii.Circle(6f), Fill = Tok.SystemFillSuccess,
                     HitTestVisible = false,
                 },
-                new TextEl(Loc.Get(CzLoc.SavedLocally))
+                global::Wavee.Design.Type.MicroMeta(Loc.Get(CzLoc.SavedLocally)) with
                 {
-                    Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
             ],
         };
@@ -612,7 +612,7 @@ public static partial class Sidebar
                     Direction = 1, Gap = Spacing.M, MinWidth = CzPicker.BodyW,
                     Children =
                     [
-                        new TextEl(body) { Size = 13f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 3 },
+                        global::Wavee.Design.Type.DenseMeta(body) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 3 },
                         CzMiniature.Template(target),
                     ],
                 };
@@ -701,13 +701,13 @@ public static partial class Sidebar
                     Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f,
                     Children =
                     [
-                        new TextEl(Loc.Get(SidebarTemplates.NameLocKey(templateId)))
+                        global::Wavee.Design.Type.DenseTitle(Loc.Get(SidebarTemplates.NameLocKey(templateId))) with
                         {
-                            Size = 13f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                            Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },
-                        new TextEl(Loc.Get(SidebarTemplates.DescriptionLocKey(templateId)))
+                        global::Wavee.Design.Type.MicroMeta(Loc.Get(SidebarTemplates.DescriptionLocKey(templateId))) with
                         {
-                            Size = 11f, Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap,
+                            Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap,
                         },
                     ],
                 },
@@ -782,9 +782,9 @@ public static partial class Sidebar
             Children =
             [
                 picking ? BackRow() : CzRow.GroupLabel(Loc.Get(CzLoc.AddSection)) with { Grow = 1f, Shrink = 1f, MinWidth = 0f },
-                new TextEl(Loc.Format(CzLoc.SectionCount, ("used", used), ("max", SidebarLayoutReducer.MaxSections)))
+                global::Wavee.Design.Type.MicroMeta(Loc.Format(CzLoc.SectionCount, ("used", used), ("max", SidebarLayoutReducer.MaxSections))) with
                 {
-                    Size = 11f, Weight = 600, Shrink = 0f, MaxLines = 1,
+                    Weight = 600, Shrink = 0f, MaxLines = 1,
                     Color = full ? Tok.SystemFillCritical : Tok.TextTertiary,
                 },
             ],
@@ -824,9 +824,9 @@ public static partial class Sidebar
                 Children =
                 [
                     CzRow.GroupLabel(label) with { Shrink = 0f },
-                    new TextEl(Loc.Format(CzLoc.AppendsTo, ("name", CzText.TitleOf(appendTo))))
+                    global::Wavee.Design.Type.MicroMeta(Loc.Format(CzLoc.AppendsTo, ("name", CzText.TitleOf(appendTo)))) with
                     {
-                        Size = 11f, Color = global::Wavee.Design.Accent.Decor, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                        Color = global::Wavee.Design.Accent.Decor, Grow = 1f, Shrink = 1f, MinWidth = 0f,
                         MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                     },
                 ],
@@ -958,10 +958,10 @@ public static partial class Sidebar
             Element[] lines = sub is { Length: > 0 }
                 ?
                 [
-                    new TextEl(label) { Size = 13f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    new TextEl(sub) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap },
+                    global::Wavee.Design.Type.DenseTitle(label) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    global::Wavee.Design.Type.MicroMeta(sub) with { Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap },
                 ]
-                : [new TextEl(label) { Size = 13f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }];
+                : [global::Wavee.Design.Type.DenseTitle(label) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }];
 
             return new BoxEl
             {
@@ -1047,9 +1047,9 @@ public static partial class Sidebar
                     Direction = 1, Gap = Spacing.S, Grow = 1f, Shrink = 1f, MinWidth = 0f,
                     Children =
                     [
-                        new TextEl(path)
+                        global::Wavee.Design.Type.MicroMeta(path) with
                         {
-                            Size = 11f, Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap,
+                            Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap,
                             Trim = TextTrim.CharacterEllipsis,
                         },
                         new BoxEl
@@ -1155,7 +1155,7 @@ public static partial class Sidebar
                     [
                         GroupLabel(Loc.Get(labelKey)) with { Grow = 1f, Shrink = 1f, MinWidth = 0f },
                         caption is { Length: > 0 }
-                            ? (Element)new TextEl(caption) { Size = 11f, Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 }
+                            ? global::Wavee.Design.Type.MicroMeta(caption) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 }
                             : new BoxEl { Width = 0f },
                     ],
                 },
@@ -1194,17 +1194,17 @@ public static partial class Sidebar
 
         static Element LabelColumn(string label, string? sub)
         {
-            var head = new TextEl(label)
+            var head = global::Wavee.Design.Type.DenseMeta(label) with
             {
-                Size = 13f, Color = Tok.TextPrimary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                Color = Tok.TextPrimary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
             };
             Element[] lines = sub is { Length: > 0 }
                 ?
                 [
                     head,
-                    new TextEl(sub)
+                    global::Wavee.Design.Type.MicroMeta(sub) with
                     {
-                        Size = 11f, Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                        Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
                     },
                 ]
                 : [head];
@@ -1238,9 +1238,9 @@ public static partial class Sidebar
                     Direction = 0, Shrink = 0f, Gap = Spacing.S, AlignItems = FlexAlign.Center,
                     Children =
                     [
-                        new TextEl(label)
+                        global::Wavee.Design.Type.DenseMeta(label) with
                         {
-                            Size = 13f, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1,
+                            Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1,
                             Trim = TextTrim.CharacterEllipsis,
                         },
                         new TextEl(valueCaption) { Size = 12f, Weight = 600, Color = Tok.TextSecondary, Shrink = 0f, MaxLines = 1 },
@@ -1414,9 +1414,9 @@ public static partial class Sidebar
                     Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f,
                     Children =
                     [
-                        new TextEl(CzText.TitleOf(spec))
+                        global::Wavee.Design.Type.DenseTitle(CzText.TitleOf(spec)) with
                         {
-                            Size = 13f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                            Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },
                         new TextEl(Loc.Get(SidebarSectionKinds.PaletteNameLocKey(spec.Kind) ?? CzLoc.ExtensionKind))
                         {
@@ -1860,13 +1860,13 @@ public static partial class Sidebar
             string title = TitleOf(item);
             string? reason = InertReason(item);
             Element[] lines = reason is null
-                ? [new TextEl(title) { Size = 13f, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
+                ? [global::Wavee.Design.Type.DenseMeta(title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
                 :
                 [
-                    new TextEl(title) { Size = 13f, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    new TextEl(reason)
+                    global::Wavee.Design.Type.DenseMeta(title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    global::Wavee.Design.Type.MicroMeta(reason) with
                     {
-                        Size = 11f, Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
+                        Color = Tok.TextTertiary, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
                     },
                 ];
 
@@ -1924,7 +1924,8 @@ public static partial class Sidebar
             {
                 string name = allowed[i];
                 bool on = string.Equals(item.IconOverride, name, StringComparison.Ordinal);
-                rows.Add(MenuFlyoutItem.RadioItem(name, on, () => Send(new SetItemIcon(sectionId, itemId, on ? null : name)),
+                rows.Add(MenuFlyoutItem.RadioItem(Loc.Get("sidebar.customizer.icon." + name), on,
+                    () => Send(new SetItemIcon(sectionId, itemId, on ? null : name)),
                     RowGlyphs.Glyph(name, Icons.MusicNote)));
             }
             return rows;
@@ -2227,10 +2228,10 @@ public static partial class Sidebar
                     Children = sub is { Length: > 0 }
                         ?
                         [
-                            new TextEl(title) { Size = 13f, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                            new TextEl(sub) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                            global::Wavee.Design.Type.DenseMeta(title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                            global::Wavee.Design.Type.MicroMeta(sub) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                         ]
-                        : [new TextEl(title) { Size = 13f, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
+                        : [global::Wavee.Design.Type.DenseMeta(title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
                 },
             ],
         }.Interactive(Interaction.ListRow);
@@ -2410,7 +2411,10 @@ public static partial class Sidebar
                 Children =
                 [
                     Cover.ArtUrl(p.ArtUrl, "grid:" + sample.ToString(CultureInfo.InvariantCulture), Cover.S40),
-                    new TextEl(p.Name) { Size = 11f, Color = Tok.TextPrimary, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
+                    global::Wavee.Design.Type.MicroMeta(p.Name) with
+                    {
+                        Color = Tok.TextPrimary, Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
+                    },
                 ],
             };
         }

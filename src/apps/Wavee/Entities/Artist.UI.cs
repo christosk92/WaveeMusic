@@ -251,9 +251,19 @@ public static class ArtistSections
     /// alternatives holding different data; one key would reuse the shelf subtree across the swap).</summary>
     public static string Key(ArtistSection s) => s_keys[(int)s];
 
-    /// <summary>Only a DESTINATION joins the pivot; the upcoming band and the two banners are announcements.</summary>
+    /// <summary>Only a DESTINATION joins the pivot; the upcoming band and the two banners are announcements. Popular
+    /// is excluded too: it has no "Overview" tab of its own any more — the band title itself scrolls back to it
+    /// (ArtistPage.cs's <c>ScrollToTop</c>).</summary>
     public static bool IsDestination(ArtistSection s)
-        => s is not (ArtistSection.Upcoming or ArtistSection.LatestRelease or ArtistSection.Tour);
+        => s is not (ArtistSection.Upcoming or ArtistSection.LatestRelease or ArtistSection.Tour or ArtistSection.Popular);
+
+    /// <summary>Everything past Compilations that collapses into the single "Details" tab (ArtistPage.cs's Compose):
+    /// the caller marks only the first PRESENT member of this group a destination each render — Biography is
+    /// unconditional (<see cref="Plan"/>), so Details always has somewhere to point.</summary>
+    public static bool IsDetailsGroup(ArtistSection s)
+        => s is ArtistSection.AppearsOn or ArtistSection.MusicVideos or ArtistSection.Playlists
+            or ArtistSection.Concerts or ArtistSection.Merch or ArtistSection.Biography or ArtistSection.Gallery
+            or ArtistSection.Related or ArtistSection.Fans;
 
     /// <summary>The pick owns the rail beside Top tracks; an upcoming release then takes its OWN band above Latest
     /// release. Without Top tracks there is no rail and neither renders (ArtistPage.cs:241).</summary>
@@ -609,9 +619,14 @@ public readonly partial struct Artist
             int dh = Math.Max(1, Design.ImageDecodeScale.For(baseH, scale));
             float aspect = (float)dw / dh;
 
-            // The page gates its reveal on this cache entry being resident. Keep the binding here as well so a direct
-            // remount or a future caller still observes the image, but do not add a second image fade over the page
-            // reveal. The only time-driven motion is the small image-only settle.
+            // THE HERO OWNS ITS OWN ENTRANCE, and the page no longer waits for it (`ArtistReadiness.BodyReady`): the
+            // copy, the chart and the rails reveal as soon as THEY are ready, and the photograph scales up from its
+            // 1.00 start to its 1.03 rest and fades 0 -> 1 when its bitmap actually lands, however long that takes.
+            //
+            // This is what the page-wide wait was standing in for, badly. Blocking the whole reveal on the decode
+            // meant a slow photo held an otherwise fully-known page at a shimmer; and when it did land, the page
+            // reveal and the image fade were two animations over the same pixels (stillwrong.mp4). One owner, one
+            // entrance, keyed on the ready EDGE so it plays once per photo and never re-runs on a plain re-render.
             var image = UseImage(p.Url, dw, dh, ImagePriority.Visible, blurHash: null, transition: ImageTransition.None);
             bool ready = image.State is ImageState.Ready or ImageState.Failed;
             var zoom = UseRef(false);

@@ -506,9 +506,8 @@ public static class LibraryV3Metrics
     /// <summary>The nav band's own row height — CHROME above the header, so it does not have to match the 44
     /// content row; Spotify's own "Your Library" nav rows are 40.</summary>
     public const float NavRowHeight = 40f;
-    /// <summary>Destination-word type size and inter-word gap: 13.5 sits under the 15px header title and above the
-    /// 12.5px filter chips, keeping all three legible as separate ranks.</summary>
-    public const float DestinationWordSize = 13.5f, DestinationWordGap = 14f;
+    /// <summary>Inter-word gap on the destination rail (<see cref="Design.Type.DenseTitle"/> / DenseMeta at 13).</summary>
+    public const float DestinationWordGap = 14f;
     /// <summary>The edge fade a clipped destination word peeks through — the affordance that says the rail
     /// scrolls. Labels never truncate to a glyph; the rail scrolls instead. Painted from the rail's LIVE scroll
     /// geometry per render, never a hardcoded side — a fade with nothing behind it is a lie.</summary>

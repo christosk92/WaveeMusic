@@ -62,6 +62,9 @@ public static partial class Spotify
             AudioAssociations = 98,
             VideoAssociations = 99,
             PreRelease = 138,
+            /// <summary>The consumption-experience trait: the CANONICAL-computed video verdict, and the only thing
+            /// that answers for a relinked alias (<see cref="Decode.ConsumptionExperience"/>).</summary>
+            ConsumptionExperience = 182,
             /// <summary>"Playlists featuring this album" (G-044, <c>Edges.AlbumRecommendations</c>).</summary>
             RecommendedPlaylists = 151,
             VisualIdentity = 179,
@@ -281,13 +284,14 @@ public static partial class Spotify
             return s.AddText(buf[..n]);
         }
 
-        /// <summary>The cover pick, ported from `ExtendedMetadataSource.PickImage`: the DEFAULT render (size 0,
-        /// ~300 px) is the card/list source and the first render is the fallback when the group names no DEFAULT.
-        /// 0.3 keeps ONE image per row, so the "largest" arm of the 0.2.9 rule has no column to land in and is not
-        /// ported — the hero asks the CDN for its own size.</summary>
+        /// <summary>The cover pick from a proto <c>ImageGroup</c>: LARGE then DEFAULT then SMALL then anything else.
+        /// 0.3 keeps ONE image per row — the stored file id IS the rendition — so ShowV4 / EpisodeV4 must not latch
+        /// DEFAULT (~300) when LARGE is on the wire. Rank is <see cref="ImageGroupPick.Rank"/>; a missing size field
+        /// is proto2 DEFAULT (0).</summary>
         static TextRef Cover(Staging s, ProtoReader group)
         {
-            ReadOnlySpan<byte> chosen = default, fallback = default;
+            ReadOnlySpan<byte> chosen = default;
+            int best = 0;
             while (group.Next())
             {
                 if (group.Field != 1) { group.Skip(); continue; }             // ImageGroup.image
@@ -303,10 +307,24 @@ public static partial class Spotify
                     else img.Skip();
                 }
                 if (fileId.IsEmpty) continue;
-                if (fallback.IsEmpty) fallback = fileId;
-                if (size == 0 && chosen.IsEmpty) chosen = fileId;
+                int rank = ImageGroupPick.Rank(size < 0 ? 0 : size);
+                if (chosen.IsEmpty || rank > best) { best = rank; chosen = fileId; }
             }
-            return Image(s, chosen.IsEmpty ? fallback : chosen);
+            return Image(s, chosen);
+        }
+
+        /// <summary>Proto <c>Image.Size</c> preference for the one URL 0.3 stores per row.
+        /// XLARGE (3) &gt; LARGE (2) &gt; DEFAULT (0) &gt; SMALL (1); unknown values rank last.</summary>
+        public static class ImageGroupPick
+        {
+            public static int Rank(int size) => size switch
+            {
+                3 => 4,   // XLARGE
+                2 => 3,   // LARGE
+                0 => 2,   // DEFAULT (~300)
+                1 => 1,   // SMALL
+                _ => 0,
+            };
         }
 
         /// <summary>A wire date → the year and, when the provider knows more than a year, a seconds instant and its
@@ -1135,7 +1153,13 @@ public static partial class Spotify
                 case Ext.ArtistV4: ArtistV4(payload, s); break;
                 case (Ext)3: PodcastTopics(payload, entityUri, s); break;
                 case (Ext)54: PodcastHtml(payload, entityUri, s); break;
-                case (Ext)182: EpisodeMedia(payload, entityUri, s); break;
+                // ONE trait, TWO readings, chosen by the entity it answers for. For an episode it carries the media
+                // block; for a track it is the canonical-computed VIDEO verdict - and the only answer a relinked
+                // track ever gets, since kind 99 is keyed by the canonical id and answers nothing for an alias.
+                case Ext.ConsumptionExperience:
+                    if (entityUri.StartsWith("spotify:track:"u8)) ConsumptionExperience(payload, entityUri, s);
+                    else EpisodeMedia(payload, entityUri, s);
+                    break;
                 case (Ext)37: PodcastRating(payload, entityUri, s); break;
                 case (Ext)21: EpisodeTranscripts(payload, entityUri, s); break;
                 case (Ext)83: AudiobookGenres(payload, entityUri, s); break;
@@ -1518,6 +1542,35 @@ public static partial class Spotify
         /// pairing is the whole point of the trait (`VisualIdentityProjector`): one track's answer also tints its
         /// album's grid card and every other slot showing the same cover. DARK-only, so it lands as
         /// <c>Palette.SetDark</c> (Entities/Palette.cs) and the light half waits for the filler.</summary>
+        /// <summary>Kind 182 (CONSUMPTION_EXPERIENCE_TRAIT) -> <see cref="TrackFields.Video"/>: the SECOND answer for
+        /// the same group, and the only one a RELINKED row ever gets. Kind 99 is keyed by the CANONICAL id and answers
+        /// nothing for an alias; this trait is canonical-COMPUTED and still reports the video, which is why a
+        /// playlist's relinked members showed no film mark while an artist's canonical top tracks did. Ported from
+        /// 0.2.9's <c>VideoProjector.CeHasVideo</c>, whose byte was live-probed: field 4 is a length-delimited blob of
+        /// small experience ids, and <c>0x02</c> is the music-video experience (a video track carries 01 02 04, plain
+        /// audio 01 04).
+        ///
+        /// <para>It ORs the verdict and touches NOTHING else - no counterpart uri, no still, no natural size - so
+        /// whichever of the two kinds lands first, the richer kind-99 answer is never blanked by this one. Declaring
+        /// the group KNOWN is the other half of the job: kind 99 stages nothing at all for a track the server omits
+        /// from the response, which is what turned every video-less track into three wasted sends and a permanent
+        /// seal (512 misses, 168 seals in one afternoon).</para></summary>
+        public static void ConsumptionExperience(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
+        {
+            var id = Identity(s, entityUri);
+            if (id.IsEmpty) return;
+            bool video = false;
+            var r = new ProtoReader(proto);
+            while (r.Next())
+            {
+                if (r.Field != 4 || r.Wire != 2) { r.Skip(); continue; }
+                var ids = r.Bytes();
+                for (int i = 0; i < ids.Length; i++) if (ids[i] == 0x02) { video = true; break; }
+            }
+            ref var row = ref s.Tracks.RowFor(id, Authority.Full, (uint)TrackFields.Video);
+            if (video) row.Flags |= (uint)TrackFlags.HasVideo;
+        }
+
         public static void VisualIdentity(ReadOnlySpan<byte> proto, Staging s)
         {
             var r = new ProtoReader(proto);
@@ -2078,13 +2131,16 @@ public static partial class Spotify
     public static partial class Decode
     {
         /// <summary>An image node — <c>{sources:[…]}</c>, <c>{data:{sources}}</c>, <c>{items:[…]}</c> or a bare url
-        /// string — to its first url. <paramref name="hex"/> receives the first <c>extractedColors.*.hex</c> under the
-        /// node when it carries one; it is left as it was otherwise.</summary>
+        /// string — to the hero rendition (<see cref="BrowseImagePick.HeroMinWidth"/>), not the first URL. Spotify
+        /// lists 64 then 300 then 640, smallest first; taking the first one stored a 64px JPEG that
+        /// <c>ArtworkDecodePx</c> cannot sharpen. <paramref name="hex"/> receives the first
+        /// <c>extractedColors.*.hex</c> under the node when it carries one; it is left as it was otherwise.</summary>
         static TextRef ImageNode(ref Utf8JsonReader r, Staging s, ref TextRef hex)
         {
             if (r.TokenType == JsonTokenType.PropertyName && !r.Read()) return default;
             if (r.TokenType == JsonTokenType.String) return s.AddJson(ref r);
-            if (r.TokenType is not (JsonTokenType.StartObject or JsonTokenType.StartArray)) { r.Skip(); return default; }
+            if (r.TokenType == JsonTokenType.StartArray) return SourcesBest(ref r, s);
+            if (r.TokenType is not JsonTokenType.StartObject) { r.Skip(); return default; }
             int depth = r.CurrentDepth;
             TextRef url = default;
             bool inColors = false;
@@ -2093,9 +2149,63 @@ public static partial class Spotify
                 if (r.TokenType != JsonTokenType.PropertyName) continue;
                 if (r.ValueTextEquals("extractedColors"u8)) { inColors = true; continue; }
                 if (r.ValueTextEquals("hex"u8) && inColors) { r.Read(); if (hex.IsEmpty) hex = s.AddJson(ref r); continue; }
+                if (r.ValueTextEquals("sources"u8) || r.ValueTextEquals("items"u8))
+                {
+                    r.Read();
+                    var picked = SourcesBest(ref r, s);
+                    if (url.IsEmpty) url = picked;
+                    continue;
+                }
                 if (r.ValueTextEquals("url"u8)) { r.Read(); if (url.IsEmpty) url = s.AddJson(ref r); }
             }
             return url;
+        }
+
+        /// <summary>A <c>sources</c> / <c>items</c> array (or a single source object / bare URL) → the
+        /// <see cref="BrowseImagePick.HeroMinWidth"/> pick. Chip/avatar walks stay on <c>FirstUrl</c>.</summary>
+        static TextRef SourcesBest(ref Utf8JsonReader r, Staging s)
+        {
+            if (r.TokenType == JsonTokenType.String) return s.AddJson(ref r);
+            Span<TextRef> urls = stackalloc TextRef[16];
+            Span<int> widths = stackalloc int[16];
+            int n = 0;
+            if (r.TokenType == JsonTokenType.StartObject)
+            {
+                if (TryTakeSource(ref r, s, out var u, out int w) && n < urls.Length) { urls[n] = u; widths[n] = w; n++; }
+            }
+            else if (r.TokenType == JsonTokenType.StartArray)
+            {
+                int depth = r.CurrentDepth;
+                while (r.Read() && !End(ref r, depth))
+                {
+                    if (r.TokenType == JsonTokenType.String)
+                    {
+                        if (n < urls.Length) { urls[n] = s.AddJson(ref r); widths[n] = 0; n++; }
+                    }
+                    else if (r.TokenType == JsonTokenType.StartObject)
+                    {
+                        if (n >= urls.Length) { r.Skip(); continue; }
+                        if (TryTakeSource(ref r, s, out var u, out int w)) { urls[n] = u; widths[n] = w; n++; }
+                    }
+                }
+            }
+            else { r.Skip(); return default; }
+            if (n == 0) return default;
+            int idx = BrowseImagePick.ChooseIndex(widths[..n], BrowseImagePick.HeroMinWidth);
+            return idx < 0 ? default : urls[idx];
+        }
+
+        static bool TryTakeSource(ref Utf8JsonReader r, Staging s, out TextRef url, out int width)
+        {
+            url = default;
+            width = 0;
+            for (int d = Fields(ref r); Next(ref r, d);)
+            {
+                if (r.ValueTextEquals("url"u8)) { r.Read(); url = s.AddJson(ref r); }
+                else if (r.ValueTextEquals("width"u8)) { r.Read(); width = (int)Num(ref r); }
+                else SkipValue(ref r);
+            }
+            return !url.IsEmpty;
         }
 
         /// <summary><c>"#8898A8"</c> (or <c>"8898A8"</c>) → <c>0xFF8898A8</c>; 0 for anything else.</summary>

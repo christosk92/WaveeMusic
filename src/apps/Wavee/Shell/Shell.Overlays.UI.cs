@@ -279,7 +279,7 @@ public static partial class Shell
         Direction = 1, Gap = 2f,
         Children =
         [
-            new TextEl(Loc.Get(labelKey)) { Size = 11f, LineHeight = 14f, Color = Tok.TextSecondary },
+            global::Wavee.Design.Type.MicroMeta(Loc.Get(labelKey)) with { Color = Tok.TextSecondary },
             new TextEl(string.IsNullOrWhiteSpace(value) ? "-" : value)
                 { Size = 12f, LineHeight = 16f, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
         ],
@@ -337,7 +337,7 @@ public static partial class Shell
             Direction = 1, Gap = Spacing.S, Padding = new Edges4(16f, 14f, 16f, 14f),
             Children =
             [
-                new TextEl(title) { Size = 13f, LineHeight = 18f, Weight = 600, Color = Tok.TextPrimary },
+                global::Wavee.Design.Type.DenseTitle(title) with { Color = Tok.TextPrimary },
                 ProgressBar.Create(s_progress, UpdateCardBarWidth),
             ],
         };

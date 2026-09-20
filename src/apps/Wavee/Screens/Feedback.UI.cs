@@ -348,7 +348,7 @@ public static partial class Feedback
                         Content = new BoxEl
                         {
                             Padding = Edges4.All(10f),
-                            Children = [new TextEl(preview) { Size = 11f, FontFamily = "Cascadia Code", Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = FieldWidth - 20f }],
+                            Children = [Design.Type.MicroMeta(preview) with { FontFamily = "Cascadia Code", Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = FieldWidth - 20f }],
                         },
                     },
                 ],

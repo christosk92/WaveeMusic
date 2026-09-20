@@ -1,4 +1,4 @@
-// ── Entities/Playlist.Page.cs ──────────────────────────────────────────────────────────────────────────────────────
+﻿// ── Entities/Playlist.Page.cs ──────────────────────────────────────────────────────────────────────────────────────
 // owner O's composition: InstallPages (the six routes + O's seams + the playlist verbs), the playlist page over the shared
 // detail frame (identity, FrameSpec, TableProfile, the whole-model demand, the hero ⋯ menu, the cover drag, the deposits),
 // the local route's arm (Local Files: the header settled locally, a dropped / picked file imported and played), and the
@@ -136,7 +136,7 @@ public readonly partial struct Playlist
     /// <see cref="PageRules.MetaArmFor"/>).</param>
     public readonly record struct PageStamp(uint Epoch, int Slot, uint Row, EdgeState Membership, uint MembersEdge, ulong Members,
                                             int OwnerSlot, uint Owner, EdgeState Recommendations, uint Tuning, bool EditsLive, bool Facts,
-                                            bool Holding);
+                                            bool Holding, int TrackCount, bool CountKnown, int Saves, bool SavesKnown);
 
     /// <summary>What the hero's meta line ("N songs · 2 hr 59 min") shows. THREE answers, never a fourth.</summary>
     public enum MetaArm : byte
@@ -152,10 +152,64 @@ public readonly partial struct Playlist
         Absent,
     }
 
+    /// <summary>WHAT A RUN OF THE PAGE'S DEMAND EFFECT WILL ACTUALLY DO — and therefore the one thing besides the slot
+    /// and the scope epoch that its dep key must carry (<see cref="PageRules.DemandArmFor"/>).</summary>
+    public enum DemandArm : byte
+    {
+        /// <summary>NOTHING: the playlist ROW is not valid yet, so <c>Demand</c> returns before it asks for anything —
+        /// and THE OPEN (<c>ListOpen.Open</c> + <c>HeldRows.Opened</c>) sits behind that guard.</summary>
+        Bail,
+        /// <summary>Local Files: settled on this device through its own path, and it never opens a list — there is no
+        /// remote to revalidate against. Stable for the life of the route.</summary>
+        Local,
+        /// <summary>The whole demand, ending in THE OPEN.</summary>
+        Open,
+    }
+
+    /// <summary>What <c>DemandRows</c> should ask of the owner slot. CollaboratorSlots often excludes the owner, so
+    /// Identity=0 is not "Ensure above owns this" — the owner has to be named explicitly.</summary>
+    public enum OwnerAsk : byte
+    {
+        /// <summary>The owner row is Full (or there is no slot): do not ask.</summary>
+        None,
+        /// <summary>Identity is not known: <c>Entities.Ensure</c> the owner for <see cref="UserFields.Identity"/>.</summary>
+        Ensure,
+        /// <summary>Identity is known at Thin: invalidate so the Full profile/avatar can land.</summary>
+        Invalidate,
+    }
+
     /// <summary>The playlist page's engine-free decisions (the pure half <c>Wavee.Tests</c> pins): which optional
-    /// sections mount, the meta line's arm, and the two value-cache masks the render keys its profile and slots on.</summary>
+    /// sections mount, the meta line's arm, when the demand effect must run again, and the two value-cache masks the
+    /// render keys its profile and slots on.</summary>
     public static class PageRules
     {
+        /// <summary>THE DEMAND EFFECT'S ARM (the fix for an eternal shimmer, take two — the OPEN side of it).
+        /// <para>The demand runs once per (playlist slot, scope epoch) and opens the list at its end. It bails first on
+        /// a row that is not yet valid — and NEITHER the slot NOR the scope epoch moves when that row lands: only the
+        /// row's own version does. So a cold navigation whose first effect drain saw a not-yet-valid row never ran the
+        /// demand again, <c>HeldRows.Opened</c> was never reached, and the page's reveal source stayed on its PRE-open
+        /// rule (<c>ListOpen.WouldHold</c> — a re-decide with nothing to wake it) for the life of the page. The meta
+        /// line therefore shimmered until an unrelated re-render asked again.</para>
+        /// <para>This is what the dep key carries instead: WHAT the run will do, not merely which row it is about. The
+        /// arm moves exactly once per page, when the row lands, which is the one transition that strands the open —
+        /// and a re-run is cheap, because <c>Opened</c> is idempotent and an open that JOINS its own record writes
+        /// nothing (<c>ListOpenPolicy.Decide</c>: no ask, no stamp, the same hold).</para></summary>
+        public static DemandArm DemandArmFor(bool rowValid, bool local)
+            => !rowValid ? DemandArm.Bail : local ? DemandArm.Local : DemandArm.Open;
+
+        /// <summary>Does a demand run with this arm REACH the open? <see cref="DemandArm.Local"/> legitimately never
+        /// does: Local Files settles through <c>SettleLocalFiles</c> and has no list to revalidate.</summary>
+        public static bool DemandOpens(DemandArm arm) => arm == DemandArm.Open;
+
+        /// <summary>What to ask of the playlist's owner row. Identity unknown ⇒ Ensure (Pathfinder refuses to seal
+        /// Identity on a nameless ownerV2, so a page that never Ensures the owner paints a blank name forever).
+        /// Identity known below Full ⇒ Invalidate the Thin card/header name so the profile/avatar can land.
+        /// Full ⇒ nothing.</summary>
+        public static OwnerAsk OwnerAskFor(bool knownIdentity, Authority authority)
+            => !knownIdentity ? OwnerAsk.Ensure
+             : authority < Authority.Full ? OwnerAsk.Invalidate
+             : OwnerAsk.None;
+
         /// <summary>THE META LINE'S ARM (the fix for an eternal shimmer). <c>Detail.MetaRow</c> paints a
         /// <c>SkelRegionEl</c> whose <c>Pending</c> is hard-wired true and whose <c>Failed</c> is hard-wired false, so
         /// an identity that says "loading" and never stops says it FOREVER — the page is the only thing that can end
@@ -222,7 +276,7 @@ public readonly partial struct Playlist
         // equal spec — so an unmoved identity must cost nothing above the compare.
         Detail.Identity? _identity;
         PageStamp _identityFor;
-        /// <summary>The owner slot whose thin profile this page already re-asked (<see cref="DemandOwnerProfile"/>).</summary>
+        /// <summary>The owner slot whose thin profile this page already re-asked (<see cref="DemandOwner"/>).</summary>
         int _ownerAsked = Table.None;
         readonly User.LensCell _lens = new();
 
@@ -304,7 +358,12 @@ public readonly partial struct Playlist
                 _source = new HeldRows(pl);
                 _sourceSlot = pl.Slot;
             }
-            UseEffect(_demand, DepKey.From(pl.Slot, (int)scopeEpoch));
+            // THE DEMAND, keyed on what a run of it will DO (PageRules.DemandArmFor) as well as on which row it is
+            // about: the demand bails on a row that is not valid yet, and neither the slot nor the scope epoch moves
+            // when that row lands — so without the arm a cold navigation stranded the open behind that guard forever
+            // and the page kept its PRE-open reveal rule for good. Re-running the demand is cheap (HeldRows.Opened is
+            // idempotent; an open that joins its own record asks nothing and stamps nothing).
+            UseEffect(_demand, DepKey.From(pl.Slot, (int)scopeEpoch, (int)PageRules.DemandArmFor(pl.IsValid, _local), 0));
             UseEffect(_demandRows);
             // The open's revalidation: subscribed to the tables that publish its answer, settled when the model says how it ended.
             UseEffect(_observe);
@@ -315,9 +374,13 @@ public readonly partial struct Playlist
             // unrelated re-rendered the page, which is exactly why resizing the window "fixed" it.
             // UseTimeout arms from mount and RE-ARMS on a dep change, so the fire that counts is the one keyed on the
             // hold this page actually took; HoldExpired re-checks rather than assuming, and re-arms itself while
-            // budget is left (the first frame renders before the demand effect has opened anything, so the mount's own
-            // arm always fires against no hold at all).
-            int holdLeftMs = pl.IsValid ? ListOpen.RemainingHoldMs(pl.Slot) : 0;
+            // budget is left.
+            // The SAME wake also bounds the PRE-open window. The first frames render before the demand effect has
+            // opened anything, and until then the source answers by RE-DECIDING the plan (ListOpen.WouldHold) — a
+            // clock-dependent answer with no record behind it, so nothing settles, nothing publishes and ExpireHold
+            // has nothing to do. HeldRows.HeldForMs is whichever bound is live (the record's remaining budget after
+            // the open, the re-decide's own deadline before it), so one timer covers both.
+            int holdLeftMs = _source?.HeldForMs ?? 0;
             _holdWake = UseTimeout(_holdExpired, holdLeftMs + ListOpenPolicy.HoldWakeSlackMs, DepKey.From(pl.Slot, holdLeftMs));
             // 0 while no lens is on, 36 while one is (ch 04 item 34): a memo, so a filter edit that does not flip the answer
             // never re-renders the page. Hooks before the early return.
@@ -424,16 +487,19 @@ public readonly partial struct Playlist
             bool editsLive = EditsLiveNow();           // subscribes to the session phase (item 58)
             var pl = _playlist;
             if (!pl.IsValid)
-                return new PageStamp(epoch, pl.Slot, 0, EdgeState.Unknown, 0, RowFold.Seed, Table.None, 0, EdgeState.Unknown, 0, editsLive, false, false);
+                return new PageStamp(epoch, pl.Slot, 0, EdgeState.Unknown, 0, RowFold.Seed, Table.None, 0, EdgeState.Unknown, 0, editsLive, false, false, 0, false, 0, false);
             int slot = pl.Slot;
             var owner = pl.Owner;
             bool holding = _source is not null && _source.Held;
             bool facts = _source is not null && User.FactsHas(_source, DetailKind.Playlist);
             // Readiness, not State: a failed / unanswered membership must MOVE the stamp, or the identity is never
             // rebuilt and the meta line keeps the shimmer it can no longer earn (PageRules.MetaArmFor).
+            // TrackCount / Saves / Knows bits: IdentityOf reads them, so a quiet publish after HeldRows releases
+            // must not keep an equal stamp (the Korean-page "tracks live, meta still shimmer until resize" failure).
             return new PageStamp(epoch, slot, pl.Version, e.PlaylistTracks.Readiness(slot), e.PlaylistTracks.Version(slot),
                                  RowFold.Rows(scope.Tracks, pl.TrackSlots), owner.Slot, RowFold.Version(scope.Users, owner.Slot),
-                                 e.PlaylistRecs.State(slot), e.PlaylistTuning.Version(slot), editsLive, facts, holding);
+                                 e.PlaylistRecs.State(slot), e.PlaylistTuning.Version(slot), editsLive, facts, holding,
+                                 pl.TrackCount, pl.Knows(PlaylistFields.TrackCount), pl.Saves, pl.Knows(PlaylistFields.Saves));
         }
 
         /// <summary>The identity snapshot every arm renders (ch 06 §7's table, read off the columns and the membership).
@@ -461,6 +527,17 @@ public readonly partial struct Playlist
             bool countKnown = !_local && (pl.Knows(PlaylistFields.TrackCount) || (pl.Knows(PlaylistFields.Identity) && pl.TrackCount > 0));
             var arm = PageRules.MetaArmFor(holding, readiness, countKnown, slots.Length);
             bool metaLoading = arm == MetaArm.Loading;
+            // THE META LINE'S DECISION, ALWAYS ON. This shimmer has now been diagnosed confidently and fixed twice,
+            // and come back twice, because every diagnosis was an argument about which of these four inputs was
+            // wrong rather than a reading of them. IdentityOf runs only when the PageStamp actually moved, so this
+            // is a handful of lines per navigation, not per frame — and its ABSENCE is as diagnostic as its content:
+            // a page that shimmers with no further line after the hold settles has stopped rebuilding its identity
+            // at all, which is a different bug from any of the four inputs being wrong.
+            Log.Event(WaveeLogLevel.Info, "list", "list.meta", "", null, -1, null,
+                WaveeLogField.Of("uri", pl.Uri.Text), WaveeLogField.Of("arm", arm.ToString()),
+                WaveeLogField.Of("holding", holding), WaveeLogField.Of("readiness", readiness.ToString()),
+                WaveeLogField.Of("countKnown", countKnown), WaveeLogField.Of("rows", slots.Length),
+                WaveeLogField.Of("state", state.ToString()));
             int count = countKnown && pl.TrackCount > 0 ? pl.TrackCount : slots.Length;
             string? meta = arm != MetaArm.Text ? null
                 : Detail.Text.PlaylistMeta(count, totalMs, durationsKnown && slots.Length > 0, pl.Knows(PlaylistFields.Saves) ? pl.Saves : 0, pl.EpisodeCount);
@@ -477,7 +554,12 @@ public readonly partial struct Playlist
                 Kind = DetailKind.Playlist,
                 // The header has not answered: the rail and the hero shimmer as a whole until it does (Local Files is
                 // settled on this device and never waits).
-                HeaderPending = !_local && !pl.Knows(PlaylistFields.Identity),
+                // A header that will never land must STOP shimmering, exactly as the meta line does
+                // (`PageRules.MetaArmFor`'s Absent arm). Pending and Failed are two different states and a
+                // two-state gate cannot say "nothing is coming" - which is how a header whose Identity fetch was
+                // sealed shimmered forever.
+                HeaderPending = !_local && !pl.Knows(PlaylistFields.Identity)
+                                && !Entities.Current.Playlists.IsFailed(pl.Slot, (uint)PlaylistFields.Identity),
                 Title = _local && title.Length == 0 ? Loc.Get("localFile.playlistTitle") : title,
                 CoverUrl = _visibleCover,
                 CardAccent = pl.Accent,
@@ -533,12 +615,19 @@ public readonly partial struct Playlist
         /// one's deadline on a clock that is not the deadline's — <see cref="ListOpen.ExpireHold"/> re-checks both and
         /// settles nothing it should not. Whatever is left of the budget after that is re-armed here, so an early or an
         /// unrelated fire is never the last word; the settle itself writes <see cref="ListOpen.Changed"/>, which is what
-        /// re-runs <see cref="Stamp"/> and repaints the meta line with no resize and no pointer input.</summary>
+        /// re-runs <see cref="Stamp"/> and repaints the meta line with no resize and no pointer input.
+        /// <para>…and the PRE-OPEN half of the same edge. Before the demand effect has opened anything there is no
+        /// record to settle — <see cref="ListOpen.ExpireHold"/> correctly no-ops — and the source is answering off a
+        /// re-decide (<see cref="ListOpen.WouldHold"/>) that nothing will ever wake. So when this fires with the open
+        /// still not run and that re-decide still holding, the page LATCHES its pre-open window spent
+        /// (<see cref="HeldRows.PreOpenSpent"/>, a signal write the same memos read): one bound, one write, and the
+        /// shimmer can no longer outlive the budget it was predicting.</para></summary>
         void HoldExpired()
         {
             int slot = _playlist.Slot;
             ListOpen.ExpireHold(slot);
-            int left = ListOpen.RemainingHoldMs(slot);
+            if (_source is { } source && !source.OpenRan && source.HeldForMs > 0) source.PreOpenSpent();
+            int left = _source?.HeldForMs ?? 0;
             if (left > 0) _holdWake.RestartIn(left + ListOpenPolicy.HoldWakeSlackMs);
         }
 
@@ -560,24 +649,26 @@ public readonly partial struct Playlist
             Span<int> people = stackalloc int[64];
             int n = pl.CollaboratorSlots(people);
             if (n > 0 && !_local) Entities.Ensure(scope.Users, people[..n], (uint)UserFields.Identity);
-            if (!_local) DemandOwnerProfile(scope, pl.Owner.Slot);
+            if (!_local) DemandOwner(scope, pl.Owner.Slot);
             if (pl.MembershipState == EdgeState.Partial) Entities.EnsureEdge(FetchEdge.PlaylistTracks, pl.Slot, pl.TrackSlots.Length);
             pl.Refold();
         }
 
-        /// <summary>THE OWNER'S PORTRAIT. A CARD's answer stages the owner's NAME alone at <see cref="Authority.Thin"/>
-        /// and stamps <see cref="UserFields.Identity"/> KNOWN on that row (<c>Spotify.Decode.Home</c>'s owner arm, the
-        /// pathfinder's user node) — and <see cref="Entities.Ensure"/> asks only for <c>wanted &amp; ~known</c>, so the
-        /// row above never asks for the profile that actually carries the avatar. The owner line then renders the
-        /// monogram forever on any route reached through a card, and resolves only when the page is the first thing to
-        /// name the user. So: ONE invalidate per (page, owner slot), and only while the group is known at less than
-        /// <see cref="Authority.Full"/> — an account that genuinely has no picture answers Full with no image and is
-        /// never asked again (the monogram is then the correct, deliberate fallback, not a missing fetch).</summary>
-        void DemandOwnerProfile(Scope scope, int owner)
+        /// <summary>THE OWNER'S NAME AND PORTRAIT. CollaboratorSlots often excludes the owner, so Identity=0 was
+        /// never Ensured — Pathfinder also refuses to seal Identity on a nameless ownerV2, and the hero stayed blank
+        /// until a resize. <see cref="PageRules.OwnerAskFor"/> is the rule: Ensure when the bit is off, Invalidate
+        /// when a Thin card/header name still needs the Full profile. One invalidate per (page, owner slot).</summary>
+        void DemandOwner(Scope scope, int owner)
         {
-            if (owner <= Table.None || owner == _ownerAsked || owner >= scope.Users.Count) return;
-            if ((scope.Users.Known[owner] & (uint)UserFields.Identity) == 0) return;            // Ensure above owns this case
-            if ((Authority)scope.Users.IdentityAuthority[owner] >= Authority.Full) return;
+            if (owner <= Table.None || owner >= scope.Users.Count) return;
+            bool known = (scope.Users.Known[owner] & (uint)UserFields.Identity) != 0;
+            var ask = PageRules.OwnerAskFor(known, (Authority)scope.Users.IdentityAuthority[owner]);
+            if (ask == OwnerAsk.Ensure)
+            {
+                Entities.Ensure(scope.Users, new ReadOnlySpan<int>(in owner), (uint)UserFields.Identity);
+                return;
+            }
+            if (ask != OwnerAsk.Invalidate || owner == _ownerAsked) return;
             _ownerAsked = owner;
             Entities.Invalidate(scope.Users, new ReadOnlySpan<int>(in owner), (uint)UserFields.Identity);
         }
@@ -667,6 +758,14 @@ public readonly partial struct Playlist
     /// until <see cref="Opened"/>, the source reads the hold the open WILL take (<see cref="ListOpen.WouldHold"/>, the
     /// same pure rule over the same facts). Subscribe reads <see cref="ListOpen.Changed"/>, so the table's memos re-read
     /// on every take, answer and budget.</para>
+    /// <para><b>AND THAT PRE-OPEN ANSWER IS BOUNDED.</b> <see cref="ListOpen.WouldHold"/> re-decides from the clock and
+    /// the list's stamps with NO record behind it, so nothing settles and nothing publishes when it goes stale — the
+    /// same unwakeable clock edge the hold's own budget had, one step earlier. A demand that bailed (a row not valid at
+    /// the first effect drain) leaves the page on this rule for good, and the shimmer then stands until an unrelated
+    /// re-render happens to ask again. So the page arms its ONE deadline wake off <see cref="HeldForMs"/> on either
+    /// side of the open, and a wake that lands with the open still not run latches <see cref="PreOpenSpent"/>: the
+    /// re-decide stops being honoured, that signal write reaches every memo, and the reveal resolves with no resize and
+    /// no pointer input.</para>
     /// <para><b>THE INVARIANT (a fix, not a decoration).</b> <see cref="Held"/> switches RULE at the open —
     /// <see cref="ListOpen.WouldHold"/> before, <see cref="ListOpen.Holding"/> after — and the two do not agree in
     /// general: <c>WouldHold</c> re-decides the plan and looks at neither <c>Observed</c>, nor a spent budget, nor a
@@ -685,16 +784,40 @@ public readonly partial struct Playlist
         readonly Track.TableSource _rows = Track.TableSource.ForPlaylist(playlist);
         /// <summary>One-shot, and TRACKED: see the invariant on the class. Written only by <see cref="Opened"/>.</summary>
         readonly Signal<bool> _opened = new(false);
+        /// <summary>One-shot, and TRACKED: the PRE-open window's bound, elapsed. See <see cref="PreOpenSpent"/>.</summary>
+        readonly Signal<bool> _preOpenSpent = new(false);
 
         /// <summary>The page's demand effect ran <see cref="ListOpen.Open"/>: the model's record is the truth from here.
         /// A signal write, so it must stay on the EFFECT path (<c>PlaylistPage.Demand</c>) — never a render body.
         /// Idempotent: <c>Signal.Value</c> is set-if-changed, so a re-run of the demand costs nothing.</summary>
         internal void Opened() => _opened.Value = true;
 
+        /// <summary>Has the open run? UNTRACKED — this is what the deadline wake asks, and a timer callback is not a
+        /// memo that may subscribe itself to the answer.</summary>
+        internal bool OpenRan => _opened.Peek();
+
+        /// <summary>THE PRE-OPEN WINDOW IS SPENT: the page's deadline wake fired while the open still had not run and
+        /// the re-decide still said hold (<c>PlaylistPage.HoldExpired</c>). From here the source stops honouring
+        /// <see cref="ListOpen.WouldHold"/> — the pre-open answer is a clock-dependent decision with no record behind
+        /// it, so nothing else can ever end it. One-shot, and a signal write: the TIMER / effect path only, never a
+        /// render body.</summary>
+        internal void PreOpenSpent() => _preOpenSpent.Value = true;
+
         /// <summary>Is the list held right now? The rule either side of the open — a TRACKED read of <see cref="Opened"/>
         /// (so a memo over this source re-runs when the open lands), and an untracked read of the model's record
-        /// (<see cref="Subscribe"/>, or <see cref="ListOpen.Changed"/>, is that half).</summary>
-        internal bool Held => _opened.Value ? ListOpen.Holding(_playlist.Slot) : ListOpen.WouldHold(_playlist, ListOpenPolicy.Surface.Page);
+        /// (<see cref="Subscribe"/>, or <see cref="ListOpen.Changed"/>, is that half). Before the open the re-decide
+        /// only stands for its own bound (<see cref="PreOpenSpent"/>).</summary>
+        internal bool Held => _opened.Value ? ListOpen.Holding(_playlist.Slot)
+                            : !_preOpenSpent.Value && ListOpen.WouldHold(_playlist, ListOpenPolicy.Surface.Page);
+
+        /// <summary>HOW LONG THE CURRENT <see cref="Held"/> ANSWER MAY STAND, in milliseconds — what the page arms its
+        /// one deadline wake with, on either side of the open: the record's remaining budget after it
+        /// (<see cref="ListOpen.RemainingHoldMs"/>), the re-decide's own deadline before it
+        /// (<see cref="ListOpen.WouldHoldMs"/>). ZERO when nothing is held, so <c>Held</c> and the bound can never
+        /// disagree and a page never arms a wake for a hold it is not taking.</summary>
+        internal int HeldForMs => _opened.Value ? ListOpen.RemainingHoldMs(_playlist.Slot)
+                                : _preOpenSpent.Value ? 0
+                                : ListOpen.WouldHoldMs(_playlist, ListOpenPolicy.Surface.Page);
 
         public override EntityUri Context => _rows.Context;
         public override int Count => Held ? 0 : _rows.Count;
@@ -716,6 +839,7 @@ public readonly partial struct Playlist
             _rows.Subscribe();
             _ = ListOpen.Changed.Value;
             _ = _opened.Value;          // the other edge of Held: a consumer that subscribes here and reads Count later
+            _ = _preOpenSpent.Value;    // …and the pre-open window's bound, which ends a hold no table publishes
         }
         internal override void Retry() => _rows.Retry();
         internal override Playlist HostPlaylist => _rows.HostPlaylist;

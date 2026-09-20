@@ -132,18 +132,18 @@ public readonly partial struct Track
 
     static bool Badge(in TableHost.RowPresentation p) => p.ShowAlbumColumn && p.Track.ForDisplay.IsExplicit;
 
-    // The Tempo figure and the Added-by id fallback are the two row formats `Track.Format` did not already cache.
+    // The Tempo figure is the one row format `Track.Format` did not already cache. (The Added-by id cache went with
+    // the id fallback itself, below.)
     static readonly FormatCache<ushort> s_tempoLabels = FormatCache.Create<ushort>();
     static readonly Func<ushort, string> s_tempoFormat = Format.TempoLabel;
-    static readonly FormatCache<string> s_addedByIds = FormatCache.Create<string>();
-    static readonly Func<string, string> s_addedByIdFormat = static uri => EntityUri.IdOf(uri).ToString();
 
-    /// <summary>The Added-by name when identity is known, else the raw membership id ("" for no adder).</summary>
+    /// <summary>The Added-by name when identity is known, and "" until it is - never the raw membership id, which
+    /// reads as a real name when it is only a guess. The twin of `Track.UI.AddedByCell` and of the deleted
+    /// `Playlist.NameOf` fallback.</summary>
     static string AddedByLabel(User by)
     {
         if (by.Slot <= 0) return "";
-        string name = by.Knows(UserFields.Identity) ? Entities.Strings.Resolve(by.NameId) : "";
-        return name.Length > 0 ? name : s_addedByIds.Get(by.Uri.Text, s_addedByIdFormat);
+        return by.Knows(UserFields.Identity) ? Entities.Strings.Resolve(by.NameId) : "";
     }
 
     // Single-construction twins of the row's text rungs and the icon glyph: the bound record is built once with its

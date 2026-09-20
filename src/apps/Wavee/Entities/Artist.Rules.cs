@@ -125,11 +125,62 @@ public static class ArtistReadiness
     /// (<c>Detail.CoverLatch.IsUsable(_heroUrl)</c>) so the hero photo would show before the rest of the page, but
     /// that let the hero's TEXT (verified/bio/stats, all Overview-sourced) render with whatever was known at that
     /// moment and then pop in piecemeal as the live answer landed — the exact "renders as a UNIT" violation this bug
-    /// is about, just moved inside the hero instead of below it. `Artist.Page.cs`'s `_bodyReady` is this predicate's
-    /// negation directly (<c>_bodyReady = _ready = Overview(a)</c>); this is the PURE form a test pins against it,
-    /// and the name is kept from the (now removed) magazine-only version of this fix for continuity with the
-    /// 2026-09-15 handoff's own wording.</summary>
+    /// is about, just moved inside the hero instead of below it. This is the DATA half of the page gate (overview
+    /// known ⇔ not pending). The visual half — measured width + the first hero decode, and never returning to the
+    /// page shimmer — is <see cref="BodyReady"/>.</summary>
     public static bool MagazinePending(Artist a) => !Overview(a);
+
+    /// <summary>When the page-level skeleton may swap to the real body: the overview (the data unit), a measured
+    /// page width, and the chart ready-or-failed. NOT the hero photograph - a slow download would hold an otherwise
+    /// fully-known page at a shimmer, and the photo owns its own scale-and-fade entrance when its bitmap lands
+    /// (<c>Artist.HeroArt</c>), so the page never animates a tree whose picture is still arriving.
+    /// <para>The measured width and the settled chart are both there for the same reason: without them the page
+    /// flashes default-Wide geometry, and then plays a SECOND top-tracks wave a moment after it has revealed.</para>
+    /// Once revealed, the page stays revealed for this artist so a later image/size change cannot put the skeleton
+    /// back on top.</summary>
+    public static bool BodyReady(bool overviewKnown, bool measured, bool alreadyRevealed, bool chartSettled)
+    {
+        if (alreadyRevealed) return true;
+        return overviewKnown && measured && chartSettled;
+    }
+
+    /// <summary>The chart half of <see cref="BodyReady"/>: top tracks have answered, or they have stopped coming.</summary>
+    public static bool ChartSettled(bool chartReady, bool chartFailed) => chartReady || chartFailed;
+
+    /// <summary>Live-table twin of <see cref="ChartFailed(bool,uint,uint,EdgeState,ReadOnlySpan{uint},ReadOnlySpan{uint},ReadOnlySpan{uint})"/>.
+    /// Unasked is pending, not failed — the page's first paint before Demand.</summary>
+    public static bool ChartFailed(Artist a)
+    {
+        if (!a.IsValid) return false;
+        var scope = Entities.Current;
+        int slot = a.Slot;
+        uint asked = scope.Artists.Asked[slot];
+        uint inflight = scope.Artists.Inflight[slot];
+        bool knows = a.Knows(ArtistFields.Chart);
+        // UN-ASKED IS PENDING, and that is a fact about the CHART BIT alone. Anding it with `inflight == 0` made an
+        // unrelated group already in flight on this row (a search or home card warming Identity) answer "failed" for a
+        // chart nobody has asked for yet — which settles the page and snap-reveals it BEFORE Demand ever runs, the
+        // exact symptom this guard exists to prevent.
+        if (!knows && (asked & (uint)ArtistFields.Chart) == 0) return false;
+        var edges = scope.Edges.ArtistPopular;
+        var tracks = scope.Tracks;
+        var targets = edges.Targets(slot);
+        int n = targets.Length;
+        if (n == 0)
+            return ChartFailed(knows, asked, inflight, edges.Readiness(slot), [], [], []);
+        int stride = Math.Max(n, 64);
+        Span<uint> marks = n <= 64 ? stackalloc uint[192] : new uint[n * 3];
+        Span<uint> known = marks.Slice(0, n), tAsked = marks.Slice(stride, n), tInflight = marks.Slice(2 * stride, n);
+        for (int i = 0; i < n; i++)
+        {
+            int t = targets[i];
+            bool live = t > Table.None && t < tracks.Count;
+            known[i] = live ? tracks.Known[t] : 0u;
+            tAsked[i] = live ? tracks.Asked[t] : 0u;
+            tInflight[i] = live ? tracks.Inflight[t] : 0u;
+        }
+        return ChartFailed(knows, asked, inflight, edges.Readiness(slot), known, tAsked, tInflight);
+    }
 }
 
 /// <summary>Bug D (2026-09-15 handoff §5): the discography demand plan, pure. The artist page's tabs are a

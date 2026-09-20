@@ -528,8 +528,8 @@ public static partial class Controls
                 Shadow = Elevation.Tooltip,
                 Children =
                 [
-                    new TextEl(EqualizerBands[active])
-                        { Size = 11f, FontFamily = "Cascadia Code", Color = Tok.TextSecondary, Shrink = 0f },
+                    Design.Type.MicroMeta(EqualizerBands[active])
+                        with { FontFamily = "Cascadia Code", Color = Tok.TextSecondary, Shrink = 0f },
                     new TextEl(FormatDb(gain))
                         { Size = 12f, Weight = 700, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1,
                           Trim = TextTrim.CharacterEllipsis },

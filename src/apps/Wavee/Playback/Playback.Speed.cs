@@ -7,7 +7,9 @@ public static partial class Playback
     public static readonly Signal<float> EpisodeSpeed = new(1f);
     static readonly SettingKey<float> s_episodeSpeedKey = new("playback.episodeSpeed", 1f);
     public static float ValidEpisodeSpeed(float rate) => float.IsFinite(rate) ? Math.Clamp(rate, .5f, 3f) : 1f;
-    public static float RateFor(EntityId id) => id.Kind == EntityKind.Episode ? EpisodeSpeed.Peek() : 1f;
+    public static bool SpeedApplies(EntityKind kind, bool videoWanted) => kind == EntityKind.Episode || videoWanted;
+    public static float RateFor(EntityId id, bool videoWanted) => SpeedApplies(id.Kind, videoWanted) ? EpisodeSpeed.Peek() : 1f;
+    public static float RateFor(EntityId id) => RateFor(id, false);
 
     public static void SetEpisodeSpeed(float rate)
     {

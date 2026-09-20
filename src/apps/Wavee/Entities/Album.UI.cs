@@ -616,10 +616,11 @@ public readonly partial struct Album
                     [
                         new SpanTextEl([
                             new TextSpan(a.Knows(AlbumFields.Title) ? a.Title : ""),
-                            new TextSpan(" · " + DrawerMeta(a), Weight: 400, Color: Tok.TextSecondary, Size: 12f),
+                            new TextSpan(" · " + DrawerMeta(a), Weight: 400, Color: Tok.TextSecondary, Size: Ui.Caption("").Size),
                         ])
                         {
-                            Size = 13f, Weight = 600, Color = Tok.TextPrimary,
+                            Size = Design.Type.DenseTitle("").Size, LineHeight = Design.Type.DenseTitle("").LineHeight,
+                            Weight = Design.Type.DenseTitle("").ResolvedWeight, Color = Tok.TextPrimary,
                             Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, MinWidth = 0f, Shrink = 1f,
                         },
                     ],
@@ -660,8 +661,8 @@ public readonly partial struct Album
             Cursor = CursorId.Hand, Role = AutomationRole.Button, OnClick = _goAlbum,
             Children =
             [
-                new TextEl(Strings.Detail.Discography.ShowAllTracks(total))
-                    { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.AccentTextPrimary, MaxLines = 1 },
+                Ui.Caption(Strings.Detail.Discography.ShowAllTracks(total))
+                    with { Weight = 600, Color = Tok.AccentTextPrimary, MaxLines = 1 },
             ],
         };
 
@@ -685,11 +686,12 @@ public readonly partial struct Album
             Padding = new Edges4(Spacing.S, Spacing.M, Spacing.S, Spacing.M),
             Children =
             [
-                new TextEl(Loc.Get(Strings.Detail.Empty.NoTracks))
-                {
-                    Grow = 1f, Basis = 0f, MinWidth = 0f, Size = 13f, Color = Tok.TextTertiary,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                },
+                Design.Type.DenseMeta(Loc.Get(Strings.Detail.Empty.NoTracks))
+                    with
+                    {
+                        Grow = 1f, Basis = 0f, MinWidth = 0f, Color = Tok.TextTertiary,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    },
                 Button.Standard(Loc.Get(Strings.Common.Retry), retry),
             ],
         };
@@ -734,8 +736,8 @@ public readonly partial struct Album
             var ctx = new ActionContext(ActionTarget.ForTracks(tracks), Actions.Services);
             var kids = new List<Element>(7)
             {
-                new TextEl(Strings.Detail.SelectedCount(count))
-                    { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                Ui.Caption(Strings.Detail.SelectedCount(count))
+                    with { Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             };
             AddVerb(kids, ActionId.Play, in ctx);
             if (fit <= 1)
@@ -851,11 +853,12 @@ public readonly partial struct Album
             var st = Track.StateOf(t);
             bool pop = Track.LikeEdge(ref _likeSlot, ref _likeSaved, t, st.Saved);
             var set = s_set;
-            Element title = new TextEl(t.Title)
-            {
-                Size = 13f, Weight = 600, Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            };
+            Element title = Design.Type.DenseTitle(t.Title)
+                with
+                {
+                    Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
+                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                };
             var options = new Track.GridOptions(OnPlay: _play, OnLike: _like, LikePop: pop,
                 ActionsCell: Track.MoreCell(true, false), HoverPaused: hovered, Accent: p.Accent);
             Element grid = Track.Grid(t, p.Index, in st, in set, s_tracks, DrawerRowContentH, title, in options);
@@ -1045,9 +1048,12 @@ public readonly partial struct Album
     /// metrics overrun the budget anyway: it clips, it never reflows.</para></summary>
     public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta) => new BoxEl
     {
+        // ONE target, matching Show.PaneHeader: cover + eyebrow + title + attribution + meta open the album.
+        // A title-only hyperlink left the cover inert in the library pane.
         Direction = 0, Gap = 18f, AlignItems = FlexAlign.End, Shrink = 0f,
         Height = PaneHeaderHeight, ClipToBounds = true,
         Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
+        Corners = Radii.CardAll, Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
         Children =
         [
             new BoxEl
@@ -1061,33 +1067,27 @@ public readonly partial struct Album
                 Children =
                 [
                     Design.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary },
-                    new BoxEl
+                    new TextEl(title)
                     {
-                        Corners = Radii.ControlAll, Direction = 1,
-                        Padding = new Edges4(Spacing.S, Spacing.XXS, Spacing.S, Spacing.XXS),
-                        Margin = new Edges4(-Spacing.S, -Spacing.XXS, -Spacing.S, -Spacing.XXS),
-                        Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
-                        Children =
-                        [
-                            new TextEl(title)
-                            {
-                                Size = PaneTitleSize, LineHeight = PaneTitleLine, Weight = 600,
-                                Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
-                                BrushTransitionMs = Design.Motion.Faster, MaxLines = PaneTitleMaxLines,
-                                Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
-                            },
-                        ],
-                    }.Interactive(Interaction.Subtle),
+                        Size = PaneTitleSize, LineHeight = PaneTitleLine, Weight = 600,
+                        Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
+                        BrushTransitionMs = Design.Motion.Faster, MaxLines = PaneTitleMaxLines,
+                        Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    },
                     attribution,
+                    // The SAME rung as Show.PaneHeader, by the same constants: "one geometry for both kinds, so
+                    // a selection crossing album -> show moves nothing but the words" (that file's header, and this
+                    // one's). A typography alias here made the album pane's meta 13/18 secondary against the show
+                    // pane's 12.5/16 tertiary, and put PaneHeaderTextHeight's arithmetic 2 DIP out.
                     new TextEl(meta)
                     {
                         Size = PaneHeaderMetaSize, LineHeight = PaneHeaderMetaLine, Color = Tok.TextTertiary,
-                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     },
                 ],
             },
         ],
-    };
+    }.Interactive(Interaction.Subtle);
 
     /// <summary>Play (the SYSTEM accent — the one stated exception) · shuffle · save · more (36 circles each) · spacer ·
     /// "Open album ↗" (a 13-px accent text link with the OpenInNewWindow glyph — a hyperlink, not a capsule). Never a
@@ -1111,10 +1111,8 @@ public readonly partial struct Album
                 Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
                 Children =
                 [
-                    new TextEl(Loc.Get(Strings.Library.OpenAlbum))
-                    {
-                        Size = 13f, LineHeight = 18f, Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary,
-                    },
+                    Design.Type.DenseMeta(Loc.Get(Strings.Library.OpenAlbum))
+                        with { Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary },
                     Icon(Icons.OpenInNewWindow, 14f, Tok.AccentTextPrimary),
                 ],
             },

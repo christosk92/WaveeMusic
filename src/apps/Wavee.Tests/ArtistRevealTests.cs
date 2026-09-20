@@ -30,13 +30,13 @@ public class ArtistPageRevealTests
 
     static Artist ArtistOf() => Entities.Artist(EntityUri.Parse(Uri.AsSpan()));
 
-    /// <summary>Bug F (restored to 0.2.10's model): the page's ONE reveal gate is exactly the overview readiness —
+    /// <summary>Bug F (restored to 0.2.10's model): the page's DATA gate is exactly the overview readiness —
     /// <see cref="ArtistReadiness.MagazinePending"/> and <see cref="ArtistReadiness.Overview"/> must always disagree
     /// (one is the other's negation), across the SAME real state transition <c>ArtistReadinessTests</c> pins for
     /// Overview itself: nothing known ⇒ pending, one overview group short ⇒ still pending, the whole unit landed ⇒
-    /// not pending. There is no separate, earlier-flipping hero predicate any more (Artist.Page.cs's `_bodyReady`
-    /// is this rule's negation directly: `_bodyReady = _ready = ArtistReadiness.Overview(a)`) — the hero's photo,
-    /// its verified badge, its bio lead and its stats all wait for the SAME instant as the magazine and the chart.</summary>
+    /// not pending. The visual swap (<see cref="ArtistReadiness.BodyReady"/>) still waits on that unit, plus a
+    /// measured width, the first hero decode, and the chart ready-or-failed, so the page does not flash Wide
+    /// geometry, a flat hero, or a second top-tracks wave.</summary>
     [Fact]
     public void MagazinePending_IsExactlyNotOverview_TheWholePagesOnlyGate()
     {

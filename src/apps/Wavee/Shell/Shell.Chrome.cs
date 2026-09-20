@@ -266,7 +266,15 @@ public static partial class Shell
     /// <para><b>Monotonicity (#88).</b> For a fixed tab extent and chip form, WIDENING the window can never demote the
     /// search. Every stage promotion is budget-checked, so it is entered only when the row still seats
     /// <see cref="Layout.ChromeSearchMinW"/> and the tabs beside its own new cost — a threshold is a PERMISSION, not a
-    /// decision.</para></summary>
+    /// decision.</para>
+    /// <para><b>Form and width are two different questions (#88).</b> <see cref="SearchMode"/> answers "which shape is
+    /// on screen"; <see cref="SearchWidth"/>/<see cref="FieldWidthFor"/> answer "how wide is it". <see
+    /// cref="LaidOutSearchWidth"/> conflates the two for a caller that re-reads the form fresh on every call, which is
+    /// wrong for a MOUNTED component: the mount/unmount decision (<c>CenterIsland</c>) and the mounted field's own
+    /// re-render are driven by different signals and so can observe the allocator a frame apart. A field view must
+    /// therefore never be reachable from the icon branch — it asks <see cref="FieldWidthFor"/> directly, which clamps
+    /// the icon form's own 44 back up to the floor instead of trusting it. See <see cref="LaidOutSearchWidth"/> for
+    /// the clipped "Sear" stub this produced when the two questions were asked with one method.</para></summary>
     public readonly record struct Chrome(
         bool ShowName,
         bool ShowActions,
@@ -379,7 +387,12 @@ public static partial class Shell
              - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip)
              - RequiredTabExtent(naturalTabExtent);
 
-        /// <summary>The width the FIELD is actually laid out at, given the bar's measured centre-column width.
+        /// <summary>The width a FIELD is actually laid out at, given the bar's measured centre-column width. This is the
+        /// ONLY width computation a mounted field view may call — it never reads <see cref="SearchMode"/> and so it
+        /// cannot answer 44, even when fed the icon form's own <see cref="SearchWidth"/> (<see cref="SearchWidthFor"/>
+        /// publishes exactly 44 there): the clamp below floors it straight back up to
+        /// <see cref="Layout.ChromeSearchMinW"/>. That is the form-vs-width split (#88) — "which shape is on screen" and
+        /// "how wide is the field" are two different questions, and a FIELD asks only the second one.
         /// <para>The chrome row runs with the ELASTIC TABS LANE, which makes the bar's centre column
         /// <c>Grow=0, Shrink=0</c> — so the column HUGS the field and <c>TitleBar.CenterAvail</c> is a feedback of this
         /// very width, not an independent supply. A bare <c>min(SearchWidth, avail)</c> against it is therefore a
@@ -398,8 +411,17 @@ public static partial class Shell
             return w;
         }
 
-        /// <summary>The laid-out width of whichever search form this allocation chose — the ONE number the view sets on
-        /// the centre island. Icon mode is a fixed 44 and ignores the measurement entirely.</summary>
+        /// <summary>The laid-out width of whichever search FORM this allocation chose — the icon branch is reachable
+        /// only from a call site that is itself the icon form (or a test asserting the allocator's own bookkeeping,
+        /// which is the only remaining caller — <c>Chrome.SearchWidthFor</c> is what actually PUBLISHES the icon's 44
+        /// into <see cref="SearchWidth"/>). Icon mode returns that fixed 44 and ignores the measurement entirely.
+        /// <para><b>A mounted FIELD must never call this.</b> <c>CenterIsland</c> keys its mount/unmount decision on
+        /// <see cref="SearchMode"/>, but the engine only re-invokes it when the bar's <c>ContentVersion</c> changes —
+        /// the still-mounted field's OWN <c>Render()</c> re-runs on every <see cref="Chrome"/> update regardless, and
+        /// if it read this method it would see the new <see cref="SearchMode"/> (Icon) a frame before the host gets a
+        /// chance to unmount it, lay itself out at 44, and render the placeholder as the clipped "Sear" stub. A field
+        /// view calls <see cref="FieldWidthFor"/> directly instead, so the form it is not currently displaying can
+        /// never reach it (#88).</para></summary>
         public float LaidOutSearchWidth(float measuredCentreAvail)
             => SearchMode == MergedSearchMode.Icon
                 ? Layout.ChromeSearchIconW

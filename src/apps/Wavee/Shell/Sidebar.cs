@@ -1341,9 +1341,11 @@ public readonly record struct SidebarLibraryEntry(
     /// "0 songs". <c>Sidebar.PaneText.SubtitleOf</c> (Sidebar.UI.Rows.cs) gates the "N songs" subtitle on this bit
     /// for a playlist. For a FOLDER pin awaiting the rootlist's first answer this session
     /// (<see cref="SidebarProjection.ResolveFolderPinState"/>, trap 5) this is also stamped false — the data side is
-    /// correct, but as of this fix <c>Sidebar.UI.Slot.cs</c>'s <c>FolderRow</c> does not yet gate its "N items"
-    /// subtitle on it (that render-side wiring is a one-line follow-up outside this file's scope). Meaningless for
-    /// every other kind.</summary>
+    /// correct, and <c>Sidebar.UI.Slot.cs</c>'s <c>FolderRow</c> gates its "N items" subtitle on it too.
+    /// <para>The MEMBERSHIP fallback in <see cref="SidebarProjection.PlaylistCount"/> only counts when it carries a
+    /// real number: a Partial page with no total and a Failed edge are both "resident" while knowing no length, and
+    /// reading either as a count is what painted "0 songs" on every playlist.</para>
+    /// Meaningless for every other kind.</summary>
     public bool CountKnown { get; init; }
 
     /// <summary>uri -> last-played unix ms from local + server listening history, stamped by the projection for
@@ -4167,6 +4169,9 @@ public static class SidebarProjection
     // most ONE span-form call of each after the walk. Before this, an un-identified rootlist rented two
     // pooled Fetch buffers and pumped the network once PER ROW.
     static readonly List<int> s_ensureIdentitySlots = new(32);
+    static readonly List<int> s_ensureAlbumIdentitySlots = new(32);
+    static readonly List<int> s_ensureArtistIdentitySlots = new(32);
+    static readonly List<int> s_ensureShowIdentitySlots = new(32);
     // D2: only ever holds a cover-less row's mosaic-membership ask now — the count-driven ask (bug A1's
     // `ShouldEnsureCount`) is deleted outright; `Build` flushes this at `FetchPriority.Prefetch`, never `Visible`.
     static readonly List<int> s_ensureTracksSlots = new(32);
@@ -4245,6 +4250,9 @@ public static class SidebarProjection
         bool wantPlaylists = (kinds & SidebarEntryKindMask.Playlist) != 0;
         bool wantFolders = (kinds & SidebarEntryKindMask.Folder) != 0;
         s_ensureIdentitySlots.Clear();
+        s_ensureAlbumIdentitySlots.Clear();
+        s_ensureArtistIdentitySlots.Clear();
+        s_ensureShowIdentitySlots.Clear();
         s_ensureTracksSlots.Clear();
         s_ensureMosaicTrackSlots.Clear();
         if ((wantPlaylists || wantFolders) && u.RootlistState != EdgeState.Unknown)
@@ -4277,6 +4285,8 @@ public static class SidebarProjection
                 string uri = al.Uri.Text;
                 string id = SidebarPinId.AlbumPrefix + uri;
                 long added = i < edges.Length ? AddedMs(edges[i].AddedAt) : 0L;
+                bool identityKnown = al.Knows(AlbumFields.Identity);
+                if (ShouldEnsureIdentity(ensureIdentity, identityKnown)) s_ensureAlbumIdentitySlots.Add(al.Slot);
                 var artistSlots = al.ArtistSlots;
                 into.Add(new SidebarLibraryEntry(
                     id, SidebarEntryKind.Album, uri, al.Title, JoinArtistNames(artistSlots),
@@ -4288,6 +4298,7 @@ public static class SidebarProjection
                     FolderId = "", FolderName = "",
                     FirstArtistName = artistSlots.Length > 0 ? new Artist(artistSlots[0]).Name : "",
                     LastPlayedMs = LastPlayed(lastPlayed, uri),
+                    IdentityKnown = identityKnown,
                 });
             }
         }
@@ -4302,13 +4313,18 @@ public static class SidebarProjection
                 string uri = ar.Uri.Text;
                 string id = SidebarPinId.ArtistPrefix + uri;
                 long added = i < edges.Length ? AddedMs(edges[i].AddedAt) : 0L;
+                bool identityKnown = ar.Knows(ArtistFields.Identity);
+                if (ShouldEnsureIdentity(ensureIdentity, identityKnown)) s_ensureArtistIdentitySlots.Add(ar.Slot);
                 into.Add(new SidebarLibraryEntry(
                     id, SidebarEntryKind.Artist, uri, ar.Name, "",
                     ar.ImageId, null, 0, added,
                     SortStamp: added > 0 ? added : seen.Stamp(id),
                     LastVisitedTicksUtc: rec.LastVisitedTicks(id),
                     SourceOrder: i, Depth: 0, Circular: true, Flavor: SidebarPlaylistFlavor.None)
-                { FolderId = "", FolderName = "", FirstArtistName = "", LastPlayedMs = LastPlayed(lastPlayed, uri) });
+                {
+                    FolderId = "", FolderName = "", FirstArtistName = "", LastPlayedMs = LastPlayed(lastPlayed, uri),
+                    IdentityKnown = identityKnown,
+                });
             }
         }
 
@@ -4322,6 +4338,8 @@ public static class SidebarProjection
                 string uri = sh.Uri.Text;
                 string id = SidebarPinId.ShowPrefix + uri;
                 long added = i < edges.Length ? AddedMs(edges[i].AddedAt) : 0L;
+                bool identityKnown = sh.Knows(ShowFields.Identity);
+                if (ShouldEnsureIdentity(ensureIdentity, identityKnown)) s_ensureShowIdentitySlots.Add(sh.Slot);
                 into.Add(new SidebarLibraryEntry(
                     id, SidebarEntryKind.Show, uri, Entities.Strings.Resolve(sh.TitleId),
                     Entities.Strings.Resolve(sh.PublisherId),
@@ -4329,9 +4347,22 @@ public static class SidebarProjection
                     SortStamp: added > 0 ? added : seen.Stamp(id),
                     LastVisitedTicksUtc: rec.LastVisitedTicks(id),
                     SourceOrder: i, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
-                { FolderId = "", FolderName = "", FirstArtistName = "", LastPlayedMs = LastPlayed(lastPlayed, uri) });
+                {
+                    FolderId = "", FolderName = "", FirstArtistName = "", LastPlayedMs = LastPlayed(lastPlayed, uri),
+                    IdentityKnown = identityKnown,
+                });
             }
         }
+
+        if (s_ensureAlbumIdentitySlots.Count > 0)
+            Entities.Ensure(Entities.Current.Albums, CollectionsMarshal.AsSpan(s_ensureAlbumIdentitySlots),
+                (uint)AlbumFields.Identity, FetchPriority.Visible);
+        if (s_ensureArtistIdentitySlots.Count > 0)
+            Entities.Ensure(Entities.Current.Artists, CollectionsMarshal.AsSpan(s_ensureArtistIdentitySlots),
+                (uint)ArtistFields.Identity, FetchPriority.Visible);
+        if (s_ensureShowIdentitySlots.Count > 0)
+            Entities.Ensure(Entities.Current.Shows, CollectionsMarshal.AsSpan(s_ensureShowIdentitySlots),
+                (uint)ShowFields.Identity, FetchPriority.Visible);
 
         return new SidebarProjectionResult(into.Count, flavorMask, seen.NewStamps - stampsBefore);
     }
@@ -4472,8 +4503,8 @@ public static class SidebarProjection
                     // recovers for free, with no second ask.
                     bool trackCountKnown = p.Knows(PlaylistFields.TrackCount);
                     bool membershipResident = p.MembershipState != EdgeState.Unknown;
-                    bool countKnown = trackCountKnown || membershipResident;
-                    int trackCount = trackCountKnown || !membershipResident ? p.TrackCount : p.MembershipTotal;
+                    PlaylistCount(trackCountKnown, p.TrackCount, membershipResident, p.MembershipTotal,
+                        out bool countKnown, out int trackCount);
                     // Bug H's membership ensure stays cover-gated — only a cover-less row's mosaic still needs the
                     // member list at all; a covered row's subtitle never asks for anything any more.
                     bool needsMembership = mosaic is null && ShouldEnsureMembership(ensureIdentity, hasCover, p.MembershipState);
@@ -4516,6 +4547,23 @@ public static class SidebarProjection
                 into[frame.RowIndex] = into[frame.RowIndex] with
                     { ChildCount = frame.ChildCount, MosaicTiles = frame.Tiles, CountKnown = true };
         }
+    }
+
+    /// <summary>The count a sidebar playlist row paints. The row fact first; a known 0 never beats a resident
+    /// membership that already has rows (a persisted empty hole after the list has been opened).
+    /// <para><b>RESIDENT IS NOT THE SAME AS COUNTED</b> (bug A1's last corner). <c>membershipResident</c> is
+    /// "the membership state is not Unknown", which a FAILED edge and a PARTIAL page whose answer carried no total
+    /// both satisfy while knowing nothing whatever about length — and both read <c>membershipTotal == 0</c>. Taking
+    /// residency alone as "the count is known" turned each of those into a confident "0 songs", which is the very
+    /// sentence this rule exists to stop. So the membership arm only counts when it carries a REAL number; a
+    /// genuine zero is the ROW FACT's to state (<c>PlaylistFields.TrackCount</c>, which is set even for an empty
+    /// list), and a row with neither says nothing at all.</para></summary>
+    public static void PlaylistCount(bool trackCountKnown, int trackCount, bool membershipResident, int membershipTotal,
+                                     out bool known, out int count)
+    {
+        bool membershipCounts = membershipResident && membershipTotal > 0;
+        known = trackCountKnown || membershipCounts;
+        count = membershipCounts && (!trackCountKnown || trackCount == 0) ? membershipTotal : trackCount;
     }
 
     /// <summary>Bug H, the pure half of "ensure a visible playlist row's identity": true only when the caller has
@@ -4569,15 +4617,14 @@ public static class SidebarProjection
          : rootlistState == EdgeState.Unknown ? SidebarPinFolderState.Pending
          : SidebarPinFolderState.Missing;
 
-    /// <summary>Trap 5, the pin-band TITLE half: a PIN whose Identity has not landed must not fall back to a raw
-    /// id/uri fragment as its title ("3fMbdgg4jU18AjLCKBhRSm · Artist") — that reads as real data when it is a
-    /// guess off the pin's own key, and the store's disk leg answers <c>Knows(Identity)</c> asynchronously, well
-    /// after the pin band's first synchronous render. Scoped to pins ALONE (<paramref name="isPinned"/>): the
-    /// general (non-pinned) library row has always shown the short uri as an honest last-resort label for a
-    /// genuinely nameless RESOLVED entity — a real, if rare, case unrelated to this bug — so this predicate never
-    /// touches that path. False (never show it) exactly while a pin's Identity is still unknown; true otherwise —
-    /// including every non-pinned row, where Identity landing (or not) was never this predicate's business.</summary>
-    public static bool ShouldShowUriFallbackTitle(bool isPinned, bool identityKnown) => !isPinned || identityKnown;
+    /// <summary>Trap 5 + Library V3: a row whose Identity has not landed must not fall back to a raw id/uri
+    /// fragment as its title. ShortUri is only for a resolved nameless entity. <paramref name="isPinned"/> is kept
+    /// so call sites stay one predicate; the pin/library distinction is no longer a gate.</summary>
+    public static bool ShouldShowUriFallbackTitle(bool isPinned, bool identityKnown)
+    {
+        _ = isPinned;
+        return identityKnown;
+    }
 
     /// <summary>Playlist provenance, derived from facts the Entities row actually carries (never a stored column).
     /// <see cref="SidebarPlaylistFlavor.None"/> means "the data does not say", never "mine".</summary>

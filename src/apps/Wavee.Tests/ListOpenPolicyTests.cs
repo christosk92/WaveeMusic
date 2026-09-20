@@ -194,6 +194,104 @@ public class ListOpenPolicyTests
         Assert.False(P.Holds(plan.Hold, plan.HoldUntilMs, unchecked(start + Budget), P.Observed.Pending));
     }
 
+    // ── the budget LEFT: the hold's deadline as an armable number (the eternal meta-line shimmer) ────────────────────
+    //
+    // A hold ends one of two ways. An OBSERVED answer settles the record and publishes, so every memo that reads the
+    // hold re-runs. The budget simply running out published nothing — `Holds` merely started answering false the next
+    // time somebody happened to ask — so a page that renders off the hold kept its shimmer until an unrelated
+    // re-render (a window resize) asked again. `RemainingHoldMs` is what makes that edge armable: the surface arms a
+    // wake for exactly this long and settles the record itself (`ListOpen.ExpireHold`) when it fires.
+
+    [Fact]
+    public void A_live_hold_reports_the_milliseconds_left_on_its_budget()
+    {
+        var plan = P.Decide(P.Surface.Page, Held(), Now);
+        Assert.Equal(Budget, P.RemainingHoldMs(plan.Hold, plan.HoldUntilMs, Now, P.Observed.Pending));
+        Assert.Equal(Budget - 400, P.RemainingHoldMs(plan.Hold, plan.HoldUntilMs, Now + 400, P.Observed.Pending));
+        Assert.Equal(1, P.RemainingHoldMs(plan.Hold, plan.HoldUntilMs, Now + Budget - 1, P.Observed.Pending));
+    }
+
+    /// <summary>THE BOUNDARY: at the deadline the budget is spent, not "one more millisecond" — the same instant
+    /// <see cref="P.Holds"/> flips, because Holds IS this compared against zero.</summary>
+    [Fact]
+    public void The_budget_is_zero_at_the_deadline_and_never_negative_past_it()
+    {
+        var plan = P.Decide(P.Surface.Page, Held(), Now);
+        Assert.Equal(0, P.RemainingHoldMs(plan.Hold, plan.HoldUntilMs, Now + Budget, P.Observed.Pending));
+        Assert.Equal(0, P.RemainingHoldMs(plan.Hold, plan.HoldUntilMs, Now + Budget + 1, P.Observed.Pending));
+        Assert.Equal(0, P.RemainingHoldMs(plan.Hold, plan.HoldUntilMs, Now + Budget + 60_000, P.Observed.Pending));
+    }
+
+    /// <summary>The deadline is compared as a DIFFERENCE, so a wrapping counter neither strands a hold nor reports a
+    /// budget half the counter's range long — a wake armed off that number would be a wake that never fires.</summary>
+    [Fact]
+    public void The_budget_survives_the_millisecond_counter_wrapping()
+    {
+        int start = int.MaxValue - 500;
+        var plan = P.Decide(P.Surface.Page, Held(), start);
+        Assert.Equal(Budget, P.RemainingHoldMs(plan.Hold, plan.HoldUntilMs, start, P.Observed.Pending));
+        Assert.Equal(Budget - 1_000, P.RemainingHoldMs(plan.Hold, plan.HoldUntilMs, unchecked(start + 1_000), P.Observed.Pending));
+        Assert.Equal(0, P.RemainingHoldMs(plan.Hold, plan.HoldUntilMs, unchecked(start + Budget), P.Observed.Pending));
+    }
+
+    [Fact]
+    public void An_open_that_took_no_hold_has_no_budget_to_arm()
+        => Assert.Equal(0, P.RemainingHoldMs(hold: false, Now + Budget, Now, P.Observed.Pending));
+
+    /// <summary>An answer the model can already see ends the hold, so there is no budget left to wake for: that settle
+    /// belongs to <c>ListOpen.Observe</c>, which names how it ended.</summary>
+    [Theory]
+    [InlineData(P.Observed.Moved)]
+    [InlineData(P.Observed.Paged)]
+    [InlineData(P.Observed.Failed)]
+    public void An_observed_answer_leaves_no_budget(P.Observed observed)
+        => Assert.Equal(0, P.RemainingHoldMs(hold: true, Now + Budget, Now, observed));
+
+    /// <summary>The two readings can NEVER disagree about whether a hold is live — the surface arms its wake off one
+    /// and paints off the other, and a page that armed for 0 ms while still holding would shimmer forever.</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(Budget - 1)]
+    [InlineData(Budget)]
+    [InlineData(Budget + 1)]
+    [InlineData(60_000)]
+    public void Holding_and_the_budget_left_are_one_answer(int elapsed)
+    {
+        var plan = P.Decide(P.Surface.Page, Held(), Now);
+        int at = unchecked(Now + elapsed);
+        foreach (var observed in new[] { P.Observed.Pending, P.Observed.Moved, P.Observed.Paged, P.Observed.Failed })
+            Assert.Equal(P.Holds(plan.Hold, plan.HoldUntilMs, at, observed),
+                         P.RemainingHoldMs(plan.Hold, plan.HoldUntilMs, at, observed) > 0);
+    }
+
+    /// <summary>WHY IT MATTERS, end to end: the meta line's arm is a function of the hold, and nothing else about the
+    /// page moves when the budget runs out. So the budget edge is the ONLY thing between a shimmer bar and the real
+    /// text — which is why it has to wake the graph rather than wait to be asked.</summary>
+    [Fact]
+    public void The_meta_line_resolves_the_moment_the_budget_runs_out()
+    {
+        var plan = P.Decide(P.Surface.Page, Held(), Now);
+        bool holding = P.Holds(plan.Hold, plan.HoldUntilMs, Now + Budget - 1, P.Observed.Pending);
+        Assert.True(holding);
+        Assert.Equal(Playlist.MetaArm.Loading,
+                     Playlist.PageRules.MetaArmFor(holding, EdgeState.Complete, countKnown: false, residentRows: 12));
+
+        bool stillHolding = P.Holds(plan.Hold, plan.HoldUntilMs, Now + Budget, P.Observed.Pending);
+        Assert.False(stillHolding);
+        Assert.Equal(Playlist.MetaArm.Text,
+                     Playlist.PageRules.MetaArmFor(stillHolding, EdgeState.Complete, countKnown: false, residentRows: 12));
+    }
+
+    /// <summary>The wake's slack is real time, and small: enough to put a frame-clock fire strictly past a deadline
+    /// written on another clock, never enough to read as a second shimmer.</summary>
+    [Fact]
+    public void The_wake_slack_is_one_frame_not_a_second_shimmer()
+    {
+        Assert.InRange(P.HoldWakeSlackMs, 1, 100);
+        Assert.True(P.HoldWakeSlackMs < Budget);
+    }
+
     // ── how a revalidation ended ────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
@@ -283,5 +381,156 @@ public class ListOpenPolicyTests
         Assert.False(rejoin.Stamp);                    // no new record
         Assert.True(rejoin.Hold);
         Assert.Equal(take.HoldUntilMs, rejoin.HoldUntilMs);   // …and the SAME hold: the join is a no-op on the record
+    }
+
+    // ── the PRE-OPEN window, and its bound ──────────────────────────────────────────────────────────────────────────
+    //
+    // THE BUG (the owner's 199-song playlist: a shimmer where "199 songs · 11 hr 21 min" belongs, forever, until a
+    // window resize). The budget of a RECORDED hold now wakes its surface (above). The pre-open answer had no wake at
+    // all: before a page's demand effect has opened anything, its source answers by RE-DECIDING the plan
+    // (ListOpen.WouldHold over exactly these facts), and that decision reads the clock and the list's stamps with no
+    // record behind it — so nothing settles, nothing publishes, ExpireHold has nothing to do, and `Holds` is never
+    // even consulted. A page whose demand BAILED (its playlist row was not valid at the first effect drain, and
+    // neither the slot nor the scope epoch moves when the row lands) stays on that rule for the life of the page.
+    // `PreOpenHoldMs` is the bound that makes the pre-open answer armable: the same budget as the hold it predicts,
+    // after which the surface stops honouring the re-decide and paints.
+
+    /// <summary>The bound IS the budget of the hold the re-decide predicts — not a second number that could drift
+    /// from it, and not "forever".</summary>
+    [Fact]
+    public void A_pre_open_re_decide_that_holds_is_bounded_by_the_budget_it_predicts()
+    {
+        var plan = P.Decide(P.Surface.Page, Held(revalidatedAt: 0), Now);
+        Assert.True(plan.Hold);
+        Assert.Equal(Budget, P.PreOpenHoldMs(plan, Now));
+        Assert.Equal(Budget - 400, P.PreOpenHoldMs(plan, Now + 400));
+    }
+
+    /// <summary>A pre-open re-decide that joins a blocking revalidation already out is bounded by THAT ask's own
+    /// deadline, not by a fresh budget — the surface may not extend a hold it merely joined.</summary>
+    [Fact]
+    public void A_pre_open_join_is_bounded_by_the_in_flight_revalidations_own_deadline()
+    {
+        var plan = P.Decide(P.Surface.Page, Held(revalidatedAt: Now - 300, inFlightSince: Now - 300, inFlightBlocking: true), Now);
+        Assert.True(plan.Hold);
+        Assert.Equal(Budget - 300, P.PreOpenHoldMs(plan, Now));
+    }
+
+    /// <summary>Nothing held, nothing to bound: a page over a fresh list arms no pre-open wake at all.</summary>
+    [Theory]
+    [InlineData(P.Surface.Revisit)]
+    [InlineData(P.Surface.Queue)]
+    public void A_surface_that_never_holds_has_no_pre_open_window_to_bound(P.Surface surface)
+        => Assert.Equal(0, P.PreOpenHoldMs(P.Decide(surface, Held(revalidatedAt: 0), Now), Now));
+
+    [Fact]
+    public void A_pre_open_re_decide_over_a_fresh_list_has_no_window_to_bound()
+    {
+        var plan = P.Decide(P.Surface.Page, Held(revalidatedAt: Now - 1_000), Now);
+        Assert.False(plan.Hold);
+        Assert.Equal(0, P.PreOpenHoldMs(plan, Now));
+    }
+
+    /// <summary>The pre-open answer and its bound are ONE answer — the source paints off the first and arms off the
+    /// second, and a page that armed 0 ms while still honouring the re-decide would shimmer forever again.</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(Budget - 1)]
+    [InlineData(Budget)]
+    [InlineData(60_000)]
+    public void The_pre_open_hold_and_its_bound_are_one_answer(int elapsed)
+    {
+        foreach (var facts in new[] { Held(revalidatedAt: 0), Held(revalidatedAt: Now - 1_000),
+                                      Held(revalidatedAt: Now - 300, inFlightSince: Now - 300, inFlightBlocking: true) })
+        {
+            int at = unchecked(Now + elapsed);
+            var plan = P.Decide(P.Surface.Page, facts, at);
+            Assert.Equal(plan.Hold, P.PreOpenHoldMs(plan, at) > 0);
+        }
+    }
+
+    /// <summary>The bound is a DIFFERENCE, so a wrapping millisecond counter never arms a wake that will not fire.</summary>
+    [Fact]
+    public void The_pre_open_bound_survives_the_millisecond_counter_wrapping()
+    {
+        int start = int.MaxValue - 500;
+        var plan = P.Decide(P.Surface.Page, Held(), start);
+        Assert.Equal(Budget, P.PreOpenHoldMs(plan, start));
+        Assert.Equal(Budget - 1_000, P.PreOpenHoldMs(plan, unchecked(start + 1_000)));
+        Assert.Equal(0, P.PreOpenHoldMs(plan, unchecked(start + Budget)));
+    }
+
+    /// <summary>WHY IT MATTERS, end to end — the owner's 199-song list. The pre-open re-decide holds, so the meta line
+    /// shimmers; the rows are resident the whole time, so the moment the surface stops honouring that re-decide the
+    /// line is TEXT. Nothing else about the page moves, which is why the bound has to wake the graph rather than wait
+    /// to be asked (a window resize was the only thing that ever asked).</summary>
+    [Fact]
+    public void The_meta_line_resolves_when_the_pre_open_window_is_spent()
+    {
+        var plan = P.Decide(P.Surface.Page, Held(revalidatedAt: 0), Now);
+        Assert.True(plan.Hold);
+        Assert.Equal(Budget, P.PreOpenHoldMs(plan, Now));
+        Assert.Equal(Playlist.MetaArm.Loading,
+                     Playlist.PageRules.MetaArmFor(holding: true, EdgeState.Complete, countKnown: false, residentRows: 199));
+
+        // …spent: the source stops honouring the re-decide, and 199 resident rows ARE the count.
+        Assert.Equal(Playlist.MetaArm.Text,
+                     Playlist.PageRules.MetaArmFor(holding: false, EdgeState.Complete, countKnown: false, residentRows: 199));
+    }
+
+    // ── the open must be REACHED: the demand effect's arm ───────────────────────────────────────────────────────────
+    //
+    // The other half of the same bug. The page's demand runs once per (playlist slot, scope epoch) and ends in THE
+    // OPEN — but it returns early on a playlist row that is not valid yet, and NEITHER the slot NOR the scope epoch
+    // moves when that row lands (only the row's own version does). So a cold navigation whose first effect drain saw
+    // an unlanded row never ran the demand again, HeldRows.Opened was never reached, and the page answered off the
+    // pre-open re-decide for good. The dep key therefore carries WHAT the run will do, not just which row it is about.
+
+    [Fact]
+    public void A_demand_that_bails_on_an_unlanded_row_arms_differently_from_the_one_that_opens()
+    {
+        var bailed = Playlist.PageRules.DemandArmFor(rowValid: false, local: false);
+        var opens = Playlist.PageRules.DemandArmFor(rowValid: true, local: false);
+        Assert.Equal(Playlist.DemandArm.Bail, bailed);
+        Assert.Equal(Playlist.DemandArm.Open, opens);
+        Assert.NotEqual(bailed, opens);                       // ⇒ the dep key moves when the row lands ⇒ the effect re-runs
+        Assert.False(Playlist.PageRules.DemandOpens(bailed));
+        Assert.True(Playlist.PageRules.DemandOpens(opens));
+    }
+
+    /// <summary>Local Files legitimately never opens a list — it is settled on this device — and its arm must still
+    /// move when the row lands, or its own settle is stranded behind the same guard.</summary>
+    [Fact]
+    public void Local_files_land_their_row_too_and_never_reach_the_open()
+    {
+        var bailed = Playlist.PageRules.DemandArmFor(rowValid: false, local: true);
+        var local = Playlist.PageRules.DemandArmFor(rowValid: true, local: true);
+        Assert.Equal(Playlist.DemandArm.Bail, bailed);
+        Assert.Equal(Playlist.DemandArm.Local, local);
+        Assert.NotEqual(bailed, local);
+        Assert.False(Playlist.PageRules.DemandOpens(local));
+    }
+
+    /// <summary>The three arms are pairwise DISTINCT — a dep key is compared by value, so two arms that collided
+    /// would silently re-strand the open — and an unlanded row bails whichever route it is on.</summary>
+    [Fact]
+    public void The_arms_are_pairwise_distinct_and_an_unlanded_row_always_bails()
+    {
+        Assert.Equal(Playlist.DemandArm.Bail, Playlist.PageRules.DemandArmFor(rowValid: false, local: false));
+        Assert.Equal(Playlist.DemandArm.Bail, Playlist.PageRules.DemandArmFor(rowValid: false, local: true));
+        Assert.NotEqual(Playlist.DemandArm.Bail, Playlist.DemandArm.Local);
+        Assert.NotEqual(Playlist.DemandArm.Bail, Playlist.DemandArm.Open);
+        Assert.NotEqual(Playlist.DemandArm.Local, Playlist.DemandArm.Open);
+    }
+
+    /// <summary>Exactly one arm reaches the open — the invariant the whole key exists for.</summary>
+    [Fact]
+    public void Exactly_one_arm_reaches_the_open()
+    {
+        int opens = 0;
+        foreach (var arm in new[] { Playlist.DemandArm.Bail, Playlist.DemandArm.Local, Playlist.DemandArm.Open })
+            if (Playlist.PageRules.DemandOpens(arm)) opens++;
+        Assert.Equal(1, opens);
     }
 }

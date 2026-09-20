@@ -269,9 +269,9 @@ public static partial class Controls
     {
         var copy = new List<Element>(5)
         {
-            new TextEl(d.Label)
+            Design.Type.Eyebrow(d.Label) with
             {
-                Size = 11f, LineHeight = 14f, Weight = 700, CharSpacing = 90f, Color = Prop.Of(d.Tone),
+                Color = Prop.Of(d.Tone),
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             },
             new TextEl(d.Title)

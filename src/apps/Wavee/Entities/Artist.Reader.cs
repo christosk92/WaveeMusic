@@ -1247,18 +1247,16 @@ public readonly partial struct Artist
                     Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = _goArtist,
                     Children =
                     [
-                        new TextEl(named ? a.Name : "…")
+                        Design.Type.ArtistCompactTitle(named ? a.Name : "…") with
                         {
-                            Size = compact ? 24f : 32f, LineHeight = compact ? 30f : 38f, Weight = 600, CharSpacing = -10f,
                             Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
                             BrushTransitionMs = Design.Motion.Faster, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },
                     ],
                 }.Interactive(Interaction.Subtle),
-                new TextEl(named ? LibraryLine(shape) : "")
+                Design.Type.DenseMeta(named ? LibraryLine(shape) : "") with
                 {
-                    Size = 12.5f, LineHeight = 16f, Color = Tok.TextTertiary,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
             ],
         };
@@ -1502,7 +1500,7 @@ public readonly partial struct Artist
                         ? Strings.Library.FetchingMore(missing)
                         : Strings.Library.AllInLibrary(new Artist(_artist).Name);
                 }
-                body = [new TextEl(text) { Size = 12.5f, LineHeight = 16f, Color = Tok.TextTertiary }];
+                body = [Design.Type.DenseMeta(text) with { Color = Tok.TextTertiary }];
             }
             else body = Array.Empty<Element>();
 
@@ -1740,6 +1738,7 @@ public readonly partial struct Artist
                 int slot = _slot;
                 float cover = _r._narrow ? ReaderShape.CoverEdgeNarrow : ReaderShape.CoverEdge;
                 bool valid = a.IsValid;
+                Action go = () => { var al = new Album(slot); if (al.IsValid) Shell.GoTo(Shell.For(al.Uri, al.Title)); };
                 string uri = valid ? a.Uri.Text : "";
                 string title = valid && a.Knows(AlbumFields.Title) ? a.Title : "";
                 string caption = (valid && a.Knows(AlbumFields.Year) && a.Year > 0
@@ -1822,14 +1821,15 @@ public readonly partial struct Artist
                                         new BoxEl
                                         {
                                             Width = cover, Height = cover, Corners = Radii.CardAll, ClipToBounds = true,
-                                            Shadow = Elevation.Card,
+                                            Shadow = Elevation.Card, Cursor = valid ? CursorId.Hand : CursorId.Arrow,
+                                            Role = valid ? AutomationRole.Button : AutomationRole.None,
+                                            OnClick = valid ? go : null,
                                             Children = [Controls.Artwork(valid ? Controls.ArtUrl(a.ImageId) : null,
                                                                          cover, cover, Radii.Card, decodePx: 256)],
                                         },
-                                        new TextEl(caption)
+                                        Ui.Caption(caption) with
                                         {
-                                            Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary,
-                                            MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                                            Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                                         },
                                     ],
                                 },
@@ -1914,7 +1914,7 @@ public readonly partial struct Artist
                                 },
                             ],
                         }.Interactive(Interaction.Subtle),
-                        new TextEl(meta) { Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f },
+                        Ui.Caption(meta) with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f },
                         new BoxEl { Grow = 1f, MinWidth = 0f },
                         Controls.Named(Controls.PlayFab(() => Playback.PlayContext(LibraryRows.IdOf(EntityKind.Album, slot)),
                                                         Icons.Play, HeadCircle),

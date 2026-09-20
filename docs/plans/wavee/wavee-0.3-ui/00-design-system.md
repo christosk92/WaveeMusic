@@ -1275,6 +1275,59 @@ behaviour in the port's gate (section 10, items 74-75) so the dormancy is a meas
 - Default glyph: `Icons.Play` (`WaveeCta.cs:81`).
 - Utility surfaces (settings, dialogs, empty-state actions) **must** keep stock Fluent rectangles by calling
   `Button.*` directly. This pill is for media primaries only.
+- **Under review (W6 typography-voice).** The bullets above record what shipped and how `WaveeCta.Pill` behaves today;
+  they are not re-written here. Whether this capsule is the **target** CTA grammar is open again — see **§6.1a** for
+  the Zune / Fluent / WinUI contract, the hand-roll census, and the deferred pixel convergence.
+
+### 6.1a CTA census and contract (W6 — documented, pixels deferred)
+
+**Target voice.** Primary and secondary actions should read **Zune / Fluent / WinUI**, not the Spotify web capsule.
+The stock Fluent alternative to the media pill is the engine's **AccentButton** ladder: **32** DIP tall,
+`Radii.Control` (~4 px) rectangle, **arrow** cursor, **no** hover/press scale — the same geometry
+`Platform/Controls.Cta.cs` documents as row 3 (`IconAction`, `:168-180`), not the pill row.
+
+**The shipped media pill — under review, pixels untouched this round.** `WaveeCta.Pill` (`Platform/Controls.Cta.cs:104-118`)
+is a **36**-tall `Radii.Full` capsule with `Bold = true`, hand cursor, and `HoverScale`/`PressScale` at the Standard
+tier (1.04 / 0.96 via `Design.Motion.ScaleStandard`). That cluster is a **web button** skin parked on a stock
+`Button`; it is neither Fluent nor Zune. §6.1 above still describes its mechanics; **§6.1a** records that the design
+system's **intent** is under review until a later pixel wave picks Fluent rectangles (or a single shared primitive) over
+the capsule.
+
+**The defect is not "web pill next to Fluent squares in shell chrome".** `Controls.Cta` / `WaveeCta` appears on
+detail / album / artist / home heroes and **nowhere** in shell chrome, utility screens, or `Entities/Track.Table.Chrome.cs`.
+Roughly **~20** other surfaces hand-roll their own circle / square / pill instead. The missing piece is a **shared
+primitive** and one contract, not relocating the pill away from the masthead.
+
+**Census — record only (no pixel changes this round).**
+
+| Surface | Where | Note |
+|---|---|---|
+| Second capsule | `Platform/Controls.cs:809` (`FollowButton`) | Hand-rolls the media capsule geometry; its own comment admits it is a second implementation beside `WaveeCta`. |
+| Pre-save pill | `Controls.cs:750` (`PreSaveButton`) | Accent or bordered pill at **`Radii.Control` (4 px)** (`:781`). |
+| Save heart | `Controls.cs:733` (`SaveButton`) | **Circle** on non-media rows (`Corners = Box/2`, default **40** DIP box, `:731-734`). |
+| Podcast door play | `Platform/Controls.Podcast.cs:366` (`DoorPlay`) | **Circle** on a flat card (`Radii.Circle(DoorDisc)`, 32 DIP disc). |
+| Concert filter pills | `Entities/Concert.UI.cs` (e.g. `:342-408`, `:1300`) | A **family** of fused / segment pills at `Radii.FullAll` and control radii — not routed through `WaveeCta`. |
+| Liked Facts lens pill | `Entities/User.Facts.UI.cs:1578` (`LensPill`) | Header pill at **`CornerRadius4.All(13f)`**, separate from the CTA module. |
+| Detail rail FAB | `Entities/Detail.UI.cs:1882-1893` (`Fab`) | Default **40** DIP round FAB on the vertical hero rail (`RailFabSize`). |
+| Discography row play | `Entities/Artist.Discography.cs:1244-1251` | Hand-rolled **26×26** accent circle (plus **28** artwork beside it); **26** collapses to **32** in the later pixel wave — census records what ships today. |
+| Browse chip | `Entities/Browse.UI.cs:77` | Raw **`999f`** corner radius instead of the `Radii.Full` token. |
+| Notification panel chips | `Shell/Shell.UI.cs:1586` (`FilterPill`, radius **13**), `:1913` (radius **14**), `:1926` (radius **6**) | Three chip styles, three radii, same panel. |
+
+**Ship-two (later pixel wave — intended contract).**
+
+1. **One primary play.** `Shell/Shell.PlayerBar.UI.cs:1100-1119` paints a **plate-less** bare transport glyph; the bar's
+   own comment notes 0.2.9 docs once claimed a filled accent circle the code never painted. `Shell/Stage.UI.cs:156-169`
+   paints a **filled accent circle** for the same verb while the Stage sits over the bar. Converge on the **Fluent / WinUI
+   filled transport circle**; resolve the stale doc claim and the pixels together.
+2. **One PlayFab diameter ladder.** `Controls.Cta.PlayFab` defaults to **44** (`Platform/Controls.Cta.cs:190`). Mount
+   sites today: **36** on the artist reader band (`Artist.Reader.cs:1186`, `BandCircle = 36f` at `:493`) and **32** on
+   discography head rows (`:1919`, `HeadCircle = 32f`). The hand-rolled **26** at `Artist.Discography.cs:1244` collapses
+   to **32**. **Sanctioned rows after convergence: 44 / 36 / 32** — three diameters, one job.
+
+**Weight census trap.** The media pill's emphasis is **`Bold = true`**, not `Weight = 700` (`Platform/Controls.Cta.cs:112`).
+Every Play capsule is **invisible to a weight grep**. App-wide, `Bold = true` on inline/text surfaces appears in exactly
+**two** files: `Platform/Controls.Cta.cs:112` and `Screens/ReleaseNotes.cs:529` (release-notes inline tokens, unrelated
+to CTAs).
 
 ### 6.2 The icon arm and the standard icon button
 

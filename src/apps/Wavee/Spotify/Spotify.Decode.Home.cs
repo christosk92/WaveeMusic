@@ -583,13 +583,14 @@ public static partial class Spotify
                 => !a.IsEmpty ? a : !b.IsEmpty ? b : !c.IsEmpty ? c : d;
 
             /// <summary>An image node: <c>{ extractedColors, sources }</c>, <c>{ image: { data: { sources } } }</c>, or the
-            /// element of an <c>items[]</c> — the first url and the non-fallback dark colour.</summary>
+            /// element of an <c>items[]</c> — the hero rendition (<see cref="BrowseImagePick.HeroMinWidth"/>) and the
+            /// non-fallback dark colour. Chip/avatar walks stay on <c>FirstUrl</c>.</summary>
             static void Picture(ref Utf8JsonReader r, Staging s, ref TextRef url, ref uint accent)
             {
                 for (int d = Fields(ref r); Next(ref r, d);)
                 {
                     if (r.ValueTextEquals("extractedColors"u8)) { uint a = ColorDark(ref r); if (accent == 0) accent = a; }
-                    else if (r.ValueTextEquals("sources"u8)) { r.Read(); var u = FirstUrl(ref r, s); if (url.IsEmpty) url = u; }
+                    else if (r.ValueTextEquals("sources"u8)) { r.Read(); var u = SourcesBest(ref r, s); if (url.IsEmpty) url = u; }
                     else if (r.ValueTextEquals("image"u8) || r.ValueTextEquals("data"u8)) Picture(ref r, s, ref url, ref accent);
                     else SkipValue(ref r);
                 }
@@ -1312,23 +1313,31 @@ public static partial class Spotify
                 }
             }
 
-            /// <summary><c>coverArt: { sources: [ { url } ] }</c> → the first url.</summary>
+            /// <summary><c>coverArt: { sources: [ { url, width } ] }</c> → the hero rendition, not the first (64px) url.</summary>
             static string? CoverUrl(ref Utf8JsonReader r)
             {
-                string? url = null;
+                string?[] urls = new string?[16];
+                int[] widths = new int[16];
+                int n = 0;
                 for (int d = Fields(ref r); Next(ref r, d);)
                 {
                     if (!r.ValueTextEquals("sources"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
                     for (int list = r.CurrentDepth; Element(ref r, list);)
                     {
+                        string? url = null;
+                        int width = 0;
                         for (int e = r.CurrentDepth; Next(ref r, e);)
                         {
                             if (r.ValueTextEquals("url"u8)) { r.Read(); url ??= Text(ref r); }
+                            else if (r.ValueTextEquals("width"u8)) { r.Read(); width = (int)Num(ref r); }
                             else SkipValue(ref r);
                         }
+                        if (url is { Length: > 0 } && n < urls.Length) { urls[n] = url; widths[n] = width; n++; }
                     }
                 }
-                return url;
+                if (n == 0) return null;
+                int idx = BrowseImagePick.ChooseIndex(widths.AsSpan(0, n), BrowseImagePick.HeroMinWidth);
+                return idx < 0 ? null : urls[idx];
             }
 
             // ── the top content ──────────────────────────────────────────────────────────────────────────────────────

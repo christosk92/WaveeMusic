@@ -525,9 +525,9 @@ public static partial class Settings
             Children = on ? [title with { Shrink = 1f }, ActiveTag()] : [title],
         };
         return Controls.PickerCard(on, Controls.PickerPaneCompact, preview, titleRow,
-            new TextEl(Loc.Get(SidebarDesignGating.SubtitleKey(design)))
+            Design.Type.MicroMeta(Loc.Get(SidebarDesignGating.SubtitleKey(design))) with
             {
-                Size = 10.5f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis,
+                Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis,
                 AlignSelf = FlexAlign.Stretch,
             }) with { Key = SidebarDesignInfo.Slug(design) };
     }

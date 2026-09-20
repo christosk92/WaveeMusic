@@ -293,7 +293,13 @@ public static partial class Entities
                 // `SetText`, never `Title[slot] = …`: it AddRefs what comes in and releases what it overwrites, so a
                 // re-answered episode owns one title and one cover rather than one per answer (defect 1).
                 if ((known & (uint)EpisodeFields.Title) != 0) t.SetText(ref t.Title, slot, s.Intern(row.Title));
-                if ((known & (uint)EpisodeFields.Image) != 0) t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                if ((known & (uint)EpisodeFields.Image) != 0)
+                {
+                    // The bit is answered; the pixels may not go backwards (Detail.CoverLatch.AcceptsImage).
+                    var incomingImage = s.Intern(row.Image);
+                    if (Detail.CoverLatch.AcceptsImage(t.Image[slot], incomingImage))
+                        t.SetText(ref t.Image, slot, incomingImage);
+                }
                 if ((known & (uint)EpisodeFields.Duration) != 0 && !t.Knows(slot, (uint)EpisodeFields.Media)) t.DurationMs[slot] = row.DurationMs;
                 if ((known & (uint)EpisodeFields.Published) != 0) t.PublishedAt[slot] = row.PublishedAt;
                 if (!row.ShowUri.IsEmpty) t.Show[slot] = s.Slot(Current.Shows, in row.ShowUri);

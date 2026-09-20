@@ -364,8 +364,10 @@ public readonly partial struct Episode
         var item = Fixed(RowItem.Of(episode));
         return RowGrid(Art(in item, narrow ? RowArtNarrow : RowArt),
             new BoxEl { Direction = 1, Grow = 1, Basis = 0, MinWidth = 0, Gap = Spacing.S,
-                Children = [new TextEl(Loc.Get(Strings.Podcast.Reader.Unavailable))
-                    { Size = 14, LineHeight = 19, Wrap = TextWrap.Wrap, Color = Tok.TextSecondary }] },
+                Children = [Design.Type.DenseMeta(Loc.Get(Strings.Podcast.Reader.Unavailable)) with
+                {
+                    Wrap = TextWrap.Wrap, Color = Tok.TextSecondary,
+                }] },
             Button.Subtle(Loc.Get(Strings.Podcast.Reader.Retry), () => RetryRow(episode)));
     }
 
@@ -495,11 +497,17 @@ public readonly partial struct Episode
         ],
     };
 
-    static Element Description(in BoundItemScope<RowItem> item, bool seed = false) => new TextEl(seed ? SeedDescription : item.Text(static r => DescriptionOf(r.Episode)))
+    static Element Description(in BoundItemScope<RowItem> item, bool seed = false)
     {
-        Size = 12.5f, LineHeight = 18f, Color = Tok.TextSecondary, MaxLines = 2, Wrap = TextWrap.Wrap,
-        Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Visible = seed ? true : item.Show(static r => HasDescription(r.Episode)),
-    };
+        var body = seed ? SeedDescription : item.Text(static r => DescriptionOf(r.Episode));
+        return new TextEl(body)
+        {
+            Size = Design.Type.DenseMeta("").Size, LineHeight = Design.Type.DenseMeta("").LineHeight,
+            Color = Tok.TextSecondary, MaxLines = 2, Wrap = TextWrap.Wrap,
+            Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Visible = seed ? true : item.Show(static r => HasDescription(r.Episode)),
+        };
+    }
 
     /// <summary>NEW · "23 min left" (in progress) · date · length (not in progress) · ✓ played · the transcript mark.</summary>
     static Element MetaLine(in BoundItemScope<RowItem> item, Prop<ColorF> toneInk, bool seed = false) => new BoxEl
@@ -519,14 +527,15 @@ public readonly partial struct Episode
                 with { Visible = item.Show(static r => (FlagsOf(r.Episode) & EpisodeFlags.Video) != 0) },
             Controls.Chip(Loc.Get(Strings.Podcast.Badge.Subscribers), LockGlyph)
                 with { Visible = item.Show(static r => (FlagsOf(r.Episode) & EpisodeFlags.Paywalled) != 0) },
-            new TextEl(Loc.Get(Strings.Podcast.New))
+            Design.Type.MicroMeta(Loc.Get(Strings.Podcast.New)) with
             {
-                Size = 10.5f, LineHeight = 16f, Weight = 700, CharSpacing = 60f, Color = toneInk, MaxLines = 1,
+                Weight = 700, CharSpacing = 60f, Color = toneInk, MaxLines = 1,
                 Visible = item.Show(static r => IsNew(in r)),
             },
             new TextEl(item.Text(static r => LeftOf(r.Episode)))
             {
-                Size = 12f, LineHeight = 16f, Weight = 600, Color = toneInk, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                Size = Ui.Caption("").Size, LineHeight = Ui.Caption("").LineHeight,
+                Weight = 600, Color = toneInk, MaxLines = 1, Wrap = TextWrap.NoWrap,
                 Visible = item.Show(static r => InProgressOf(r.Episode)),
             },
             MetaText(seed ? s_dates.Get(SeedDateKey, s_dateFormat) : item.Text(static r => DateKeyOf(r.Episode), s_dates, s_dateFormat))
@@ -641,7 +650,8 @@ public readonly partial struct Episode
 
     static TextEl MetaText(Prop<string> text) => new(text)
     {
-        Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+        Size = Ui.Caption("").Size, LineHeight = Ui.Caption("").LineHeight,
+        Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap,
     };
 
     // ══ 5. THE EAGER SCOPE, THE SEED, THE TRACK ══════════════════════════════════════════════════════════════════════

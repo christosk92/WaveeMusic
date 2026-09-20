@@ -188,7 +188,10 @@ public static partial class Platform
 
         // ── video surfaces ──
         public static readonly SettingKey<string> VideoPreferredPlacement = new("video.placement", "");
-        public static readonly SettingKey<string> VideoPipRect = new("video.pip.rect", "");        // window-DIP "x,y,w,h"
+        // v2: every rect written before the poster-aspect fix was sized against a video stage the square poster had
+        // inflated to width x width (a 393x481 portrait mini player for a 16:9 source), so the old key is abandoned
+        // rather than migrated — one launch at the 16:9 default is the whole repair.
+        public static readonly SettingKey<string> VideoPipRect = new("video.pip.rect.v2", "");     // window-DIP "x,y,w,h"
         public static readonly SettingKey<string> VideoWindowRect = new("video.window.rect", "");  // screen-px "x,y,w,h"
         public static readonly SettingKey<string> VideoAspectMode = new("video.aspect.mode", "fit");
         public static readonly SettingKey<double> VideoCustomAspectRatio = new("video.aspect.customRatio", 16.0 / 9.0);

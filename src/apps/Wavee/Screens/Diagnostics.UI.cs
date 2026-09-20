@@ -226,12 +226,12 @@ public static partial class Diagnostics
     {
         Padding = new Edges4(6f, 1f, 6f, 1f), Corners = CornerRadius4.All(Radii.Control),
         Fill = present ? Tok.SystemFillSuccessBackground : Tok.SystemFillCriticalBackground,
-        Children = [new TextEl((present ? "✓ " : "✕ ") + label) { Size = 11f, Color = Tok.TextPrimary }],
+        Children = [Design.Type.MicroMeta((present ? "✓ " : "✕ ") + label) with { Color = Tok.TextPrimary }],
     };
 
     static TextEl Body(string text) => new(text) { Size = 12f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap };
 
-    static TextEl Caption(string text) => new(text) { Size = 11f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap };
+    static TextEl Caption(string text) => Design.Type.MicroMeta(text) with { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap };
 
     static BoxEl Separator(float top) => new() { Height = 1f, Fill = Tok.StrokeCardDefault, Margin = new Edges4(0f, top, 0f, 6f) };
 
@@ -248,8 +248,8 @@ public static partial class Diagnostics
                 Direction = 1, Gap = 4f, Grow = 1f, MinWidth = 0f,
                 Children =
                 [
-                    new TextEl(heading) { Size = 14f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
-                    new TextEl(body) { Size = 13f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
+                    Design.Type.TrackTitle(heading) with { Wrap = TextWrap.Wrap },
+                    Design.Type.DenseMeta(body) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
                 ],
             },
         ],
@@ -620,9 +620,9 @@ public static partial class Diagnostics
                     new TextEl(LogView.FormatTime(e.UnixMs, LocalOffset)) { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = 92f, Shrink = 0f },
                     LevelPill(e.Level),
                     new TextEl(e.Category) { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = 96f, Shrink = 0f, Trim = TextTrim.CharacterEllipsis },
-                    new TextEl(e.Message)
+                    Design.Type.DenseMeta(e.Message) with
                     {
-                        Size = 13f, Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f,
+                        Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f,
                         Wrap = wrapAll ? TextWrap.Wrap : TextWrap.NoWrap, Trim = wrapAll ? TextTrim.None : TextTrim.CharacterEllipsis, MaxLines = wrapAll ? 0 : 1,
                     },
                     row.Repeat > 1 ? RepeatBadge(row.Repeat) : new BoxEl(),
@@ -636,14 +636,14 @@ public static partial class Diagnostics
             string fieldText = LogView.FieldText(e.Fields);
             if (fieldText.Length > 0) detail.Add(DetailSection(Loc.Get(Strings.Settings.Diagnostics.Fields), fieldText));
             if (e.Exception is { Length: > 0 } ex) detail.Add(DetailSection(Loc.Get(Strings.Settings.Diagnostics.Exception), ex));
-            detail.Add(new TextEl(LogView.MetaLine(in e)) { Size = 11f, Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Margin = new Edges4(44f, 0f, 0f, 0f) });
+            detail.Add(Design.Type.MicroMeta(LogView.MetaLine(in e)) with { Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Margin = new Edges4(44f, 0f, 0f, 0f) });
             return new BoxEl { Key = "logs:row:" + seq.ToString(CultureInfo.InvariantCulture), Direction = 1, Gap = 4f, Padding = new Edges4(0f, 0f, Spacing.S, Spacing.S), Children = detail.ToArray() };
         }
 
         static Element DetailSection(string caption, string text) => new BoxEl
         {
             Direction = 1, Gap = 4f, Padding = new Edges4(44f, 0f, Spacing.M, 4f),
-            Children = [new TextEl(caption) { Size = 11f, Weight = 600, Color = Tok.TextTertiary }, CodeBlock.Create(text, copyable: true, fontSize: 12f)],
+            Children = [Design.Type.MicroMeta(caption) with { Weight = 600, Color = Tok.TextTertiary }, CodeBlock.Create(text, copyable: true, fontSize: 12f)],
         };
 
         /// <summary>A dot only for Warning and ≥ Error; every other level holds the 6-DIP column with a blank spacer.</summary>
@@ -657,7 +657,7 @@ public static partial class Diagnostics
         static Element RepeatBadge(int repeat) => new BoxEl
         {
             Padding = new Edges4(7f, 1f, 7f, 2f), Corners = CornerRadius4.All(Radii.Full), Fill = Tok.FillSubtleSecondary,
-            Children = [new TextEl("×" + repeat.ToString(CultureInfo.InvariantCulture)) { Size = 10.5f, Weight = 700, Color = Tok.TextSecondary }],
+            Children = [Design.Type.MicroMeta("×" + repeat.ToString(CultureInfo.InvariantCulture)) with { Weight = 700, Color = Tok.TextSecondary }],
         };
 
         static BoxEl LevelPill(WaveeLogLevel level)
@@ -690,7 +690,7 @@ public static partial class Diagnostics
                 kids.Add(HyperlinkButton.Create(Loc.Get(Strings.Settings.Diagnostics.LoadMore), () => _visibleLimit.Value = LogView.NextCap(_visibleLimit.Peek())));
             var min = Log.MinLevel;
             var file = LogCapturePolicy.EffectiveFileLevel(min, Log.FileMinLevel);
-            kids.Add(new TextEl(Strings.Settings.Diagnostics.CaptureCaption(LevelName(min), LevelName(file))) { Size = 11f, Color = Tok.TextTertiary });
+            kids.Add(Design.Type.MicroMeta(Strings.Settings.Diagnostics.CaptureCaption(LevelName(min), LevelName(file))) with { Color = Tok.TextTertiary });
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.L, Spacing.S, Spacing.M, Spacing.S),
@@ -1016,10 +1016,10 @@ public static partial class Diagnostics
                     Direction = 0, Gap = Spacing.S,
                     Children =
                     [
-                        new TextEl(Loc.Get(Strings.Diagnostics.PodcastWire.ColOp)) { Size = 11f, Weight = 600, Color = Tok.TextTertiary, Width = 190f },
-                        new TextEl(Loc.Get(Strings.Diagnostics.PodcastWire.ColStatus)) { Size = 11f, Weight = 600, Color = Tok.TextTertiary, Width = 60f },
-                        new TextEl(Loc.Get(Strings.Diagnostics.PodcastWire.ColBytes)) { Size = 11f, Weight = 600, Color = Tok.TextTertiary, Width = 70f },
-                        new TextEl(Loc.Get(Strings.Diagnostics.PodcastWire.ColRoot)) { Size = 11f, Weight = 600, Color = Tok.TextTertiary, Grow = 1f },
+                        Design.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColOp)) with { Weight = 600, Color = Tok.TextTertiary, Width = 190f },
+                        Design.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColStatus)) with { Weight = 600, Color = Tok.TextTertiary, Width = 60f },
+                        Design.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColBytes)) with { Weight = 600, Color = Tok.TextTertiary, Width = 70f },
+                        Design.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColRoot)) with { Weight = 600, Color = Tok.TextTertiary, Grow = 1f },
                     ],
                 },
                 Separator(2f),
@@ -1371,7 +1371,7 @@ public static partial class Diagnostics
                 return Column(10f, kids);
             }
 
-            kids.Add(new TextEl(report.Summary) { Size = 13f, LineHeight = 18f, Weight = 600, Color = Tok.AccentTextPrimary, Wrap = TextWrap.Wrap });
+            kids.Add(Design.Type.DenseTitle(report.Summary) with { Color = Tok.AccentTextPrimary, Wrap = TextWrap.Wrap });
             kids.Add(new TextEl(Strings.Diagnostics.Inspector.TitleLine(
                     string.IsNullOrWhiteSpace(report.Title) ? Loc.Get(Strings.Diagnostics.Inspector.NoTitle) : report.Title,
                     string.IsNullOrWhiteSpace(report.Artist) ? Loc.Get(Strings.Lyrics.Debug.NoArtist) : report.Artist))
@@ -1404,8 +1404,8 @@ public static partial class Diagnostics
             {
                 Row(8f,
                     new BoxEl { Width = 8f, Height = 8f, Corners = Radii.Circle(8f), Fill = dot, AlignSelf = FlexAlign.Center, Shrink = 0f },
-                    new TextEl(t.SourceId) { Size = 13f, LineHeight = 18f, Weight = 700, Color = t.Winner ? Tok.AccentTextPrimary : Tok.TextPrimary },
-                    new TextEl(LyricsReport.OutcomeLine(t)) { Size = 11f, LineHeight = 18f, Weight = 600, Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f }),
+                    Design.Type.DenseTitle(t.SourceId) with { Weight = 700, Color = t.Winner ? Tok.AccentTextPrimary : Tok.TextPrimary },
+                    Design.Type.MicroMeta(LyricsReport.OutcomeLine(t)) with { Weight = 600, Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f }),
                 new TextEl(LyricsReport.Verdict(t, winnerScore))
                     { Size = 12f, LineHeight = 16f, Wrap = TextWrap.Wrap, Color = t.Winner ? Good : Tok.TextSecondary },
             };
@@ -1414,9 +1414,9 @@ public static partial class Diagnostics
             {
                 rows.Add(Caption(LyricsReport.ParsedLine(parsed)));
                 string timing = Lyrics.Timing.Describe(parsed.Document);
-                rows.Add(new TextEl("timing: " + timing)
+                rows.Add(Design.Type.MicroMeta("timing: " + timing) with
                 {
-                    Size = 11f, LineHeight = 15f, Wrap = TextWrap.Wrap,
+                    Wrap = TextWrap.Wrap,
                     Color = timing.StartsWith("clean", StringComparison.Ordinal) ? Tok.TextTertiary : Warn,
                 });
             }
@@ -1477,7 +1477,7 @@ public static partial class Diagnostics
                         Direction = 1, Gap = 4f,
                         Children =
                         [
-                            new TextEl(p.Label) { Size = 11f, LineHeight = 15f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, FontFamily = Mono },
+                            Design.Type.MicroMeta(p.Label) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, FontFamily = Mono },
                             Row(8f,
                                 Caption(LyricsReport.PayloadCaption(p, shown.Length)) with { Grow = 1f, MinWidth = 0f },
                                 Standard(Loc.Get(Strings.Diagnostics.Inspector.Copy), () =>
@@ -1488,7 +1488,7 @@ public static partial class Diagnostics
                         ],
                     },
                     Rule(),
-                    new TextEl(shown) { Size = 11f, LineHeight = 15f, FontFamily = Mono, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
+                    Design.Type.MicroMeta(shown) with { FontFamily = Mono, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
                 ],
             };
         }
@@ -1569,12 +1569,10 @@ public static partial class Diagnostics
             var kids = new List<Element>(4)
             {
                 Row(8f,
-                    new TextEl(i.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        { Size = 11f, LineHeight = 16f, FontFamily = Mono, Color = Tok.TextTertiary, Width = 26f, Shrink = 0f },
-                    new TextEl(LyricsReport.TimeCell(l)) { Size = 11f, LineHeight = 16f, FontFamily = Mono, Color = timeInk, Width = 130f, Shrink = 0f },
+                    Design.Type.MicroMeta(i.ToString(System.Globalization.CultureInfo.InvariantCulture)) with { FontFamily = Mono, Color = Tok.TextTertiary, Width = 26f, Shrink = 0f },
+                    Design.Type.MicroMeta(LyricsReport.TimeCell(l)) with { FontFamily = Mono, Color = timeInk, Width = 130f, Shrink = 0f },
                     // The DURATION spelled out: a squashed line is invisible in two timestamps and obvious as "217ms".
-                    new TextEl(LyricsReport.DurationCell(l))
-                        { Size = 11f, LineHeight = 16f, FontFamily = Mono, Color = check.Squashed ? Warn : Tok.TextTertiary, Width = 52f, Shrink = 0f },
+                    Design.Type.MicroMeta(LyricsReport.DurationCell(l)) with { FontFamily = Mono, Color = check.Squashed ? Warn : Tok.TextTertiary, Width = 52f, Shrink = 0f },
                     new TextEl(blank ? Loc.Get(Strings.Diagnostics.Inspector.BlankLine) : l.Text)
                     {
                         Size = 12f, LineHeight = 16f, Wrap = TextWrap.Wrap, Grow = 1f, MinWidth = 0f,
@@ -1584,9 +1582,9 @@ public static partial class Diagnostics
             if (l.Translation is { Length: > 0 } tr) kids.Add(SubLine("[tr] " + tr));
             if (l.Romanization is { Length: > 0 } ro) kids.Add(SubLine("[ro] " + ro));
             if (showSyllables && l.Syllables.Count > 0)
-                kids.Add(new TextEl(LyricsReport.SyllableStrip(l))
+                kids.Add(Design.Type.MicroMeta(LyricsReport.SyllableStrip(l)) with
                 {
-                    Size = 10.5f, LineHeight = 14f, FontFamily = Mono, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap,
+                    FontFamily = Mono, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap,
                     Margin = new Edges4(34f, 0f, 0f, 0f),
                 });
             return new BoxEl { Direction = 1, Gap = 2f, Children = kids.ToArray() };
@@ -1603,13 +1601,13 @@ public static partial class Diagnostics
 
         static BoxEl Rule() => new() { Height = 1f, Fill = Tok.StrokeCardDefault };
 
-        static TextEl SubLine(string text) => new(text)
+        static TextEl SubLine(string text) => Design.Type.MicroMeta(text) with
         {
-            Size = 11f, LineHeight = 15f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, Margin = new Edges4(34f, 0f, 0f, 0f),
+            Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, Margin = new Edges4(34f, 0f, 0f, 0f),
         };
 
         static TextEl Note(string text) => new(text) { Size = 12f, LineHeight = 17f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap };
 
-        static TextEl Caption(string text) => new(text) { Size = 11f, LineHeight = 15f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap };
+        static TextEl Caption(string text) => Design.Type.MicroMeta(text) with { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap };
     }
 }

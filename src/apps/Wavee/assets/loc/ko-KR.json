@@ -873,13 +873,11 @@
     "next": "다음",
     "shuffle": "셔플",
     "repeat": "반복",
-    "pause": "일시 정지",
-    "play": "재생",
     "mute": "음소거",
     "unmute": "음소거 해제",
+    "resyncLyrics": "가사 다시 맞추기",
     "playingNext": "다음 재생",
     "fromContext": "{source}에서",
-    "resyncLyrics": "가사 다시 맞추기",
     "likedSongs": "좋아요 표시한 곡",
     "dockInRail": "레일에 도킹",
     "video": "비디오",
@@ -890,6 +888,11 @@
     "videoNeedsWiderWindow": "창을 더 넓혀야 합니다",
     "videoNoSecondWindow": "이 디스플레이 구성에서는 사용할 수 없습니다",
     "videoNoFullscreen": "여기서는 사용할 수 없습니다",
+    "aspectFit": "맞춤",
+    "aspectCrop": "잘라내기",
+    "aspectStretch": "늘이기",
+    "aspectNative": "원본 크기",
+    "qualityAuto": "자동",
     "videoUpNext": "다음 곡",
     "presentationCover": "커버",
     "playerStyle": "플레이어 스타일",
@@ -989,7 +992,9 @@
       "fast": "빠름",
       "soft": "약함",
       "strong": "강함"
-    }
+    },
+    "pause": "일시 정지",
+    "play": "재생"
   },
   "menu": {
     "artistUnavailable": "이 앨범의 아티스트를 찾지 못했습니다",

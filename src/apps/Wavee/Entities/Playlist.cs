@@ -669,8 +669,14 @@ public static partial class Entities
                 t.SetText(ref t.Title, slot, s.Intern(row.Title));
                 t.SetText(ref t.Description, slot, s.Intern(row.Description));
                 // An answer that carries no cover never blanks the one a fuller read already set — nothing
-                // legitimately removes a cover (S2, mirrors the Track.cs Fix-4 guard).
-                if (!row.Image.IsEmpty) t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                // legitimately removes a cover (S2, mirrors the Track.cs Fix-4 guard). A later same-art 640
+                // must replace a sealed 64; a later 64 must not replace a visible 640.
+                if (!row.Image.IsEmpty)
+                {
+                    var incoming = s.Intern(row.Image);
+                    if (Detail.CoverLatch.AcceptsImage(t.Image[slot], incoming))
+                        t.SetText(ref t.Image, slot, incoming);
+                }
                 t.SetText(ref t.ShareUrl, slot, s.Intern(row.ShareUrl));
                 // A thin answer with no server count (0) must not zero out a count a fuller read already established
                 // (S2) — 0 is what an unset `StagedPlaylist.TrackCount` reads as, UNLESS this decoder actually saw

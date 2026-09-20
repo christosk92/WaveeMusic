@@ -627,9 +627,9 @@ public static partial class Stage
         {
             var fmt = Playback.StreamFormat.Value;
             if (!Transport.ShowsQualityBadge(!fmt.IsEmpty, RemoteActive())) return new BoxEl { HitTestVisible = false };
-            return new TextEl(Entities.Strings.Resolve(fmt))
+            return global::Wavee.Design.Type.MicroMeta(Entities.Strings.Resolve(fmt)) with
             {
-                Size = 11.5f, LineHeight = 16f, Weight = 600, Color = Ink.InkTertiary, Shrink = 0f,
+                Weight = 600, Color = Ink.InkTertiary, Shrink = 0f,
                 Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Margin = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
             };
         }
@@ -1014,7 +1014,7 @@ public static partial class Stage
                 Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
                 Children =
                 [
-                    new TextEl(Loc.Get(Strings.Player.Autoplay)) { Size = 13f, LineHeight = 18f, Weight = 600, Color = on ? Ink.Ink : Ink.InkSecondary },
+                    global::Wavee.Design.Type.DenseTitle(Loc.Get(Strings.Player.Autoplay)) with { Color = on ? Ink.Ink : Ink.InkSecondary },
                     new TextEl(Loc.Get(Strings.Player.AutoplayHint)) { Size = 12f, LineHeight = 16f, Color = Ink.InkTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
                 ],
             },

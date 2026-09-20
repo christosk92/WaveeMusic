@@ -459,16 +459,16 @@ public static partial class Actions
         var icon = descriptor.Icon(isChecked);
         var lines = new List<Element>(2)
         {
-            new TextEl(descriptor.Label())
+            Design.Type.DenseTitle(descriptor.Label()) with
             {
-                Size = 13f, LineHeight = 18f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1,
+                Color = Tok.TextPrimary, MaxLines = 1,
                 Trim = TextTrim.CharacterEllipsis,
             },
         };
         if (sub.Length > 0)
-            lines.Add(new TextEl(sub)
+            lines.Add(Design.Type.MicroMeta(sub) with
             {
-                Size = 11f, LineHeight = 14f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             });
 
         return new BoxEl
@@ -528,9 +528,9 @@ public static partial class Actions
             Children =
             [
                 Icon(Icons.StatusWarning, 12f, Tok.TextTertiary),
-                new TextEl(Loc.Get(key))
+                Design.Type.MicroMeta(Loc.Get(key)) with
                 {
-                    Size = 11f, LineHeight = 14f, Color = Tok.TextTertiary, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                    Color = Tok.TextTertiary, Grow = 1f, Shrink = 1f, MinWidth = 0f,
                     MaxLines = 2, Wrap = TextWrap.Wrap,
                 },
             ],
@@ -619,14 +619,14 @@ public static partial class Actions
                 : new BoxEl
                 {
                     Height = 44f, AlignItems = FlexAlign.Center, Padding = new Edges4(8f, 0f, 8f, 0f),
-                    Children = [new TextEl(spec.EmptyText) { Size = 13f, LineHeight = 18f, Color = Tok.TextSecondary }],
+                    Children = [Design.Type.DenseMeta(spec.EmptyText) with { Color = Tok.TextSecondary }],
                 };
 
             var kids = new List<Element>(3);
             if (spec.Body is { Length: > 0 } body)
-                kids.Add(new TextEl(body)
+                kids.Add(Design.Type.DenseMeta(body) with
                 {
-                    Size = 13f, LineHeight = 18f, Color = Tok.TextSecondary, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
+                    Color = Tok.TextSecondary, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
                 });
             kids.Add(Embed.Comp(() => new EditableText
             {
@@ -869,7 +869,7 @@ public static partial class Actions
             Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, MinHeight = 40f,
             Children =
             [
-                new TextEl(label) { Size = 13f, LineHeight = 18f, Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f },
+                Design.Type.DenseMeta(label) with { Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f },
                 control,
             ],
         };
@@ -884,10 +884,10 @@ public static partial class Actions
                     Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 1f,
                     Children =
                     [
-                        new TextEl(label) { Size = 13f, LineHeight = 18f, Color = Tok.TextPrimary },
-                        new TextEl(value is { Length: > 0 } v ? v : "—")
+                        Design.Type.DenseMeta(label) with { Color = Tok.TextPrimary },
+                        Design.Type.MicroMeta(value is { Length: > 0 } v ? v : "—") with
                         {
-                            Size = 11f, LineHeight = 14f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                            Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },
                     ],
                 },

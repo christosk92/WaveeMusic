@@ -102,9 +102,9 @@ public static partial class Rail
             Children =
             [
                 Thumbnail(id, ThumbSize - 2f * ThumbCardPad),
-                new TextEl(Loc.Get(preset.ShortLabelKey))
+                global::Wavee.Design.Type.MicroMeta(Loc.Get(preset.ShortLabelKey)) with
                 {
-                    Size = 11f, LineHeight = 14f, Color = selected ? Tok.TextPrimary : Tok.TextSecondary,
+                    Color = selected ? Tok.TextPrimary : Tok.TextSecondary,
                     MaxWidth = ThumbSize - 2f * ThumbCardPad, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
                 },
             ],

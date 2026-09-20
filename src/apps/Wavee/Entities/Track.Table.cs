@@ -105,7 +105,11 @@ public readonly partial struct Track
             uint publication = Entities.Current.Tracks.Changed.Value;
             if (_videoSeeded && _videoVersion == version && _videoPublication == publication) return _videoValue;
             bool any = false;
-            for (int i = 0; i < slots.Length && !any; i++) any = new Track(slots[i]).HasVideo;
+            // `KindAt` because a MIXED list's episode member shares this relation but its slot indexes
+            // `Entities.Episodes` (see the playlist source's own note) - reading it as a Track indexes the wrong
+            // flags array. An episode never carries a music-video counterpart, so it simply does not vote.
+            for (int i = 0; i < slots.Length && !any; i++)
+                any = KindAt(i) == EntityKind.Track && new Track(slots[i]).HasVideo;
             _videoSeeded = true; _videoVersion = version; _videoPublication = publication; _videoValue = any;
             return any;
         }
@@ -206,7 +210,12 @@ public readonly partial struct Track
         // The three column-existence facts are DERIVED AT COMMIT on the playlist row (Playlist.cs item 3) — no scan here.
         public override bool HasDateAdded => _playlist.HasDateAddedColumn;
         public override bool HasAddedBy => _playlist.HasAddedByColumn;
-        public override bool HasVideo => _playlist.HasVideoColumn;
+        // NOT the commit-time flag. `HasVideoColumn` is folded while the MEMBERSHIP lands, and kind 99 (the video
+        // association) is asked for the rows only AFTER that - so the fold always saw hasVideo:false, the column was
+        // decided "no" forever, and a playlist full of music videos showed not one film glyph. The album table has
+        // read the live rows through `CachedVideo` all along ("kind 99 lands after the rows paint, and the film lane
+        // must appear when it does"); the playlist table now reads them the same way.
+        public override bool HasVideo => CachedVideo(Edge.Targets(_playlist.Slot), Version);
         public override void Subscribe()
         {
             _ = Entities.ScopeEpoch.Value;

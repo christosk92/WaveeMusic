@@ -181,7 +181,7 @@ public static partial class Settings
     static Element StorageRow(int hue, string rowId, string sub, long? size, string folder, Element? extra = null)
     {
         var actions = new List<Element>(3);
-        if (size is { } bytes) actions.Add(new TextEl(StorageFormat.Bytes(bytes)) { Size = 13f, Color = Tok.TextSecondary, Shrink = 0f });
+        if (size is { } bytes) actions.Add(Design.Type.DenseMeta(StorageFormat.Bytes(bytes)) with { Color = Tok.TextSecondary, Shrink = 0f });
         actions.Add(HyperlinkButton.Create(Loc.Get(Strings.Settings.Storage.OpenFolder), () => OpenFolder(folder)));
         if (extra is not null) actions.Add(extra);
         return new BoxEl
@@ -224,8 +224,8 @@ public static partial class Settings
                     new BoxEl { Width = 10f, Height = 10f, Corners = CornerRadius4.All(2f), Fill = s_storageHues[i], Shrink = 0f },
                     new TextEl(Loc.Get(s_storagePartKeys[i])) { Size = 12f, Color = Tok.TextPrimary, Grow = 1f },
                     new TextEl(StorageFormat.Bytes(bytes)) { Size = 12f, Color = Tok.TextSecondary, Shrink = 0f },
-                    new TextEl(StorageFormat.Percent(bytes, s.Total).ToString(CultureInfo.InvariantCulture) + "%")
-                        { Size = 11f, Color = Tok.TextTertiary, Width = 36f, Shrink = 0f },
+                    Design.Type.MicroMeta(StorageFormat.Percent(bytes, s.Total).ToString(CultureInfo.InvariantCulture) + "%")
+                        with { Color = Tok.TextTertiary, Width = 36f, Shrink = 0f },
                 ],
             });
         }
@@ -313,10 +313,10 @@ public static partial class Settings
                     }),
                 editor,
                 ProgressBar.Determinate(fraction, width: 300f, state: over ? ProgressBarState.Error : ProgressBarState.Normal),
-                new TextEl(Strings.Settings.Storage.UsedOfBudget(StorageFormat.Bytes(used), budgetLabel)) { Size = 11.5f, Color = Tok.TextSecondary },
+                Design.Type.MicroMeta(Strings.Settings.Storage.UsedOfBudget(StorageFormat.Bytes(used), budgetLabel)) with { Color = Tok.TextSecondary },
                 status is { Available: false }
-                    ? new TextEl(Loc.Get(Strings.Settings.Storage.LocationUnavailable)) { Size = 11.5f, Color = Tok.SystemFillCritical }
-                    : new TextEl(Strings.Settings.Storage.FreeReserve(StorageFormat.Bytes(status?.ReserveBytes ?? 0))) { Size = 11.5f, Color = Tok.TextTertiary },
+                    ? Design.Type.MicroMeta(Loc.Get(Strings.Settings.Storage.LocationUnavailable)) with { Color = Tok.SystemFillCritical }
+                    : Design.Type.MicroMeta(Strings.Settings.Storage.FreeReserve(StorageFormat.Bytes(status?.ReserveBytes ?? 0))) with { Color = Tok.TextTertiary },
             ],
         };
     }

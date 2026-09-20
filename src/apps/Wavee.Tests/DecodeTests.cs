@@ -582,6 +582,36 @@ public class DecodeTests
     }
 
     [Fact]
+    public void ShowV4_cover_prefers_LARGE_over_DEFAULT()
+    {
+        // ShowV4 lists SMALL then DEFAULT then LARGE. The stored file id IS the rendition — LARGE must win or
+        // the show hero upscales DEFAULT (~300) forever.
+        TestScope.Fresh();
+        var proto = new Md.Show
+        {
+            Gid = Bs(Gid(100)),
+            Name = "The Wavee Hour",
+            Publisher = "Wavee",
+            CoverImage = new Md.ImageGroup
+            {
+                Image =
+                {
+                    new Md.Image { FileId = Bs(Gid(31)), Size = Md.Image.Types.Size.Small },
+                    new Md.Image { FileId = Bs(Gid(30)), Size = Md.Image.Types.Size.Default },
+                    new Md.Image { FileId = Bs(Gid(32)), Size = Md.Image.Types.Size.Large },
+                },
+            },
+        }.ToByteArray();
+
+        var s = Staging.Rent();
+        Spotify.Decode.ShowV4(proto, s);
+        TestScope.CommitAndPublish(s);
+
+        Assert.Equal("https://i.scdn.co/image/" + Convert.ToHexStringLower(Gid(32)),
+                     Entities.Strings.Resolve(ShowOf(100).ImageId));
+    }
+
+    [Fact]
     public void EpisodeV4_stages_its_show_thin_so_the_row_can_name_it_before_the_fetch()
     {
         TestScope.Fresh();
@@ -908,6 +938,73 @@ public class DecodeTests
         TestScope.CommitAndPublish(none);
         Assert.True(TrackOf(10).Knows(TrackFields.Video));      // the row now KNOWS there is none
         Assert.False(TrackOf(10).HasVideo);
+    }
+
+    /// <summary>Kind 182 is the SECOND answer for the Video group and the only one a relinked alias ever gets: kind 99
+    /// is keyed by the canonical id and answers nothing for an alias, which is why a playlist's relinked members showed
+    /// no film mark while an artist's canonical top tracks did. Field 4 is a blob of experience ids and 0x02 is the
+    /// music-video experience (0.2.9 live-probed it: a video track carries 01 02 04, plain audio 01 04).</summary>
+    [Fact]
+    public void ConsumptionExperience_reports_the_video_for_a_row_kind_99_never_answers_for()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.ConsumptionExperience(CeBlob(0x01, 0x02, 0x04), Encoding.UTF8.GetBytes(UriOf(EntityKind.Track, 11)), s);
+        TestScope.CommitAndPublish(s);
+
+        var track = TrackOf(11);
+        Assert.True(track.Knows(TrackFields.Video));
+        Assert.True(track.HasVideo);                            // no kind 99 answer was needed at all
+    }
+
+    /// <summary>Plain audio carries no 0x02, and that is a real ANSWER, not a hole: the group settles known-and-false,
+    /// which is what stops kind 99's silence costing three sends and a permanent seal on every video-less track.</summary>
+    [Fact]
+    public void ConsumptionExperience_without_the_video_experience_settles_the_group_as_a_negative()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.ConsumptionExperience(CeBlob(0x01, 0x04), Encoding.UTF8.GetBytes(UriOf(EntityKind.Track, 12)), s);
+        TestScope.CommitAndPublish(s);
+
+        Assert.True(TrackOf(12).Knows(TrackFields.Video));
+        Assert.False(TrackOf(12).HasVideo);
+    }
+
+    /// <summary>The two kinds ride the SAME post and merge into one staged row, in either order: 182 only ORs the
+    /// verdict, so it can never blank the counterpart, still or size that kind 99 carries.</summary>
+    [Fact]
+    public void ConsumptionExperience_never_blanks_what_kind_99_carried()
+    {
+        TestScope.Fresh();
+        var proto = new Xm.VideoAssociations
+        {
+            Association = new Xm.Association
+            {
+                AssociatedUri = UriOf(EntityKind.Track, 131),
+                Files = new Xm.VideoFileGroup { File = { new Xm.VideoFile { FileId = Bs(Gid(141)), Width = 1920, Height = 1080 } } },
+            },
+        }.ToByteArray();
+        var uri = Encoding.UTF8.GetBytes(UriOf(EntityKind.Track, 13));
+
+        var s = Staging.Rent();
+        Spotify.Decode.ConsumptionExperience(CeBlob(0x01, 0x02, 0x04), uri, s);   // 182 first...
+        Spotify.Decode.VideoAssociations(proto, uri, s);                          // ...then 99, same staging
+        TestScope.CommitAndPublish(s);
+
+        var track = TrackOf(13);
+        Assert.True(track.HasVideo);
+        Assert.Equal(TrackOf(131).Slot, track.VideoCounterpart.Slot);
+    }
+
+    /// <summary>One CONSUMPTION_EXPERIENCE_TRAIT payload: field 4, length-delimited, holding the experience ids.</summary>
+    static byte[] CeBlob(params byte[] ids)
+    {
+        var body = new byte[ids.Length + 2];
+        body[0] = (4 << 3) | 2;              // field 4, length-delimited
+        body[1] = (byte)ids.Length;
+        ids.CopyTo(body, 2);
+        return body;
     }
 
     [Fact]

@@ -121,7 +121,10 @@ public static partial class Sidebar
                     () => owner.Navigate(routeKey, null), dest.Title);
             }
 
-            string label = entry.Name.Length > 0 ? entry.Name : PaneText.ShortUri(entry.Uri);
+            // Same gate as EntryRow's (Trap 5): unresolved shows nothing, never the raw uri fragment.
+            string label = entry.Name.Length > 0 ? entry.Name
+                : SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown) ? PaneText.ShortUri(entry.Uri)
+                : "";
             var art = Cover.Art(entry.Cover, entry.MosaicTiles, entry.Id, ArtEdge,
                 circular: entry.Circular || entry.Kind == SidebarEntryKind.Artist);
             string? route = entry.RouteKey;
@@ -402,7 +405,12 @@ public static partial class Sidebar
             return EntityRow.Create(new RowSpec
             {
                 Key = entry.Id,
-                Label = entry.Name.Length > 0 ? entry.Name : PaneText.ShortUri(entry.Id),
+                // Same gate as EntryRow's (Trap 5). A FOLDER has no entity identity to wait for, so it keeps the
+                // honest short form; an entity row that has not resolved shows nothing.
+                Label = entry.Name.Length > 0 ? entry.Name
+                    : folder || SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown)
+                        ? PaneText.ShortUri(entry.Id)
+                        : "",
                 // A sub-folder's count is the count of the very list a drill-in shows (ParentFolderId containment), never
                 // the projection's ChildCount — the second definition that once rendered a full folder as "0 items".
                 Subtitle = folder

@@ -758,7 +758,7 @@ public static partial class Sidebar
             };
         }
 
-        /// <summary>The library destinations as a row of WORDS (13.5 on a 30-DIP band, gap 14): a 2-DIP accent underline
+        /// <summary>The library destinations as a row of WORDS (DenseTitle/DenseMeta on a 30-DIP band, gap 14): a 2-DIP accent underline
         /// and the count on the ACTIVE word only, a horizontal scroll whose clipped word peeks past a live edge fade.
         /// Labels never drop to glyphs — the rail scrolls instead.</summary>
         Element DestinationRail(string route)
@@ -773,10 +773,10 @@ public static partial class Sidebar
 
                 var line = new List<Element>(2)
                 {
-                    new TextEl(dest.Title)
+                    (on
+                        ? global::Wavee.Design.Type.DenseTitle(dest.Title)
+                        : global::Wavee.Design.Type.DenseMeta(dest.Title)) with
                     {
-                        Size = LibraryV3Metrics.DestinationWordSize,
-                        Weight = on ? (ushort)600 : (ushort)400,
                         Color = on ? Tok.TextPrimary : Tok.TextSecondary,
                         MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     },
@@ -1457,6 +1457,17 @@ public static partial class Sidebar
             }.Interactive(Interaction.Control),
             Loc.Get(Strings.Sidebar.V3.ClearFilters));
 
+        static TextEl PillLabel(string label, float fontSize, ushort weight) => fontSize switch
+        {
+            11f => weight >= 600
+                ? global::Wavee.Design.Type.MicroMeta(label) with { Weight = 600 }
+                : global::Wavee.Design.Type.MicroMeta(label),
+            13f => weight >= 600
+                ? global::Wavee.Design.Type.DenseTitle(label)
+                : global::Wavee.Design.Type.DenseMeta(label),
+            _ => Caption(label) with { Size = fontSize, Weight = weight },
+        };
+
         /// <summary>A facet or option — the SAME padding selected or not, so selecting never reflows the label. Selection is
         /// COLOUR only (accent fill + border + <c>Tok.OnAccent</c> 600), cross-faded over 167 ms.</summary>
         static Element Pill(Dictionary<string, NodeHandle> nodes, V3ChipSlot slot, string label, float fontSize,
@@ -1487,9 +1498,8 @@ public static partial class Sidebar
                 OnRealized = h => nodes[key] = h,
                 Children =
                 [
-                    Caption(label) with
+                    PillLabel(label, fontSize, (ushort)(slot.Selected ? 600 : 400)) with
                     {
-                        Size = fontSize, Weight = (ushort)(slot.Selected ? 600 : 400),
                         Color = slot.Selected ? Tok.OnAccent : Tok.TextPrimary, MaxLines = 1,
                     },
                 ],
@@ -1624,9 +1634,9 @@ public static partial class Sidebar
             var kids = new List<Element>(5) { Icon(Icons.Sort, 14f, Tok.TextSecondary) };
             if (!iconOnly)
             {
-                kids.Add(new TextEl(Loc.Get(LibraryV3Labels.Sort(sort)))
+                kids.Add(global::Wavee.Design.Type.DenseTitle(Loc.Get(LibraryV3Labels.Sort(sort))) with
                 {
-                    Size = 13f, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1,
+                    Color = Tok.TextSecondary, MaxLines = 1,
                     Trim = TextTrim.CharacterEllipsis, Shrink = 1f,
                 });
                 if (showDirection) kids.Add(Icon(desc ? Icons.ChevronUp : Icons.ChevronDown, 10f, Tok.TextTertiary));

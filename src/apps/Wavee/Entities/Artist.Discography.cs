@@ -248,6 +248,9 @@ public static class DiscographyEraBands
         }
     }
 
+    /// <summary>Invariant English matching <c>artist.disco.decade</c> / <c>decadeAndEarlier</c> /
+    /// <c>decadeRange</c> / <c>yearRange</c>. The planner stays engine-free; the loc keys are the
+    /// translator source of truth for those templates.</summary>
     static string Label(int newest, int oldest, bool openEnded)
     {
         if (openEnded)
@@ -1236,19 +1239,13 @@ public readonly partial struct Artist
         {
             var al = p.Album;
             ColorF accent = p.Accent();
+            var titleType = Design.Type.DenseTitle("");
             return new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = 28f,
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = 36f,
                 Children =
                 [
-                    Controls.Named(new BoxEl
-                    {
-                        Width = 26f, Height = 26f, Shrink = 0f, Corners = CornerRadius4.All(13f), Fill = accent,
-                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, OnClick = _playAlbum,
-                        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                        // Artwork-derived fill ⇒ ink from the FILL's luminance, never the theme's on-accent token.
-                        Children = [Icon(Icons.Play, 11f, ColorContrast.PickContrast(accent))],
-                    }, Loc.Get(Strings.Detail.Play)),
+                    Controls.Named(Controls.PlayFab(_playAlbum, Icons.Play, 32f), Loc.Get(Strings.Detail.Play)),
                     Controls.Artwork(Controls.ArtUrl(al.ImageId), 28f, 28f, Radii.Control, decodePx: 56),
                     new BoxEl
                     {
@@ -1258,10 +1255,11 @@ public readonly partial struct Artist
                             new SpanTextEl(
                             [
                                 new TextSpan(al.Title),
-                                new TextSpan(" · " + DiscoCardText.AlbumMeta(al), Weight: 400, Color: Tok.TextSecondary, Size: 12f),
+                                new TextSpan(" · " + DiscoCardText.AlbumMeta(al), Weight: 400, Color: Tok.TextSecondary, Size: Ui.Caption("").Size),
                             ])
                             {
-                                Size = 13f, Weight = 600, Color = Tok.TextPrimary,
+                                Size = titleType.Size, LineHeight = titleType.LineHeight, Weight = titleType.ResolvedWeight,
+                                Color = Tok.TextPrimary,
                                 Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, MinWidth = 0f, Shrink = 1f,
                             },
                         ],
@@ -1365,7 +1363,7 @@ public readonly partial struct Artist
             Key = "row:show-all", Height = DrawerVerdict.RowPitch, AlignItems = FlexAlign.Center,
             Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Cursor = CursorId.Hand, Role = AutomationRole.Button,
             OnClick = _goAlbum,
-            Children = [new TextEl(Strings.Detail.Discography.ShowAllTracks(total)) { Size = 12f, Weight = 600, Color = Tok.AccentTextPrimary }],
+            Children = [Ui.Caption(Strings.Detail.Discography.ShowAllTracks(total)) with { Weight = 600, Color = Tok.AccentTextPrimary }],
         };
 
         /// <summary>The selection commands: count · Play · Play next · Add to queue · Like, over the registered verbs.</summary>
@@ -1380,7 +1378,7 @@ public readonly partial struct Artist
             var ctx = new ActionContext(ActionTarget.ForTracks(picked), Actions.Services);
             var kids = new List<Element>(6)
             {
-                new TextEl(Strings.Detail.SelectedCount(count)) { Size = 12f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1 },
+                Ui.Caption(Strings.Detail.SelectedCount(count)) with { Weight = 600, Color = Tok.TextPrimary, MaxLines = 1 },
             };
             AddVerb(kids, ActionId.Play, in ctx);
             if (fit <= 1)
@@ -1407,8 +1405,8 @@ public readonly partial struct Artist
             Padding = new Edges4(Spacing.S, Spacing.M, Spacing.S, Spacing.M),
             Children =
             [
-                new TextEl(Loc.Get(Strings.Detail.Empty.NoTracks))
-                    { Grow = 1f, Basis = 0f, MinWidth = 0f, Size = 13f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                Design.Type.DenseMeta(Loc.Get(Strings.Detail.Empty.NoTracks))
+                    with { Grow = 1f, Basis = 0f, MinWidth = 0f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 Button.Standard(Loc.Get(Strings.Common.Retry), retry),
             ],
         };
@@ -1496,11 +1494,12 @@ public readonly partial struct Artist
             var t = TrackOf(p);
             if (t.Slot <= Table.None) return new BoxEl();
             var st = Track.StateOf(t);
-            Element title = new TextEl(t.Title)
-            {
-                Size = 13f, Weight = 600, Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            };
+            Element title = Design.Type.DenseTitle(t.Title)
+                with
+                {
+                    Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
+                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                };
             return Track.Grid(t, p.Index, in st, in s_drawerCols, s_drawerColumns, DrawerRowContentH, title,
                               new Track.GridOptions(OnPlay: _play, OnLike: _like, ActionsCell: Controls.MoreButton(null)));
         }

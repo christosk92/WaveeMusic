@@ -168,8 +168,8 @@ public static partial class ReleaseNotes
                         main.Add(SectionView.Create(section, entry.IssueStates, "sec:" + entry.Doc.Version + ":" + section.Kind));
             }
             if (shown[0].Doc.GeneratedAt is { Length: > 0 } generated)
-                main.Add(new TextEl(Strings.WhatsNew.AsOf(ReleaseDate(generated[..Math.Min(10, generated.Length)])))
-                    { Size = 11.5f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, Margin = new Edges4(0f, 6f, 0f, 0f) });
+                main.Add(Design.Type.MicroMeta(Strings.WhatsNew.AsOf(ReleaseDate(generated[..Math.Min(10, generated.Length)])))
+                    with { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, Margin = new Edges4(0f, 6f, 0f, 0f) });
             main.Add(new BoxEl { Height = 24f, HitTestVisible = false });
 
             var column = new List<Element>(2);
@@ -215,8 +215,8 @@ public static partial class ReleaseNotes
             Children =
             [
                 Icon(Icons.RefineSparkle, 14f, Tok.AccentTextPrimary),
-                new TextEl(Strings.WhatsNew.Since(releases.Length, releases[^1].Doc.Version, releases[0].Doc.Version))
-                    { Size = 12.5f, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap },
+                Design.Type.DenseMeta(Strings.WhatsNew.Since(releases.Length, releases[^1].Doc.Version, releases[0].Doc.Version))
+                    with { Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap },
                 Button.Create(Loc.Get(Strings.WhatsNew.OnlyLatest), () => _onlyLatest.Value = true,
                     ButtonAppearance.Subtle, ControlSize.Small) with { Shrink = 0f },
             ],
@@ -255,7 +255,7 @@ public static partial class ReleaseNotes
         Children =
         [
             Icon(Icons.Tag, 32f, Tok.TextTertiary),
-            new TextEl(Loc.Get(Strings.WhatsNew.Empty)) { Size = 13f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = 360f },
+            Design.Type.DenseMeta(Loc.Get(Strings.WhatsNew.Empty)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = 360f },
             Button.Standard(Loc.Get(Strings.WhatsNew.OpenOnGitHub), static () => OpenUrl(Links.ReleasesUrl)),
         ],
     };
@@ -330,9 +330,9 @@ public static partial class ReleaseNotes
         Fill = accent ? Tok.AccentDefault : Tok.FillSubtleSecondary,
         Children =
         [
-            new TextEl(text)
+            Design.Type.MicroMeta(text) with
             {
-                Size = 11.5f, Weight = 600, MaxLines = 1,
+                Weight = 600, MaxLines = 1,
                 Color = accent ? Tok.TextOnAccentPrimary : Tok.TextSecondary,
                 FontFamily = mono ? "Cascadia Code" : null,
             },
@@ -416,7 +416,7 @@ public static partial class ReleaseNotes
         Padding = new Edges4(8f, 0f, 8f, 0f), Corners = CornerRadius4.All(Radii.Full),
         Fill = store ? Tok.AccentDefault : Tok.FillSolidTertiary,
         Shadow = new ShadowSpec(Blur: 4f, OffsetY: 1f, OffsetX: 0f, Color: ColorF.FromRgba(0, 0, 0, 0x66)),
-        Children = [new TextEl(Loc.Get(KindPillLocKey(kind, store))) { Size = 11f, Weight = 600, Color = store ? Tok.TextOnAccentPrimary : Tok.TextPrimary }],
+        Children = [Design.Type.MicroMeta(Loc.Get(KindPillLocKey(kind, store))) with { Weight = 600, Color = store ? Tok.TextOnAccentPrimary : Tok.TextPrimary }],
     };
 
     static bool IsVideo(ReleaseHighlight h) => h.Media is { } m && string.Equals(m.Kind, "video", StringComparison.OrdinalIgnoreCase);
@@ -645,9 +645,14 @@ public static partial class ReleaseNotes
         foreach (var i in item.Issues) refs.Add(IssueChip(i, states?.Lookup(i)));
         foreach (var pr in item.Prs) refs.Add(PrChip(pr));
 
+        var denseBody = Design.Type.DenseMeta("");
         var column = new List<Element>(2)
         {
-            RichTextBlock.Paragraph(spans.ToArray()) with { Size = 13f, Grow = 1f, MinWidth = 0f, MaxWidth = float.NaN, Wrap = TextWrap.Wrap },
+            RichTextBlock.Paragraph(spans.ToArray()) with
+            {
+                Size = denseBody.Size, LineHeight = denseBody.LineHeight,
+                Grow = 1f, MinWidth = 0f, MaxWidth = float.NaN, Wrap = TextWrap.Wrap,
+            },
         };
         if (refs.Count > 0)
             column.Add(new BoxEl { Direction = 0, Gap = 6f, Wrap = true, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = refs.ToArray() });
@@ -696,8 +701,8 @@ public static partial class ReleaseNotes
             Children =
             [
                 new BoxEl { Width = 7f, Height = 7f, Shrink = 0f, Corners = CornerRadius4.All(3.5f), Fill = dot },
-                new TextEl(number) { Size = 11f, Weight = 600, Color = Tok.TextPrimary, FontFamily = "Cascadia Code", MaxLines = 1 },
-                new TextEl(word) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1 },
+                Design.Type.MicroMeta(number) with { Weight = 600, Color = Tok.TextPrimary, FontFamily = "Cascadia Code", MaxLines = 1 },
+                Design.Type.MicroMeta(word) with { Color = Tok.TextTertiary, MaxLines = 1 },
             ],
         }.Interactive(Interaction.Control);
         return tooltip is { Length: > 0 } t ? ToolTip.Wrap(chip, t) : chip;   // no title anywhere ⇒ no tooltip at all
@@ -784,7 +789,7 @@ public static partial class ReleaseNotes
                     Direction = 1, Gap = 2f, MinWidth = 0f,
                     Children = [Flow.For(() => rows, static e => e.Version, e => RailRow(e, selected, running, lastSeen))],
                 }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = "whatsnew:rail" },
-                new TextEl(Loc.Get(Strings.WhatsNew.RailFoot)) { Size = 11.5f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, Margin = new Edges4(4f, 6f, 4f, 6f) },
+                Design.Type.MicroMeta(Loc.Get(Strings.WhatsNew.RailFoot)) with { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, Margin = new Edges4(4f, 6f, 4f, 6f) },
             ],
         };
     }
@@ -794,7 +799,7 @@ public static partial class ReleaseNotes
         bool isSelected = string.Equals(e.Version, selected, StringComparison.Ordinal);
         var title = new List<Element>(3)
         {
-            new TextEl(e.Version) { Size = 12.5f, Weight = 600, Color = isSelected ? Tok.TextPrimary : Tok.TextSecondary, MaxLines = 1 },
+            Design.Type.DenseTitle(e.Version) with { Color = isSelected ? Tok.TextPrimary : Tok.TextSecondary, MaxLines = 1 },
         };
         switch (RailMarkerFor(e.Version, selected, running, lastSeen))
         {
@@ -826,7 +831,7 @@ public static partial class ReleaseNotes
                     Children =
                     [
                         new BoxEl { Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, MinWidth = 0f, Wrap = true, Children = title.ToArray() },
-                        new TextEl(RailSubtitle(e.Name, ReleaseDate(e.Date))) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        Design.Type.MicroMeta(RailSubtitle(e.Name, ReleaseDate(e.Date))) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     ],
                 },
             ],
@@ -836,7 +841,7 @@ public static partial class ReleaseNotes
     static Element RailPill(string text, ColorF fill, ColorF ink) => new BoxEl
     {
         Shrink = 0f, Padding = new Edges4(5f, 1f, 5f, 1f), Corners = CornerRadius4.All(6f), Fill = fill,
-        Children = [new TextEl(text) { Size = 9.5f, Weight = 700, Color = ink }],
+        Children = [Design.Type.MicroMeta(text) with { Weight = 700, Color = ink }],
     };
 
     // ══ 6. THE HIGHLIGHT VIEWER ══════════════════════════════════════════════════════════════════════════════════════
@@ -1060,7 +1065,7 @@ public static partial class ReleaseNotes
                 Children =
                 [
                     Icon(Icons.Play, 14f, Tok.OnMediaPrimary),
-                    new TextEl(Loc.Get(Strings.WhatsNew.Viewer.Watch)) { Size = 12.5f, Weight = 600, Color = Tok.OnMediaPrimary },
+                    Design.Type.DenseTitle(Loc.Get(Strings.WhatsNew.Viewer.Watch)) with { Color = Tok.OnMediaPrimary },
                 ],
             };
         }

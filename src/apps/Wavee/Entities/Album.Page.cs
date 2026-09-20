@@ -574,9 +574,9 @@ public readonly partial struct Album
             Key = key, Direction = 1,
             Children =
             [
-                new TextEl(text)
+                Design.Type.MicroMeta(text) with
                 {
-                    Size = 11f, LineHeight = 16f, Color = Tok.TextTertiary,
+                    Color = Tok.TextTertiary,
                     Wrap = TextWrap.Wrap, MaxLines = 4, Trim = TextTrim.CharacterEllipsis,
                 },
             ],
@@ -1262,9 +1262,9 @@ public readonly partial struct Album
                             ],
                         },
                         bio.Length > 0
-                            ? new TextEl(bio)
+                            ? Design.Type.DenseMeta(bio) with
                             {
-                                Size = 13f, LineHeight = 18f, Color = Tok.TextSecondary,
+                                Color = Tok.TextSecondary,
                                 Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
                             }
                             : new BoxEl(),
@@ -1380,9 +1380,9 @@ public readonly partial struct Album
         [
             Design.Type.RailHeader(Loc.Get(Strings.Artist.MusicVideos))
                 with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            new TextEl(count.ToString(CultureInfo.CurrentCulture))
+            Design.Type.DenseTitle(count.ToString(CultureInfo.CurrentCulture)) with
             {
-                Size = 13f, Weight = 600, Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f,
+                Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f,
             },
         ],
     };

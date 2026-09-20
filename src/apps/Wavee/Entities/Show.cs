@@ -356,7 +356,11 @@ public static partial class Entities
             if ((known & (uint)ShowFields.Image) != 0
                 && t.Accepts(slot, (uint)ShowFields.Image, auth, in t.IdentityAuthority))
             {
-                t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                // The BIT is answered either way; the PIXELS may not go backwards. A later card/list answer carrying a
+                // 64 of the same art must not replace the 640 the header asked for (Detail.CoverLatch.AcceptsImage).
+                var incomingImage = s.Intern(row.Image);
+                if (Detail.CoverLatch.AcceptsImage(t.Image[slot], incomingImage))
+                    t.SetText(ref t.Image, slot, incomingImage);
                 t.Applied(slot, (uint)ShowFields.Image, auth, ref t.IdentityAuthority);
                 acceptedIdentity |= (uint)ShowFields.Image;
             }

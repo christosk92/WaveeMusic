@@ -654,22 +654,36 @@ public static partial class Spotify
         /// unit-tested directly in <c>BrowseDecodeTests</c> (no JSON, no Staging).</summary>
         public static class BrowseImagePick
         {
-            /// <summary>Shelf/row/chip thumbnails. Hero and masthead call sites pass 640 explicitly (none exist yet in
-            /// this file's search-suggestion decoders — every image here is an Omnibar row, never a hero).</summary>
+            /// <summary>Shelf/row/chip thumbnails. Hero and masthead call sites pass
+            /// <see cref="HeroMinWidth"/> — Spotify lists 64 then 300 then 640, smallest first.</summary>
             public const int DefaultMinWidth = 300;
+
+            /// <summary>The hero / masthead / stored-cover ask: smallest source whose width is at least 640,
+            /// else the widest. One URL is stored per row; decodePx cannot invent pixels from a 64px JPEG.</summary>
+            public const int HeroMinWidth = 640;
 
             public static string? Choose(ReadOnlySpan<(string Url, int Width)> sources, int minWidth)
             {
-                string? bestAbove = null;
-                int bestAboveWidth = int.MaxValue;
-                string? widest = null;
-                int widestWidth = -1;
-                foreach (var (url, width) in sources)
+                Span<int> widths = stackalloc int[sources.Length];
+                for (int i = 0; i < sources.Length; i++) widths[i] = sources[i].Width;
+                int idx = ChooseIndex(widths, minWidth);
+                return idx < 0 ? null : sources[idx].Url;
+            }
+
+            /// <summary>Index of <see cref="Choose"/>'s pick, or -1 when <paramref name="widths"/> is empty.
+            /// Decoders that intern URLs as <c>TextRef</c> pick by index so they never materialise the URL strings
+            /// just to throw all but one away.</summary>
+            public static int ChooseIndex(ReadOnlySpan<int> widths, int minWidth)
+            {
+                int bestAbove = -1, bestAboveWidth = int.MaxValue;
+                int widest = -1, widestWidth = -1;
+                for (int i = 0; i < widths.Length; i++)
                 {
-                    if (width >= minWidth && width < bestAboveWidth) { bestAbove = url; bestAboveWidth = width; }
-                    if (width > widestWidth) { widest = url; widestWidth = width; }
+                    int w = widths[i];
+                    if (w >= minWidth && w < bestAboveWidth) { bestAbove = i; bestAboveWidth = w; }
+                    if (w > widestWidth) { widest = i; widestWidth = w; }
                 }
-                return bestAbove ?? widest;
+                return bestAbove >= 0 ? bestAbove : widest;
             }
         }
 

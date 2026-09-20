@@ -502,13 +502,15 @@ public readonly partial struct Album
                         Width = 96f, Height = 96f, Shrink = 0f, Corners = Radii.ControlAll, ClipToBounds = true,
                         Children = [Controls.Artwork(Controls.ArtUrl(o.ImageId), 96f, 96f, Radii.Control, decodePx: 192)],
                     },
-                    new TextEl(o.Title)
+                    Design.Type.DenseMeta(o.Title) with
                     {
-                        Size = 12.5f, LineHeight = 16f, Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
+                        Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
                         BrushTransitionMs = Design.Motion.Faster, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                     },
-                    new TextEl(o.Knows(AlbumFields.Year) && o.Year > 0 ? FormatCache.Int(o.Year) : "")
-                        { Size = 11.5f, LineHeight = 14f, Color = Tok.TextTertiary },
+                    Design.Type.MicroMeta(o.Knows(AlbumFields.Year) && o.Year > 0 ? FormatCache.Int(o.Year) : "") with
+                    {
+                        Color = Tok.TextTertiary,
+                    },
                 ],
             }.Interactive(Interaction.Subtle);
         }

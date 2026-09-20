@@ -34,6 +34,10 @@
 > `TextEl` has no shadow channel, so shipped paints a radial wash BEHIND the glyphs (`VuDeck.cs:220-230`); it lists an
 > `o-body-red` iPod (mockup `.html:304`) — shipped slug is `u2` (`NpvPlayerCatalog.cs:48`). Everything else in the doc's
 > Part 3 matches the code constant-for-constant.
+> **Typography (W6).** `Shell/Deck.Faces.cs:116` sets `Weight = 500` on the hardcoded cassette shell legend
+> (`"wavee · c-60 · type i"`) — **device chrome**, not a loc string. That tenth weight is a **sanctioned skin-fidelity**
+> exception; do not "fix" it to 400 or 600 when aligning voice elsewhere. Localized strings on deck faces are **not**
+> device chrome (W3 already drops `ToUpper` on stream-format badges).
 
 ---
 

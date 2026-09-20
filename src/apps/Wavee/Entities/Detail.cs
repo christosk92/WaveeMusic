@@ -33,6 +33,7 @@
 
 using System.Globalization;
 using FluentGpu.Controls;
+using FluentGpu.Foundation;
 using FluentGpu.Localization;
 
 namespace Wavee;
@@ -1019,15 +1020,62 @@ public static partial class Detail
             return Palette.ArtIdentityOf(ia).Equals(Palette.ArtIdentityOf(ib), StringComparison.OrdinalIgnoreCase);
         }
 
-        /// <summary>SAME ART ⇒ keep <paramref name="visible"/> (no re-decode, no re-fade); DIFFERENT ART ⇒
-        /// <paramref name="incoming"/> (an edit, a rollover); only one side usable ⇒ that side. Pure and order-safe.</summary>
+        /// <summary>SAME ART ⇒ keep the sharper 40-char id (a later 640 must replace a first-paint 64; a later 64
+        /// must never replace a visible 640); identical ids keep <paramref name="visible"/> (no re-decode, no re-fade).
+        /// DIFFERENT ART ⇒ <paramref name="incoming"/>. Only one side usable ⇒ that side. Pure and order-safe.
+        /// Size prefixes are the ones documented on <see cref="Palette"/>:
+        /// <c>0000b273</c> 640 &gt; <c>00001e02</c> 300 &gt; <c>00004851</c> 64.</summary>
         public static string? PreferVisible(string? incoming, string? visible)
         {
             bool inOk = IsUsable(incoming);
             bool visOk = IsUsable(visible);
             if (!inOk) return visOk ? visible : incoming ?? visible;
             if (!visOk) return incoming;
-            return SameArt(incoming, visible) ? visible : incoming;
+            if (!SameArt(incoming, visible)) return incoming;
+
+            var inId = Palette.ImageIdOf((Normalize(incoming) ?? "").AsSpan());
+            var visId = Palette.ImageIdOf((Normalize(visible) ?? "").AsSpan());
+            if (inId.Length != ImageIdLength || visId.Length != ImageIdLength)
+                return inId.Equals(visId, StringComparison.OrdinalIgnoreCase) ? visible : incoming;
+            if (inId.Equals(visId, StringComparison.OrdinalIgnoreCase)) return visible;
+            int inRank = RenditionRank(inId), visRank = RenditionRank(visId);
+            if (visRank > inRank) return visible;
+            return incoming;
+        }
+
+        /// <summary>THE COMMIT-SIDE COVER RULE, shared by every kind's <c>CommitX</c> arm (playlists, shows, albums,
+        /// artists, episodes, tracks). May <paramref name="incoming"/> be written over <paramref name="visible"/>?
+        /// <list type="bullet">
+        /// <item>nothing there yet ⇒ YES, always: a first paint is never a downgrade.</item>
+        /// <item>nothing incoming ⇒ NO: an answer that carries no cover never blanks one a fuller read already set.
+        /// Nothing legitimately removes a cover (S2).</item>
+        /// <item>otherwise <see cref="PreferVisible"/> decides, which is the SAME comparison the page-level latch
+        /// makes: different art replaces; the same art keeps whichever id names the sharper rendition.</item>
+        /// </list>
+        /// <para>Without this a second answer carrying a THINNER rendition of the art already on screen — a 64 from a
+        /// card or a list row landing after a 640 the header asked for — overwrote it, and the cover went soft with no
+        /// state change to explain it. The authority ladder cannot catch that: both answers are legitimate and often
+        /// carry the SAME authority; the difference is in the pixels, which only the image id knows.</para></summary>
+        public static bool AcceptsImage(StringId visible, StringId incoming)
+        {
+            if (visible.IsEmpty) return true;
+            if (incoming.IsEmpty) return false;
+            string? incUrl = Controls.ArtUrl(incoming);
+            string? visUrl = Controls.ArtUrl(visible);
+            return PreferVisible(incUrl, visUrl) == incUrl;
+        }
+
+        /// <summary>Known Spotify size-prefix rank of a 40-char image id (the last 8 hex of the 16-char marker).
+        /// Unknown prefixes rank 0 — a later unknown id still replaces a first paint (upgrade-optimistic) unless
+        /// the visible side is a known-larger prefix.</summary>
+        public static int RenditionRank(ReadOnlySpan<char> imageId)
+        {
+            if (imageId.Length != ImageIdLength) return 0;
+            var size = imageId.Slice(8, 8);
+            if (size.Equals("0000b273", StringComparison.OrdinalIgnoreCase)) return 3;
+            if (size.Equals("00001e02", StringComparison.OrdinalIgnoreCase)) return 2;
+            if (size.Equals("00004851", StringComparison.OrdinalIgnoreCase)) return 1;
+            return 0;
         }
     }
 

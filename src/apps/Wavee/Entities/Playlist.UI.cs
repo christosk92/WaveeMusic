@@ -25,6 +25,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Scene;
 using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Dialogs;
 using static FluentGpu.Dsl.Ui;
@@ -86,7 +87,6 @@ public readonly partial struct Playlist
 {
     // ══ 0. shared geometry (ch 06 §3) ════════════════════════════════════════════════════════════════════════════════
 
-    const int CoverDecodePx = 256;
     const float CoverSaturation = 1.18f;
     const float PencilBox = 20f;
     const float EditButtonH = 32f;
@@ -105,6 +105,15 @@ public readonly partial struct Playlist
 
     /// <summary>The 8-DIP geometry bucket every editor key folds (a sub-pixel resize must not remount an editor).</summary>
     static int Bucket(float w) => float.IsFinite(w) ? (int)Detail.VerticalLayout.BucketW(w) : -1;
+
+    /// <summary>Device-pixel decode for the playlist header cover: the larger of the laid-out DIP × scale and
+    /// the detail artwork ladder, so a ~232 DIP header is never stuck at a 256-px thumbnail.</summary>
+    public static int HeaderCoverDecodePx(float size, float scale)
+    {
+        int scaled = Design.ImageDecodeScale.For(size, scale);
+        int ladder = Detail.VerticalLayout.ArtworkDecodePx(size);
+        return Math.Max(scaled, ladder);
+    }
 
     static string TitleOf(Playlist p) => p.Knows(PlaylistFields.Identity) ? Entities.Strings.Resolve(p.TitleId) : "";
 
@@ -135,14 +144,15 @@ public readonly partial struct Playlist
 
     /// <summary>The playlist's own cover, else a 2×2 mosaic of member album covers (≥ 4), else the first, else the
     /// neutral placeholder (0.2.9 <c>PlaylistPicker.CoverOf</c> minus the generated art).</summary>
-    internal static Element CoverArt(Playlist p, float size, int decodePx = CoverDecodePx)
+    internal static Element CoverArt(Playlist p, float size, int decodePx = 0)
     {
+        int px = decodePx > 0 ? decodePx : HeaderCoverDecodePx(size, 1f);
         string? url = Controls.ArtUrl(p.ImageId);
-        if (url is { Length: > 0 }) return Controls.Artwork(url, size, size, Radii.Card, decodePx: decodePx, saturation: CoverSaturation);
+        if (url is { Length: > 0 }) return Controls.Artwork(url, size, size, Radii.Card, decodePx: px, saturation: CoverSaturation);
         var tiles = new string[4];
         int n = MosaicTiles(p, tiles);
         return n >= 4 ? Controls.Mosaic(tiles, size, size, Radii.Card)
-             : Controls.Artwork(n > 0 ? tiles[0] : null, size, size, Radii.Card, decodePx: decodePx, saturation: CoverSaturation);
+             : Controls.Artwork(n > 0 ? tiles[0] : null, size, size, Radii.Card, decodePx: px, saturation: CoverSaturation);
     }
 
     /// <summary>Up to four distinct member album covers, in membership order (0.2.9 <c>PlaylistSummary.MosaicTiles</c>).</summary>
@@ -205,6 +215,8 @@ public readonly partial struct Playlist
             bool fileDrag = drag.Active && drag.Payload is FileDropData;
             bool saving = _saving.Value, over = _dropOver.Value;
             float size = props.Size;
+            float scale = UseContext(Viewport.Scale);
+            int decodePx = HeaderCoverDecodePx(size, scale);
 
             Element overlayBody = saving
                 ? StatusChip(saved: false)
@@ -240,7 +252,7 @@ public readonly partial struct Playlist
                     }),
                 Children =
                 [
-                    CoverArt(new Playlist(props.Slot), size),
+                    CoverArt(new Playlist(props.Slot), size, decodePx),
                     new BoxEl
                     {
                         Width = size, Height = size, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
@@ -291,7 +303,7 @@ public readonly partial struct Playlist
             new BoxEl
             {
                 Key = saved ? "txt:saved" : "txt:saving", Animate = MotionRecipes.TextSwap,
-                Children = [new TextEl(Loc.Get(saved ? Strings.Detail.Edit.Saved : Strings.Detail.Edit.Saving)) { Size = 11f, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 }],
+                Children = [Design.Type.MicroMeta(Loc.Get(saved ? Strings.Detail.Edit.Saved : Strings.Detail.Edit.Saving)) with { Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 }],
             },
         ],
     };
@@ -708,13 +720,18 @@ public readonly partial struct Playlist
         }
     }
 
-    /// <summary>A user's display name, or its username while the profile has not landed (0.2.9 shows the raw id too).</summary>
-    internal static string NameOf(User u)
-    {
-        if (!u.IsValid) return "";
-        string name = Entities.Strings.Resolve(u.NameId);
-        return name.Length > 0 ? name : new string(EntityUri.IdOf(u.Uri.Text.AsSpan()));
-    }
+    /// <summary>A user's display name, or "" while the profile has not landed yet. 0.2.9 fell back to the raw
+    /// username carved out of the uri when the name was still blank; that fallback is DEAD for a Spotify user in
+    /// 0.3 — a user row's identity is always the TEXT form (`User.cs` ch 1), but nothing on the path from an
+    /// `ownerV2`/`addedBy` mention to this row guarantees <c>u.Uri.Text</c> resolves to anything but "" for a bare
+    /// mention, so <c>EntityUri.IdOf</c> had nothing to carve and the branch silently answered "" anyway — a dead
+    /// fallback that LOOKED like it was doing something is worse than an honest blank. Deleted outright rather
+    /// than kept as a no-op (no legacy paths): the real fix is <c>Spotify.Decode.Pathfinder</c>'s User arm no
+    /// longer sealing Identity on a nameless mention, so <c>Entities.Ensure</c> asks the profile again and this
+    /// resolves to the true name once it lands, instead of forever answering a placeholder that was never right.
+    /// <para>Public, not internal: this assembly has no <c>InternalsVisibleTo</c> (see <see cref="AccentOf"/>), so
+    /// <c>Wavee.Tests</c> can only pin the empty-fallback decision through a public surface.</para></summary>
+    public static string NameOf(User u) => u.IsValid ? Entities.Strings.Resolve(u.NameId) : "";
 
     // ══ 5. INVITE & ACCESS (W17) ═════════════════════════════════════════════════════════════════════════════════════
 
@@ -845,7 +862,7 @@ public readonly partial struct Playlist
                     new BoxEl
                     {
                         Key = "cta-txt:" + (state == 2 ? 1 : 0), Animate = MotionRecipes.TextSwap,
-                        Children = [new TextEl(Loc.Get(state == 2 ? Strings.Auth.Copied : Strings.Detail.Edit.CopyInviteLink)) { Size = 13f, Weight = 600, Color = ink }],
+                        Children = [Design.Type.DenseTitle(Loc.Get(state == 2 ? Strings.Auth.Copied : Strings.Detail.Edit.CopyInviteLink)) with { Color = ink }],
                     },
                 ],
             };
@@ -861,8 +878,8 @@ public readonly partial struct Playlist
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 2f,
                     Children =
                     [
-                        new TextEl(label) { Size = 13f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1 },
-                        new TextEl(caption) { Size = 11.5f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f },
+                        Design.Type.DenseTitle(label) with { Color = Tok.TextPrimary, MaxLines = 1 },
+                        Design.Type.MicroMeta(caption) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f },
                     ],
                 },
                 saving ? StatusChip(saved: false) : new BoxEl(),

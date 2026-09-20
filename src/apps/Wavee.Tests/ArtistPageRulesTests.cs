@@ -69,17 +69,18 @@ public class ArtistPageRulesTests
         Assert.DoesNotContain(ArtistSection.Upcoming, PlanOf(All() with { Pick = false }));
     }
 
-    /// <summary>ch 08 §0 #10 / parity 20: only destinations join the pivot — never the upcoming band, Latest release or
-    /// the tour banner.</summary>
+    /// <summary>ch 08 §0 #10 / parity 20: only destinations join the pivot — never the upcoming band, Latest release,
+    /// the tour banner, or Popular (the band title scrolls back to it; there is no Overview tab).</summary>
     [Fact]
     public void Pivot_HoldsDestinationsOnly()
     {
         Assert.False(ArtistSections.IsDestination(ArtistSection.Upcoming));
         Assert.False(ArtistSections.IsDestination(ArtistSection.LatestRelease));
         Assert.False(ArtistSections.IsDestination(ArtistSection.Tour));
+        Assert.False(ArtistSections.IsDestination(ArtistSection.Popular));
         int destinations = 0;
         foreach (var s in PlanOf(All())) if (ArtistSections.IsDestination(s)) destinations++;
-        Assert.Equal(12, destinations);
+        Assert.Equal(11, destinations);
     }
 
     /// <summary>TopTracks.cs:17-27: wide at 760, held down to 736 once wide, re-entered only at 760.</summary>

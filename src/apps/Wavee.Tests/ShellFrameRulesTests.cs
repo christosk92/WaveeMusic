@@ -252,3 +252,78 @@ public class ShellAutoZoomLoopTests
         Assert.Equal(0.75f, d.Zoom);
     }
 }
+
+// The clipped "Sear" stub (#88): a MOUNTED search field must never be laid out at the icon's 44 DIP, no matter which
+// frame it renders on relative to the allocator flipping `SearchMode`. `SearchField.Render()` (Shell.Masthead.UI.cs)
+// used to size itself with `Chrome.LaidOutSearchWidth`, which dispatches on `SearchMode` and answers 44 outright once
+// the mode is Icon — reachable even while the field is still the thing on screen, because the field's own re-render
+// and the host's mount/unmount decision are driven by different signals (`ChromeLayout` vs. `ContentVersion`) and can
+// disagree for a frame. The fix is a FORM-VS-WIDTH split: a field view asks `Chrome.FieldWidthFor` directly, which
+// never reads `SearchMode` and floors even the icon form's own published width back up to `ChromeSearchMinW`.
+public class ShellChromeSearchFieldWidthTests
+{
+    static readonly Shell.FrameRules.ChipForm[] Chips =
+    [
+        Shell.FrameRules.ChipForm.Profile, Shell.FrameRules.ChipForm.Connecting,
+        Shell.FrameRules.ChipForm.Reconnect, Shell.FrameRules.ChipForm.SignIn,
+    ];
+
+    // A field view's own candidate measurements: the stub value the bug actually produced, degenerate inputs a bad
+    // frame could hand back, and a spread either side of the floor and the ceiling.
+    static readonly float[] Measurements =
+        [float.NaN, float.PositiveInfinity, float.NegativeInfinity, -50f, 0f, 40f, 44f, 279f, 280f, 320f, 420f, 10_000f];
+
+    [Fact]
+    public void A_field_view_is_never_laid_out_below_the_floor_for_any_allocation_the_pressure_allocator_can_produce()
+    {
+        // Sweeps every width band the allocator resolves to — including the ones that land on `MergedSearchMode.Icon`,
+        // exactly the allocation that used to hand a still-mounted `SearchField` the 44-DIP magnifier width. The test
+        // calls `Chrome.FieldWidthFor` the same way `SearchField.Render()` now does: it is never told the mode, only
+        // the allocation's own `SearchWidth` and a candidate measurement.
+        foreach (var chip in Chips)
+        for (float w = 200f; w <= 2600f; w += 25f)
+        {
+            var c = Shell.Chrome.Resolve(w, 220f, null, chip);
+            foreach (float measured in Measurements)
+            {
+                float fieldWidth = Shell.Chrome.FieldWidthFor(c.SearchWidth, measured);
+                Assert.InRange(fieldWidth, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
+            }
+        }
+    }
+
+    [Fact]
+    public void The_icon_forms_own_published_width_floors_back_up_when_read_as_a_field()
+    {
+        // The concrete regression, isolated: an allocation resolved to Icon mode publishes SearchWidth == 44 DIP
+        // (`Chrome.SearchWidthFor`'s `if (!stage.Field) return Layout.ChromeSearchIconW;`). Feeding that value straight
+        // into `FieldWidthFor` — precisely what a stray field-side read of it does on the frame `SearchMode` flips
+        // ahead of the host unmounting the field — must clamp it back up to the floor, never lay out a real 44-DIP
+        // text field.
+        var icon = Shell.Chrome.Resolve(700f, naturalTabExtent: 110f);
+        Assert.Equal(Shell.MergedSearchMode.Icon, icon.SearchMode);
+        Assert.Equal(Shell.Layout.ChromeSearchIconW, icon.SearchWidth);
+
+        float fieldWidth = Shell.Chrome.FieldWidthFor(icon.SearchWidth, measuredCentreAvail: icon.SearchWidth);
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, fieldWidth);
+    }
+
+    [Fact]
+    public void Form_and_width_cannot_disagree_so_there_is_only_one_reading_to_key_the_mount_decision_on()
+    {
+        // `CenterIsland` mounts/unmounts the field off `SearchMode`; nothing else in the allocation is allowed to say
+        // something different, or a caller reading the "other" field could be one frame stale relative to the mount
+        // decision without any test ever noticing. Pin the single invariant that removes that possibility: the icon
+        // form ALWAYS publishes exactly the icon width, and the field form NEVER publishes below the floor — so
+        // `SearchMode` and `SearchWidth` are one fact, not two that could drift apart.
+        foreach (var chip in Chips)
+        for (float w = 200f; w <= 2600f; w += 10f)
+        {
+            var c = Shell.Chrome.Resolve(w, 220f, null, chip);
+            if (c.SearchMode == Shell.MergedSearchMode.Icon)
+                Assert.Equal(Shell.Layout.ChromeSearchIconW, c.SearchWidth);
+            else
+                Assert.InRange(c.SearchWidth, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
+        }
+    }
+}

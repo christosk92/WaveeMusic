@@ -1,4 +1,4 @@
-// ── Platform/Design.cs ─────────────────────────────────────────────────────────────────────────────────────────────
+﻿// ── Platform/Design.cs ─────────────────────────────────────────────────────────────────────────────────────────────
 // tokens, type ramp, colour, materials, motion, wash geometry, page-nav motion, reveal ramp, frame time, MorphKeys,
 // image decode scale, the four cover-leaf components, WaveeAccentCtx, the focus insets (FocusInsetBordered 2f /
 // FocusInsetRow 1f), the ambient cadence block. Not ContextBandLayout (A1) and not the palette plane (A5)
@@ -759,10 +759,19 @@ public static partial class Design
         }
 
         /// <summary>Chrome fill from a raw wire colour (a pathfinder extracted colour before the plane has graded the
-        /// art). Same <see cref="Lift"/> the hero Play button uses, so a card and its detail page agree. 0 (no payload)
-        /// is the semantic accent, not a fabricated hue.</summary>
+        /// art). Same <see cref="Lift"/> THEN THE SAME <see cref="Vivid"/> saturation floor <see cref="ChromeAccent"/>
+        /// applies — this rung and the graded rung are consumed by the SAME control (<c>Detail.AccentFor</c>'s Play
+        /// pill), and the header payload accent routinely paints for a beat before the async grading lands. Without
+        /// the floor here, that beat is a WASHED payload hue snapping to a saturation-floored graded hue the moment
+        /// grading lands — the muted-salmon-then-salmon flash this fixes. 0 (no payload) is the semantic accent, not a
+        /// fabricated hue.</summary>
         public static ColorF ChromeFromPayload(uint argb)
-            => argb == 0 ? Tok.AccentDefault : Lift(ToColor(argb));
+        {
+            if (argb == 0) return Tok.AccentDefault;
+            var lifted = Lift(ToColor(argb));
+            var (_, sat, _) = lifted.ToHsv();
+            return sat <= NeutralS ? Tok.AccentDefault : Vivid(lifted);
+        }
 
         /// <summary>Dark-theme wash from a raw wire colour: the payload's hue sunk to the brightness of the neutral
         /// scheme's dark background role, so a first paint before the grading lands sits where the graded
@@ -1139,8 +1148,11 @@ public static partial class Design
     /// <para><b>THE THREE-PART CONTRACT.</b> Every alias resolves a SIZE, a LINE HEIGHT and a WEIGHT — never a size
     /// alone. That is the whole reason to go through an alias rather than <c>with { Size = 13f }</c>: a bare size
     /// override keeps whatever line height the previous rung published, and a page of hand-picked sizes therefore has
-    /// no vertical rhythm at all. The engine ramp carries the pair (12/16 · 14/20 · 14/20-600 · 18/24 · 20/28-600 ·
-    /// 28/36-600 · 40/52-600 · 68/92-600), so repointing a call site at an alias brings the line height with it.</para>
+    /// no vertical rhythm at all. The engine ramp carries eight pairs (12/16 · 14/20 · 14/20-600 · 18/24 · 20/28-600 ·
+    /// 28/36-600 · 40/52-600 · 68/92-600); the app adds four rungs on that ladder (<see cref="MicroMeta"/> 11/15,
+    /// <see cref="DenseMeta"/> 13/18, <see cref="DenseTitle"/> 13/18-600, <see cref="SheetTitle"/> 16/22-600) — twelve
+    /// named sizes total, not a thirteenth invented ad hoc. <see cref="PivotLabel"/> 19/25/350 remains a sanctioned
+    /// off-ramp. Repointing a call site at an alias brings the line height with it.</para>
     ///
     /// <para><b>WEIGHT POLICY: 400 and 600 only, with SIX documented divergences.</b> Three DISPLAY-FACE identity
     /// aliases keep 700 (<see cref="ArtistDisplay"/> / <see cref="ArtistTitle"/> / <see cref="ArtistCompactTitle"/> —
@@ -1187,6 +1199,20 @@ public static partial class Design
         /// name, a day heading — reads <c>Ui.Caption(x) with { Weight = 600 }</c> straight off the factory (same
         /// metrics, no tracking) rather than claiming to be a label it is not. One alias per ROLE, not per rung.</para></summary>
         public static TextEl Eyebrow(string s) => Ui.Caption(s) with { Weight = 600, CharSpacing = EyebrowTracking };
+
+        /// <summary>Badges, counts, timestamps, chart marks — the rung BELOW caption. The engine ramp stops at 12/16
+        /// because it is a document ramp; a dense media row needs one step under it, and 61 sites had already invented
+        /// it as a raw 11f with no line height.</summary>
+        public static TextEl MicroMeta(string s) => Ui.Caption(s) with { Size = 11f, LineHeight = 15f };
+
+        /// <summary>Credits, list metadata, drawer body — between caption and body. 65 sites had invented it as 13f.</summary>
+        public static TextEl DenseMeta(string s) => Ui.Body(s) with { Size = 13f, LineHeight = 18f };
+
+        /// <summary>A title in a dense list (drawer rows, chart rows) — DenseMeta's weight pair.</summary>
+        public static TextEl DenseTitle(string s) => Ui.BodyStrong(s) with { Size = 13f, LineHeight = 18f };
+
+        /// <summary>A sheet or card heading, between BodyStrong and Subtitle.</summary>
+        public static TextEl SheetTitle(string s) => Ui.BodyLarge(s) with { Size = 16f, LineHeight = 22f, Weight = 600 };
 
         /// <summary>"Because you played…" section / rail headers. → <c>Ui.Subtitle</c> (20 / 28 / 600), UI face.</summary>
         public static TextEl RailHeader(string s) => Ui.Subtitle(s);
@@ -2275,6 +2301,38 @@ public sealed class CoverPageTonePlane : Component
     }
 }
 
+/// <summary>The pre-settlement Exit guard <see cref="CoverArtistBlendWash"/> and <see cref="CoverKeyedVeil"/> share,
+/// pulled out of both Render methods as a pure decision so it is unit-testable without a render loop (repo rule:
+/// no source-text tests — extract the decision, test the extraction).
+/// <para><b>The defect:</b> <c>Palette.TryScheme</c> enqueues on a miss, so the render right after mount routinely
+/// resolves to a Payload/Default GUESS before the real grading lands a frame or two later. Both leaves re-key on
+/// rung + colour (a Gradient can't cross-fade through <c>BrushTransitionMs</c>), so that guess-to-graded swap is a
+/// keyed node replacement. If the OUTGOING (guessed) node animates its Exit the same way a genuine LATER re-key
+/// does, its fade-out overlaps the INCOMING (graded) node's fade-in — two differently-hued, semi-transparent veils
+/// summing over the artist photo for one <c>ControlNormal</c>, which reads as the lighter, more opaque wash this
+/// exists to prevent.</para>
+/// <para><b>The fix:</b> every swap before the ladder has produced a DEFINITIVE first answer (a real grading hit,
+/// or Definite because nothing better can ever arrive — no url, or a url the endpoint cannot grade) exits INSTANTLY
+/// (no Exit spec ⇒ immediate structural removal, no deferred fade) instead of animating. The incoming node can
+/// still fade its Enter in on its own — with the outgoing one already gone, there is nothing left for it to
+/// composite against, so at most one veil is ever live. Once settled, later changes (a live re-grading, a theme
+/// flip) cross-fade normally, same as before this fix.</para>
+/// <para>Public, not internal: this assembly has no <c>InternalsVisibleTo</c> (see <c>Controls.cs</c>), and the
+/// invariant is pinned by a fact in <c>Wavee.Tests</c>.</para></summary>
+public static class VeilSettlement
+{
+    /// <summary>Advances the leaf's settled state for this frame and says whether the node this frame's re-key
+    /// REPLACES may animate its Exit. <paramref name="alreadySettled"/> is the leaf's state entering the frame;
+    /// the returned <c>Settled</c> is what the leaf should hold for the NEXT frame. Settlement is one-way — once
+    /// true it stays true for the life of the component instance (a fresh mount, e.g. navigating to a different
+    /// artist, gets a fresh instance and starts unsettled again).</summary>
+    public static (bool Settled, bool ExitAnimates) Advance(bool alreadySettled, AccentLadder.Rung rung, bool definite)
+    {
+        bool settled = alreadySettled || rung == AccentLadder.Rung.Graded || definite;
+        return (settled, settled);
+    }
+}
+
 /// <summary>The artist page's blend wash. Height and boundary come from the CALLER (owner N's hero layout) so this file
 /// carries no artist-page arithmetic.</summary>
 public sealed class CoverArtistBlendWash : Component
@@ -2285,6 +2343,9 @@ public sealed class CoverArtistBlendWash : Component
     static readonly Func<uint, ColorF> s_lift = static a => Design.Palette.Lift(Design.Palette.ToColor(a));
     static readonly Func<uint, ColorF> s_sink = static a => Design.Palette.DarkFromPayload(a);
     bool _mounted;
+    /// <summary>Has the ladder ever produced a DEFINITIVE first answer (a real grading hit, or Definite because
+    /// nothing better can ever arrive)? See the Exit guard below — the whole point of this field.</summary>
+    bool _settled;
 
     public override Element Render()
     {
@@ -2316,15 +2377,24 @@ public sealed class CoverArtistBlendWash : Component
         // Children-list slot honours it.
         // The fade is for a RE-KEY (a grading landing over the first tone), never for the first paint: the hero
         // must not brighten in over its first frames.
+        //
+        // PRE-SETTLEMENT EXIT GUARD — see VeilSettlement's doc for the defect and the fix.
+        var (settled, exitAnimates) = VeilSettlement.Advance(_settled, rung, definite);
         Element tone = new BoxEl
         {
             Key = "artist-wash-tone:" + (byte)rung + ":" + wash.GetHashCode().ToString("X8"),
             HitTestVisible = false, Gradient = gradient,
-            Enter = _mounted ? new EnterExit(Opacity: 0f, Active: true) : null,
-            Exit = new EnterExit(Opacity: 0f, Active: true),
+            // …AND THE ENTER WITH IT. Suppressing only the Exit still leaves the incoming node fading 0->1 over a
+            // gap where the outgoing one has already gone - the photo shows through UNVEILED for the length of
+            // the fade, which is a second flash in place of the first (lighter, and the title's contrast drops
+            // with it). A pre-settlement re-key is a CORRECTION, not a transition: it swaps in one frame and is
+            // meant to be imperceptible. Once settled, a genuine later change cross-fades exactly as before.
+            Enter = _mounted && exitAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,
+            Exit = exitAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,
             Transition = MotionTok.ControlNormal,
         };
         _mounted = true;
+        _settled = settled;
         return new BoxEl { ZStack = true, Height = p.Height, HitTestVisible = false, Children = [tone] };
     }
 }
@@ -2337,6 +2407,9 @@ public sealed class CoverKeyedVeil : Component
 
     static readonly Func<uint, ColorF> s_lift = static a => Design.Palette.Lift(Design.Palette.ToColor(a));
     bool _mounted;
+    /// <summary>See the identical field on <see cref="CoverArtistBlendWash"/> and the Exit guard below — this leaf
+    /// veils the same photo the wash sits behind, so it carries the same defect and the same fix.</summary>
+    bool _settled;
 
     public override Element Render()
     {
@@ -2351,15 +2424,21 @@ public sealed class CoverKeyedVeil : Component
         var result = AccentLadder.Resolve(new(graded, p.PayloadAccent, definite), null, Tok.FillLayerDefault, s_lift);
         // Keyed swap: see CoverArtistBlendWash — a Gradient can't cross-fade through BrushTransitionMs, and a
         // component-root Key is inert (ReconcileSingleChild), so the keyed node is a CHILD.
+        //
+        // PRE-SETTLEMENT EXIT GUARD — see VeilSettlement's doc for the defect and the fix.
+        var (settled, exitAnimates) = VeilSettlement.Advance(_settled, result.Rung, definite);
         Element veil = new BoxEl
         {
             Key = "artist-veil-tone:" + (byte)result.Rung + ":" + result.Color.GetHashCode().ToString("X8"),
             HitTestVisible = false, Gradient = Controls.ArtistHeroVeil(result.Color, p.Vertical),
-            Enter = _mounted ? new EnterExit(Opacity: 0f, Active: true) : null,   // fade only a re-key, never the first paint
-            Exit = new EnterExit(Opacity: 0f, Active: true),
+            // Fade only a re-key, never the first paint - and never a PRE-SETTLEMENT re-key either: see the sibling
+            // in CoverArtistBlendWash. An Enter with no Exit beneath it unveils the photo for the length of the fade.
+            Enter = _mounted && exitAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,
+            Exit = exitAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,
             Transition = MotionTok.ControlNormal,
         };
         _mounted = true;
+        _settled = settled;
         return new BoxEl { Width = p.Width, Height = p.Height, ZStack = true, HitTestVisible = false, Children = [veil] };
     }
 }

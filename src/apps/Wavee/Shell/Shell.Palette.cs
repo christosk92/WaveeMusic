@@ -411,7 +411,7 @@ public static partial class Shell
                     new BoxEl
                     {
                         Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
-                        Children = [new TextEl(Loc.Get(Strings.Palette.NoMatches)) { Size = 13f, Color = Tok.TextTertiary }],
+                        Children = [global::Wavee.Design.Type.DenseMeta(Loc.Get(Strings.Palette.NoMatches)) with { Color = Tok.TextTertiary }],
                     },
                 ];
             }
@@ -452,7 +452,7 @@ public static partial class Shell
                                     },
                                 ],
                             },
-                            active ? new TextEl(enter) { Size = 11f, Color = Tok.TextTertiary } : new BoxEl(),
+                            active ? global::Wavee.Design.Type.MicroMeta(enter) with { Color = Tok.TextTertiary } : new BoxEl(),
                         ],
                     };
                 }

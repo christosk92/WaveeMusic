@@ -1004,6 +1004,10 @@ public static partial class Shell
         /// source changes.</summary>
         public static readonly Signal<bool> DockedVideoHeightPinned = new(false);
 
+        /// <summary>The rail column's laid-out height. The docked cap clamps against the remainder so a 560 DIP video
+        /// cannot shove lyrics off the window.</summary>
+        public static readonly FloatSignal RailBodyHeight = new(0f);
+
         /// <summary>The PLAYABLE uri the attached page's own stage would host — a module watch page's video — or
         /// <c>""</c> when no attached page stages anything. NAVIGATION state, not rail state, which is why it lives
         /// beside the chrome the arbitration reads; and the EMPTY STRING (not null) is the resting value, so a reader
@@ -1073,10 +1077,10 @@ public static partial class Shell
     /// <summary>How tall the docked cap may grow. Leaves the lyrics/queue body as the remaining Grow=1 column.</summary>
     public const float DockedVideoMaxH = 560f;
 
-    public static float ClampDockedVideoHeight(float h, float railW)
+    public static float ClampDockedVideoHeight(float h, float railW, float remainingRailH = DockedVideoMaxH)
     {
         float min = DockedVideoNaturalH(railW);
-        float max = Math.Max(min, DockedVideoMaxH);
+        float max = Math.Max(min, DockedCapCeiling(remainingRailH));
         return h <= 0f ? min : Math.Clamp(h, min, max);
     }
 
@@ -1091,10 +1095,16 @@ public static partial class Shell
     /// <param name="railW">The rail's current width — the card is full-bleed, so this IS the video's width.</param>
     /// <param name="naturalW">The media's natural pixel width; ≤ 0 = not reported yet (answers 16:9).</param>
     /// <param name="naturalH">The media's natural pixel height; ≤ 0 = not reported yet.</param>
-    public static float FitDockedVideoHeight(float railW, int naturalW, int naturalH)
+    public static float DockedCapCeiling(float remainingRailH)
+    {
+        float cap = remainingRailH > 0f && float.IsFinite(remainingRailH) ? remainingRailH : DockedVideoMaxH;
+        return Math.Clamp(cap, DockedVideoFitMinH, DockedVideoMaxH);
+    }
+
+    public static float FitDockedVideoHeight(float railW, int naturalW, int naturalH, float remainingRailH = DockedVideoMaxH)
     {
         float ratio = naturalW > 0 && naturalH > 0 ? (float)naturalH / naturalW : 9f / 16f;
-        return Math.Clamp(railW * ratio, DockedVideoFitMinH, DockedVideoMaxH);
+        return Math.Clamp(railW * ratio, DockedVideoFitMinH, DockedCapCeiling(remainingRailH));
     }
 
     /// <summary>Viewport-fit test for sidebar + rail + a minimum usable content region.</summary>

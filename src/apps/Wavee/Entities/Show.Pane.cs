@@ -169,10 +169,8 @@ public readonly partial struct Show
             var f = m.Facts?.Value ?? default;
             var id = IdentityOf(show, in f);
             Element header = PaneHeader(id.CoverUrl, id.Eyebrow, id.Title, _open,
-                new TextEl(Entities.Strings.Resolve(show.PublisherId))
-                {
-                    Size = 13.5f, LineHeight = 20f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                },
+                Design.Type.DenseMeta(Entities.Strings.Resolve(show.PublisherId))
+                    with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 id.Meta ?? "");
             Element commands = new BoxEl
             {

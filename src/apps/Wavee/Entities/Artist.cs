@@ -499,7 +499,14 @@ public static partial class Entities
                 // from leaving three names in the interner (defect 1).
                 t.SetText(ref t.Name, slot, s.Intern(row.Name));
                 // A name-only stub must not blank a portrait the overview already gave us (ch 07 G9).
-                if (!row.Image.IsEmpty) t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                if (!row.Image.IsEmpty)
+                {
+                    // …and a thinner rendition of the SAME portrait must not replace the sharper one already shown
+                    // (Detail.CoverLatch.AcceptsImage).
+                    var incomingImage = s.Intern(row.Image);
+                    if (Detail.CoverLatch.AcceptsImage(t.Image[slot], incomingImage))
+                        t.SetText(ref t.Image, slot, incomingImage);
+                }
                 // `known & Identity`, NOT the bare `ArtistFields.Identity` constant (the "Top artists" chip bug,
                 // 2026-09-15): a billed-artist mention (`Spotify.Decode.cs`'s `ThinArtist`, a track/album's credit
                 // run) stages Name ALONE — it never reads a portrait off the wire at all — so sealing the whole

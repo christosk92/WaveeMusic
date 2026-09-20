@@ -191,6 +191,22 @@ public static class ListOpenPolicy
         return left > 0 ? left : 0;
     }
 
+    /// <summary>THE PRE-OPEN WINDOW'S BOUND — the SAME class of defect as a hold with no wake, one step earlier.
+    /// A surface's first frames render before its own demand effect has opened anything, so until the open runs it
+    /// answers "am I held?" by RE-DECIDING the plan (<see cref="Decide"/>, which is what <c>ListOpen.WouldHold</c>
+    /// does). That answer is a function of the CLOCK and of stamps, and NOTHING publishes when it goes stale: no
+    /// record exists yet, so <c>ListOpen.Changed</c> never moves for it and <c>ListOpen.ExpireHold</c> has nothing to
+    /// settle. A surface whose open is late — or never reached at all, because its demand ran while the playlist row
+    /// was not yet valid — therefore holds its reveal on a decision nobody re-reads, until an unrelated re-render (a
+    /// window resize) happens to ask again. That is the eternal shimmer, a second time.
+    /// <para>So a pre-open answer that HOLDS is bounded by the very budget of the hold it predicts, as an armable
+    /// number: this many milliseconds on the surface's own frame clock, and then the surface stops honouring the
+    /// re-decide and paints (<c>Playlist.HeldRows</c> latches the pre-open window spent). ZERO when the re-decide does
+    /// not hold — there is nothing to bound. One expression of <see cref="RemainingHoldMs"/> over the plan's own
+    /// deadline, so a pre-open hold and the hold it predicts can never be bounded differently.</para></summary>
+    public static int PreOpenHoldMs(in Plan plan, int nowMs)
+        => RemainingHoldMs(plan.Hold, plan.HoldUntilMs, nowMs, Observed.Pending);
+
     /// <summary>The SLACK a surface adds to <see cref="RemainingHoldMs"/> when it arms its wake. The frame clock a
     /// <c>UseTimeout</c> schedules on is not the clock a hold's deadline is written in (<c>ListStamps.NowMs</c>), so a
     /// wake armed at exactly the remaining budget can land a hair BEFORE the deadline — and the no-op that follows
@@ -320,17 +336,26 @@ public static class ListOpen
 
     /// <summary>Would an open from <paramref name="surface"/> hold this list right now? The same pure rule over the same
     /// facts as <see cref="Open"/>, and nothing written — what a surface's FIRST frame reads, because it renders before
-    /// its demand effect has opened anything. A read, never a subscription.</summary>
-    public static bool WouldHold(Playlist pl, ListOpenPolicy.Surface surface)
+    /// its demand effect has opened anything. A read, never a subscription.
+    /// <para><see cref="WouldHoldMs"/> compared against zero, so the answer and the bound a surface arms its pre-open
+    /// wake with can never disagree — exactly as <see cref="Holding"/> is <see cref="RemainingHoldMs"/>
+    /// compared against zero on the other side of the open.</para></summary>
+    public static bool WouldHold(Playlist pl, ListOpenPolicy.Surface surface) => WouldHoldMs(pl, surface) > 0;
+
+    /// <summary>HOW LONG A PRE-OPEN ANSWER MAY STAND (0 when the re-decide does not hold) — the number a surface arms
+    /// its PRE-OPEN wake with, so the clock edge of a decision that publishes nothing becomes an event too
+    /// (<see cref="ListOpenPolicy.PreOpenHoldMs"/>). A read, never a subscription.</summary>
+    public static int WouldHoldMs(Playlist pl, ListOpenPolicy.Surface surface)
     {
         var scope = Entities.Current;
-        if (scope is null || !pl.IsValid) return false;
+        if (scope is null || !pl.IsValid) return 0;
         int now = ListStamps.NowMs();
         int at = IndexOf(pl.Slot);
         if (at >= 0 && (!Live(in s_entries[at], scope) || !ListOpenPolicy.StillInFlight(s_entries[at].AskedAtMs, now))) at = -1;
         string? uri = pl.Id.Provider == EntityProvider.Spotify ? pl.Uri.Text : null;
         var facts = FactsOf(scope, pl, uri, at);
-        return ListOpenPolicy.Decide(surface, in facts, now).Hold;
+        var plan = ListOpenPolicy.Decide(surface, in facts, now);
+        return ListOpenPolicy.PreOpenHoldMs(in plan, now);
     }
 
     /// <summary>THE FACT THE REVEAL GATE READS: is a surface holding this list's reveal on its open revalidation — not
@@ -531,6 +556,12 @@ public static class ListOpen
     // (Playlist.PlaylistPage: UseTimeout for ListOpen.RemainingHoldMs, firing ListOpen.ExpireHold), and the settle it
     // produces goes through Changed like every other. A thread-pool timer posting into the UI queue could mark the
     // record spent without anything re-rendering, which is the eternal shimmer this replaced.
+    //
+    // The PRE-OPEN window has the same shape and the same wake. Before a surface's demand effect has run, there is no
+    // record at all — WouldHold merely re-decides the plan — so RemainingHoldMs is 0, ExpireHold no-ops and NOTHING
+    // ends that state. WouldHoldMs is the bound for it (ListOpenPolicy.PreOpenHoldMs over the plan's own deadline),
+    // armed on the same UseTimeout; the surface latches its pre-open window spent when it fires, which is a signal
+    // write the same memos read. Same clock, same hook, one mechanism.
 
     static void LogOpen(string? uri, ListOpenPolicy.Surface surface, in ListOpenPolicy.Facts facts, in ListOpenPolicy.Plan plan,
                         bool joined, int now)

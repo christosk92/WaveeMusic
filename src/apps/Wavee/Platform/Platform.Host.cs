@@ -830,8 +830,45 @@ public static partial class Log
     /// after an intermittent hang. Everything else stays Debug-gated by MinLevel.</summary>
     public static Action<string> DiagSink => static s =>
     {
-        if (GpuForensic(s)) Warn("engine", s); else Debug("engine", s);
+        switch (RouteFor(s))
+        {
+            case DiagRoute.Warn: Warn("engine", s); break;
+            case DiagRoute.Info: Info("engine", s); break;
+            default: Debug("engine", s); break;
+        }
     };
+
+    /// <summary>Where a sink-routed engine line lands. The engine writes every instrument through one
+    /// <c>Diag.Line</c>, so this routing is the ONLY thing between an instrument and the log a user can send: the
+    /// file floor is Info in every build, and the Verbose toggle raises the RING, not the file. A Debug-routed
+    /// engine line is therefore invisible on disk even in a Debug build with Verbose ticked.</summary>
+    public enum DiagRoute : byte { Debug, Info, Warn }
+
+    /// <summary>Which route an engine diagnostic takes. Pure, so "is this instrument actually on?" is a unit test
+    /// rather than something discovered by grepping a log that never contained the line.</summary>
+    public static DiagRoute RouteFor(string s)
+        => GpuForensic(s) ? DiagRoute.Warn
+         : AlwaysOn(s) ? DiagRoute.Info
+         : DiagRoute.Debug;
+
+    /// <summary>The engine instruments that must clear the Info file gate without pretending to be a fault. All of
+    /// them are edge- or value-gated, so none can spam:
+    /// <list type="bullet">
+    /// <item><c>[video] pump</c> — the placement geometry (area / viewport / videoRect / host-fullscreen). It is the
+    /// only oracle for "is the picture where it should be": a DirectComposition visual behind a DestOut hole does not
+    /// appear in a screenshot at all, so there is no pixel to check.</item>
+    /// <item><c>[media.chrome]</c> — one line per visibility edge, with the cause and the holds.</item>
+    /// <item><c>[overlay] wantWindowed</c> — its ABSENCE is the evidence. An in-app <c>PopupChrome.Popup</c> must
+    /// never lease an HWND, and the only way to state that is a line that does not appear.</item>
+    /// <item><c>[window.move]</c> / <c>[window.size]</c> — the OS move/size loop edges. A stuck resize capture is a
+    /// <c>begin</c> with no <c>end</c>, which is unreadable if the pair is Debug-gated.</item>
+    /// </list></summary>
+    static bool AlwaysOn(string s)
+        => s.StartsWith("[video]", StringComparison.Ordinal)
+        || s.StartsWith("[media.chrome]", StringComparison.Ordinal)
+        || s.StartsWith("[overlay] wantWindowed", StringComparison.Ordinal)
+        || s.StartsWith("[window.move]", StringComparison.Ordinal)
+        || s.StartsWith("[window.size]", StringComparison.Ordinal);
 
     /// <summary>True for the sink-routed engine lines that name a GPU stall, loss, recovery or adapter — the evidence
     /// that must survive the Info file gate. Allocation-free ordinal prefix/substring checks.</summary>

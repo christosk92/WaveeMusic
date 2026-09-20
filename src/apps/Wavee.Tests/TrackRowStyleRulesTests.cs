@@ -129,8 +129,14 @@ public sealed class TrackRowStyleRulesTests
 
         Assert.Equal(new Track.TrailingColumns(Video: false, Actions: true, Expand: true), classic);
         Assert.Equal(new Track.TrailingColumns(Video: true, Actions: false, Expand: true), modern);
+        // Classic gets no film LANE (asserted above), so the inline glyph is its only indicator and is NOT dropped
+        // by width any more: a sidebar plus a now-playing rail reach tier 4, and a Classic playlist there used to
+        // show no video indicator at all while the artist chart beside it still did.
         Assert.True(TableRules.ShowClassicInlineVideo(true, hasVideo: true, tier: 3));
-        Assert.False(TableRules.ShowClassicInlineVideo(true, hasVideo: true, tier: 4));
+        Assert.True(TableRules.ShowClassicInlineVideo(true, hasVideo: true, tier: 4));
+        Assert.True(TableRules.ShowClassicInlineVideo(true, hasVideo: true, tier: 6));
+        Assert.False(TableRules.ShowClassicInlineVideo(true, hasVideo: false, tier: 0));
+        Assert.False(TableRules.ShowClassicInlineVideo(false, hasVideo: true, tier: 0));
     }
 
     /// <summary>The trailing lane is ONE width. Modern still TRADES the "…" lane for the film lane on a release that

@@ -695,14 +695,14 @@ public static class LibraryWordRail
     }
 
     /// <summary>The rail word's loc KEY per code. The rail has its OWN keys (<c>library.rail.*</c>, the lowercase words)
-    /// rather than the pill's Title-Case <c>library.sort.*</c> labels, because the sidebar's Library V3 shares those for
+    /// rather than the pill's sentence-case <c>library.sort.*</c> labels, because the sidebar's Library V3 shares those for
     /// codes 0-3 and its pills would have gone lowercase with them (plan §5.9's decision).</summary>
     public static string WordKey(LibraryNavSort sort) => sort switch
     {
-        LibraryNavSort.RecentlyAdded => Strings.Library.Rail.RecentlyAdded,   // "added"
-        LibraryNavSort.Alphabetical => Strings.Library.Rail.Alphabetical,     // "a-z"
+        LibraryNavSort.RecentlyAdded => Strings.Library.Rail.RecentlyAdded,   // "recently added"
+        LibraryNavSort.Alphabetical => Strings.Library.Rail.Alphabetical,     // "alphabetical"
         LibraryNavSort.Creator => Strings.Library.Rail.Creator,               // "artist"
-        LibraryNavSort.ReleaseDate => Strings.Library.Rail.ReleaseDate,       // "year"
+        LibraryNavSort.ReleaseDate => Strings.Library.Rail.ReleaseDate,       // "release date"
         LibraryNavSort.Albums => Strings.Library.Rail.Albums,                 // "albums"
         _ => Strings.Library.Rail.Recents,                                    // "recents"
     };

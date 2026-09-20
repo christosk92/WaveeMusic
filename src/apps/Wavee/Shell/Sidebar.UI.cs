@@ -746,9 +746,9 @@ public static partial class Sidebar
                     OnClick = customize,
                     Children =
                     [
-                        new TextEl(Loc.Get("sidebar.layout.customize"))
+                        global::Wavee.Design.Type.DenseTitle(Loc.Get("sidebar.layout.customize")) with
                         {
-                            Size = 13f, Weight = 600, Color = Tok.TextOnAccentPrimary, MaxLines = 1,
+                            Color = Tok.TextOnAccentPrimary, MaxLines = 1,
                         },
                     ],
                 }.Interactive(Interaction.Subtle));

@@ -206,4 +206,18 @@ public class PlaylistHeaderRulesTests
     [InlineData(2, false, true)]
     public void ShowCollaborators_IsTheArmSwap(int count, bool collaborative, bool expected)
         => Assert.Equal(expected, Text.ShowCollaborators(count, collaborative));
+
+    // ── 3. owner demand ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void OwnerAsk_UnknownIdentity_IsEnsure()
+        => Assert.Equal(Playlist.OwnerAsk.Ensure, Rules.OwnerAskFor(knownIdentity: false, Authority.None));
+
+    [Fact]
+    public void OwnerAsk_ThinNamedRow_IsInvalidate()
+        => Assert.Equal(Playlist.OwnerAsk.Invalidate, Rules.OwnerAskFor(knownIdentity: true, Authority.Thin));
+
+    [Fact]
+    public void OwnerAsk_FullProfile_IsNone()
+        => Assert.Equal(Playlist.OwnerAsk.None, Rules.OwnerAskFor(knownIdentity: true, Authority.Full));
 }

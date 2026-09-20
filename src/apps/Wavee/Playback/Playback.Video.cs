@@ -351,7 +351,7 @@ public static partial class Playback
         public static void Load(VideoSource source, uint epoch, int fromMs = 0, bool paused = false)
         {
             Boot();
-            float rate = RateFor(s_state.CurrentId);
+            float rate = RateFor(s_state.CurrentId, s_state.VideoWanted);
             lock (s_gate)
             {
                 s_desiredRate = rate;
@@ -520,6 +520,39 @@ public static partial class Playback
                 }
             }
             catch (Exception ex) { Log.Warn("video", "quality pin failed", ex); }
+        }
+
+        /// <summary>The rung heights the bound manifest actually offers, tallest first, no duplicates. Pure, so "does
+        /// the quality menu lie?" is a unit test: a fixed ladder offers rungs no variant matches (picking one cannot
+        /// pin, yet it still moves the ABR ceiling, so the row reads as selected while playback is really on Auto) and
+        /// hides the ones the manifest does have.</summary>
+        public static int[] QualityLadder(ReadOnlySpan<int> heights)
+        {
+            Span<int> seen = heights.Length <= 32 ? stackalloc int[heights.Length] : new int[heights.Length];
+            int n = 0;
+            foreach (int h in heights)
+            {
+                if (h <= 0) continue;
+                bool dup = false;
+                for (int i = 0; i < n; i++) if (seen[i] == h) { dup = true; break; }
+                if (!dup) seen[n++] = h;
+            }
+            var result = seen[..n].ToArray();
+            Array.Sort(result, static (a, b) => b.CompareTo(a));
+            return result;
+        }
+
+        /// <summary>The live ladder for the bound player — empty while nothing is open, which is also when the menu has
+        /// nothing honest to offer beyond Auto.</summary>
+        public static int[] QualityRungs()
+        {
+            MediaPlayer? p;
+            lock (s_gate) { p = s_player; }
+            if (p is null) return [];
+            var heights = new List<int>(8);
+            try { foreach (QualityVariant v in p.Qualities.Variants) heights.Add(v.Resolution.Height); }
+            catch { return []; }
+            return QualityLadder(heights.ToArray());   // menu-open only; not a hot path
         }
 
         /// <summary>Re-apply the ABR ceiling from the stored pin and the live metered cap (G-148). Any thread — the host

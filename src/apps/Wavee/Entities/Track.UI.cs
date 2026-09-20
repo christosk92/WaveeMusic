@@ -716,12 +716,14 @@ public readonly partial struct Track
 
     /// <summary>The Added-by lane (ch 01 §3): a 24-DIP <c>PersonPicture</c> + an 8-DIP gap + a Caption name (Modern);
     /// the bare name with no avatar (Classic, parity 79). The profile name when <c>UserFields.Identity</c> is known, else
-    /// the raw membership id. An empty cell for no adder.</summary>
+    /// and NOTHING until it lands: a uri fragment reads as a real name when it is only a guess, which is the rule
+    /// `Playlist.NameOf` follows for the owner and the sidebar follows for a pin. An empty cell for no adder.</summary>
     public static Element AddedByCell(User by, ColorF ink, bool classic, string? key = null)
     {
         if (by.Slot <= 0) return RowLeftCell(new BoxEl(), key);
         string name = by.Knows(UserFields.Identity) ? Entities.Strings.Resolve(by.NameId) : "";
-        string label = name.Length > 0 ? name : EntityUri.IdOf(by.Uri.Text).ToString();
+        if (name.Length == 0) return RowLeftCell(new BoxEl(), key);   // unresolved: blank, never the uri fragment
+        string label = name;
         if (classic)
             return RowLeftCell(RowFactualFillText(label, classic: true, ink), key);
         return new BoxEl

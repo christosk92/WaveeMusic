@@ -263,7 +263,7 @@ public static partial class Setup
                         ? new BoxEl
                         {
                             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-                            Children = [ProgressRing.Indeterminate(20f), new TextEl(Loc.Get(Strings.Auth.GettingCode)) { Size = 12.5f, Color = Tok.TextTertiary }],
+                            Children = [ProgressRing.Indeterminate(20f), Design.Type.DenseMeta(Loc.Get(Strings.Auth.GettingCode)) with { Color = Tok.TextTertiary }],
                         }
                         : Button.Standard(Loc.Get(Strings.Auth.GetNewCode), StartPairing),
                 });

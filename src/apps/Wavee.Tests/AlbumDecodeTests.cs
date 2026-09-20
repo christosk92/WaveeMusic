@@ -576,4 +576,29 @@ public class AlbumDecodeTests
         TestScope.CommitAndPublish(later);
         Assert.Equal(0xFF1A2B3Cu, AlbumOf("spotify:album:hdr").Accent);
     }
+
+    [Fact]
+    public void CoverArt_picks_the_640_source_not_the_first_64()
+    {
+        // Spotify lists 64 then 300 then 640. ImageNode used to intern the first URL, so every playlist/album/show
+        // hero decoded a 64px JPEG. The stored column is the rendition — Choose(640) is the pick.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.SimilarAlbums(Json("""
+            { "data": { "seoRecommendedTrackAlbum": { "items": [
+                { "data": { "uri": "spotify:album:A", "name": "Sized", "type": "ALBUM",
+                            "date": { "year": 2022 },
+                            "coverArt": { "sources": [
+                                { "url": "https://cdn/64", "width": 64, "height": 64 },
+                                { "url": "https://cdn/300", "width": 300, "height": 300 },
+                                { "url": "https://cdn/640", "width": 640, "height": 640 }
+                            ] },
+                            "artists": { "items": [ { "uri": "spotify:artist:X", "profile": { "name": "Aurora" } } ] } } }
+            ] } } }
+            """), "spotify:album:page"u8, s);
+        TestScope.CommitAndPublish(s);
+
+        var a = new Album(Assert.Single(Entities.Current.Edges.AlbumSimilar.Targets(AlbumOf("spotify:album:page").Slot).ToArray()));
+        Assert.Equal("https://cdn/640", Entities.Strings.Resolve(a.ImageId));
+    }
 }

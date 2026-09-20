@@ -93,6 +93,39 @@ public class ArtistReadinessRuleTests
         // A Partial edge with everything asked and out is loading, not failed.
         Assert.False(ArtistReadiness.ChartFailed(false, Chart, Stamp, EdgeState.Partial, [identity], [Row], [Stamp]));
     }
+
+    /// <summary>The page gate is the DATA and GEOMETRY gate, and nothing else. It deliberately does NOT wait for the
+    /// hero photograph: a slow download would hold an otherwise fully-known page at a shimmer, and the photo owns its
+    /// own scale-and-fade entrance when its bitmap lands (`Artist.HeroArt`).</summary>
+    [Fact]
+    public void BodyReady_waits_for_overview_and_a_measured_width_but_never_for_the_photograph()
+    {
+        Assert.False(ArtistReadiness.BodyReady(overviewKnown: false, measured: true, alreadyRevealed: false,
+            chartSettled: true));
+        Assert.False(ArtistReadiness.BodyReady(overviewKnown: true, measured: false, alreadyRevealed: false,
+            chartSettled: true));
+        Assert.True(ArtistReadiness.BodyReady(overviewKnown: true, measured: true, alreadyRevealed: false,
+            chartSettled: true));
+    }
+
+    [Fact]
+    public void BodyReady_waits_for_the_chart_ready_or_failed()
+    {
+        Assert.False(ArtistReadiness.BodyReady(overviewKnown: true, measured: true, alreadyRevealed: false,
+            chartSettled: false));
+        Assert.True(ArtistReadiness.BodyReady(overviewKnown: true, measured: true, alreadyRevealed: false,
+            chartSettled: true));
+        Assert.True(ArtistReadiness.ChartSettled(chartReady: true, chartFailed: false));
+        Assert.True(ArtistReadiness.ChartSettled(chartReady: false, chartFailed: true));
+        Assert.False(ArtistReadiness.ChartSettled(chartReady: false, chartFailed: false));
+    }
+
+    [Fact]
+    public void BodyReady_never_returns_to_the_page_shimmer_after_the_first_reveal()
+    {
+        Assert.True(ArtistReadiness.BodyReady(overviewKnown: false, measured: false, alreadyRevealed: true,
+            chartSettled: false));
+    }
 }
 
 [Collection(EntitiesCollection.Name)]
@@ -160,5 +193,33 @@ public class ArtistReadinessTests
 
         edges.ArtistRelated.ReplaceRun(a, [], default);
         Assert.Equal(EdgeState.Complete, ArtistReadiness.Shelf(edges.ArtistRelated, a));
+    }
+
+    /// <summary>THE LIVE WRAPPER'S OWN GUARD (evenworsenow.mp4's second half). "The chart is un-asked, so it is
+    /// PENDING" is a fact about <see cref="ArtistFields.Chart"/> alone. It used to be ANDed with `inflight == 0`, so
+    /// an unrelated group already in flight on the row — a search or home card warming Identity while the page is
+    /// still mounting — made the wrapper answer FAILED for a chart nobody had asked for, which settles
+    /// <see cref="ArtistReadiness.ChartSettled"/>, opens <see cref="ArtistReadiness.BodyReady"/> and snap-reveals the
+    /// page before its own Demand has run. The pure overload keeps answering "nothing is coming" for an un-asked
+    /// group (that is what it is FOR); only the live wrapper knows the page may not have asked yet.</summary>
+    [Fact]
+    public void An_unasked_chart_is_pending_even_while_another_group_is_in_flight()
+    {
+        TestScope.Fresh();
+        var a = ArtistOf();
+        var t = Entities.Current.Artists;
+        int slot = a.Slot;
+
+        Assert.False(ArtistReadiness.ChartFailed(a));                  // nothing asked at all: the first paint
+
+        t.Inflight[slot] |= (uint)ArtistFields.Identity;                // a card is warming the name/portrait…
+        Assert.False(ArtistReadiness.ChartFailed(a));                   // …which says NOTHING about the chart
+        Assert.False(ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a)));
+        Assert.False(ArtistReadiness.BodyReady(overviewKnown: true, measured: true, alreadyRevealed: false,
+            chartSettled: false));
+
+        t.Asked[slot] |= (uint)ArtistFields.Chart;                      // the page's own Demand finally runs…
+        t.Inflight[slot] &= ~(uint)ArtistFields.Identity;
+        Assert.True(ArtistReadiness.ChartFailed(a));                    // …and an asked, unanswered, un-edged chart is failed
     }
 }

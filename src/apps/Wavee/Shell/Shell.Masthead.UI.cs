@@ -237,7 +237,15 @@ public static partial class Shell
     static int s_focusTicketHandled;
 
     /// <summary>The bar's flexible centre column: the field in Field mode, nothing in Icon mode (the icon sits in the
-    /// caption-leading island). <paramref name="avail"/> is the bar's LIVE centre measurement.</summary>
+    /// caption-leading island). <paramref name="avail"/> is the bar's LIVE centre measurement.
+    /// <para>This is the ONE mount/unmount decision for the field, and it reads the same <see cref="SearchMode"/> the
+    /// allocator used to decide the FORM (Shell.Chrome.cs's form-vs-width split, #88) — never a width. It is,
+    /// however, only re-evaluated when the engine's <c>TitleBar</c> re-invokes the bar's centre content, which is
+    /// gated on <c>ContentVersion</c>, not on every <see cref="ChromeLayout"/> publish; a mode flip can therefore be
+    /// visible to the already-mounted <see cref="SearchField"/>'s own <c>Render()</c> a frame before it reaches here.
+    /// That is why <see cref="SearchField"/> asks only for a FIELD width (<see cref="Chrome.FieldWidthFor"/>) and
+    /// never for "whichever form is current" — so the still-mounted field can never be laid out at the icon's
+    /// 44.</para></summary>
     static Element CenterIsland(IReadSignal<float> avail)
         => ChromeLayout.Value.SearchMode == MergedSearchMode.Field
             ? Embed.Comp(() => new SearchField(avail)) with { Key = "chrome-search-host" }
@@ -273,12 +281,19 @@ public static partial class Shell
                 if (!editor.IsNull) hooks.FocusNode?.Invoke(editor, true);
             }, DepKey.From(ticket));
 
-            // ONE rule, in the allocator (Shell.Chrome.cs `Chrome.LaidOutSearchWidth`): the ladder has already proved the
-            // row can seat this field, so the bar's measured centre width may only TRIM it, never take it below its own
-            // minimum. Under the elastic tabs lane that measurement is a feedback of this very width, so the old bare
-            // `min(SearchWidth, avail)` was a floorless ratchet — one bad frame latched the field at ~40 DIP and the
-            // placeholder rendered as a clipped "Sear" stub. (#88)
-            float width = ChromeLayout.Value.LaidOutSearchWidth(avail.Value);
+            // This component asks a FIELD WIDTH, never a search WIDTH-OR-FORM (Shell.Chrome.cs's form-vs-width split,
+            // #88). `CenterIsland` above keys ITS mount/unmount decision on `SearchMode`, but the engine's `TitleBar`
+            // only re-invokes that decision when `ContentVersion` changes, while THIS `Render()` re-runs on every
+            // `ChromeLayout` publish regardless — so a mode flip to Icon can be visible here for up to one frame
+            // before the host gets around to unmounting this component. `Chrome.LaidOutSearchWidth` would answer that
+            // frame with the icon's fixed 44 (a real text field, 44 DIP wide, rendering the placeholder as a clipped
+            // "Sear" stub that then latches until a resize, because under the elastic tabs lane the bar's measured
+            // centre width is itself a feedback of whatever this field just asked for). `Chrome.FieldWidthFor` cannot
+            // answer 44: it never reads `SearchMode`, and it clamps whatever `SearchWidth` it is given — including the
+            // icon form's own 44 — back up to `ChromeSearchMinW`. The measured centre width may still TRIM the result
+            // (that part is real: the row genuinely narrowed), but it can never take the field below its floor, so the
+            // worst case across a mode flip is a field briefly wider than its lane, never a clipped stub.
+            float width = Chrome.FieldWidthFor(ChromeLayout.Value.SearchWidth, avail.Value);
             return new BoxEl
             {
                 Key = "chrome-search-field", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Width = width,

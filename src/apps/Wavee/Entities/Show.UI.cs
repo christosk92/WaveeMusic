@@ -105,7 +105,11 @@ public readonly partial struct Show
         return PivotOf(spans.ToArray());
     }
 
-    static TextSpan SmallSpan(string text) => new(text, Weight: 400, Color: Tok.TextTertiary, Size: 13f);
+    static TextSpan SmallSpan(string text)
+    {
+        var d = Design.Type.DenseMeta("");
+        return new(text, Weight: 400, Color: Tok.TextTertiary, Size: d.Size);
+    }
 
     static SpanTextEl PivotOf(TextSpan[] spans) => new(spans)
     {
@@ -113,22 +117,30 @@ public readonly partial struct Show
         Color = Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
     };
 
-    /// <summary>A section head row: the pivot, its tertiary sub line, and an optional trailing action pushed right.</summary>
-    static Element SecHead(Element title, string? sub = null, Element? trailing = null)
+    /// <summary>A section head row: the pivot, its tertiary sub line, and an optional trailing action pushed right.
+    /// <paramref name="stack"/> puts the subtitle under the pivot so a narrow reader never ellipsizes "Continue"
+    /// to "conti…" against "up next from your progress · …".</summary>
+    static Element SecHead(Element title, string? sub = null, Element? trailing = null, bool stack = false)
     {
         var kids = new List<Element>(4) { title };
         if (sub is { Length: > 0 })
-            kids.Add(new TextEl(sub)
+            kids.Add(Design.Type.DenseMeta(sub) with
             {
-                Size = 12.5f, LineHeight = 18f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                MinWidth = 0f, Shrink = 1f, Margin = new Edges4(0f, 0f, 0f, 4f),
+                Color = Tok.TextTertiary, MaxLines = stack ? 2 : 1,
+                Wrap = stack ? TextWrap.Wrap : TextWrap.NoWrap,
+                Trim = TextTrim.CharacterEllipsis,
+                MinWidth = 0f, Shrink = 1f, Margin = new Edges4(0f, 0f, 0f, stack ? 0f : 4f),
             });
         if (trailing is not null)
         {
             kids.Add(new BoxEl { Grow = 1f, MinWidth = Spacing.M });
             kids.Add(trailing);
         }
-        return new BoxEl { Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.End, MinWidth = 0f, Children = kids.ToArray() };
+        return new BoxEl
+        {
+            Direction = (byte)(stack ? 1 : 0), Gap = stack ? 2f : Spacing.M,
+            AlignItems = stack ? FlexAlign.Start : FlexAlign.End, MinWidth = 0f, Children = kids.ToArray(),
+        };
     }
 
     static Element QuietLine(string text) => new TextEl(text)
@@ -324,7 +336,7 @@ public readonly partial struct Show
         bool narrow = h.Narrow?.Peek() ?? false;
         return s.Head switch
         {
-            ShowReaderRules.Head.New => NewHead(s, h),
+            ShowReaderRules.Head.New => NewHead(s, h, narrow),
             ShowReaderRules.Head.Returning => ReturningHead(s, h, narrow),
             ShowReaderRules.Head.CaughtUp => CaughtUpHead(s),
             ShowReaderRules.Head.Unavailable => QuietLine(Loc.Get(Strings.Podcast.ProgressUnavailable)),
@@ -334,7 +346,7 @@ public readonly partial struct Show
 
     /// <summary>W2: start here (up to three doors — a serial leads with episode 1, anything else with the latest; the
     /// trailer joins when there is one) and the full about with the facts line.</summary>
-    static Element NewHead(ReaderSnap s, ReaderHost h)
+    static Element NewHead(ReaderSnap s, ReaderHost h, bool narrow)
     {
         bool serial = s.Order == ConsumptionOrder.Sequential;
         // Episode 1 is a door only when the membership is COMPLETE — the oldest resident of a partial list is not it.
@@ -356,7 +368,7 @@ public readonly partial struct Show
         if (doors.Count > 0)
             sections.Add(Column(
             [
-                SecHead(Pivot(Loc.Get(Strings.Podcast.StartHere)), Loc.Get(serial ? Strings.Podcast.SerialHint : Strings.Podcast.EpisodicHint)),
+                SecHead(Pivot(Loc.Get(Strings.Podcast.StartHere)), Loc.Get(serial ? Strings.Podcast.SerialHint : Strings.Podcast.EpisodicHint), stack: narrow),
                 Tiles(doors, Controls.DoorMinWidth),
             ], Spacing.M));
         sections.Add(About(s, h));
@@ -394,9 +406,9 @@ public readonly partial struct Show
                 Direction = 1, MaxWidth = AboutMeasure, MinWidth = 0f,
                 Children = [Controls.RichTextFlex(Entities.Strings.Resolve(!show.HtmlDescriptionId.IsEmpty ? show.HtmlDescriptionId : show.DescriptionId), 14f, Tok.TextSecondary, h.Tone(), 0, s_navRoute)],
             });
-        kids.Add(new TextEl(MetaOf(s.Total, s.Cadence, s.OldestYear))
+        kids.Add(Design.Type.DenseMeta(MetaOf(s.Total, s.Cadence, s.OldestYear)) with
         {
-            Size = 12.5f, LineHeight = 18f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MinWidth = 0f,
+            Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MinWidth = 0f,
         });
         return Column(kids, Spacing.M);
     }
@@ -408,7 +420,8 @@ public readonly partial struct Show
         var cont = new List<Element>(3)
         {
             SecHead(Pivot(Loc.Get(Strings.Podcast.Continue)),
-                    Loc.Get(Strings.Podcast.UpNextFromProgress) + " · " + Strings.Podcast.Ledger(l.Played, l.InProgress, l.ToGo)),
+                    Loc.Get(Strings.Podcast.UpNextFromProgress) + " · " + Strings.Podcast.Ledger(l.Played, l.InProgress, l.ToGo),
+                    stack: narrow),
         };
         if (s.ResumeSlot > 0) cont.Add(Hero(new Episode(s.ResumeSlot), h, narrow));
         if (s.UpNext.Length > 0)
@@ -552,8 +565,15 @@ public readonly partial struct Show
                 Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
                 Children =
                 [
-                    new TextEl(title) { Size = 13f, LineHeight = 18f, Weight = 600, Color = onClick is null ? Tok.TextSecondary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                    new TextEl(meta) { Size = 11.5f, LineHeight = 16f, Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                    Design.Type.DenseTitle(title) with
+                    {
+                        Color = onClick is null ? Tok.TextSecondary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                        Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    },
+                    Design.Type.MicroMeta(meta) with
+                    {
+                        Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    },
                 ],
             },
         };
@@ -577,7 +597,7 @@ public readonly partial struct Show
         var link = new BoxEl
         {
             Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = h.Model.MarkFreshPlayed,
-            Children = [new TextEl(Loc.Get(Strings.Podcast.MarkAllPlayed)) { Size = 12.5f, LineHeight = 18f, Weight = 600, Color = h.Tone(), MaxLines = 1 }],
+            Children = [Design.Type.DenseTitle(Loc.Get(Strings.Podcast.MarkAllPlayed)) with { Color = h.Tone(), MaxLines = 1 }],
         };
         var kids = new List<Element>(s.Fresh.Length + 1)
         {
@@ -598,9 +618,9 @@ public readonly partial struct Show
     {
         var kids = new List<Element>(2) { Pivot(Loc.Get(Strings.Podcast.CaughtUp)) };
         if (s.Day is { } day)
-            kids.Add(new TextEl(Strings.Podcast.CaughtUpNext(s_dayWords[(int)day]))
+            kids.Add(Design.Type.DenseMeta(Strings.Podcast.CaughtUpNext(s_dayWords[(int)day])) with
             {
-                Size = 12.5f, LineHeight = 18f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MinWidth = 0f,
+                Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MinWidth = 0f,
             });
         return Column(kids, Spacing.XS);
     }
@@ -697,25 +717,34 @@ public readonly partial struct Show
     /// and the year strip read. It is transparent for anything that is not one, and prints "" rather than throwing.</para></summary>
     static Element StickyMonth(IReadSignal<int> monthKey, float pad) => new BoxEl
     {
-        AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
+        // Shrink-wrap like User.StickyLetter: a ZStack sibling without a height stretches, and the inner
+        // FillCardDefault then paints a white sheet over the episode list (the "September 2026" overlay).
+        Key = "rd:sticky-month",
+        Height = RailHeight + Spacing.XS + StickyMonthPlateH,
+        Direction = 0, AlignItems = FlexAlign.Start, Justify = FlexJustify.Start,
+        AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false, Shrink = 0f,
         Padding = new Edges4(pad, RailHeight + Spacing.XS, pad, 0f),
         Opacity = Prop.Of(() => DateKeys.IsMonthKey(monthKey.Value) ? 1f : 0f),
         Children =
         [
             new BoxEl
             {
+                Shrink = 0f, AlignSelf = FlexAlign.Start,
                 Padding = new Edges4(8f, 2f, 8f, 2f), Corners = CornerRadius4.All(4f), Fill = Tok.FillCardDefault,
                 BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
                 Children =
                 [
                     new TextEl(Prop.Of(() => s_monthWords.Get(monthKey.Value, s_monthWord)))
                     {
-                        Size = 11.5f, LineHeight = 16f, Weight = 600, Color = Tok.TextTertiary, MaxLines = 1,
+                        Size = Design.Type.MicroMeta("").Size, LineHeight = Design.Type.MicroMeta("").LineHeight,
+                        Weight = 600, Color = Tok.TextTertiary, MaxLines = 1,
                     },
                 ],
             },
         ],
     };
+
+    const float StickyMonthPlateH = 20f;
 
     /// <summary>The year strip on the reader's right edge — the twin of <c>User.JumpStrip</c>: one 26 × 15 row per year
     /// the view holds, the year under the viewport top in accent/700 (two stacked runs: <c>Weight</c> is not bindable),
@@ -752,9 +781,9 @@ public readonly partial struct Show
         };
     }
 
-    static TextEl YearInk(string text, ushort weight, Prop<ColorF> ink) => new(text)
+    static TextEl YearInk(string text, ushort weight, Prop<ColorF> ink) => Design.Type.MicroMeta(text) with
     {
-        Size = 9.5f, LineHeight = 12f, Weight = weight, Color = ink, BrushTransitionMs = Design.Motion.Fast,
+        Weight = weight, Color = ink, BrushTransitionMs = Design.Motion.Fast,
         AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
     };
 
@@ -869,7 +898,7 @@ public readonly partial struct Show
         return new BoxEl
         {
             Direction = 0, MinWidth = 0f, MaxWidth = float.IsFinite(width) ? width : AboutMeasure,
-            Children = [new TextEl(text) { Size = 13f, LineHeight = 18f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
+            Children = [Design.Type.DenseMeta(text) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
         };
     }
 

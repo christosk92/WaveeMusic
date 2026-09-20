@@ -214,9 +214,9 @@ public static partial class Sidebar
                 if (hasSubtitle)
                     stack[n++] = Caption(spec.Subtitle!).Secondary() with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
                 if (hasCaption)
-                    stack[n] = new TextEl(spec.Caption!)
+                    stack[n] = global::Wavee.Design.Type.MicroMeta(spec.Caption!) with
                     {
-                        Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                        Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                     };
                 text = new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 1f, Children = stack };
             }
@@ -763,9 +763,9 @@ public static partial class Sidebar
         /// <summary>The number, or the pending plate while <paramref name="count"/> is unknown.</summary>
         public static Element Badge(int? count) => count is { } n ? Number(n) : Pending();
 
-        public static Element Number(int count) => new TextEl(FormatCache.Int(count))
+        public static Element Number(int count) => global::Wavee.Design.Type.MicroMeta(FormatCache.Int(count)) with
         {
-            Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f,
+            Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f,
         };
 
         public static Element Pending() => new BoxEl
@@ -1031,9 +1031,9 @@ public static partial class Sidebar
                                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                             },
                             // ONE ellipsised line: a nudge, not a paragraph.
-                            new TextEl(Loc.Get(Strings.Sidebar.Pin.EmptyHint))
+                            global::Wavee.Design.Type.MicroMeta(Loc.Get(Strings.Sidebar.Pin.EmptyHint)) with
                             {
-                                Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                                Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                             },
                         ],
                     },
@@ -1172,9 +1172,8 @@ public static partial class Sidebar
                 Children = [Icon(RowGlyphs.ForSectionKind(section.Kind), 13f,
                                  open ? Tok.AccentTextPrimary : Tok.TextSecondary)],
             };
-            kids[k++] = new TextEl(PaneText.TitleOf(section))
+            kids[k++] = global::Wavee.Design.Type.DenseTitle(PaneText.TitleOf(section)) with
             {
-                Size = 13f, Weight = 600,
                 Color = hidden ? Tok.TextTertiary : Tok.TextPrimary,
                 Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             };

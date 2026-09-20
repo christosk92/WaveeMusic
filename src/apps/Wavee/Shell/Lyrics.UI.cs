@@ -459,9 +459,9 @@ public static partial class Lyrics
             string meta = TranscriptPeek.MetaLine(duration, TranscriptPeek.LanguageLabel(episode.TranscriptLanguage));
             var gate = new List<Element>(3)
             {
-                new TextEl(Loc.Get(Strings.Podcast.PeekFollows))
+                global::Wavee.Design.Type.DenseMeta(Loc.Get(Strings.Podcast.PeekFollows)) with
                 {
-                    Size = 13f, LineHeight = 18f, Color = InkMode.Secondary, Wrap = TextWrap.Wrap, MaxLines = 0,
+                    Color = InkMode.Secondary, Wrap = TextWrap.Wrap, MaxLines = 0,
                 },
                 Button.Accent(Loc.Get(Strings.Podcast.PeekPlay),
                     () => Episode.StartAt(episode, Playback.EpisodeStartKind.Resume)),

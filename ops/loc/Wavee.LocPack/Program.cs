@@ -26,6 +26,7 @@ static class Program
                 "import" => Import(args.AsSpan(1)),
                 "draft" => Draft(args.AsSpan(1)),
                 "xlsx" => Xlsx(args.AsSpan(1)),
+                "lint" => Lint(args.AsSpan(1)),
                 _ => Fail($"unknown command '{args[0]}'"),
             };
         }
@@ -45,7 +46,92 @@ static class Program
               import --culture nl|ko-KR <packet.json>
               draft  <packet.json> [--from sidecar.json]
               xlsx   <packet.json>   (writes UTF-8 CSV next to it; Sheets can import)
+              lint   [--loc path]  (en-US casing gate; default src/apps/Wavee/assets/loc/en-US.json)
             """);
+    }
+
+    static readonly string[] DefaultAcronyms =
+    [
+        "BPM", "ISRC", "SHA-256", "CD", "LCD", "VU", "PPM", "EP", "OK", "12\u2033 LP", "OR", "U2", "URI", "URL",
+        "API", "EQ", "USB", "GPU", "CPU", "RAM", "JSON", "XML", "HTTP", "HTTPS", "ID", "UI", "OS", "GB", "MB", "KB",
+        "MS", "NP", "FAQ",
+    ];
+
+    static readonly string[] DefaultRailPrefixes =
+    [
+        "library.rail.",
+        "library.scope.",
+        "library.readerSort.",
+        "podcast.badge.",
+        "podcast.cadence.",
+        "podcast.tabs.",
+        "whatsNew.issue.",
+    ];
+
+    static readonly string[] DefaultLowercasePrefixes =
+    [
+        "library.rail.",
+        "library.scope.",
+        "library.readerSort.",
+        "podcast.badge.",
+        "podcast.cadence.",
+        "podcast.tabs.",
+        "whatsNew.issue.",
+        "detail.preReleaseUnit",
+        "podcast.",
+        "home.",
+        "lyrics.debug.",
+        "diagnostics.runtime.",
+        "diagnostics.inspector.",
+        "settings.storage.",
+    ];
+
+    static readonly string[] DefaultProperNouns =
+    [
+        "Liked Songs", "Your Library", "Your Episodes", "Spotify Connect", "Spotify Free", "Spotify Premium",
+        "Spotify Classic", "Microsoft Store", "iPod Classic", "English (United States)",
+        "Discover Weekly & Release Radar", "Singles & EPs", "Filter Your Library", "Collapse Your Library",
+        "Expand Your Library", "Copy Spotify URI", "Open GitHub", "Reset Wavee", "Open Wavee", "Hide Wavee",
+        "Quit Wavee", "Get Wavee Beta", "In Wavee", "By Spotify", "Side A", "Side B", "Type I", "CD / MiniDisc",
+        "Feed URL", "Episode URI", "Show URI", "BPM · Key", "Updating Wavee",
+        "Wavee {version} “{name}” · Beta {beta}",
+    ];
+
+    static int Lint(ReadOnlySpan<string> args)
+    {
+        string? locPath = null;
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--loc") locPath = args[++i];
+            else return Fail($"unknown lint arg {args[i]}");
+        }
+
+        string root = RepoRoot();
+        locPath ??= Path.Combine(LocDir(root), "en-US.json");
+        var flat = LoadFlat(locPath);
+
+        var violations = LocCasing.Violations(flat, DefaultAcronyms, DefaultLowercasePrefixes, DefaultProperNouns);
+        foreach (var (key, _, voice, why) in violations)
+        {
+            string value = flat[key];
+            Console.Error.WriteLine($"VIOLATION {key}\t{voice}\t{why}\t{value}");
+        }
+
+        var contradictions = LocCasing.Contradictions(flat, DefaultRailPrefixes);
+        foreach (var (a, b) in contradictions)
+            Console.Error.WriteLine($"CONTRADICTION {a}\t{b}");
+
+        var clusters = LocCasing.SharedValueClusters(flat);
+        int sharedPrinted = 0;
+        foreach (var (value, keys) in clusters)
+        {
+            if (keys.Count < 8) continue;
+            sharedPrinted++;
+            Console.WriteLine($"SHARED {keys.Count}\t{value}\t{string.Join(",", keys)}");
+        }
+
+        Console.WriteLine($"lint violations={violations.Count} contradictions={contradictions.Count} clusters={sharedPrinted}");
+        return violations.Count == 0 ? 0 : 1;
     }
 
     static int Fail(string m) { Console.Error.WriteLine(m); return 1; }

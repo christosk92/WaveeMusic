@@ -708,8 +708,15 @@ public static partial class Video
         /// fullscreen window has nowhere to go.</summary>
         /// <param name="identity">The surface's transport identity (constant for the life of the surface).</param>
         /// <param name="hostFullscreen">Whether the surface is presenting fullscreen right now.</param>
-        public static bool DragMovesWindow(TransportOwner identity, bool hostFullscreen)
-            => identity == TransportOwner.PopOut && !hostFullscreen;
+        /// <param name="hasTitleBand">Whether the surface draws its own draggable title band.</param>
+        /// <remarks>ONE drag path per window. The pop-out now carries a visible 44-DIP title band that moves the
+        /// window itself, so the picture must NOT also arm a move: two independent arms both start the same OS modal
+        /// loop, which is how a release could leave the window trailing the cursor with nothing held. The band is also
+        /// the better affordance — it is visible, it carries the title, and it takes the move cursor, none of which an
+        /// invisible whole-picture drag can do. With the band present the picture goes back to being ordinary content:
+        /// click, double-click for fullscreen, right-click for the menu.</remarks>
+        public static bool DragMovesWindow(TransportOwner identity, bool hostFullscreen, bool hasTitleBand)
+            => identity == TransportOwner.PopOut && !hostFullscreen && !hasTitleBand;
 
         /// <summary>Whether the idle cursor hides with the chrome while WINDOWED. A dedicated video window hides it
         /// (mpv's windowed default); an inline surface keeps the page's cursor and hides it only in fullscreen —
@@ -726,6 +733,37 @@ public static partial class Video
         /// <summary>Mount the player stage whenever a player exists. Source may be null — overlay Loading/poster on
         /// top; do not tear down the only pump.</summary>
         public static bool ShouldMountPlayerStage(bool playerPresent) => playerPresent;
+    }
+
+    /// <summary>The main-window hole (docked / PiP / fullscreen) is ONE stay-mounted presenter. Pop-out is another HWND.</summary>
+    public static class MainWindowHole
+    {
+        public static bool Owns(SurfacePlacement resolved)
+            => resolved is SurfacePlacement.Docked or SurfacePlacement.Floating or SurfacePlacement.Fullscreen;
+
+        public static bool EngineTransportEnabled => false;
+
+        /// <summary>What the element's fullscreen affordance (F11, double-click, the transport's ⛶) must do RIGHT NOW.
+        /// The presenter is stay-mounted and its props freeze at mount, so a frozen "enter fullscreen" action is wrong
+        /// the moment fullscreen is the placement: F11 and double-click then re-request the state the user is already
+        /// in and read as dead buttons. The action stays constant; the DECISION is taken per press, here.</summary>
+        public static bool FullscreenAffordanceExits(SurfacePlacement resolved) => resolved == SurfacePlacement.Fullscreen;
+
+        public static TransportOwner OwnerFor(SurfacePlacement resolved) => resolved switch
+        {
+            SurfacePlacement.Fullscreen => TransportOwner.Fullscreen,
+            SurfacePlacement.Floating => TransportOwner.Docked,
+            SurfacePlacement.Docked => TransportOwner.Docked,
+            _ => TransportOwner.GlobalBar,
+        };
+    }
+
+    /// <summary>Stage and every video overlay draw the same on-media transport. Engine MediaPlayerElement chrome is off.</summary>
+    public static class OnMediaTransport
+    {
+        public const string Id = "onmedia.transport";
+        public static bool UsesSharedPlayer(SurfacePlacement resolved)
+            => resolved is not SurfacePlacement.None;
     }
 
     // ── persistence codecs ──────────────────────────────────────────────────────────────────────────────────────────

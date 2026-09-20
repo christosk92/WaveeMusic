@@ -24,8 +24,8 @@ public class DesignTypeRampTests
     // Keyed by NAME so the theory data stays serializable (a TextEl is not), and resolved inside the fact.
     public static TheoryData<string> OnRampAliases => new()
     {
-        "TrackTitle", "CardTitle", "TrackMeta", "Eyebrow", "RailHeader", "ModuleHeader",
-        "PageHero", "DetailHero", "SurfaceDisplay", "NowPlayingTitle", "PickQuote",
+        "TrackTitle", "CardTitle", "TrackMeta", "Eyebrow", "MicroMeta", "DenseMeta", "DenseTitle", "SheetTitle",
+        "RailHeader", "ModuleHeader", "PageHero", "DetailHero", "SurfaceDisplay", "NowPlayingTitle", "PickQuote",
     };
 
     static TextEl Alias(string name) => name switch
@@ -34,13 +34,18 @@ public class DesignTypeRampTests
         "CardTitle" => Design.Type.CardTitle("x"),
         "TrackMeta" => Design.Type.TrackMeta("x"),
         "Eyebrow" => Design.Type.Eyebrow("x"),
+        "MicroMeta" => Design.Type.MicroMeta("x"),
+        "DenseMeta" => Design.Type.DenseMeta("x"),
+        "DenseTitle" => Design.Type.DenseTitle("x"),
+        "SheetTitle" => Design.Type.SheetTitle("x"),
         "RailHeader" => Design.Type.RailHeader("x"),
         "ModuleHeader" => Design.Type.ModuleHeader("x"),
         "PageHero" => Design.Type.PageHero("x"),
         "DetailHero" => Design.Type.DetailHero("x"),
         "SurfaceDisplay" => Design.Type.SurfaceDisplay("x"),
         "NowPlayingTitle" => Design.Type.NowPlayingTitle("x"),
-        _ => Design.Type.PickQuote("x"),
+        "PickQuote" => Design.Type.PickQuote("x"),
+        _ => throw new ArgumentOutOfRangeException(nameof(name), name, null),
     };
 
     [Theory]
@@ -83,12 +88,84 @@ public class DesignTypeRampTests
     }
 
     [Fact]
-    public void PivotLabel_is_the_one_off_ramp_rung()
+    public void ArtistDisplay_carries_its_masthead_metrics()
     {
-        // 19/25 is deliberately OFF the eight-rung engine ramp. Named here so a THIRD off-ramp cannot arrive unlabelled.
-        var p = Design.Type.PivotLabel("x");
-        Assert.Equal(19f, p.Size);
-        Assert.Equal(25f, p.LineHeight);
+        var el = Design.Type.ArtistDisplay("x");
+        Assert.Equal(84f, el.Size);
+        Assert.Equal(96f, el.LineHeight);
+        Assert.Equal(700, el.ResolvedWeight);
+    }
+
+    [Fact]
+    public void ArtistTitle_carries_its_masthead_metrics()
+    {
+        var el = Design.Type.ArtistTitle("x");
+        Assert.Equal(48f, el.Size);
+        Assert.Equal(60f, el.LineHeight);
+        Assert.Equal(700, el.ResolvedWeight);
+    }
+
+    [Fact]
+    public void ArtistCompactTitle_carries_its_masthead_metrics()
+    {
+        var el = Design.Type.ArtistCompactTitle("x");
+        Assert.Equal(32f, el.Size);
+        Assert.Equal(40f, el.LineHeight);
+        Assert.Equal(700, el.ResolvedWeight);
+    }
+
+    [Fact]
+    public void NowPlayingTitle_is_Ui_Subtitle()
+    {
+        var el = Design.Type.NowPlayingTitle("x");
+        Assert.Equal(20f, el.Size);
+        Assert.Equal(28f, el.LineHeight);
+        Assert.Equal(600, el.ResolvedWeight);
+    }
+
+    [Fact]
+    public void PickQuote_carries_Title_ramp_at_regular_weight()
+    {
+        var el = Design.Type.PickQuote("x");
+        Assert.Equal(28f, el.Size);
+        Assert.Equal(36f, el.LineHeight);
+        Assert.Equal(400, el.ResolvedWeight);
+    }
+
+    [Fact]
+    public void NpvLyric_carries_Subtitle_metrics_at_SemiLight()
+    {
+        var el = Design.Type.NpvLyric("x");
+        Assert.Equal(20f, el.Size);
+        Assert.Equal(28f, el.LineHeight);
+        Assert.Equal(350, el.ResolvedWeight);
+    }
+
+    [Fact]
+    public void StatHero_carries_Title_metrics_at_SemiLight()
+    {
+        var el = Design.Type.StatHero("2B", null);
+        Assert.Equal(28f, el.Size);
+        Assert.Equal(36f, el.LineHeight);
+        Assert.Equal(350, el.Weight);
+    }
+
+    [Fact]
+    public void Sanctioned_off_engine_ramp_rungs_are_enumerated()
+    {
+        // A sixth off-engine-ramp size is a regression unless named here with its reason.
+        static void OffRamp(TextEl el, float size, float lineHeight, int weight)
+        {
+            Assert.Equal(size, el.Size);
+            Assert.Equal(lineHeight, el.LineHeight);
+            Assert.Equal(weight, el.ResolvedWeight);
+        }
+
+        OffRamp(Design.Type.PivotLabel("x"), 19f, 25f, 350);
+        OffRamp(Design.Type.MicroMeta("x"), 11f, 15f, 400);
+        OffRamp(Design.Type.DenseMeta("x"), 13f, 18f, 400);
+        OffRamp(Design.Type.DenseTitle("x"), 13f, 18f, 600);
+        OffRamp(Design.Type.SheetTitle("x"), 16f, 22f, 600);
     }
 
     [Fact]
@@ -443,6 +520,78 @@ public class DesignPaletteTests
     [Fact]
     public void ChromeFromPayload_of_nothing_is_the_semantic_accent()
         => Assert.Equal(Tok.AccentDefault, Design.Palette.ChromeFromPayload(0u));
+
+    [Fact]
+    public void ChromeFromPayload_floors_saturation_like_ChromeAccent_does()
+    {
+        // The Play pill's ONE control (Detail.AccentFor) takes ChromeFromPayload before grading lands and
+        // ChromeAccent once it does. Before this fix ChromeFromPayload had no floor, so a washed pathfinder hue
+        // (S ≈ 0.26 here) snapped to a saturated one (S ≥ 0.55) the instant grading arrived — the
+        // muted-salmon-then-salmon flash. A low-but-not-neutral payload must already sit at the same floor.
+        const uint washed = 0xFF8FA8C2;   // S ≈ 0.26 — above NeutralS (0.08), below the 0.55 floor
+        var (_, sat, _) = Design.Palette.ChromeFromPayload(washed).ToHsv();
+        Assert.True(sat >= 0.55f - 0.001f);
+    }
+
+    [Fact]
+    public void ChromeFromPayload_and_ChromeAccent_agree_exactly_for_the_same_underlying_hue()
+    {
+        // Any two rungs resolving the SAME cover hue must land within a saturation/lightness tolerance of each
+        // other — here the tolerance is zero, because both rungs now run the identical Lift-then-Vivid chain. A
+        // scheme whose most-saturated role IS the payload hex must therefore produce the identical ColorF from
+        // either rung, so a Payload → Graded rung change on the SAME cover is a no-op, not a saturation cliff.
+        const uint hue = 0xFF8FA8C2;
+        var scheme = new Scheme(0xFF707070, hue, 0xFFFFFFFF, 0xFFB3B3B3, 0xFFFFFFFF);
+        Assert.Equal(Design.Palette.ChromeAccent(scheme), Design.Palette.ChromeFromPayload(hue));
+    }
+}
+
+/// <summary>Pins <see cref="VeilSettlement"/> — the pure decision <see cref="CoverArtistBlendWash"/> and
+/// <see cref="CoverKeyedVeil"/> share to stop two differently-hued veils compositing over the artist photo (repo
+/// rule: no source-text tests — the decision was extracted for exactly this).</summary>
+public class VeilSettlementTests
+{
+    [Fact]
+    public void A_provisional_guess_exits_instantly_not_animated()
+    {
+        // The routine post-mount case: TryScheme is still enqueued, so the ladder is on Payload and NOT Definite —
+        // nothing says this is the final answer yet. The node this frame's re-key replaces must not animate its
+        // Exit, or its fade overlaps the next guess/answer's Enter.
+        var (settled, exitAnimates) = VeilSettlement.Advance(alreadySettled: false, AccentLadder.Rung.Payload, definite: false);
+        Assert.False(settled);
+        Assert.False(exitAnimates);
+    }
+
+    [Fact]
+    public void A_graded_answer_settles_and_its_swap_may_animate()
+    {
+        // The grading lands: this IS the definitive first answer, so the OUTGOING guess may finally animate away —
+        // there is nothing behind it left to disagree with.
+        var (settled, exitAnimates) = VeilSettlement.Advance(alreadySettled: false, AccentLadder.Rung.Graded, definite: false);
+        Assert.True(settled);
+        Assert.True(exitAnimates);
+    }
+
+    [Fact]
+    public void A_definite_no_answer_settles_immediately_even_on_the_default_rung()
+    {
+        // No url, or a url the endpoint can never grade: Default is not a guess, it is the FINAL answer, so there is
+        // no future re-key to protect against and the swap may animate from the first frame.
+        var (settled, exitAnimates) = VeilSettlement.Advance(alreadySettled: false, AccentLadder.Rung.Default, definite: true);
+        Assert.True(settled);
+        Assert.True(exitAnimates);
+    }
+
+    [Fact]
+    public void Settlement_is_one_way_and_never_reverts_to_an_unanimated_swap()
+    {
+        // Once the ladder has proven a real answer, it stays "trustworthy" for the life of the mount — a later
+        // rung falling back to Held (e.g. a theme flip that momentarily loses the graded scheme) must still
+        // cross-fade like a normal re-key, not silently start suppressing exits again.
+        var (settled, exitAnimates) = VeilSettlement.Advance(alreadySettled: true, AccentLadder.Rung.Held, definite: false);
+        Assert.True(settled);
+        Assert.True(exitAnimates);
+    }
 }
 
 public class DesignStageArmTests

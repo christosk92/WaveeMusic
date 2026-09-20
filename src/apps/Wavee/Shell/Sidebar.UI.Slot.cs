@@ -295,7 +295,9 @@ public static partial class Sidebar
             // `Knows(Identity)` asynchronously, after this row's first synchronous render) must not fall back to
             // the raw uri fragment either — that reads as real data when it is a guess. Pending shows nothing
             // rather than "3fMbdgg4jU18AjLCKBhRSm". A resolved entity that is genuinely nameless (rare) still gets
-            // the honest short-uri fallback, and non-pinned rows are untouched by this gate entirely.
+            // the honest short-uri fallback. The gate covers EVERY row, pinned or not (a library row is minted
+            // from a uri-only collection answer and resolves later, so it needs the gate just as much), and every
+            // renderer that paints a title now goes through it - GridCell and both rail paths included.
             string label = item?.LabelOverride is { Length: > 0 } alias ? alias
                 : named ? entry.Name
                 : routePin ? Shell.Dest(Shell.Parse(route!)).Title
@@ -780,7 +782,11 @@ public static partial class Sidebar
             // A cell is not a plan row (one strip draws several), so it asks the resolver about the ENTRY — the same
             // predicate the row-level sweep ORs across the strip's range.
             bool selected = SidebarRowResolve.EntrySelects(in entry, sel);
-            string label = entry.Name.Length > 0 ? entry.Name : PaneText.ShortUri(entry.Uri);
+            // Same gate as EntryRow's (Trap 5): an unresolved row shows NOTHING rather than "3fMbdgg4jU18AjLCKBhRSm".
+            // A grid cell is a different renderer, not a different rule.
+            string label = entry.Name.Length > 0 ? entry.Name
+                : SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown) ? PaneText.ShortUri(entry.Uri)
+                : "";
             float artEdge = MathF.Max(Cover.S40, edge - Spacing.S);
             string? route = entry.RouteKey;
 
@@ -792,7 +798,7 @@ public static partial class Sidebar
             // ForEntry, never the raw cover factory: an app-route entry keeps its glyph tile and Liked its dynamic cover.
             Element cover = Cover.ForEntry(in entry, artEdge);
             Element[] kids = section.Opts.Subtitles && PaneText.SubtitleOf(in entry) is { Length: > 0 } sub
-                ? [cover, labelText, new TextEl(sub) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
+                ? [cover, labelText, global::Wavee.Design.Type.MicroMeta(sub) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
                 : [cover, labelText];
 
             Action? click = null;
@@ -864,7 +870,7 @@ public static partial class Sidebar
                 Padding = PaneMetrics.RowInset,
                 Children =
                 [
-                    new TextEl(text) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    global::Wavee.Design.Type.MicroMeta(text) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 ],
             };
         }
@@ -895,7 +901,7 @@ public static partial class Sidebar
                 Size = 12f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             };
             Element[] lines = reason is { Length: > 0 } why
-                ? [titleText, new TextEl(why) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
+                ? [titleText, global::Wavee.Design.Type.MicroMeta(why) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
                 : [titleText];
 
             return new BoxEl
@@ -1025,7 +1031,7 @@ public static partial class Sidebar
             if (section.Kind == SidebarSectionKind.PlaylistTree && section.Opts.CountBadges && entry.Kind == SidebarEntryKind.Playlist)
                 return Counts.Badge(entry.ChildCount);
             if (section.Kind == SidebarSectionKind.NewReleases && PaneText.AgeBadge(entry.SortStamp) is { Length: > 0 } age)
-                return new TextEl(age) { Size = 11f, Color = Tok.TextTertiary, MaxLines = 1 };
+                return global::Wavee.Design.Type.MicroMeta(age) with { Color = Tok.TextTertiary, MaxLines = 1 };
             return null;
         }
 

@@ -167,7 +167,7 @@ public readonly partial struct Track
                     Children =
                     [
                         new TextEl(WaveeIcons.PlayNext) { Size = 14f, FontFamily = WaveeIcons.Font, Color = Prop.Of(static () => Tok.TextSecondary) },
-                        new TextEl(Loc.Get(Strings.Detail.PlayNext)) { Size = 12f, Weight = 600, Color = Prop.Of(static () => Tok.TextSecondary) },
+                        new TextEl(Loc.Get(Strings.Detail.PlayNext)) { Size = Ui.Caption("").Size, Weight = 600, Color = Prop.Of(static () => Tok.TextSecondary) },
                     ],
                 };
                 kids.Add(MeasuredCommand(0, "cmd:play-next:" + _contextText,
@@ -278,8 +278,8 @@ public readonly partial struct Track
         {
             Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);
             Element[] kids = trailing is null
-                ? [Icon(glyph, 14f) with { Color = ink }, new TextEl(label) { Size = 12f, Weight = 600, Color = ink }]
-                : [Icon(glyph, 14f) with { Color = ink }, new TextEl(label) { Size = 12f, Weight = 600, Color = ink }, trailing];
+                ? [Icon(glyph, 14f) with { Color = ink }, Ui.Caption(label) with { Weight = 600, Color = ink }]
+                : [Icon(glyph, 14f) with { Color = ink }, Ui.Caption(label) with { Weight = 600, Color = ink }, trailing];
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Height = 32f, Padding = new Edges4(9f, 0f, 10f, 0f),
@@ -629,28 +629,33 @@ public readonly partial struct Track
                 };
             }
 
-            static string Caps(string label, bool classic) => classic ? label.ToUpper(CultureInfo.CurrentUICulture) : label;
-
             /// <summary>The owning header brightens — except Index, the default order, which carries no indicator.</summary>
-            static TextEl HLabel(string s, SortColumn col, SortSpec sort, bool classic) => new(Caps(s, classic))
+            static TextEl HLabel(string s, SortColumn col, SortSpec sort, bool classic)
             {
-                Size = classic ? 11f : 12f, Weight = 600, CharSpacing = classic ? Design.Type.EyebrowTracking : 0f,
-                Color = TableRules.HeaderActive(col, sort.Column, false) ? Tok.TextSecondary : Tok.TextTertiary,
-                MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            };
+                var t = classic ? Design.Type.MicroMeta(s) : Ui.Caption(s);
+                return t with
+                {
+                    Weight = 600,
+                    Color = TableRules.HeaderActive(col, sort.Column, false) ? Tok.TextSecondary : Tok.TextTertiary,
+                    MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                };
+            }
 
-            static Element PlainHeader(string label, FlexJustify justify, bool classic) => new BoxEl
+            static Element PlainHeader(string label, FlexJustify justify, bool classic)
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Justify = justify, MinWidth = 0f, ClipToBounds = true,
-                Children =
-                [
-                    new TextEl(Caps(label, classic))
-                    {
-                        Size = classic ? 11f : 12f, Weight = 600, CharSpacing = classic ? Design.Type.EyebrowTracking : 0f,
-                        Color = Tok.TextTertiary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    },
-                ],
-            };
+                var t = classic ? Design.Type.MicroMeta(label) : Ui.Caption(label);
+                return new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Justify = justify, MinWidth = 0f, ClipToBounds = true,
+                    Children =
+                    [
+                        t with
+                        {
+                            Weight = 600, Color = Tok.TextTertiary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                        },
+                    ],
+                };
+            }
 
             /// <summary>The # sits at the exact centre of its lane: the SAME caret slot is reserved on both sides and the
             /// descending caret lives only in the right one, so the indicator never nudges # off the row numbers.</summary>
@@ -730,12 +735,12 @@ public readonly partial struct Track
                 string text = !artistColumn && col == SortColumn.Artist
                     ? Loc.Get(Strings.Detail.Column.Artist)
                     : Loc.Get(song ? Strings.Detail.Column.Song : Strings.Detail.Column.Title);
-                if (classic) text = text.ToUpper(CultureInfo.CurrentUICulture);
                 UseTransition(AnimChannel.Opacity, 0f, 1f, Expressive.Fast, Easing.SmoothOut, text);
                 UseTransition(AnimChannel.TranslateY, 4f, 0f, Expressive.Fast, Easing.SmoothOut, text);
-                return new TextEl(text)
+                var t = classic ? Design.Type.MicroMeta(text) : Ui.Caption(text);
+                return t with
                 {
-                    Size = classic ? 11f : 12f, Weight = 600, CharSpacing = classic ? Design.Type.EyebrowTracking : 0f,
+                    Weight = 600,
                     Color = TableRules.HeaderActive(SortColumn.Title, col, artistColumn) ? Tok.TextSecondary : Tok.TextTertiary,
                     MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 };
@@ -1075,7 +1080,7 @@ public readonly partial struct Track
                     Children =
                     [
                         Icon(glyph, 16f, Tok.TextTertiary),
-                        new TextEl(label) { Size = 13f, Weight = 600, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        Design.Type.DenseTitle(label) with { Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                         new BoxEl
                         {
                             Width = TraitControlWidth, Shrink = 0f,
@@ -1116,11 +1121,11 @@ public readonly partial struct Track
                         Children =
                         [
                             Icon(glyph, 16f, Tok.TextTertiary),
-                            new TextEl(label) { Size = 13f, Weight = 600, Color = Tok.TextPrimary },
+                            Design.Type.DenseTitle(label) with { Color = Tok.TextPrimary },
                             new BoxEl
                             {
                                 Grow = 1f, AlignItems = FlexAlign.End,
-                                Children = [new TextEl(Prop.Of(() => labels[Math.Clamp(value.Value, 0, labels.Length - 1)])) { Size = 12f, Color = Tok.TextTertiary }],
+                                Children = [new TextEl(Prop.Of(() => labels[Math.Clamp(value.Value, 0, labels.Length - 1)])) with { Color = Tok.TextTertiary }],
                             },
                         ],
                     };
@@ -1217,7 +1222,7 @@ public readonly partial struct Track
                                     Children =
                                     [
                                         new TextEl(Loc.Get(Strings.Detail.Filter.Title)) { Size = 15f, Weight = 650, Color = Tok.TextPrimary },
-                                        new TextEl(status) { Size = 12f, Color = Tok.TextSecondary },
+                                        Ui.Caption(status) with { Color = Tok.TextSecondary },
                                     ],
                                 },
                             ],
@@ -1246,8 +1251,8 @@ public readonly partial struct Track
                             Direction = 0, Height = 46f, Padding = new Edges4(14f, 6f, 10f, 6f), AlignItems = FlexAlign.Center,
                             Children =
                             [
-                                new TextEl(current.IsDefault ? Loc.Get(Strings.Detail.Filter.NoFiltersApplied) : status)
-                                { Size = 11f, Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                                Design.Type.MicroMeta(current.IsDefault ? Loc.Get(Strings.Detail.Filter.NoFiltersApplied) : status)
+                                    with { Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                                 Button.Standard(Loc.Get(Strings.Detail.Filter.ClearFilters), ClearAll, isEnabled: !current.IsDefault),
                             ],
                         },
@@ -1294,7 +1299,7 @@ public readonly partial struct Track
                 Key = "selection-count:" + count,
                 Animate = wasVisible ? MotionRecipes.TextSwap : MotionRecipes.TextSwap with { Enter = default },
                 MinWidth = fit == 2 ? 66f : float.NaN,
-                Children = [new TextEl(Strings.Detail.SelectedCount(count)) { Size = 12f, Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
+                Children = [Ui.Caption(Strings.Detail.SelectedCount(count)) with { Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
             });
             kids.Add(SelectionDivider());
             if (VerbCommand(ActionId.Play, in ctx, fit) is { } play) kids.Add(play);
@@ -1364,7 +1369,7 @@ public readonly partial struct Track
                     Key = "selection-count:" + count,
                     Animate = wasVisible ? MotionRecipes.TextSwap : MotionRecipes.TextSwap with { Enter = default },
                     MinWidth = fit == 2 ? 66f : float.NaN,
-                    Children = [new TextEl(Strings.Detail.SelectedCount(count)) { Size = 12f, Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
+                    Children = [Ui.Caption(Strings.Detail.SelectedCount(count)) with { Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
                 },
                 SelectionDivider(),
             };
@@ -1433,7 +1438,7 @@ public readonly partial struct Track
                     Children =
                     [
                         Icon(glyph, 14f, enabled ? Tok.TextSecondary : Tok.TextDisabled, family: font),
-                        new TextEl(label) { Size = 12f, Weight = 600, Color = enabled ? Tok.TextSecondary : Tok.TextDisabled },
+                        Ui.Caption(label) with { Weight = 600, Color = enabled ? Tok.TextSecondary : Tok.TextDisabled },
                     ],
                 }.Interactive(Interaction.Subtle)
                 : ToolTip.Wrap(GlyphButton(glyph, invoke, null, font, enabled), label);
@@ -1605,9 +1610,9 @@ public readonly partial struct Track
     }
 
     /// <summary>The header label at the Modern rung (12/600), in the real header's two colours.</summary>
-    static TextEl ShimLabel(string text, bool active) => new(text)
+    static TextEl ShimLabel(string text, bool active) => Ui.Caption(text) with
     {
-        Size = 12f, Weight = 600, Color = active ? Tok.TextSecondary : Tok.TextTertiary,
+        Weight = 600, Color = active ? Tok.TextSecondary : Tok.TextTertiary,
         MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
     };
 }

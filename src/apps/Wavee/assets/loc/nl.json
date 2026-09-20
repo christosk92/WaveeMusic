@@ -873,13 +873,11 @@
     "next": "Volgende",
     "shuffle": "Shuffle",
     "repeat": "Herhalen",
-    "pause": "Pauzeren",
-    "play": "Afspelen",
     "mute": "Dempen",
     "unmute": "Dempen opheffen",
+    "resyncLyrics": "Opnieuw synchroniseren",
     "playingNext": "Hierna",
     "fromContext": "van {source}",
-    "resyncLyrics": "Opnieuw synchroniseren",
     "likedSongs": "Nummers die je leuk vindt",
     "dockInRail": "Vastzetten in zijbalk",
     "video": "Video",
@@ -890,6 +888,11 @@
     "videoNeedsWiderWindow": "Vereist een breder venster",
     "videoNoSecondWindow": "Niet beschikbaar bij deze scherminstelling",
     "videoNoFullscreen": "Hier niet beschikbaar",
+    "aspectFit": "Passend",
+    "aspectCrop": "Bijsnijden",
+    "aspectStretch": "Uitrekken",
+    "aspectNative": "Origineel",
+    "qualityAuto": "Automatisch",
     "videoUpNext": "Hierna",
     "presentationCover": "Hoes",
     "playerStyle": "Spelerstijl",
@@ -989,7 +992,9 @@
       "fast": "Snel",
       "soft": "Zacht",
       "strong": "Sterk"
-    }
+    },
+    "pause": "Pauzeren",
+    "play": "Afspelen"
   },
   "menu": {
     "artistUnavailable": "De artiest van dit album is niet gevonden",

@@ -142,7 +142,6 @@ public readonly partial struct Track
     {
         /// <summary>Classic's Artist lane survives one tier longer than Album and folds below 440 DIP (tier 4).</summary>
         public const int ClassicArtistFoldTier = 4;
-        public const int ClassicInlineVideoDropTier = 4;
         public const float ClassicHeaderHeight = 32f;
         /// <summary>The scale the Settings row-density MINIATURE draws the real row geometry at — here, not in the
         /// picker, so "the preview mirrors the real row" is a tested number.</summary>
@@ -232,8 +231,16 @@ public readonly partial struct Track
             return new TrailingColumns(video, hasTrailingRoom && !video, expand);
         }
 
-        public static bool ShowClassicInlineVideo(bool classic, bool hasVideo, int tier) =>
-            classic && hasVideo && tier < ClassicInlineVideoDropTier;
+        /// <summary>Classic's ONLY video indicator, and it is no longer width-gated. `TrailingColumns` refuses the
+        /// film lane to Classic outright, so this inline glyph is all Classic has - and dropping it from tier 4 up
+        /// (a sidebar and a now-playing rail are enough to reach tier 4) left a Classic playlist with NO video
+        /// indicator anywhere, while the artist chart beside it still showed one. The glyph is 12 DIP in a line that
+        /// already ellipsizes; it costs nothing the narrow tiers cannot afford.</summary>
+        public static bool ShowClassicInlineVideo(bool classic, bool hasVideo, int tier)
+        {
+            _ = tier;
+            return classic && hasVideo;
+        }
 
         /// <summary>"Track details" in the menu is a FALLBACK for a missing chevron lane, in either skin — never a second
         /// control beside a visible one.</summary>

@@ -1,4 +1,4 @@
-// ── Entities/Store.cs — SHELL with a CORE section (owner C, wave 1, budget 1,200; plan §2, §4.4) ─────────────────────
+﻿// ── Entities/Store.cs — SHELL with a CORE section (owner C, wave 1, budget 1,200; plan §2, §4.4) ─────────────────────
 //
 // THE DISK. One sqlite file — `library.<schema fingerprint>.db`, schema v4 (v4 adds the process-wide `palette`
 // table, §WS-C) — holding the same columns the tables hold in memory, so "every track whose title starts with X" and
@@ -826,7 +826,26 @@ public static partial class Store
     /// <para>THE PAYLOAD'S SHAPE IS NOT COVERED BY THE SCHEMA FINGERPRINT (<see cref="SaveEdges{TEdge}"/>'s doc): a
     /// page whose <see cref="EdgePage.Stride"/> disagrees with <c>sizeof(LibraryEdge)</c> is DROPPED rather than
     /// reinterpreted as garbage. A page with no rows at all (<see cref="EdgePage.Count"/> 0 — a real, answered "you
-    /// have none of these") has nothing to misread and always lands.</para></summary>
+    /// have none of these") has nothing to misread and always lands.</para>
+    /// <para><b>AND EVERY CHILD'S KIND IS CHECKED (the blank Liked Songs rows).</b> "Every child is the same entity
+    /// kind" is this relation's INVARIANT, not a fact about the bytes on disk — and in the field it was false.
+    /// <c>collection</c> is ONE wire set feeding two relations (liked tracks, saved albums), and a delta asked for
+    /// one carries the other's items too; before that was filtered (<c>Spotify.Library.ApplyCollectionDelta</c>,
+    /// <c>Decode.LibraryPageItems</c>) the saved ALBUMS were written into the Liked rows, and a real account's
+    /// <c>edge</c> table still holds them. Nothing repaired it: this applier minted each album uri into the
+    /// <c>Tracks</c> table (<see cref="Table.Slot(ReadOnlySpan{char})"/> allocates a row for ANY uri, whatever its
+    /// kind), <see cref="SaveEdges{TEdge}"/> faithfully wrote the degenerate rows back out, and a delta-answered
+    /// refresh never rewrites the whole list — so the contamination outlived the decoder fix, was reloaded on every
+    /// launch, and painted one blank row per foreign uri.</para>
+    /// <para>So a child whose uri DEFINITELY disagrees with <paramref name="childTable"/>'s own kind — both kinds
+    /// known, and different — is DROPPED here, with its payload, and <see cref="EdgePage.Total"/> reduced to match.
+    /// The rule is <see cref="Table.Alloc"/>'s, deliberately, and for <see cref="Table.Alloc"/>'s reason: a text-form
+    /// id that no provider claims parses as <see cref="EntityKind.Unknown"/> and is LEGITIMATE (a local file is the
+    /// standing example), so a gate that dropped Unknown would silently delete real rows from a real library — and
+    /// every future <c>wavee:</c> namespace with them — to catch a contamination that always names a KNOWN wrong kind
+    /// (an album uri in the Liked list). Tolerating Unknown here is what keeps this repair narrower than the bug.
+    /// The one relation the rule cannot serve at all is <see cref="EdgeRelation.Pins"/>, which is legitimately
+    /// cross-kind and has its own applier (<see cref="ApplyPinsEdge"/>).</para></summary>
     static void ApplyLibraryEdge(EdgePage page, EdgeTable<LibraryEdge> table, Table childTable)
     {
         int parent = Entities.Current.Users.Slot(page.Parent);
@@ -834,13 +853,37 @@ public static partial class Store
         if (page.Count > 0 && page.Stride != Unsafe.SizeOf<LibraryEdge>()) return;
 
         int n = page.Count;
+        var want = childTable.Kind;
+        ReadOnlySpan<LibraryEdge> payload = page.PayloadAs<LibraryEdge>();
         int[] targets = n == 0 ? Array.Empty<int>() : new int[n];
+        LibraryEdge[] kept = n == 0 || payload.IsEmpty ? Array.Empty<LibraryEdge>() : new LibraryEdge[n];
+        int live = 0;
         for (int i = 0; i < n; i++)
         {
             string uri = page.Children[i];
-            targets[i] = uri.Length == 0 ? Table.None : childTable.Slot(uri.AsSpan());
+            // An empty child is a hole the writer left; a DEFINITELY wrong-kind child is contamination. Both are
+            // skipped rather than minted, and the payload is compacted alongside so edge i still describes target i.
+            // An UNKNOWN kind is not a disagreement — see the doc: it is tolerated exactly as `Table.Alloc` tolerates it.
+            if (uri.Length == 0) continue;
+            var have = EntityUri.KindOf(uri.AsSpan());
+            if (have != EntityKind.Unknown && want != EntityKind.Unknown && have != want) continue;
+            targets[live] = childTable.Slot(uri.AsSpan());
+            if (kept.Length != 0) kept[live] = payload[i];
+            live++;
         }
-        table.Replace(parent, targets, page.PayloadAs<LibraryEdge>(), page.State, page.Total);
+        // Always on, and named so the repair is readable off the log the way the contamination was found: a run that
+        // drops nothing is silent, a run that drops anything says exactly how much and of what.
+        if (live != n)
+            Log.Event(WaveeLogLevel.Warning, "store", "store.edge.dropped",
+                "library edge children that do not name the relation's own kind were dropped; the persisted list is repaired on the next save",
+                null, -1, null,
+                WaveeLogField.Of("relation", page.Relation.ToString()), WaveeLogField.Of("want", want.ToString()),
+                WaveeLogField.Of("dropped", n - live), WaveeLogField.Of("kept", live));
+        // The stored total counted the dropped rows, so it comes down with them, or the list reads as permanently
+        // short of a total it can never reach.
+        int total = page.Total - (n - live);
+        table.Replace(parent, targets.AsSpan(0, live), kept.AsSpan(0, kept.Length == 0 ? 0 : live),
+                      page.State, total < live ? live : total);
     }
 
     /// <summary>Pins are CROSS-KIND (<see cref="PinKind"/>'s doc): a playlist, an album, an artist, a show, the Liked

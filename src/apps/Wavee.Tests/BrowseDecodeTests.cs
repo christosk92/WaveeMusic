@@ -102,4 +102,32 @@ public class BrowseImagePickTests
         string? picked = Spotify.Decode.BrowseImagePick.Choose(sources, 640);
         Assert.Equal("u300", picked);
     }
+
+    [Fact]
+    public void HeroMinWidth_is_640()
+        => Assert.Equal(640, Spotify.Decode.BrowseImagePick.HeroMinWidth);
+
+    [Fact]
+    public void ChooseIndex_picks_the_640_slot_from_64_300_640()
+    {
+        int[] widths = [64, 300, 640];
+        Assert.Equal(2, Spotify.Decode.BrowseImagePick.ChooseIndex(widths, Spotify.Decode.BrowseImagePick.HeroMinWidth));
+    }
+
+    [Fact]
+    public void ChooseIndex_empty_is_minus_one()
+        => Assert.Equal(-1, Spotify.Decode.BrowseImagePick.ChooseIndex([], 640));
+}
+
+/// <summary>Proto <c>Image.Size</c> rank for the one URL 0.3 stores per row: LARGE over DEFAULT over SMALL.</summary>
+public class ImageGroupPickTests
+{
+    [Fact]
+    public void Rank_is_xlarge_then_large_then_default_then_small()
+    {
+        Assert.True(Spotify.Decode.ImageGroupPick.Rank(3) > Spotify.Decode.ImageGroupPick.Rank(2));
+        Assert.True(Spotify.Decode.ImageGroupPick.Rank(2) > Spotify.Decode.ImageGroupPick.Rank(0));
+        Assert.True(Spotify.Decode.ImageGroupPick.Rank(0) > Spotify.Decode.ImageGroupPick.Rank(1));
+        Assert.True(Spotify.Decode.ImageGroupPick.Rank(1) > Spotify.Decode.ImageGroupPick.Rank(-1));
+    }
 }

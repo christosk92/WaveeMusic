@@ -42,15 +42,13 @@ public readonly partial struct Artist
     // ══ 1. THE ENTRY POINT ═══════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The Top-tracks chart for <paramref name="a"/>. <paramref name="accent"/> is the page's WATCHED chrome
-    /// accent (a grading landing re-tints the header rule and the selection pills in place). <paramref name="group"/>
-    /// is the page-level region's OWN group token (Artist.Page.cs's `region`, `Group: routeKey`) — restored to
-    /// 0.2.10's model (ch 08 BUG F), the whole page is one reveal unit, and the chart's own inner
-    /// <see cref="SkelRegionEl"/> joins that SAME group so top-tracks settles in the SAME window as the hero and the
-    /// magazine instead of trailing behind as its own wave.</summary>
-    internal static Element Chart(Artist a, IReadSignal<ColorF> accent, object group)
+    /// accent (a grading landing re-tints the header rule and the selection pills in place). The page waits for the
+    /// chart in <see cref="ArtistReadiness.BodyReady"/>, so this inner region does not join a page-level skeleton
+    /// group (that coordination faded the hero from 0 after the photo was already decoded).</summary>
+    internal static Element Chart(Artist a, IReadSignal<ColorF> accent, object? group = null)
         => Embed.Comp(new ChartProps(a, accent, group), static () => new ChartHost());
 
-    sealed record ChartProps(Artist A, IReadSignal<ColorF> Accent, object Group)
+    sealed record ChartProps(Artist A, IReadSignal<ColorF> Accent, object? Group)
     {
         public bool Equals(ChartProps? o) => o is not null && o.A == A && ReferenceEquals(o.Accent, Accent) && Equals(o.Group, Group);
         public override int GetHashCode() => A.Slot;
@@ -210,9 +208,7 @@ public readonly partial struct Artist
                     new SkelRegionEl(
                         Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
                         OnFailed: _failedPanelFn, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default,
-                        // ch 08 BUG F: shares the page-level region's own group (p.Group == routeKey) so top-tracks
-                        // reveals in the SAME settle window as the hero and the magazine, not as its own, later, wave.
-                        Group: p.Group, SmoothResize: false),
+                        Group: null, SmoothResize: false),
                 ],
             };
         }
@@ -381,6 +377,26 @@ public readonly partial struct Artist
             return (uint)index < (uint)slots.Length ? new Track(slots[index]) : default;
         }
 
+        /// <summary>Play the chart FROM this row, with the chart's OWN rows as the queue — the same funnel every other
+        /// track list goes through (<c>Track.Table.StartVisible</c>, and the album / playlist / liked pages).
+        /// <para>It must not be <c>PlayContext(artistUri, trackUri)</c>. The server resolves an artist context to its
+        /// own, different list, so a row past the top ten is simply absent from it: <c>RemotePlan.StartIndex</c>
+        /// byte-matches the uri, finds nothing, and the load falls back to row 0 — which is why clicking #41 played
+        /// something else entirely (`context load rows=74 start=0` in the log). Queuing what the user can actually see
+        /// is also the more honest answer to "play from here".</para></summary>
+        internal void StartAt(int index)
+        {
+            var slots = Owner.PopularSlots;
+            if ((uint)index >= (uint)slots.Length) return;
+            var refs = System.Buffers.ArrayPool<EntityRef>.Shared.Rent(slots.Length);
+            try
+            {
+                for (int i = 0; i < slots.Length; i++) refs[i] = new EntityRef(EntityKind.Track, slots[i]);
+                Playback.PlayRows(refs.AsSpan(0, slots.Length), index, Owner.Id);
+            }
+            finally { System.Buffers.ArrayPool<EntityRef>.Shared.Return(refs); }
+        }
+
         /// <summary>The selection-aware track menu — the same Explorer semantics the album drawer's rows use, so the
         /// chart's 0.2.9 BuildSingle/Build asymmetry (W27) is deliberately unified.</summary>
         ContextMenuModel? MenuFor(int index)
@@ -429,8 +445,9 @@ public readonly partial struct Artist
                                              uint FeatVersion, int FeatCount);
 
     /// <summary>One chart row: reads its track LIVE off the popular edge (ch 08 §1.2's live list), its tier from the
-    /// re-pushed props. Single click selects, double click plays BY URI (the server's list keeps its own order), the #
-    /// cell plays/pauses, the heart likes.</summary>
+    /// re-pushed props. Single click selects, double click plays FROM THIS ROW with the chart's own list as the queue
+    /// (<see cref="ChartHost.StartAt"/> — never by uri into the server's artist context), the # cell plays/pauses, the
+    /// heart likes.</summary>
     sealed class ChartRow : Component
     {
         ChartRowProps? _latest;
@@ -503,8 +520,8 @@ public readonly partial struct Artist
             if (_latest is not { } p) return;
             var t = p.Owner.TrackAt(p.Index);
             if (!t.IsValid) return;
-            var context = p.Owner.Owner.Id;
-            Track.Invoke(t, () => Playback.PlayContext(context, t.Id));
+            int at = p.Index;
+            Track.Invoke(t, () => p.Owner.StartAt(at));
         }
 
         void Like()
@@ -541,10 +558,10 @@ public readonly partial struct Artist
         if (featCount == 0 || firstSlot <= 0) return null;
         var first = new Artist(firstSlot);
         var kids = new Element[featCount > 1 ? 3 : 2];
-        kids[0] = new TextEl(Loc.Get(Strings.Artist.Feat)) { Size = 12f, Color = Tok.TextTertiary, Shrink = 0f };
+        kids[0] = Ui.Caption(Loc.Get(Strings.Artist.Feat)) with { Color = Tok.TextTertiary, Shrink = 0f };
         kids[1] = new SpanTextEl([new TextSpan(first.Name, OnClick: () => Track.GoToArtist(first))])
         {
-            Size = 12f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+            Size = Ui.Caption("").Size, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
         };
         if (featCount > 1)
         {
@@ -595,9 +612,9 @@ public readonly partial struct Artist
         {
             if (n > 0) sub[n++] = ChartDot(nowInk);
             // ONE format: compact in the row, the exact count in the tooltip — never squeezing the feat credit (§9 #10).
-            sub[n++] = ToolTip.Wrap(new TextEl(c.PlaysCompact)
+            sub[n++] = ToolTip.Wrap(Ui.Caption(c.PlaysCompact) with
             {
-                Size = 12f, Color = nowInk ?? Tok.TextTertiary, MaxLines = 1, Shrink = 0f,
+                Color = nowInk ?? Tok.TextTertiary, MaxLines = 1, Shrink = 0f,
             }, c.PlaysExact);
         }
 
@@ -610,13 +627,13 @@ public readonly partial struct Artist
             ? new BoxEl { Direction = 0, Gap = 5f, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = sub }
             : new BoxEl();
         Element[] mid = stacked
-            ? [title, subLine, new TextEl(c.PlaysExact) { Size = 12f, Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f }]
+            ? [title, subLine, Ui.Caption(c.PlaysExact) with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f }]
             : [title, subLine];
 
         var trail = new Element[tier.ShowDuration ? 2 : 1];
         trail[0] = Track.Heart(st.Saved, onLike, pop, classic);
         if (tier.ShowDuration)
-            trail[1] = new TextEl(c.Duration) { Size = 13f, Color = nowInk ?? Tok.TextSecondary };
+            trail[1] = Design.Type.DenseMeta(c.Duration) with { Color = nowInk ?? Tok.TextSecondary };
 
         var rowChildren = new Element[showArtwork ? 4 : 3];
         int child = 0;
@@ -674,7 +691,7 @@ public readonly partial struct Artist
         };
     }
 
-    static Element ChartDot(ColorF? ink) => new TextEl("·") { Size = 12f, Color = ink ?? Tok.TextTertiary, Shrink = 0f };
+    static Element ChartDot(ColorF? ink) => Ui.Caption("·") with { Color = ink ?? Tok.TextTertiary, Shrink = 0f };
 
     /// <summary>The chart's derived-skeleton source: the SAME row builder over a representative shape, at the seed's
     /// column count (≤ 10 charted ⇒ 2 × 5; an empty edge assumes the overview's ten, W5).</summary>
@@ -733,8 +750,8 @@ public readonly partial struct Artist
             int page = p.Page;
             UseEffect(() => { if (_selected.Peek() != page) _selected.Value = page; }, DepKey.From(page));
             if (p.PageCount <= 1)
-                return new TextEl(p.Total.ToString(System.Globalization.CultureInfo.CurrentCulture))
-                    { Size = 12f, Weight = 600, Color = Tok.TextTertiary };
+                return Ui.Caption(p.Total.ToString(System.Globalization.CultureInfo.CurrentCulture))
+                    with { Weight = 600, Color = Tok.TextTertiary };
             return new BoxEl
             {
                 Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,

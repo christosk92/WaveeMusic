@@ -172,7 +172,7 @@ public static partial class Controls
     {
         Shrink = 0f, Padding = new Edges4(Spacing.S, 2f, Spacing.S, 2f),
         Corners = Radii.PillAll, Fill = Tok.FillSubtleSecondary,
-        Children = [new TextEl(text) { Size = 11f, Weight = 600, Color = Tok.TextTertiary, MaxLines = 1 }],
+        Children = [Design.Type.MicroMeta(text) with { Weight = 600, Color = Tok.TextTertiary, MaxLines = 1 }],
     };
 
     // ══ 3. THE NOW-PLAYING OVERLAY ═══════════════════════════════════════════════════════════════════════════════════
@@ -796,9 +796,9 @@ public static partial class Controls
         OnClick = onClick,
         Children =
         [
-            new TextEl(label)
+            (selected ? Design.Type.DenseTitle(label) : Design.Type.DenseMeta(label)) with
             {
-                Size = 13f, Weight = (ushort)(selected ? 600 : 400), MaxLines = 1,
+                MaxLines = 1,
                 // 0.2.9 left this without a Trim, so a long concept name overflowed its own capsule (ch 02 §9.13).
                 Trim = TextTrim.CharacterEllipsis,
                 Color = selected ? Tok.TextOnAccentPrimary : available ? Tok.TextPrimary : Tok.TextDisabled,
@@ -864,8 +864,8 @@ public static partial class Controls
                 ? [new BoxEl { Key = "v", Children = [valueRun] }]
                 : [new BoxEl { Key = "v:" + value, Animate = MotionRecipes.TextSwap, Children = [valueRun] }],
         };
-        Element captionRun = new TextEl(caption)
-            { Size = 11f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+        Element captionRun = Design.Type.MicroMeta(caption)
+            with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
 
         return new BoxEl
         {

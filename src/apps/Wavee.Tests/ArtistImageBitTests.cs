@@ -296,4 +296,50 @@ public class ArtistImageBitTests
         Assert.False(artist.Knows(ArtistFields.Header));
         Assert.False(artist.Knows(ArtistFields.Identity));
     }
+
+    // -- the TRACK twin of the same bug (the blank covers on an artist's top tracks) ---------------------------------
+
+    /// <summary><c>TrackFields.Identity</c> is a GROUP - Title|Artists|Album|Duration|Explicit|Image - and
+    /// <c>Pathfinder.Stage</c>'s track arm sealed the whole of it on the strength of a NAME. A hit that carried no
+    /// cover (a top-tracks entry, a thin search row) therefore walked out claiming an image it never saw, and
+    /// <c>Fetch.NeedOf = wanted &amp; ~Known</c> saw no hole to fill: nothing ever asked for the artwork again, so the
+    /// row painted a blank square for as long as it stayed cached. Exactly the chip-rail bug above, one table over.</summary>
+    [Fact]
+    public void A_track_hit_with_a_name_but_no_cover_does_not_claim_the_image_bit()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        string uri = EntityId.ForGid(EntityKind.Track, Gid(60)).Text;
+
+        var node = new Spotify.Decode.Node { Uri = new StagedId(s.Text(uri)), Name = s.Text("Named, uncovered") };
+        Spotify.Decode.Stage(s, in node, Authority.Full);
+        TestScope.CommitAndPublish(s);
+
+        var track = Entities.Track(EntityUri.Parse(uri.AsSpan()));
+        Assert.True(track.Knows(TrackFields.Title));
+        Assert.False(track.Knows(TrackFields.Image));          // the bug: this used to read true
+        Assert.False(track.Knows(TrackFields.Identity));       // ...so the group is a hole the fetcher can still fill
+    }
+
+    /// <summary>...and a hit that DID carry a cover still seals the whole group, so a covered row is never re-asked.</summary>
+    [Fact]
+    public void A_track_hit_that_carried_a_cover_still_seals_the_identity_group()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        string uri = EntityId.ForGid(EntityKind.Track, Gid(61)).Text;
+
+        var node = new Spotify.Decode.Node
+        {
+            Uri = new StagedId(s.Text(uri)),
+            Name = s.Text("Named and covered"),
+            Image = s.Text("https://i.scdn.co/image/ab67616d0000b273deadbeef"),
+        };
+        Spotify.Decode.Stage(s, in node, Authority.Full);
+        TestScope.CommitAndPublish(s);
+
+        var track = Entities.Track(EntityUri.Parse(uri.AsSpan()));
+        Assert.True(track.Knows(TrackFields.Image));
+        Assert.True(track.Knows(TrackFields.Identity));
+    }
 }

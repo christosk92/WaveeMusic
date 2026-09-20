@@ -322,6 +322,17 @@ public class ShellResponsiveLayoutTests
     }
 
     [Fact]
+    public void The_cap_ceiling_leaves_the_remaining_rail_for_the_body()
+    {
+        Assert.Equal(200f, Shell.DockedCapCeiling(200f));
+        Assert.Equal(Shell.DockedVideoMaxH, Shell.DockedCapCeiling(10_000f));
+        Assert.Equal(Shell.DockedVideoMaxH, Shell.DockedCapCeiling(0f));
+        float fitted = Shell.FitDockedVideoHeight(340f, 1920, 1080, remainingRailH: 180f);
+        Assert.True(fitted <= 180f);
+        Assert.True(fitted <= Shell.DockedCapCeiling(180f));
+    }
+
+    [Fact]
     public void The_splitter_floor_is_sixteen_by_nine_and_a_zero_height_takes_it()
         => Assert.Equal(Shell.DockedVideoNaturalH(340f), Shell.ClampDockedVideoHeight(0f, 340f), 3);
 

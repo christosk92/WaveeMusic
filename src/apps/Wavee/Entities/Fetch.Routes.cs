@@ -186,6 +186,7 @@ public static class FetchRoutes
     // ── the extension kinds (extension_kind.proto; the numbers ARE the protocol) ──
     public const int TrackV4 = 10, EpisodeV4 = 12, AlbumV4 = 9, ArtistV4 = 8, ShowV4 = 11, ListMetadataV2 = 205;
     public const int TrackDescriptor = 6, VideoAssociations = 99, AudioAssociations = 98, PreRelease = 138;
+    public const int ConsumptionExperience = 182;
     public const int PlayCount = 185, CreditsV2 = 186, AudioAttributes = 222, ThreeBandWaveforms = 237;
     public const int UserProfile = 15, RecommendedPlaylists = 151;
 
@@ -199,6 +200,16 @@ public static class FetchRoutes
         FetchRoute.Metadata(AudioAttributes, (uint)TrackFields.Audio),
         FetchRoute.Metadata(TrackDescriptor, (uint)TrackFields.Tags),
         FetchRoute.Metadata(VideoAssociations, (uint)TrackFields.Video),
+        // THE SAME GROUP, A SECOND ANSWER - and the only one a RELINKED row can get. Kind 99 is keyed by the
+        // CANONICAL id and answers nothing for an alias, which is why a playlist's relinked members showed no film
+        // mark while an artist's canonical top tracks did. Kind 182 is canonical-COMPUTED, so it still reports the
+        // video for the alias, and it rides this same POST under the same EntityRequest - no extra round trip
+        // (0.2.9's VideoProjector carried both for exactly this reason; 0.3 shipped without it).
+        //
+        // It also ends the retry storm: kind 99 staged NOTHING for a track with no video (the server simply omits
+        // the entity), so `Missed` fired and the row burned three sends before sealing - 512 misses and 168 seals
+        // in one afternoon. 182 answers for every track, so the group settles either way, once.
+        FetchRoute.Metadata(ConsumptionExperience, (uint)TrackFields.Video),
         // The ladder: kind 5 on the DERIVED spotify:audio: entity, in its own batch (FetchBatch.Extension == 5).
         FetchRoute.Metadata(Fetch.AudioFilesKind, (uint)TrackFields.Files),
         // TrackFields.Publishing has NO route, deliberately: kind 183 is an ALBUM trait (0.2.9 PublishingProjector,

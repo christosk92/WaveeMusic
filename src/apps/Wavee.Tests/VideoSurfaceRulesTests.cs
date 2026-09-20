@@ -335,15 +335,25 @@ public class VideoStageInputTests
     [Fact]
     public void Only_the_pop_out_moves_its_window()
     {
-        Assert.True(StageInput.DragMovesWindow(TransportOwner.PopOut, hostFullscreen: false));
-        Assert.False(StageInput.DragMovesWindow(TransportOwner.Docked, false));
-        Assert.False(StageInput.DragMovesWindow(TransportOwner.Fullscreen, false));
-        Assert.False(StageInput.DragMovesWindow(TransportOwner.GlobalBar, false));
+        Assert.True(StageInput.DragMovesWindow(TransportOwner.PopOut, hostFullscreen: false, hasTitleBand: false));
+        Assert.False(StageInput.DragMovesWindow(TransportOwner.Docked, false, false));
+        Assert.False(StageInput.DragMovesWindow(TransportOwner.Fullscreen, false, false));
+        Assert.False(StageInput.DragMovesWindow(TransportOwner.GlobalBar, false, false));
     }
 
     [Fact]
     public void A_fullscreen_pop_out_has_nowhere_to_go()
-        => Assert.False(StageInput.DragMovesWindow(TransportOwner.PopOut, hostFullscreen: true));
+        => Assert.False(StageInput.DragMovesWindow(TransportOwner.PopOut, hostFullscreen: true, hasTitleBand: false));
+
+    /// <summary>ONE drag path per window. With a visible title band the picture must not arm a move as well: two
+    /// independent arms both start the same OS modal loop, and a release between the two could leave the window
+    /// trailing the cursor with no button held.</summary>
+    [Fact]
+    public void A_title_band_takes_the_drag_away_from_the_picture()
+    {
+        Assert.False(StageInput.DragMovesWindow(TransportOwner.PopOut, hostFullscreen: false, hasTitleBand: true));
+        Assert.True(StageInput.DragMovesWindow(TransportOwner.PopOut, hostFullscreen: false, hasTitleBand: false));
+    }
 
     [Fact]
     public void Only_the_dedicated_window_hides_the_cursor_windowed()
@@ -1227,5 +1237,34 @@ public class VideoMenuVerbRegistrationTests
         // None of the five is a toggle row.
         Assert.False(AppActions.Find(ActionId.AttachVideo)!.IsToggle);
         Assert.False(AppActions.Find(ActionId.RemoveVideo)!.IsToggle);
+    }
+}
+
+public class VideoMainWindowHoleTests
+{
+    [Fact]
+    public void Docked_pip_and_fullscreen_share_the_main_window_hole()
+    {
+        Assert.True(MainWindowHole.Owns(SurfacePlacement.Docked));
+        Assert.True(MainWindowHole.Owns(SurfacePlacement.Floating));
+        Assert.True(MainWindowHole.Owns(SurfacePlacement.Fullscreen));
+        Assert.False(MainWindowHole.Owns(SurfacePlacement.Detached));
+        Assert.False(MainWindowHole.Owns(SurfacePlacement.None));
+    }
+
+    [Fact]
+    public void Engine_transport_stays_off_on_the_shared_hole()
+        => Assert.False(MainWindowHole.EngineTransportEnabled);
+
+    [Fact]
+    public void On_media_transport_is_the_shared_player_on_every_visible_placement()
+    {
+        Assert.Equal("onmedia.transport", OnMedia.TransportId);
+        Assert.Equal(OnMedia.TransportId, OnMediaTransport.Id);
+        Assert.True(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.Docked));
+        Assert.True(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.Floating));
+        Assert.True(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.Detached));
+        Assert.True(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.Fullscreen));
+        Assert.False(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.None));
     }
 }
