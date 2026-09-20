@@ -1,0 +1,1626 @@
+artist.albums	none	Albums
+artist.appearsOn	none	Appears on
+artist.artistPick	none	Artist pick
+artist.artistRadio	none	Artist radio
+artist.biography	none	Biography
+artist.buy	none	Buy
+artist.compilations	none	Compilations
+artist.discoCountAlbum	plural	{n, plural, one {# album} other {# albums}}
+artist.discoCountCompilation	plural	{n, plural, one {# compilation} other {# compilations}}
+artist.discoCountRelease	plural	{n, plural, one {# release} other {# releases}}
+artist.discoCountSingle	plural	{n, plural, one {# single} other {# singles}}
+artist.discoReleases	none	Releases
+artist.fallbackName	none	Artist
+artist.feat	none	feat.
+artist.follow	none	Follow
+artist.following	none	Following
+artist.gallery	none	Gallery
+artist.galleryAllFiles	none	All files
+artist.galleryExport	none	Export image
+artist.galleryExportFailed	none	Image export failed: {error}
+artist.galleryExportTitle	none	Export gallery image
+artist.galleryExported	none	Image exported
+artist.galleryExporting	none	Exporting…
+artist.galleryImages	none	Images
+artist.latestRelease	none	Latest release
+artist.listenedMostIn	none	Listened to most in
+artist.merch	none	Merch
+artist.metaFollowers	none	followers
+artist.metaMonthly	none	monthly listeners
+artist.musicVideos	none	Music videos
+artist.play	none	Play
+artist.playlistsDiscovery	none	Playlists and discovery
+artist.popular	none	Popular
+artist.profileFacts	none	Profile facts
+artist.releaseCount	plural	{count, plural, one {# release} other {# releases}}
+artist.releaseMeta	none	{date} · {count}
+artist.singlesEps	none	Singles & EPs
+artist.stat.albums	none	Albums
+artist.stat.concerts	none	Upcoming concerts
+artist.stat.followers	none	Followers
+artist.stat.monthly	none	Monthly listeners
+artist.stat.related	none	Related artists
+artist.stat.singles	none	Singles & EPs
+artist.topTracks	none	Top tracks
+artist.tour.headline	none	{name} — on tour
+artist.tour.onTourNow	none	On tour now
+artist.tour.subline	plural	Next: {date} · {venue} · {city} · {count, plural, one {# date} other {# dates}} total
+artist.tour.upcomingDates	none	Upcoming dates
+artist.tour.upcomingShow	none	Upcoming show
+artist.tour.upcomingTour	none	Upcoming tour
+artist.trackCount	plural	{count, plural, one {# track} other {# tracks}}
+artist.upcoming	none	Upcoming
+artist.upcomingConcerts	none	Upcoming concerts
+artist.verified	none	Verified Artist
+artist.view	none	View
+artist.worldRank	none	#{rank} in the world
+auth.account	none	Account
+auth.back	none	Back
+auth.browserFailed	none	Browser sign-in failed: {error}
+auth.cancel	none	Cancel
+auth.close	none	Close
+auth.codeExpired	none	That code expired
+auth.codeExpiredBody	none	Codes are short-lived for your security.
+auth.copied	none	Copied
+auth.copyCode	none	Copy code
+auth.couldntSignIn	none	Couldn't sign in
+auth.disclaimer	none	Disclaimer: Spotify® and the Spotify logo are registered trademarks of Spotify AB. All trademarks, logos, and brand names are the property of their respective owners. Their use in this application is for identification purposes only and does not imply any endorsement or affiliation.
+auth.enterCodeColon	none	and enter this code:
+auth.expiresIn	none	Expires in {time}
+auth.freeBadge	none	Spotify Free
+auth.genericError	none	Something went wrong signing in.
+auth.getNewCode	none	Get a new code
+auth.gettingCode	none	Getting your code…
+auth.logIn	none	Log in
+auth.logOut	none	Log out
+auth.logoutConfirmBody	none	You'll need to authorize Wavee again to stream your library.
+auth.logoutConfirmTitle	none	Log out of Wavee?
+auth.networkError	none	We couldn't reach Spotify. Check your connection and try again.
+auth.open	none	Open
+auth.or	none	OR
+auth.orGoTo	none	Go to
+auth.pairUrl	none	spotify.com/pair
+auth.premiumBadge	none	Spotify Premium
+auth.premiumBody	none	Wavee streams full-quality, on-demand audio, which Spotify only allows on Premium accounts. You're signed in to a Free account, so playback is blocked.
+auth.premiumTitle	none	Wavee needs Spotify Premium
+auth.scanToLogIn	none	Scan QR code to log in
+auth.settings	none	Settings
+auth.signingIn	none	Signing you in…
+auth.spotifySignInWeb	none	Sign in with your Spotify® account on the Spotify® website
+auth.stepAudio	none	Starting audio
+auth.stepConnecting	none	Connecting to Spotify
+auth.stepMetadata	none	Preparing your library
+auth.stepProfile	none	Almost there
+auth.tryAgain	none	Try again
+auth.upgrade	none	Go to Premium
+auth.useAnotherAccount	none	Use a different account
+auth.waitingApproval	none	Waiting for you to authorize…
+browse.charts	none	Charts
+browse.exploreAll	none	Explore all categories
+browse.eyebrow	none	Browse all
+browse.forYou	none	For you
+browse.genres	none	Genres
+browse.homeSubtitle	none	Genres, moods and charts — everything Spotify is featuring right now.
+browse.homeTitle	none	Browse
+browse.moodActivity	none	Mood & activity
+browse.more	none	More
+browse.showAll	none	Show all
+browse.title	none	Browse
+browse.top	none	Top
+browse.unavailable	none	This category isn't available right now
+common.close	none	Close
+common.controlledByDevice	none	Controlled by {device}
+common.crashLastRun	none	Wavee crashed last time
+common.developerOnly	none	Developer mode
+common.offlineBanner	none	You're offline. Cached content still works; playback and edits resume when you're back.
+common.openReportFolder	none	Open report folder
+common.restartNow	none	Restart now
+common.restartToApply	none	Applies after restart
+concerts.allEvents	none	All events
+concerts.allGenres	none	All
+concerts.available	none	Available
+concerts.browseAll	none	Browse all concerts
+concerts.detail.ages	none	Ages {restriction}
+concerts.detail.artistCount	plural	{count, plural, one {# artist} other {# artists}}
+concerts.detail.artistFallback	none	Artist
+concerts.detail.buyTickets	none	Buy tickets
+concerts.detail.concert	none	Concert
+concerts.detail.doorsOpen	none	Doors open {time}
+concerts.detail.lineup	none	Lineup
+concerts.detail.notAvailable	none	Concert not available
+concerts.detail.notAvailableSubtitle	none	This event may have been removed or is no longer listed.
+concerts.detail.onSaleFrom	none	On sale from {start}
+concerts.detail.onSaleRange	none	On sale {start} - {end}
+concerts.detail.onSaleUntil	none	On sale until {end}
+concerts.detail.relatedConcerts	none	Related concerts
+concerts.detail.ticketProvider	none	Ticket provider
+concerts.detail.tickets	none	Tickets
+concerts.detail.ticketsUnavailable	none	Tickets not available online
+concerts.emptyForLocation	none	Nothing is on sale for this location right now. Try another place or category.
+concerts.emptyTitle	none	No concerts found
+concerts.emptyWithoutLocation	none	Set your location to discover live music near you.
+concerts.explore	none	Explore concerts
+concerts.fallbackTitle	none	Concert
+concerts.filter.allOf	none	All of {month}
+concerts.filter.anytime	none	Anytime
+concerts.filter.clear	none	Clear
+concerts.filter.custom	none	Custom
+concerts.filter.dates	none	Dates
+concerts.filter.events	none	events
+concerts.filter.filterBy	none	Filter by
+concerts.filter.moreGenres	none	+{count} genres
+concerts.filter.nextWeekend	none	Next weekend
+concerts.filter.showEvents	none	Show events
+concerts.filter.showLess	none	Show less
+concerts.filter.thisWeekend	none	This weekend
+concerts.filter.today	none	Today
+concerts.filter.weekend	none	Weekend
+concerts.filter.whereRadius	none	{place} · {km} km
+concerts.filter.withinKm	none	Within {km} km
+concerts.genre	none	Genre
+concerts.genreFallback	none	Genre
+concerts.homeSubtitle	none	Tour dates, tickets, and shows from artists you love.
+concerts.homeTitle	none	Concerts near you
+concerts.liveMusic	none	Live music
+concerts.location.failed	none	We couldn't get your location. Search for a city instead.
+concerts.location.invalid	none	That location can't be saved. Try another.
+concerts.location.locating	none	Locating…
+concerts.location.lookupFailed	none	Couldn't look up your location. Search for a city instead.
+concerts.location.noMatches	none	No matching places for your location. Try searching for a city instead.
+concerts.location.noneFound	none	No locations found
+concerts.location.permissionDenied	none	Location access is off. Turn it on in Windows Settings, or search for a city instead.
+concerts.location.saveFailed	none	Couldn't save that location. Try again.
+concerts.location.searchCities	none	Search cities
+concerts.location.searchFailed	none	Search failed. Check your connection and try again.
+concerts.location.searching	none	Searching…
+concerts.location.set	none	Set location
+concerts.location.timedOut	none	Finding your location took too long. Try again, or search for a city.
+concerts.location.unavailable	none	Your location isn't available right now. Search for a city instead.
+concerts.location.useMine	none	Use my location
+concerts.nearApproximate	none	Near {place} (approximate)
+concerts.nearYou	none	Near you
+concerts.playlistsForScene	none	Playlists for the scene
+concerts.recommendedForYou	none	Recommended for you
+concerts.schedule.cityCount	plural	{count, plural, one {# city} other {# cities}}
+concerts.schedule.nextShow	none	Next show · {relativeTime}
+concerts.schedule.nights	plural	{count, plural, one {# night} other {# nights}}
+concerts.schedule.noMoreDates	none	No other dates near you
+concerts.schedule.noMoreDatesSubtitle	none	That's every show on sale for this location right now. Try another location to see the rest of the tour.
+concerts.schedule.noUpcoming	none	No upcoming concerts
+concerts.schedule.noUpcomingSubtitle	none	There are no dates on sale right now. Try a different location or check back later.
+concerts.schedule.onTour	none	On tour
+concerts.schedule.relative.days	plural	{count, plural, one {in # day} other {in # days}}
+concerts.schedule.relative.months	plural	{count, plural, one {in # month} other {in # months}}
+concerts.schedule.relative.today	none	today
+concerts.schedule.relative.tomorrow	none	tomorrow
+concerts.schedule.relative.weeks	plural	{count, plural, one {in # week} other {in # weeks}}
+concerts.schedule.showAll	none	Show all {count}
+concerts.schedule.showCount	plural	{count, plural, one {# show} other {# shows}}
+concerts.schedule.support.more	plural	{count, plural, one {with {first}, {second} +# more} other {with {first}, {second} +# more}}
+concerts.schedule.support.one	none	with {first}
+concerts.schedule.support.two	none	with {first}, {second}
+concerts.schedule.tourDates	none	Tour dates
+concerts.schedule.viewEvent	none	View event
+concerts.setLocation	none	Set location
+concerts.soldOut	none	Sold out or unavailable
+concerts.subtitle	none	Live shows, festival dates, and artists playing near you.
+concerts.title	none	Concerts
+crash.body	none	Wavee crashed.
+crash.logLine	none	Log: {path}
+crash.openFolderQuestion	none	Open the report folder now?
+crash.reportLine	none	Crash report: {path}
+crash.title	none	Oops! Wavee crashed
+detail.aboutRelease	none	About this release
+detail.aboutTheArtist	none	About the artist
+detail.access.privateCaption	none	Only you and collaborators
+detail.access.publicCaption	none	Anyone can find and view
+detail.addToPlaylist	none	Add to playlist
+detail.addToQueue	none	Add to queue
+detail.addedFirstToQueue	none	Added the first {count} to queue
+detail.addedToPlaylist	none	Added to {name}
+detail.addedToQueue	none	Added {count} to queue
+detail.badge.album	none	ALBUM
+detail.badge.compilation	none	COMPILATION
+detail.badge.ep	none	EP
+detail.badge.episode	none	EPISODE
+detail.badge.explicit	none	EXPLICIT
+detail.badge.single	none	SINGLE
+detail.chartNewEntries	plural	{count, plural, one {# new entry} other {# new entries}} · {date}
+detail.clearSelection	none	Clear selection
+detail.collabCount	plural	{n, plural, one {# collaborator} other {# collaborators}}
+detail.collabOpen	none	Open to collaboration
+detail.collabView	none	View collaborators
+detail.collaborator	none	Collaborator
+detail.column.addedBy	none	Added by
+detail.column.album	none	Album
+detail.column.artist	none	Artist
+detail.column.dateAdded	none	Date added
+detail.column.number	none	#
+detail.column.plays	none	Plays
+detail.column.song	none	Song
+detail.column.tempo	none	BPM · Key
+detail.column.time	none	Time
+detail.column.title	none	Title
+detail.copyToPlaylist	none	Copy to playlist
+detail.daysAgo	plural	{count, plural, one {# day ago} other {# days ago}}
+detail.density.comfortable	none	Comfortable
+detail.density.compact	none	Compact
+detail.density.cozy	none	Cozy
+detail.density.default	none	Default
+detail.density.rowSize	none	Row size
+detail.discography.showAllTracks	none	Show all {n} tracks
+detail.durationHrMin	none	{hours} hr {minutes} min
+detail.durationMin	none	{minutes} min
+detail.edit.cancel	none	Cancel
+detail.edit.changeCover	none	Change cover
+detail.edit.collaborative	none	Collaborative playlist
+detail.edit.collaborativeHint	none	Collaborators can add, remove, and reorder songs.
+detail.edit.conflict	none	This playlist changed — try again.
+detail.edit.copyInviteLink	none	Copy invite link
+detail.edit.createFailed	none	Couldn’t create the playlist.
+detail.edit.deletePlaylist	none	Delete playlist
+detail.edit.deletePlaylistConfirm	none	Delete this playlist? It will be removed from your library. This cannot be undone.
+detail.edit.deletedElsewhere	none	This playlist was deleted.
+detail.edit.descriptionPlaceholder	none	Add an optional description
+detail.edit.dropCover	none	Drop image to change cover
+detail.edit.failed	none	Something went wrong. Try again.
+detail.edit.forbidden	none	You can’t edit this playlist anymore.
+detail.edit.inviteCollaborators	none	Invite collaborators
+detail.edit.inviteHint	none	Anyone with the link can join this playlist as a collaborator.
+detail.edit.movedRows	plural	{count, plural, one {Moved # song} other {Moved # songs}}
+detail.edit.namePlaceholder	none	Playlist name
+detail.edit.offlineSpotifyEdits	none	Sign in to edit Spotify playlists.
+detail.edit.pendingCount	plural	{count, plural, one {# change pending} other {# changes pending}}
+detail.edit.pendingSync	none	Saved on this device — still syncing.
+detail.edit.pickCover	none	Choose playlist cover image
+detail.edit.publicPlaylist	none	Public playlist
+detail.edit.queuedOffline	none	You’re offline — this change will sync when you’re back.
+detail.edit.removedFromPlaylist	plural	{count, plural, one {Removed # song} other {Removed # songs}}
+detail.edit.reorderConflict	none	Couldn’t reorder — the playlist changed elsewhere.
+detail.edit.save	none	Save
+detail.edit.saved	none	Saved
+detail.edit.saving	none	Saving…
+detail.empty.loadFailed	none	Couldn't load these songs
+detail.empty.noMatch	none	No songs match your filter
+detail.empty.noTracks	none	Nothing here yet
+detail.factLabel	none	Label
+detail.factLength	none	Length
+detail.factOfCount	none	{n} of {total}
+detail.factReleased	none	Released
+detail.factReleases	none	Releases
+detail.factSong	none	Song
+detail.factSongs	none	Songs
+detail.fansAlsoLike	none	Fans also like
+detail.featuredOn	none	Featured on
+detail.filter.activeCount	none	{count} active filters
+detail.filter.albumOnly	none	Album
+detail.filter.all	none	All
+detail.filter.allChip	none	All
+detail.filter.allTracks	none	All tracks
+detail.filter.anyDuration	none	Any duration
+detail.filter.anySource	none	Any source
+detail.filter.anyTempo	none	Any tempo
+detail.filter.anyTime	none	Any time
+detail.filter.artistOnly	none	Artist
+detail.filter.clear	none	Clear
+detail.filter.clearFilters	none	Clear all filters
+detail.filter.content	none	Content
+detail.filter.dateAdded	none	Date added
+detail.filter.duration	none	Duration
+detail.filter.everything	none	Everything
+detail.filter.explicitContent	none	Explicit content
+detail.filter.hide	none	Hide
+detail.filter.lastSevenDays	none	Last 7 days
+detail.filter.lastSixMonths	none	Last 6 months
+detail.filter.lastThirtyDays	none	Last 30 days
+detail.filter.lastYear	none	Last year
+detail.filter.likedOnly	none	Liked only
+detail.filter.local	none	Local files
+detail.filter.moreFilters	none	More filters
+detail.filter.noFiltersApplied	none	No filters applied
+detail.filter.only	none	Only
+detail.filter.overFive	none	Over 5 minutes
+detail.filter.playableOnly	none	Available to play
+detail.filter.searchIn	none	Search in
+detail.filter.searchThisList	none	Search this list
+detail.filter.source	none	Source
+detail.filter.streamed	none	Streaming
+detail.filter.tempo	none	Tempo
+detail.filter.tempo120To139	none	Fast — 120 to 139 BPM
+detail.filter.tempo140Up	none	Very fast — 140 BPM and up
+detail.filter.tempo90To119	none	Medium — 90 to 119 BPM
+detail.filter.tempoUnder90	none	Slow — under 90 BPM
+detail.filter.threeToFive	none	3–5 minutes
+detail.filter.title	none	Filter tracks
+detail.filter.titleOnly	none	Title
+detail.filter.underThree	none	Under 3 minutes
+detail.filter.videoTracks	none	Video tracks
+detail.findPlaylist	none	Find a playlist
+detail.goToAlbum	none	Go to album
+detail.goToArtist	none	Go to artist
+detail.goToPlaylist	none	Open
+detail.likedCover.note	none	Built from your latest likes — the cover changes as you like songs. Stock keeps the fixed artwork.
+detail.likedCover.pill	none	Cover style
+detail.likedCover.style.feature	none	Feature
+detail.likedCover.style.lens	none	Lens
+detail.likedCover.style.marquee	none	Marquee
+detail.likedCover.style.mosaic	none	Mosaic
+detail.likedCover.style.rainbow	none	Rainbow
+detail.likedCover.style.stack	none	Stack
+detail.likedCover.style.stock	none	Stock
+detail.likedCover.style.tone	none	Tone
+detail.likedCover.style.wall	none	Wall
+detail.likedCover.title	none	Cover style
+detail.likedFacts.allArtists	none	All artists
+detail.likedFacts.artistTip	plural	{artist} · {count, plural, one {# liked song} other {# liked songs}}
+detail.likedFacts.artistTipAdded	plural	{artist} · {count, plural, one {# song} other {# songs}}
+detail.likedFacts.band120	none	120 – 139 bpm
+detail.likedFacts.band140	none	140 bpm and up
+detail.likedFacts.band90	none	90 – 119 bpm
+detail.likedFacts.bandName120	none	Fast
+detail.likedFacts.bandName140	none	Very fast
+detail.likedFacts.bandName90	none	Medium
+detail.likedFacts.bandNameUnder90	none	Slow
+detail.likedFacts.bandUnder90	none	under 90 bpm
+detail.likedFacts.blend	none	Your blend
+detail.likedFacts.bpmMedian	none	bpm · median
+detail.likedFacts.collectingSince	none	Collecting since {date}
+detail.likedFacts.decade	none	mostly the {decade}s
+detail.likedFacts.lastAdd	none	last add {date}
+detail.likedFacts.lastLike	none	last like {date}
+detail.likedFacts.lastYear	plural	{count, plural, one {# song} other {# songs}} you liked this week last year
+detail.likedFacts.lensAdded	none	Added {range}
+detail.likedFacts.lensClear	none	Clear this filter
+detail.likedFacts.lensWeek	none	Liked {range}
+detail.likedFacts.lensYear	none	{year}
+detail.likedFacts.lensYears	none	{start} – {end}
+detail.likedFacts.likedDelta	none	+{count}
+detail.likedFacts.moreArtists	plural	{count, plural, one {# more} other {# more}}
+detail.likedFacts.moreTags	plural	{count, plural, one {# more} other {# more}}
+detail.likedFacts.mostLiked	none	Most liked
+detail.likedFacts.mostTracks	none	most tracks
+detail.likedFacts.oldest	none	oldest like {title}
+detail.likedFacts.oldestAdd	none	oldest add {title}
+detail.likedFacts.oldestTrack	none	oldest track {title}
+detail.likedFacts.oldestTrackYear	none	oldest track {title} ({year})
+detail.likedFacts.pillBlendFlat	none	{count} styles, none over {share}
+detail.likedFacts.pillCount	none	{count} of {known}
+detail.likedFacts.pillMostly	none	mostly
+detail.likedFacts.pillTempoTip	none	median {median} bpm · {known} of {total} tracks have a tempo
+detail.likedFacts.pillYearsTip	plural	{range} · {count, plural, one {# track} other {# tracks}} of {known} dated
+detail.likedFacts.playThem	none	Play them
+detail.likedFacts.rediscover	none	Rediscover
+detail.likedFacts.shareTip	plural	{tag} · {count, plural, one {# song} other {# songs}} · {share}
+detail.likedFacts.showLess	none	Show less
+detail.likedFacts.since	none	Liking since {date}
+detail.likedFacts.songsAdded	plural	{count, plural, one {song added} other {songs added}}
+detail.likedFacts.songsLiked	plural	{count, plural, one {song liked} other {songs liked}}
+detail.likedFacts.tailHeader	none	The other {count}
+detail.likedFacts.tailShareTip	plural	{tag} · {count, plural, one {# song} other {# songs}} · {share} of the tail
+detail.likedFacts.tailSongs	plural	{count, plural, one {# song} other {# songs}}
+detail.likedFacts.tempo	none	Tempo
+detail.likedFacts.tempoBandTip	plural	{range} · {name} · {count, plural, one {# track} other {# tracks}}
+detail.likedFacts.tempoCoverage	none	{known} of {total}
+detail.likedFacts.tempoRange	none	{min} – {max} bpm
+detail.likedFacts.theYears	none	The years
+detail.likedFacts.thisWeek	none	This week
+detail.likedFacts.topArtists	none	Top artists
+detail.likedFacts.underFloor	plural	… and {count, plural, one {# descriptor} other {# descriptors}} under 1 %
+detail.likedFacts.weekRange	none	{start} – {end}
+detail.likedFacts.weekTip	plural	{start} – {end} · {count, plural, one {# song liked} other {# songs liked}}
+detail.likedFacts.weekTipAdded	plural	{start} – {end} · {count, plural, one {# song added} other {# songs added}}
+detail.likedFacts.windowCaption	none	last {count} weeks
+detail.likedFacts.yearRange	none	{start} – {end}
+detail.likedFacts.yearTip	plural	{start} – {end} · {count, plural, one {# track} other {# tracks}}
+detail.likedFacts.yearTipOne	plural	{year} · {count, plural, one {# track} other {# tracks}}
+detail.metaLine	none	{count} · {duration}
+detail.metaLineSaved	none	{count} · {saves} · {duration}
+detail.metaLineYear	none	{count} · {duration} · {year}
+detail.metaLineYearPending	none	{count} · {year}
+detail.moreBy	none	More by {name}
+detail.newPlaylist	none	New playlist
+detail.noPlaylists	none	No playlists found
+detail.noSuggestions	none	No suggestions right now
+detail.notice.accessRevoked	none	You no longer have access to this playlist.
+detail.notice.createFailed	none	This playlist couldn’t be created.
+detail.notice.deleted	none	This playlist was deleted.
+detail.notice.goToLibrary	none	Go to Library
+detail.notice.minifiedAlbum	none	Minified album view — track details load on the full album page.
+detail.otherVersions	none	Other versions
+detail.playAfter	none	Play after
+detail.playNext	none	Play next
+detail.playsColumn	none	Plays column
+detail.preReleaseEyebrow	none	Coming soon
+detail.preReleaseOut	none	Out now
+detail.preReleaseUnitDays	none	DAYS
+detail.preReleaseUnitHours	none	HRS
+detail.preReleaseUnitMinutes	none	MIN
+detail.preReleaseUnitSeconds	none	SEC
+detail.preSave	none	Pre-save
+detail.preSaved	none	Pre-saved
+detail.queueUnavailable	none	Can’t add to queue right now
+detail.recommended	none	Recommended songs
+detail.releasesOn	none	Releases {date}
+detail.row.chartNew	none	NEW
+detail.row.moreArtists	none	+{count}
+detail.row.playsFull	none	{count} plays
+detail.saveCount	plural	{count, plural, one {# save} other {# saves}}
+detail.saveCountCompact	none	{value} saves
+detail.select	none	Select
+detail.selectAll	none	Select all
+detail.selectedCount	plural	{count, plural, one {# selected} other {# selected}}
+detail.shuffle	none	Shuffle
+detail.similarAlbums	none	Similar albums
+detail.sort.album	none	Album
+detail.sort.artist	none	Artist
+detail.sort.ascending	none	Ascending
+detail.sort.customOrder	none	Custom order
+detail.sort.dateAdded	none	Date added
+detail.sort.descending	none	Descending
+detail.sort.duration	none	Duration
+detail.sort.menu	none	Sort
+detail.sort.title	none	Title
+detail.tempoColumn	none	BPM · Key column
+detail.trackFacts.added	none	Added
+detail.trackFacts.addedBy	none	Added by
+detail.trackFacts.album	none	Album
+detail.trackFacts.bpm	none	BPM
+detail.trackFacts.descriptors	none	Descriptors
+detail.trackFacts.duration	none	Duration
+detail.trackFacts.explicit	none	Explicit
+detail.trackFacts.isrc	none	ISRC
+detail.trackFacts.key	none	Key
+detail.trackFacts.localFile	none	Local file
+detail.trackFacts.major	none	major
+detail.trackFacts.minor	none	minor
+detail.trackFacts.plays	none	Plays
+detail.trackFacts.released	none	Released
+detail.trackFacts.showDetails	none	Track details
+detail.trackFacts.title	none	Track details
+detail.trackFacts.unavailable	none	Audio unavailable
+detail.trackFacts.video	none	Music video
+detail.tuning.applied	none	Playlist tuned
+detail.tuning.applyFailed	none	Couldn’t tune this playlist. Try again.
+detail.tuning.current	none	Current
+detail.tuning.flyoutSubtitle	none	Choose a direction and Wavee will rebuild the track list.
+detail.tuning.flyoutTitle	none	Tune this mix
+detail.tuning.reset	none	Reset tuning
+detail.tuning.tipBody	none	Adjust the mix's direction right from here — Wavee rebuilds the track list.
+detail.tuning.tipTitle	none	Tune this playlist
+detail.tuning.tooltip	none	Tune this playlist
+detail.tuning.tune	none	Tune
+detail.versions.alternateAudio	none	Alternate audio
+detail.versions.musicVideo	none	Music video
+detail.versions.thisTrack	none	This track
+detail.versions.useDefaultQuality	none	Use my default quality
+detail.versions.versionsAndFormats	none	Versions and formats
+detail.viewAllArtists	none	View all artists
+detail.watchOfficialVideo	none	WATCH THE OFFICIAL VIDEO
+drag.addTo	none	Add to {name}
+drag.addToQueue	none	Add to queue
+drag.addTracks	plural	{count, plural, one {Add # song} other {Add # songs}}
+drag.alreadyThere	none	Already there
+drag.cantAddArtist	none	Can’t add an artist
+drag.cantEditPlaylist	none	Can’t edit this playlist
+drag.cantMoveAcrossSections	none	Can’t move across sections
+drag.cantMoveHere	none	Can’t move here
+drag.cantMoveIntoItself	none	Can’t move a folder into itself
+drag.clearFiltersToReorder	none	Clear filters to reorder
+drag.clearSortingToReorder	none	Clear sorting to reorder
+drag.dragOntoPlaylist	none	Drag onto a playlist to add
+drag.libraryUnavailable	none	Can’t change your library right now
+drag.moveInto	none	Move into {name}
+drag.moveOutOf	none	Move out of {name}
+drag.moveToEnd	none	Move to the end
+drag.moveTracks	plural	{count, plural, one {Move # song} other {Move # songs}}
+drag.movedManyTo	plural	Moved {count, plural, one {# item} other {# items}} to {name}
+drag.movedTo	none	Moved to {name}
+drag.movedToLibrary	none	Moved to Your Library
+drag.newFolderFromThis	plural	{count, plural, one {New folder from this} other {New folder with # items}}
+drag.newFolderInside	none	New folder inside {name}
+drag.newPlaylistFromThis	none	New playlist from this
+drag.nothingToAdd	none	Nothing to add
+drag.organizeHint	none	Drop between playlists or onto a folder
+drag.pin	none	Pin {name}
+drag.playNext	none	Play next
+drag.reorderHint	none	Drag to reorder
+drag.stillLoading	none	Still loading…
+drag.stillSyncing	none	Still syncing — try again in a moment
+friends.dAgo	none	{count} d
+friends.empty	none	No friend activity yet
+friends.emptyHint	none	When friends you follow listen on Spotify, they'll show up here.
+friends.error	none	Couldn't load friend activity.
+friends.hrAgo	none	{count} hr
+friends.minAgo	none	{count} min
+friends.now	none	now
+friends.offline	none	Sign in to see what your friends are playing.
+friends.retry	none	Retry
+friends.title	none	Friend Activity
+home.chartEye	none	charts
+home.charts	none	Charts
+home.chartsEmpty	none	No charts right now
+home.customize	none	Customize Home
+home.customizer.back	none	Back
+home.customizer.corrupt	none	Home layout could not be read
+home.customizer.corruptSub	none	Your previous file was kept. Start fresh to replace it, or keep using the default layout.
+home.customizer.done	none	Done
+home.customizer.dragCaption	none	Reorder
+home.customizer.eyebrow	none	Your Home
+home.customizer.faultDiscard	none	Start fresh
+home.customizer.hero	none	Hero
+home.customizer.hiddenHint	none	Hidden modules stay in this list so you can bring them back. Drag to reorder.
+home.customizer.position	none	{index} of {count}
+home.customizer.reorderCancelled	none	Cancelled. {name} stayed where it was.
+home.customizer.reorderDropped	none	Moved {name}. {position}.
+home.customizer.reorderGrabbed	none	Picked up {name}. {position}.
+home.customizer.reorderMoved	none	{name}. {position}.
+home.customizer.reset	none	Reset
+home.customizer.title	none	Customize Home
+home.customizer.undo.hide	none	Hide module
+home.customizer.undo.move	none	Reorder module
+home.customizer.undo.reset	none	Reset Home layout
+home.customizer.undo.show	none	Show module
+home.customizer.weeklyPair	none	Discover Weekly & Release Radar
+home.dailyEye	none	daily
+home.facetFailed	none	Couldn't load that view. Showing the previous one.
+home.playFailed	none	Couldn't play that. Try again.
+home.podcastsEye	none	podcasts
+home.videoEye	none	video
+home.weeklyEye	none	weekly
+jumplist.jumpBackIn	none	Jump back in
+jumplist.kindAlbum	none	Album
+jumplist.kindArtist	none	Artist
+jumplist.kindPlaylist	none	Playlist
+jumplist.kindShow	none	Show
+jumplist.pause	none	Pause
+jumplist.pausePlayback	none	Pause playback
+jumplist.resume	none	Resume
+jumplist.resumePlayback	none	Resume playback
+jumplist.search	none	Search
+library.allInLibrary	none	Everything {name} has released is already in your library.
+library.alsoBy	none	Also by {name} in your library
+library.conflict	none	Your library changed while that was saving — try again.
+library.deleteFolderConfirmBody	none	Delete this folder? The playlists inside will move up a level. Playlists are not deleted.
+library.emptyLibraryAction	none	Show all releases
+library.emptyLibraryTitle	none	Nothing from {name} in your library yet
+library.fetchingMore	none	Fetching {n} more releases…
+library.fetchingReleases	none	Fetching releases…
+library.filter	none	Filter
+library.inYourLibrary	none	In your library: {albums}{songs}
+library.matchedAlbum	none	Matched · album ‘{name}’
+library.matchedSong	none	Matched · song ‘{name}’
+library.moveFailed	none	Couldn’t save that change to your library. Try again.
+library.nAlbums	plural	{n, plural, one {# album} other {# albums}}
+library.nLikedSongs	plural	{n, plural, one {# liked song} other {# liked songs}}
+library.nSongs	plural	 · {n, plural, one {# song} other {# songs}}
+library.nSongsOnly	plural	{n, plural, one {# song} other {# songs}}
+library.noMatch	none	Nothing matches your filter
+library.nothingToAdd	none	There’s nothing here to add
+library.oneAlbum	none	1 album
+library.oneLikedSong	none	1 liked song
+library.oneSong	none	1 song
+library.openAlbum	none	Open album
+library.playAlbum	none	Play {name}
+library.playAll	none	Play all
+library.rail.albums	none	albums
+library.rail.alphabetical	none	a–z
+library.rail.creator	none	artist
+library.rail.recentlyAdded	none	added
+library.rail.recents	none	recents
+library.rail.releaseDate	none	year
+library.readerSort.alphabetical	none	a–z
+library.readerSort.newest	none	newest
+library.readerSort.oldest	none	oldest
+library.savedIn	none	saved {year}
+library.scope.allReleases	none	all releases
+library.scope.allShort	none	all
+library.scope.inLibrary	none	in your library
+library.selectAlbum	none	Pick an album
+library.selectAlbumTracks	none	Select a release
+library.selectArtist	none	Pick an artist
+library.selectShow	none	Select a show to see its episodes
+library.size	none	Size
+library.songsFailed	none	Couldn’t load the songs.
+library.sort.alphabetical	none	Alphabetical
+library.sort.creator	none	Creator
+library.sort.recentlyAdded	none	Recently added
+library.sort.recents	none	Recents
+library.sort.releaseDate	none	Release date
+library.sortBy	none	Sort by
+library.view.compactGrid	none	Compact grid
+library.view.compactList	none	Compact list
+library.view.grid	none	Grid
+library.view.list	none	List
+library.viewAs	none	View as
+library.viewFullAlbum	none	View full album
+library.writeFailed	none	Couldn’t update your library. Try again.
+localFile.onThisDevice	none	On this device
+localFile.playlistDescription	none	Music imported from this computer.
+localFile.playlistTitle	none	Local Files
+lyrics.debug.close	none	close ✕
+lyrics.debug.noArtist	none	(no artist)
+lyrics.debug.noReport	none	No search recorded for this track yet — it may be a local/fake track, or the fetch is still in flight. Close and reopen to refresh.
+lyrics.debug.noSources	none	(no sources ran)
+lyrics.debug.pill	none	lyrics debug
+lyrics.debug.title	none	Lyrics search
+lyrics.debug.winner	none	★ winner
+lyrics.inspector.evidenceSaved	none	Lyrics evidence bundle saved
+lyrics.inspector.parsedCopied	none	Parsed lyrics copied
+lyrics.inspector.payloadsNote	none	Payloads are only captured when a fan-out actually runs; cached answers have none.
+lyrics.inspector.raw	none	Raw ({n})
+lyrics.inspector.rawNone	none	Raw (none)
+lyrics.inspector.refetchNote	none	Re-fetch drops this track from the memory and disk lyric caches and runs the provider fan-out again.
+lyrics.inspector.reportCopied	none	Lyrics report copied
+lyrics.noLyrics	none	No lyrics available
+menu.access	none	Access
+menu.addToQueueN	none	Add {count} to queue
+menu.copyLink	none	Copy link
+menu.copyLinks	none	Copy links ({count})
+menu.copySpotifyUri	none	Copy Spotify URI
+menu.goToAlbum	none	Go to album
+menu.goToArtistRadio	none	Go to artist radio
+menu.goToArtists	none	Go to artists
+menu.goToPodcast	none	Go to podcast
+menu.goToSongRadio	none	Go to song radio
+menu.kindAlbum	none	Album
+menu.kindArtist	none	Artist
+menu.kindPlaylist	none	Playlist
+menu.kindPodcast	none	Podcast
+menu.kindSong	none	Song
+menu.linkCopied	none	Link copied
+menu.makePrivate	none	Make private
+menu.makePublic	none	Make public
+menu.moreCount	none	+{n} more
+menu.morePlaylists	none	More playlists…
+menu.moveOutOf	none	Move out of {name}
+menu.moveToFolder	none	Move to folder…
+menu.moveToPlaylist	none	Move to playlist
+menu.movedToPlaylist	none	Moved to {name}
+menu.noCredits	none	No credits available
+menu.open	none	Open
+menu.openInSpotifyWeb	none	Open in Spotify Web
+menu.openRadioPlaylist	none	Open playlist
+menu.organize	none	Organize
+menu.playNextN	none	Play {count} next
+menu.playNow	none	Play now
+menu.radio	none	Radio
+menu.radioStarted	none	Radio started
+menu.radioUnavailable	none	Couldn't start radio
+menu.removeFromQueue	none	Remove from queue
+menu.removeFromThisPlaylist	none	Remove from this playlist
+menu.rename	none	Rename
+menu.renamePlaylist	none	Rename playlist
+menu.save	none	Save
+menu.saved	none	Saved
+menu.share	none	Share
+menu.songsSelected	plural	{n, plural, one {# song selected} other {# songs selected}}
+menu.uriCopied	none	URI copied
+menu.viewCredits	none	View credits
+menu.visibility	none	Visibility
+modulePage.error	none	This page couldn’t be loaded.
+modulePage.openInBrowser	none	Open in browser
+modulePage.openOn	none	Open on {name}
+modulePage.playing	none	Playing
+modulePage.title	none	Module
+nav.apiConsole	none	API Console
+nav.artistConcerts	none	{artist} concerts
+nav.artistConcertsGeneric	none	Artist concerts
+nav.concertDetails	none	Concert details
+nav.concerts	none	Concerts
+nav.connectDiagnostics	none	Connect diagnostics
+nav.discography	none	Discography
+nav.goHome	none	Go home
+nav.history.clearAllConfirm	none	Clear all history?
+nav.history.clearAllConfirmBody	none	This removes every entry from your navigation history.
+nav.history.visitMultiplier	none	{count}×
+nav.pageNotFound	none	Page not found
+nav.playbackRuntime	none	Playback runtime
+nav.playlistCollaborative	none	Playlist · Collaborative
+nav.playlistPrivate	none	Playlist · Private
+nav.settings	none	Settings
+notifications.activity.addTracks	none	Added {count} to {playlist}
+notifications.activity.coverClear	none	Removed the cover of {playlist}
+notifications.activity.coverSet	none	Changed the cover of {playlist}
+notifications.activity.create	none	Created {name}
+notifications.activity.delete	none	Deleted {name}
+notifications.activity.detail.open	none	Open
+notifications.activity.detail.renamedFrom	none	{old}  →  {new}
+notifications.activity.detail.tracks	none	Tracks
+notifications.activity.follow	none	Followed {name}
+notifications.activity.genericTarget	none	a playlist
+notifications.activity.invite	none	Created an invite link for {playlist}
+notifications.activity.madePrivate	none	Made {playlist} private
+notifications.activity.madePublic	none	Made {playlist} public
+notifications.activity.moveTracks	none	Reordered tracks in {playlist}
+notifications.activity.removeTracks	none	Removed {count} from {playlist}
+notifications.activity.rename	none	Renamed a playlist to {name}
+notifications.activity.save	none	Added to your library
+notifications.activity.saveAlbum	none	Saved "{name}" to your library
+notifications.activity.saveTrack	none	Liked "{name}"
+notifications.activity.unfollow	none	Unfollowed {name}
+notifications.activity.unsave	none	Removed from your library
+notifications.activity.unsaveAlbum	none	Removed "{name}" from your library
+notifications.activity.unsaveTrack	none	Removed "{name}" from Liked Songs
+notifications.clear	none	Clear
+notifications.empty.activity	none	No activity yet
+notifications.empty.all	none	You're all caught up
+notifications.empty.new	none	Nothing new from your artists
+notifications.empty.spotify	none	No Spotify notifications
+notifications.empty.updates	none	No app updates
+notifications.feed.error	none	Couldn't load these notifications.
+notifications.feed.offline	none	Sign in to see notifications from Spotify.
+notifications.filter.activity	none	Activity
+notifications.filter.all	none	All
+notifications.filter.new	none	New
+notifications.filter.updates	none	Updates
+notifications.loading	none	Loading…
+notifications.markAllRead	none	Mark all read
+notifications.overflowTitle	none	Notifications ({count})
+notifications.pendingSync	plural	{count, plural, one {# playlist change still syncing} other {# playlist changes still syncing}}
+notifications.release.album	none	ALBUM
+notifications.release.compilation	none	COMPILATION
+notifications.release.ep	none	EP
+notifications.release.episode	none	EPISODE
+notifications.release.single	none	SINGLE
+notifications.status.failed	none	Failed
+notifications.status.undone	none	Undone
+notifications.title	none	Notifications
+notifications.undo	none	Undo
+notifications.undoFailed	none	Couldn't undo that change — your library may have changed since.
+notifications.update.availableTitle	none	An update is available
+notifications.update.completedTitle	none	Wavee was updated
+notifications.update.failedTitle	none	Update failed
+notifications.update.seeWhatsNew	none	See what's new
+palette.enter	none	Enter
+palette.matches	plural	{n, plural, one {# matching command} other {# matching commands}}
+palette.noMatches	none	No matching commands
+palette.placeholder	none	Search commands — type > for commands only
+palette.searchFor	none	Search for “{q}”
+palette.shortcuts	none	Keyboard shortcuts
+palette.title	none	Command palette
+play.behind	none	−{time}
+play.failed	none	That link couldn’t be played.
+play.file	none	File…
+play.goLive	none	GO LIVE
+play.link	none	Link…
+play.live	none	LIVE
+play.lookingUp	none	Looking up…
+play.menu	none	Play
+play.noOwner	none	Nothing installed can play this link.
+play.openInBrowser	none	Open in browser
+play.placeholder	none	Paste a YouTube, Twitch or radio stream link
+play.start	none	Play
+play.title	none	Play a link
+play.tryAgain	none	Try again
+playback.runtime.advanced	none	Advanced options
+playback.runtime.advancedBody	none	Supply a Spotify.dll yourself — Wavee recognizes supported builds by fingerprint and configures the rest automatically.
+playback.runtime.back	none	Back
+playback.runtime.catalogUnreachable	none	Couldn’t reach the catalog — you can still install from a local source.
+playback.runtime.checkUpdate	none	Check for update
+playback.runtime.checking	none	Checking…
+playback.runtime.checkingSupport	none	Checking what’s available for your device…
+playback.runtime.chooseVersion	none	Choose a version to install
+playback.runtime.detailArch	none	Architecture
+playback.runtime.detailLocation	none	Location
+playback.runtime.detailSha256	none	SHA-256
+playback.runtime.detailSignature	none	Signature
+playback.runtime.detailVersion	none	Version
+playback.runtime.diagnosticsTitle	none	Playback runtime diagnostics
+playback.runtime.done	none	Done
+playback.runtime.downloadBlocking	none	You can’t leave this step while a download is in progress.
+playback.runtime.downloadFailed	none	Couldn’t download playback support.
+playback.runtime.downloadSetup	none	Download & set up
+playback.runtime.downloading	none	Downloading…
+playback.runtime.install	none	Install
+playback.runtime.installFromFolder	none	Choose a Spotify.dll…
+playback.runtime.installFromFolderCaption	none	Pick a folder or file — a supported build is recognized automatically
+playback.runtime.installedNotFound	none	Installed Spotify.dll not found.
+playback.runtime.loadAnyway	none	Load anyway
+playback.runtime.missing	none	Local playback needs a one-time setup
+playback.runtime.noPack	none	Playback support isn’t available for your Spotify version yet.
+playback.runtime.notActive	none	Local audio is not active.
+playback.runtime.notFound	none	Couldn’t find a supported local Spotify.dll.
+playback.runtime.notNow	none	Not now
+playback.runtime.offerBody	none	Play tracks directly on this device. Wavee downloads a small one-time playback component — nothing else is installed.
+playback.runtime.reachingCatalog	none	Reaching the runtime catalog
+playback.runtime.ready	none	Local playback is ready
+playback.runtime.recommended	none	Recommended
+playback.runtime.remove	none	Remove
+playback.runtime.replace	none	Replace
+playback.runtime.selectDll	none	Select folder
+playback.runtime.setUp	none	Set up
+playback.runtime.signatureInvalid	none	This DLL isn’t Spotify-signed
+playback.runtime.title	none	Local playback setup
+playback.runtime.tryAgain	none	Try again
+playback.runtime.unsupported	none	This playback runtime isn’t supported
+playback.runtime.untrustedBody	none	This file isn’t Spotify-signed. It matches the expected fingerprint, but the publisher signature couldn’t be verified. Only continue if you trust the source.
+playback.runtime.upToDate	none	You’re on the latest supported version.
+playback.runtime.useInstalled	none	Use installed Spotify
+playback.runtime.useInstalledCaption	none	Reuse the Spotify app already installed on this PC
+playback.runtime.verifying	none	Verifying download…
+playback.runtime.verifyingCaption	none	Checking integrity and signature
+playback.runtime.viewDiagnostics	none	View diagnostics
+playback.runtime.viewSignature	none	View signature
+playback.runtime.viewSignatureFailed	none	Windows couldn't open the digital signature details.
+playback.runtime.wrongArch	none	This Spotify build doesn’t match your device
+player.autoplay	none	Autoplay
+player.autoplayHint	none	Similar music will keep playing
+player.choice.cd	none	CD
+player.choice.ppm	none	PPM
+player.choice.rpm33	none	33⅓
+player.choice.rpm45	none	45
+player.choice.u2	none	U2
+player.choice.vu	none	VU
+player.chooseDevice	none	Choose device
+player.clear	none	Clear
+player.closeLyrics	none	Close lyrics
+player.closeLyricsHint	none	Close lyrics (Esc)
+player.credits	none	Credits
+player.creditsSource	none	Source: {names}
+player.deviceLost	none	{device} disconnected — playback paused
+player.deviceRestored	none	Reconnected to {device}
+player.deviceSwitched	none	Audio moved to {device}
+player.expandLyrics	none	Expand lyrics
+player.fault.decodeFailed	none	This track couldn’t be played
+player.fault.drmRequired	none	This track can’t play here
+player.fault.network	none	Can’t play — check your connection
+player.fault.runtimeMissing	none	Local playback needs a one-time setup
+player.fault.unavailable	none	This track isn’t available
+player.fault.unknown	none	Can’t play this track
+player.inspectLyrics	none	Inspect lyrics source
+player.like	none	Like
+player.localPlaybackUnsupported	none	Playback isn’t supported on this device yet
+player.lyrics	none	Lyrics
+player.lyricsInspector	none	Lyrics source inspector
+player.lyricsSecondaryOff	none	Second line: off
+player.lyricsSecondaryRomanization	none	Second line: romanization
+player.lyricsSecondaryTranslation	none	Second line: translation
+player.lyricsSyncUnavailableDuringVideo	none	Synced lyrics aren't available while a video is playing
+player.moreCount	none	{n} more
+player.nextInQueue	none	Next in queue
+player.nextUp	none	Next up
+player.noDevices	none	No devices found
+player.noDevicesHint	none	Open Spotify on another device
+player.nowPlaying	none	Now playing
+player.opt.lcd	none	LCD
+player.outputFailed	none	Couldn’t open an audio output
+player.playVideoHere	none	Play video in this window
+player.playingFrom	none	Playing from {source}
+player.playingOn	none	Playing on {device}
+player.qualityBelowSetting	none	Playing at {quality} — {asked} unavailable
+player.qualityIdle	none	Nothing playing
+player.qualityPlaying	none	Playing at {quality}
+player.queue	none	Queue
+player.queueEmpty	none	Nothing up next
+player.queueSectionAutoplay	none	Autoplay
+player.queueSectionNext	none	Next in queue
+player.queueSectionNextUp	none	Next up
+player.reconnecting	none	Connection lost — reconnecting…
+player.remoteCommandFailed	none	Couldn’t reach that device — make sure it’s online and try again
+player.showNext	none	Show next {n}
+player.spotifyConnect	none	Spotify Connect
+player.style.cdShort	none	CD
+player.switchToAudio	none	Switch to audio
+player.switchToVideo	none	Switch to video
+player.systemDefault	none	System default
+player.thisComputer	none	This computer
+player.turnOffVideo	none	Turn off video
+player.unavailable	none	Unavailable
+player.videoAlwaysOnTop	none	Always on top
+player.videoInSeparateWindow	none	Play in a separate window
+player.videoOptions	none	Where to play the video
+player.videoUnavailable	none	Couldn’t play the video — playing the song instead
+profile.palette	none	Palette
+profile.paletteAccent	none	Accent
+profile.paletteNeutral	none	Neutral
+profile.paletteSlate	none	Slate
+profile.paletteWarm	none	Warm
+profile.privateSession	none	Private session
+profile.privateSessionOn	none	Private session — nothing you play is shared
+report.aboutAllIssues	none	All issues on GitHub
+report.aboutReportProblem	none	Report a problem…
+report.aboutSuggestFeature	none	Suggest a feature…
+report.alternatives	none	Alternatives considered
+report.area	none	Area
+report.body	none	Details
+report.copied	none	Report copied
+report.copiedPaste	none	Report copied — paste it into the “{field}” box on GitHub
+report.copy	none	Copy report
+report.crashAt	none	Last run ended {time}
+report.crashNoReport	none	No crash report was written — Wavee was closed by Windows or stopped without a handler.
+report.crashReading	none	Reading the last crash report…
+report.crashReports	none	Crash reports
+report.crashReportsEmpty	none	No crash reports
+report.crashReportsSub	none	The last 10 reports in the log folder
+report.crashTitle	none	Wavee closed unexpectedly
+report.dontAskAgain	none	Don't ask again after a crash
+report.expected	none	Expected behaviour
+report.includeLogs	none	Include diagnostics and the last {count} log lines
+report.kindBug	none	Bug
+report.kindFeature	none	Feature
+report.kindIdea	none	Idea
+report.kindQuestion	none	Question
+report.notNow	none	Not now
+report.openButton	none	Open
+report.openGithub	none	Open GitHub
+report.preparing	none	Preparing the report…
+report.preview	none	Report preview
+report.previewNote	none	Personal paths, account details and secrets are removed. Track names are kept.
+report.problem	none	Problem
+report.proposal	none	Proposal
+report.reportButton	none	Report…
+report.reportOnGithub	none	Report on GitHub
+report.reproduces	none	Does it reproduce
+report.saveAs	none	Save as…
+report.saveFilterAll	none	All files
+report.saveFilterText	none	Text files
+report.saved	none	Saved {path}
+report.steps	none	Steps to reproduce
+report.subtitle	none	Opens a prefilled GitHub form in your browser and copies the redacted report to your clipboard. Nothing is sent until you click.
+report.thisSession	none	Report this session…
+report.title	none	Report a problem
+report.titleLabel	none	Title
+report.titlePlaceholder	none	One line that says what's wrong
+report.titleRequired	none	Add a one-line title first.
+report.whatHappened	none	What happened
+report.whatWereYouDoing	none	What were you doing
+report.when	none	When does it happen
+runtime.sig.checkUnavailable	none	Signature check unavailable on this platform
+runtime.sig.file	none	File
+runtime.sig.issuer	none	Issuer
+runtime.sig.no	none	No
+runtime.sig.notTrusted	none	Not trusted
+runtime.sig.notTrustedOverride	none	Signature not trusted; manual override
+runtime.sig.packLabel	none	Spotify {version} · {arch}
+runtime.sig.pinned	none	Pinned fingerprint
+runtime.sig.publisher	none	Publisher
+runtime.sig.reason	none	Reason
+runtime.sig.signatureUnknown	none	Signature unknown
+runtime.sig.signedBy	none	Digitally signed by {subject}
+runtime.sig.signedByPinned	none	Signed by {subject}; trusted by pinned fingerprint
+runtime.sig.signedByTrust	none	Signed by {subject}; {trust}
+runtime.sig.thumbprint	none	Thumbprint
+runtime.sig.title	none	Digital signature
+runtime.sig.trust	none	Trust
+runtime.sig.trusted	none	Trusted
+runtime.sig.trustedByFingerprint	none	Trusted by pinned runtime fingerprint
+runtime.sig.unknown	none	Unknown
+runtime.sig.unsupportedPlatform	none	Unsupported platform
+runtime.sig.validFrom	none	Valid from
+runtime.sig.validTo	none	Valid to
+runtime.sig.verifiedFingerprint	none	Verified runtime fingerprint
+runtime.sig.yes	none	Yes
+search.albums	none	Albums
+search.all	none	All
+search.artists	none	Artists
+search.audiobooks	none	Audiobooks
+search.authors	none	Authors
+search.bestMatches	none	Best matches
+search.episodes	none	Episodes
+search.genres	none	Genres
+search.lyricsMatch	none	Lyrics match
+search.matchedTitle	none	Matched title
+search.noAudiobookResults	none	No audiobooks found
+search.noAuthorResults	none	No authors found
+search.noEpisodeResults	none	No episodes found
+search.noGenreResults	none	No genres found
+search.noPodcastResults	none	No podcasts or shows found
+search.noProfileResults	none	No profiles found
+search.noResults	none	No results found
+search.noResultsSub	none	Nothing matched "{query}". Try a different spelling or keyword.
+search.openPage	none	Open page
+search.playlists	none	Playlists
+search.podcastsShows	none	Podcasts & Shows
+search.profiles	none	Profiles
+search.relatedSearches	none	Related searches
+search.songs	none	Songs
+search.subtitleMusicVideo	none	Music video
+search.subtitleSong	none	Song
+search.suggestFailed	none	Couldn't load suggestions
+search.topResult	none	Top result
+search.typeAlbum	none	Album
+search.typeArtist	none	Artist
+search.typeAudiobook	none	Audiobook
+search.typeAuthor	none	Author
+search.typeEpisode	none	Episode
+search.typeGenre	none	Genre
+search.typePlaylist	none	Playlist
+search.typePodcast	none	Podcast
+search.typeSong	none	Song
+search.typeUser	none	Profile
+settings.about.build	none	Wavee {version}
+settings.about.checkForUpdates	none	Check for updates
+settings.about.checking	none	Checking…
+settings.about.copyDiagnostics	none	Copy diagnostics info
+settings.about.devBuild	none	Development build — not for distribution
+settings.about.diagnosticsCopied	none	Diagnostics info copied
+settings.about.licenses	none	Licenses
+settings.about.noticesMissing	none	Third-party notices are generated at packaging time.
+settings.about.openDataFolder	none	Open data folder
+settings.about.privacyPolicy	none	Privacy policy
+settings.about.rightNow	none	Wavee right now
+settings.about.sendFeedback	none	Send feedback
+settings.about.thirdPartyNotices	none	Third-party notices
+settings.about.unofficial	none	Wavee is an independent client and is not affiliated with or endorsed by Spotify AB.
+settings.about.upToDate	none	You're up to date
+settings.about.updateAvailable	none	Wavee {version} is available
+settings.about.updateCheckFailed	none	Couldn't check for updates
+settings.about.version	none	Version {version}
+settings.about.website	none	Website
+settings.appearance.colorWashes	none	Color washes
+settings.appearance.colorWashesSub	none	Tint the shell and page surfaces from artwork
+settings.appearance.hideTrackArtwork	none	Always hide track artwork
+settings.appearance.hideTrackArtworkSub	none	Remove cover thumbnails from track rows and return the space to titles. Other artwork stays visible.
+settings.appearance.lyricsBlur	none	Lyrics blur
+settings.appearance.lyricsBlurAuto	none	Auto
+settings.appearance.lyricsBlurSub	none	Depth-of-field and glow blur on the lyrics. 0 turns them off — lighter on the GPU.
+settings.appearance.marquee	none	Marquee text
+settings.appearance.marqueeSub	none	Scroll overflowing titles instead of truncating them
+settings.appearance.pageLayout	none	Track page layout
+settings.appearance.pageLayoutSub	none	Use the side rail automatically, or the artwork Hero at every size
+settings.appearance.pageMotion	none	Page motion
+settings.appearance.pageMotionClassic	none	Classic
+settings.appearance.pageMotionFluent	none	Fluent
+settings.appearance.pageMotionNone	none	None
+settings.appearance.pageMotionSpatial	none	Spatial
+settings.appearance.pageMotionSub	none	How pages animate when you navigate
+settings.appearance.pageMotionWinUi	none	WinUI
+settings.appearance.railReset	none	Clear all remembered sizes
+settings.appearance.railResetAction	none	Clear
+settings.appearance.railResetConfirmBody	none	This resets the left rail's remembered width and collapsed state for albums, playlists, Liked Songs and podcasts back to their defaults. This can't be undone.
+settings.appearance.railResetConfirmTitle	none	Clear all remembered sizes?
+settings.appearance.railResetSub	none	Forget the rail width you set for albums, playlists, Liked Songs and podcasts, so each reopens at its default size.
+settings.appearance.railUniform	none	Keep left-rail same size
+settings.appearance.railUniformSub	none	Ignore each page's own remembered width. Every page shares one rail size, and resizing it once applies everywhere.
+settings.appearance.trackListClassic	none	Classic
+settings.appearance.trackListModern	none	Modern
+settings.appearance.trackListStyle	none	Track list style
+settings.appearance.trackListStyleSub	none	Choose artwork-forward rows or a classic column table.
+settings.appearance.zoomAuto	none	Auto ({percent}%)
+settings.choice.automatic	none	Automatic
+settings.choice.hero	none	Hero
+settings.common.manage	none	Manage...
+settings.common.problem	none	Problem
+settings.common.ready	none	Ready
+settings.common.retrySetup	none	Retry setup
+settings.diag.dealerArchive	none	Archive Spotify realtime traffic
+settings.diag.dealerArchiveSub	none	Writes every dealer frame to disk (up to 2 GB, 90 days). Leave off unless you are debugging.
+settings.diag.developerMode	none	Developer mode
+settings.diag.developerModeSub	none	Shows the API console, lyrics inspector, test notifications and the FPS overlay
+settings.diag.fpsOverlay	none	FPS overlay
+settings.diag.fpsOverlaySub	none	Frame timing in the corner of the window
+settings.diag.simulateUpdate	none	Simulate an update
+settings.diag.simulateUpdateButton	none	Run simulation
+settings.diag.simulateUpdateSub	none	Walks the update state machine locally — toast, notification centre and About — with no network and nothing installed.
+settings.diag.subtitle	none	Debugging and inspection tools for Wavee itself
+settings.diag.title	none	Developer
+settings.diagnostics.allCategories	none	All categories
+settings.diagnostics.captureCaption	none	Capturing {capture}+ · file {file}+
+settings.diagnostics.captureLevel	none	Capture level
+settings.diagnostics.clearView	none	Clear view
+settings.diagnostics.clearViewBody	none	Clear the in-memory log ring for this session? The wavee.log file on disk is not affected.
+settings.diagnostics.copyVisible	none	Copy visible
+settings.diagnostics.currentRun	none	This session
+settings.diagnostics.emptyFilter	none	No matching logs
+settings.diagnostics.exception	none	Exception
+settings.diagnostics.exportSession	none	Export session
+settings.diagnostics.fields	none	Fields
+settings.diagnostics.fileLevel	none	File log level
+settings.diagnostics.filterPlaceholder	none	Filter logs
+settings.diagnostics.footerLive	none	Showing {shown} of {total} events · live ring
+settings.diagnostics.footerPast	none	Showing {shown} of {total} events · log file
+settings.diagnostics.groupRepeats	none	Group repeats
+settings.diagnostics.levelAll	none	All
+settings.diagnostics.levelErrors	none	Errors
+settings.diagnostics.levelInfo	none	Info+
+settings.diagnostics.levelWarnings	none	Warnings
+settings.diagnostics.loadMore	none	Load more
+settings.diagnostics.loadingSession	none	Reading session from the log file…
+settings.diagnostics.newestFirst	none	Newest first
+settings.diagnostics.openLogFolder	none	Open log folder
+settings.diagnostics.pastSessionSub	none	Read-only from log file
+settings.diagnostics.refresh	none	Refresh
+settings.diagnostics.runningFor	none	pid {pid} · running {uptime}
+settings.diagnostics.sessionEvents	none	{count} events
+settings.diagnostics.verbose	none	Verbose
+settings.diagnostics.verboseSub	none	Capture Debug and Trace detail
+settings.diagnostics.wrapLines	none	Wrap long lines
+settings.general.restartForLanguage	none	Language changes apply after Wavee restarts
+settings.general.spotifyLinksPackagedSub	none	Managed by Windows for installed apps
+settings.general.startOnLogin	none	Open Wavee when you sign in to Windows
+settings.general.startOnLoginSub	none	Starts in the background so playback is ready
+settings.general.tray.closeToTray	none	Closing hides Wavee
+settings.general.tray.closeToTraySub	none	Keep playing from the icon when you close the window
+settings.general.tray.iconAlways	none	Always
+settings.general.tray.iconMode	none	Show Wavee's icon
+settings.general.tray.iconModeSub	none	Windows keeps new icons behind the arrow in the taskbar corner until you drag them out
+settings.general.tray.iconNever	none	Never
+settings.general.tray.iconNeverSub	none	With no icon, closing or minimizing Wavee never hides it
+settings.general.tray.iconWhileHidden	none	Only while Wavee is hidden
+settings.general.tray.minimizeToTray	none	Minimizing hides Wavee
+settings.general.tray.minimizeToTraySub	none	The taskbar button goes away; the icon brings Wavee back
+settings.general.tray.needsIcon	none	Turned off while the icon is set to Never
+settings.general.tray.needsStartOnLogin	none	Turn on opening Wavee when you sign in first
+settings.general.tray.startHidden	none	Start hidden at sign-in
+settings.general.tray.startHiddenSub	none	Only when Wavee starts with Windows
+settings.general.tray.subtitle	none	Wavee in the corner of the taskbar
+settings.general.tray.title	none	Notification area
+settings.gpu.automatic	none	Automatic (recommended)
+settings.gpu.inUse	none	{name} (in use)
+settings.gpu.label	none	Graphics adapter
+settings.gpu.restartSub	none	Switching applies immediately — the window may flicker briefly while the renderer restarts.
+settings.gpu.subtitle	none	Which GPU Wavee renders on
+settings.gpu.title	none	Graphics
+settings.links.spotify	none	Open spotify: links in Wavee
+settings.links.spotifySub	none	Off by default. Turning this on makes Wavee the handler for spotify: links; turning it off gives it back.
+settings.links.title	none	Links
+settings.logs.unavailable	none	The log viewer isn't available in this build.
+settings.notify.appUpdates	none	Wavee updates
+settings.notify.appUpdatesSub	none	A new version is available or has been installed.
+settings.notify.blockedApp	none	Windows is blocking Wavee's notifications
+settings.notify.blockedAppSub	none	Turned off for Wavee in Windows Settings. The dials below will have no effect until it is turned back on.
+settings.notify.blockedPolicy	none	Notifications are disabled by policy
+settings.notify.blockedPolicySub	none	Your organisation's policy blocks notifications; Wavee cannot override it.
+settings.notify.blockedUser	none	Notifications are turned off in Windows
+settings.notify.blockedUserSub	none	Off for your whole Windows account, not just Wavee.
+settings.notify.closedBadge	none	Arrives even when Wavee is closed
+settings.notify.concerts	none	Concerts and live shows
+settings.notify.concertsSub	none	Shows announced near you, and reminders as the date approaches.
+settings.notify.daylist	none	Your daylist refreshed
+settings.notify.daylistSub	none	When the daylist rolls into its next window.
+settings.notify.deliveryTitle	none	Delivery
+settings.notify.followers	none	New followers
+settings.notify.followersSub	none	Someone started following you.
+settings.notify.levelInApp	none	In Wavee
+settings.notify.levelOff	none	Off
+settings.notify.levelWindows	none	Windows
+settings.notify.libraryActivity	none	Your own library activity
+settings.notify.libraryActivitySub	none	Saves, follows and playlist edits — the list Undo reads. In Wavee only: it is a record of what you just did.
+settings.notify.newAlbums	none	New albums and singles
+settings.notify.newAlbumsSub	none	A release from an artist you follow.
+settings.notify.newEpisodes	none	New podcast episodes
+settings.notify.newEpisodesSub	none	Separate from albums on purpose — shows publish far more often.
+settings.notify.openWindows	none	Open Windows settings
+settings.notify.outcomeBanner	none	Added to the bell and shown as a Windows banner.
+settings.notify.outcomeDropped	none	Dropped — this kind is switched off, so nothing was delivered.
+settings.notify.outcomeInApp	none	Added to the bell in Wavee. No Windows banner, as configured.
+settings.notify.outcomeNeverBanners	none	Added to the bell. This kind never shows a Windows banner.
+settings.notify.outcomeQuiet	none	Added to the bell. The banner is held until {0} by quiet hours.
+settings.notify.outcomeScheduled	none	Scheduled for {0} — it will arrive even if you close Wavee now.
+settings.notify.outcomeUnavailable	none	Nothing was sent — Windows notifications are unavailable right now.
+settings.notify.quiet	none	Quiet hours
+settings.notify.quietFrom	none	From
+settings.notify.quietSub	none	No banners during these hours. Anything scheduled waits until they end instead of being lost.
+settings.notify.quietTo	none	Until
+settings.notify.releaseDrops	none	Pre-saved albums, on release day
+settings.notify.releaseDropsSub	none	Windows delivers this at release time, so it lands even with Wavee closed.
+settings.notify.send	none	Send a test event
+settings.notify.sendButton	none	Send event
+settings.notify.sendScheduledSub	none	Schedules a real one a few minutes out, exactly as the real thing is scheduled. Close Wavee afterwards to prove it still arrives.
+settings.notify.sendSub	none	Pushes a real event of this kind through the same path a genuine one takes, using something from your library.
+settings.notify.sound	none	Play a sound
+settings.notify.soundSub	none	Off, banners appear silently.
+settings.notify.title	none	Notifications
+settings.notify.topicsHint	none	Each row travels as far as you let it: nothing, the bell in Wavee, or a Windows banner as well.
+settings.notify.topicsTitle	none	What you're told about
+settings.notify.windows	none	Windows notifications
+settings.notify.windowsOffHint	none	Windows notifications are off, so nothing here becomes a banner yet. Your choices are remembered for when you turn them on.
+settings.notify.windowsSub	none	Let Wavee raise banners in the Action Center. Off, nothing leaves the app — the bell in the top bar still keeps everything.
+settings.playback.audioQuality	none	Audio quality
+settings.playback.audioSub	none	Streaming quality for local playback - applies from the next track
+settings.playback.audioTitle	none	Audio
+settings.playback.autoplay	none	Autoplay
+settings.playback.autoplaySub	none	Continue with similar songs when the current context ends
+settings.playback.meteredQuality	none	On metered connections
+settings.playback.meteredStatus.metered	none	Metered network detected · cap in effect
+settings.playback.meteredStatus.meteredWithinCap	none	Metered network detected · your quality is already within the cap
+settings.playback.meteredStatus.notMetered	none	Not metered
+settings.playback.meteredStatus.overLimit	none	Over data limit
+settings.playback.meteredStatus.roaming	none	Roaming
+settings.playback.meteredStatus.unknown	none	Couldn't read network cost (treated as unmetered)
+settings.playback.normalization	none	Audio normalization
+settings.playback.normalizationSub	none	Play every track at a similar loudness (applies from the next song)
+settings.playback.outputDevice	none	Output device
+settings.playback.outputDeviceSub	none	Where local playback is heard
+settings.playback.playerBar	none	Player bar
+settings.playback.qualityHigh	none	High
+settings.playback.qualityHighSub	none	160 kbps - about 0.07 GB/hour
+settings.playback.qualityLossless	none	Lossless
+settings.playback.qualityLosslessSub	none	Up to 24-bit/44.1 kHz - FLAC
+settings.playback.qualityNormal	none	Normal
+settings.playback.qualityNormalSub	none	96 kbps - about 0.04 GB/hour
+settings.playback.qualityVeryHigh	none	Very High
+settings.playback.qualityVeryHighSub	none	320 kbps - about 0.14 GB/hour
+settings.playback.rememberVolume	none	Remember volume
+settings.playback.rememberVolumeSub	none	Restore the last volume level when Wavee starts
+settings.playback.runtimeDiagnostics	none	Diagnostics
+settings.playback.runtimeNotSetUp	none	Not set up
+settings.playback.runtimeNotSetUpSub	none	Some tracks cannot play without the local runtime. Setup downloads and verifies it automatically.
+settings.playback.runtimeReadySub	none	Audio keys are derived locally on this PC.
+settings.playback.showRemaining	none	Show remaining time
+settings.playback.showRemainingSub	none	Count down time left instead of showing the track duration
+settings.playback.videoMeteredQuality	none	Video Auto on metered connections
+settings.playback.videoMeteredQualitySub	none	Maximum resolution used by Auto when Windows reports a metered network
+settings.playback.videoPrepareAhead	none	Prepare videos ahead of time
+settings.playback.videoPrepareAheadSub	none	Fetch video licences before you switch, so opening a music video is near-instant. Uses a little extra data for videos you may not watch.
+settings.playback.videoQuality	none	Video quality
+settings.playback.videoQualityAuto	none	Auto (recommended)
+settings.playback.videoQualitySub	none	Auto adapts to bandwidth and the player size; a resolution pins every video to that quality
+settings.playback.videoQualityUnlimited	none	Unlimited
+settings.sound.crossfade	none	Crossfade
+settings.sound.crossfadeDuration	none	Crossfade duration
+settings.sound.crossfadeSub	none	Natural transition at the end of a prepared track
+settings.sound.curve	none	Curve
+settings.sound.curveOff	none	Turn on the equalizer to edit the curve
+settings.sound.curveOn	none	Drag a node or use arrow keys on the active band
+settings.sound.equalizer	none	Equalizer
+settings.sound.equalizerSub	none	10-band graphic EQ, +/-12 dB
+settings.sound.preset	none	Preset
+settings.sound.presets.bass	none	Bass Boost
+settings.sound.presets.bassSub	none	Enhanced low-end warmth and punch for bass-heavy genres
+settings.sound.presets.flat	none	Flat
+settings.sound.presets.flatSub	none	No processing - flat, transparent playback
+settings.sound.presets.proof	none	EQ Proof
+settings.sound.presets.proofSub	none	Extreme test curve. If this sounds normal, AudioHost is not applying EQ.
+settings.sound.presets.radio	none	Radio
+settings.sound.presets.radioSub	none	FM broadcast sound - punchy, loud, and consistent
+settings.sound.presets.treble	none	Treble Boost
+settings.sound.presets.trebleSub	none	Crisp highs and sparkle for acoustic and classical music
+settings.sound.presets.vocal	none	Vocal
+settings.sound.presets.vocalSub	none	Boosted mids to bring vocals forward in the mix
+settings.sound.reset	none	Reset
+settings.sound.resetCurve	none	Reset curve to flat
+settings.sound.seconds	none	{value} seconds
+settings.sound.title	none	Sound
+settings.storage.audioBodies	none	Encrypted audio bodies
+settings.storage.audioBodiesSub	none	Sparse, SHA-256-verified 64 KB CDN chunks
+settings.storage.audioCacheCleared	none	Cleared encrypted audio cache
+settings.storage.autoTenPercent	none	Auto (10%)
+settings.storage.bodyBudget	none	Audio body budget
+settings.storage.bodyBudgetSub	none	Fixed, drive-aware, or unlimited - changes apply immediately
+settings.storage.cacheAudio	none	Cache encrypted audio
+settings.storage.cacheAudioSub	none	Skip re-downloading track bodies you already streamed
+settings.storage.cacheKeys	none	Cache license keys
+settings.storage.cacheKeysSub	none	Reuse obfuscated keys across sessions (self-heals if stale)
+settings.storage.cacheLocation	none	Cache location
+settings.storage.cacheLocationChanged	none	Changed encrypted audio cache location
+settings.storage.cacheLocationFailed	none	Could not change the audio cache location
+settings.storage.chooseCacheFolder	none	Choose a parent folder for encrypted audio
+settings.storage.chooseLocation	none	Choose location
+settings.storage.clearAudio	none	Clear audio cache
+settings.storage.clearAudioBody	none	Remove all cached encrypted audio bodies from disk?
+settings.storage.clearKeys	none	Clear saved keys
+settings.storage.clearKeysBody	none	Remove all saved license keys from disk?
+settings.storage.clearMetadata	none	Clear metadata cache
+settings.storage.clearMetadataBody	none	Remove cached album, artist and playlist details? Your library, playlists, downloads and video overrides are kept - everything else is fetched again when you go online.
+settings.storage.deleteOldCache	none	Delete old cache
+settings.storage.deleteOldLogs	none	Delete old logs
+settings.storage.deleteOldLogsBody	none	Delete rolled log files? The live wavee.log file is kept.
+settings.storage.detailsReleased	none	Released cached detail pages
+settings.storage.driveShare	none	Drive share
+settings.storage.factoryReset	none	Factory reset
+settings.storage.factoryResetAction	none	Reset Wavee
+settings.storage.factoryResetConfirmBody	none	This signs you out and permanently deletes all local Wavee data on this PC — login, library, metadata, settings, playback cache, and history. Wavee will restart on the first-launch screen. The app itself is not uninstalled.
+settings.storage.factoryResetConfirmTitle	none	Reset Wavee to a fresh install?
+settings.storage.factoryResetFailed	none	Couldn't start the factory reset. Nothing was deleted.
+settings.storage.factoryResetRowSub	none	Signs you out and deletes login, library, metadata, settings, caches, and history. Wavee stays installed.
+settings.storage.factoryResetSub	none	Erase all local data and restart as a first launch
+settings.storage.fixedSize	none	Fixed size
+settings.storage.freeReserve	none	Keeps at least {reserve} free on the cache drive
+settings.storage.imageCache	none	Image cache
+settings.storage.imageCacheSub	none	cache\images - album art and other remote images
+settings.storage.leaveOldCache	none	Leave old cache
+settings.storage.library	none	Library database
+settings.storage.librarySub	none	library.db - albums, artists, playlists, sync state
+settings.storage.licenseKeys	none	Saved license keys
+settings.storage.licenseKeysCleared	none	Cleared saved license keys
+settings.storage.licenseKeysCount	none	Wavee\Cache\audiokeys.db - {count} keys
+settings.storage.licenseKeysCountOne	none	Wavee\Cache\audiokeys.db - 1 key
+settings.storage.licenseKeysSub	none	Wavee\Cache\audiokeys.db
+settings.storage.localStore	none	Local store & history
+settings.storage.localStoreSub	none	store.json, navigation history
+settings.storage.locationUnavailable	none	The selected cache drive is unavailable; playback will use the network.
+settings.storage.logs	none	Logs
+settings.storage.logsSub	none	logs\wavee.log - {count} files, rolled at 10 MB, 7 kept
+settings.storage.logsSubEmpty	none	logs\wavee.log
+settings.storage.logsSubOne	none	logs\wavee.log - 1 file, rolled at 10 MB, 7 kept
+settings.storage.memory	none	In memory
+settings.storage.metadataBudget	none	Metadata cache size
+settings.storage.metadataBudgetSub	none	Your library, playlists and recent pages are always kept; anything past this is trimmed automatically
+settings.storage.metadataCache	none	Metadata cache
+settings.storage.metadataCacheStats	none	{db} database - {cache} cache, {pinned} kept offline ({rows} rows, {pinnedRows} pinned, {overviews} artist pages, {extensions} extras)
+settings.storage.metadataCacheSub	none	Album, artist and playlist details kept in library.db for offline use
+settings.storage.metadataCleared	none	Cleared metadata cache
+settings.storage.moveCacheBody	none	Wavee can move verified encrypted chunks, or start with an empty cache in the new location.
+settings.storage.moveCacheTitle	none	Change audio cache location?
+settings.storage.moveExisting	none	Move existing
+settings.storage.noOldLogsDeleted	none	No old log files to delete
+settings.storage.oldCacheBody	none	The new location will start empty. Choose whether the old encrypted cache should be deleted or left in place.
+settings.storage.oldCacheTitle	none	What should happen to the old cache?
+settings.storage.oldLogsDeleted	plural	{count, plural, one {Deleted # old log file} other {Deleted # old log files}}
+settings.storage.onThisPc	none	On this PC
+settings.storage.openFolder	none	Open folder
+settings.storage.playbackCache	none	Playback cache
+settings.storage.readFailed	none	Could not read storage sizes
+settings.storage.reading	none	Reading storage sizes…
+settings.storage.releaseNow	none	Release now
+settings.storage.residentCache	none	Resident library cache
+settings.storage.residentCacheStats	none	Playlists kept warm for instant navigation - {used} of {cap} cap ({count} of {max} playlists)
+settings.storage.residentCacheSub	none	Playlists and detail pages kept warm for instant navigation
+settings.storage.runtime	none	Playback runtime
+settings.storage.runtimeSub	none	playplay\runtimes - managed from the Playback tab
+settings.storage.startEmpty	none	Start empty
+settings.storage.total	none	total
+settings.storage.unlimited	none	Unlimited
+settings.storage.unlimitedReserve	none	No cache-size ceiling; emergency free space is always preserved.
+settings.storage.useDefaultLocation	none	Use default
+settings.storage.usedOfBudget	none	{used} of {budget} budget
+settings.tabs.appearance	none	Appearance
+settings.tabs.logs	none	Logs
+setup.accept	none	Accept
+setup.decline	none	Decline
+setup.localPlayback.advanced	none	Advanced
+setup.localPlayback.advancedDll	none	Choose a Spotify.dll…
+setup.localPlayback.advancedDllSub	none	Point at a copy you already trust.
+setup.localPlayback.advancedInstalled	none	Use installed Spotify
+setup.localPlayback.advancedInstalledSub	none	Reuse the runtime from a Spotify install already on this PC.
+setup.localPlayback.advancedVersion	none	Choose a version
+setup.localPlayback.advancedVersionSub	none	Pick a specific catalog build instead of the recommended one.
+setup.localPlayback.architecture	none	Architecture
+setup.localPlayback.cardSub	none	Verified by fingerprint and signature · stored once on this PC · {arch}
+setup.localPlayback.cardTitle	none	Download from Spotify's CDN
+setup.localPlayback.finePrint	none	Wavee recognizes supported builds by fingerprint and configures the rest automatically.
+setup.localPlayback.header	none	Set up local playback
+setup.localPlayback.lead	none	Wavee plays audio through a component from Spotify's own CDN. It's verified before it runs and stored once on this PC.
+setup.localPlayback.location	none	Location
+setup.localPlayback.openFolder	none	Open folder
+setup.localPlayback.readyLead	none	Downloaded, verified and stored. Every Wavee checkout on this PC reuses it.
+setup.localPlayback.signature	none	Signature
+setup.localPlayback.version	none	Version
+setup.localPlayback.view	none	View
+setup.openWavee	none	Open Wavee
+setup.preSetup	none	Pre-setup
+setup.signIn.browserCardSub	none	Opens accounts.spotify.com in your default browser.
+setup.signIn.browserCardTitle	none	Continue in your browser
+setup.signIn.browserTimedOut	none	The browser didn't come back to Wavee in time. Try again, or use the code instead.
+setup.signIn.browserUnavailable	none	Wavee couldn't open your browser. Scan the code with your phone, or go to spotify.com/pair.
+setup.signIn.codeUnavailable	none	We couldn't get a code. Check your connection and try again.
+setup.signIn.confirmHint	none	Not you? “Not me” signs this PC out so a different account can sign in.
+setup.signIn.confirmLead	none	You're signed in on this PC. Continue as this account, or switch to another.
+setup.signIn.denied	none	Sign-in was cancelled.
+setup.signIn.free	none	Spotify Free
+setup.signIn.isThisYou	none	Is this you?
+setup.signIn.lead	none	Sign in with your Spotify® account on the Spotify® website — or scan the code with your phone.
+setup.signIn.noAccount	none	Don't have a Spotify account? Sign up
+setup.signIn.notMe	none	Not me
+setup.signIn.openPairPage	none	Open spotify.com/pair
+setup.signIn.pairLine	none	{code} · spotify.com/pair
+setup.signIn.premiumNote	none	Wavee needs Spotify Premium.
+setup.signIn.refused	none	Spotify couldn't sign you in right now. Try again in a moment.
+setup.signIn.rejected	none	Spotify didn't accept that sign-in. Sign in again to keep listening.
+setup.signIn.scanCardTitleNeutral	none	Scan the code with your phone
+setup.signIn.title	none	Sign in to Spotify
+setup.signIn.waiting	none	Waiting for you to authorize…
+setup.signIn.yesContinue	none	Yes, continue
+setup.stepOf	none	Step {n} of {total}
+setup.terms.fine	none	Spotify® and the Spotify logo are registered trademarks of Spotify AB. All trademarks, logos and brand names are the property of their respective owners; their use here is nominative only. Wavee itself ships under its own licence — the full text is in Settings → About → Licences.
+setup.terms.header	none	Licence agreement & terms
+setup.terms.lastUpdated	none	Last updated September 2026 · MIT licence
+setup.terms.privacyLink	none	Privacy policy
+setup.terms.section1Body	none	Wavee's own source is licensed to you under the terms shipped in the About tab. You may not redistribute a build that removes the attribution above.
+setup.terms.section1Title	none	Base software & copyright
+setup.terms.section2Body	none	Signing in lets Wavee read and modify your Spotify library — saves, follows, playlist edits, playback state — on your behalf, using Spotify's own APIs.
+setup.terms.section2Title	none	Your account & your library
+setup.terms.section3Body	none	Using Spotify through Wavee means Spotify's own terms of service still apply to your account and your listening.
+setup.terms.section3Title	none	Streaming & online services
+setup.terms.section4Body	none	Encrypted audio bodies and licence keys are cached locally to avoid re-downloading. You control the budget and the location, and can clear both at any time.
+setup.terms.section4Title	none	Local files & caches
+setup.terms.start	none	Wavee — licence agreement & terms of use
+setup.terms.updatedLead	none	Please review what changed before you continue.
+setup.terms.updatedTitle	none	We've updated the terms
+setup.welcome.lead	none	Wavee is an independent desktop client for your own Spotify Premium account. Sign in, allow one small download, and you're listening.
+shell.closeAllUnpinned	none	Close all unpinned tabs
+shell.closeOtherTabs	none	Close other tabs
+shell.closeTab	none	Close tab
+shell.closeTabsRight	none	Close tabs to the right
+shell.connecting	none	Connecting...
+shell.darkTheme	none	Dark theme
+shell.friends	none	Friends
+shell.lightTheme	none	Light theme
+shell.pinTab	none	Pin tab
+shell.reconnect	none	Reconnect
+shell.searchPlaceholder	none	Search songs, artists, albums...
+shell.signIn	none	Sign in
+shell.unpinTab	none	Unpin tab
+shortcuts.back	none	Back
+shortcuts.find	none	Focus search
+shortcuts.forward	none	Forward
+shortcuts.fullscreen	none	Video full screen
+shortcuts.like	none	Like current song
+shortcuts.mute	none	Mute / unmute
+shortcuts.navigation	none	Navigation
+shortcuts.newTab	none	New tab
+shortcuts.next	none	Next track
+shortcuts.palette	none	Command palette
+shortcuts.playPause	none	Play / pause
+shortcuts.playback	none	Playback
+shortcuts.previous	none	Previous track
+shortcuts.repeat	none	Cycle repeat
+shortcuts.seekBack	none	Seek back 5 s
+shortcuts.seekForward	none	Seek forward 5 s
+shortcuts.shuffle	none	Toggle shuffle
+shortcuts.thisDialog	none	This dialog
+shortcuts.title	none	Keyboard shortcuts
+shortcuts.volumeDown	none	Volume down
+shortcuts.volumeUp	none	Volume up
+sidebar.createFolder	none	New folder
+sidebar.customizer.reorderMoved	none	{name}. {position}.
+sidebar.customizer.sectionCount	none	{used}/{max}
+sidebar.customizer.tooNew	none	This sidebar layout belongs to a newer Wavee
+sidebar.customizer.tooNewSub	none	The file at {path} was saved by a newer version of Wavee, so it is left untouched and Wavee Curated is shown instead. Changes made here are not saved until you update.
+sidebar.deleteFolder	none	Delete folder
+sidebar.deleteFolderConfirm	plural	Delete “{name}”? {count, plural, one {The playlist inside} other {The # playlists inside}} will move up a level. Playlists are not deleted.
+sidebar.design.classic	none	Spotify Classic
+sidebar.design.comingSoon	none	Coming soon
+sidebar.design.custom	none	Custom
+sidebar.findFolder	none	Find a folder
+sidebar.folderCreated	none	Folder created
+sidebar.folderDeleted	none	Folder deleted
+sidebar.folderRenamed	none	Folder renamed
+sidebar.layout.classic	none	Spotify Classic
+sidebar.layout.curated	none	Custom
+sidebar.moveToFolderBody	none	Choose where “{name}” should live.
+sidebar.moveToFolderTitle	none	Move to folder
+sidebar.newFolder	none	New Folder
+sidebar.newFolderInside	none	New folder inside
+sidebar.newPlaylistHere	none	New playlist in this folder
+sidebar.noFolders	none	No folders yet
+sidebar.pin.folderMissing	none	Not in your library on this device yet
+sidebar.rail.folderFlyoutBack	none	Back
+sidebar.renameFolder	none	Rename folder
+sidebar.template.curated	none	Wavee Curated
+sidebar.topLevel	none	Top level
+taskbar.next	none	Next
+taskbar.pause	none	Pause
+taskbar.paused	none	Paused
+taskbar.play	none	Play
+taskbar.previous	none	Previous
+toast.daylistGeneric	none	A new mix is waiting.
+toast.daylistMovedOn	none	It moved on from {window}
+toast.daylistTitle	none	Your daylist has refreshed
+toast.moreUpdates	plural	{n, plural, one {1 more update in Wavee} other {# more updates in Wavee}}
+toast.newEpisode	none	New episode — {creator}
+toast.newRelease	none	New release — {creator}
+toast.newReleaseTitle	none	New release
+toast.openToSee	none	Open Wavee to see them.
+toast.outNow	none	{artist} — out now
+toast.outNowGeneric	none	Out now
+toast.play	none	Play
+toast.updateAvailable	none	Wavee {version} is available
+toast.updateReady	none	Wavee {version} is ready to install
+toast.updated	none	Wavee updated to {version}
+tray.devices	none	Devices…
+tray.hideIcon	none	Hide icon
+tray.hideWavee	none	Hide Wavee
+tray.live	none	LIVE
+tray.nothingPlaying	none	Nothing playing
+tray.offline	none	Offline
+tray.onDevice	none	on {device}
+tray.openWavee	none	Open Wavee
+tray.paused	none	Paused
+tray.quit	none	Quit Wavee
+tray.saveToLiked	none	Save to Liked Songs
+tray.signedOut	none	Signed out
+tray.updateReady	none	Update ready
+update.about.built	none	Built {date}
+update.about.channelBeta	none	Beta
+update.about.channelDev	none	Dev
+update.about.channelStable	none	Stable
+update.about.display	none	Wavee {version} “{name}”
+update.about.displayBare	none	Wavee {version}
+update.about.displayBeta	none	Wavee {version} “{name}” · Beta {beta}
+update.about.lastChecked	none	last checked {when}
+update.about.neverChecked	none	not checked yet
+update.about.openWhatsNew	none	Open What's new
+update.about.pillAvailable	none	Update available
+update.about.pillChecking	none	Checking
+update.about.pillDownloading	none	Downloading
+update.about.pillFailed	none	Update failed
+update.about.pillInstalling	none	Restarting
+update.about.pillSnoozed	none	Waiting
+update.about.pillUpToDate	none	Up to date
+update.about.pillUpdated	none	Just updated
+update.about.showSummaryAgain	none	Show the update summary again
+update.about.whatsNewIn	none	What’s new in {name}
+update.action.check	none	Check for updates
+update.action.dismiss	none	Dismiss
+update.action.later	none	Later
+update.action.openReleasePage	none	Open release page
+update.action.retry	none	Retry
+update.action.updateNow	none	Update now
+update.action.whatsNew	none	What's new
+update.autoShow.hint	none	A short summary the first time the new version opens.
+update.autoShow.title	none	Show “What's new” after an update
+update.channel.beta	none	Get Wavee Beta
+update.channel.hint	none	Beta installs side by side with Wavee and gets features a few weeks early.
+update.channel.title	none	Release channel
+update.failure.appInstallerOutdated	none	Windows App Installer needs an update from the Microsoft Store.
+update.failure.metered	none	Waiting for an unmetered network.
+update.failure.network	none	Couldn't reach GitHub. Try again later.
+update.failure.notAssociated	none	This install isn't linked to the update feed. Use Repair auto-update in diagnostics.
+update.failure.packagesInUse	none	Close other Wavee windows and try again.
+update.failure.sideloadPolicy	none	Sideloading is turned off on this PC.
+update.failure.unknown	none	Update failed ({code}).
+update.failure.versionConflict	none	This version can't be installed over the current one.
+update.installOnQuit.hint	none	Wavee downloads it as it closes; Windows restarts nothing — the new version opens next time.
+update.installOnQuit.title	none	Install a waiting update when I quit Wavee
+update.metered.hint	none	Off: waits for an unmetered network.
+update.metered.title	none	Download on metered connections
+update.os.downloading	none	Updating Wavee
+update.os.seeWhatsNew	none	See what's new
+update.os.updated	none	Wavee updated to {name}
+update.state.available	none	Wavee {name} is available.
+update.state.checking	none	Checking…
+update.state.downloading	none	Downloading {name} in the background. Playback continues.
+update.state.installing	none	Restarting to finish updating…
+update.state.justUpdated	none	Updated to {name} just now.
+update.state.snoozed	none	{version} is waiting — it installs the next time Wavee starts.
+update.state.upToDate	none	You're on the latest release.
+update.status.title	none	Update status
+update.store.hint	none	This copy of Wavee was installed from the Microsoft Store — updates arrive through the Store.
+update.store.open	none	Open Store page
+update.store.title	none	Updates
+update.toast.available	none	Wavee {name} is available
+update.toast.downloading	none	Downloading {name}…
+update.toast.updated	none	Updated to Wavee {name}
+whatsNew.asOf	none	Issue states as of {date}
+whatsNew.beta	none	Beta
+whatsNew.copyLink	none	Copy link
+whatsNew.dateFormat	none	d MMM yyyy
+whatsNew.dialog.dontShow	none	Don't show this after updates
+whatsNew.dialog.full	none	Full release notes
+whatsNew.dialog.gotIt	none	Got it
+whatsNew.dialog.updated	none	Updated
+whatsNew.dialog.welcome	none	Welcome to {product}
+whatsNew.empty	none	No release notes were found for this version.
+whatsNew.firstContribution	none	{login} · first contribution
+whatsNew.headline	none	Wavee {version} “{name}”
+whatsNew.headlineBare	none	Wavee {version}
+whatsNew.highlights	none	Highlights
+whatsNew.issue.closed	none	closed
+whatsNew.issue.merged	none	merged
+whatsNew.issue.notPlanned	none	not planned
+whatsNew.issue.open	none	open
+whatsNew.kind.improved	none	Improved
+whatsNew.kind.new	none	New
+whatsNew.kind.rebuilt	none	Rebuilt
+whatsNew.kind.store	none	Microsoft Store
+whatsNew.latest	none	Latest
+whatsNew.linkCopied	none	Release link copied
+whatsNew.onlyLatest	none	Only the latest
+whatsNew.openOnGitHub	none	Open on GitHub
+whatsNew.railFoot	none	Notes are fetched once per release and cached offline. Older releases load on demand.
+whatsNew.readMore	none	Read more
+whatsNew.released	none	Released
+whatsNew.releases	none	Releases
+whatsNew.requires	none	Requires
+whatsNew.section.added	none	Added
+whatsNew.section.changed	none	Changed
+whatsNew.section.deprecated	none	Deprecated
+whatsNew.section.fixed	none	Fixed
+whatsNew.section.known	none	Known limitations
+whatsNew.section.removed	none	Removed
+whatsNew.section.security	none	Security
+whatsNew.showAll	none	Show all {count}
+whatsNew.since	none	Since you last looked: {count} releases — {from} → {to}. Showing everything new.
+whatsNew.stable	none	Stable
+whatsNew.storeCta	none	Get it from the Microsoft Store
+whatsNew.tag	none	Tag
+whatsNew.title	none	What's new
+whatsNew.tryIt	none	Try it →
+whatsNew.viewer.close	none	Close
+whatsNew.viewer.next	none	Next highlight
+whatsNew.viewer.position	none	{index} of {count}
+whatsNew.viewer.previous	none	Previous highlight
+whatsNew.viewer.watch	none	Watch the video on GitHub
+whatsNew.you	none	YOU
