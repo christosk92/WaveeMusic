@@ -1,0 +1,21 @@
+{ "data": { "searchV2": { "tracksV2": { "totalCount": 5, "items": [
+  { "matchedFields": [ "TITLE" ], "item": { "data": {
+    "uri": "spotify:track:0TDLuuLlV54CkRRUOahJb4",
+    "name": "Has A Video",
+    "duration": { "totalMilliseconds": 180000 },
+    "associationsV3": { "videoAssociations": { "totalCount": 1 } },
+    "albumOfTrack": { "uri": "spotify:album:4m2880jivSbbyEGAKfITCa", "name": "Album A" },
+    "artists": { "items": [ { "profile": { "name": "Art" }, "uri": "spotify:artist:1Cs0zKBU1kc0i8ypK3B9ai" } ] }
+  } } },
+  { "item": { "data": {
+    "uri": "spotify:track:2plbrEY59IikOBgBGLjaoe",
+    "name": "Zero Count",
+    "associationsV3": { "videoAssociations": { "totalCount": 0 } },
+    "albumOfTrack": { "uri": "spotify:album:4m2880jivSbbyEGAKfITCa", "name": "Album A" }
+  } } },
+  { "item": { "data": {
+    "uri": "spotify:track:6habFhsOp2NvshLv26DqMb",
+    "name": "Field Omitted",
+    "albumOfTrack": { "uri": "spotify:album:4m2880jivSbbyEGAKfITCa", "name": "Album A" }
+  } } }
+] } } } }

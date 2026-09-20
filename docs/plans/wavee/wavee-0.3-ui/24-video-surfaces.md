@@ -1579,3 +1579,31 @@ three "stale prose" findings, which reproduce exactly as described.
 **token-reconcile (2026-09-12):** three tokens this chapter names were missing from the first build of `00-design-system.md §12.1` and are now indexed there: `Tok.MediaLetterbox` (`#000000`, theme-invariant) and the two gradients `Tok.ScrimTop` / `Tok.ScrimBottom`, with their exact stop ramps (`Dsl/Tokens.cs:372, 376-382, 385-390`). No value in this chapter changed.
 
 **consistency 2026-09-12:** header and §9 item 1 cited `Video.UI.cs` at ~1,700, folding the override-manager flyout body in; the plan's settled number is **1,450** for `Video.UI.cs`, with the flyout body as its own named partial, `Screens/+Settings.UI.Video.cs` (280, written by K in Wave 4, mounted by R in Wave 6). Header, §1.2's `VideoOverrideManagerFlyout` row, §9 item 1 and the "counted exactly once" paragraph restated against the plan's numbers, with a note that this chapter's own estimate was higher. The "Line budget" table already carried the correct 1,450/280 split and needed only the file name.
+
+---
+
+**0.3 divergence ledger (2026-09-20).** The video rework knowingly departs from this chapter in three places. Each is
+a decision, not drift, and the parity checklist must be read against them:
+
+1. **The engine transport is gone.** `MediaPlayerElement` is mounted with `AreTransportControlsEnabled = false` and
+   `SuppressTransport = true` on every Wavee surface; it is hole + decode only. Wavee draws one on-media transport of
+   its own (`Shell/OnMedia.UI.cs`), in the Stage / player-bar language, on every video overlay. This invalidates §10
+   item 15 ("the card ALSO shows the engine transport"), the second half of item 22 ("then the element's own playback
+   rows" — the ⋯ menu is Wavee's now, carrying placement + aspect + quality + speed), and the engine half of item 54.
+   §6's "the element's own More menu" rows read the same way but are built by `OnMedia.MoreMenu`.
+2. **Fullscreen renders square and unhairlined.** `PresentingFullscreen` now ORs host fullscreen into `FrameCorners`,
+   the 1-DIP border and the video-area `MinHeight`, which is the public knob §0.14 and §6 said the engine owed. §10
+   item 65 asks for an engine change to be stated rather than passed as parity: this is that statement. The docked
+   cap, the PiP and the pop-out still carry the 8-DIP rounded, hairlined frame.
+3. **The fullscreen enter/exit scale terminals are BANNED, not merely absent.** §0.1 and §5 describe them as
+   "scale-only, therefore safe". They are not: `AbsoluteRect` folds translate but not scale, so a scale on a hole
+   ancestor desyncs the `DestOut` punch from the DirectComposition visual for the whole tween. Fullscreen is a
+   geometry mode of the one stay-mounted presenter — bound `Width`/`Height`/`Transform` signals, the pump following
+   `AbsoluteRect` — and it never remounts the hole.
+
+**Root cause found in-app (2026-09-20), worth recording because the chapter's own composition hid it:** §0.8's poster
+ground was built from `Controls.ArtworkFill`, which is a 1:1 cover. A ZStack measures to its largest child, so the
+element's video AREA became width × width, and every aspect decision was then taken against a square — Fit centred
+the picture ~87 DIP low in a 16:9 card, Crop and Native fitted the wrong box, and the bottom-justified on-media
+transport laid out below the visible edge and was clipped. The poster must fill the video's box and impose no shape
+of its own; `PosterGround` now uses an aspect-less cover image.

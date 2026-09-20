@@ -33,6 +33,11 @@ $ErrorActionPreference = 'Stop'
 
 # Script lives at ops/build/ - repo root is two levels up.
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+Import-Module (Join-Path $PSScriptRoot 'Wavee.Build.psm1') -Force -DisableNameChecking
+if (-not $NoAot) {
+  $arch = if ($Rid -match 'arm64') { 'arm64' } else { 'x64' }
+  Import-MsvcEnvironment -Arch $arch
+}
 
 # id -> project. The id is the manifest's "id" and owns both the modules\<id>\ folder and the
 # wavee:module:<id>: uri namespace; keep this table in sync with each module's wavee-module.json.
@@ -56,6 +61,7 @@ foreach ($m in $modules) {
   Step "Publishing module $($m.Id) ($Rid, $Configuration, $(if ($NoAot) { 'self-contained JIT' } else { 'NativeAOT' }))"
   $pubArgs = @($csproj, '-c', $Configuration, '-r', $Rid, '-o', $dest, '--nologo', '-v', 'm', '/p:NuGetAudit=false')
   if ($NoAot) { $pubArgs += @('-p:PublishAot=false', '--self-contained', 'true') }
+  else { $pubArgs += '/p:IlcUseEnvironmentalTools=true' }
   & dotnet publish @pubArgs
   if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $($m.Id) ($LASTEXITCODE)." }
 

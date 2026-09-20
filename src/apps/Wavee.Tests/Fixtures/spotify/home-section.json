@@ -1,0 +1,11 @@
+{ "data": { "homeSections": { "sections": [
+  { "uri": "spotify:section:0JQ5DAIiKWzVFULQfUm85Y", "data": { "__typename": "HomeGenericSectionData",
+      "title": { "transformedLabel": "Made for you" }, "subtitle": { "transformedLabel": "Picked today" } },
+    "sectionItems": { "totalCount": 64, "pagingInfo": { "nextOffset": 20 }, "items": [
+      { "uri": "spotify:playlist:37i9dQZF1E38wY9VFrwrWy", "data": null, "content": { "__typename": "HomeSectionItemResponseWrapper",
+        "data": { "__typename": "Playlist", "uri": "spotify:playlist:37i9dQZF1E38wY9VFrwrWy", "name": "Daily Mix 1", "format": "daily-mix" } } },
+      { "content": { "data": { "__typename": "NotFound" } } },
+      { "uri": "spotify:playlist:37i9dQZF1EIXGra9DhHCqh", "data": null, "content": { "__typename": "HomeSectionItemResponseWrapper",
+        "data": { "__typename": "Playlist", "uri": "spotify:playlist:37i9dQZF1EIXGra9DhHCqh", "name": "Henry Moodie Mix", "format": "editorial" } } }
+    ] } }
+] } } }

@@ -1,0 +1,14 @@
+{ "data": { "searchV2": { "genres": { "totalCount": 3, "items": [
+  { "data": {
+    "__typename": "Genre",
+    "uri": "spotify:genre:0JQ5DAqbMKFEC4WFtoNRpw",
+    "name": "Pop",
+    "image": { "sources": [ { "url": "https://i.scdn.co/image/pop", "width": 300, "height": 300 } ] }
+  } },
+  { "data": { "__typename": "NotFound" } },
+  { "data": {
+    "__typename": "Genre",
+    "uri": "spotify:page:0JQ5DAqbMKFDXXwE9BDJAr",
+    "name": "Rock"
+  } }
+] } } } }

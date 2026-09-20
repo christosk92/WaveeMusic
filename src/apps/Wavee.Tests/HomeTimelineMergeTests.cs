@@ -1,45 +1,44 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Wavee.Core;
+// ── Wavee.Tests/HomeTimelineMergeTests.cs — Home's what's-new timeline over the flat Notification (ported, owner P) ──
+//
+// 0.2.9's facts over the four notification SUBCLASSES, ported onto 0.3's ONE `Notification` value built by `NotifyRows`
+// (ForRelease / ForSocial / ForUpdate / ForActivity). The gate is on KIND, never on the category pill: every what's-new
+// release, and a Social row only when `SpotifyUpdates.IsConcert` says so (a CONCERT/LIVE wire type, or a concert action
+// target). Local wall-clock instants keep every day-grouping fact true in any time zone.
+//
+// DROPPED from 0.2.9's file (covered elsewhere, not lost): `SpotifyUpdates.IsConcertTarget / IsConcertWireType /
+// CleanTitle` and the `NotificationReadIds` codec are pinned by NotifyTests.cs (their home is Platform/Notify.cs now);
+// `SpotifyUpdates.ActName(n)` no longer exists — the act is the row's own `ActName` field, filled by the gander decode.
+
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>
-/// Home's what's-new timeline once it carries TWO sources: the what's-new feed and the Spotify category's concert /
-/// live-show announcements. Everything here is the pure merge (<c>HomeTimelineMerge</c>) plus the domain classifier
-/// (<c>SpotifyUpdates</c>) and the shared per-item read set (<c>NotificationReadIds</c>) — no engine, no page.
-///
-/// <para>Modelled on <c>MergedChromeLayoutTests</c>: properties over spot checks. The defect class here is a row that
-/// lands in the wrong day, an announcement that sorts by the CONCERT date instead of its own, and — the expensive one —
-/// a follower or an activity entry leaking onto Home because the gate was written against the display category. Each of
-/// those gets an invariant rather than an example.</para>
-/// </summary>
 public class HomeTimelineMergeTests
 {
     // ── fixtures ─────────────────────────────────────────────────────────────────────────────────────────────────────
-    // Local wall-clock instants, so every day-grouping assertion holds in any time zone the test box happens to be in.
+
     static long At(int year, int month, int day, int hour = 12, int minute = 0)
         => new DateTimeOffset(new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Local)).ToUnixTimeMilliseconds();
 
-    static NewReleaseNotification Release(string id, long ts, bool unread = false)
-        => new(id, ts, unread, NewReleaseKind.Album, "spotify:album:" + id, "Album " + id, null, "Some Artist", "ALBUM", false);
+    static Notification Release(string id, long ts, bool unread = false)
+        => NotifyRows.ForRelease(id, ts, unread, NewReleaseKind.Album, default, "Album " + id, null, "Some Artist", "ALBUM", false);
 
-    static SocialNotification Concert(string id, long ts, bool unread = false, string? title = null, string? act = null)
-        => new(id, ts, unread, title ?? "Just days away: someone live in New York",
-               "spotify:concert:" + id, SocialActionType.NavigateWebview, null,
-               act is null ? Array.Empty<string>() : new[] { act }, "stor-" + id);
+    static Notification Concert(string id, long ts, bool unread = false, string? title = null, string? actionUri = null)
+        => NotifyRows.ForSocial(id, ts, unread, title ?? "Just days away: someone live in New York",
+            actionUri ?? "spotify:concert:" + id, SocialActionType.NavigateWebview, null, null, null);
 
-    static SocialNotification Follower(string id, long ts, bool unread = false)
-        => new(id, ts, unread, "someone started following you", "spotify:user:" + id,
-               SocialActionType.Navigate, null, new[] { "someone" }, "stor-" + id);
+    static Notification Follower(string id, long ts, bool unread = false, string? wireType = null)
+        => NotifyRows.ForSocial(id, ts, unread, "someone started following you", "spotify:user:" + id,
+            SocialActionType.Navigate, null, "someone", wireType);
 
-    static AppUpdateNotification Update(long ts)
-        => new(ts, true, AppUpdateSnapshot.Idle with { State = AppUpdateState.Available, TargetQuad = "9.9.9" });
+    static Notification Update()
+        => NotifyRows.ForUpdate(AppUpdateSnapshot.Idle with { State = AppUpdateState.Available, TargetQuad = "9.9.9" }, isUnread: true);
 
-    static ActivityNotification Activity(long id, long ts)
-        => new(new ActivityEntry(id, ActivityKind.Save, "spotify:track:t" + id, "A song", null, ts, ActivityStatus.Done, false));
+    static Notification Activity(long id, long ts)
+        => NotifyRows.ForActivity(id.ToString(System.Globalization.CultureInfo.InvariantCulture), ts, false, "A song", "", default);
+
+    static string[] Ids(HomeTimelineFeed feed) => feed.Groups.SelectMany(g => g.Rows).Select(r => r.Id).ToArray();
 
     // ── the gate: what is timeline material ──────────────────────────────────────────────────────────────────────────
 
@@ -49,89 +48,85 @@ public class HomeTimelineMergeTests
         long t = At(2026, 8, 6);
         var feed = HomeTimelineMerge.Build(
         [
-            Update(long.MaxValue),
+            Update(),
             Release("r1", t),
             Concert("c1", t - 1000),
             Follower("f1", t - 2000),
             Activity(7, t - 3000),
         ]);
 
-        var kinds = feed.Groups.SelectMany(g => g.Rows).ToArray();
-        Assert.Equal(2, kinds.Length);
-        Assert.Equal(new[] { "r1", "c1" }, kinds.Select(r => r.Id).ToArray());
-        Assert.Equal(HomeTimelineKind.Release, kinds[0].Kind);
-        Assert.Equal(HomeTimelineKind.Concert, kinds[1].Kind);
+        var rows = feed.Groups.SelectMany(g => g.Rows).ToArray();
+        Assert.Equal(2, rows.Length);
+        Assert.Equal(new[] { "r1", "c1" }, rows.Select(r => r.Id).ToArray());
+        Assert.Equal(HomeTimelineKind.Release, rows[0].Kind);
+        Assert.Equal(HomeTimelineKind.Concert, rows[1].Kind);
     }
 
     [Fact]
     public void ASocialItemIsGatedOnItsTarget_NotOnItsCategory()
     {
-        // Every one of these is NotificationCategory.Social — the "Spotify" pill. Only the concert-shaped targets are
-        // timeline material, which is the entire point of classifying rather than reading the pill.
-        Assert.All(new[]
-        {
-            "spotify:concert:abc",
-            "https://concerts.spotify.com/event/abc",
-            "https://www.example.com/concert/123",
-            "https://tickets.example.com/concerts/abc",
-        }, uri => Assert.True(SpotifyUpdates.IsConcertTarget(uri), uri));
+        // Every one of these is NotifyCategory.Social — the "Spotify" pill. Only the concert-shaped targets reach Home.
+        long t = At(2026, 8, 6);
+        foreach (var target in new[]
+                 {
+                     "spotify:concert:abc", "https://concerts.spotify.com/event/abc",
+                     "https://www.example.com/concert/123", "https://tickets.example.com/concerts/abc",
+                 })
+            Assert.NotNull(HomeTimelineMerge.Eligible(Concert("c", t, actionUri: target)));
 
-        Assert.All(new[] { null, "", "spotify:user:someone", "spotify:artist:abc", "spotify:playlist:abc", "https://open.spotify.com/user/x" },
-            uri => Assert.False(SpotifyUpdates.IsConcertTarget(uri), uri ?? "<null>"));
+        foreach (var target in new[] { "spotify:user:someone", "spotify:artist:abc", "spotify:playlist:abc", "https://open.spotify.com/user/x" })
+            Assert.Null(HomeTimelineMerge.Eligible(Concert("c", t, actionUri: target)));
     }
 
     [Fact]
     public void TheServersOwnDiscriminatorWins_WhenThePayloadShipsOne()
     {
-        // A concert announcement whose action target we do not recognise still qualifies when the feed labelled it.
-        var labelled = Follower("x1", At(2026, 8, 6)) with { WireType = "CONCERT_ANNOUNCEMENT" };
-        Assert.True(SpotifyUpdates.IsConcert(labelled));
+        // A follower-shaped row whose target we do not recognise still qualifies when the feed labelled it a concert…
+        var labelled = HomeTimelineMerge.Eligible(Follower("x1", At(2026, 8, 6), wireType: "CONCERT_ANNOUNCEMENT"));
+        Assert.NotNull(labelled);
+        Assert.Equal(HomeTimelineKind.Concert, labelled!.Value.Kind);
 
-        // ...and an unlabelled, unrecognised one does not. A missing discriminator is not a licence to guess.
-        Assert.False(SpotifyUpdates.IsConcert(Follower("x2", At(2026, 8, 6))));
-        Assert.False(SpotifyUpdates.IsConcertWireType("SOCIAL_FOLLOW"));
-        Assert.False(SpotifyUpdates.IsConcertWireType(null));
+        // …and an unlabelled, unrecognised one does not. A missing discriminator is not a licence to guess.
+        Assert.Null(HomeTimelineMerge.Eligible(Follower("x2", At(2026, 8, 6))));
+        Assert.Null(HomeTimelineMerge.Eligible(Follower("x3", At(2026, 8, 6), wireType: "SOCIAL_FOLLOW")));
     }
 
     [Fact]
     public void AnEmptySpotifyCategory_LeavesTheModuleExactlyAsItWas()
     {
         long t = At(2026, 8, 6);
-        var releasesOnly = new WaveeNotification[] { Release("r1", t), Release("r2", t - 1000) };
-        var withNoise = new WaveeNotification[] { Release("r1", t), Release("r2", t - 1000), Follower("f1", t - 500), Activity(3, t - 600) };
-
-        var a = HomeTimelineMerge.Build(releasesOnly);
-        var b = HomeTimelineMerge.Build(withNoise);
+        var a = HomeTimelineMerge.Build([Release("r1", t), Release("r2", t - 1000)]);
+        var b = HomeTimelineMerge.Build([Release("r1", t), Release("r2", t - 1000), Follower("f1", t - 500), Activity(3, t - 600)]);
 
         Assert.Equal(a.Shown, b.Shown);
         Assert.Equal(a.Total, b.Total);
         Assert.Equal(a.Unread, b.Unread);
         Assert.Equal(a.Groups.Length, b.Groups.Length);
-        Assert.Equal(a.Groups.SelectMany(g => g.Rows).Select(r => r.Id),
-                     b.Groups.SelectMany(g => g.Rows).Select(r => r.Id));
+        Assert.Equal(Ids(a), Ids(b));
     }
 
     [Fact]
     public void NothingEligible_IsEmpty_NotAnEmptyGroup()
     {
         Assert.True(HomeTimelineMerge.Build(null).IsEmpty);
-        Assert.True(HomeTimelineMerge.Build(Array.Empty<WaveeNotification>()).IsEmpty);
+        Assert.True(HomeTimelineMerge.Build(Array.Empty<Notification>()).IsEmpty);
 
-        var noise = HomeTimelineMerge.Build([Update(long.MaxValue), Follower("f1", At(2026, 8, 6)), Activity(1, At(2026, 8, 6))]);
+        var noise = HomeTimelineMerge.Build([Update(), Follower("f1", At(2026, 8, 6)), Activity(1, At(2026, 8, 6))]);
         Assert.True(noise.IsEmpty);
         Assert.Empty(noise.Groups);
         Assert.Equal(0, noise.Total);
         Assert.Equal(0, noise.Unread);
     }
 
+    [Fact]
+    public void A_non_positive_cap_is_empty()
+        => Assert.True(HomeTimelineMerge.Build([Release("r1", At(2026, 8, 6))], maxRows: 0).IsEmpty);
+
     // ── ordering + day grouping ──────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void ARowSortsByItsOwnInstant_NotByTheDateItTalksAbout()
     {
-        // A "days away" reminder for a concert on the 15th, which ARRIVED on the 6th, belongs on the 6th — the timeline
-        // is news, not a calendar. The merge only ever sees the notification timestamp, so this pins that the module
-        // never grew a second date source: the row lands under the day it was delivered.
         long delivered = At(2026, 8, 6, 9);
         var feed = HomeTimelineMerge.Build([Concert("c1", delivered, title: "Just days away: someone live on Sat, Aug 15")]);
 
@@ -151,10 +146,7 @@ public class HomeTimelineMergeTests
             Concert("c-old", At(2026, 8, 4, 22)),
         ]);
 
-        var order = feed.Groups.SelectMany(g => g.Rows).Select(r => r.Id).ToArray();
-        Assert.Equal(new[] { "c-new", "r-mid", "c-old", "r-old" }, order);
-
-        // Two days, newest day first, and every row inside a group really belongs to that day.
+        Assert.Equal(new[] { "c-new", "r-mid", "c-old", "r-old" }, Ids(feed));
         Assert.Equal(2, feed.Groups.Length);
         Assert.True(feed.Groups[0].DayTicks > feed.Groups[1].DayTicks);
         foreach (var g in feed.Groups)
@@ -190,11 +182,18 @@ public class HomeTimelineMergeTests
     [Fact]
     public void MidnightSplitsTwoDays_AtLocalMidnight()
     {
-        // 23:59 and 00:01 either side of one local midnight are TWO groups — the conversion, not UTC's day boundary,
-        // is what decides (an evening release must not fall under "yesterday" east of UTC).
         var feed = HomeTimelineMerge.Build([Release("late", At(2026, 8, 5, 23, 59)), Release("early", At(2026, 8, 6, 0, 1))]);
         Assert.Equal(2, feed.Groups.Length);
-        Assert.Equal(new[] { "early", "late" }, feed.Groups.SelectMany(g => g.Rows).Select(r => r.Id).ToArray());
+        Assert.Equal(new[] { "early", "late" }, Ids(feed));
+    }
+
+    [Fact]
+    public void The_day_bucketer_is_injectable()
+    {
+        // One bucket for everything: the grouping follows the injected clock, not the local zone.
+        var feed = HomeTimelineMerge.Build([Release("a", At(2026, 8, 1)), Release("b", At(2026, 8, 6))], dayOf: static _ => 42L);
+        var group = Assert.Single(feed.Groups);
+        Assert.Equal(42L, group.DayTicks);
     }
 
     // ── the cap and the counter ──────────────────────────────────────────────────────────────────────────────────────
@@ -202,9 +201,9 @@ public class HomeTimelineMergeTests
     [Fact]
     public void TheCapBoundsTheROWS_ButTheCounterDescribesTheWholeFeed()
     {
-        var items = new List<WaveeNotification>();
-        for (int i = 0; i < 12; i++) items.Add(Release("r" + i.ToString("00"), At(2026, 8, 6, 23) - i * 60_000, unread: i < 3));
-        for (int i = 0; i < 4; i++) items.Add(Concert("c" + i, At(2026, 8, 6, 20) - i * 60_000, unread: i < 2));
+        var items = new List<Notification>();
+        for (int i = 0; i < 12; i++) items.Add(Release("r" + i.ToString("00", System.Globalization.CultureInfo.InvariantCulture), At(2026, 8, 6, 23) - i * 60_000, unread: i < 3));
+        for (int i = 0; i < 4; i++) items.Add(Concert("c" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), At(2026, 8, 6, 20) - i * 60_000, unread: i < 2));
 
         var feed = HomeTimelineMerge.Build(items);
 
@@ -223,42 +222,22 @@ public class HomeTimelineMergeTests
             Release("r1", t, unread: true),
             Concert("c1", t - 1000, unread: true),
             Follower("f1", t - 2000, unread: true),   // unread, in the badge, NOT on the timeline
-            Update(long.MaxValue),                    // ditto
+            Update(),                                 // ditto
         ]);
 
         Assert.Equal(2, feed.Total);
         Assert.Equal(2, feed.Unread);
     }
 
-    // ── the row's presentation inputs ────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
-    public void LeadingGlyphsAreStripped_ButTheProseIsNeverRecased()
+    public void A_row_carries_its_source_notification_whole()
     {
-        Assert.Equal("Just days away: Porter Robinson live in New York on Sat, Aug 15",
-            SpotifyUpdates.CleanTitle("⏰ Just days away: Porter Robinson live in New York on Sat, Aug 15"));
-        Assert.Equal("New Keenan Te show just announced near you. Save the date!",
-            SpotifyUpdates.CleanTitle("\U0001F3B5 New Keenan Te show just announced near you. Save the date!"));
-        Assert.Equal("New show announced", SpotifyUpdates.CleanTitle("⏰️  New show announced"));
-
-        // A title that needs nothing is returned as-is (reference equality: the common path allocates nothing).
-        const string plain = "iPhone tickets on sale";
-        Assert.Same(plain, SpotifyUpdates.CleanTitle(plain));
-
-        // ...and a glyph INSIDE the sentence is the server's prose, not our business.
-        Assert.Equal("Tickets ❤ on sale", SpotifyUpdates.CleanTitle("Tickets ❤ on sale"));
-
-        // Never blanks a row.
-        Assert.Equal("⏰", SpotifyUpdates.CleanTitle("⏰"));
-        Assert.Equal("", SpotifyUpdates.CleanTitle(null));
-    }
-
-    [Fact]
-    public void TheSourceLineIsTheActWhenTheFeedNamedOne()
-    {
-        Assert.Equal("Porter Robinson", SpotifyUpdates.ActName(Concert("c1", At(2026, 8, 6), act: "Porter Robinson")));
-        Assert.Null(SpotifyUpdates.ActName(Concert("c2", At(2026, 8, 6))));
-        Assert.Null(SpotifyUpdates.ActName(null));
+        long t = At(2026, 8, 6);
+        var release = Release("r1", t, unread: true);
+        var row = Assert.Single(HomeTimelineMerge.Build([release]).Groups[0].Rows);
+        Assert.Equal(release, row.Source);
+        Assert.Equal(t, row.Timestamp);
+        Assert.True(row.IsUnread);
     }
 
     // ── the shared read state ────────────────────────────────────────────────────────────────────────────────────────
@@ -270,40 +249,19 @@ public class HomeTimelineMergeTests
         var social = new[] { Concert("c1", t, unread: true), Concert("c2", t - 1000, unread: true) };
         var whatsNew = new[] { Release("r1", t - 2000, unread: true) };
 
-        var (before, unreadBefore) = NotificationMerge.Build(null, social, 0, whatsNew, 0, Array.Empty<ActivityEntry>());
-        Assert.Equal(3, unreadBefore);
-        Assert.All(before, n => Assert.True(n.IsUnread));
+        var before = Notify.Merge(null, social, 0, whatsNew, 0, Array.Empty<Notification>());
+        Assert.Equal(3, before.Unread);
+        Assert.All(before.Items, n => Assert.True(n.IsUnread));
 
-        // The same list, re-merged with c1 individually marked: the center's row, the bell's count and the timeline's
+        // The same list, re-merged with c1 individually marked: the centre's row, the bell's count and the timeline's
         // pip all come out of THIS, so one write moves all three.
-        string readIds = NotificationReadIds.Add("", "c1");
-        var (after, unreadAfter) = NotificationMerge.Build(null, social, 0, whatsNew, 0, Array.Empty<ActivityEntry>(), readIds);
+        string readIds = Notify.ReadIds.Add("", "c1");
+        var after = Notify.Merge(null, social, 0, whatsNew, 0, Array.Empty<Notification>(), readIds);
 
-        Assert.Equal(2, unreadAfter);
-        Assert.False(after.First(n => n.Id == "c1").IsUnread);
-        Assert.True(after.First(n => n.Id == "c2").IsUnread);
-        Assert.Equal(2, HomeTimelineMerge.Build(after).Unread);
-        Assert.Equal(3, HomeTimelineMerge.Build(after).Total);
-    }
-
-    [Fact]
-    public void TheReadSetIsIdempotent_Bounded_AndRefusesASeparator()
-    {
-        Assert.Equal("a", NotificationReadIds.Add("", "a"));
-        Assert.Equal("a", NotificationReadIds.Add("a", "a"));            // idempotent — never grows
-        Assert.Equal("a\nb", NotificationReadIds.Add("a", "b"));
-        Assert.Equal("a", NotificationReadIds.Add("a", "b\nc"));         // refused, set unchanged
-        Assert.Equal("a", NotificationReadIds.Add("a", ""));
-        Assert.False(NotificationReadIds.Contains("ab", "a"));           // a prefix is not a member
-        Assert.False(NotificationReadIds.Contains(null, "a"));
-
-        string set = "";
-        for (int i = 0; i < NotificationReadIds.Cap + 25; i++) set = NotificationReadIds.Add(set, "id" + i);
-        var ids = NotificationReadIds.Parse(set);
-        Assert.Equal(NotificationReadIds.Cap, ids.Count);
-        Assert.Equal("id" + (NotificationReadIds.Cap + 24), ids[^1]);    // newest kept
-        Assert.Equal("id25", ids[0]);                                    // oldest dropped
-        Assert.True(NotificationReadIds.Contains(set, "id" + (NotificationReadIds.Cap + 24)));
-        Assert.False(NotificationReadIds.Contains(set, "id0"));
+        Assert.Equal(2, after.Unread);
+        Assert.False(after.Items.First(n => n.Id == "c1").IsUnread);
+        Assert.True(after.Items.First(n => n.Id == "c2").IsUnread);
+        Assert.Equal(2, HomeTimelineMerge.Build(after.Items).Unread);
+        Assert.Equal(3, HomeTimelineMerge.Build(after.Items).Total);
     }
 }

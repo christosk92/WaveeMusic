@@ -1,16 +1,13 @@
 <Solution>
-  <!-- The Wavee app solution. The engine projects are the SIBLING checkout (..\fluent-gpu, see Directory.Build.props
-       $(EngineRoot)) referenced by path so the IDE and `dotnet build Wavee.slnx` build them together. -->
-  <Folder Name="/Engine/">
-    <Project Path="../fluent-gpu/src/FluentGpu.Engine/FluentGpu.Engine.csproj" />
-    <Project Path="../fluent-gpu/src/FluentGpu.Controls/FluentGpu.Controls.csproj" />
-    <Project Path="../fluent-gpu/src/FluentGpu.Windows/FluentGpu.Windows.csproj" />
-    <Project Path="../fluent-gpu/src/FluentGpu.WindowsApi/FluentGpu.WindowsApi.csproj" />
-    <Project Path="../fluent-gpu/src/FluentGpu.SourceGen/FluentGpu.SourceGen.csproj" />
-  </Folder>
+  <!-- The Wavee app solution. The engine is a SIBLING checkout resolved by $(EngineRoot) in Directory.Build.props
+       (a command-line override, then a worktree's git-ignored EngineRoot.local.props pin, then the sibling
+       ..\fluent-gpu - decision D1, gap G-022): App/*.csproj below carry `<ProjectReference Include="$(EngineRoot)...">`
+       for the five engine projects, and MSBuild pulls those in transitively when this solution builds, using
+       whichever engine root THIS build resolved. Do NOT re-list the engine projects here by a literal
+       "../fluent-gpu/..." path: that bypasses the pin and silently builds the wrong (unfinished) engine checkout
+       for the IDE / a plain `dotnet build Wavee.slnx`, which is exactly what pass-3 gap G-022 found. -->
   <Folder Name="/App/">
     <Project Path="src/apps/Wavee/Wavee.csproj" />
-    <Project Path="src/apps/Wavee.Core/Wavee.Core.csproj" />
     <Project Path="src/apps/Wavee.Sdk/Wavee.Sdk.csproj" />
     <Project Path="src/apps/Wavee.Tests/Wavee.Tests.csproj" />
     <Project Path="src/apps/Wavee.ReleaseTool/Wavee.ReleaseTool.csproj" />
@@ -19,5 +16,8 @@
     <Project Path="src/apps/modules/Wavee.Module.YouTube/Wavee.Module.YouTube.csproj" />
     <Project Path="src/apps/modules/Wavee.Module.Twitch/Wavee.Module.Twitch.csproj" />
     <Project Path="src/apps/modules/Wavee.Module.Radio/Wavee.Module.Radio.csproj" />
+  </Folder>
+  <Folder Name="/Loc/">
+    <Project Path="ops/loc/Wavee.LocPack/Wavee.LocPack.csproj" />
   </Folder>
 </Solution>

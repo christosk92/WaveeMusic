@@ -1,0 +1,16 @@
+# parse-only.wh - offline: run with -NoLogin (--no-login). Boot, the grammar, the verdict; no session, no network,
+# no audio device. The plan's section 7 verification step 3: exits 0 with a boot and a verdict line, and with
+# -Profile <temp> leaves no %LOCALAPPDATA%\Wavee behind.
+status
+stats mark
+quality normal
+set crossfade 0
+set normalization on
+{"cmd":"log","args":["parse-only: the JSON form"],"id":1}
+expect offline
+expect idle && !buffering && position==0
+expect cdn.requests==0 && xruns==0
+sleep 200
+stats
+log parse-only: done
+quit

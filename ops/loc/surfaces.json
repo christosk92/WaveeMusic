@@ -1,0 +1,13 @@
+{
+  "settings.language": { "surface": "Settings · Language & region", "where": "General tab, first group.", "screenshot": "settings-language" },
+  "settings.tabs": { "surface": "Settings · tabs", "where": "Tab strip at the top of Settings.", "screenshot": "settings-tabs" },
+  "settings.links": { "surface": "Settings · links", "where": "General tab, links group.", "screenshot": "settings-language" },
+  "settings.general": { "surface": "Settings · General", "where": "General tab.", "screenshot": "settings-language" },
+  "settings": { "surface": "Settings", "where": "Settings window.", "screenshot": "settings-tabs" },
+  "detail": { "surface": "Album / playlist / track page", "where": "Main detail chrome (play, shuffle, menus).", "screenshot": "detail-album" },
+  "player": { "surface": "Player bar", "where": "Bottom playback bar.", "screenshot": "player-bar" },
+  "drag": { "surface": "Drag and drop", "where": "Caption on the drag chip.", "screenshot": "drag-chip" },
+  "sidebar": { "surface": "Sidebar", "where": "Left sidebar.", "screenshot": "sidebar-classic" },
+  "setup": { "surface": "First-run setup", "where": "Setup wizard.", "screenshot": "" },
+  "auth": { "surface": "Sign in", "where": "Login flow.", "screenshot": "" }
+}

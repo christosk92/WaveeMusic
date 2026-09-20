@@ -1,28 +1,26 @@
-using System.Collections.Generic;
-using System.Linq;
+// ── Wavee.Tests/RootlistSlotToOpTests.cs — a resolved (target, placement) → the op → where the row ACTUALLY lands ───
+//
+// Restored from 0.2.9 (gap batch B2, G-043). The published drop slot resolves to a `(RootlistItemRef,
+// RootlistDropPlacement)` pair, and this pins what that pair DOES to the marker stream — by building the op with the
+// production writer (`Spotify.Encode.TryBuildMove`), applying it with the production local apply
+// (`Spotify.Encode.ApplyLocally`, the server's positional MOV semantics) and reading the order back, because the op
+// alone says nothing about where a row lands. 0.3's `SidebarDropTests` had to drop these ORDER facts while no writer
+// existed; the writer exists now, and the last fact pins that it cannot disagree with the pane's legality authority
+// (`RootlistOps.CheckMove`, Shell/Sidebar.cs) about any pair over this stream.
+//
+// D2 is why the file exists: "after the last child of a folder" expressed against the CHILD stays inside the folder,
+// while the same gesture expressed against the FOLDER takes it out. Pure: no scope, no engine.
+
 using Wavee;
-using Wavee.Backend;
-using Wavee.Backend.Playlists;
-using Wavee.Core;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>
-/// SLOT → MUTATION. The published <c>SidebarDropSlot</c> resolves to a <c>(RootlistItemRef, RootlistDropPlacement)</c>
-/// pair, and this pins what that pair actually DOES to the marker stream — by applying the built op and reading the
-/// resulting order back, because the op alone says nothing about where a row lands. The anchor does.
-///
-/// <para>D2 is the reason this file exists: "after the last child of a folder" used to be expressed against the CHILD,
-/// whose exclusive range end is still inside the folder — so the gesture that visibly meant "take it out" put it back
-/// in, while the visually adjacent gesture one pixel lower took it out. Same neighbourhood, opposite result, identical
-/// cue, and no test anywhere.</para>
-/// </summary>
 public class RootlistSlotToOpTests
 {
     //  a · [g "Chill": b, c] · d · [h "Trailing": e]
-    static IReadOnlyList<RootlistEntry> Entries() => RootlistTreeBuilder.EntriesFromUris(new[]
-    {
+    static List<RootlistEntry> Entries() => Spotify.Encode.EntriesFromUris(
+    [
         "spotify:playlist:a",
         "spotify:start-group:g:Chill",
         "spotify:playlist:b",
@@ -32,27 +30,24 @@ public class RootlistSlotToOpTests
         "spotify:start-group:h:Trailing",
         "spotify:playlist:e",
         "spotify:end-group:h",
-    });
+    ]);
 
     static RootlistItemRef Pl(string slug) => new("spotify:playlist:" + slug, IsFolder: false);
     static RootlistItemRef Folder(string id) => new(id, IsFolder: true);
 
-    /// <summary>Apply the move to the marker stream and return the resulting uris, shortened for readability.</summary>
-    static List<string> Apply(RootlistItemRef source, RootlistItemRef target, RootlistDropPlacement placement)
+    static string[] Apply(RootlistItemRef source, RootlistItemRef target, RootlistDropPlacement placement)
     {
         var entries = Entries();
-        Assert.True(RootlistOps.TryBuildMove(entries, source, target, placement, out var op, out var reason),
+        Assert.True(Spotify.Encode.TryBuildMove(entries, source, target, placement, out var op, out var reason),
                     $"expected a buildable move, got {reason}");
-        var list = entries.Select(e => new PlaylistMember("", e.Uri, null, 0)).ToList();
-        PlaylistDiffApplier.Apply(list, new[] { op! });
-        return list.Select(Short).ToList();
+        return Spotify.Encode.ApplyLocally(entries, [op]).Select(Short).ToArray();
     }
 
-    static string Short(PlaylistMember m) => m.ItemUri switch
+    static string Short(RootlistEntry e) => e.Kind switch
     {
-        var u when u.StartsWith("spotify:start-group:") => "[" + u.Split(':')[2],
-        var u when u.StartsWith("spotify:end-group:") => u.Split(':')[2] + "]",
-        var u => u.Split(':')[2],
+        1 => "[" + Spotify.Encode.GroupIdOf(e.Uri),
+        2 => Spotify.Encode.GroupIdOf(e.Uri) + "]",
+        _ => e.Uri.Split(':')[2],
     };
 
     // ── the D2 fix ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -60,8 +55,7 @@ public class RootlistSlotToOpTests
     [Fact]
     public void OutdentSlot_LandsOutsideTheFolder_NotBackInsideIt()
     {
-        // The slot: After(c) at a REDUCED depth ⇒ the target is the ANCESTOR FOLDER, not the child. Identical shape to
-        // FolderActions.MoveOut, which is exactly the point — the drag and the menu verb do the same thing.
+        // After(c) at a REDUCED depth ⇒ the target is the ANCESTOR FOLDER — the same shape as "Move out of Chill".
         Assert.Equal(new[] { "a", "[g", "b", "g]", "c", "d", "[h", "e", "h]" },
                      Apply(Pl("c"), Folder("g"), RootlistDropPlacement.After));
     }
@@ -69,12 +63,9 @@ public class RootlistSlotToOpTests
     [Fact]
     public void ExpressingTheSameGestureAgainstTheChild_KeepsItInside()
     {
-        // The bug, pinned as a fact: After(c) expressed against C ITSELF resolves to c's own position, which is why the
-        // old gesture appeared to do nothing at all. This is the shape the resolver must NEVER produce for an outdent —
-        // and it is named now instead of failing silently.
-        Assert.Equal(RootlistMoveCheck.SameItem,
-                     RootlistOps.CheckMove(Entries(), Pl("c"), Pl("c"), RootlistDropPlacement.After));
-        // A SIBLING filed after c stays inside the folder, which is the correct reading of that slot at full depth.
+        Assert.False(Spotify.Encode.TryBuildMove(Entries(), Pl("c"), Pl("c"), RootlistDropPlacement.After, out _, out var reason));
+        Assert.Equal(RootlistMoveCheck.SameItem, reason);
+        // A SIBLING filed after c stays inside the folder — the correct reading of that slot at full depth.
         Assert.Equal(new[] { "a", "[g", "b", "c", "d", "g]", "[h", "e", "h]" },
                      Apply(Pl("d"), Pl("c"), RootlistDropPlacement.After));
     }
@@ -84,8 +75,6 @@ public class RootlistSlotToOpTests
     [Fact]
     public void EndOfListSlot_OnATrailingFolder_LandsAfterItsEndMarker()
     {
-        // The TreeEnd row files against the last TOP-LEVEL entry — here a folder — and After uses its EXCLUSIVE range
-        // end, so the item clears the whole subtree instead of becoming its last child.
         Assert.Equal(new[] { "[g", "b", "c", "g]", "d", "[h", "e", "h]", "a" },
                      Apply(Pl("a"), Folder("h"), RootlistDropPlacement.After));
     }
@@ -102,50 +91,62 @@ public class RootlistSlotToOpTests
     [Fact]
     public void ExpandedHeaderBottomBand_IsBeforeTheFoldersFirstChild()
     {
-        // The precise "make it the folder's FIRST item" slot. `Inside` cannot express it — that appends last.
         Assert.Equal(new[] { "a", "[g", "d", "b", "c", "g]", "[h", "e", "h]" },
                      Apply(Pl("d"), Pl("b"), RootlistDropPlacement.Before));
         Assert.Equal(new[] { "a", "[g", "b", "c", "d", "g]", "[h", "e", "h]" },
                      Apply(Pl("d"), Folder("g"), RootlistDropPlacement.Inside));
     }
 
-    // ── the reasons, which used to be one silent `false` ─────────────────────────────────────────────────────────────
+    // ── the reasons ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData("b", "c", RootlistDropPlacement.Before, RootlistMoveCheck.NoOp)]   // before the row right after me
-    [InlineData("c", "b", RootlistDropPlacement.After, RootlistMoveCheck.NoOp)]    // after the row right before me
+    [InlineData("b", "c", RootlistDropPlacement.Before, RootlistMoveCheck.NoOp)]
+    [InlineData("c", "b", RootlistDropPlacement.After, RootlistMoveCheck.NoOp)]
     [InlineData("a", "d", RootlistDropPlacement.After, RootlistMoveCheck.Ok)]
     [InlineData("missing", "d", RootlistDropPlacement.After, RootlistMoveCheck.Missing)]
     [InlineData("a", "missing", RootlistDropPlacement.After, RootlistMoveCheck.Missing)]
-    public void CheckMove_NamesWhyItRefused(string source, string target, RootlistDropPlacement placement,
-                                            RootlistMoveCheck expected)
+    public void TryBuildMove_NamesWhyItRefused(string source, string target, RootlistDropPlacement placement,
+                                               RootlistMoveCheck expected)
     {
-        Assert.Equal(expected, RootlistOps.CheckMove(Entries(), Pl(source), Pl(target), placement));
+        Spotify.Encode.TryBuildMove(Entries(), Pl(source), Pl(target), placement, out _, out var reason);
+        Assert.Equal(expected, reason);
     }
 
     [Fact]
-    public void CheckMove_DistinguishesACycleFromANoOp()
+    public void TryBuildMove_DistinguishesACycleFromANoOp()
     {
-        // Both used to be the same `return false` three layers below the pointer, so a folder dropped into its own
-        // child showed "Move into B" and then did nothing at all (D8).
-        Assert.Equal(RootlistMoveCheck.Cycle,
-                     RootlistOps.CheckMove(Entries(), Folder("g"), Pl("b"), RootlistDropPlacement.Before));
-        Assert.Equal(RootlistMoveCheck.Cycle,
-                     RootlistOps.CheckMove(Entries(), Folder("g"), Pl("c"), RootlistDropPlacement.After));
-        Assert.Equal(RootlistMoveCheck.SameItem,
-                     RootlistOps.CheckMove(Entries(), Folder("g"), Folder("g"), RootlistDropPlacement.Inside));
-        // `Inside` a leaf is not a placement the marker stream can express at all.
-        Assert.Equal(RootlistMoveCheck.Invalid,
-                     RootlistOps.CheckMove(Entries(), Pl("a"), Pl("d"), RootlistDropPlacement.Inside));
+        static RootlistMoveCheck Why(RootlistItemRef s, RootlistItemRef t, RootlistDropPlacement p)
+        {
+            Spotify.Encode.TryBuildMove(Entries(), s, t, p, out _, out var reason);
+            return reason;
+        }
+        Assert.Equal(RootlistMoveCheck.Cycle, Why(Folder("g"), Pl("b"), RootlistDropPlacement.Before));
+        Assert.Equal(RootlistMoveCheck.Cycle, Why(Folder("g"), Pl("c"), RootlistDropPlacement.After));
+        Assert.Equal(RootlistMoveCheck.SameItem, Why(Folder("g"), Folder("g"), RootlistDropPlacement.Inside));
+        Assert.Equal(RootlistMoveCheck.Invalid, Why(Pl("a"), Pl("d"), RootlistDropPlacement.Inside));
     }
 
     [Fact]
-    public void TheFourArgOverloadStillAnswersTheSameQuestion()
+    public void AFolderMovesItsWholeSubtree_MarkersAndAll()
     {
-        // Kept verbatim for PlaylistMutationSource and PlaylistMoveOpsTests: the reason is additive, never a rewrite.
-        Assert.True(RootlistOps.TryBuildMove(Entries(), Pl("a"), Pl("d"), RootlistDropPlacement.After, out var op));
-        Assert.NotNull(op);
-        Assert.False(RootlistOps.TryBuildMove(Entries(), Pl("b"), Pl("c"), RootlistDropPlacement.Before, out var none));
-        Assert.Null(none);
+        Assert.True(Spotify.Encode.TryBuildMove(Entries(), Folder("g"), Pl("d"), RootlistDropPlacement.After, out var op, out _));
+        Assert.Equal((1, 4, 6), (op.FromIndex, op.Length, op.ToIndex));    // start marker, two rows, end marker
+    }
+
+    // ── the writer and the legality authority cannot disagree ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void EveryPairOverTheStream_TheWriterAndCheckMoveGiveTheSameVerdict()
+    {
+        var entries = Entries();
+        var refs = new List<RootlistItemRef> { Folder("g"), Folder("h") };
+        foreach (var slug in new[] { "a", "b", "c", "d", "e" }) refs.Add(Pl(slug));
+        foreach (var source in refs)
+            foreach (var target in refs)
+                foreach (var placement in new[] { RootlistDropPlacement.Before, RootlistDropPlacement.After, RootlistDropPlacement.Inside })
+                {
+                    Spotify.Encode.TryBuildMove(entries, source, target, placement, out _, out var built);
+                    Assert.Equal(RootlistOps.CheckMove(entries, source, target, placement), built);
+                }
     }
 }

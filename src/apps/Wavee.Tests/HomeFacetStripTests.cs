@@ -1,11 +1,14 @@
-using Wavee.Core;
+// ── Wavee.Tests/HomeFacetStripTests.cs — the facet strip's ORDER (Wave 5, owner P; ported verbatim from 0.2.9) ─────────
+//
+// Where a second-level chip appears, when it folds into its parent, and what a tap on each position writes back. These are
+// the rules the eye reads — "Following" belongs next to Music, not after Audiobooks — pinned away from the renderer.
+
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>The home facet strip's ORDER, driven directly: where a second-level chip appears, when it folds into its
-/// parent, and what a tap on each position writes back. These are the rules the eye reads — "Following" belongs next to
-/// Music, not after Audiobooks — so they are pinned away from the renderer.</summary>
+[Collection(EntitiesCollection.Name)]
 public sealed class HomeFacetStripTests
 {
     // The shape home.json actually sends: two chips carrying a "Following" second level, one that carries none.
@@ -25,11 +28,8 @@ public sealed class HomeFacetStripTests
         Assert.Equal(FacetSlotKind.All, slots[0].Kind);
         Assert.True(slots[0].Selected);
         Assert.Equal("facet-all", slots[0].Key);
-        // "All" clears the facet rather than selecting a token — the one position whose Select is null.
         Assert.Null(slots[0].Select);
 
-        // Every server chip is a plain tab, none selected, and nothing spilled: an unselected parent never shows its
-        // second level.
         Assert.All(slots.GetRange(1, 3), s => Assert.Equal(FacetSlotKind.Tab, s.Kind));
         Assert.All(slots.GetRange(1, 3), s => Assert.False(s.Selected));
         Assert.Equal("music-chip", slots[1].Select);
@@ -45,8 +45,6 @@ public sealed class HomeFacetStripTests
         var chips = Chips();
         var slots = HomeFacetStrip.Slots(chips, "music-chip");
 
-        // The whole point of the rework: the sub lands at index 2, between its parent and the next tab — not appended
-        // behind a divider after the last chip, which is where it used to go.
         Assert.Equal(5, slots.Count);
 
         Assert.Equal(FacetSlotKind.All, slots[0].Kind);
@@ -59,7 +57,7 @@ public sealed class HomeFacetStripTests
         Assert.Equal("music-chip", slots[1].Select);
 
         Assert.Equal(FacetSlotKind.Sub, slots[2].Kind);
-        Assert.Same(chips[0], slots[2].Chip);                 // the sub knows its parent, so the renderer can group them
+        Assert.Same(chips[0], slots[2].Chip);
         Assert.Equal("music-following-chip", slots[2].Sub!.Id);
         Assert.False(slots[2].Selected);
         Assert.Equal("facet-sub:music-following-chip", slots[2].Key);
@@ -80,7 +78,6 @@ public sealed class HomeFacetStripTests
         var chips = Chips();
         var slots = HomeFacetStrip.Slots(chips, "music-following-chip");
 
-        // Music's slot became the fused pill: the sub no longer has a position of its own.
         Assert.Equal(4, slots.Count);
         Assert.DoesNotContain(slots, s => s.Kind == FacetSlotKind.Sub);
 
@@ -88,18 +85,14 @@ public sealed class HomeFacetStripTests
         Assert.Equal(FacetSlotKind.Fused, fused.Kind);
         Assert.Same(chips[0], fused.Chip);
         Assert.Equal("music-following-chip", fused.Sub!.Id);
-        // A sub-selection keeps the PARENT active: the strip states which facet you are in, not which option.
         Assert.True(fused.Selected);
         Assert.False(slots[0].Selected);
 
-        // The morph: the fused slot reuses the tab's key, so the loose label and the pill are one node.
         Assert.Equal("facet-pill:music-chip", fused.Key);
         Assert.Equal(HomeFacetStrip.Slots(chips, "music-chip")[1].Key, fused.Key);
 
-        // Tapping the pill steps back ONE level, to the bare parent facet — not all the way to unfiltered.
         Assert.Equal("music-chip", fused.Select);
 
-        // The other chips are untouched plain tabs.
         Assert.Equal(FacetSlotKind.Tab, slots[2].Kind);
         Assert.Equal(FacetSlotKind.Tab, slots[3].Kind);
     }
@@ -110,7 +103,6 @@ public sealed class HomeFacetStripTests
         var chips = Chips();
         var slots = HomeFacetStrip.Slots(chips, "podcasts-chip");
 
-        // Only the SELECTED parent spills; Music keeps its Following folded away.
         Assert.Equal(5, slots.Count);
         Assert.Equal(FacetSlotKind.Tab, slots[1].Kind);
         Assert.False(slots[1].Selected);
@@ -122,7 +114,7 @@ public sealed class HomeFacetStripTests
         var sub = Assert.Single(slots, s => s.Kind == FacetSlotKind.Sub);
         Assert.Equal("podcasts-following-chip", sub.Sub!.Id);
         Assert.Same(chips[1], sub.Chip);
-        Assert.Equal(3, slots.IndexOf(sub));            // right after Podcasts, before Audiobooks
+        Assert.Equal(3, slots.IndexOf(sub));
 
         Assert.Equal(FacetSlotKind.Tab, slots[4].Kind);
         Assert.Same(chips[2], slots[4].Chip);
@@ -132,8 +124,6 @@ public sealed class HomeFacetStripTests
     public void Unknown_Facet_BehavesAsUnfiltered()
     {
         var chips = Chips();
-        // A facet the server no longer sends (a stale signal across a chip-row refresh) must not leave the strip with
-        // NOTHING lit: nobody owns it, so "All" is selected and nothing spills.
         var slots = HomeFacetStrip.Slots(chips, "wat-chip");
 
         Assert.Equal(4, slots.Count);

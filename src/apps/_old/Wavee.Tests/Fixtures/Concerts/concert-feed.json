@@ -1,0 +1,108 @@
+{
+  "data": {
+    "liveEventsFeed": {
+      "sections": [
+        {
+          "__typename": "ConcertCarousel",
+          "key": "concerts-near-you",
+          "uri": "spotify:playlist:concerts-example",
+          "description": null,
+          "isBeta": false,
+          "concerts": [
+            {
+              "__typename": "PlaylistResponseWrapper",
+              "data": {
+                "description": "Artists touring near the selected location.",
+                "images": {
+                  "items": [
+                    {
+                      "sources": [
+                        { "url": "https://example.invalid/images/concert-playlist.jpg" }
+                      ]
+                    }
+                  ]
+                },
+                "name": "Concerts Near You",
+                "uri": "spotify:playlist:concerts-example"
+              }
+            },
+            {
+              "__typename": "ConcertV2ResponseWrapper",
+              "data": {
+                "artists": {
+                  "items": [
+                    {
+                      "data": {
+                        "profile": { "name": "Nearby Artist" },
+                        "uri": "spotify:artist:nearby-artist",
+                        "visuals": {
+                          "avatarImage": {
+                            "sources": [
+                              { "url": "https://example.invalid/images/nearby-artist.jpg" }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "images": {
+                  "items": [
+                    {
+                      "extractedColors": { "colorDark": { "hex": "#0E79CF" } },
+                      "sources": [
+                        { "url": "https://example.invalid/images/concert-cover.jpg" }
+                      ]
+                    }
+                  ]
+                },
+                "location": { "city": "Example City", "name": "Example Arena" },
+                "startDateIsoString": "2030-10-18T19:30:00+02:00",
+                "title": "Nearby Artist",
+                "uri": "spotify:concert:nearby-feed-example"
+              }
+            }
+          ]
+        },
+        {
+          "__typename": "LiveEventSection",
+          "key": "recommended-events",
+          "description": null,
+          "concerts": [
+            {
+              "__typename": "ConcertV2ResponseWrapper",
+              "data": {
+                "artists": { "items": [] },
+                "location": { "city": "Example City", "name": "Small Hall" },
+                "startDateIsoString": "2030-11-05T20:00:00+01:00",
+                "title": "Recommended Artist",
+                "uri": "spotify:concert:recommended-example"
+              }
+            }
+          ]
+        },
+        {
+          "__typename": "AllEvents",
+          "paginationKey": "NEXT_PAGE_TOKEN",
+          "sections": [
+            {
+              "key": "all-events",
+              "concerts": [
+                {
+                  "__typename": "ConcertV2ResponseWrapper",
+                  "data": {
+                    "artists": { "items": [] },
+                    "location": { "city": "Other City", "name": "Festival Site" },
+                    "startDateIsoString": "2030-07-13T16:00:00+02:00",
+                    "title": "Example Festival",
+                    "uri": "spotify:concert:all-events-example"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

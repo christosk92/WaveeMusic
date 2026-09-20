@@ -1,0 +1,15 @@
+# gapless-album.wh - a gapless join across a track boundary (the [gapless] arm line, exact=1).
+# Album: Pink Floyd - "The Dark Side of the Moon"; "Speak to Me" runs straight into "Breathe" with no silence.
+# `set crossfade 0` comes before `volume`: the pump seeds the crossfade when it boots, and volume boots it.
+set crossfade 0
+volume 0.2
+play spotify:album:4LH4d3cOWNNsVw41Gqt2kv
+wait playing && position>=1s timeout 20000      # the duration has landed, so end-12s resolves
+stats mark
+seek end-12s
+wait next timeout 30000
+wait playing timeout 5000
+expect gapless.exact>=1
+stats reset
+expect xruns==0
+quit

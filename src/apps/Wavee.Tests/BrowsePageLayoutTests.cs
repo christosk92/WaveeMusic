@@ -1,45 +1,41 @@
+// ── Wavee.Tests/BrowsePageLayoutTests.cs — shelves or one flattened grid (ch 13 §8) ─────────────────────────────────
+//
+// Ported verbatim from 0.2.9 `BrowsePageLayoutTests`. The 0.2.9 record graph (`BrowseSection` carrying its cards and
+// categories, `BrowsePageModel`) is replaced by the facts the rule actually reads — `BrowseSectionFacts(Uri, Title,
+// Kind, CardCount, CategoryCount, Total)` and `BrowsePageFacts(Uri, Title, Sections)` (Entities/Browse.cs) — so the
+// builders below count cards instead of minting them. Every assertion is unchanged.
+
 using System.Linq;
-using Wavee.Core;
-using Wavee.Features.Browse;
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
 /// <summary>BrowsePageLayout decides whether a browse category page reads as named shelves or as one flattened grid.
-/// The rule exists for the page that IS a single untitled bag of cards — today that renders as a one-row carousel,
+/// The rule exists for the page that IS a single untitled bag of cards — that renders as a one-row carousel otherwise,
 /// which is silly. These tests pin the shape decision (untitled-or-redundant single shelf, two untitled shelves
 /// concat-vs-stacked by whether either has more, three-or-more always Shelves), the empty-section drop, that
 /// CategoryGrid/Related never participate in the shelf count, and that an identityless page (no Uri) never flattens
 /// because there is no endpoint to page a flattened section against.</summary>
 public sealed class BrowsePageLayoutTests
 {
-    static BrowseCard Card(string id) => new("spotify:track:" + id, id, null, null);
+    static BrowseSectionFacts Shelf(string title, int cardCount = 3, int? total = null, string uri = "spotify:section:s") =>
+        new(uri, title, BrowseSectionKind.Shelf, cardCount, 0, total ?? cardCount);
 
-    static BrowseSection Shelf(string title, int cardCount = 3, int? total = null, string uri = "spotify:section:s") =>
-        new(uri, title, BrowseSectionKind.Shelf,
-            Enumerable.Range(0, cardCount).Select(i => Card($"{uri}-{i}")).ToArray(),
-            [], total ?? cardCount);
+    static BrowseSectionFacts EmptyShelf(string uri = "spotify:section:empty") =>
+        new(uri, null, BrowseSectionKind.Shelf, 0, 0, 0);
 
-    static BrowseSection EmptyShelf(string uri = "spotify:section:empty") =>
-        new(uri, null, BrowseSectionKind.Shelf, [], [], 0);
+    static BrowseSectionFacts Related(int categoryCount = 2, string uri = "spotify:section:related") =>
+        new(uri, "Related", BrowseSectionKind.Related, 0, categoryCount, categoryCount);
 
-    static BrowseSection Related(int categoryCount = 2, string uri = "spotify:section:related") =>
-        new(uri, "Related", BrowseSectionKind.Related,
-            [], Enumerable.Range(0, categoryCount)
-                .Select(i => new BrowseCategory($"spotify:page:{uri}-{i}", "Cat " + i, null)).ToArray(),
-            categoryCount);
+    static BrowseSectionFacts EmptyRelated(string uri = "spotify:section:related-empty") =>
+        new(uri, "Related", BrowseSectionKind.Related, 0, 0, 0);
 
-    static BrowseSection EmptyRelated(string uri = "spotify:section:related-empty") =>
-        new(uri, "Related", BrowseSectionKind.Related, [], [], 0);
+    static BrowseSectionFacts CategoryGrid(int categoryCount = 2, string uri = "spotify:section:grid") =>
+        new(uri, "Grid", BrowseSectionKind.CategoryGrid, 0, categoryCount, categoryCount);
 
-    static BrowseSection CategoryGrid(int categoryCount = 2, string uri = "spotify:section:grid") =>
-        new(uri, "Grid", BrowseSectionKind.CategoryGrid,
-            [], Enumerable.Range(0, categoryCount)
-                .Select(i => new BrowseCategory($"spotify:page:{uri}-{i}", "Cat " + i, null)).ToArray(),
-            categoryCount);
-
-    static BrowsePageModel Page(string? title, params BrowseSection[] sections) =>
-        new("spotify:page:test", title, null, sections, sections.Length, null);
+    static BrowsePageFacts Page(string? title, params BrowseSectionFacts[] sections) =>
+        new("spotify:page:test", title, sections);
 
     // ── FlattenOne ────────────────────────────────────────────────────────────────────────────────────────────
     [Fact]
@@ -156,15 +152,12 @@ public sealed class BrowsePageLayoutTests
     [Fact]
     public void IdentitylessPage_NeverFlattens_EvenWithASingleUntitledShelf()
     {
-        // Shaped like BrowsePage's own SkeletonPage seed: Uri "" (the field it actually leaves blank while loading;
-        // Title is left as " " there, which is itself blank under TitleIsRedundant, but Uri is the gate here).
-        var page = new BrowsePageModel(
+        // Shaped like the page's own skeleton seed: Uri "" (the field it actually leaves blank while loading; Title is
+        // left as " " there, which is itself blank under TitleIsRedundant, but Uri is the gate here).
+        var page = new BrowsePageFacts(
             "",
             " ",
-            null,
-            [Shelf(title: " ", uri: "spotify:section:skeleton")],
-            TotalSections: 1,
-            NextSectionOffset: null);
+            [Shelf(title: " ", uri: "spotify:section:skeleton")]);
 
         Assert.Equal(BrowsePageLayout.Mode.Shelves, BrowsePageLayout.Of(page).Mode);
     }
@@ -186,5 +179,22 @@ public sealed class BrowsePageLayoutTests
         Assert.True(BrowsePageLayout.TitleIsRedundant("jazz", "Jazz"));
         Assert.True(BrowsePageLayout.TitleIsRedundant(" Jazz ", "Jazz"));
         Assert.False(BrowsePageLayout.TitleIsRedundant("Weekly", "Charts"));
+    }
+
+    // ── 0.3 additions: the section form → rule kind map, and the empty page ──────────────────────────────────────
+    [Theory]
+    [InlineData(SectionKind.BrowseShelf, BrowseSectionKind.Shelf)]
+    [InlineData(SectionKind.BrowseCategoryGrid, BrowseSectionKind.CategoryGrid)]
+    [InlineData(SectionKind.BrowseRelated, BrowseSectionKind.Related)]
+    [InlineData(SectionKind.Unknown, BrowseSectionKind.Shelf)]        // an unknown form is a shelf, as 0.2.9's mapper decided
+    public void KindOf_MapsTheSectionRowsForm(SectionKind form, BrowseSectionKind expected)
+        => Assert.Equal(expected, BrowsePageLayout.KindOf(form));
+
+    [Fact]
+    public void APageWithNoSectionsAndNoTitle_IsEmpty()
+    {
+        Assert.True(new BrowsePageFacts("spotify:page:x", null, []).IsEmpty);
+        Assert.False(new BrowsePageFacts("spotify:page:x", "Jazz", []).IsEmpty);
+        Assert.False(Page(null, Shelf(title: null!)).IsEmpty);
     }
 }

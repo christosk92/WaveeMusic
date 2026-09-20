@@ -1,9 +1,11 @@
-using System;
-using System.Collections.Generic;
+// ── Wavee.Tests/ConcertHubModelTests.cs — the Concert Hub's pure decisions (ch 17 §8), ported from 0.2.9 ──────────────
+//
+// Ported VERBATIM from `_old/Wavee.Tests/ConcertHubModelTests.cs` (18 facts): the inputs are 0.3's values
+// (`ConcertConcept`, `ConcertPlace`, the feed's two lists), the assertions are 0.2.9's. The copy these rules print is
+// `ConcertCopy.English` here — a unit test loads no culture table — which is 0.2.9's hard-coded English, verbatim.
+
 using System.Globalization;
-using System.Linq;
-using Wavee.Core;
-using Wavee.Features.Concerts;
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -11,9 +13,6 @@ namespace Wavee.Tests;
 public sealed class ConcertHubModelTests
 {
     static ConcertConcept Concept(string uri) => new(uri, uri["spotify:concept:".Length..]);
-
-    static Concert Show(string uri) =>
-        new(uri, "Title", "Venue", "City", new DateTimeOffset(2030, 6, 1, 20, 0, 0, TimeSpan.Zero));
 
     // ── concept toggle (zero-or-one selection) ───────────────────────────────────────────────────────────────────────
     [Fact]
@@ -79,26 +78,16 @@ public sealed class ConcertHubModelTests
     [Fact]
     public void IsFeedEmpty_NullPageAndEmptySectionsAreEmpty()
     {
-        Assert.True(ConcertHub.IsFeedEmpty(null));
-        Assert.True(ConcertHub.IsFeedEmpty(new ConcertFeedPage(Array.Empty<ConcertFeedSection>())));
-        Assert.True(ConcertHub.IsFeedEmpty(new ConcertFeedPage(new[]
-        {
-            new ConcertFeedSection("a", ConcertFeedSectionKind.Nearby, Array.Empty<Concert>()),
-        })));
+        Assert.True(ConcertHub.IsFeedEmpty(default, default));
+        Assert.True(ConcertHub.IsFeedEmpty(ReadOnlySpan<int>.Empty, ReadOnlySpan<int>.Empty));
+        Assert.True(ConcertHub.IsFeedEmpty(Array.Empty<int>(), Array.Empty<int>()));
     }
 
     [Fact]
     public void IsFeedEmpty_ConcertsOrPromotionsMakeThePageRenderable()
     {
-        Assert.False(ConcertHub.IsFeedEmpty(new ConcertFeedPage(new[]
-        {
-            new ConcertFeedSection("a", ConcertFeedSectionKind.AllEvents, new[] { Show("spotify:concert:1") }),
-        })));
-        Assert.False(ConcertHub.IsFeedEmpty(new ConcertFeedPage(new[]
-        {
-            new ConcertFeedSection("a", ConcertFeedSectionKind.Recommended, Array.Empty<Concert>(),
-                PlaylistPromotions: new[] { new PlaylistRef("spotify:playlist:1", "Promo", null, "Spotify") }),
-        })));
+        Assert.False(ConcertHub.IsFeedEmpty(new[] { 7 }, Array.Empty<int>()));
+        Assert.False(ConcertHub.IsFeedEmpty(Array.Empty<int>(), new[] { 3 }));
     }
 
     // ── preset date windows (weekend = Fri–Sun) ──────────────────────────────────────────────────────────────────────

@@ -1,47 +1,36 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
+// ── Wavee.Tests/HomeLayoutTests.cs — the layout document, its reducer, its wire, the projection's row table ──────────
+//
+// Wave 5, owner P; ported from 0.2.9 `HomeLayoutTests` (reducer: hide / reorder / cap / reset; the DTO round trip and
+// the unknown-kind + unknown-member carry; the landing projection applying the layout BEFORE row synthesis, and the
+// Charts chrome row). The store's fail-soft facts moved to `HomeLayoutStoreTests`. Added: the customizer's pure half —
+// the fault-banner predicate (ch 12 §9 trap 4) and the row-label table (0.2.9 `HomeCustomizeLabels.Of`).
+
 using System.Text.Json;
-using Wavee.Core;
-using Wavee.Core.Home;
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-// Home layout: reducer (hide/reorder/cap), DTO round-trip, unknown-field/kind carry, and store fail-soft
-// (corrupt file is never overwritten until the first successful save after DiscardCorrupt).
-public sealed class HomeLayoutTests : IDisposable
+[Collection(EntitiesCollection.Name)]
+public sealed class HomeLayoutTests
 {
-    readonly string _dir = Path.Combine(Path.GetTempPath(), "wavee-home-layout-tests", Guid.NewGuid().ToString("n"));
-    readonly string _path;
+    static HomeCard Card(string id) => HomeFixtures.Card(HomeFixtures.Playlist("spotify:playlist:layout-" + id, id));
 
-    public HomeLayoutTests()
+    static HomeFeedView FeedWith(params HomeGroup[] groups) => new("", groups);
+
+    static HomeGroupKind[] KindsOf(HomeLayoutDoc doc)
     {
-        Directory.CreateDirectory(_dir);
-        _path = Path.Combine(_dir, "home-layout.json");
+        var kinds = new HomeGroupKind[doc.Modules.Count];
+        for (int i = 0; i < kinds.Length; i++) kinds[i] = doc.Modules[i].Kind;
+        return kinds;
     }
 
-    public void Dispose()
+    static int IndexOf(IReadOnlyList<HomeRow> rows, HomeRow row)
     {
-        try { Directory.Delete(_dir, recursive: true); } catch (Exception) { }
+        for (int i = 0; i < rows.Count; i++)
+            if (rows[i] == row) return i;
+        return -1;
     }
-
-    HomeLayoutStore Store() => new(_path);
-
-    static HomeLayoutDocDto Envelope(HomeLayoutDoc layout, HomeLayoutWireCarry? carry = null)
-        => HomeLayoutWire.Write(layout, carry);
-
-    void CommitAndWait(HomeLayoutStore store, HomeLayoutDocDto doc)
-    {
-        store.Commit(doc);
-        Assert.True(store.WaitForWrites(10_000), "the pool write did not finish inside 10 s");
-    }
-
-    static HomeCard Card(string id) => new(
-        "spotify:playlist:" + id, id, null, null, HomeCardKind.Playlist);
-
-    static HomeFeed FeedWith(params HomeGroup[] groups) => new("", groups);
 
     // ── reducer ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -57,6 +46,14 @@ public sealed class HomeLayoutTests : IDisposable
         var again = HomeLayoutReducer.Apply(hidden.Layout, new SetHomeModuleHidden(HomeGroupKind.Hero, true));
         Assert.False(again.Changed);
         Assert.Equal(HomeLayoutRejectReason.NoChange, again.Reason);
+    }
+
+    [Fact]
+    public void Hide_ANonLandingKind_IsAnUnknownModule()
+    {
+        var result = HomeLayoutReducer.Apply(HomeLayoutDoc.Default, new SetHomeModuleHidden(HomeGroupKind.Topic, true));
+        Assert.False(result.Changed);
+        Assert.Equal(HomeLayoutRejectReason.UnknownModule, result.Reason);
     }
 
     [Fact]
@@ -104,14 +101,28 @@ public sealed class HomeLayoutTests : IDisposable
         Assert.False(reset.Layout.IsHidden(HomeGroupKind.Hero));
     }
 
-    static HomeGroupKind[] KindsOf(HomeLayoutDoc doc)
+    [Fact]
+    public void Commands_NameTheirUndoLabels()
     {
-        var kinds = new HomeGroupKind[doc.Modules.Count];
-        for (int i = 0; i < kinds.Length; i++) kinds[i] = doc.Modules[i].Kind;
-        return kinds;
+        Assert.Equal(HomeLayoutUndoLabels.HideModule, new SetHomeModuleHidden(HomeGroupKind.Hero, true).LabelLocKey);
+        Assert.Equal(HomeLayoutUndoLabels.ShowModule, new SetHomeModuleHidden(HomeGroupKind.Hero, false).LabelLocKey);
+        Assert.Equal(HomeLayoutUndoLabels.MoveModule, new MoveHomeModule(0, 1).LabelLocKey);
+        Assert.Equal(HomeLayoutUndoLabels.Reset, new ResetHomeLayout().LabelLocKey);
     }
 
-    // ── DTO round-trip + unknown carry ────────────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public void KindNames_RoundTripThroughTryParseKind_ForEveryKind()
+    {
+        foreach (var kind in Enum.GetValues<HomeGroupKind>())
+        {
+            Assert.True(HomeLayoutModules.TryParseKind(HomeLayoutModules.KindName(kind), out var back));
+            Assert.Equal(kind, back);
+        }
+        Assert.False(HomeLayoutModules.TryParseKind("futureModule", out _));
+        Assert.False(HomeLayoutModules.TryParseKind(null, out _));
+    }
+
+    // ── DTO round trip + unknown carry ────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Dto_RoundTripsModulesDeckOrderAndHidden()
@@ -135,6 +146,32 @@ public sealed class HomeLayoutTests : IDisposable
         Assert.Equal(["spotify:section:a", "spotify:section:b"], read.Layout.DeckList);
         // Missing fixed kinds are appended visible so a new module cannot vanish.
         Assert.Contains(read.Layout.Modules, m => m.Kind == HomeGroupKind.QuickGrid && !m.Hidden);
+        Assert.Equal(HomeLayoutModules.DefaultOrder.Length, read.Layout.ModuleCount);
+    }
+
+    [Fact]
+    public void Dto_WritesTheCamelCaseWireNames_AndOmitsVisibleHiddenFlags()
+    {
+        var dto = HomeLayoutWire.Write(new HomeLayoutDoc([new HomeModuleSpec(HomeGroupKind.Hero)]), null);
+        string json = JsonSerializer.Serialize(dto, HomeLayoutJsonCtx.Default.HomeLayoutDocDto);
+        Assert.Contains("\"version\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"kind\": \"hero\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"hidden\"", json, StringComparison.Ordinal);   // null (visible) is not written
+    }
+
+    [Fact]
+    public void Read_ANullDocument_IsTheDefault_AndDuplicateKindsKeepTheFirst()
+    {
+        Assert.Equal(HomeLayoutModules.DefaultOrder, KindsOf(HomeLayoutWire.Read(null).Layout));
+
+        var dto = new HomeLayoutDocDto
+        {
+            Version = 1,
+            Modules = [new HomeModuleDto { Kind = "hero", Hidden = true }, new HomeModuleDto { Kind = "hero", Hidden = false }],
+        };
+        var read = HomeLayoutWire.Read(dto);
+        Assert.True(read.Layout.IsHidden(HomeGroupKind.Hero));
+        Assert.Equal(1, read.Layout.Modules.Count(m => m.Kind == HomeGroupKind.Hero));
     }
 
     [Fact]
@@ -171,72 +208,19 @@ public sealed class HomeLayoutTests : IDisposable
         Assert.Contains("sec:later", back, StringComparison.Ordinal);
     }
 
-    // ── store ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
-    public void FirstRun_IsNotAFault()
+    public void AnUnknownModule_IsReinsertedAtItsOriginalIndex()
     {
-        var load = Store().Load();
-        Assert.Null(load.Doc);
-        Assert.Equal(HomeLayoutLoadFault.None, load.Fault);
-        Assert.False(File.Exists(_path));
-    }
-
-    [Fact]
-    public void Store_RoundTrip_StampsVersion()
-    {
-        var store = Store();
-        var dto = Envelope(HomeLayoutDoc.Default);
-        dto.Version = 0;
-        CommitAndWait(store, dto);
-
-        var back = store.Load();
-        Assert.Equal(HomeLayoutLoadFault.None, back.Fault);
-        Assert.Equal(HomeLayoutStore.CurrentVersion, back.Doc!.Version);
-        Assert.True(back.Doc.UpdatedAtMs > 0);
-        Assert.Equal(HomeLayoutModules.DefaultOrder.Length, HomeLayoutWire.Read(back.Doc).Layout.ModuleCount);
-    }
-
-    [Fact]
-    public void CorruptFile_FailSoft_DoesNotOverwriteUntilDiscard()
-    {
-        byte[] payload = Encoding.UTF8.GetBytes("{ \"version\": 1, \"modules\": [");
-        File.WriteAllBytes(_path, payload);
-        byte[] before = File.ReadAllBytes(_path);
-
-        var store = Store();
-        var load = store.Load();
-        Assert.Null(load.Doc);
-        Assert.Equal(HomeLayoutLoadFault.Corrupt, load.Fault);
-        Assert.True(store.WritesBlocked);
-        Assert.Equal(before, File.ReadAllBytes(_path));
-
-        store.Commit(Envelope(HomeLayoutDoc.Default));
-        store.WaitForWrites(2000);
-        Assert.Equal(before, File.ReadAllBytes(_path));
-
-        store.DiscardCorrupt();
-        Assert.False(store.WritesBlocked);
-        Assert.True(File.Exists(store.CorruptPath));
-        CommitAndWait(store, Envelope(HomeLayoutDoc.Default));
-        Assert.True(File.Exists(_path));
-        Assert.Equal(HomeLayoutLoadFault.None, Store().Load().Fault);
-    }
-
-    [Fact]
-    public void TooNew_BlocksWrites_AndKeepsFile()
-    {
-        string payload = """{ "version": 99, "modules": [] }""";
-        File.WriteAllText(_path, payload);
-        byte[] before = File.ReadAllBytes(_path);
-
-        var store = Store();
-        var load = store.Load();
-        Assert.Equal(HomeLayoutLoadFault.TooNew, load.Fault);
-        Assert.True(store.WritesBlocked);
-        store.Commit(Envelope(HomeLayoutDoc.Default));
-        store.WaitForWrites(2000);
-        Assert.Equal(before, File.ReadAllBytes(_path));
+        var parsed = new HomeLayoutDocDto
+        {
+            Version = 1,
+            Modules = [new HomeModuleDto { Kind = "hero" }, new HomeModuleDto { Kind = "futureModule" }, new HomeModuleDto { Kind = "mixBand" }],
+        };
+        var read = HomeLayoutWire.Read(parsed);
+        var written = HomeLayoutWire.Write(read.Layout, read.Carry);
+        Assert.Equal("hero", written.Modules![0].Kind);
+        Assert.Equal("futureModule", written.Modules[1].Kind);
+        Assert.Equal("mixBand", written.Modules[2].Kind);
     }
 
     // ── projection applies layout BEFORE row synthesis ────────────────────────────────────────────────────────────────
@@ -244,6 +228,7 @@ public sealed class HomeLayoutTests : IDisposable
     [Fact]
     public void Projection_HiddenHero_OmitsRow_AndDoesNotLeaveAHole()
     {
+        TestScope.Fresh();
         var feed = FeedWith(new HomeGroup(HomeGroupKind.Hero, null, [Card("daylist")]));
         var hidden = HomeLayoutReducer.Apply(HomeLayoutDoc.Default, new SetHomeModuleHidden(HomeGroupKind.Hero, true)).Layout;
 
@@ -257,6 +242,7 @@ public sealed class HomeLayoutTests : IDisposable
     [Fact]
     public void Projection_Reorder_IsVisibleInRows()
     {
+        TestScope.Fresh();
         var feed = FeedWith(
             new HomeGroup(HomeGroupKind.Hero, null, [Card("hero")]),
             new HomeGroup(HomeGroupKind.MixBand, "Made for you", [Card("mix")]));
@@ -268,21 +254,30 @@ public sealed class HomeLayoutTests : IDisposable
         int hero = IndexOf(landing.Rows, HomeRow.Hero);
         Assert.True(mix >= 0 && hero >= 0);
         Assert.True(mix < hero);
+        // The Artists chrome row follows MixBand wherever it goes.
+        Assert.Equal(mix + 1, IndexOf(landing.Rows, HomeRow.Artists));
     }
 
     [Fact]
     public void Projection_DefaultLayout_MatchesDesignedRowTable()
     {
-        var landing = HomeLandingProjection.Project(HomeFeed.Empty, HomeModuleTitles.Default, HomeLayoutDoc.Default);
+        var landing = HomeLandingProjection.Project(HomeFeedView.Empty, HomeModuleTitles.Default, HomeLayoutDoc.Default);
         Assert.Equal(HomeLandingProjection.DefaultRows, landing.Rows);
     }
 
-    // ── HomeRow.Charts: chrome, appended unconditionally, never a HomeGroupKind ─────────────────────────────────────
-    // Charts is CHROME (see HomeLandingProjection.cs's own comment on the HomeRow enum): it is not a HomeGroupKind
-    // module, is not in home-layout.json v1, and is not user-hideable. These tests pin that it always exists exactly
-    // once, immediately before HomeRow.Sections, regardless of feed content, hidden modules, or where PodcastShelf
-    // (the module whose presence in ApplyLayout decides WHICH of its two `rows.Add(HomeRow.Sections)` sites runs)
-    // ends up.
+    [Fact]
+    public void Projection_QueueAndBooks_CollapseOnlyWhenAdjacent()
+    {
+        int from = HomeLayoutDoc.Default.IndexOf(HomeGroupKind.RatedShelf);
+        var apart = HomeLayoutReducer.Apply(HomeLayoutDoc.Default, new MoveHomeModule(from, 0)).Layout;
+
+        var rows = HomeLandingProjection.Project(HomeFeedView.Empty, HomeModuleTitles.Default, apart).Rows;
+        Assert.DoesNotContain(HomeRow.EpisodesAndBooks, rows);
+        Assert.Contains(HomeRow.Queue, rows);
+        Assert.Contains(HomeRow.Books, rows);
+    }
+
+    // ── HomeRow.Charts: chrome, never a HomeGroupKind ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public void DefaultRows_ContainsExactlyOneCharts_ImmediatelyBeforeSections()
@@ -297,22 +292,15 @@ public sealed class HomeLayoutTests : IDisposable
 
     public static IEnumerable<object[]> LayoutsThatMustKeepChartsBeforeSections()
     {
-        // Default layout: PodcastShelf is visible, so ApplyLayout adds Charts from the IN-LOOP site
-        // (`if (kind == HomeGroupKind.PodcastShelf) { … rows.Add(HomeRow.Charts); … }`).
         yield return new object[] { "default layout", HomeLayoutDoc.Default };
 
-        // Unrelated modules hidden: PodcastShelf stays visible, so this still reaches the in-loop site.
         var modulesHidden = HomeLayoutReducer.Apply(HomeLayoutDoc.Default, new SetHomeModuleHidden(HomeGroupKind.Hero, true)).Layout;
         modulesHidden = HomeLayoutReducer.Apply(modulesHidden, new SetHomeModuleHidden(HomeGroupKind.MixBand, true)).Layout;
         yield return new object[] { "unrelated modules hidden", modulesHidden };
 
-        // PodcastShelf itself hidden (absent from `visible`): the loop never sees it, so this is the only way to
-        // reach the FALLBACK site after the loop (`if (!afterPodcasts) { … rows.Add(HomeRow.Charts); … }`).
         var podcastHidden = HomeLayoutReducer.Apply(HomeLayoutDoc.Default, new SetHomeModuleHidden(HomeGroupKind.PodcastShelf, true)).Layout;
         yield return new object[] { "PodcastShelf hidden (absent)", podcastHidden };
 
-        // PodcastShelf reordered to the front: still visible (back to the in-loop site), but Charts must now move
-        // WITH it rather than staying pinned to a fixed index.
         int from = HomeLayoutDoc.Default.IndexOf(HomeGroupKind.PodcastShelf);
         var podcastMoved = HomeLayoutReducer.Apply(HomeLayoutDoc.Default, new MoveHomeModule(from, 0)).Layout;
         yield return new object[] { "PodcastShelf moved to front", podcastMoved };
@@ -322,7 +310,7 @@ public sealed class HomeLayoutTests : IDisposable
     [MemberData(nameof(LayoutsThatMustKeepChartsBeforeSections))]
     public void ApplyLayout_PlacesExactlyOneCharts_ImmediatelyBeforeSections(string label, HomeLayoutDoc layout)
     {
-        var landing = HomeLandingProjection.Project(HomeFeed.Empty, HomeModuleTitles.Default, layout);
+        var landing = HomeLandingProjection.Project(HomeFeedView.Empty, HomeModuleTitles.Default, layout);
         Assert.Equal(1, landing.Rows.Count(r => r == HomeRow.Charts));
         int charts = IndexOf(landing.Rows, HomeRow.Charts);
         int sections = IndexOf(landing.Rows, HomeRow.Sections);
@@ -333,23 +321,20 @@ public sealed class HomeLayoutTests : IDisposable
     [Fact]
     public void Charts_IsPresent_RegardlessOfWhichHomeGroupKindsTheFeedCarries()
     {
+        TestScope.Fresh();
         var richFeed = FeedWith(
             new HomeGroup(HomeGroupKind.Hero, null, [Card("hero")]),
             new HomeGroup(HomeGroupKind.MixBand, "Made for you", [Card("mix")]),
             new HomeGroup(HomeGroupKind.PodcastShelf, "Podcasts", [Card("pod")]));
-        var richLanding = HomeLandingProjection.Project(richFeed, HomeModuleTitles.Default);
-        Assert.Contains(HomeRow.Charts, richLanding.Rows);
-
-        // Charts is CHROME, not a module projected from feed content — a wholly empty feed carries it too.
-        var emptyLanding = HomeLandingProjection.Project(HomeFeed.Empty, HomeModuleTitles.Default);
-        Assert.Contains(HomeRow.Charts, emptyLanding.Rows);
+        Assert.Contains(HomeRow.Charts, HomeLandingProjection.Project(richFeed, HomeModuleTitles.Default).Rows);
+        Assert.Contains(HomeRow.Charts, HomeLandingProjection.Project(HomeFeedView.Empty, HomeModuleTitles.Default).Rows);
     }
 
     [Fact]
     public void Charts_IsNotAHomeGroupKind_AndDefaultOrderCarriesNoChartsEntry()
     {
-        Assert.DoesNotContain("Charts", System.Enum.GetNames<HomeGroupKind>());
-        Assert.All(HomeLayoutModules.DefaultOrder, kind => Assert.NotEqual("Charts", kind.ToString()));
+        Assert.DoesNotContain("Charts", Enum.GetNames<HomeGroupKind>());
+        Assert.All(HomeLayoutModules.DefaultOrder, kind => Assert.NotEqual("charts", HomeLayoutModules.KindName(kind)));
     }
 
     [Fact]
@@ -359,15 +344,46 @@ public sealed class HomeLayoutTests : IDisposable
         foreach (var kind in HomeLayoutModules.DefaultOrder)
             layout = HomeLayoutReducer.Apply(layout, new SetHomeModuleHidden(kind, true)).Layout;
 
-        var landing = HomeLandingProjection.Project(HomeFeed.Empty, HomeModuleTitles.Default, layout);
+        var landing = HomeLandingProjection.Project(HomeFeedView.Empty, HomeModuleTitles.Default, layout);
         Assert.Equal(1, landing.Rows.Count(r => r == HomeRow.Charts));
-        Assert.Contains(HomeRow.Charts, landing.Rows);
+        Assert.Equal([HomeRow.Chips, HomeRow.Artists, HomeRow.Timeline, HomeRow.Charts, HomeRow.Sections, HomeRow.Tail], landing.Rows);
     }
 
-    static int IndexOf(IReadOnlyList<HomeRow> rows, HomeRow row)
+    // ── the customizer's pure half ────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(HomeLayoutLoadFault.None, false, false, false)]         // healthy: no banner
+    [InlineData(HomeLayoutLoadFault.Corrupt, true, false, true)]        // a load fault shows it
+    [InlineData(HomeLayoutLoadFault.TooNew, true, false, true)]
+    [InlineData(HomeLayoutLoadFault.Unreadable, true, false, true)]
+    [InlineData(HomeLayoutLoadFault.None, true, false, true)]           // trap 4: a failed "Start fresh" still blocks writes
+    [InlineData(HomeLayoutLoadFault.Corrupt, true, true, false)]        // dismissed for this mount
+    [InlineData(HomeLayoutLoadFault.None, true, true, false)]
+    public void CustomizerShowsFaultBanner_WhileFaultedOrBlocked_UntilDismissed(
+        HomeLayoutLoadFault fault, bool writesBlocked, bool dismissed, bool expected)
+        => Assert.Equal(expected, Home.CustomizerShowsFaultBanner(fault, writesBlocked, dismissed));
+
+    [Theory]
+    [InlineData(HomeGroupKind.Hero, "HERO")]
+    [InlineData(HomeGroupKind.WeeklyPair, "PAIR")]
+    [InlineData(HomeGroupKind.QuickGrid, "Jump back in")]
+    [InlineData(HomeGroupKind.Recents, "Recents")]
+    [InlineData(HomeGroupKind.MixBand, "Made for you")]
+    [InlineData(HomeGroupKind.ChipCards, "Your top mixes")]
+    [InlineData(HomeGroupKind.RadioDial, "Radio")]
+    [InlineData(HomeGroupKind.QueueList, "Up next")]
+    [InlineData(HomeGroupKind.RatedShelf, "Audiobooks for you")]
+    [InlineData(HomeGroupKind.PodcastShelf, "Podcasts")]
+    [InlineData(HomeGroupKind.Featured, "Editors' picks")]
+    [InlineData(HomeGroupKind.DiscoverFeed, "Because you listened")]
+    [InlineData(HomeGroupKind.Topic, "topic")]                          // not a landing module: its wire name
+    public void CustomizerLabelOf_NamesEveryModule(HomeGroupKind kind, string expected)
+        => Assert.Equal(expected, Home.CustomizerLabelOf(kind, HomeModuleTitles.Default, "HERO", "PAIR"));
+
+    [Fact]
+    public void CustomizerLabelOf_ReadsTheTitlesItIsHanded()
     {
-        for (int i = 0; i < rows.Count; i++)
-            if (rows[i] == row) return i;
-        return -1;
+        var titles = HomeModuleTitles.Default with { MadeForYou = "Voor jou" };
+        Assert.Equal("Voor jou", Home.CustomizerLabelOf(HomeGroupKind.MixBand, titles, "", ""));
     }
 }

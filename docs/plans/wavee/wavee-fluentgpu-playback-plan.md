@@ -309,7 +309,7 @@ Because a successful gabo POST is a 200 with empty body, a **401 is the only fai
 
 **Proto fixes** (`herodotus_current_state.proto` is wrong in 3 ways — generating from it emits position 0 + empty heads):
 - `CurrentStateValue` needs **`string item_uri = 6`** (the play‑history current‑item pointer). Without it, heads are empty and Recently Played never populates.
-- `ResumePoint.position` is **field 2, in microseconds** (int64) — **not** `position_seconds=field 1 uint32`. Multiply seconds ×1,000,000 (97 s → 97000000). Empty `resume_point` = position cleared/0.
+- **REFUTED 2026-09-19** (official 1.2.96.518 captures; `as-built-20260919.md` "Herodotus resume-point fix"): `ResumePoint` is a `google.protobuf.Duration {int64 seconds = 1; int32 nanos = 2}` inside a `CurrentStateValue` oneof, and the original claim below corrupted every written position. Original claim: `ResumePoint.position` is **field 2, in microseconds** (int64) — **not** `position_seconds=field 1 uint32`. Multiply seconds ×1,000,000 (97 s → 97000000). Empty `resume_point` = position cleared/0.
 - Add `BatchCreateResumePointRevisions{Request,Response}` and `ListResumePointRevisions{Request,Response}` messages. `CreateResumePointRevisionRequest{ string entity_uri = 2; CurrentStateRevision revision = 4 }`; `CurrentStateRevision{ revision_id=1, value=2, create_time=3, update_time=4 }`.
 
 **Two write paths, demuxed by `entity_uri`:**

@@ -1,26 +1,27 @@
+// ── Wavee.Tests/BrowseTaxonomyTests.cs — the directory's band map, the chart ids and the skeleton seeds (ch 13 §8) ──
+//
+// Ported verbatim from 0.2.9's `BrowseTaxonomyTests.cs` (class `BrowseChartTaxonomyTests`) and the `BrowseTaxonomyTests`
+// class of `WireAdornmentTests.cs`. Both classes keep their 0.2.9 names: 0.3 has no WireAdornmentTests file, so the
+// CS0101 collision that forced the rename in 0.2.9 is gone and the two sets can live side by side here. The types are
+// Entities/Browse.cs's (`BrowseCategory`, `BrowseTaxonomy`, `ChartPages`, `ChartSections`, `BrowseDirectorySeeds`) —
+// same names, same shapes; only the namespace changed.
+
 using System.Linq;
-using Wavee.Core;
-using Wavee.Features.Browse;
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
 /// <summary>
-/// BrowseTaxonomy is a hand-maintained uri -> band map over Spotify's flat, ungrouped browseAll response (see the
-/// class's own doc-comment: "Keyed by page URI, NEVER by title" + "Anything unmapped lands in More"). These tests
-/// pin three things a silent edit could break without a reviewer noticing anything wrong in a diff of prose:
+/// BrowseTaxonomy is a hand-maintained uri -> band map over Spotify's flat, ungrouped browseAll response ("Keyed by page
+/// URI, NEVER by title" + "Anything unmapped lands in More"). These tests pin three things a silent edit could break
+/// without a reviewer noticing anything wrong in a diff of prose:
 ///   1. the captured WIRE ids themselves (<see cref="ChartPages"/> / <see cref="ChartSections"/>) — an edited
 ///      literal silently changes which server resource the Home Charts hub strip and the Browse Charts band read;
 ///   2. that the map is genuinely KEYED BY the <see cref="ChartPages"/> constants (not a second, re-typed copy of
 ///      the same id that could drift from the first); and
-///   3. <see cref="BrowseTaxonomy.Grouped"/>'s contract INCLUDING the new Charts band — fixed band order, empty
+///   3. <see cref="BrowseTaxonomy.Grouped"/>'s contract INCLUDING the Charts band — fixed band order, empty
 ///      bands omitted, Top kept in SERVER order, everything else alphabetised.
-///
-/// <para>NAMED <c>BrowseChartTaxonomyTests</c> rather than <c>BrowseTaxonomyTests</c> — <c>WireAdornmentTests.cs</c>
-/// (a pre-existing file, out of scope for this change) already declares a <c>Wavee.Tests.BrowseTaxonomyTests</c>
-/// class with its own (non-Charts) <c>Grouped</c>/<c>GroupOf</c> coverage; a same-named class here would be a
-/// duplicate-type compile error (CS0101). This file still lives at the assigned path
-/// <c>BrowseTaxonomyTests.cs</c>.</para>
 /// </summary>
 public class BrowseChartTaxonomyTests
 {
@@ -113,12 +114,29 @@ public class BrowseChartTaxonomyTests
         Assert.Equal(ChartSections.All.Count, ChartSections.All.Distinct().Count());
     }
 
+    [Fact]
+    public void ChartSections_Contains_IsAnExactMatchInBothSpellings()
+    {
+        // 0.3 addition: the decoder's chart bit and the fake seed ask this. Base62 ids are case-sensitive, so a case
+        // variant is a DIFFERENT section.
+        foreach (var uri in ChartSections.All)
+        {
+            Assert.True(ChartSections.Contains(uri));
+            Assert.True(ChartSections.Contains(uri.AsSpan()));
+        }
+        Assert.False(ChartSections.Contains("spotify:section:0JQ5DAzQHECxDlYNI6xD1G"));
+        Assert.False(ChartSections.Contains(ChartPages.Charts));
+        Assert.False(ChartSections.Contains((string?)null));
+        Assert.False(ChartSections.Contains(""));
+        Assert.False(ChartSections.Contains(ReadOnlySpan<char>.Empty));
+    }
+
     // ── BandOrder: the ONE spelling of the directory's band sequence (T9 dedup) ─────────────────────────────────────
 
     [Fact]
     public void BandOrder_IsTheExactPinnedSequence()
     {
-        // BrowseDirectory.Body walks this list directly (no local copy of its own) to decide top → charts → for you
+        // The directory body walks this list directly (no local copy of its own) to decide top → charts → for you
         // → genres → mood → more — a reordering here silently reorders the rendered directory.
         Assert.Equal(
             [BrowseGroup.Top, BrowseGroup.Charts, BrowseGroup.ForYou,
@@ -149,5 +167,71 @@ public class BrowseChartTaxonomyTests
         Assert.False(counts.ContainsKey(BrowseGroup.Charts));   // Charts is chrome, never a seed category
 
         Assert.Equal(BrowseDirectorySeeds.Categories.Count, counts.Values.Sum());
+    }
+
+    [Fact]
+    public void DirectorySkeletonSeeds_MirrorTheMapEntryForEntry_AndOnlyLiveEventsIsAFeature()
+    {
+        // 0.3 addition: the seeds are BUILT from UrisOf, so a band's seed uris are its map uris in map order.
+        foreach (var band in new[] { BrowseGroup.Top, BrowseGroup.ForYou, BrowseGroup.Genres, BrowseGroup.MoodActivity })
+        {
+            var seeded = BrowseDirectorySeeds.Categories.Where(c => BrowseTaxonomy.GroupOf(c) == band).Select(c => c.Uri);
+            Assert.Equal(BrowseTaxonomy.UrisOf(band), seeded);
+        }
+        Assert.All(BrowseDirectorySeeds.Categories, c => Assert.Equal(" ", c.Title));
+        Assert.Equal("spotify:concerts", Assert.Single(BrowseDirectorySeeds.Categories, c => c.IsClientFeature).Uri);
+        Assert.Equal(2, BrowseTaxonomy.UrisOf(BrowseGroup.Charts).Count);
+        Assert.Empty(BrowseTaxonomy.UrisOf(BrowseGroup.More));
+    }
+}
+
+public class BrowseTaxonomyTests
+{
+    static BrowseCategory Cat(string uri, string title) => new(uri, title, null);
+
+    [Fact]
+    public void Grouped_PlacesKnownUrisInTheirBand_AndKeepsTopInServerOrder()
+    {
+        var cats = new[]
+        {
+            Cat("spotify:page:0JQ5DAqbMKFSi39LMRT0Cy", "Music"),
+            Cat("spotify:page:0JQ5DArNBzkmxXHCqFLx2J", "Podcasts"),
+            Cat("spotify:page:0JQ5DAqbMKFDXXwE9BDJAr", "Rock"),
+            Cat("spotify:page:0JQ5DAqbMKFEC4WFtoNRpw", "Pop"),
+        };
+
+        var groups = BrowseTaxonomy.Grouped(cats);
+
+        var top = groups.First(g => g.Group == BrowseGroup.Top);
+        Assert.Equal(new[] { "Music", "Podcasts" }, top.Items.Select(i => i.Title));   // server order, NOT alphabetical
+
+        var genres = groups.First(g => g.Group == BrowseGroup.Genres);
+        Assert.Equal(new[] { "Pop", "Rock" }, genres.Items.Select(i => i.Title));      // alphabetised within the band
+    }
+
+    // A category Spotify adds tomorrow must still appear — unmapped falls to More rather than vanishing.
+    [Fact]
+    public void Grouped_UnknownUriFallsToMoreInsteadOfDisappearing()
+    {
+        var groups = BrowseTaxonomy.Grouped(new[] { Cat("spotify:page:brand-new", "Something New") });
+        var more = Assert.Single(groups);
+        Assert.Equal(BrowseGroup.More, more.Group);
+        Assert.Equal("Something New", Assert.Single(more.Items).Title);
+    }
+
+    [Fact]
+    public void Grouped_EmptyInputYieldsNoBands() => Assert.Empty(BrowseTaxonomy.Grouped(System.Array.Empty<BrowseCategory>()));
+
+    [Fact]
+    public void GroupOf_ClientFeatureLiveEventsIsTop()
+        => Assert.Equal(BrowseGroup.Top, BrowseTaxonomy.GroupOf(new BrowseCategory("spotify:concerts", "Live Events", null, null, true)));
+
+    [Fact]
+    public void GroupOf_TheUriOverloadAgreesWithTheCategoryOverload()
+    {
+        // 0.3 addition: a page resolves a tile's band from its uri without building a category.
+        Assert.Equal(BrowseGroup.Genres, BrowseTaxonomy.GroupOf("spotify:page:0JQ5DAqbMKFEC4WFtoNRpw"));
+        Assert.Equal(BrowseGroup.MoodActivity, BrowseTaxonomy.GroupOf("spotify:page:0JQ5DAqbMKFCbimwdOYlsl"));
+        Assert.Equal(BrowseGroup.More, BrowseTaxonomy.GroupOf("spotify:page:0jq5daqbmkfec4wftonrpw"));   // never by a case fold
     }
 }

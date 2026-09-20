@@ -42,6 +42,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot 'perf-tour-analysis.ps1')
+Import-Module (Join-Path $PSScriptRoot '..\build\Wavee.Build.psm1') -Force -DisableNameChecking
 $coverageIssues = New-Object 'System.Collections.Generic.List[string]'
 
 # Uncommitted tree fingerprint for a repo: file-count of `git status --porcelain` plus a SHA256 of `git diff HEAD`,
@@ -239,7 +240,9 @@ $log = Join-Path $env:LOCALAPPDATA ("Wavee\logs\wavee-" + (Get-Date -Format "yyy
 $startLines = if (Test-Path $log) { (Get-Content $log).Count } else { 0 }
 $exeHash = (Get-FileHash -LiteralPath $Exe -Algorithm SHA256).Hash
 $appRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$engineRoot = [IO.Path]::GetFullPath((Join-Path $appRoot '../fluent-gpu'))
+# Resolved like the build itself (G-237): -Override, then this worktree's EngineRoot.local.props pin, then the
+# sibling checkout - a report stamped "engine revision" must name the engine the measured build actually links.
+$engineRoot = [IO.Path]::GetFullPath((Resolve-EngineRoot -RepoRoot $appRoot -Override $env:EngineRoot))
 $appRevision = (& git -C $appRoot rev-parse HEAD | Out-String).Trim()
 $engineRevision = (& git -C $engineRoot rev-parse HEAD | Out-String).Trim()
 $appDirty = Get-PerfDirtyFingerprint $appRoot
@@ -268,7 +271,7 @@ while ($launchWall.Elapsed.TotalSeconds -lt 60) {
     Start-Sleep -Milliseconds 500
     if (Test-Path $log) {
         $tail = Get-Content $log -Encoding UTF8 | Select-Object -Skip $startLines
-        if ($tail | Where-Object { $_ -match "pid=$($app.Id) .*protocol-installed" }) { $ready = $true; break }
+        if ($tail | Where-Object { $_ -match "pid=$($app.Id) .*(protocol-installed|dealer connected)" }) { $ready = $true; break }
         if ($tail | Where-Object { $_ -match "pid=$($app.Id) .*Fatal error" }) { $startupFailure = 'Fatal error before startup readiness'; Write-Host $startupFailure; break }
     }
     $app.Refresh()
@@ -590,3 +593,4 @@ Write-Host ("raw log slice: " + $raw + " (" + $lines.Count + " lines)")
 Write-Host ""
 Write-Host ("frames=" + $session.FramesVerdict + " over83=" + $session.Over83 + " worst=" + (Fmt $session.WorstMs) + "ms memory=" + $session.MemoryVerdict + " peakWS=" + (Fmt $session.PeakWs) + "MB reveals=" + $session.RevealVerdict)
 Write-Host ("manifest: " + $manifestPath)
+

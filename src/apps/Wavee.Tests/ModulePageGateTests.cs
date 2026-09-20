@@ -1,34 +1,29 @@
-using System;
-using System.IO;
+// The module page's two driven gates — ported from 0.2.9 Wavee.Tests/ModulePageGateTests.cs: the http(s)-only launch
+// guard every module-supplied url passes through (`Actions.PlayLinkRules.IsWebUrl`, exercised through the page's own
+// `Pages.OpenUrlOf`), and the loc-key parity check against the base catalog on disk. The Store deep-link facts of the
+// 0.2.9 file are the update owner's (`Update.StorePageUrl`), not the module page's, and are not restated here.
+
 using System.Text.Json;
-using Wavee;
+using Wavee.Sdk;
 using Xunit;
+using static Wavee.Modules;
 
 namespace Wavee.Tests;
 
-/// <summary>
-/// The module page's two driven gates: the http(s)-only shell-launch guard (a module supplies the string it would
-/// launch, so it is exercised for real), and the loc-key parity check against the base catalog on disk.
-///
-/// <para>Both assert VALUES. The class was once called <c>ModulePageSourceGateTests</c> and read
-/// <c>ModulePage.cs</c>'s own text — pinning a comment banner and a set of identifiers — which passes for a file
-/// nobody edits and blocks every file anyone does: the watch-page rewrite would have failed it while changing nothing
-/// the user can see. The layout DECISIONS it was reaching for now live in the pure <c>WatchPageModel</c> and are
-/// asserted as answers in <c>WatchPageModelTests</c>, which is the shape this repo's gates take.</para>
-/// </summary>
 public class ModulePageGateTests
 {
-    // ── the http(s)-only launch guard (driven, not scanned) ──────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("https://www.youtube.com/watch?v=abc")]
     [InlineData("http://example.com/")]
     [InlineData("https://usher.ttvnw.net/api/v2/channel/hls/x.m3u8?sig=1&token=2")]
-    public void AWebLink_IsOpenable(string url) => Assert.True(ShellOpen.IsWebUrl(url));
+    public void AWebLink_IsOpenable(string url)
+    {
+        Assert.True(Actions.PlayLinkRules.IsWebUrl(url));
+        Assert.Equal(url, Pages.OpenUrlOf(DocOpening(url)));
+    }
 
-    /// <summary>The strings that must NEVER reach <c>UseShellExecute</c>. A module's page document crosses a pipe as
-    /// DATA; handing an arbitrary member of it to the shell launches file paths, UNC shares, executables and any
-    /// registered protocol handler. The guard is a whitelist of two schemes, not a blacklist of the bad ones.</summary>
+    /// <summary>The strings that must NEVER reach the shell. A page document crosses a pipe as DATA; handing an arbitrary
+    /// member of it to the shell launches file paths, UNC shares, executables and any registered protocol handler.</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -42,39 +37,15 @@ public class ModulePageGateTests
     [InlineData("ftp://example.com/a")]
     [InlineData("https://")]
     [InlineData("not a url at all")]
-    public void AnythingElse_IsRefusedAndOpensNothing(string? url)
+    public void AnythingElse_IsRefused_AndNeverBecomesTheEscapeHatch(string? url)
     {
-        Assert.False(ShellOpen.IsWebUrl(url));
-        Assert.False(ShellOpen.OpenUrl(url));   // false = the launch was never attempted
+        Assert.False(Actions.PlayLinkRules.IsWebUrl(url));
+        Assert.Null(Pages.OpenUrlOf(DocOpening(url)));
     }
 
-    /// <summary>The ONE scheme <c>OpenUrl</c> accepts beyond http(s): the Store app's own deep link, built by
-    /// <c>StoreLinks.ProductPage</c> (the store-highlight card's button, the Store build's "Open Store page"). It
-    /// passes the launch guard while staying OUTSIDE <c>IsWebUrl</c> — a module document still cannot name it.
-    /// (Asserted via the predicate, not <c>OpenUrl</c>: a passing string would actually launch the Store.)</summary>
-    [Theory]
-    [InlineData("ms-windows-store://pdp/?productid=9NJPVWTQPT9H")]
-    [InlineData("MS-WINDOWS-STORE://pdp/?productid=9NJPVWTQPT9H")]
-    public void TheStoreDeepLink_PassesTheLaunchGuard_ButIsNotAWebUrl(string url)
-    {
-        Assert.True(ShellOpen.IsOpenableUrl(url));
-        Assert.False(ShellOpen.IsWebUrl(url));
-    }
-
-    [Theory]
-    [InlineData("https://apps.microsoft.com/detail/9NJPVWTQPT9H")]
-    public void AWebUrl_IsAlsoOpenable(string url) => Assert.True(ShellOpen.IsOpenableUrl(url));
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("ms-settings:")]
-    [InlineData("ms-windows-store")]
-    [InlineData(@"C:\Windows\System32\calc.exe")]
-    public void EveryOtherScheme_StaysRefusedByTheLaunchGuard(string? url)
-        => Assert.False(ShellOpen.IsOpenableUrl(url));
-
-    // ── the strings ───────────────────────────────────────────────────────────────────────────────────────────────
+    static ModulePageDoc DocOpening(string? url)
+        => new(ModulePageDoc.CurrentVersion, ModulePageDoc.TemplateEntity, null,
+            [new PageAction("open", PageAction.KindOpenUrl, "Open", null, url, false)], [], null);
 
     [Fact]
     public void LocKeys_ForTheModulePage_ExistInTheBaseCatalog()
@@ -83,30 +54,24 @@ public class ModulePageGateTests
         if (locDir is null) return;   // running outside the repo layout — nothing to assert against
 
         using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(locDir, "en-US.json")));
-        Assert.True(doc.RootElement.TryGetProperty("modulePage", out var block),
-            "the base catalog has no \"modulePage\" block");
+        Assert.True(doc.RootElement.TryGetProperty("modulePage", out var block), "the base catalog has no \"modulePage\" block");
 
-        foreach (string key in new[]
-                 {
-                     Strings.ModulePage.Title, Strings.ModulePage.Error, Strings.ModulePage.OpenInBrowser,
-                     // The WATCH layout's inert state capsule: the play capsule is REPLACED by it while this page's
-                     // entity is the item in the bar, so it is user-facing copy and needs a real key like any other.
-                     Strings.ModulePage.Playing,
-                 })
+        foreach (string key in new[] { Strings.ModulePage.Title, Strings.ModulePage.Error, Strings.ModulePage.OpenInBrowser, Strings.ModulePage.Playing })
         {
             Assert.StartsWith("modulePage.", key, StringComparison.Ordinal);
             Assert.True(block.TryGetProperty(key["modulePage.".Length..], out _), key + " is not in the base catalog");
         }
 
-        // The parameterized one is a METHOD (the loc generator's shape for a key carrying {name}) rather than a key
-        // constant, so it is pinned by SHAPE — it resolves to something, and its key is in the catalog. Never by
-        // localized copy: no catalogue is loaded in this process, so the method answers with its key marker.
+        // The parameterized one is a METHOD, pinned by shape: it resolves, and its key carries {name} in the catalog.
         Assert.NotEmpty(Strings.ModulePage.OpenOn("YouTube"));
         Assert.True(block.TryGetProperty("openOn", out var openOn), "modulePage.openOn is not in the base catalog");
         Assert.Contains("{name}", openOn.GetString() ?? "", StringComparison.Ordinal);
-    }
 
-    // ── helpers ───────────────────────────────────────────────────────────────────────────────────────────────────
+        // The watch page's LIVE badge and the shared play-failure copy the page's toasts use.
+        Assert.True(doc.RootElement.TryGetProperty("play", out var play));
+        foreach (string leaf in new[] { "live", "failed", "tryAgain", "placeholder" })
+            Assert.True(play.TryGetProperty(leaf, out _), "play." + leaf + " is not in the base catalog");
+    }
 
     static string? FindLocDir()
     {

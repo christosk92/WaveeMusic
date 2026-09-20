@@ -1,0 +1,21 @@
+{"data":{"browseStart":{"__typename":"BrowseSectionContainer","sections":{"items":[
+  {"uri":"spotify:section:0JQ5DAqAJXkJGsa2DyEjKi","data":{"__typename":"BrowseAllSectionData"},"sectionItems":{"items":[
+    {"uri":"spotify:page:0JQ5DAqbMKFSi39LMRT0Cy",
+     "content":{"__typename":"BrowseSectionContainerWrapper","data":{"__typename":"BrowseSectionContainer",
+       "data":{"cardRepresentation":{
+         "artwork":{"sources":[{"height":300,"url":"https://i.scdn.co/image/music","width":300}]},
+         "backgroundColor":{"hex":"#1e3264"},
+         "title":{"transformedLabel":"Music"}}}}}},
+    {"uri":"spotify:xlink:0JQ5DAozXW0GUBAKjHsifL",
+     "content":{"__typename":"BrowseXlinkResponseWrapper","data":{"__typename":"BrowseClientFeature",
+       "artwork":{"sources":[{"height":300,"url":"https://concerts.spotifycdn.com/x.jpg","width":300}]},
+       "backgroundColor":{"hex":"#8400e7"},
+       "featureUri":"spotify:concerts",
+       "title":{"transformedLabel":"Live Events"}}}},
+    {"uri":"spotify:genre:0JQ5DAqbMKFEC4WFtoNRpw",
+     "content":{"data":{"__typename":"BrowseSectionContainer",
+       "data":{"cardRepresentation":{"backgroundColor":{"hex":"not-a-colour"},"title":{"transformedLabel":"Pop"}}}}}},
+    {"uri":"spotify:page:no-title",
+     "content":{"data":{"__typename":"BrowseSectionContainer","data":{"cardRepresentation":{"backgroundColor":{"hex":"#ffffff"}}}}}}
+  ]}}
+]}}}}

@@ -1,4 +1,6 @@
-using Wavee.Features.Home;
+// ── Wavee.Tests/HomeArtistRowLayoutTests.cs — the podium's tier, ramp, gap and double click (ported from 0.2.9) ─────
+
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -15,8 +17,7 @@ public class HomeArtistRowLayoutTests
     [Fact]
     public void NominalTierFor_ZeroOrNegativeWidth_ReadsAsWide()
     {
-        // A zero/absent (or nonsense negative) width is "not measured", not "narrow" — TierFor owns the pre-measure
-        // case, so the nominal function must not invent a spine arm here.
+        // A zero/absent width is "not measured", not "narrow" — TierFor owns the pre-measure case.
         Assert.Equal(HomeArtistRowLayout.TierWide, HomeArtistRowLayout.NominalTierFor(0f));
         Assert.Equal(HomeArtistRowLayout.TierWide, HomeArtistRowLayout.NominalTierFor(-5f));
     }
@@ -36,17 +37,12 @@ public class HomeArtistRowLayoutTests
 
     [Fact]
     public void TierFor_Narrowing_AppliesImmediately()
-    {
-        // No hysteresis in the narrowing direction: the side-by-side row simply cannot hold below the boundary.
-        Assert.Equal(HomeArtistRowLayout.TierSpine,
+        => Assert.Equal(HomeArtistRowLayout.TierSpine,
             HomeArtistRowLayout.TierFor(899f, HomeArtistRowLayout.TierWide, initialized: true));
-    }
 
     [Fact]
     public void TierFor_FirstMeasure_TakesNominalTierWithoutHysteresis()
     {
-        // Pre-measure, `prev` is a construction default / a viewport seed — not a tier the user has seen — so the
-        // first real width wins outright in BOTH directions.
         Assert.Equal(HomeArtistRowLayout.TierWide,
             HomeArtistRowLayout.TierFor(905f, prev: HomeArtistRowLayout.TierSpine, initialized: false));
         Assert.Equal(HomeArtistRowLayout.TierSpine,
@@ -79,19 +75,13 @@ public class HomeArtistRowLayoutTests
 
     [Fact]
     public void RampScaleFor_NeverShrinksBelowOne()
-    {
-        // A narrow row (fitted column smaller than the ramp's own average box width) must not shrink the ramp — only
-        // stretching is in scope; the prototype's own sizing is the floor.
-        float scale = HomeArtistRowLayout.RampScaleFor(fittedColumnWidth: 40f, count: 10, podChrome: 8f);
-        Assert.Equal(HomeArtistRowLayout.MinArtScale, scale);
-    }
+        => Assert.Equal(HomeArtistRowLayout.MinArtScale,
+            HomeArtistRowLayout.RampScaleFor(fittedColumnWidth: 40f, count: 10, podChrome: 8f));
 
     [Fact]
     public void RampScaleFor_GrowsToFillASpaciousCard()
     {
-        // The reported screenshot: ten artists on a ~900-DIP card. Fit's own per-column arithmetic (forced to 10
-        // equal columns) gives ~82.8 DIP each; the ramp's own average box width for ten pods (84 + 68 + 68 + 7×54,
-        // ÷10) is 59.8 — BELOW the uniform column, so the ramp must GROW to use the room Fit found.
+        // Ten artists on a ~900-DIP card: ~82.8 DIP per fitted column against the ramp's own 59.8 average box.
         float fittedColumnWidth = (900f - 9 * 8f) / 10f;
         float scale = HomeArtistRowLayout.RampScaleFor(fittedColumnWidth, count: 10, podChrome: 8f);
         Assert.True(scale > 1f);
@@ -101,9 +91,6 @@ public class HomeArtistRowLayoutTests
     [Fact]
     public void RampScaleFor_TotalScaledFootprintMatchesTheFittedWidth()
     {
-        // The load-bearing identity RampScaleFor is built on: scale × (the ramp's own total default footprint) must
-        // equal count × fittedColumnWidth — the same total width FillRowVirtualLayout.Fit already solved for. This is
-        // what makes the strip actually FILL the card rather than merely stretch by some arbitrary amount.
         const int count = 10;
         const float podChrome = 8f;
         float fittedColumnWidth = (900f - 9 * 8f) / count;
@@ -116,12 +103,8 @@ public class HomeArtistRowLayoutTests
 
     [Fact]
     public void RampScaleFor_ClampsAtTheCeilingForAFewArtistsOnAWideCard()
-    {
-        // Three pods on a very wide card would otherwise solve for an enormous per-column width — the ceiling keeps
-        // avatars from turning into portraits.
-        float scale = HomeArtistRowLayout.RampScaleFor(fittedColumnWidth: 500f, count: 3, podChrome: 8f);
-        Assert.Equal(HomeArtistRowLayout.MaxArtScale, scale);
-    }
+        => Assert.Equal(HomeArtistRowLayout.MaxArtScale,
+            HomeArtistRowLayout.RampScaleFor(fittedColumnWidth: 500f, count: 3, podChrome: 8f));
 
     [Fact]
     public void RampScaleFor_ZeroCount_ReadsAsTheFloor()
@@ -141,6 +124,8 @@ public class HomeArtistRowLayoutTests
     {
         Assert.Equal(32f, HomeArtistRowLayout.ModuleGap(1080f));
         Assert.Equal(24f, HomeArtistRowLayout.ModuleGap(1079f));
+        // …and it is NOT the shared module gap (ch 10 §9 real defect #2).
+        Assert.NotEqual(HomeModuleLayout.Gap(1080f), HomeArtistRowLayout.ModuleGap(1080f));
     }
 
     // ── F — pod / Mixview-node double-click-to-navigate (#83) ───────────────────────────────────────────────────────
@@ -163,4 +148,8 @@ public class HomeArtistRowLayoutTests
     [Fact]
     public void IsDoubleClick_NoPriorClick_IsFalse()
         => Assert.False(HomeArtistRowLayout.IsDoubleClick("spotify:artist:1", null, 0, 100));
+
+    [Fact]
+    public void IsDoubleClick_TicksOutOfOrder_NeverReadAsADouble()
+        => Assert.False(HomeArtistRowLayout.IsDoubleClick("spotify:artist:1", "spotify:artist:1", 1400, 1000));
 }

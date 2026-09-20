@@ -159,10 +159,9 @@ Step "SDK $($tools.Version)"
 Add-VsInstallerToPath | Out-Null
 
 $useAot = -not $NoAot
-if ($useAot -and $Arch -eq 'x64' -and ("$env:PROCESSOR_ARCHITEW6432$env:PROCESSOR_ARCHITECTURE" -match 'ARM64')) {
-  $cross = Test-X64CrossToolchain
-  if (-not $cross.Ok) { throw $cross.Reason }
-  Write-Host "    x64 cross link.exe: $($cross.LinkExe)"
+if ($useAot) {
+  Import-MsvcEnvironment -Arch $Arch
+  Write-Host "    link.exe: $((Get-Command link.exe).Source)"
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -187,6 +186,7 @@ $pubArgs = @($csproj, '-c', $Configuration, '-r', $rid, '-o', $pubDir, '--nologo
              # same as a symbol-less link and only a debug directory is added to the PE. The PDB and the map never
              # enter the package: they are moved out below, before the recursive layout copy.
              '/p:NativeDebugSymbols=true', '/p:DebugType=portable', '/p:IlcGenerateMapFile=true')
+if ($useAot) { $pubArgs += '/p:IlcUseEnvironmentalTools=true' }
 if ($PublicOnly) { $pubArgs += '-p:WaveeSkipPrivateSources=true' }
 if (-not $useAot) { $pubArgs += @('-p:PublishAot=false', '--self-contained', 'true') }
 & dotnet publish @pubArgs
@@ -301,7 +301,10 @@ if (-not $useAot) { $modulePublish['NoAot'] = $true }
 
 # Third-party notices next to Wavee.exe (Settings > About reads it from AppContext.BaseDirectory). Generated AFTER the
 # modules so a module package reference is in scope; staged before the recursive layout copy below so it ships.
-& (Join-Path $PSScriptRoot 'generate-third-party-notices.ps1') -OutFile (Join-Path $pubDir 'THIRD-PARTY-NOTICES.txt')
+# -EngineRoot resolved like the build itself (G-237): -Override, then this worktree's EngineRoot.local.props pin,
+# then the sibling checkout - never blind to a pin the way a bare `..\fluent-gpu` default would be.
+& (Join-Path $PSScriptRoot 'generate-third-party-notices.ps1') -OutFile (Join-Path $pubDir 'THIRD-PARTY-NOTICES.txt') `
+  -EngineRoot (Resolve-EngineRoot -RepoRoot $root -Override $env:EngineRoot)
 
 # ---------------------------------------------------------------------------------------------------------------
 # 2. stage the package layout

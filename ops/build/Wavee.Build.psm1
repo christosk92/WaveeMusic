@@ -118,6 +118,100 @@ function Test-X64CrossToolchain {
   [pscustomobject]@{ Ok = [bool]$link; LinkExe = $link; IlcPack = $ilc; Reason = $reason }
 }
 
+<#
+.SYNOPSIS
+  vcvarsall.bat argument for this host targeting $Arch (arm64 / amd64 / arm64_amd64 / amd64_arm64).
+#>
+function Get-VcVarsAllName {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('arm64', 'x64')]
+    [string]$Arch,
+    [switch]$HostIsArm
+  )
+  if ($HostIsArm) {
+    if ($Arch -eq 'x64') { 'arm64_amd64' } else { 'arm64' }
+  } else {
+    if ($Arch -eq 'arm64') { 'amd64_arm64' } else { 'amd64' }
+  }
+}
+
+<#
+.SYNOPSIS
+  Load MSVC link.exe + LIB/INCLUDE into this process, then NativeAOT can skip ILC's findvcvarsall.bat.
+.DESCRIPTION
+  ILC's findvcvarsall.bat calls vcvarsall.bat while MSBuild pipes stdout (ConsoleToMSBuild). That probe exits 1
+  with "Platform linker not found" even when HostARM64\arm64\link.exe and the Windows SDK are installed.
+  This helper runs vcvarsall with its stdout on a file (not a pipe), then imports the dumped environment.
+  Pair with /p:IlcUseEnvironmentalTools=true on dotnet publish.
+#>
+function Import-MsvcEnvironment {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('arm64', 'x64')]
+    [string]$Arch
+  )
+
+  $vswhere = Add-VsInstallerToPath
+  if (-not (Test-Path $vswhere)) {
+    throw "vswhere.exe not found at $vswhere. Install Visual Studio (or the Build Tools)."
+  }
+
+  $probe = Invoke-Native $vswhere @('-latest', '-prerelease', '-products', '*', '-property', 'installationPath') -AllowFailure
+  $vsBase = @($probe.Output | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1)[0]
+  if (-not $vsBase) { throw 'vswhere reported no Visual Studio installation.' }
+
+  $vcvars = Join-Path $vsBase 'VC\Auxiliary\Build\vcvarsall.bat'
+  if (-not (Test-Path $vcvars)) { throw "vcvarsall.bat not found at $vcvars." }
+
+  $hostIsArm = ("$env:PROCESSOR_ARCHITEW6432$env:PROCESSOR_ARCHITECTURE" -match 'ARM64')
+  $vcEnv = Get-VcVarsAllName -Arch $Arch -HostIsArm:$hostIsArm
+
+  $work = Join-Path ([IO.Path]::GetTempPath()) ('wavee-vcvars-' + [guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Force -Path $work | Out-Null
+  $wrapper = Join-Path $work 'run.bat'
+  $envFile = Join-Path $work 'env.txt'
+  $logFile = Join-Path $work 'vcvars.log'
+  try {
+    # Redirect vcvarsall onto a file so a piped parent stdout cannot break it the way findvcvarsall.bat does.
+    @(
+      '@echo off'
+      "call `"$vcvars`" $vcEnv > `"$logFile`" 2>&1"
+      'if errorlevel 1 exit /b 1'
+      "set > `"$envFile`""
+    ) | Set-Content -Path $wrapper -Encoding ASCII
+
+    $run = Invoke-Native 'cmd.exe' @('/c', $wrapper) -AllowFailure
+    if ($run.ExitCode -ne 0 -or -not (Test-Path $envFile)) {
+      $tail = ''
+      if (Test-Path $logFile) { $tail = (Get-Content $logFile -Raw) }
+      throw "vcvarsall.bat $vcEnv failed (exit $($run.ExitCode)). Install the C++ $Arch build tools. $tail"
+    }
+
+    Get-Content $envFile | ForEach-Object {
+      $eq = $_.IndexOf('=')
+      if ($eq -lt 1) { return }
+      Set-Item -LiteralPath ("Env:" + $_.Substring(0, $eq)) -Value $_.Substring($eq + 1)
+    }
+  }
+  finally {
+    Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+  }
+
+  $linkOnPath = $false
+  foreach ($dir in ($env:Path -split ';')) {
+    if ($dir -and (Test-Path (Join-Path $dir 'link.exe'))) { $linkOnPath = $true; break }
+  }
+  if (-not $linkOnPath) {
+    throw "link.exe not on PATH after vcvarsall $vcEnv. Install the C++ $Arch build tools."
+  }
+  if ([string]::IsNullOrEmpty($env:LIB)) {
+    throw "LIB is empty after vcvarsall $vcEnv. Install the Windows SDK."
+  }
+}
+
 # ---------------------------------------------------------------------------------------------------------------
 # Wavee.Version.props
 # ---------------------------------------------------------------------------------------------------------------
@@ -306,6 +400,143 @@ function Test-PeMachine([string]$Path, [ValidateSet('arm64','x64')][string]$Arch
   if ($null -eq $m) { return $false }
   if ($Arch -eq 'x64') { return ($m -eq 0x8664) }
   ($m -eq 0xAA64)
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+# PE export table
+# ---------------------------------------------------------------------------------------------------------------
+
+<#
+.SYNOPSIS
+  Minimal PE export-directory reader. Returns the plain export name list out of a PE image's raw bytes.
+.DESCRIPTION
+  Reads the COFF/optional headers and the export directory by hand (no dumpbin dependency - not guaranteed on
+  every release box). An image with no export table, or that is not a PE at all, returns @() rather than
+  throwing: the caller (Test-PeExport, or a release check) decides what an empty/missing export list means.
+.OUTPUTS
+  string[] - the exported names, in export-table order.
+#>
+function Get-PeExportedNames {
+    param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+
+    if ($Bytes.Length -lt 0x40 -or $Bytes[0] -ne 0x4D -or $Bytes[1] -ne 0x5A) { return @() }   # 'MZ'
+    $u16 = { param($o) [BitConverter]::ToUInt16($Bytes, $o) }
+    $u32 = { param($o) [BitConverter]::ToUInt32($Bytes, $o) }
+
+    $peOffset = & $u32 0x3C
+    if ($Bytes.Length -lt ($peOffset + 24) -or $Bytes[$peOffset] -ne 0x50 -or $Bytes[$peOffset + 1] -ne 0x45) { return @() }   # 'PE'
+    $numSections = & $u16 ($peOffset + 6)
+    $optHeaderSize = & $u16 ($peOffset + 20)
+    $optHeaderStart = $peOffset + 24
+    $magic = & $u16 $optHeaderStart
+    $dataDirOffset = $optHeaderStart + $(if ($magic -eq 0x20B) { 112 } else { 96 })   # PE32+ vs PE32
+    $exportRva = & $u32 $dataDirOffset
+    $exportSize = & $u32 ($dataDirOffset + 4)
+    if ($exportRva -eq 0 -or $exportSize -eq 0) { return @() }
+
+    $sections = @()
+    $sectionStart = $optHeaderStart + $optHeaderSize
+    for ($i = 0; $i -lt $numSections; $i++) {
+        $so = $sectionStart + ($i * 40)
+        $sections += [pscustomobject]@{
+            VirtualSize      = & $u32 ($so + 8)
+            VirtualAddress   = & $u32 ($so + 12)
+            SizeOfRawData    = & $u32 ($so + 16)
+            PointerToRawData = & $u32 ($so + 20)
+        }
+    }
+    $rvaToOffset = {
+        param([uint32]$Rva)
+        foreach ($s in $sections) {
+            $size = [Math]::Max($s.VirtualSize, $s.SizeOfRawData)
+            if ($Rva -ge $s.VirtualAddress -and $Rva -lt ($s.VirtualAddress + $size)) {
+                return [uint32]($Rva - $s.VirtualAddress + $s.PointerToRawData)
+            }
+        }
+        $null
+    }
+
+    $expOff = & $rvaToOffset $exportRva
+    if ($null -eq $expOff) { return @() }
+    $numNames = & $u32 ($expOff + 24)
+    $namesRva = & $u32 ($expOff + 32)
+    $namesOff = & $rvaToOffset $namesRva
+    if ($null -eq $namesOff -or $numNames -eq 0) { return @() }
+
+    $names = @()
+    for ($i = 0; $i -lt $numNames; $i++) {
+        $nameOff = & $rvaToOffset (& $u32 ($namesOff + ($i * 4)))
+        if ($null -eq $nameOff) { continue }
+        $end = $nameOff
+        while ($end -lt $Bytes.Length -and $Bytes[$end] -ne 0) { $end++ }
+        $names += [System.Text.Encoding]::ASCII.GetString($Bytes, $nameOff, $end - $nameOff)
+    }
+    $names
+}
+
+<#
+.SYNOPSIS
+  True when a PE image's bytes export the given symbol name (case-insensitive, via PowerShell's default -contains
+  comparer - the same comparison the inline check this replaced already used).
+.DESCRIPTION
+  The release gate for G-152/G-205: a native DLL that fails to export the entry point the managed side
+  P/Invokes into would silently degrade DRM video for every install of that architecture until the next
+  release. Kept as a one-line predicate over Get-PeExportedNames so a release check and a Pester fact read the
+  same rule.
+#>
+function Test-PeExport {
+    param([Parameter(Mandatory = $true)][byte[]]$Bytes, [Parameter(Mandatory = $true)][string]$Name)
+    (Get-PeExportedNames $Bytes) -contains $Name
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+# Engine root resolution (decision D1 / G-022)
+# ---------------------------------------------------------------------------------------------------------------
+
+<#
+.SYNOPSIS
+  Resolve $(EngineRoot) exactly the way Directory.Build.props resolves it, so the release script (and anything
+  else that needs the engine checkout off-MSBuild) never disagrees with what actually got built.
+.DESCRIPTION
+  Precedence, matching Directory.Build.props:36-39 exactly:
+    1. -Override (the command-line/env override: MSBuild's "-p:EngineRoot=..." wins over everything else there,
+       so a caller that has an equivalent override - e.g. $env:EngineRoot - passes it here first).
+    2. EngineRoot.local.props next to RepoRoot, if present (git-ignored per-worktree pin, decision D1) - read the
+       same way MSBuild would import it, by regexing the <EngineRoot>...</EngineRoot> element text.
+    3. The sibling checkout, "<RepoRoot>..\fluent-gpu".
+
+  LITERAL-PATH RULE (G-205 caveat, deliberate - not a parser bug): step 2 is a regex over the element text, not an
+  MSBuild evaluation. It reads whatever text sits between <EngineRoot ...> and </EngineRoot> verbatim, so:
+    - A <PropertyGroup Condition="..."> wrapping the element, or a Condition on the <EngineRoot> element itself,
+      is IGNORED - the text is taken unconditionally, same as every EngineRoot.local.props this repo's tooling
+      writes (a single unconditional pin: `<EngineRoot Condition="'$(EngineRoot)' == ''">C:\...\</EngineRoot>`,
+      whose Condition is a tautology at the point nothing upstream has already set EngineRoot).
+    - An MSBuild property function or property reference inside the text (e.g. "$(SomeVar)" or
+      "$([MSBuild]::NormalizeDirectory(...))") comes back UNEXPANDED, as the literal characters. This function
+      never expands MSBuild expressions - only a real MSBuild evaluation could - so a hand-edited
+      EngineRoot.local.props that uses one silently resolves to a path MSBuild would never actually build.
+  A caller that writes EngineRoot.local.props by hand (rather than through the tooling that generates it) must
+  keep it to one unconditional <EngineRoot>literal\path</EngineRoot> element for this function and MSBuild to
+  agree. See Resolve-EngineRoot's Pester facts (ops/release/tests/Wavee.Build.Tests.ps1) for the exact contract.
+.OUTPUTS
+  The resolved engine root path as a string (not guaranteed to exist - callers check for
+  src\FluentGpu.Engine\FluentGpu.Engine.csproj under it, same as the MSBuild target does).
+#>
+function Resolve-EngineRoot {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [string]$Override
+    )
+    if ($Override) { return $Override }
+
+    $localProps = Join-Path $RepoRoot 'EngineRoot.local.props'
+    if (Test-Path $localProps) {
+        $t = [IO.File]::ReadAllText($localProps)
+        $m = [regex]::Match($t, '<EngineRoot\b[^>]*>([^<]+)</EngineRoot>')
+        if ($m.Success -and $m.Groups[1].Value.Trim()) { return $m.Groups[1].Value.Trim() }
+    }
+
+    Join-Path $RepoRoot '..\fluent-gpu'
 }
 
 Export-ModuleMember -Function *

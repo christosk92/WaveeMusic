@@ -1,163 +1,226 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Wavee.Backend;
-using Wavee.Core;
+// ── Wavee.Tests/QueueOrderTests.cs — the queue's order rules and the forward-looking split ────────────────────────────
+//
+// `Entities/Queue.Rules.cs`: the optimistic move (remove + insert, never a swap — 0.2.9 QueueOrderTests' equivalence),
+// the cursor FOLLOW that puts buckets back after the reducer moved the deck, the SKIP a row click makes, and the section
+// split every queue surface renders from. Pure over spans — no scope, no engine loop. The live session writes built on
+// these are QueueSessionTests.
+
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-// Wave 4C — the queue panel's OPTIMISTIC reorder (Features/Player/QueueOrder.cs) against the AUTHORITATIVE session op
-// it mirrors (PlaybackSession.MoveItem / InsertUserQueue). The panel used to apply a two-element SWAP while the session
-// removed + inserted: identical for the ±1 context-menu verbs it was written for, wrong for every multi-slot drag —
-// the row appeared to land somewhere the server never put it, then snapped. These pin both halves of that equivalence.
 public class QueueOrderTests
 {
-    static Track T(string id) => new(id, "spotify:track:" + id, "T-" + id,
-        Array.Empty<ArtistRef>(), new AlbumRef("", "", ""), 1000, false, null);
+    static QueueEdge Row(QueueBucket bucket, ulong id, QueueProvider provider = QueueProvider.Context)
+        => new(id, (byte)provider, (byte)bucket);
 
-    static QueueEntry E(ulong id, QueueBucket bucket = QueueBucket.UserQueue,
-                        QueueProvider provider = QueueProvider.Queue)
-        => new(new QueueItemId(id), "i" + id, T("t" + id), bucket, provider, provider == QueueProvider.Autoplay);
+    static QueueEdge User(ulong id) => Row(QueueBucket.UserQueue, id, QueueProvider.Queue);
 
-    static IReadOnlyList<QueueEntry> Q(params ulong[] ids) => ids.Select(i => E(i)).ToList();
-
-    static string Ids(IReadOnlyList<QueueEntry> q) => string.Join(",", q.Select(e => e.ItemId.Value));
-
-    // ── remove + insert, not swap ────────────────────────────────────────────────────────────────────────────────────
-    [Fact]
-    public void Move_MultipleSlots_ShiftsEveryRowBetween()
+    static string Ids(ReadOnlySpan<QueueEdge> rows)
     {
-        var q = Q(1, 2, 3, 4, 5);
+        var parts = new string[rows.Length];
+        for (int i = 0; i < rows.Length; i++) parts[i] = rows[i].ItemId.ToString();
+        return string.Join(",", parts);
+    }
 
-        Assert.Equal("2,3,1,4,5", Ids(QueueOrder.Move(q, q, 0, 2)));    // down: 1 lands AT index 2, 2 and 3 shift up
-        Assert.Equal("1,5,2,3,4", Ids(QueueOrder.Move(q, q, 4, 1)));    // up: 5 lands at 1, 2..4 shift down
-        Assert.Equal("5,1,2,3,4", Ids(QueueOrder.Move(q, q, 4, 0)));
+    static string Buckets(ReadOnlySpan<QueueEdge> rows)
+    {
+        var parts = new char[rows.Length];
+        for (int i = 0; i < rows.Length; i++)
+            parts[i] = (QueueBucket)rows[i].Bucket switch
+            {
+                QueueBucket.History => 'H', QueueBucket.NowPlaying => 'N', QueueBucket.UserQueue => 'Q', _ => 'U',
+            };
+        return new string(parts);
+    }
+
+    static int[] TargetsFor(QueueEdge[] rows)
+    {
+        var t = new int[rows.Length];
+        for (int i = 0; i < rows.Length; i++) t[i] = (int)rows[i].ItemId * 10;
+        return t;
+    }
+
+    // ── move: remove + insert, not swap ─────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_multi_slot_move_shifts_every_row_between()
+    {
+        QueueEdge[] rows = [User(1), User(2), User(3), User(4), User(5)];
+        int[] all = [0, 1, 2, 3, 4];
+
+        var down = (QueueEdge[])rows.Clone();
+        Assert.True(QueueOrder.Move(TargetsFor(down), down, all, 0, 2));
+        Assert.Equal("2,3,1,4,5", Ids(down));
+
+        var up = (QueueEdge[])rows.Clone();
+        Assert.True(QueueOrder.Move(TargetsFor(up), up, all, 4, 1));
+        Assert.Equal("1,5,2,3,4", Ids(up));
     }
 
     [Fact]
-    public void Move_AdjacentSlot_IsTheOldSwap()
+    public void An_adjacent_move_is_the_old_swap()
     {
-        var q = Q(1, 2, 3, 4);
-        // The context menu's ±1 verbs must behave EXACTLY as before the rewrite: for adjacent rows a remove+insert
-        // and a swap are the same permutation.
-        for (int i = 0; i < q.Count; i++)
-        {
+        for (int i = 0; i < 4; i++)
             foreach (int delta in new[] { -1, 1 })
             {
                 int to = i + delta;
-                if ((uint)to >= (uint)q.Count) continue;
-                var swapped = new List<QueueEntry>(q);
+                if ((uint)to >= 4) continue;
+                QueueEdge[] rows = [User(1), User(2), User(3), User(4)];
+                var swapped = (QueueEdge[])rows.Clone();
                 (swapped[i], swapped[to]) = (swapped[to], swapped[i]);
-                Assert.Equal(Ids(swapped), Ids(QueueOrder.Move(q, q, i, to)));
+                QueueOrder.Move(TargetsFor(rows), rows, new[] { 0, 1, 2, 3 }, i, to);
+                Assert.Equal(Ids(swapped), Ids(rows));
             }
-        }
     }
 
     [Fact]
-    public void Move_MatchesTheSessionOpItMirrors()
+    public void A_move_rewrites_only_its_own_sections_positions_and_moves_the_target_with_the_payload()
     {
-        // The optimistic order and the session's own MoveItem must agree for every (from, to) — that agreement is the
-        // whole point of the rewrite, and it is what stops the drag from "snapping back" on the authoritative push.
-        for (int from = 0; from < 5; from++)
-        {
-            for (int to = 0; to < 5; to++)
-            {
-                var s = new PlaybackSession();
-                s.SetContext("spotify:playlist:p", new[] { new QueuedTrack(T("cur"), "u-cur", "context", null, QueueRowKind.Playable) }, 0);
-                s.EnqueueUser(Enumerable.Range(1, 5)
-                    .Select(i => new QueuedTrack(T("t" + i), "", "queue", null, QueueRowKind.Playable)).ToList());
-                var section = s.Snapshot().UserQueue;
-
-                var authoritative = s.MoveItem(section[from].ItemId, to)?.UserQueue ?? section;
-                var optimistic = QueueOrder.Move(section, section, from, to);
-
-                Assert.Equal(string.Join(",", authoritative.Select(e => e.Track.Id)),
-                             string.Join(",", optimistic.Select(e => e.Track.Id)));
-            }
-        }
-    }
-
-    // ── the section is a SUBSEQUENCE of the flat snapshot: other buckets never move ──────────────────────────────────
-    [Fact]
-    public void Move_RewritesOnlyItsOwnSectionsPositions()
-    {
-        var user = new[] { E(1), E(2), E(3) };
-        var flat = new List<QueueEntry>
-        {
-            E(90, QueueBucket.NowPlaying, QueueProvider.Context),
-            user[0],
-            E(91, QueueBucket.NextUp, QueueProvider.Context),   // interleaved on purpose: positions, not a block
-            user[1],
-            user[2],
-            E(92, QueueBucket.NextUp, QueueProvider.Autoplay),
-        };
-
-        var moved = QueueOrder.Move(flat, user, 2, 0);
-
-        Assert.Equal("90,3,91,1,2,92", Ids(moved));   // only the user rows' own slots were rewritten
-        Assert.Equal("90,1,91,2,3,92", Ids(flat));    // and the input is untouched
+        // Interleaved on purpose: a section is a SUBSEQUENCE, so the other rows never shift.
+        QueueEdge[] rows = [Row(QueueBucket.NowPlaying, 90), User(1), Row(QueueBucket.NextUp, 91), User(2), User(3), Row(QueueBucket.NextUp, 92, QueueProvider.Autoplay)];
+        int[] targets = TargetsFor(rows);
+        Assert.True(QueueOrder.Move(targets, rows, new[] { 1, 3, 4 }, 2, 0));
+        Assert.Equal("90,3,91,1,2,92", Ids(rows));
+        for (int i = 0; i < rows.Length; i++) Assert.Equal((int)rows[i].ItemId * 10, targets[i]);
     }
 
     [Fact]
-    public void Move_NoOpsAreTheInputInstance()
+    public void Move_clamps_the_target_and_a_no_op_reports_false()
     {
-        var q = Q(1, 2, 3);
-        Assert.Same(q, QueueOrder.Move(q, q, 1, 1));
-        Assert.Same(q, QueueOrder.Move(q, q, 7, 0));                       // out of range
-        Assert.Same(q, QueueOrder.Move(q, Array.Empty<QueueEntry>(), 0, 1));
-        // A section row the snapshot no longer carries: the authoritative push is the only honest answer.
-        Assert.Same(q, QueueOrder.Move(q, new[] { E(1), E(42) }, 0, 1));
+        QueueEdge[] rows = [User(1), User(2), User(3)];
+        int[] all = [0, 1, 2];
+        Assert.False(QueueOrder.Move(TargetsFor(rows), rows, all, 1, 1));
+        Assert.False(QueueOrder.Move(TargetsFor(rows), rows, all, 7, 0));
+        Assert.False(QueueOrder.Move(TargetsFor(rows), rows, ReadOnlySpan<int>.Empty, 0, 1));
+        Assert.True(QueueOrder.Move(TargetsFor(rows), rows, all, 0, 99));
+        Assert.Equal("2,3,1", Ids(rows));
+    }
+
+    // ── follow ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Follow_marks_history_behind_the_cursor_and_the_deck_on_it()
+    {
+        // Two Next clicks the reducer made without touching buckets: the deck is on row 2.
+        QueueEdge[] rows = [Row(QueueBucket.NowPlaying, 1), User(2), Row(QueueBucket.NextUp, 3), Row(QueueBucket.NextUp, 4)];
+        Assert.True(QueueOrder.Follow(TargetsFor(rows), rows, 2));
+        Assert.Equal("HHNU", Buckets(rows));
+        Assert.Equal("1,2,3,4", Ids(rows));                                    // nothing moved
+        Assert.True(Queue.IsOrdered(rows));
+        Assert.False(QueueOrder.Follow(TargetsFor(rows), rows, 2));            // idempotent
     }
 
     [Fact]
-    public void Move_ClampsTheTargetSlot()
+    public void After_a_retreat_the_old_deck_row_goes_behind_the_users_queue_and_the_cursor_index_stays()
     {
-        var q = Q(1, 2, 3);
-        Assert.Equal("2,3,1", Ids(QueueOrder.Move(q, q, 0, 99)));
-        Assert.Equal("3,1,2", Ids(QueueOrder.Move(q, q, 2, -5)));
-    }
-
-    // ── identity: the session id when both rows carry one, else the derived entry id ─────────────────────────────────
-    [Fact]
-    public void Remove_DropsByIdentity()
-    {
-        var q = Q(1, 2, 3);
-        Assert.Equal("1,3", Ids(QueueOrder.Remove(q, q[1])));
-        Assert.Equal("1,2,3", Ids(QueueOrder.Remove(q, E(9))));
-
-        var idless = new QueueEntry(QueueItemId.None, "e7", T("x"), QueueBucket.UserQueue, QueueProvider.Queue, false);
-        var mixed = new List<QueueEntry> { q[0], idless };
-        Assert.Equal(1, QueueOrder.Remove(mixed, idless).Count);
+        // Previous from a context row with a queued row waiting after it: the old deck row is the context's again, and
+        // the user's queue still plays first — so the queued row slides in front of it.
+        QueueEdge[] rows = [Row(QueueBucket.History, 1), Row(QueueBucket.NowPlaying, 2), User(3), Row(QueueBucket.NextUp, 4)];
+        int[] targets = TargetsFor(rows);
+        Assert.True(QueueOrder.Follow(targets, rows, 0));
+        Assert.Equal("1,3,2,4", Ids(rows));
+        Assert.Equal("NQUU", Buckets(rows));
+        Assert.True(Queue.IsOrdered(rows));
+        for (int i = 0; i < rows.Length; i++) Assert.Equal((int)rows[i].ItemId * 10, targets[i]);
     }
 
     [Fact]
-    public void Positions_AreAscendingAndEmptyWhenTheSnapshotMoved()
+    public void Follow_refuses_a_cursor_that_names_no_row()
     {
-        var user = new[] { E(1), E(2) };
-        var flat = new List<QueueEntry> { E(90, QueueBucket.NowPlaying, QueueProvider.Context), user[0], user[1] };
-        Assert.Equal(new[] { 1, 2 }, QueueOrder.Positions(flat, user));
-        Assert.Empty(QueueOrder.Positions(flat, new[] { user[0], E(77) }));
+        QueueEdge[] rows = [Row(QueueBucket.NowPlaying, 1)];
+        Assert.False(QueueOrder.Follow(TargetsFor(rows), rows, -1));
+        Assert.False(QueueOrder.Follow(TargetsFor(rows), rows, 5));
+        Assert.Equal("N", Buckets(rows));
     }
 
-    // ── the session primitive behind an insert-at-slot drop ──────────────────────────────────────────────────────────
+    // ── skip ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
     [Fact]
-    public void InsertUserQueue_PutsTheBlockAtTheSlot_AndClamps()
+    public void A_click_on_a_queued_row_consumes_the_queued_rows_before_it()
     {
-        var s = new PlaybackSession();
-        s.SetContext("spotify:playlist:p", new[] { new QueuedTrack(T("cur"), "u-cur", "context", null, QueueRowKind.Playable) }, 0);
-        s.EnqueueUser(new[] { "a", "b", "c" }
-            .Select(i => new QueuedTrack(T(i), "", "queue", null, QueueRowKind.Playable)).ToList());
+        QueueEdge[] rows = [Row(QueueBucket.NowPlaying, 1), User(2), User(3), User(4), Row(QueueBucket.NextUp, 5)];
+        Assert.Equal(3, QueueOrder.Skip(TargetsFor(rows), rows, 3));
+        Assert.Equal("1,2,3,4,5", Ids(rows));
+        Assert.Equal("HHHNU", Buckets(rows));
+    }
 
-        var mid = s.InsertUserQueue(new[] { new QueuedTrack(T("x"), "", "queue", null, QueueRowKind.Playable),
-                                            new QueuedTrack(T("y"), "", "queue", null, QueueRowKind.Playable) }, 2);
-        Assert.Equal(new[] { "a", "b", "x", "y", "c" }, mid.UserQueue.Select(e => e.Track.Id));
+    [Fact]
+    public void A_click_on_a_next_up_row_keeps_the_users_queue_behind_it()
+    {
+        // 0.2.9 SkipToUpcomingIndex: the skipped continuation rows leave the upcoming list; the queue is NOT consumed.
+        QueueEdge[] rows = [Row(QueueBucket.NowPlaying, 1), User(2), User(3), Row(QueueBucket.NextUp, 4), Row(QueueBucket.NextUp, 5), Row(QueueBucket.NextUp, 6)];
+        int[] targets = TargetsFor(rows);
+        int at = QueueOrder.Skip(targets, rows, 4);
+        Assert.Equal(2, at);
+        Assert.Equal("1,4,5,2,3,6", Ids(rows));
+        Assert.Equal("HHNQQU", Buckets(rows));
+        Assert.True(Queue.IsOrdered(rows));
+        for (int i = 0; i < rows.Length; i++) Assert.Equal((int)rows[i].ItemId * 10, targets[i]);
+    }
 
-        var head = s.InsertUserQueue(new[] { new QueuedTrack(T("h"), "", "queue", null, QueueRowKind.Playable) }, 0);
-        Assert.Equal("h", head.UserQueue[0].Track.Id);   // slot 0 IS play-next
+    [Fact]
+    public void A_click_on_history_or_the_deck_is_not_a_skip()
+    {
+        QueueEdge[] rows = [Row(QueueBucket.History, 1), Row(QueueBucket.NowPlaying, 2), Row(QueueBucket.NextUp, 3)];
+        Assert.Equal(-1, QueueOrder.Skip(TargetsFor(rows), rows, 0));
+        Assert.Equal(-1, QueueOrder.Skip(TargetsFor(rows), rows, 1));
+        Assert.Equal(-1, QueueOrder.Skip(TargetsFor(rows), rows, 9));
+    }
 
-        var tail = s.InsertUserQueue(new[] { new QueuedTrack(T("z"), "", "queue", null, QueueRowKind.Playable) }, 999);
-        Assert.Equal("z", tail.UserQueue[^1].Track.Id);  // past the end clamps to an append
-        Assert.True(tail.Revision > mid.Revision);
+    // ── the forward-looking split (ch 21 §0 #5, §7) ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_divider_is_the_local_cursor_else_the_now_playing_row()
+    {
+        QueueEdge[] rows = [Row(QueueBucket.History, 1), Row(QueueBucket.NowPlaying, 2), Row(QueueBucket.NextUp, 3)];
+        Assert.Equal(2, Queue.Divider(rows, 2));
+        Assert.Equal(1, Queue.Divider(rows, -1));                              // a remote mirror / nothing played yet
+        Assert.Equal(1, Queue.Divider(rows, 9));
+        QueueEdge[] headless = [Row(QueueBucket.UserQueue, 1, QueueProvider.Queue)];
+        Assert.Equal(-1, Queue.Divider(headless, -1));
+    }
+
+    [Fact]
+    public void The_split_is_by_provenance_after_the_divider_with_nothing_behind_it()
+    {
+        // The reducer is on row 3 (unfollowed): rows 0-3 are gone from the list whatever their buckets still say.
+        QueueEdge[] rows =
+        [
+            Row(QueueBucket.NowPlaying, 1), User(2), Row(QueueBucket.NextUp, 3), Row(QueueBucket.NextUp, 4),
+            User(5), Row(QueueBucket.NextUp, 6), Row(QueueBucket.NextUp, 7, QueueProvider.Autoplay), Row(QueueBucket.NextUp, 8, QueueProvider.Autoplay),
+        ];
+        Span<int> index = stackalloc int[rows.Length];
+        int n = Queue.Split(rows, 3, index, out int user, out int next, out int autoplay);
+        Assert.Equal((4, 1, 1, 2), (n, user, next, autoplay));
+        Assert.Equal(4, index[0]);
+        Assert.Equal(5, index[1]);
+        Assert.Equal(6, index[2]);
+        Assert.Equal(7, index[3]);
+
+        Assert.Equal(1, Queue.PositionInSection(rows, 3, 7, out int autoCount));
+        Assert.Equal(2, autoCount);
+        Assert.Equal(-1, Queue.PositionInSection(rows, 3, 1, out _));           // behind the deck: not upcoming
+    }
+
+    [Fact]
+    public void Without_a_divider_only_the_upcoming_buckets_count()
+    {
+        QueueEdge[] rows = [User(1), Row(QueueBucket.NextUp, 2)];
+        Span<int> index = stackalloc int[2];
+        Queue.Split(rows, -1, index, out int user, out int next, out int autoplay);
+        Assert.Equal((1, 1, 0), (user, next, autoplay));
+        Assert.True(Queue.IsUpcoming(rows, -1, 0));
+        Assert.False(Queue.IsUpcoming(rows, 1, 0));
+    }
+
+    [Fact]
+    public void A_repeat_context_wrap_lands_on_the_contexts_head_not_a_consumed_queue_row()
+    {
+        // Followed at the end of the run: everything played is history, and NextIndex(-1) would answer the deck itself.
+        QueueEdge[] rows = [Row(QueueBucket.History, 1, QueueProvider.Queue), Row(QueueBucket.History, 2), Row(QueueBucket.History, 3), Row(QueueBucket.NowPlaying, 4)];
+        Assert.Equal(3, Queue.NextIndex(rows, -1));
+        Assert.Equal(1, Queue.WrapIndex(rows));
     }
 }

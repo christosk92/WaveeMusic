@@ -114,7 +114,10 @@ DetailPage (Component)                                  Features/Detail/DetailPa
                   └─ AlbumTrailing (Component)                        DetailTrailing.cs:25
                      └─ SkelRegionEl (SmoothResize)                   DetailTrailing.cs:86-104
                         └─ TrailingSections  (in this fixed order)    DetailTrailing.cs:109-144
-                           ├─ WatchVideoSection      (short release + HasVideo)      :355
+                           ├─ VideosSection          (ANY release with ≥1 video)     :355 → 0.3 rewrite
+                           │    ├─ VideoHero   (exactly one video)  the 0.2.9 card, corrected
+                           │    └─ VideoShelf  (two or more)        PagedShelf: header+pips, edge fade, page snap
+                           │         └─ VideoShelfCard × N          16:9 still · title · duration
                            ├─ AboutArtistSection → AboutCard + FollowButton          :549-602
                            ├─ Section("Fans also like") → FansRow (≤8 ArtistChips)   :411-434
                            ├─ AlbumList("More by X") → TrailingSection→TrailingStack :470-489
@@ -205,7 +208,7 @@ Page width = the content region (window minus the sidebar ≈ 240, `DetailLayout
 │                                                          │ │ │   trailing scroller — the page scrolls, not it)   │ │
 │  About this release      Eyebrow, TextTertiary           │ │ │                                                   │ │
 │  ┌──────────────┐┌──────────────┐   gap 8               │ │ ├─── trailing band (one skeleton region) ───────────┤ │
-│  │ 13           ││ 74 min       │   StatTile 18/800     │ │ │  WATCH THE OFFICIAL VIDEO  (short releases only)  │ │
+│  │ 13           ││ 74 min       │   StatTile 18/800     │ │ │  Music videos / WATCH THE OFFICIAL VIDEO (≥1 video)│ │
 │  │ Songs        ││ Length       │   caption 11          │ │ │  About the artist   [84 avatar] Daft Punk  [♡ Fol]│ │
 │  └──────────────┘└──────────────┘   r4 FillCardSecondary│ │ │  Fans also like     (chip)(chip)(chip)(chip)…     │ │
 │  ┌────────────────────────────────┐  full width, wrap 2  │ │ │  More by Daft Punk  [48][row] ×5   Show all 12   │ │
@@ -388,7 +391,10 @@ each of which carries **its own 160×18 r4 `FillCardDefault` header bar** over o
 `(16,20,16,16)` and gap 12. Bodies, in order: a **96-tall `Radii.Card` `FillCardDefault` block** (stands in for the
 about-artist card), **5 × 132×40 r20 `FillCardDefault` chips** in a `ClipToBounds` row at gap 8, and **3 × 64-tall
 `Radii.Card` `FillCardSecondary` rows** (gap 4, padX 8, gap 12) each holding a 48 r4 thumb block and a 160×12 r4 bar.
-There is no watch-video, merch or "show all" placeholder: the reserve deliberately under-states rather than over-states.
+There is no music-video, merch or "show all" placeholder: the reserve deliberately under-states rather than over-states.
+(The music-video section is instead held IN the reserve — `PageRules.VideoDecided` keeps the band shimmering until every
+member knows its `TrackFields.Video` group, at any release length — so it never appears a frame after the reveal and
+shoves About-the-artist down. `SmoothResize` eases whatever the under-state got wrong.)
 
 ### W8 — Loading, vertical hero band
 
@@ -504,22 +510,130 @@ About the artist card                       Fans also like                Merch 
 - **Only FOUR of the seven sections are `TrailingStack`s.** "Featured on", "More by", "Merch" and "Similar albums" go
   through `TrailingSection` → `TrailingStack` and therefore carry the 5-row cap and the "Show all N" link
   (`DetailTrailing.cs:460-500`). **"Fans also like" is a plain `Section(...)`** — a `ClipToBounds` row of at most 8 chips
-  with no cap link and no expand (`:121, 411-415, 540-547`), and **"About the artist"** and **"Watch the official
-  video"** are single cards in their own padded boxes (`:355, 549-556`). §0.11's "capped at 5, expandable in place" is
-  true of the four list sections only.
+  with no cap link and no expand (`:121, 411-415, 540-547`), **"About the artist"** is a single card in its own padded
+  box (`:549-556`), and **the music-video section** is a single card OR a horizontal `PagedShelf` (`:355`).
+  §0.11's "capped at 5, expandable in place" is true of the four list sections only.
 - **"Show all N" is ONE-WAY.** `setExpanded(true)`; there is no "Show less", and the link disappears once `_count <=
   shown` (`DetailTrailing.cs:694-697`). Contrast the artist-page album drawer's "Show all N tracks", which **navigates**
   rather than expanding (W19) — do not unify the two in 0.3.
 - **Merch with no price** falls back to the localized `artist.buy` ("Buy"), still in accent ink (`:531`). Merch with no
   `ShopUrl` additionally loses its hover/press scale, its `AutomationRole`, its focusability, its hand cursor and its
   click (`:516-522`) — it is a listing, not a dead button.
-- **Watch-the-official-video card**: clicking it calls `h.PlayContext(m.ContextUri)` — it plays the **album**, not the
-  video (`:369`). Its eyebrow swaps to `videoOverride.customLabel` when any track on the short release carries a
-  user-attached override (`HasCustomVideo`, `:345-351, 399`); the card's own title is the **album** title at
-  `RailHeader` (20/28/600) with the album's `MetaLine` at 12/TextSecondary under it. The card is `ClipToBounds` with a
-  `HoverFill = Tok.FillCardDefault` and **no** press fill and **no** hover scale (`:367-369`) — unlike the media rows
-  and the chips beside it. Its section box is the one trailing section with an asymmetric padding: `(16,20,16,**0**)`
-  (`:360`), because the About-the-artist section under it supplies the bottom step.
+- **The music-video section (0.3 REWRITE — do not port 0.2.9 here).** 0.2.9 drew ONE "Watch the official video" card,
+  on short releases only, showing the **album's** cover, the **album's** title and the **album's** meta line, and
+  clicking it played the **album** (`DetailTrailing.cs:355-408, 369`). Every one of those four is now wrong on purpose.
+  The 0.3 rules, in full:
+
+  - **Presence: one section per ALBUM, at any length, whenever at least one member row has a video.** The old gate was
+    `shortRelease && hasVideo`, so a 12-track album with three music videos surfaced **nothing at all**. `shortRelease`
+    now governs only the "Fans also like" seed and the trailing skeleton's shape.
+  - **Selection: `Album.PageRules.SelectVideos(members, into)`** — a pure fold, engine-free, one `AlbumVideo`
+    `(MemberSlot, CounterpartSlot, Thumb, DurationMs)` per member whose `Track.HasVideo` holds (the kind-99 association
+    OR a user-attached mp4), **in track order**, capped at `PageRules.VideoCap` (16, the artist shelf's own cap). Kind
+    99 carries at most ONE counterpart per track (`video_associations.proto:21-23`, `optional` not `repeated`), so N
+    videos on an album means N video-bearing rows; there is no album-level video edge to read.
+  - **THE THUMBNAIL IS THE VIDEO'S OWN 16:9 STILL, NEVER THE ALBUM COVER.** This is the rule the old spec never wrote
+    down, which is exactly how the sleeve-under-a-play-badge bug survived a parity pass. The ladder is the versions
+    drawer's, verbatim (`Track.Drawer.cs:458`): the member's own `Track.VideoImageId` (what kind 99 writes beside the
+    counterpart uri — `Spotify.Decode.cs:1435-1437`) ▸ the counterpart row's `ImageId` ▸ the song's own `ImageId`. The
+    last rung exists for a user-attached mp4, which has no still anywhere.
+  - **THE CLICK WATCHES THE VIDEO — and "play the song" is NOT that.** Kind 99 keys a video on its SONG, so the
+    playable is the MEMBER row, not the counterpart — the same target `TrackVersionsPanel`'s own play verb resolves
+    (`Track.Drawer.cs` `PlayVersion`). But starting that row is only half the instruction: the reducer decides a row's
+    media kind from `videoWanted && (flags & TrackFlags.VideoMask)` (`Playback.Transitions.cs:697`, `KindOfRow`), and
+    `videoWanted` comes from the placement state, whose `Requested` starts at `SurfacePlacement.None`
+    (`Shell/Video.cs:142-150`, resolved `:249`). **Playing the row with the surface off therefore gives exactly what it
+    says: audio** — a play badge over a video still that starts the ordinary song. That was the shipped defect.
+    - The decision is `Album.PageRules.WatchFor(canHostVideo, isDeckRow)` — pure, three outcomes, no video count, so
+      the hero card and a shelf cell cannot diverge:
+      - `RequestThenPlay` (a host exists, the row is cold) — **request the surface FIRST, then play.** The order is the
+        contract: the reducer's inbox is FIFO and folded in one batch, so the placement input lands before the load and
+        `KindOfRow` already reads `videoWanted = true`. Play first and the user hears a beat of audio and then a switch.
+      - `SwitchInPlace` (a host exists, the clicked row is already on the deck) — the placement input **alone** re-decides
+        the row's kind and reloads it on the video host at the carried position (`DoVideoPlacement`). Never `PlayContext`,
+        which would restart it. A paused deck is resumed with `TogglePlay`.
+      - `AudioOnly` (`UpgradeGate.AvailabilityFor(hasVideo, hostCapable)` is empty — no rail room, no second window, no
+        fullscreen hook) — **the card SAYS so** (`Notify.Say(player.videoUnavailable, Warning, dedupeKey
+        "album.video.nohost")`) and then plays the song. It is the one arm that ends in audio and it is never silent
+        about it.
+    - **The request is `Video.State.FoldAvailability(hasVideo)` then `Video.State.OpenAt(preferred)`** — the rail's own
+      "show video here" pair, each of which `Commit`s directly, so `Commit` → `PlacementPost.ShouldPost`
+      (`Shell/Video.Host.Wiring.cs:115`) → `Playback.SetVideoPlacement(true)` (`Playback.Host.cs:1006`). The fold must
+      come first: `OpenAt` resolves against `Available`, which a deferred upgrade leaves stale at `None`. `preferred` is
+      G-150's persisted home (docked when nothing is remembered) — the same one the player bar's badge opens at, so a
+      card click and the badge put the surface in the same place.
+    - **NOT `Video.State.TogglePrimary` / `UpgradeGate.PrimaryClick`.** That path is (a) a TOGGLE — a second card click
+      would turn the surface *off* — and (b) routed through `UpgradeGate.DeferUpgrade` (`Shell/Video.cs:652-653`), which
+      exists to withhold a mid-track upgrade **nobody asked for**. A click on a video card *is* the ask, so it must never
+      be handed to a gate built to ignore un-asked-for ones. This is the one seam where the card deliberately does not
+      reuse the badge's entry point.
+    - One `hasVideo` feeds **both** halves — the availability gate and the fold. Asking the gate a hardcoded `true` while
+      the fold stamps the row's real bit is how the two would disagree and reopen the defect from the other side.
+  - **Title and duration come from the VIDEO.** The counterpart row's `Title`/`DurationMs` once its identity has landed;
+    the song's until then (an upgrade, never a blank). The counterpart's identity is one `FetchPriority.Prefetch` ask
+    from the section itself (`SectionsHost.DemandVideos`) — kind 99 hands the page a uri and a still and nothing else —
+    and the counterpart rows' versions are folded into `SectionsStamp.Videos` so the upgrade actually repaints.
+  - **ONE video → the hero arm**, which keeps 0.2.9's geometry exactly (200×116 thumb, 44 FAB, `RailHeader` title,
+    12/TextSecondary subtitle), so the single-video page looks unchanged apart from the corrected image, title,
+    subtitle and click. Its eyebrow is still `detail.watchOfficialVideo`, swapping to `videoOverride.customLabel` when
+    a row carries a user-attached override (`PageRules.HasCustomVideo`). Its subtitle is `detail.versions.musicVideo`
+    ("Music video") · the video's duration — **not** the album's "N songs · M min · year".
+  - **TWO OR MORE → the SHELF arm. A horizontal strip, NOT a wrapping grid.** A wrap row of fixed 216-wide cells was
+    built first and rejected on sight: four videos fell into a 2×2 block that reads as a page of its own rather than a
+    strip under the tracklist. The replacement is the **shared `FluentGpu.Controls.PagedShelf`** — the same control the
+    artist page's own music-video shelf runs on (`Artist.Page.cs:1008-1021` `VideosShelf` → `ShelfOf`), and the same one
+    home, browse and search shelves use. **Nothing here is hand-rolled**, and nothing here may be:
+    - **Edge fades** are the control's `edgeFade:` parameter — `Design.Size.FadeShelf` (24), the token every other
+      Wavee shelf passes. It reaches the viewport as the engine's `AutoEdgeFadeBand` scratch-buffer fade, so it is a
+      real feather over the clipped strip and **not** a gradient overlay faked on top of the cards.
+    - **Pips** are `ShelfPager.Pips` — the stock `PipsPager` the control drops into its own header row, beside
+      `ShelfPager.Chevrons`. The control builds `[header, spacer, pips, chevrons]` itself
+      (`PagedShelf.cs:1360-1393`), so the `header:` this page passes is **only** the title + count; the pager lands at
+      the trailing edge on its own. Pips appear only when `pageCount > 1`.
+    - **`snap: ShelfSnap.Page`** is what makes a fling, a chevron and a pip all rest on a page boundary — without it the
+      pips would point at a strip resting mid-page.
+    - **`measured: true`** — an album has a handful of videos, so the strip lays them ALL out and sizes itself to the
+      tallest card instead of estimating a height from a `cardHeight(w)` formula (the `Concert.Page` / `Modules.UI`
+      watch-shelf idiom). **This is what keeps the shelf from jumping**: nothing is guessed and then corrected, and each
+      card's thumb carries an explicit `Width`/`Height`, so a still decoding late repaints inside a box that was already
+      reserved. `maxItems: PageRules.VideoCap`.
+    - `minCardW: 200, maxCardW: 280` — wider than the 148–188 square-card shelf range, because a 16:9 card needs the
+      room; `gap: Spacing.M`, `headerGap: Spacing.M`, `prevGlyph/nextGlyph: Icons.ChevronLeft/ChevronRight`.
+    - The `cardAt` and `keyOf` delegates are **static readonly** fields (`s_videoCard`, `s_videoKey`): `PagedShelf`
+      re-pushes them as props on every render and ignores them in its gate, so rebuilding them per render would be pure
+      allocation. The **items** array is what gates, and `AlbumVideo` is a `readonly record struct`, so the shelf's
+      clamped element-by-element compare short-circuits an unchanged publication. The `header:` Element rides a
+      *separate* chrome signal, so rebuilding it each render re-renders the header row only — never a card.
+    - Header: `artist.musicVideos` ("Music videos") as a `RailHeader`, then the plain count (13/600 `TextTertiary`).
+    - One cell: the video's own still fitted 16:9 to `inner = max(96, cardW − 2×8)`, `thumbH = round(inner × 9/16)`,
+      over a one-line `TrackTitle` and a one-line `TrackMeta` duration (omitted entirely when the duration is 0).
+  - **Both arms are the same card chrome**: `FillCardSecondary` + a 1-px `StrokeCardDefault`, `HoverFill =
+    Tok.FillCardDefault`, `ClipToBounds`, **no** press fill and **no** hover scale — unlike the media rows and chips
+    beside them. 0.3 adds `Focusable` + `FocusVisualMargin = Design.FocusInsetBordered`; 0.2.9's card had a
+    `AutomationRole.Button` and a hand cursor but **no keyboard stop at all**. Both arms carry the same 44 play FAB
+    (`VideoThumb`, clamped `min(w,h) × 0.38` into `[28, 44]`, so a hero thumb and every reachable shelf-card width land
+    on the same 44 object) and take the same `WatchVideo(v.MemberSlot)` click.
+  - Its section box keeps the one asymmetric trailing padding, `(16,20,16,**0**)`, because About-the-artist under it
+    supplies the bottom step; the shelf arm's own header→strip gap is the control's `headerGap` (12).
+
+```
+        ┌──────────────────────────────────────────────────────────────────────────┐
+        │  Music videos  4                                    ● ○      ‹    ›      │  RailHeader + count · pips · chevrons
+        │                                                                          │
+        │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌───────────┐▒          │  ▒ = edge fade (AutoEdgeFadeBand, 24)
+        │  │ ▓▓▓▓▓▓▓▓▓▓ │  │ ▓▓▓▓▓▓▓▓▓▓ │  │ ▓▓▓▓▓▓▓▓▓▓ │  │ ▓▓▓▓▓▓▓▓▓ │▒          │
+        │  │ ▓▓▓▓(▶)▓▓▓ │  │ ▓▓▓▓(▶)▓▓▓ │  │ ▓▓▓▓(▶)▓▓▓ │  │ ▓▓▓(▶)▓▓▓ │▒          │  16:9 still, 44 FAB centred
+        │  │ ▓▓▓▓▓▓▓▓▓▓ │  │ ▓▓▓▓▓▓▓▓▓▓ │  │ ▓▓▓▓▓▓▓▓▓▓ │  │ ▓▓▓▓▓▓▓▓▓ │▒          │
+        │  │ Last Chri… │  │ Everythin… │  │ Wake Me U… │  │ Freedom   │▒          │  TrackTitle, 1 line
+        │  │ 4:38       │  │ 5:01       │  │ 3:52       │  │ 5:03      │▒          │  TrackMeta duration
+        │  └────────────┘  └────────────┘  └────────────┘  └───────────┘▒          │
+        └──────────────────────────────────────────────────────────────────────────┘
+           ├── 200…280 ──┤  ├─12─┤                        page-snapping, one row, never wrapped
+```
+
+  - **The reserve waits for the verdict at any length.** `PageRules.VideoDecided(members)` lost its `shortRelease`
+    short-circuit: the section is the FIRST in the band, so landing a frame late would shove About-the-artist down.
+    `PageRules.TrailingDeadlineMs` (400) is still the fail-soft cap.
 - **Chip and media-row press states.** An artist chip carries `PressedFill = Tok.FillSubtleTertiary` on top of its hover
   fill (`:423`); a `MediaCard.Row` carries the same press fill plus a 1-px `StrokeCardDefault` border, and its whole row
   — not the cover — is the `AutomationRole.Button` that reveals the hover FAB (`MediaCard.cs:1039-1060`).
@@ -530,9 +644,10 @@ About the artist card                       Fans also like                Merch 
   empty box in that slot, so the name's measure does not change.
 - **Section presence is per-section and fail-soft.** Each of the five enrichment calls is wrapped in `Safe(...)`, so a
   failure returns the empty fallback and that section simply does not mount — the band never reports an error
-  (`:189-194`). `shortRelease` = `ReleaseKind == AlbumKind.Single || (tracks.Count is > 0 and <= 2)` (`:65`), and it
-  both gates the watch-video card and switches "Fans also like" from the artist's related artists to the **seed
-  track's** (`:320-331`).
+  (`:189-194`). `shortRelease` = `ReleaseKind == AlbumKind.Single || (tracks.Count is > 0 and <= 2)` (`:65`). In 0.2.9
+  it did two jobs; in 0.3 it does **one**: it switches "Fans also like" from the artist's related artists to the **seed
+  track's** (`:320-331`) and shapes the trailing skeleton. It no longer gates the music-video section — see the
+  music-video bullet above.
 
 ### W13 — Prerelease / upcoming album
 
@@ -645,6 +760,14 @@ gap-8 run of 12-px tokens: kind label (`TextTertiary`) → optional **6×6 r1.5 
   (`TrackExpandedFacts.cs:148-151`) — then the prose facts in that same declaration order: Added, **Album** (a link),
   **Released** (a track's own live date — this is where a pending album row states its date in prose), Added by, ISRC,
   Descriptors (chips), then the flags Explicit, Video, Local file, **Unavailable** (`:62-127`).
+  **The last two flags are TWO facts about two different things and must read that way.** `Video` says a music video
+  exists for this song; `Unavailable` is the AUDIO's verdict (`Unplayable` — region-locked or withdrawn) and says
+  nothing whatsoever about the video. The drawer middot-joins the whole flag run onto ONE line, so bare labels printed
+  "Music video · Unavailable", which readers took to mean the VIDEO was unavailable. There is no fourth fact line to
+  move it to (the strip is exactly three: heroes, prose, marks) and the prose line would sit it beside the Released
+  date, which is the contradiction `Facts.For`'s `!notYetOut` guard exists to prevent — so the fix is the LABEL:
+  **`detail.trackFacts.unavailable` reads "Audio unavailable"**, and every label in that run must likewise name its
+  own subject. Pinned by `Wavee.Tests/AlbumVideoSectionTests.cs` (`AlbumVideoFactSeparationTests`).
 
 ### W15 — "Other versions" flyout open
 
@@ -818,7 +941,8 @@ pending     │  9  ♡  Unreleased                                 —      4 S
 | Trailing media row | h 64, thumb 48 | padX 8, gap 12, **text stack gap 2** (`Spacing.XXS`) | row 8, thumb 4 | title 14/20/600 (`WaveeType.TrackTitle` = `Ui.BodyStrong`); subtitle rich 12 `TextSecondary` | `FillCardSecondary` → hover `FillCardDefault`, press `FillSubtleTertiary`, border 1 `StrokeCardDefault` | hover play FAB 30, row is the `Button` | `MediaCard.cs:965-1063` |
 | Artist chip | h 48, avatar 32 | pad 8/0/16/0, gap 8; row gap 12 | 24 / avatar 16 | name 14/600 | `FillCardSecondary` + 1px stroke; hover `FillCardDefault`, press `FillSubtleTertiary` | — | `DetailTrailing.cs:417-434` |
 | About-artist card | avatar 84 | pad 16/12/16/12, gap 16, text gap 4 | 8 / avatar 42 | eyebrow; name 20/700; bio 13 ≤2 lines | `FillCardSecondary` + 1px stroke, hover `FillCardDefault` | — | `DetailTrailing.cs:560-602` |
-| Watch-video card | thumb 200×116, FAB 44 | section pad 16/20/16/**0**; card pad 12/12/16/12, gap 16 | card 8, thumb 4, FAB 22 | eyebrow `TextTertiary`; title `RailHeader` 1 line; meta 12 `TextSecondary` 1 line | `FillCardSecondary` + 1px `StrokeCardDefault`, hover `FillCardDefault` (no press fill, no scale), `ClipToBounds`; FAB `Tok.AccentDefault` + `TextOnAccentPrimary`, glyph 16 | — | `DetailTrailing.cs:355-408` |
+| Music-video HERO card (exactly one video) | thumb 200×116 (the video's OWN still), FAB 44 | section pad 16/20/16/**0**; card pad 12/12/16/12, gap 16 | card 8, thumb 4, FAB 22 | eyebrow `TextTertiary`; title `RailHeader` 1 line = the VIDEO's title; meta 12 `TextSecondary` 1 line = `detail.versions.musicVideo` · the VIDEO's duration | `FillCardSecondary` + 1px `StrokeCardDefault`, hover `FillCardDefault` (no press fill, no scale), `ClipToBounds`; FAB `Tok.AccentDefault` + `TextOnAccentPrimary`, glyph 16; `Focusable` + focus margin `Design.FocusInsetBordered` | — | `Album.Page.cs` `VideoHero` / `VideoThumb` (was `DetailTrailing.cs:355-408`) |
+| Music-video SHELF (two or more) | auto-fit card **200…280** (`PagedShelf` `minCardW`/`maxCardW`, never wrapped); thumb = `inner × 9/16` where `inner = max(96, cardW − 16)`; FAB `clamp(min(w,h) × 0.38, 28, 44)` = 44 at every reachable width | section pad 16/20/16/**0**; `headerGap` 12; card gap 12 (`Spacing.M`); card pad 8/8/8/12, gap 8 | card 8, thumb 4, FAB = half | header `RailHeader` (`artist.musicVideos`) + count 13/600 `TextTertiary`, then the control's own spacer → pips → chevrons; per cell `TrackTitle` 1 line + `TrackMeta` duration 1 line (omitted when 0) | as the hero card | edge fade `Design.Size.FadeShelf` (24) via `AutoEdgeFadeBand`; `ShelfPager.Chevrons \| Pips`; `ShelfSnap.Page`; `measured: true` (no height estimate → no reflow as stills decode); `maxItems` `VideoCap` | `Album.Page.cs` `VideoShelf` / `VideoShelfCard` / `VideoShelfHeader`; `FluentGpu.Controls/PagedShelf.cs` |
 | Compact rail strip (collapsed) | strip 96, cover `max(48, stripW−16)` = 80, chevron box 28 | pad 8/16/8/16, gap 8 | cover `Radii.Card` 8, chevron `Radii.Control` 4 | title 12/600 ≤2 lines `WrapWholeWords` | `Tok.FillLayerDefault`, `ClipToBounds`; chevron hover `FillSubtleSecondary`, glyph `Icons.ChevronRight` 14 `TextSecondary` | cover `Elevation.Card` | `DetailRail.cs:304-354` |
 | Drawer empty note (artist page) | — | pad 8/12/8/12, gap 12 | — | 13 px, 1 line, ellipsized | `Tok.TextTertiary` + a stock `Button.Standard` | — | `ArtistPage.AlbumExpand.cs:343-353` |
 | Drawer shimmer cell (artist page) | h 32 (RowPitch); blocks 16×11 and grow×11 (`MaxWidth` 240) | padX 8, gap 12 | 4 | — | `Tok.FillSubtleSecondary` | — | `ArtistPage.AlbumExpand.cs:359-367` |
@@ -959,8 +1083,14 @@ for resource drags, so a drag crossing the hero is not refused with an accusatio
 **Trailing sections.** The whole about-artist card navigates to the artist (Follow is a separate hit target inside it);
 chips navigate; media rows navigate on click, play from the hover FAB, and are drag sources; the merch row opens the
 external shop through the PAL `OpenUri` and is inert (no `AutomationRole`, no focus) when it carries no url
-(`DetailTrailing.cs:519-522`); "Show all N" expands in place, **one-way** (`DetailTrailing.cs:694-697`). The
-watch-video card's click is `h.PlayContext(albumUri)` — it starts the **album**, not a video (`:369`).
+(`DetailTrailing.cs:519-522`); "Show all N" expands in place, **one-way** (`DetailTrailing.cs:694-697`). A
+music-video card — hero or shelf cell — **watches its video**: `Album.PageRules.WatchFor` decides, and the normal arm
+**requests the video surface and only then plays the SONG that owns the video** (kind 99 keys a video on its song).
+Requesting first is load-bearing, not tidiness: the reducer reads `videoWanted` off the placement state when it decides
+the row's kind, so playing first yields audio (see §"The music-video section"). The clicked row when it is already on the
+deck **switches in place** rather than restarting; with no placement able to host a video the card **says so**
+(`player.videoUnavailable`) and falls back to audio. (0.2.9 played the whole ALBUM from that card,
+`DetailTrailing.cs:369`; that is a deliberate 0.3 change, not a regression.)
 
 **Album drawer rows (artist page).** Single click selects (Ctrl toggles, Shift extends from `_sel.AnchorIndex`);
 double-click plays via `TrackRow.Invoke` → `Player.PlayAsync(albumUri, i)`; right-click / long-press / the `…` cell
@@ -985,7 +1115,10 @@ a tooltip (a literal, §6 loc drift). The face-pile keyboard affordance is `Down
 `detail.play`, `detail.shuffle`, `detail.playNext`, `detail.addToQueue`, `detail.addToPlaylist|copyToPlaylist`,
 `detail.aboutRelease`, `detail.factSongs`, `detail.factLength`, `detail.factLabel`, `detail.factReleased`,
 `detail.factReleases`, `detail.otherVersions`, `detail.aboutTheArtist`, `detail.fansAlsoLike`, `detail.featuredOn`,
-`detail.moreBy`, `detail.similarAlbums`, `detail.watchOfficialVideo`, `artist.merch`, `artist.buy`,
+`detail.moreBy`, `detail.similarAlbums`, `detail.watchOfficialVideo` (the HERO arm's eyebrow only),
+`artist.musicVideos` (the SHELF arm's header), `detail.versions.musicVideo` (the hero subtitle),
+`player.videoUnavailable` (the no-host warning a card raises before falling back to audio), `artist.merch`,
+`artist.buy`,
 `artist.follow|following`, `detail.preReleaseEyebrow` ("Coming soon"), `detail.preReleaseOut` ("Out now"),
 `detail.preReleaseUnitDays|Hours|Minutes|Seconds`, `detail.preSave|preSaved`, `detail.empty.noTracks|noMatch`,
 `detail.notice.minifiedAlbum`, `detail.versions.*`, `detail.trackFacts.*`, `home.showAllCount`,
@@ -1096,11 +1229,12 @@ exactly as this chapter already specifies — nothing about the rendered surface
 | `DetailPage.MapAlbum`'s meta-line rule | `DetailPage.cs:695-699` | which of `MetaLineYear` / `MetaLineYearPending` the header states while any row is thin | none | `Entities/Album.cs` CORE |
 | `AlbumTrailing.HasReleasePanel` / `HasTrailingSections` | `DetailTrailing.cs:200-201, 146-153` | whether the panel / the band exists at all | none | `Entities/Album.cs` CORE |
 | `AlbumTrailing.SeedTrack` | `DetailTrailing.cs:334-341` | the similar-albums seed = the highest play-count track, else track 0 | none | `Entities/Album.cs` CORE |
-| `AlbumTrailing`'s **`shortRelease`** predicate | `DetailTrailing.cs:65` | `ReleaseKind == Single \|\| tracks.Count is > 0 and <= 2` — gates the watch-video card AND switches "Fans also like" from the artist's related artists to the seed track's | none | `Entities/Album.cs` CORE |
+| `AlbumTrailing`'s **`shortRelease`** predicate | `DetailTrailing.cs:65` | `ReleaseKind == Single \|\| tracks.Count is > 0 and <= 2` — in 0.2.9 it gated the watch-video card AND switched "Fans also like" to the seed track's. **0.3 keeps only the second job** (plus the skeleton's shape): the music-video section is a function of `SelectVideos` alone | `AlbumPageRulesTests`, `AlbumVideoSectionTests` | `Entities/Album.cs` CORE |
+| `PageRules.SelectVideos` + `AlbumVideo` | **new in 0.3** (no 0.2.9 counterpart — 0.2.9 reduced the members to one bool) | one entry per video-bearing member, in track order: the member slot (what plays), the kind-99 counterpart, **the video's own still** and the video's duration. Capped at `VideoCap` 16 | `Wavee.Tests/AlbumVideoSectionTests.cs` | `Entities/Album.cs` CORE |
 | `DetailFormat.ShortDate` | `DetailConfig.cs:239-245` | the pending row's duration-lane date: `"4 Sep"` in-year, `"4 Sep 2027"` across a year boundary, CurrentCulture | none (`TrackExpandedFactsTests` covers its siblings) | `Entities/Track.cs` CORE |
 | `PreReleaseCountdown.Breakdown` | `Components/PreReleaseCountdown.cs:120-121` | the four per-unit remainders, clamped at 0 | none | `Entities/Album.cs` CORE |
 | `AlbumReleaseFactsRules.TotalTimeLiteral` | `AlbumReleaseFactsRules.cs:110-115` | the Length phrase — **a second, English-only copy of `DetailFormat.TotalTime`** (`DetailConfig.cs:264-269`), kept because the rules file must stay engine-free. See §6's loc note: in 0.3 the rule should return `(hours, minutes)` and let the view format | `AlbumReleaseFactsRulesTests` pins the literal, so it pins the drift too | `Entities/Album.cs` CORE returns parts; `Album.UI.cs` formats |
-| `AlbumTrailing.HasCustomVideo` (over `VideoPresence.HasOverride`) | `DetailTrailing.cs:345-351` | whether the watch-video card's eyebrow reads the custom-video label — a linear scan, sound only because a short release is 1–2 tracks | none | `Entities/Album.cs` CORE (D11) |
+| `AlbumTrailing.HasCustomVideo` (over `VideoPresence.HasOverride`) | `DetailTrailing.cs:345-351` | whether the music-video HERO arm's eyebrow reads the custom-video label — a linear scan (the shelf arm draws no eyebrow, so it never asks) | `AlbumPageRulesTests` | `Entities/Album.cs` CORE (D11) |
 | `DetailPage.ResolveConfig` | `DetailPage.cs:330-341` | `AlbumKind` → which of `Album` / `Single` / `Compilation` the surface takes (**EP falls through to plain `Album`**) — the one place release kind becomes layout | none | `Entities/Album.cs` CORE |
 | `AlbumTrailing.AlbumSubtitle` / `VersionLabel` | `DetailTrailing.cs:304-316, 492-495` | a related album's subtitle (artist ▸ year ▸ kind) and an other-version's menu label | none | `Entities/Album.cs` CORE |
 | `TrackList.TopTrack` | `DetailTracks.cs:399-406` | which row gets the star (album profiles only; null when no row has plays) | none | `Entities/Album.cs` CORE |
@@ -1190,7 +1324,7 @@ exactly as this chapter already specifies — nothing about the rendered surface
 | 7 | Actions `[▶ Play] [♡] [⋯]` | Wide arm: Play + heart + **share** (no `⋯` — the overflow is playlist-owner-only). Narrow arm: Play + **Shuffle** + heart + share + `⋯` |
 | 8 | Track list header `# Title/Artist ▶ Plays ⏱` | `# · ♥ · Title · Plays · Duration · (Video \| …) · ⌄` under a tier+relief ladder, a sortable header, a command bar (Play next split, Shuffle, Sort, Row size, Select, Find + filter funnel), zebra rows, the top-track star, swipe actions and a context menu |
 | 9 | `About(a)` as a section between the list and MoreBy, gated on `Knows(Publishing)` | The release bento lives **in the rail** (wide) / in the trailing body (narrow), gated on the **whole** facts record being final |
-| 10 | Three trailing blocks | Up to **seven**, in a fixed order (Watch video → About the artist → Fans also like → More by → Featured on → Merch → Similar albums), each capped at 5 rows with "Show all N" |
+| 10 | Three trailing blocks | Up to **seven**, in a fixed order (Music videos → About the artist → Fans also like → More by → Featured on → Merch → Similar albums), each capped at 5 rows with "Show all N". The music-video section is 0.3's own rewrite: one card per video at ANY release length, each with the VIDEO's own still, title and duration; one video is a hero card, two or more a horizontal `PagedShelf` (edge fades + pips + page snap, never a wrapping grid); and the click **requests the video surface and then plays**, so it watches the video instead of starting the song |
 | 11 | `OtherVersions` as a section | A `DropDownButton` inside the release panel; items read "Name · Year · KIND" |
 | 12 | "Label · ℗ 2024 · Copyright line" as a page footer strip | 11-px note LINES under the tiles, inside the panel, wrapping to ≤4 lines each |
 | 13 | (nothing) | **The entire prerelease surface is missing from the plan**: the `prerelease:` route, the kind-138 resolve, the countdown card, the pre-save heart-target swap, the greyed pending rows with a date in the duration lane, and the "N of M songs" tile |
@@ -1261,8 +1395,9 @@ the comparison is a static screen capture at the same window size with the same 
     with its header already painted (nav preview). *(click capture)*
 21. **Trailing band reserve**: on a cold open the area below the rows shows one shimmer block (header bar + 96 card +
     5 chips + 3 rows) from the first frame, and eases once into the real sections. *(frame recording of the open)*
-22. **Section order** top to bottom: Watch the official video (short releases with a video only) → About the artist →
-    Fans also like → More by <artist> → Featured on → Merch → Similar albums. Absent sections leave no gap.
+22. **Section order** top to bottom: the music-video section (any release with ≥1 video — "Watch the official video"
+    when there is exactly one, "Music videos" when there are more) → About the artist → Fans also like →
+    More by <artist> → Featured on → Merch → Similar albums. Absent sections leave no gap.
 23. **Section cap**: each list shows at most 5 rows with "Show all N" beside the header; clicking expands in place
     without navigating. *(click capture)*
 24. **Trailing rows** are 64 tall with a 48 cover, a hover play FAB, and a plated card background with a hairline border.
@@ -1303,7 +1438,24 @@ the comparison is a static screen capture at the same window size with the same 
 43. **Countdown expiry**: with a target seconds away, watch it reach zero — the tiles are replaced by "Out now" and the
     ring stops, with no refetch. *(frame recording)*
 44. **Compilation**: a compilation album shows a per-track artist subline in the title cell (and keeps the album lane
-    set); a single (≤2 tracks) has no multi-select and, when it has a video, shows the "Watch the official video" card.
+    set); a single (≤2 tracks) has no multi-select and, when its one video-bearing row is the only one, shows the
+    "Watch the official video" hero card.
+44b. **A full-length album with videos shows them.** Open a 10+-track album whose rows carry music videos (Wham!'s
+    *Last Christmas* reissues, or any album where the film glyph lights in more than one row): the trailing band opens
+    with a **"Music videos"** header, the count beside it, and **one card per video-bearing row in track order** —
+    not one card, and not nothing. Cross-check the count against the film glyphs in the `Video` lane.
+44d. **The multi arm is a HORIZONTAL SHELF and must never wrap.** Four videos lie in ONE row that scrolls sideways —
+    the 2×2 block is the rejected design. Confirm all four of: (a) **edge fades** on both sides when the strip is
+    scrolled off either end (the engine's `AutoEdgeFadeBand` feather, not a gradient painted over the cards);
+    (b) **pips** at the trailing edge of the header showing the page position, and clicking one pages the strip;
+    (c) chevrons, a pip and a touchpad fling each **rest on a page boundary** (`ShelfSnap.Page`) — never mid-card;
+    (d) the strip **does not jump or reflow** as the stills decode — watch a cold open frame by frame; the cards are
+    laid out measured, so the row's height is final before the first image arrives. *(capture at 1280 and at 720: the
+    card count per page changes with width, the strip never wraps to a second row)*
+44c. **Every thumbnail is the video's own still, and no two are the same.** On that same album, the cards must NOT all
+    show the album sleeve. Compare each card's image with the same track's video row in its versions drawer (the `⌄`
+    chevron) — they are the same 16:9 still. A row whose only video is a user-attached mp4 is the one allowed
+    fallback to the song's art. *(capture)*
 45. **Empty / unresolvable**: a `prerelease:` deep link that cannot resolve shows the shell with "Nothing here yet"
     rather than an error page.
 46. **Album drawer on the artist page** (route `artist:` → discography): the drawer opens under the clicked row with a
@@ -1346,8 +1498,29 @@ the comparison is a static screen capture at the same window size with the same 
     library pane).
 62. **Merch with no price** reads "Buy" in accent ink; merch with no shop url has no hover scale, no focus ring and no
     button role. *(hover + Tab capture)*
-63. **Watch-the-official-video click plays the ALBUM**, not a video — and the card's eyebrow reads the custom-video
-    label when a track on that short release carries a user-attached mp4.
+63. **A music-video card click WATCHES that video** — it does not merely start the song, and it never starts the album
+    (the deliberate 0.3 reversal of 0.2.9, `DetailTrailing.cs:369`). Click a shelf cell on an album where the videos are
+    not track 1 and confirm the deck lands on **that** song (kind 99 keys the video on its song, so the song is the
+    playable) **and the video surface comes up with it** — not a beat of audio and then a switch, and not audio alone.
+    Do it from a cold app with the surface never opened this session: `Requested` starts at `None`, which is precisely
+    the state in which the shipped build played the song. Verify from **both** arms — the hero card on a single-video
+    release and a cell on a ≥2 release — since they share one decision and must not diverge. The hero arm's eyebrow
+    still reads the custom-video label when a track on that release carries a user-attached mp4.
+63b. **The hero card's subtitle describes the VIDEO, not the release.** A single with one video reads
+    "Music video · m:ss" under the video's title — never "N songs · M min · year", which is what 0.2.9 printed
+    because the card was fed the album.
+63c. **"Music video" and the availability verdict cannot be misread as one fact.** Expand a row that has a music video
+    AND whose audio is region-locked: the flag line reads "Music video · **Audio unavailable**", not "Music video ·
+    Unavailable". Neither flag implies the other — check all four combinations. *(capture)*
+63d. **Clicking the card for the row already on the deck switches it to video IN PLACE** — the position is carried, the
+    track does not restart, and a paused deck resumes. Clicking it again does **not** turn the surface back off: the
+    card is an instruction, not the player bar's toggle.
+63e. **With no placement able to host a video, the card says so and does not pretend.** Force the state (no rail room,
+    no second window) and confirm the warning info bar (`player.videoUnavailable`, dedupe key `album.video.nohost`)
+    appears and the song then plays — audio under a play badge with nothing said is the defect this arm prevents.
+63f. **`UpgradeGate.DeferUpgrade` must not swallow the click.** It withholds a mid-track upgrade nobody asked for, so
+    verify mid-track: start any track, let it run past the boundary, then click a video card and confirm the surface
+    still comes up. The card commits through `FoldAvailability` + `OpenAt` rather than `PrimaryClick` for exactly this.
 64. **Share failure**: with the clipboard unavailable the share button opens the url instead of showing a ✓; with a
     clipboard that throws, a toast appears and the glyph does **not** change. *(two runs)*
 65. **Drawer empty + retry**: open an artist-page album drawer for a release whose tracklist resolves EMPTY — the panel
@@ -1446,6 +1619,8 @@ Independent re-read of the assigned 0.2.9 sources (`AlbumDrawerVerdict`, `AlbumR
 | 39 | missing | §1.1 | The five rail rows an album never mounts (`rail:owner`, `rail:meta`, `rail:daylist`, `rail:chart`, `rail:likedfacts`), named so a porter does not carry them into `Album.Page.Rail`. |
 | 40 | verified | §3, §5, W3, W7, W11, W14, W19 | Re-measured from source and unchanged: `Spacing` XXS 2 / XS 4 / S 8 / M 12 / L 16 / XL 20 / XXL 24; `Radii.Control` 4 / `Card` 8; rail pad (16,24,8,24) gap 14; cover edge `railW − 24`; `CoverEdge` floor 80; `PillHeight` 36 + padding 18/6/18/7 + `ScaleStandard` 1.04/0.96 + on-fill alphas 0.90/0.80 + pressed-label 0x80/0xB3 by luminance; `ScaleEmphatic` 1.07/0.92, `ScaleSubtle` 1.02/0.98; `MastheadStaggerMs` 45; `Elevation.Card` dark 8/y2/#33 and light 4/y2/#1A; `Expressive.Fast` 250; `TextSwap` 150 EaseInOut ±4 blur 2; `IconSwap` 250 scale 0.25; share reset 1600 ms; mode ladder 820/660/560 with the 540/580 vertical band, the 24-DIP hysteresis and the clamp-to-2 at `:83, 86`; rail 180–480 and `ResizableMode` 0; `RailForcePush` 44 / `RailReExpand` 220 / `RailCompactW` 96 / `GripStripCollapsedW` 20; `titleSize` 40 at winH ≥ 900 else 28 and `descLines` 3 below winH 760; `DetailRevealRamp` Chunk 12 / Cap 60; lane widths `# 28 · ♥ 28 · Plays 52 · Duration 52 · Video 28 · Actions 40 · Expand 26` (Tempo 80, off here); countdown ring 34, tick 1000 ms, `Bare`, "Out now" 15/700; `StatTile` 18/800 over 11, gap 1, pad 12/8/12/8; trailing skeleton 3 × (160×18 header) + 96 card + 5 × 132×40 r20 + 3 × 64 rows; drawer geometry 40/32/8/8/12/5/3 and the 16×8 caret with its 1-DIP overlap; drawer motion 200/150 in and 150/100 out. |
 | 41 | verified | §8, §9, §6 | `PlaylistPageNoticeRulesTests` still does not exist (the `Wavee.Tests` listing has `AlbumDrawerVerdictTests`, `AlbumReleaseFactsRulesTests`, `PreReleaseModelTests` + four wire/merge files, `TrackExpandedFactsTests`, `DetailVerticalLayoutTests`, `DetailLayoutBreakpointTests`, `DetailRailPolicyTests`, `DetailRevealRampTests`, `PlaylistListStateTests` — and nothing referencing `EyebrowText` / `SeedTrack` / `TopTrack` / `HasTrailingSections` / `shortRelease`). All four loc-drift keys re-confirmed at `en-US.json:360, 364, 366-368`. `DetailRail.BuildHeader` re-confirmed Show-only: `verticalTracks = mode == Vertical && Content == Tracks` and an album's `Content` is always `Tracks` (`DetailShell.cs:512, 587`). |
+
+| 42 | **0.3 CHANGE (not a 0.2.9 audit finding)** | W12, §3, §8, §10 | **The music-video section is rewritten.** Reported on Wham!'s *Last Christmas* (3 tracks, 3 videos): 0.2.9 reduced the members to one bool, so three videos drew ONE card; that card drew the ALBUM's cover, title and meta line; clicking it played the ALBUM; and the whole section was gated on `shortRelease`, so a full-length album with videos surfaced nothing at all. 0.3: `PageRules.SelectVideos` yields one `AlbumVideo` per video-bearing member in track order at ANY length; the thumbnail is the VIDEO's own still by the drawer's ladder (`VideoImageId` ▸ counterpart art ▸ song art); the hero arm keeps 0.2.9's 200×116/44 geometry for the single-video case and a **horizontal `PagedShelf`** (edge fades, pips, page snap, measured) takes over at two or more; the hero subtitle is `detail.versions.musicVideo` · the video's duration. **Two further defects were found on the rewrite itself and are part of this row.** (i) The card played the SONG, not the video: the click was `PlayContext(member.Id)` alone, and the reducer only routes a row to the video host when the surface is wanted (`KindOfRow` = `videoWanted && (flags & VideoMask)`; `videoWanted` starts at `SurfacePlacement.None`), so a play badge over a video still started the ordinary song. `PageRules.WatchFor` now decides: request the surface through `Video.State.FoldAvailability` + `OpenAt` FIRST and play second; switch in place when the clicked row is already on the deck; say `player.videoUnavailable` when nothing can host a video rather than quietly playing audio. It deliberately does NOT route through `TogglePrimary`/`PrimaryClick`, whose `DeferUpgrade` arm would swallow an explicit click. (ii) The multi arm was a wrapping grid — four videos fell into a 2×2 block — and is now one horizontal shelf on the shared control. Separately, the drawer's flag run said "Music video · Unavailable", which reads as one fact — `detail.trackFacts.unavailable` now names its own subject ("Audio unavailable"). W12, the §3 geometry table, §8, the §10 comparison row 10 and parity items 22 / 44 / 44b / 44c / 44d / 63 / 63b / 63c / 63d / 63e / 63f all restate the new rules; `Wavee.Tests/AlbumVideoSectionTests.cs` pins them (`AlbumVideoArmTests`, `AlbumWatchTargetTests`). Ledger rows 10, 25 and 37 above describe what 0.2.9 did and stay as written. |
 
 **Unverified / residual.** `WaveeMotion.Standard` (asserted as 250 ms in §4 for `BrushTransitionMs`) and the
 `MotionRecipes.TextSwap` / `IconSwap` / `KeepFade` internals were taken from the chapter's own citations rather than

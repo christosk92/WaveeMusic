@@ -1,0 +1,59 @@
+{ "data": { "searchV2": {
+  "chipOrder": { "items": [
+    { "typeName": "PLAYLISTS" },
+    { "typeName": "TRACKS" },
+    { "typeName": "EPISODES" },
+    { "typeName": "GENRES" },
+    { "typeName": "PODCASTS" },
+    { "typeName": "ALBUMS" },
+    { "typeName": "AUDIOBOOKS" },
+    { "typeName": "ARTISTS" },
+    { "typeName": "AUTHORS" },
+    { "typeName": "USERS" }
+  ] },
+  "topResultsV2": { "itemsV2": [] },
+  "playlists": { "totalCount": 128, "items": [
+    { "data": {
+      "__typename": "Playlist",
+      "uri": "spotify:playlist:37i9dQZF1DX0XUsuxWHRQd",
+      "name": "RapCaviar",
+      "ownerV2": { "data": { "uri": "spotify:user:spotify", "name": "Spotify" } }
+    } }
+  ] },
+  "tracksV2": { "totalCount": 40, "items": [
+    { "item": { "data": {
+      "__typename": "Track",
+      "uri": "spotify:track:2plbrEY59IikOBgBGLjaoe",
+      "name": "Die With A Smile",
+      "albumOfTrack": { "uri": "spotify:album:10FLjwfpbxLmW8c25Xyc2N", "name": "Die With A Smile" }
+    } } },
+    { "item": { "data": {
+      "__typename": "Track",
+      "uri": "spotify:track:6habFhsOp2NvshLv26DqMb",
+      "name": "Despacito",
+      "albumOfTrack": { "uri": "spotify:album:5C0YLr4OoRGFDaqMjEVSU3", "name": "VIDA" }
+    } } }
+  ] },
+  "episodes": { "totalCount": 4, "items": [
+    { "data": { "__typename": "Episode", "uri": "spotify:episode:512ojhOuo1ktJprKbVcKyQ", "name": "An Episode" } }
+  ] },
+  "albumsV2": { "totalCount": 12, "items": [
+    { "__typename": "AlbumResponseWrapper", "data": {
+      "__typename": "Album",
+      "uri": "spotify:album:2noRn2Aes5aoNVsU6iWThc",
+      "name": "Discovery",
+      "type": "ALBUM"
+    } }
+  ] },
+  "artists": { "totalCount": 9, "items": [
+    { "__typename": "ArtistResponseWrapper", "data": {
+      "__typename": "Artist",
+      "uri": "spotify:artist:4tZwfgrHOc3mvqYlEYSvVi",
+      "profile": { "name": "Daft Punk" }
+    } }
+  ] },
+  "genres": { "totalCount": 8, "items": [
+    { "data": { "uri": "spotify:genre:sleep", "name": "Sleep",
+      "image": { "extractedColors": { "colorDark": { "hex": "#1A237E", "isFallback": false } } } } }
+  ] }
+} } }

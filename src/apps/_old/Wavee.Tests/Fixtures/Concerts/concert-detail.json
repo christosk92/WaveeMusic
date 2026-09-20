@@ -1,0 +1,155 @@
+{
+  "data": {
+    "concert": {
+      "__typename": "ConcertV2",
+      "ageRestriction": "18+",
+      "artists": {
+        "totalCount": 2,
+        "items": [
+          {
+            "__typename": "ArtistResponseWrapper",
+            "_uri": "spotify:artist:example-artist",
+            "data": {
+              "__typename": "Artist",
+              "headerImage": {
+                "data": {
+                  "__typename": "ImageV2",
+                  "sources": [
+                    { "maxHeight": 1140, "maxWidth": 2660, "url": "https://example.invalid/images/lineup-header.jpg" }
+                  ]
+                }
+              },
+              "profile": { "name": "Example Artist" },
+              "uri": "spotify:artist:example-artist",
+              "visuals": {
+                "avatarImage": {
+                  "sources": [
+                    { "url": "https://example.invalid/images/artist-avatar.jpg", "width": 320, "height": 320 }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "__typename": "ArtistResponseWrapper",
+            "_uri": "spotify:artist:guest-artist",
+            "data": {
+              "__typename": "Artist",
+              "profile": { "name": "Guest Artist" },
+              "uri": "spotify:artist:guest-artist",
+              "visuals": { "avatarImage": { "sources": [] } }
+            }
+          }
+        ]
+      },
+      "campaignRoutingCards": [],
+      "concepts": {
+        "items": [
+          { "data": { "name": "pop", "uri": "spotify:concept:pop" }, "weight": 2.0 }
+        ]
+      },
+      "doorsOpenTimeIsoString": "2030-08-31T18:30:00-04:00",
+      "festival": false,
+      "location": {
+        "city": "Example City",
+        "coordinates": { "latitude": 52.0, "longitude": 4.0 },
+        "country": "EX",
+        "metroAreaLocation": { "fullName": "Example Metro", "geonameId": "1001" },
+        "name": "Example Hall",
+        "region": "Example Region"
+      },
+      "offers": {
+        "totalCount": 2,
+        "items": [
+          {
+            "accessCode": "",
+            "availability": "AVAILABLE",
+            "currency": "EUR",
+            "dates": {
+              "startDateIsoString": "2030-01-01T00:00:00Z",
+              "endDateIsoString": "2030-08-31T23:30:00Z"
+            },
+            "firstParty": false,
+            "hasPromoCodes": false,
+            "maxPrice": 75.0,
+            "minPrice": 45.0,
+            "providerImageUrl": "https://example.invalid/images/ticket-provider.png",
+            "providerName": "Example Tickets",
+            "saleType": "on-sale",
+            "url": "https://example.invalid/tickets/example-event",
+            "urlType": "TICKET_PAGE"
+          },
+          {
+            "accessCode": "",
+            "availability": "UNKNOWN",
+            "currency": null,
+            "dates": { "startDateIsoString": null, "endDateIsoString": null },
+            "firstParty": false,
+            "hasPromoCodes": true,
+            "maxPrice": null,
+            "minPrice": null,
+            "providerImageUrl": "",
+            "providerName": "Second Provider",
+            "saleType": "presale",
+            "url": "",
+            "urlType": "TICKET_PAGE"
+          }
+        ]
+      },
+      "relatedConcerts": {
+        "totalCount": 1,
+        "items": [
+          {
+            "_uri": "spotify:concert:related-example",
+            "data": {
+              "artists": {
+                "items": [
+                  {
+                    "data": {
+                      "profile": { "name": "Related Artist" },
+                      "uri": "spotify:artist:related-artist",
+                      "visuals": {
+                        "headerImage": {
+                          "extractedColors": { "colorDark": { "hex": "#A9635C", "isFallback": false } },
+                          "sources": [
+                            { "height": 1140, "url": "https://example.invalid/images/related-header.jpg", "width": 2660 }
+                          ]
+                        },
+                        "avatarImage": {
+                          "sources": [
+                            { "height": 640, "url": "https://example.invalid/images/related-avatar.jpg", "width": 640 }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "festival": true,
+              "location": {
+                "city": "Nearby City",
+                "country": "EX",
+                "name": "Festival Site",
+                "region": "Nearby Region"
+              },
+              "startDateIsoString": "2030-09-15T17:00:00+02:00",
+              "title": "Related Festival",
+              "uri": "spotify:concert:related-example"
+            }
+          }
+        ]
+      },
+      "saved": false,
+      "startDateIsoString": "2030-08-31T19:30:00-04:00",
+      "status": "UNKNOWN",
+      "title": "Example Artist, Guest Artist",
+      "uri": "spotify:concert:detail-example",
+      "venue": { "data": { "uri": "spotify:venue:example-venue" } }
+    },
+    "me": {
+      "profile": {
+        "location": { "geoHash": "u123456789ab", "geonameId": "1001", "name": "Example City" }
+      }
+    }
+  }
+}

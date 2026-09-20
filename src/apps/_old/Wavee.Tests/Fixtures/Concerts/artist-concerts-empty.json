@@ -1,0 +1,12 @@
+{
+  "data": {
+    "artistUnion": {
+      "headerImage": { "data": { "sources": [] } },
+      "profile": { "name": "Example Artist" },
+      "uri": "spotify:artist:example-artist",
+      "visuals": { "avatarImage": { "sources": [] } }
+    },
+    "nearby": {},
+    "concerts": {}
+  }
+}

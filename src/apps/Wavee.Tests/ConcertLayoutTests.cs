@@ -1,4 +1,9 @@
-using Wavee.Features.Concerts;
+// ── Wavee.Tests/ConcertLayoutTests.cs — concert layout hysteresis and the editorial art geometry, ported from 0.2.9 ───
+//
+// Ported VERBATIM from `_old/Wavee.Tests/ConcertLayoutTests.cs` (9 facts). Home's editorial cards consume
+// `EditorialArtGeometry` (ch 11); the rules live in `Entities/Concert.Rules.cs`.
+
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -53,10 +58,10 @@ public class ConcertLayoutTests
     [Fact]
     public void Arc_FlagsMatchTheSweepDirectionAndSpan()
     {
-        Assert.Equal(1, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, 90f).SweepFlag);     // positive sweep → 1
-        Assert.Equal(0, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, -90f).SweepFlag);    // negative sweep → 0
-        Assert.Equal(0, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, 90f).LargeArc);      // <180° span → not the large arc
-        Assert.Equal(1, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, 200f).LargeArc);     // >180° span → the large arc
+        Assert.Equal(1, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, 90f).SweepFlag);
+        Assert.Equal(0, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, -90f).SweepFlag);
+        Assert.Equal(0, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, 90f).LargeArc);
+        Assert.Equal(1, EditorialArtGeometry.Arc(0f, 0f, 10f, 0f, 200f).LargeArc);
     }
 
     [Fact]
@@ -65,10 +70,8 @@ public class ConcertLayoutTests
         var sweep = new ArcSweep(1.5f, 2.5f, 3.5f, 4.5f, 5.5f, 1, 0);
         string path = sweep.ToPathData();
 
-        // A decimal-comma culture must never leak a "," where PathDataParser would read it as a coordinate separator.
-        // The culture is CLONED from invariant and given a comma separator rather than requested by name: the app runs
-        // with InvariantGlobalization=true (Directory.Build.props), so CultureInfo.GetCultureInfo("nl-NL") throws
-        // CultureNotFoundException here — asking for a named culture would test the harness, not the formatting.
+        // A decimal-comma culture must never leak a "," where the path parser would read a coordinate separator. The
+        // culture is CLONED from invariant (the app runs with InvariantGlobalization, so a named culture throws).
         var comma = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
         comma.NumberFormat.NumberDecimalSeparator = ",";
         comma.NumberFormat.NumberGroupSeparator = ".";
@@ -84,7 +87,6 @@ public class ConcertLayoutTests
     [Fact]
     public void ConcertArcs_SweepOppositeDirections()
     {
-        // The pair reads as two beams crossing rather than one arc traced twice — verified by opposite sweep flags.
         var outer = EditorialArtGeometry.ConcertArcOuter(320f, 288f);
         var inner = EditorialArtGeometry.ConcertArcInner(320f, 288f);
         Assert.NotEqual(outer.SweepFlag, inner.SweepFlag);
@@ -94,9 +96,6 @@ public class ConcertLayoutTests
     [Fact]
     public void BrowseTiles_StayInsideThePaneAtTheReportedArtworkFloor()
     {
-        // ConcertLayout.WideEditorial's narrowest tier floors ArtworkMin at 180×220 — the tiles must never spill past
-        // the pane at that floor, since EditorialArt clips to the card's own rounded corners but nothing clips the
-        // tiles to each other or reserves extra headroom for them.
         float w = 180f, h = 220f;
         foreach (var tile in EditorialArtGeometry.BrowseTiles(w, h))
         {

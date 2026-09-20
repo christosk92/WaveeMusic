@@ -1,36 +1,44 @@
-using Wavee.Core;
+// ── Wavee.Tests/HomeFacetProjectionTests.cs — the FACET page's composition (Wave 5, owner P; ported from 0.2.9) ─────────
+//
+// A facet is a different document, not the landing page with a filter on it: the server's own ordered list of sections.
+// Every titled section survives as its own module, in server order, wearing its own title — with the single exception of
+// a run of consecutive single-card baseline recommendations, which folds into one discover feed. Cards are handles
+// committed through `HomeFixtures`; a card's KIND comes from its uri (and an audiobook's card-fact flag).
+
+using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>The FACET page's composition. A facet is a different document, not the landing page with a filter on it:
-/// Spotify renders it as the server's own ordered list of sections. These pin what that means — every titled section
-/// survives as its own module, in server order, wearing its own title — and the single exception (a run of consecutive
-/// single-card baseline recommendations folds into one discover feed).</summary>
+[Collection(EntitiesCollection.Name)]
 public sealed class HomeFacetProjectionTests
 {
-    static HomeCard Card(string id, HomeCardKind kind = HomeCardKind.Playlist) =>
-        new("spotify:" + id, id, null, null, kind);
+    static HomeCard Card(string id, HomeCardKind kind = HomeCardKind.Playlist) => HomeFixtures.Card(kind switch
+    {
+        HomeCardKind.Podcast => new HomeFixtures.Spec("spotify:show:" + id, id),
+        HomeCardKind.Audiobook => new HomeFixtures.Spec("spotify:show:" + id, id, Audiobook: true),
+        HomeCardKind.Episode => new HomeFixtures.Spec("spotify:episode:" + id, id),
+        HomeCardKind.Album => HomeFixtures.Album("spotify:album:" + id, id),
+        _ => HomeFixtures.Playlist("spotify:playlist:" + id, id),
+    });
 
-    static HomeSection Section(string uri, string? title, params HomeCard[] cards) =>
-        new(uri, title, null, cards, cards.Length, cards.Length);
+    static string P(string id) => "spotify:playlist:" + id;
+    static string A(string id) => "spotify:album:" + id;
 
-    /// <summary>A composed group as the composer emits it for one section: it carries that section's URI, which is the
-    /// only link the projection has back to what the composer decided the section IS.</summary>
-    static HomeGroup Group(HomeGroupKind kind, HomeSection section) =>
-        new(kind, section.Title, section.Cards, section.Subtitle, section.Uri, section.TotalCount);
+    static HomeSectionView Section(string uri, string? title, params HomeCard[] cards)
+        => new(Table.None, uri, title, null, cards, cards.Length, cards.Length);
 
-    static HomeFeed Feed(HomeSection[] sections, HomeGroup[] groups) =>
-        new("", groups, null, sections, "podcasts-chip");
+    static HomeGroup Group(HomeGroupKind kind, HomeSectionView section)
+        => new(kind, section.Title, section.Cards, section.Subtitle, section.Uri, section.TotalCount);
 
-    static IReadOnlyList<HomeFacetRow> Project(HomeFeed feed) =>
-        HomeFacetProjection.Rows(feed, HomeModuleTitles.Default);
+    static HomeFeedView Feed(HomeSectionView[] sections, HomeGroup[] groups) => new("", groups, null, sections, "podcasts-chip");
+
+    static IReadOnlyList<HomeFacetRow> Project(HomeFeedView feed) => HomeFacetProjection.Rows(feed, HomeModuleTitles.Default);
 
     [Fact]
     public void Podcasts_KeepsEveryTitledShelfInServerOrder()
     {
-        // The bug this exists for: the Podcasts facet returns four separately titled show shelves, and the authored
-        // landing merged them all into ONE "Podcasts" module — three server titles deleted from the page.
+        TestScope.Fresh();
         var yours = Section("spotify:section:yours", "Your shows",
             Card("show1", HomeCardKind.Podcast), Card("show2", HomeCardKind.Podcast));
         var forYou = Section("spotify:section:for-you", "Podcasts for you", Card("show3", HomeCardKind.Podcast));
@@ -45,12 +53,10 @@ public sealed class HomeFacetProjectionTests
 
         var rows = Project(feed);
 
-        Assert.Equal(
-            [HomeFacetRowKind.Podcasts, HomeFacetRowKind.Podcasts, HomeFacetRowKind.Podcasts],
+        Assert.Equal(new[] { HomeFacetRowKind.Podcasts, HomeFacetRowKind.Podcasts, HomeFacetRowKind.Podcasts },
             rows.Select(r => r.Kind));
-        Assert.Equal(["Your shows", "Podcasts for you", "Best of true crime"], rows.Select(r => r.Group.Title));
-        Assert.Equal([2, 1, 2], rows.Select(r => r.Group.Cards.Count));
-        // Each row drills into ITS OWN section, and wears the podcast shelf shape.
+        Assert.Equal(new[] { "Your shows", "Podcasts for you", "Best of true crime" }, rows.Select(r => r.Group.Title));
+        Assert.Equal(new[] { 2, 1, 2 }, rows.Select(r => r.Group.Cards.Count));
         Assert.Same(yours, rows[0].Section);
         Assert.Same(forYou, rows[1].Section);
         Assert.Same(crime, rows[2].Section);
@@ -60,9 +66,7 @@ public sealed class HomeFacetProjectionTests
     [Fact]
     public void ConsecutiveBaselines_CoalesceIntoOneFeedRow()
     {
-        // Twenty single-card "because you listened to X" sections in a row is not twenty shelves. A RUN folds into one
-        // paged discover feed wearing the app's own copy; a titled section closes the run, so the server's order is
-        // never rewritten.
+        TestScope.Fresh();
         var top = Section("spotify:section:top", "Top picks", Card("p1"), Card("a1", HomeCardKind.Album));
         var b1 = Section("spotify:section:b1", "Because you listened to IU", Card("b1"));
         var b2 = Section("spotify:section:b2", "Because you listened to GFRIEND", Card("b2"));
@@ -79,19 +83,19 @@ public sealed class HomeFacetProjectionTests
 
         var rows = Project(feed);
 
-        Assert.Equal([HomeFacetRowKind.Shelf, HomeFacetRowKind.Feed, HomeFacetRowKind.Shelf], rows.Select(r => r.Kind));
+        Assert.Equal(new[] { HomeFacetRowKind.Shelf, HomeFacetRowKind.Feed, HomeFacetRowKind.Shelf }, rows.Select(r => r.Kind));
         var discover = rows[1];
-        Assert.Equal(["spotify:b1", "spotify:b2", "spotify:b3"], discover.Group.Cards.Select(c => c.Uri));
+        Assert.Equal(new[] { P("b1"), P("b2"), P("b3") }, discover.Group.Cards.Select(c => c.Uri));
         Assert.Equal(HomeGroupKind.DiscoverFeed, discover.Group.Kind);
         Assert.Equal(HomeModuleTitles.Default.BecauseYouListened, discover.Group.Title);
         Assert.Equal(3, discover.Group.TotalCount);
-        // The coalesced feed is not ONE section, so it has nothing honest to drill into.
         Assert.Null(discover.Section);
     }
 
     [Fact]
     public void TwoBaselineRunsSeparatedByASection_StayTwoFeedRows()
     {
+        TestScope.Fresh();
         var b1 = Section("spotify:section:b1", "Because you listened to IU", Card("b1"));
         var b2 = Section("spotify:section:b2", "Because you listened to BOL4", Card("b2"));
         var shelf = Section("spotify:section:shelf", "Your shows", Card("show", HomeCardKind.Podcast));
@@ -106,15 +110,15 @@ public sealed class HomeFacetProjectionTests
 
         var rows = Project(feed);
 
-        Assert.Equal([HomeFacetRowKind.Feed, HomeFacetRowKind.Podcasts, HomeFacetRowKind.Feed],
-            rows.Select(r => r.Kind));
-        Assert.Equal(["spotify:b1", "spotify:b2"], rows[0].Group.Cards.Select(c => c.Uri));
-        Assert.Equal(["spotify:b3"], rows[2].Group.Cards.Select(c => c.Uri));
+        Assert.Equal(new[] { HomeFacetRowKind.Feed, HomeFacetRowKind.Podcasts, HomeFacetRowKind.Feed }, rows.Select(r => r.Kind));
+        Assert.Equal(new[] { P("b1"), P("b2") }, rows[0].Group.Cards.Select(c => c.Uri));
+        Assert.Equal(new[] { P("b3") }, rows[2].Group.Cards.Select(c => c.Uri));
     }
 
     [Fact]
     public void Spotlight_OneCardHeroSection_IsAHeroRow()
     {
+        TestScope.Fresh();
         var spotlight = Section("spotify:section:spotlight", "Spotlight", Card("daylist"));
         var hero = Group(HomeGroupKind.Hero, spotlight);
         var shows = Section("spotify:section:shows", "Your shows", Card("show", HomeCardKind.Podcast));
@@ -122,8 +126,7 @@ public sealed class HomeFacetProjectionTests
 
         var rows = Project(feed);
 
-        Assert.Equal([HomeFacetRowKind.Hero, HomeFacetRowKind.Podcasts], rows.Select(r => r.Kind));
-        // The hero row renders the composer's OWN hero group — the band reads Meta/format off that card.
+        Assert.Equal(new[] { HomeFacetRowKind.Hero, HomeFacetRowKind.Podcasts }, rows.Select(r => r.Kind));
         Assert.Same(hero, rows[0].Group);
         Assert.Same(spotlight, rows[0].Section);
     }
@@ -131,8 +134,7 @@ public sealed class HomeFacetProjectionTests
     [Fact]
     public void MixedSection_IsAGenericShelf()
     {
-        // Playlists and albums together name no single module. On the landing they were split per card kind and the
-        // section's own title went to whichever half was dominant; a facet keeps the section whole, under its title.
+        TestScope.Fresh();
         var mixed = Section("spotify:section:mixed", "Made for you",
             Card("p1"), Card("a1", HomeCardKind.Album), Card("p2"));
         var feed = Feed([mixed with { TotalCount = 30 }], [Group(HomeGroupKind.QuickGrid, mixed)]);
@@ -143,36 +145,35 @@ public sealed class HomeFacetProjectionTests
         Assert.Equal(HomeGroupKind.Shelf, row.Group.Kind);
         Assert.Equal("Made for you", row.Group.Title);
         Assert.Equal("spotify:section:mixed", row.Group.Uri);
-        // The server's own total survives, so the shelf's "show all" knows there is more than the page it holds.
         Assert.Equal(30, row.Group.TotalCount);
-        Assert.Equal(["spotify:p1", "spotify:a1", "spotify:p2"], row.Group.Cards.Select(c => c.Uri));
+        Assert.Equal(new[] { P("p1"), A("a1"), P("p2") }, row.Group.Cards.Select(c => c.Uri));
     }
 
     [Fact]
     public void AllAudiobooks_IsAudiobooks_AllEpisodes_IsEpisodes()
     {
+        TestScope.Fresh();
         var books = Section("spotify:section:books", "Audiobooks for you",
             Card("b1", HomeCardKind.Audiobook), Card("b2", HomeCardKind.Audiobook));
         var episodes = Section("spotify:section:episodes", "Episodes for you",
             Card("e1", HomeCardKind.Episode), Card("e2", HomeCardKind.Episode), Card("e3", HomeCardKind.Episode));
-        var feed = Feed([books, episodes],
-            [Group(HomeGroupKind.RatedShelf, books), Group(HomeGroupKind.QueueList, episodes)]);
+        var feed = Feed([books, episodes], [Group(HomeGroupKind.RatedShelf, books), Group(HomeGroupKind.QueueList, episodes)]);
 
         var rows = Project(feed);
 
-        Assert.Equal([HomeFacetRowKind.Audiobooks, HomeFacetRowKind.Episodes], rows.Select(r => r.Kind));
+        Assert.Equal(new[] { HomeFacetRowKind.Audiobooks, HomeFacetRowKind.Episodes }, rows.Select(r => r.Kind));
         Assert.Equal(HomeGroupKind.RatedShelf, rows[0].Group.Kind);
         Assert.Equal(HomeGroupKind.QueueList, rows[1].Group.Kind);
-        Assert.Equal(["Audiobooks for you", "Episodes for you"], rows.Select(r => r.Group.Title));
+        Assert.Equal(new[] { "Audiobooks for you", "Episodes for you" }, rows.Select(r => r.Group.Title));
     }
 
     [Fact]
     public void EmptySections_AreSkipped()
     {
-        // The ledger is lossless, so it holds sections whose every item was unsupported. A row that renders nothing is
-        // still a header and a module gap, which is worse than the section not being there.
+        TestScope.Fresh();
         var first = Section("spotify:section:first", "Your shows", Card("show", HomeCardKind.Podcast));
-        var empty = new HomeSection("spotify:section:empty", "Nothing here", null, [], 0, 4, UnsupportedCount: 4);
+        var empty = new HomeSectionView(Table.None, "spotify:section:empty", "Nothing here", null, Array.Empty<HomeCard>(), 0, 4,
+            UnsupportedCount: 4);
         var last = Section("spotify:section:last", "New releases", Card("a", HomeCardKind.Album));
         var feed = Feed([first, empty, last],
         [
@@ -183,29 +184,27 @@ public sealed class HomeFacetProjectionTests
 
         var rows = Project(feed);
 
-        Assert.Equal([HomeFacetRowKind.Podcasts, HomeFacetRowKind.Shelf], rows.Select(r => r.Kind));
-        Assert.Equal(["Your shows", "New releases"], rows.Select(r => r.Group.Title));
+        Assert.Equal(new[] { HomeFacetRowKind.Podcasts, HomeFacetRowKind.Shelf }, rows.Select(r => r.Kind));
+        Assert.Equal(new[] { "Your shows", "New releases" }, rows.Select(r => r.Group.Title));
     }
 
     [Fact]
     public void NoSectionsLedger_FallsBackToGroups()
     {
-        // A source that publishes presentation groups only (or the loading seed) has no ledger to walk. The groups are
-        // then the order, each one its own row, and no row can drill into a section that does not exist.
+        TestScope.Fresh();
         var shows = new HomeGroup(HomeGroupKind.PodcastShelf, "Your shows",
             [Card("show1", HomeCardKind.Podcast), Card("show2", HomeCardKind.Podcast)]);
         var b1 = new HomeGroup(HomeGroupKind.DiscoverFeed, "Because you listened to IU", [Card("b1")]);
         var b2 = new HomeGroup(HomeGroupKind.DiscoverFeed, "More like NewJeans", [Card("b2")]);
         var picks = new HomeGroup(HomeGroupKind.QuickGrid, "Jump back in", [Card("p1"), Card("a1", HomeCardKind.Album)]);
         var empty = new HomeGroup(HomeGroupKind.QuickGrid, "Nothing", []);
-        var feed = new HomeFeed("", [shows, b1, b2, picks, empty], Facet: "music-chip");
+        var feed = new HomeFeedView("", [shows, b1, b2, picks, empty], Facet: "music-chip");
 
         var rows = Project(feed);
 
-        Assert.Equal([HomeFacetRowKind.Podcasts, HomeFacetRowKind.Feed, HomeFacetRowKind.Shelf],
-            rows.Select(r => r.Kind));
+        Assert.Equal(new[] { HomeFacetRowKind.Podcasts, HomeFacetRowKind.Feed, HomeFacetRowKind.Shelf }, rows.Select(r => r.Kind));
         Assert.Same(shows, rows[0].Group);
-        Assert.Equal(["spotify:b1", "spotify:b2"], rows[1].Group.Cards.Select(c => c.Uri));
+        Assert.Equal(new[] { P("b1"), P("b2") }, rows[1].Group.Cards.Select(c => c.Uri));
         Assert.Same(picks, rows[2].Group);
         Assert.All(rows, r => Assert.Null(r.Section));
     }

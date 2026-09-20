@@ -4,12 +4,13 @@
     <!-- WinExe = Windows GUI subsystem: no console window spawns on launch. -->
     <OutputType>WinExe</OutputType>
     <!-- NativeAOT is the publish target (single self-contained native exe). Scoped to THIS csproj so
-         the net10 app build/run stay JIT; AOT/trim analyzers engage here, never on Wavee.Core's path. -->
+         the net10 app build/run stay JIT; AOT/trim analyzers engage here, never on the referenced engine projects' path. -->
     <PublishAot>true</PublishAot>
     <!-- The Windows composition root references the Windows-only backend, so CA1416 is noise here: the Win32 paths are
-         intentional. The portable Backend/ subtree's cross-platform discipline is enforced by TerraFX-freedom (the
-         VerticalSlice guard), not by this analyzer — and Wavee.Tests, which builds Backend/ cross-platform, likewise
-         suppresses CA1416. The macOS/Linux credential paths (KeyringProtector) stay guarded by OperatingSystem checks. -->
+         intentional. The portable core (Entities/Spotify/Playback)'s cross-platform discipline is enforced by
+         TerraFX-freedom (the VerticalSlice guard), not by this analyzer — and Wavee.Tests, which references this
+         project directly, likewise suppresses CA1416. The macOS/Linux credential paths (KeyringProtector) stay
+         guarded by OperatingSystem checks. -->
     <NoWarn>$(NoWarn);CA1416;NU1701</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Embeds the Wavee W-ribbon into the PE (Explorer / taskbar / Alt-Tab fallback). The Win32 window also loads
@@ -21,7 +22,7 @@
   <!-- Build identity. Wavee.Version.props is the single source of the semver, the per-minor codename and the
        monotonic release counter (WaveeBuild); ops/build/pack-wavee-msix.ps1 stamps the rest via /p: properties and
        ops/release/wavee-release.ps1 owns the counter. Settings → About / crash headers / the update checker read all
-       of it back through AssemblyMetadataAttribute (Wavee.Core WaveeVersionInfo.Parse). -->
+       of it back through AssemblyMetadataAttribute (WaveeVersionInfo.Parse). -->
   <Import Project="Wavee.Version.props" />
   <PropertyGroup>
     <Version>$(WaveeVersion)</Version>
@@ -59,25 +60,30 @@
     <RuntimeHostConfigurationOption Include="System.Buffers.SharedArrayPool.MaxPartitionCount" Value="4" />
     <RuntimeHostConfigurationOption Include="System.Buffers.SharedArrayPool.MaxArraysPerPartition" Value="4" />
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+    <!-- trial (plan §3.1 P16b), measured in Wave 6 -->
+    <RuntimeHostConfigurationOption Include="System.GC.RegionSize" Value="1048576" />
   </ItemGroup>
 
   <Import Project="Wavee.Publish.props" />
 
-  <!-- Native in-process PlayReady CDM DLL (ops/tools/playready-native): build it if its sources changed, then copy it
-       NEXT TO Wavee.exe so DesktopProtectedVideoPlayer's P/Invokes resolve at runtime. Without this the DLL is absent
-       from Wavee's bin and DRM video fails to load (it now degrades to a typed DRM error, but the DLL is required to
-       actually play). Mirrors FluentGpu.WindowsApp.csproj; the Exec is tolerant so a machine without the C++ toolchain
-       still builds Wavee (DRM just stays unavailable). -->
-  <PropertyGroup>
-    <_PlayReadyNativeArch Condition="'$(RuntimeIdentifier)' == 'win-x64'">x64</_PlayReadyNativeArch>
-    <_PlayReadyNativeArch Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</_PlayReadyNativeArch>
-    <_PlayReadyNativeArch Condition="'$(_PlayReadyNativeArch)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'AMD64'">x64</_PlayReadyNativeArch>
-    <_PlayReadyNativeArch Condition="'$(_PlayReadyNativeArch)' == ''">arm64</_PlayReadyNativeArch>
-    <_PlayReadyNativeDir>$(EngineRoot)ops\tools\playready-native</_PlayReadyNativeDir>
-    <_PlayReadyNativeDll>$(_PlayReadyNativeDir)\out\$(_PlayReadyNativeArch)\FluentGpu.PlayReady.Native.dll</_PlayReadyNativeDll>
-  </PropertyGroup>
+  <!-- Native in-process PlayReady runtime DLL (ops/tools/playready-native: FgPlayReady.h + PrRuntime/PrLicense/PrSession.cpp):
+       build it if any of its sources changed, then copy it NEXT TO Wavee.exe so ProtectedVideoRuntime's P/Invokes resolve
+       at runtime. Without it DRM video degrades to a typed DRM error. The architecture rule and the DLL path are the
+       ENGINE's one definition (PlayReadyNative.props, shared with FluentGpu.WindowsApp and FluentGpu.Windows.Tests): the
+       RID a publish names, else the SDK's own RID — never PROCESSOR_ARCHITECTURE, which an x64-emulated shell on an ARM64
+       box reports while the arm64 dotnet runs an arm64 process that cannot load an x64 DLL. The Exec stays tolerant so a
+       machine without the C++ toolchain still builds Wavee (DRM just stays unavailable); the release preflight asserts
+       both arch DLLs export the runtime ABI (G-152). -->
+  <Import Project="$(EngineRoot)ops\tools\playready-native\PlayReadyNative.props" />
+  <!-- Every source file of the helper (the translation units, its headers, the script): an edit to any of them rebuilds and
+       nothing else does. Never in a design-time build: an IDE evaluation must not start an MSVC compile racing the
+       command-line one over the same out\<arch> objects. -->
+  <ItemGroup>
+    <_PlayReadyNativeInputs Include="$(_PlayReadyNativeDir)\*.cpp;$(_PlayReadyNativeDir)\*.h;$(_PlayReadyNativeDir)\build.cmd" />
+  </ItemGroup>
   <Target Name="BuildDesktopPlayReadyNative" BeforeTargets="PrepareForBuild"
-          Inputs="$(_PlayReadyNativeDir)\PlayReadyNative.cpp;$(_PlayReadyNativeDir)\CencMediaSource.h;$(_PlayReadyNativeDir)\build.cmd"
+          Condition="'$(DesignTimeBuild)' != 'true'"
+          Inputs="@(_PlayReadyNativeInputs)"
           Outputs="$(_PlayReadyNativeDll)">
     <Exec Command="cmd /c &quot;$(_PlayReadyNativeDir)\build.cmd&quot; $(_PlayReadyNativeArch)" ContinueOnError="true" />
   </Target>
@@ -94,15 +100,14 @@
   </Target>
 
   <!-- Composition root: the Windows backend (D3D12 / Win32 / DirectWrite / WIC) wired into the
-       portable engine + control kit, plus the framework-neutral Wavee.Core backend seam. -->
+       portable engine + control kit; the app's own core (Entities/Spotify/Playback/Shell/Screens/Platform) compiles
+       directly into this project under the one `Wavee` namespace, no separate backend project. -->
   <ItemGroup>
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.Engine\FluentGpu.Engine.csproj" />
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.Controls\FluentGpu.Controls.csproj" />
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.Windows\FluentGpu.Windows.csproj" />
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.WindowsApi\FluentGpu.WindowsApi.csproj" />
-    <ProjectReference Include="..\Wavee.Core\Wavee.Core.csproj" />
     <ProjectReference Include="..\Wavee.Sdk\Wavee.Sdk.csproj" />
-    <ProjectReference Include="..\vendor\NVorbis\NVorbis\NVorbis.csproj" />
   </ItemGroup>
 
   <!-- ── Bundled playback modules ─────────────────────────────────────────────────────────────────────────────
@@ -153,22 +158,22 @@
           SkipUnchangedFiles="true" />
   </Target>
 
-  <!-- Gate on the client deriver, not just the sibling csproj: a partial PlayPlay junction (csproj only, no Client/)
-       must not flip WAVEE_PLAYPLAY_LOCAL or AudioPlaybackStack references a type that never compiles. -->
-  <PropertyGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\InProcessPlayPlayKeyDeriver.cs')">
+  <!-- Gate on the package's 0.3 entry, not just the sibling csproj: a partial junction (csproj only, no Client/), or a
+       0.2.x package that has no PlayPlayHost, must not flip WAVEE_PLAYPLAY_LOCAL and leave App.cs calling a type that
+       never compiles (decision D3). -->
+  <PropertyGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\PlayPlayHost.cs')">
     <DefineConstants>$(DefineConstants);WAVEE_PLAYPLAY_LOCAL</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\InProcessPlayPlayKeyDeriver.cs')">
+  <ItemGroup Condition="'$(WaveeSkipPrivateSources)' != 'true' And Exists('..\Wavee.PlayPlay\Client\PlayPlayHost.cs')">
     <Compile Include="..\Wavee.PlayPlay\**\*.cs" Exclude="..\Wavee.PlayPlay\**\bin\**;..\Wavee.PlayPlay\**\obj\**;..\Wavee.PlayPlay\Tests\**" Link="Wavee.PlayPlay\%(RecursiveDir)%(Filename)%(Extension)" />
     <Protobuf Include="..\Wavee.PlayPlay\Protos\playplay.proto" GrpcServices="None" ProtoRoot="..\Wavee.PlayPlay\Protos" Condition="Exists('..\Wavee.PlayPlay\Protos\playplay.proto')" />
   </ItemGroup>
 
   <!-- Real Spotify wire protocol (handshake + login). Vendored .proto compiled via Grpc.Tools → the Wavee.Protocol
-       namespace. Used ONLY by src/apps/Wavee/SpotifyLive (the live-network layer); the unit-tested Backend stays protobuf-free. -->
+       namespace. Used ONLY by the Spotify subsystem (src/apps/Wavee/Spotify, the live-network layer). -->
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.35.0" />
-    <PackageReference Include="FlacBox" Version="1.0.0" />
     <PackageReference Include="NLayer" Version="1.15.0" />
     <!-- DPAPI (Windows) — the OPTIONAL at-rest protector swapped behind the portable ICredentialProtector seam. -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
@@ -186,12 +191,14 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <Protobuf Include="SpotifyLive\Protos\**\*.proto" GrpcServices="None" ProtoRoot="SpotifyLive\Protos" />
+    <Protobuf Include="Spotify\Protos\**\*.proto" GrpcServices="None" ProtoRoot="Spotify\Protos" />
   </ItemGroup>
 
-  <!-- Bundled fake-catalog cover art + the loc JSON + the font files: copied next to the exe (FakeData.Cover resolves
-       AppContext.BaseDirectory/assets/covers/coverNN.jpg; Localization.LoadFolder reads assets/loc/*.json;
-       Design/Glyphs.cs loads assets/fonts/SegoeFluentIcons.ttf + wavee-icons.otf by path - see assets/fonts/FONTS.md). -->
+  <!-- Bundled fake-catalog cover art + the loc JSON + the font files: copied next to the exe for their consumers
+       (Entities/Entities.Fake.cs's fake covers, the engine-side assets/loc/*.json load, and
+       assets/fonts/SegoeFluentIcons.ttf + wavee-icons.otf - see assets/fonts/FONTS.md). As of the 0.3 restructure the
+       loc-JSON load and AppLocaleBootstrap's engine half are still owner S's (Platform.cs's "LEFT FOR OWNER S" block);
+       until that lands, these files are staged but unread at runtime. -->
   <ItemGroup>
     <Content Include="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
@@ -201,23 +208,19 @@
        ICU-format methods) into the `Wavee` namespace, so call sites use Loc.Get(Strings.Detail.Play). -->
   <PropertyGroup>
     <FluentGpuLocNamespace>Wavee</FluentGpuLocNamespace>
+    <!-- FGRP008 opt-in is deferred: Wavee's RadioItem values are ids (black/cream/vu), not copy, and would drown the log. -->
+    <!-- Loc completeness warnings stay visible but must not fail TreatWarningsAsErrors until satellites are filled. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);FLLOC001;FLLOC003;FLLOC004;FLLOC005;FLLOC006;FGRP008</WarningsNotAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <AdditionalFiles Include="assets\loc\en-US.json" FluentGpuLocBase="true" />
+    <AdditionalFiles Include="assets\loc\nl.json" />
+    <AdditionalFiles Include="assets\loc\ko-KR.json" />
     <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="FluentGpuLocBase" />
     <CompilerVisibleProperty Include="FluentGpuLocNamespace" />
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.SourceGen\FluentGpu.SourceGen.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Features\Diagnostics\" />
-    <Folder Include="Features\Home\" />
-    <Folder Include="Features\Library\" />
-    <Folder Include="Features\Player\" />
-    <Folder Include="Features\Search\" />
-    <Folder Include="Features\Shell\" />
-  </ItemGroup>
-
   <!-- JIT Debug/Release: NuGet drops e_sqlite3.dll under runtimes/ only; publish colocates it. Copy the arch-matching
        binary next to Wavee.exe so Rider F5 and the publish preflight share the same layout. -->
   <Target Name="CopyESqlite3ToAppRoot" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">

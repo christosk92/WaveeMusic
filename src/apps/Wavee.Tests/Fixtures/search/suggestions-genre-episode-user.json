@@ -1,0 +1,38 @@
+{ "data": { "searchV2": { "topResultsV2": { "itemsV2": [
+  { "item": { "__typename": "SearchAutoCompleteEntity",
+    "data": { "text": "koffie", "uri": "spotify:search:koffie" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity",
+    "data": { "text": "loffler", "uri": "spotify:search:loffler" } } },
+  { "item": { "__typename": "SearchAutoCompleteEntity",
+    "data": { "text": "lofi sleep", "uri": "spotify:search:lofi+sleep" } } },
+  { "item": { "__typename": "GenreResponseWrapper", "data": {
+    "__typename": "Genre",
+    "uri": "spotify:genre:0JQ5DAqbMKFFzDl7qN9Apr",
+    "name": "Sleep",
+    "image": { "sources": [ { "url": "https://i.scdn.co/image/g", "width": 300, "height": 300 } ] }
+  } } },
+  { "item": { "__typename": "PlaylistResponseWrapper", "data": {
+    "__typename": "Playlist",
+    "uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M",
+    "name": "lofi hip hop",
+    "ownerV2": { "data": { "name": "Spotify" } },
+    "images": { "items": [ { "sources": [
+      { "url": "https://i.scdn.co/image/pl-small", "width": 60, "height": 60 },
+      { "url": "https://i.scdn.co/image/pl", "width": 300, "height": 300 }
+    ] } ] }
+  } } },
+  { "item": { "__typename": "EpisodeResponseWrapper", "data": {
+    "__typename": "Episode",
+    "uri": "spotify:episode:512ojhOuo1ktJprKbVcKyQ",
+    "name": "Koffie & Code",
+    "podcastV2": { "data": { "name": "The Morning Show" } },
+    "coverArt": { "sources": [ { "url": "https://i.scdn.co/image/ep", "width": 300, "height": 300 } ] }
+  } } },
+  { "item": { "__typename": "UserResponseWrapper", "data": {
+    "__typename": "User",
+    "uri": "spotify:user:koffieliefhebber",
+    "displayName": "Koffie Liefhebber",
+    "username": "koffieliefhebber",
+    "avatar": { "sources": [ { "url": "https://i.scdn.co/image/u", "width": 64, "height": 64 } ] }
+  } } }
+] } } } }

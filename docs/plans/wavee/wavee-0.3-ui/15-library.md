@@ -53,13 +53,18 @@
    ≈252.3 ground — a 2/255 ladder. Drop the seam and the whole browser reads as one white sheet.
 3. **The page title lives INSIDE the left column's toolbar**, `WaveeType.PageHero` (28/36/600), one line,
    `CharacterEllipsis` — never a full-width band above three panes owned by three different things
-   (`LibraryPage.cs:445-467`).
+   (`LibraryPage.cs:445-467`). **2026-09-18 (§12):** the title row also carries the row count — 14/400
+   `TextTertiary`, bound to the shape's `Count` — beside the hero (`Albums 42`, `Artists 38`); the 0.2.9 anatomy
+   never had one.
 4. **Column widths, sort, direction, view type, grid size and the selected item are persisted per kind and seeded in the
    constructor**, so frame one already paints the saved layout — no default→saved flash (`LibraryPage.cs:93-117`,
    `AppSettings.cs:380-396`). Filter text is deliberately NOT persisted.
-5. **Four view types × three sizes, live.** CompactList(0) / List(1) / CompactGrid(2) / Grid(3) with S/M/L cell sizing,
-   all driven from one pill + flyout (`LibrarySortView.cs`). The artists view carries a **second, independent** copy of
-   the same control over the discography column.
+5. **Four view types × three sizes — the codes stay.** CompactList(0) / List(1) / CompactGrid(2) / Grid(3) with S/M/L
+   cell sizing are still the persisted view/size codes. **Superseded 2026-09-18 (§12):** the one pill + flyout
+   control (`LibrarySortView.cs`) that used to drive them is gone — the toolbar now exposes a plain list/grid icon
+   pair (`User.ViewToggle`) and a "…" that opens a trimmed `ViewPanel` (compact variants + S/M/L only; sort moved to
+   the word rail, rule 20 below). The artists view's **second, independent** copy of the old control — the one that
+   sat over the discography column — is deleted with the column itself (rule 19).
 6. **Selection never remounts the list.** The `ItemsView` remount key is `view:size:OrderKey:FactsKey` — pure functions
    of the rows (`LibraryPage.cs:499`, `LibraryNavOrder.cs:78-96`). Selection is not an input. A same-set republish must
    not remount, and every remount that *does* happen lands back at the saved scroll offset via
@@ -68,7 +73,8 @@
    never-played block in source order, with `desc` flipping *inside* each block only (`LibraryNavOrder.cs:40-47`).
 8. **The library is the app's one accent-NEUTRAL surface.** No cover-palette extraction anywhere on it: the detail pane's
    Play CTA is `WaveeCta.Play(Tok.AccentDefault, …)` — the system accent, stated as a deliberate exception
-   (`LibraryPage.cs:1180-1183`).
+   (`LibraryPage.cs:1180-1183`). **Stays, 2026-09-18 (§12):** the library-rework prototype's art-wash cover treatment
+   was evaluated against this rule and recorded as **NOT built** — a toggle off, not shipped.
 9. **Full-text search replaces the browse list in place, as a drill-down across the SAME columns** (matched artists ▸ their
    matched albums ▸ that album's matched tracks), with stale-while-revalidate so rows never flash to "nothing matches"
    (`LibraryPage.cs:194-196, :719-745`), one shared skeleton group so the three columns settle together
@@ -102,6 +108,35 @@
     search row: `Shape` (`:407-418`) feeds only `ListBody`, and the hit rows are fixed-height `SelectableRow` /
     `TrackHitRow`. This is shipped behaviour and the parity target; it is also the single most defensible thing on this
     surface to *improve* in 0.3 — but only with the owner's sign-off, never silently.
+
+**Library rework (the Collection browser), 2026-09-18 — rules 19-23 are new; see §12 for the full audit entry.**
+
+19. **The artists view is TWO panes, not three.** Navigator (280) │ `Artist.Reader` (`Entities/Artist.Reader.cs`,
+    owner N) — the old third-of-three `LibraryArtistPane` discography column is gone, folded into the reader's own
+    single scroll. `LibraryArtistPane`, `DiscoRow`/`DiscoCard` and the `Pane{Key="lib:tracks"}` / `"lib:tracks:empty"`
+    sibling pane are **deleted, not hidden** (no legacy paths). W2 is superseded by W28/W29 below.
+20. **Sort is a word rail, not a pill + flyout.** `User.WordRail(kind, sort, desc)` — Zune's text pivot: the active
+    word is 100% ink + 600 weight with a 2-DIP accent underline, the rest 50% ink (85% on hover); tapping the active
+    word flips `desc`. The codes are `LibraryNavSort` and **never renumber, only append**:
+    `Recents 0 · RecentlyAdded 1 · Alphabetical 2 · Creator 3 · ReleaseDate 4 · Albums 5` — **5 (`Albums`) is new,
+    appended 2026-09-18**, offered on the artists rail only (by saved-album count desc, then title).
+    `LibrarySortView` / `LibrarySortPanel` and the discography's second copy of them (rule 5) are deleted.
+21. **Alphabetical sort adds letter groups and an A–Z jump strip.** `LibraryLetters` (CORE, `Entities/User.cs`)
+    interleaves a 28-DIP header flat-item ("#", A–Z) ahead of each letter's first row, present only while
+    `Sort == Alphabetical`; the jump strip (`User.JumpStrip`) sits at the column's edge whenever `Sort ==
+    Alphabetical` in **either** list or grid view, and jumps unanimated (a jump is a jump) while a sticky letter
+    overlay tracks scroll position. New 2026-09-18.
+22. **The album pane (`Album.Pane`) has FOUR readiness states.** `AlbumPaneReadiness.Of`: `Header` (identity not
+    yet known — short-lived, the navigator already asked) · `Rows` (identity known, the tracks edge not yet
+    Complete-and-fully-named — a counted shimmer, never zero rows) · `Failed` (the tracks edge failed, or the row
+    batch failed) · `Ready`. Rule 13's "View full album" link stays; **the `MinifiedAlbum` notice is gone from this
+    surface** — an unnamed row after a Complete edge is either still loading (shimmer) or failed (a real strip with
+    Retry). This is W24's failure arm, closed for real for the first time. New 2026-09-18.
+23. **A new persisted key, `library.<kind>.scope`.** `Platform.Keys.LibraryScope(kind)` → `"library." + kind +
+    ".scope"`, int, default 0 — the reader's *in your library* (0) vs *all releases* (1) toggle, added to DATA GAP
+    8's twelve keys. Three keys are now **orphaned but still persisted**: `library.<kind>.album.{desc,view,size}`
+    (the old discography column's own sort/view/size) are read by nobody now that the column is deleted (rule 19) —
+    left in `Platform.Settings` unmigrated, so an old value simply goes unread rather than erroring. New 2026-09-18.
 
 ---
 
@@ -325,6 +360,10 @@ slot (window minus sidebar minus right rail), which is what `OnBoundsChanged` me
 
 ### W2 - Artists, wide, three columns, fully loaded @ content 1140
 
+**Superseded 2026-09-18 (§0 #19, §12).** The third-of-three discography column below no longer exists; the artists
+view is two panes, navigator + `Artist.Reader`. Kept here for the record — see W28 (the reader, wide) and W29 (the
+reader, scope = all releases) for what replaced it.
+
 `leftW` = 280 (the artists default, `AppSettings.cs:382`) · grip · `midW` = 440 · grip · tracks = 388.
 
 ```
@@ -486,7 +525,11 @@ The flyout stays open (no auto-dismiss on pick) so a user can flip direction imm
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### W8 - Discography pane skeleton @ midW 440
+### W8 - Discography pane skeleton @ midW 440 — DELETED 2026-09-18 (§0 #19, §12)
+
+The column this wireframe paints — `LibraryArtistPane`'s discography grid/list — is deleted, not hidden, with the
+rest of the three-column artists layout (rule 19). Its replacement's loading state is `Skel.Region` per catalogue
+block (plan's counted skeleton), not a whole-pane gate — see W29. Kept here for the record.
 
 `LibraryPage.cs:1474-1478`. **The toolbar stays up** — only the body swaps (`:1279-1286`), so the sort pill, filter and
 "Go to artist" never flash in and out across a selection change.
@@ -505,12 +548,19 @@ The flyout stays open (no auto-dismiss on pick) so a user can flip direction imm
 └──────────────────────────────────────────────────┘
 ```
 
-### W9 - No selection (the three placeholders)
+### W9 - No selection (the three placeholders) — TWO placeholders, 2026-09-18 (§12)
+
+**Superseded in part.** The third placeholder below ("Select a release", the discography column's tracks pane) is
+gone with the three-column artists layout (§0 #19) — there is no third pane to be empty. Only the albums and
+artists placeholders remain, and the artists one now belongs to `Artist.Reader`'s own no-selection state (the
+reader still shows `Controls.Vacancy(Empty, Compact, …)`, not a bare `EmptyState.Compact`, but the *occasion* —
+nothing selected in the navigator — is the same). Kept here for the record; the surviving two placeholders' rule is
+unchanged.
 
 **When these are actually on screen.** `hasSel` is `_selectedKey.Value.Length > 0` (`LibraryPage.cs:228-229`) and
 `SyncNav` adopts row 0 the moment a non-empty set lands (`:558-564`), so the two left-hand placeholders below appear
 only while the navigator is empty — a cold start before `EnsureAlbums` resolves, or the filter-matched-nothing state of
-§0 #17. The third ("Select a release") is the durable one: `_albumKey` is empty until `SyncDisco` fires, and a search
+§0 #17. The third ("Select a release") was the durable one: `_albumKey` is empty until `SyncDisco` fires, and a search
 commit or a restored key can leave it set to a release the shown discography does not contain. Do not design the first
 two as a resting screen.
 
@@ -519,13 +569,13 @@ two as a resting screen.
 
 ```
 albums:   ┌──────────────────────────┐   artists:  ┌──────────────────────────┐   artists, 3rd column:
-          │                          │             │                          │   ┌──────────────────────┐
-          │  Select an album to see  │             │ Select an artist to see  │   │  Select a release    │
-          │  its tracks              │             │ their discography        │   │                      │
-          │       20/28/600 centred  │             │                          │   │  Key="lib:tracks:    │
-          └──────────────────────────┘             └──────────────────────────┘   │        empty"        │
-          Key="lib:empty"  loc library.selectAlbum  loc library.selectArtist      └──────────────────────┘
-podcasts: "Select a show to see its episodes"  (loc library.selectShow)           loc library.selectAlbumTracks
+          │                          │             │                          │   DELETED 2026-09-18 —
+          │  Select an album to see  │             │ Select an artist to see  │   there is no 3rd column;
+          │  its tracks              │             │ their discography        │   Artist.Reader's own
+          │       20/28/600 centred  │             │                          │   Vacancy(Empty) covers
+          └──────────────────────────┘             └──────────────────────────┘   the no-selection case.
+          Key="lib:empty"  loc library.selectAlbum  loc library.selectArtist
+podcasts: "Select a show to see its episodes"  (loc library.selectShow)
 ```
 
 ### W10 - Navigator: filtered to nothing vs still loading
@@ -693,8 +743,14 @@ Entering collapsed resets `_depth` to 0 (`LibraryPage.cs:219`).
 
 ### W15 / W16 / W17 - Collapsed, depths 1 and 2
 
+**Depths changed 2026-09-18 (§12).** Artists' `maxDepth` drops **2 → 1** in the browse arm: `Artist.Reader` is one
+pane, so W15 (below) is now the whole of depth 1 and **W16 (depth 2) no longer exists in browse** — kept below for
+the record. Albums/podcasts stay at `maxDepth = 1` (W17, unchanged). **Search mode is untouched**: the three
+collapsed search bodies still drill to depth 2 (§0 #9's "same columns" rule was never in scope for this rework), so
+artists SEARCH keeps 0/1/2 while artists BROWSE keeps 0/1.
+
 ```
-W15  artists, depth 1  (maxDepth = 2)        W16  artists, depth 2                W17  albums/podcasts, depth 1
+W15  artists, depth 1  (maxDepth = 1, browse)  W16  artists, depth 2 — browse: DELETED; SEARCH: unchanged  W17  albums/podcasts, depth 1
 ┌────────────────────────────────────┐       ┌────────────────────────────────┐   ┌────────────────────────────┐
 │ Artists › Radiohead                │       │ Artists › Radiohead › Kid A    │   │ Albums › In Rainbows       │
 │ ────────────────────────────────── │       │ ────────────────────────────── │   │ ────────────────────────── │
@@ -920,6 +976,83 @@ because a plain audio drop is the unambiguous "play this song" gesture):
 
 The remaining `localFile.*` strings (`pickTitle`, `filter`, `playFile`) belong to the profile menu's "Play file…" row
 (`ProfileMenu.cs:114-119`), not to this page; recorded here only so the family is accounted for in one place.
+
+---
+
+### W28 - Artists, wide: navigator (280) │ `Artist.Reader` (844) — new 2026-09-18, replaces W2 (§12)
+
+Source: `library-rework-implementation.md` §2 W3. Two panes, not three — the discography column of W2 is gone.
+
+```
+├──────────── 280 ─────────────┤│├────────────────────────────────── 844 ──────────────────────────────────────┤
+┌──────────────────────────────┐│┌────────────────────────────────────────────────────────────────────────────┐
+│ Artists  38          PageHero│││ band, pad 20,20,20,8, gap 16, AlignItems Center                             │
+│ recents  a–z  albums    ≡ ▦  │││  (72 circ) Stromae      32/38/600 (link)   ( ▶ Play all )( ⤨ )(✓ following)│
+│ 🔍 Filter                    │││  In your library: 3 albums · 35 songs · following   12/16 TextTertiary ( ↗ )│
+│ ┃◉ Stromae  3 albums·35 songs│││ sub-rail, sticky top 0, pad 6,20,10, hairline below                        │
+│  ◉ Urban Zakapa  2 · 15 songs│││  in your library   all releases · 6         newest  oldest  a–z             │
+│  ◉ Jukjae        2 · 9 songs │││ spine (56, sticky) │ ItemsView.Create · Extents(blockOf)                    │
+│  …                           │││ [36]◄current block │ block: pad 16,20,8,16, grid 120|1fr, gap 16            │
+│                               │││ [36]                │ 120-cover  Multitude  3 songs·10 min  (▶)(♥)(⋯)      │
+│                               │││ [36]                │   1  Invaincu               3:07  (Track.EagerRow,   │
+│                               │││ (sticky top 52)     │   2  Santé                  3:10   rowH 36)          │
+└──────────────────────────────┘│└────────────────────────────────────────────────────────────────────────────┘
+```
+
+The artist row's subtitle is no longer the literal loc constant `search.typeArtist` ("Artist") — §0's original
+anatomy called that out as a defect (§1.1.D of the plan); it now reads "N albums · M songs" from
+`LibraryAlbumsOf`/`LibrarySongCountOf` (CORE, `User.cs`), a pure read over `Edges.SavedAlbums ∩ Edges.AlbumArtists`,
+no new demand. The spine is a block jump list (one 36×36 cover per catalogue block, r 4, opacity .5 → .9 hover → 1,
+a 2-DIP accent ring on the block under the viewport top via `ItemsViewController.TryGetItemIndex(0, 0.2)`); it hides
+under 1200 px of reader width (W6 of the plan). Sort here is the artists word rail (rule 20): `recents · a–z ·
+albums` (code 5, new). Scope and the reader's own sort (`newest`/`oldest`/`a–z`, a reader-local `ReaderSort` enum,
+NOT `LibraryNavSort`) live in the sub-rail.
+
+### W29 - `Artist.Reader`, scope = all releases, catalogue blocks landing — new 2026-09-18 (§12)
+
+Source: `library-rework-implementation.md` §2 W4. Saved blocks land first (in the chosen sort), catalogue blocks
+after, same sort:
+
+```
+│  in your library   all releases · 9          newest  oldest  a–z       │
+│                    ‾‾‾‾‾‾‾‾‾‾‾‾‾‾                                       │
+│ [36] │ Multitude                    2022 · Album  (saved)              │  saved blocks first
+│ [36] │ racine carrée                2013 · Album  (saved)              │
+│ [··] │ ▒▒▒▒▒▒▒▒▒▒▒▒▒▒               ▒▒▒▒ · Album                       │  a catalogue block whose DiscoCard
+│      │   ▒ ▒▒▒▒▒▒▒▒▒▒▒▒▒▒               ▒:▒▒                            │  has not landed: a COUNTED skeleton
+│      │   ▒ ▒▒▒▒▒▒▒▒▒                    ▒:▒▒                            │  (TrackCount rows when known, else
+│      │   ▒ ▒▒▒▒▒▒▒▒▒▒▒▒                 ▒:▒▒                            │  4), never a bare card — Skel.Region
+│ [36] │ Racine carrée Live            2015 · Album                       │
+│      │  Fetching 3 more releases…                                       │  the facet's own Partial state, not
+└──────┴───────────────────────────────────────────────────────────────────┘  a button; DemandNextPage scroll-paces
+```
+
+Demand (§7 below): in scope 0 (library), every saved block's tracks edge + rows at Visible; in scope 1 (all
+releases), additionally the three facets' first pages at Visible, `DiscoCard` for each listed release, and every
+catalogue block's tracks edge + rows at **Prefetch**. The whole model is asked; the runner batches (no page-side
+fetch windows) — page N+1 is scroll-paced from `OnVisibleRange`, the discography's existing rule.
+
+### W30 - `Album.Pane`'s four readiness states — new 2026-09-18, closes W24 (§12)
+
+Source: `library-rework-implementation.md` §2 W5, `AlbumPaneReadiness` (§0 #22).
+
+```
+ HEADER (identity not yet known)      ROWS (identity known, tracks loading)   FAILED (edge or row batch failed)
+ ┌ [128] shimmer over the whole ─┐    ┌ [128] ALBUM · 2013               ┐    ┌ [128] ALBUM · 2013               ┐
+ │       hero — short-lived,     │    │       racine carrée              │    │       racine carrée              │
+ │       the navigator already   │    │       Stromae · 13 songs         │    │       Stromae · 13 songs         │
+ │       asked for identity      │    │ (▶Play)(⤨)(♥)(⋯)   Open album ↗  │    │ (▶Play)(⤨)(♥)(⋯)   Open album ↗  │
+ └────────────────────────────────┘    │  ▒ ▒▒▒▒▒▒▒▒▒▒▒▒▒▒        ▒▒▒▒   │    │ Controls.Vacancy(Error, Compact)  │
+                                        │  … × ShimmerRows (never 0)      │    │  "Couldn't load the songs."      │
+ READY: the table, no shimmer, no      └───────────────────────────────────┘    │  [ Retry ] → RefreshEdge + a      │
+ crossfade on the selection change                                              │    re-armed row batch            │
+                                                                                 └───────────────────────────────────┘
+```
+
+The header paints from the navigator's own row facts (`Title`, `ImageId`, `Year`, `TrackCount`, `ArtistSlots` —
+`AlbumFields.Identity`, already demanded), so only the ROWS state shimmers, never the whole pane — the mechanism
+that closes W24's "no error state on the browse side" for good. **No `MinifiedAlbum` notice anywhere in this
+state machine** (§0 #22).
 
 ---
 
@@ -1245,6 +1378,25 @@ indefinitely. `ErrorState` is reachable on exactly one path, the search columns'
 0.3 terms that means: `a.Knows(AlbumFields.Identity)` being false must not be the *only* input — the pane needs a
 third state (`Failed`) that 0.2.9 never gave it. See W24; changing this is a decision, not a port.
 
+**Closed 2026-09-18 (§0 #22, §12).** `AlbumPaneReadiness.Of(knowsIdentity, tracksEdgeState, edgeFailed, anyUnnamed,
+rowsFailed)` — CORE, `Entities/User.cs` — gives the pane a real **fourth** state, not just a third:
+
+| visual element | 0.3 read | readiness predicate |
+|---|---|---|
+| `Album.Pane` readiness | `AlbumPaneReadiness.Of(...)` | `Header` (identity unknown) → `Rows` (tracks edge Unknown/Partial, or Complete with an unnamed row and no failure) → `Failed` (the tracks edge failed, or the row batch failed) → `Ready` (Complete, every row named) |
+| `Album.Pane`'s shimmer count | `AlbumPaneReadiness.ShimmerRows(knowsCount, trackCount, listed)` | `TrackCount` when known, else the listed edge length, else 6 — never 0 |
+
+`Album.Notice` is **no longer consumed on this surface** — the `MinifiedAlbum` notice's only reader here is deleted
+(§0 #22); `Detail.Identity.For` and the DATA GAP 6 `Album.Notice` column themselves are untouched (still read
+elsewhere).
+
+**`Artist.Reader`'s demand rules, 2026-09-18 (replaces the discography-pane row above for the artists view).**
+Scope 0 (*in your library*): every saved block's tracks edge + `TrackFields.Row` at **Visible**. Scope 1 (*all
+releases*): additionally the three facet edges' first pages at Visible (`DemandDiscography`), `AlbumFields.DiscoCard`
+for every listed release, and every catalogue block's tracks edge + rows at **Prefetch**; facet pages beyond the
+first are scroll-paced (`DemandNextPage` from `OnVisibleRange`). The whole model is asked per the
+`no-page-side-fetch-windows` rule — the reader keeps no visible-window fetch of its own; the runner batches.
+
 **One more search shape the model has to carry.** `LibraryAlbumGroup.Tracks` is "all tracks when the album/artist name
 matched; only the matching tracks otherwise" (`LibrarySearch.cs:35-38`), and `MatchStart/MatchLen` are per-level with
 `MatchLen == 0` meaning "this level's own name did not match" → no pill. So the hit shape is not "matched rows" but
@@ -1308,6 +1460,11 @@ column or edge.
 | `LibrarySortView.SortLabel(int)` / `.ViewGlyph(int)` | `Features/Library/LibrarySortView.cs:27-35` | int code → loc key; view code → grid/list glyph. Pure, no engine. | (none today) | **`Entities/User.UI.cs`**, as static helpers — and give them a test, since the int codes are persisted. **NOT library-private:** the sidebar's Library V3 deliberately shares this numbering and these loc keys for codes 0–3 and clamps its own with `LibraryV3Metrics.NormalizeSort` (`Features/Sidebar/Modes/LibraryV3/LibraryV3Metrics.cs:105, :133-141`), and `V3SortViewFlyout.cs` is a *copy* of the pill + panel, not a reuse. Renumbering, renaming a key, or moving the labels out of reach of the sidebar breaks 25-sidebar.md. |
 | `LibrarySearchIndex` / `LibrarySearchCorpus` / `MatchReason.ShouldExplain` | `Backend/Library/*` + `Wavee.Core/Library/LibrarySearch.cs:25-27` | The match/rank/group walk and the honesty rule (an unattributable reason renders nothing). | `src/apps/Wavee.Tests/LibrarySearchTests.cs` (142) | **CORE section of `Entities/User.cs`** (see DATA GAP 5) |
 | `PlayRecency` / `RecentsRecency` | `App/PlayRecency.cs`, `Wavee.Core` | uri stamp merge (max-merge, cap 4096, trim to 3840 every 256 appends) feeding the Recents order. | `src/apps/Wavee.Tests/RecentsRecencyTests.cs` (117) | **CORE section of `Playback/Playback.cs`** (it is a playback fold), read by `User.cs` |
+| `LibraryLetters` — **new 2026-09-18** | `library-rework-implementation.md` §5.1 | Letter groups over an alphabetically-sorted navigator: `Of(title)` (leading punctuation/a leading "the " skipped, non-A–Z folds to `#`), `Build` (the flat header/row index space + prefix-sum offsets), `StickyLetterAt`, `Key()` (the remount identity). | `src/apps/Wavee.Tests/LibraryLettersTests.cs` | **CORE section of `Entities/User.cs`** |
+| `LibraryWordRail` (+ `LibraryNavSort.Albums = 5`) — **new 2026-09-18** | `library-rework-implementation.md` §5.1 | Which sort words each kind's rail shows, in rail order, as persisted codes; `Clamp` (a code the rail doesn't offer falls to `Recents`); the rail-word loc key. Codes never renumber, only append. | `src/apps/Wavee.Tests/LibraryWordRailTests.cs` | **CORE section of `Entities/User.cs`** |
+| `AlbumPaneReadiness` — **new 2026-09-18** | `library-rework-implementation.md` §5.1 | The pane's four-state gate (`Header`/`Rows`/`Failed`/`Ready`) and its counted-shimmer rule (§7). | `src/apps/Wavee.Tests/AlbumPaneReadinessTests.cs` | **CORE section of `Entities/User.cs`** |
+| `Artist.ReaderShape` — **new 2026-09-18** | `library-rework-implementation.md` §5.6 | The reader's block order and extents: library-first then catalogue, the three sorts (newest/oldest/a–z, unknown years sinking), union-dedup against saved, `ExtentOf` arithmetic, `OrderKey` stability. | `src/apps/Wavee.Tests/ArtistReaderShapeTests.cs` | `Entities/Artist.Reader.cs` (CORE half, owner N) |
+| `Table.Failed` / `Fetch.MarkFailed` — **new 2026-09-18** | `library-rework-implementation.md` §5.0, §8 | A per-row fetch failure did not exist before this rework (`Table.Known` only; `Fetch.Failed` un-asks). `Table.Failed` is a `Column<uint>` cleared both by the planner and in `Applied`, read by `AlbumPaneReadiness.Of`'s `rowsFailed` input. | no dedicated test file — covered by `AlbumPaneReadinessTests`' `Failed` cases | `Entities/Entities.cs` |
 
 Do **not** re-derive any of these. `LibraryNavOrderTests` pins exact permutations (e.g. source A B C D E with plays
 A@100 C@300 E@200 ⇒ `[2,4,0,1,3]`); `LibraryLayoutBreakpointTests` pins 639 collapse / 640 not / 663 stay / 664 leave.
@@ -1382,12 +1539,20 @@ A@100 C@300 E@200 ⇒ `[2,4,0,1,3]`); `LibraryLayoutBreakpointTests` pins 639 co
   it shows a **full page**, not the 104-DIP compact pane that is the library's right column. `Album.Page.cs` must carry
   **two** components: `Album.Page` and `Album.CompactPane`. Owner M builds the first, owner O needs the second; that
   boundary is unassigned in §5.
+
+  **Settled 2026-09-18 (§12) — not two components in one file.** `Album.Pane.cs` is its own new named partial
+  (`public readonly partial struct Album`: `PaneProps`, `Pane`, `PaneHeader`, `PaneCommands`, `AlsoByStrip`), owner
+  M; the library's artist column is `Artist.Reader.cs` (`public readonly partial struct Artist`: `ReaderProps`,
+  `Reader`, `ReaderShape`, `Block`, `Spine`, `ArtistBand`), owner N — not an `Artist.DiscographyPane` inside
+  `Artist.Page.cs`. This closes both the boundary above and the "three owners, one screen" bullet just below.
 - **§4.14 `User.cs`** models the library as edges (correct) but shows only `Liked`, `Rootlist` and `Like(...)`. It never
   names `SavedAlbums` / `FollowedArtists` / `SavedShows` accessors, the `AddedAt` read the "Recently added" sort needs,
   or any ordering rule. §4.3 does declare the three edge tables — the two sections are out of step.
 - **§5 Wave 5 owner split.** Owner O owns `User.Page.Library.cs` but the library's right column is `Album.CompactPane` /
   `Show.CompactPane` (owner M) and `Artist.DiscographyPane` (owner N). Three owners, one screen. Either move the compact
-  panes to O or make them the first thing M and N deliver.
+  panes to O or make them the first thing M and N deliver. **Settled 2026-09-18 — see the note above:** `Album.Pane.cs`
+  (M) and `Artist.Reader.cs` (N) ship as their own named partials, each demanded/mounted by O's
+  `User.Page.Library.cs` through a frozen props record; no compact-pane file moved to O.
 - **No chapter of the plan mentions column-width persistence, scroll memory keys, or the collapse breakpoint.** All
   three are load-bearing (§8).
 
@@ -1837,3 +2002,49 @@ had no wireframe. Six changes:
     "profile" in the tree is `Features/Shell/ProfileMenu.cs`, the avatar menu (chapter 19); its "Play file…" row is
     already recorded in §11. The `User.*` total row moves from "3400 – 3900 (library + liked + profile + edges)" to
     the settled **8 400**.
+
+**library-rework (2026-09-18) — Library rework (the Collection browser).** Implemented in
+`src/apps/Wavee/Entities/{User.cs, User.UI.cs, User.Page.Library.cs, Album.Pane.cs, Album.UI.cs §5, Artist.Reader.cs,
+Show.UI.cs, Detail.UI.cs, Track.Table.Chrome.cs §6, Entities.cs (`Table.Failed`), Fetch.cs,
+Entities.Fake.Library.cs}` and `Platform/Platform.cs`, per `docs/plans/wavee/library-rework-implementation.md`
+§§5-10. Eleven changes, all against the chapter as it stood before this entry:
+
+30. *superseded* — **§0 #3.** The title row now also carries the row count (14/400 `TextTertiary`, bound to the
+    shape's `Count`) beside the `PageHero`; the 0.2.9 anatomy never had one.
+31. *superseded* — **§0 #5.** The view/size codes stay, but the one-pill-plus-flyout control (`LibrarySortView.cs`)
+    is gone: a plain list/grid icon pair (`User.ViewToggle`) plus a trimmed `ViewPanel` (compact + S/M/L only). The
+    artists view's second, independent copy of the old control — over the discography column — is deleted with the
+    column.
+32. *noted* — **§0 #8.** The prototype's art-wash cover treatment was evaluated against the accent-neutral rule and
+    recorded as **not built**; the rule itself is unchanged.
+33. *new* — **§0 gained #19-23.** The artists view is two panes (navigator + `Artist.Reader`, not three); sort is a
+    word rail (`LibraryWordRail`, persisted `LibraryNavSort` codes 0-5, with **5 = `Albums`** newly appended for the
+    artists rail, by saved-album count desc then title); alphabetical sort adds letter groups + an A-Z jump strip
+    (`LibraryLetters`); `Album.Pane` gets a real four-state readiness (`AlbumPaneReadiness`: `Header` · `Rows` ·
+    `Failed` · `Ready`), closing W24's failure arm for good, with **no `MinifiedAlbum` notice** on this surface; and
+    a new persisted key `library.<kind>.scope` joins DATA GAP 8's twelve. `library.<kind>.album.{desc,view,size}`
+    (the deleted discography column's own keys) are now **orphaned but still persisted** — read by nobody, left
+    unmigrated in `Platform.Settings`.
+34. *superseded* — **W2 (Artists, wide, three columns).** The discography column is deleted, not hidden. Kept for
+    the record; replaced by **W28** (navigator + `Artist.Reader`, wide) and **W29** (the reader, scope = all
+    releases, catalogue blocks landing).
+35. *new* — **W30 added.** `Album.Pane`'s four readiness states, illustrating item 33's `AlbumPaneReadiness` and
+    closing the "no error state on the browse side" gap W24 named.
+36. *deleted, kept for the record* — **W8 (discography pane skeleton).** The column it painted no longer exists;
+    its replacement's loading state is a per-block `Skel.Region`, not a whole-pane gate (see W29).
+37. *superseded* — **W9.** Two placeholders, not three: the third ("Select a release", the discography column's
+    tracks pane) is gone with the column. The surviving albums/artists placeholders and their transience rule (§0
+    #16) are unchanged.
+38. *superseded* — **W14-W17 depths.** Artists' browse `maxDepth` drops 2 → 1 (`Artist.Reader` is one pane, so W16
+    no longer exists in browse); albums/podcasts stay at `maxDepth = 1` (W17, unchanged). Search mode is untouched —
+    artists SEARCH keeps depth 0/1/2 while artists BROWSE keeps 0/1.
+39. *new* — **§7 gained `AlbumPaneReadiness`'s table rows and `Artist.Reader`'s demand rules**, closing "readiness
+    has no failure arm on the browse side" for the album pane. `Album.Notice`'s only reader on this surface is
+    deleted; the column and DATA GAP 6 itself are untouched elsewhere.
+40. *new* — **§8 gained five pure rules** with their tests: `LibraryLetters` (`LibraryLettersTests`),
+    `LibraryWordRail` + `LibraryNavSort.Albums` (`LibraryWordRailTests`), `AlbumPaneReadiness`
+    (`AlbumPaneReadinessTests`), `Artist.ReaderShape` (`ArtistReaderShapeTests`), and `Table.Failed` /
+    `Fetch.MarkFailed` (no dedicated test file — covered by `AlbumPaneReadinessTests`' `Failed` cases).
+41. *settled* — **§9's "`Album.Page.cs` must carry two components".** Not two components in one file:
+    `Album.Pane.cs` (named partial, owner M) and `Artist.Reader.cs` (owner N) — not `Artist.DiscographyPane` inside
+    `Artist.Page.cs`. Closes both that item and the "three owners, one screen" bullet beneath it.

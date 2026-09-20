@@ -1040,7 +1040,7 @@ into columns that do not exist yet, and Wave 1 cannot write rules against chapte
 | E | `Spotify.Decode.cs`, `+Spotify.Decode.Pathfinder.cs` | Wave 1 (A, B) | ExtendedMetadataSource, all Projectors, SpotifyExportMapper, PlaylistWireMapper, CollectionWireMapper, cluster/PutState mappers, `RecentsList.Group` (ch 16), the bundled-export offline fixture path (ch 31) |
 | F | `Spotify.Api.cs`, `Spotify.Audio.cs`, `Spotify.Telemetry.cs`, `Spotify.Connect.cs` | D | ~20 Spotify*Service files → functions; SpotifyLive/Audio stream + keys; Gabo/Herodotus; LiveConnect + DeviceStatePublisher |
 - Tests: Decode against the existing captured fixtures (`_old/Wavee.Tests/**/Fixtures`), Shannon/handshake vectors, request builders return the request (pure), dealer frame parse.
-- Gate: tests green; a console smoke (`dotnet run -- --login-smoke`, a `Diagnostics.Probe` entry) logs in with the stored credential and decodes one `getAlbum` into a Staging with the expected row counts. (Network; run by the orchestrator only.)
+- Gate: tests green; the headless login smoke (`ops/headless/Invoke-WaveeHeadless.ps1 ops/headless/login-smoke.wh` — `Wavee.exe --headless --script`, the `Diagnostics.Probe` arm of `wavee-0.3-headless-implementation.md`) resumes the stored credential, decodes one album through Ensure → Fetch → Api → Decode → Commit into a context queue and exits 0 with its first track playing. (Network; run by the orchestrator only; `-Profile <dir>` whenever a packaged Wavee is installed.)
 
 ### Wave 3 — Playback (2 subagents)
 | Owner | Files | Depends on | Ports from |
@@ -1052,7 +1052,7 @@ into columns that do not exist yet, and Wave 1 cannot write rules against chapte
   and owner B's library edges attach. Ch 14 W14-W16 are then re-checked in Wave 5, not Wave 3.
 - `Playback.Video.cs` is the decode/host only (A13). Owner K writes every video **surface** in Wave 4.
 - Tests: Step transitions (the 0.2.9 PlaybackSession/ownership tests ported to Step), stale-epoch drops, effect-slot semantics, `SmtcTimelineCoalescerTests`, `ToastCoalescingTests`.
-- Gate: tests green; the login smoke plays 10 s of a track through the real pump (orchestrator); the SMTC card, the taskbar overlay and the thumbnail toolbar match ch 14's W1-W13 against the golden captures (owner H's whole HWND-line surface; W14-W16, the jump list, are re-checked in Wave 5 per the note above).
+- Gate: tests green; `ops/headless/ogg320.wh` exits 0 through `Invoke-WaveeHeadless.ps1` — 10 s of a track through the real pump, then the far / ring / back seek rows with their request budgets and `xruns==0` (orchestrator; headless plan §4.3); the SMTC card, the taskbar overlay and the thumbnail toolbar match ch 14's W1-W13 against the golden captures (owner H's whole HWND-line surface; W14-W16, the jump list, are re-checked in Wave 5 per the note above).
 
 ### Wave 4 — shell, sidebar, rail/stage/deck/lyrics/video, platform (4 subagents)
 | Owner | Files | Depends on | Ports from |

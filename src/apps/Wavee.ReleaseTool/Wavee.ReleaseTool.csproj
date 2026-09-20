@@ -1,10 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- The release notes validator/emitter. Run by hand (or by ops\release\wavee-release.ps1) with `dotnet run`;
-       never published, never packaged. It refs Wavee.Core ONLY, so the release-notes model and the changelog
-       parser it validates are literally the ones the app deserializes at runtime.
-       AOT-clean by construction: STJ source-gen contexts only (Wavee.Core's for the documents, a local one for
-       the two GitHub response shapes) — no reflection-based JSON, no third-party packages. -->
+       never published, never packaged. It compiles the two CORE partials by name (ReleaseNotes.cs,
+       ReleaseNotes.Model.cs, namespace Wavee, plan §3.3) instead of referencing Wavee.csproj, so the release-notes
+       model and the changelog parser it validates are literally the ones the app deserializes at runtime, without
+       the tool ever loading the engine. A third partial added to ReleaseNotes later is a build break here, not
+       Wave 6 — add its name to the list below in the same wave it's split out.
+       AOT-clean by construction: STJ source-gen contexts only (the ported model's for the documents, a local one
+       for the two GitHub response shapes) — no reflection-based JSON, no third-party packages. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>Wavee.ReleaseTool</RootNamespace>
@@ -17,7 +20,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Wavee.Core\Wavee.Core.csproj" />
+    <Compile Include="..\Wavee\Screens\ReleaseNotes.cs" />
+    <Compile Include="..\Wavee\Screens\ReleaseNotes.Model.cs" />
   </ItemGroup>
 
 </Project>
