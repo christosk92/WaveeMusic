@@ -1108,10 +1108,6 @@
       "railResetAction": "Clear",
       "railResetConfirmTitle": "Clear all remembered sizes?",
       "railResetConfirmBody": "This resets the left rail's remembered width and collapsed state for albums, playlists, Liked Songs and podcasts back to their defaults. This can't be undone.",
-      "lyricsBackdrop": "Animated lyrics backdrop",
-      "lyricsBackdropSub": "Let the blurred cover art drift slowly behind fullscreen lyrics instead of holding still",
-      "lyricsSecondary": "Lyrics second line",
-      "lyricsSecondarySub": "Show a translation or a romanization under each lyric line, when the lyric source provides one",
       "lyricsBlur": "Lyrics blur",
       "lyricsBlurSub": "Depth-of-field and glow blur on the lyrics. 0 turns them off — lighter on the GPU.",
       "lyricsBlurAuto": "Auto",
@@ -1129,10 +1125,7 @@
       "cozy": "Cozy",
       "comfortable": "Comfortable",
       "automatic": "Automatic",
-      "hero": "Hero",
-      "off": "Off",
-      "translation": "Translation",
-      "romanization": "Romanization"
+      "hero": "Hero"
     },
     "playback": {
       "runtimeReadySub": "Audio keys are derived locally on this PC.",

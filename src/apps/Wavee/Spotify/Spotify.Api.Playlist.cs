@@ -306,7 +306,15 @@ public static partial class Spotify
                  failed: kind => { if (ReferenceEquals(scope, Entities.Current)) WriteDescription(p, previous); settled?.Invoke(false); Fail(kind, PlaylistEditVerb.Generic); });
         }
 
-        /// <summary>Collaborative on/off — optimistic-only (W17): the ack or a dealer push re-publishes in place.</summary>
+        /// <summary>Collaborative on/off — optimistic-only (W17): the ack or a dealer push re-publishes in place.
+        /// <para><b>NO SETTLE REFRESH</b> (the toggle-bounce fix). The generic runner ends a successful op with
+        /// <c>Entities.RefreshEdge(PlaylistTracks)</c>, and that read re-decodes the list's ATTRIBUTES at
+        /// <see cref="Authority.Full"/> — <c>collaborative</c> among them (<c>Spotify.Decode</c>'s
+        /// <c>Attributes</c> arm, field 4). A read issued a millisecond after its own write routinely comes back on a
+        /// replica that has not seen it, and it then lands the PRE-write flag over the flag the write just set: the
+        /// eyebrow went back to "Private" and the switch flipped itself off, with the server having agreed all along.
+        /// This op MOVES NO ROWS, so there is nothing for a membership read to bring: the ack is the answer, and the
+        /// dealer's own push (or the next open's <c>/diff</c>) is what converges the head.</para></summary>
         public static void SetCollaborative(Playlist p, bool on, Action<bool>? settled = null)
         {
             if (!Gate(p, PlaylistEditVerb.Generic, settled)) return;
@@ -314,7 +322,8 @@ public static partial class Spotify
             WriteCaps(p, PlaylistCaps.IsCollaborative, on);
             Post(p, scope, new PlaylistOp(PlaylistOpKind.UpdateList, Patch: new PlaylistListPatch(Collaborative: on)), retry409: true,
                  ok: () => settled?.Invoke(true),
-                 failed: kind => { if (ReferenceEquals(scope, Entities.Current)) WriteCaps(p, PlaylistCaps.IsCollaborative, !on); settled?.Invoke(false); Fail(kind, PlaylistEditVerb.Generic); });
+                 failed: kind => { if (ReferenceEquals(scope, Entities.Current)) WriteCaps(p, PlaylistCaps.IsCollaborative, !on); settled?.Invoke(false); Fail(kind, PlaylistEditVerb.Generic); },
+                 refreshRows: false);
         }
 
         static bool Gate(Playlist p, PlaylistEditVerb verb, Action<bool>? settled)
@@ -674,8 +683,11 @@ public static partial class Spotify
         // ── the one /changes runner ───────────────────────────────────────────────────────────────────────────────
 
         /// <summary>API THREAD for the work, UI thread for the verdict: read the head, POST the op, retry ONCE on 409 when
-        /// the op is keyed-exact. <paramref name="ok"/> then a membership refresh; <paramref name="failed"/> gets the kind.</summary>
-        static void Post(Playlist p, Scope scope, PlaylistOp op, bool retry409, Action? ok, Action<PlaylistMutationFailure> failed)
+        /// the op is keyed-exact. <paramref name="ok"/> then a membership refresh; <paramref name="failed"/> gets the kind.
+        /// <para><paramref name="refreshRows"/> false for an op that moves NO rows and whose own optimistic write the
+        /// refresh's answer could contradict (see <see cref="SetCollaborative"/>).</para></summary>
+        static void Post(Playlist p, Scope scope, PlaylistOp op, bool retry409, Action? ok, Action<PlaylistMutationFailure> failed,
+                         bool refreshRows = true)
         {
             if (!CanWrite(out _, out string username)) { failed(PlaylistMutationFailure.NotSupported); return; }
             string id = IdOf(p);
@@ -701,7 +713,7 @@ public static partial class Spotify
                         if (final is >= 200 and < 300)
                         {
                             ok?.Invoke();
-                            if (ReferenceEquals(scope, Entities.Current)) Entities.RefreshEdge(FetchEdge.PlaylistTracks, slot);
+                            if (refreshRows && ReferenceEquals(scope, Entities.Current)) Entities.RefreshEdge(FetchEdge.PlaylistTracks, slot);
                         }
                         else failed(PlaylistEditErrorKinds.KindOfStatus(final));
                     });

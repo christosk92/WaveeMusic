@@ -246,8 +246,18 @@ public static partial class Rail
         public static int ClampStyle(int id) => PlayerCatalog.IsPresetId(id) ? id : PlayerCatalog.DefaultPresetId;
         public static int ClampChoice(in PlayerCatalog.OptionDef o, int i) => (uint)i < (uint)o.Choices.Length ? i : 0;
 
-        /// <summary>Reactive read (subscribes the epoch) of the hero presentation.</summary>
+        /// <summary>Reactive read (subscribes the epoch) of the STORED hero presentation — what the Cover/‹Player› switch
+        /// shows and every writer round-trips.</summary>
         public static int Presentation() => Prefs.NpvPlayer.Presentation();
+
+        /// <summary>Reactive read of the face the hero actually PAINTS: the stored presentation while developer mode is
+        /// on, the cover otherwise (the switch itself is developer-only). Subscribes the epoch AND the developer
+        /// signal.</summary>
+        public static int ResolvedPresentation() => Prefs.NpvPlayer.ResolvedPresentation();
+
+        /// <summary>Is the Cover/‹Player› switch offered at all? Reactive — a developer-mode flip composes or removes it
+        /// live.</summary>
+        public static bool PresentationSwitchVisible() => Platform.Developer.Enabled.Value;
 
         /// <summary>Reactive read of the chosen preset id, clamped against the catalog.</summary>
         public static int Style() => ClampStyle(Prefs.NpvPlayer.Style(PlayerCatalog.Presets.Length));

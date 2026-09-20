@@ -104,6 +104,22 @@ public sealed class PrefsTests : IDisposable
         Assert.Equal(4, Prefs.Appearance.LikedCover(treatmentCount: 9));
     }
 
+    /// <summary>A profile that never picked a page motion resolves to <see cref="Design.Nav.DefaultStyle"/> — Classic —
+    /// because the KEY takes its default from that same constant. The Settings row is developer-only, so this is what a
+    /// normal build navigates with; a profile that DID pick one keeps its pick, downgrade-clamped like every other rung.</summary>
+    [Fact]
+    public void A_fresh_profile_navigates_at_the_default_page_motion_and_a_chosen_style_survives()
+    {
+        Assert.Equal(Design.PageMotionStyle.Classic, Design.Nav.DefaultStyle);
+        Assert.Equal((int)Design.Nav.DefaultStyle, Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount));
+
+        _store.Set(Platform.Keys.PageMotionStyle, (int)Design.PageMotionStyle.Spatial);
+        Assert.Equal((int)Design.PageMotionStyle.Spatial, Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount));
+        // A style a downgrade no longer has still reads as a real style, never as nothing.
+        _store.Set(Platform.Keys.PageMotionStyle, 40);
+        Assert.Equal(0, Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount));
+    }
+
     // ── lyrics ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
@@ -147,13 +163,26 @@ public sealed class PrefsTests : IDisposable
         Assert.Equal(Prefs.Lyrics.None, Prefs.Lyrics.Next(Prefs.Lyrics.None, available: 0));
     }
 
+    /// <summary>The secondary line is SESSION state, not a setting: its Settings row and its key are gone, so the writer
+    /// clamps into memory and bumps, and nothing reaches the store at all.</summary>
     [Fact]
-    public void Setting_the_secondary_line_persists_the_clamped_mode_and_bumps()
+    public void Setting_the_secondary_line_clamps_bumps_and_persists_NOTHING()
     {
-        int before = Prefs.Lyrics.Epoch.Peek();
-        Prefs.Lyrics.SetSecondaryLine(9);
-        Assert.Equal(Prefs.Lyrics.None, _store.Get(Platform.Keys.LyricsSecondaryLine));
-        Assert.Equal(before + 1, Prefs.Lyrics.Epoch.Peek());
+        try
+        {
+            int before = Prefs.Lyrics.Epoch.Peek();
+            Prefs.Lyrics.SetSecondaryLine(9);
+            Assert.Equal(Prefs.Lyrics.None, Prefs.Lyrics.SecondaryLine());          // a stray mode reads as Off
+            Assert.Equal(before + 1, Prefs.Lyrics.Epoch.Peek());
+
+            Prefs.Lyrics.SetSecondaryLine(Prefs.Lyrics.Romanization);
+            Assert.Equal(Prefs.Lyrics.Romanization, Prefs.Lyrics.SecondaryLine());  // the globe toggle still works
+            Assert.Equal(0, _store.WrittenCount);                                   // … and no key was written
+        }
+        finally
+        {
+            Prefs.Lyrics.SetSecondaryLine(Prefs.Lyrics.None);   // process state: hand the session back at its default
+        }
     }
 
     [Fact]
@@ -224,6 +253,24 @@ public sealed class PrefsTests : IDisposable
         Assert.Equal(0, Prefs.NpvPlayer.Choice("record", "spin", 3));
         // A different preset's option is a different key.
         Assert.Equal(0, Prefs.NpvPlayer.Choice("cassette", "spin", 3));
+    }
+
+    /// <summary>The Cover/‹Player› switch is DEVELOPER-ONLY, so the face a normal build paints is the cover whatever is
+    /// stored — a ‹Player› persisted while the switch was available cannot bring the deck back. The stored preference is
+    /// untouched: turning developer mode on returns the face the user last chose.</summary>
+    [Fact]
+    public void The_hero_face_is_the_cover_unless_developer_mode_is_on()
+    {
+        Assert.Equal(Prefs.NpvPlayer.Cover, Prefs.NpvPlayer.ResolvePresentation(Prefs.NpvPlayer.Player, developerMode: false));
+        Assert.Equal(Prefs.NpvPlayer.Cover, Prefs.NpvPlayer.ResolvePresentation(Prefs.NpvPlayer.Cover, developerMode: false));
+        Assert.Equal(Prefs.NpvPlayer.Player, Prefs.NpvPlayer.ResolvePresentation(Prefs.NpvPlayer.Player, developerMode: true));
+        Assert.Equal(Prefs.NpvPlayer.Cover, Prefs.NpvPlayer.ResolvePresentation(Prefs.NpvPlayer.Cover, developerMode: true));
+        // An unknown stored value is still the safe reading, in both modes.
+        Assert.Equal(Prefs.NpvPlayer.Cover, Prefs.NpvPlayer.ResolvePresentation(7, developerMode: true));
+
+        // … and the STORED preference is what the switch and every writer keep round-tripping.
+        Prefs.NpvPlayer.SetPresentation(Prefs.NpvPlayer.Player);
+        Assert.Equal(Prefs.NpvPlayer.Player, Prefs.NpvPlayer.Presentation());
     }
 
     [Fact]

@@ -43,12 +43,25 @@ public static partial class Prefs
         /// <summary>Anything that is not <see cref="Player"/> is the cover — the safe reading of an unknown value.</summary>
         public static int ClampPresentation(int v) => v == Player ? Player : Cover;
 
-        /// <summary>Reactive read of the hero presentation.</summary>
+        /// <summary>PURE: which face the hero actually SHOWS. The Cover/‹Player› switch is a DEVELOPER surface — it is
+        /// composed only in developer mode — so a normal build shows the <see cref="Cover"/> whatever is stored, and a
+        /// value persisted while developer mode was on cannot bring the deck back when it is off. The stored preference
+        /// is untouched: turning developer mode back on returns the face the user last chose.</summary>
+        public static int ResolvePresentation(int stored, bool developerMode)
+            => developerMode ? ClampPresentation(stored) : Cover;
+
+        /// <summary>Reactive read of the STORED hero presentation — what the switch and every writer see. Surfaces that
+        /// PAINT the hero read <see cref="ResolvedPresentation"/> instead.</summary>
         public static int Presentation()
         {
             _ = Epoch.Value;
             return ClampPresentation(Platform.Settings.Get(Platform.Keys.NpvPresentation));
         }
+
+        /// <summary>Reactive read of the face the hero paints — <see cref="Presentation"/> resolved against the live
+        /// developer-mode signal, so a flip of that switch re-renders every reader without a relaunch.</summary>
+        public static int ResolvedPresentation()
+            => ResolvePresentation(Presentation(), Platform.Developer.Enabled.Value);
 
         /// <summary>Reactive read of the chosen player-style id, clamped against the catalog's preset count (owner K
         /// passes it; a downgrade or a hand-edited value then reads as preset 0 rather than as nothing).</summary>

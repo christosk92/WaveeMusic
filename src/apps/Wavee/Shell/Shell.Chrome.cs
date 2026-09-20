@@ -47,15 +47,22 @@ public static partial class Shell
         // deliberately the SAME band width the two-row toolbar used (ToolbarNarrowLeaveW − ToolbarNarrowEnterW).
         public const float ChromePromotionHysteresisW = 40f;
 
-        /// <summary>The profile NAME beside the avatar — the first thing to go, so the gutters stop being the only
-        /// give.</summary>
+        /// <summary>The profile NAME beside the avatar — the LOWEST-priority item in the row, and so the first thing to
+        /// go. It is a PERMISSION, not a decision: see <see cref="ChromeActionsEnterW"/>.</summary>
         public const float ChromeNameEnterW = 1360f;
 
         /// <summary>The ONE "actions in row" stage — bell · friends · pin · settings enter the trailing island
         /// TOGETHER at this width. 1200, not the old friends-only 1000: four 44-DIP buttons plus the theme toggle
         /// would starve the search field of a 1000-wide window with two tabs. Below it every one of the four FOLDS
         /// rather than vanishing — bell and friends become profile-menu rows, and pin simply drops from the row (the
-        /// tab/page context menu still offers it).</summary>
+        /// tab/page context menu still offers it).
+        /// <para><b>A threshold is a PERMISSION, never a decision (#88).</b> This number and
+        /// <see cref="ChromeNameEnterW"/> used to be raw: crossing 1200 added 176 DIP of fixed cost in ONE step with
+        /// nothing asking whether the row could afford them, so WIDENING the window could take the search field away
+        /// (three tabs lost it across ≈[1200, 1244), four across ≈[1200, 1354)) and the excess landed on the clipped
+        /// tabs island. Both are now BUDGET-CHECKED in <see cref="Chrome.StageFor"/>: the width only makes the stage
+        /// eligible, and it is entered only when the row can still seat the search at
+        /// <see cref="ChromeSearchMinW"/> and the tabs at their required extent beside it.</para></summary>
         public const float ChromeActionsEnterW = 1200f;
 
         /// <summary>Forward hides below the SAME 520/560 band the old toolbar used for its primary nav — the raw
@@ -85,8 +92,25 @@ public static partial class Shell
         public const float ChromeTabOverflowW = 36f;
 
         /// <summary>The profile chip with the avatar alone (4 + a 24-DIP picture + 4). The unread badge is a
-        /// zero-footprint overlay, so it never enters the budget.</summary>
+        /// zero-footprint overlay, so it never enters the budget.
+        /// <para>This is ONE of the identity chip's four forms — see <see cref="Chrome.ChipWidth"/>. It used to be the
+        /// only one the budget knew, which under-reserved the row by 50-70 DIP for the whole of a sign-in or a resume
+        /// (more than the 16 DIP of gutter cushion), so a narrow window genuinely overflowed into the tabs island
+        /// exactly while "Connecting" or "Reconnect" was on screen. (#88)</para></summary>
         public const float ChromeProfileChipW = 32f;
+
+        /// <summary>The "Connecting" caption chip: 8 + 8 of padding around a secondary caption. A nominal sized for the
+        /// longest shipped label — the same nominal discipline as <see cref="ChromeProfileNameW"/>, and the same
+        /// reason (a localised string cannot be measured from a constant); the gutters absorb the rest.</summary>
+        public const float ChromeConnectingChipW = 90f;
+
+        /// <summary>The "Sign in" accent button: an 11+11 <c>ButtonPadding</c> and a 1+1 border around a 14 pt label.</summary>
+        public const float ChromeSignInChipW = 84f;
+
+        /// <summary>The "Reconnect" accent button — the SAME control as <see cref="ChromeSignInChipW"/> with the longer
+        /// verb, so it is budgeted separately rather than folded in: 16 DIP of difference is the whole gutter
+        /// cushion.</summary>
+        public const float ChromeReconnectChipW = 100f;
 
         /// <summary>What "show the name" ADDS to that chip: the 8-DIP gap + the display-name caption + the extra 6 DIP
         /// of right padding the named form carries. A nominal for a nominal name — the drag gutters absorb the
@@ -119,6 +143,13 @@ public static partial class Shell
 
         // Search: a real field between min and max, else the click-expanding magnifier. These are the only two numbers
         // the search ladder has — everything between them is whatever space is left over.
+        //
+        // <see cref="ChromeSearchMinW"/> is a HARD FLOOR in both directions, and both halves matter (#88): the row may
+        // not choose the field unless the centre lane can seat 280 (<see cref="Chrome.SearchLane"/>), and the field is
+        // never LAID OUT below 280 either (<see cref="Chrome.FieldWidthFor"/>). The old ladder honoured only the first
+        // half by accident — it compared the tab lane against <see cref="Chrome.PreferredSearchWidth"/>, which clamps
+        // UP to 280, so a row with 90 DIP to spare still "wanted" 280 — and nothing at all enforced the second, so the
+        // view's own `min(SearchWidth, measuredAvail)` could seat the field at any width whatsoever and clip it.
         public const float ChromeSearchMaxW = 420f;
         public const float ChromeSearchMinW = 280f;
         public const float ChromeSearchWidthRatio = 0.28f;
@@ -226,7 +257,16 @@ public static partial class Shell
     /// natural extent only decides whether the centred search may occupy a full field or must yield to the
     /// caption-adjacent icon. Structural promotions carry the standard 40-DIP reserve; demotions are immediate.
     /// <para><b>Do not replace this with an <c>if (width &lt; X)</c> ladder.</b> Every threshold that remains
-    /// (1360 / 1200 / 520) is a COST INPUT to the budget, not a layout branch.</para></summary>
+    /// (1360 / 1200 / 520) is a COST INPUT to the budget, not a layout branch.</para>
+    /// <para><b>The seating invariant (#88).</b> Whenever <see cref="SearchMode"/> is
+    /// <see cref="MergedSearchMode.Field"/>, <c>FixedBudgetFor() + SearchWidth + RequiredTabExtent(extent) ≤ width</c>
+    /// and <c>ChromeSearchMinW ≤ SearchWidth ≤ ChromeSearchMaxW</c>. The row can therefore always seat what this
+    /// allocation published, and a view that measures itself smaller has measured wrong — see
+    /// <see cref="FieldWidthFor"/>.</para>
+    /// <para><b>Monotonicity (#88).</b> For a fixed tab extent and chip form, WIDENING the window can never demote the
+    /// search. Every stage promotion is budget-checked, so it is entered only when the row still seats
+    /// <see cref="Layout.ChromeSearchMinW"/> and the tabs beside its own new cost — a threshold is a PERMISSION, not a
+    /// decision.</para></summary>
     public readonly record struct Chrome(
         bool ShowName,
         bool ShowActions,
@@ -234,6 +274,11 @@ public static partial class Shell
         bool ShowBack,
         bool ShowNewTab,
         bool ShowTrailing,
+        // WHICH identity chip the trailing island is showing, so the budget charges the form actually on screen instead
+        // of always assuming the 32-DIP avatar. Part of the record's identity on purpose: an auth transition
+        // (Connecting → Profile, Live → Reconnect) IS a re-allocation of the row, and the view reads the form back off
+        // this value, so the element tree can never disagree with the budget that sized it. (#88)
+        FrameRules.ChipForm Chip,
         MergedSearchMode SearchMode,
         float SearchWidth,
         // The tabs viewport's RESERVED width (navigation and add buttons excluded — the row adds those on top). Issue #88: the box used
@@ -254,20 +299,29 @@ public static partial class Shell
 
         public bool BareAvatar => !ShowName && !ShowActions;
 
-        public static Chrome FromWidth(float width, int tabCount)
-            => Resolve(width, EstimatedTabExtent(tabCount), null);
+        /// <summary>The PRE-MEASURE seed only (<c>Shell.Host</c>'s initial <c>ChromeLayout</c> value, and tests):
+        /// <see cref="EstimatedTabExtent"/> assumes every tab sits at its 110-DIP floor, which is optimistic by up to
+        /// 90 DIP per tab. That is the RIGHT direction — the seed only ever moves the extent UP as the strip measures
+        /// itself — but a call site that HAS the measured extent must use <see cref="Resolve(float, float, Chrome?,
+        /// FrameRules.ChipForm)"/> instead, which is what the shell's viewport effect does.</summary>
+        public static Chrome FromWidth(float width, int tabCount,
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
+            => Resolve(width, EstimatedTabExtent(tabCount), null, chip);
 
-        public static Chrome Resolve(float width, int tabCount, Chrome? previous = null)
-            => Resolve(width, EstimatedTabExtent(tabCount), previous);
+        /// <inheritdoc cref="FromWidth"/>
+        public static Chrome Resolve(float width, int tabCount, Chrome? previous = null,
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
+            => Resolve(width, EstimatedTabExtent(tabCount), previous, chip);
 
-        public static Chrome Resolve(float width, float naturalTabExtent, Chrome? previous = null)
+        public static Chrome Resolve(float width, float naturalTabExtent, Chrome? previous = null,
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
         {
             width = MathF.Max(0f, width);
             naturalTabExtent = MathF.Max(Layout.ChromeTabViewportMinW, naturalTabExtent);
-            var candidate = StageFor(width, naturalTabExtent);
-            if (previous is not { } old) return Compose(width, naturalTabExtent, in candidate, null);
+            var candidate = StageFor(width, naturalTabExtent, chip);
+            if (previous is not { } old) return Compose(width, naturalTabExtent, in candidate, chip, null);
 
-            var reserved = StageFor(MathF.Max(0f, width - Layout.ChromePromotionHysteresisW), naturalTabExtent);
+            var reserved = StageFor(MathF.Max(0f, width - Layout.ChromePromotionHysteresisW), naturalTabExtent, chip);
             var held = new Stage(
                 candidate.Name && (old.ShowName || reserved.Name),
                 candidate.Actions && (old.ShowActions || reserved.Actions),
@@ -276,11 +330,11 @@ public static partial class Shell
                 candidate.NewTab && (old.ShowNewTab || reserved.NewTab),
                 candidate.Trailing && (old.ShowTrailing || reserved.Trailing),
                 candidate.Field && (old.SearchMode == MergedSearchMode.Field || reserved.Field));
-            return Compose(width, naturalTabExtent, in held, old.LeadClusterW);
+            return Compose(width, naturalTabExtent, in held, chip, old.LeadClusterW);
         }
 
         public float FixedBudgetFor()
-            => FixedBudget(ShowName, ShowActions, ShowForward, ShowBack, ShowNewTab, ShowTrailing);
+            => FixedBudget(ShowName, ShowActions, ShowForward, ShowBack, ShowNewTab, ShowTrailing, Chip);
 
         public float FootprintFor(float naturalTabExtent)
             => FixedBudgetFor()
@@ -305,70 +359,173 @@ public static partial class Shell
             + (ShowForward ? Layout.ChromeNavButtonW : 0f)
             + (ShowNewTab ? Layout.ChromeAddSlotW : 0f);
 
+        /// <summary>What the search WANTS at this window width — a DESIRE, never an entitlement. It clamps UP to
+        /// <see cref="Layout.ChromeSearchMinW"/>, so on its own it says nothing about whether the row can seat a field;
+        /// <see cref="SearchLane"/> is what answers that.</summary>
         public static float PreferredSearchWidth(float width)
             => QuantiseDown(Math.Clamp(
                 width * Layout.ChromeSearchWidthRatio,
                 Layout.ChromeSearchMinW,
                 Layout.ChromeSearchMaxW));
 
+        /// <summary>The DIPs the row can genuinely hand the centre island at this width, for this stage: the window
+        /// minus the resolved fixed budget minus the tab lane's own required extent. This — not
+        /// <see cref="PreferredSearchWidth"/> — is what the Field/Icon decision is made against, and it is what the
+        /// field is then sized to. May be negative; the caller compares, it does not clamp. (#88)</summary>
+        public static float SearchLane(float width, float naturalTabExtent,
+            bool name, bool actionsInRow, bool forward, bool back, bool newTab, bool trailing,
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
+            => width
+             - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip)
+             - RequiredTabExtent(naturalTabExtent);
+
+        /// <summary>The width the FIELD is actually laid out at, given the bar's measured centre-column width.
+        /// <para>The chrome row runs with the ELASTIC TABS LANE, which makes the bar's centre column
+        /// <c>Grow=0, Shrink=0</c> — so the column HUGS the field and <c>TitleBar.CenterAvail</c> is a feedback of this
+        /// very width, not an independent supply. A bare <c>min(SearchWidth, avail)</c> against it is therefore a
+        /// one-way ratchet with no floor: one transient measurement (a mount-order frame, a mode flip, a frame where
+        /// the animating tabs lane overran the row) latches the field at that width forever, because the only thing
+        /// that could raise <c>avail</c> again is the field it already shrank. That is the clipped "Sear" stub.</para>
+        /// <para>The rule: the ALLOCATOR is authoritative — it has already proved the lane can seat
+        /// <see cref="Layout.ChromeSearchMinW"/>. A measurement is honoured only while it is itself at least that
+        /// minimum (so it can still trim a field the row narrowed under, which is real), and the result never leaves
+        /// [min, max]. A measurement below the minimum is evidence the measurement is wrong, not the ladder. (#88)</para></summary>
+        public static float FieldWidthFor(float searchWidth, float measuredCentreAvail)
+        {
+            float w = Math.Clamp(searchWidth, Layout.ChromeSearchMinW, Layout.ChromeSearchMaxW);
+            if (float.IsFinite(measuredCentreAvail) && measuredCentreAvail >= Layout.ChromeSearchMinW)
+                w = MathF.Min(w, MathF.Min(measuredCentreAvail, Layout.ChromeSearchMaxW));
+            return w;
+        }
+
+        /// <summary>The laid-out width of whichever search form this allocation chose — the ONE number the view sets on
+        /// the centre island. Icon mode is a fixed 44 and ignores the measurement entirely.</summary>
+        public float LaidOutSearchWidth(float measuredCentreAvail)
+            => SearchMode == MergedSearchMode.Icon
+                ? Layout.ChromeSearchIconW
+                : FieldWidthFor(SearchWidth, measuredCentreAvail);
+
         /// <summary>The row's non-tab, non-search DIPs. <paramref name="actionsInRow"/> reserves FOUR nav buttons at
         /// once (bell, friends, pin, settings) REGARDLESS of whether pin actually applies to the current destination:
         /// a page that gains/loses a pin row must not reflow the whole trailing island, and an element tree that
         /// disagrees with the budget reflows the island on every navigation. There is no "…" reservation — Forward
         /// simply hides below its own threshold instead of moving to an overflow menu.</summary>
-        public static float FixedBudget(bool name, bool actionsInRow, bool forward, bool back, bool newTab, bool trailing)
+        public static float FixedBudget(bool name, bool actionsInRow, bool forward, bool back, bool newTab, bool trailing,
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
             => Layout.ChromeBarLeadW
              + Layout.ChromeThemeToggleW
              + (back ? Layout.ChromeNavButtonW : 0f)
              + (forward ? Layout.ChromeNavButtonW : 0f)
              + (newTab ? Layout.ChromeAddSlotW : 0f)
-             + (trailing ? Layout.ChromeProfileChipW : 0f)
-             + (trailing && name ? Layout.ChromeProfileNameW : 0f)
+             + (trailing ? ChipWidth(chip) : 0f)
+             + (trailing && name && chip == FrameRules.ChipForm.Profile ? Layout.ChromeProfileNameW : 0f)
              + (actionsInRow ? 4f * Layout.ChromeNavButtonW : 0f)
              + 2f * Layout.ChromeGutterMinW
              + Layout.ChromeMinDragStripW
              + Layout.ChromeCaptionClusterW;
 
+        /// <summary>What the identity chip really costs in the form <see cref="FrameRules.ChipFor"/> selects — the ONE
+        /// place the row's four chips are priced. The budget used to know only the avatar's 32 DIP, which under-reserved
+        /// the "Connecting" caption and the "Sign in"/"Reconnect" accent button by 52-68 DIP: more than the whole
+        /// 16-DIP gutter cushion, so a narrow window overflowed into the clipped tabs island for the entire duration of
+        /// a sign-in or a resume. (#88)
+        /// <para>Only <see cref="FrameRules.ChipForm.Profile"/> can carry the display NAME — the other three forms are
+        /// already a caption or a labelled button, so <see cref="Layout.ChromeProfileNameW"/> is charged with the avatar
+        /// alone and the common path's flip widths are exactly where they were.</para></summary>
+        public static float ChipWidth(FrameRules.ChipForm chip) => chip switch
+        {
+            FrameRules.ChipForm.Connecting => Layout.ChromeConnectingChipW,
+            FrameRules.ChipForm.Reconnect => Layout.ChromeReconnectChipW,
+            FrameRules.ChipForm.SignIn => Layout.ChromeSignInChipW,
+            _ => Layout.ChromeProfileChipW,
+        };
+
         readonly record struct Stage(bool Name, bool Actions, bool Forward, bool Back, bool NewTab, bool Trailing, bool Field);
 
-        static Stage StageFor(float width, float naturalTabExtent)
+        static Stage StageFor(float width, float naturalTabExtent, FrameRules.ChipForm chip)
         {
-            bool name = width >= Layout.ChromeNameEnterW;
-            bool actionsInRow = width >= Layout.ChromeActionsEnterW;
+            bool name = false, actionsInRow = false;
             bool forward = width > Layout.ChromeForwardEnterW;
             bool back = true, newTab = true, trailing = true;
 
             // The tab viewport is the last elastic lane. Under extreme pressure shed fixed islands before allowing it
-            // to disappear; the captions and the compact search trigger never participate in that trade.
+            // to disappear; the captions and the compact search trigger never participate in that trade. Neither
+            // optional island is bought yet, so this runs against the bare row — and it only ever binds far below the
+            // narrowest width at which a field is possible at all (FixedBudget + 280 + one tab ≈ 780+).
             bool FitsEssential()
-                => width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing) - Layout.ChromeSearchIconW
+                => width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip) - Layout.ChromeSearchIconW
                    >= Layout.ChromeTabViewportMinW;
             if (!FitsEssential()) newTab = false;
             if (!FitsEssential()) trailing = false;
             if (!FitsEssential()) back = false;
 
-            float search = PreferredSearchWidth(width);
-            float tabsRequired = RequiredTabExtent(naturalTabExtent);
-            float tabLaneWithField = width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing) - search;
-            bool field = tabLaneWithField >= tabsRequired;
+            // ── THE PROMOTION RULE (#88): a width threshold is a PERMISSION, not a decision ───────────────────────────
+            //
+            // The two optional islands used to enter on the raw width alone, which let a WIDER window buy 176 (actions)
+            // or 90 (name) DIP of fixed cost out of the search's lane and demote the field to the magnifier — a window
+            // that grew took the search box away, and the shortfall landed on the tabs island, which clips.
+            //
+            // Each is now admitted only when the row can still seat everything it had WITHOUT it: the search at its own
+            // 280-DIP minimum and the tabs at their required extent, with the new cost already paid. That single test
+            // also subsumes FitsEssential (a 280-DIP lane leaves far more than 32 beside the 44-DIP magnifier), and it
+            // is MONOTONE in width — the lane grows with the window while the cost does not — so a promotion, once
+            // affordable, stays affordable and the field it left standing is never taken away by widening.
+            //
+            // Order is the ladder's own priority, cheapest-to-lose last: the ACTIONS are considered first and the NAME
+            // (the lowest-priority item in the row, and so the first to go) only on top of the decision above it. The
+            // name therefore never appears while the four actions are still folded into the profile menu — and, because
+            // its own gate is evaluated against the settled actions cost, it cannot flip back off as the window grows
+            // past the actions' own entry.
+            bool Affords(bool withName, bool withActions)
+                => SearchLane(width, naturalTabExtent, withName, withActions, forward, back, newTab, trailing, chip)
+                   >= Layout.ChromeSearchMinW;
+
+            actionsInRow = width >= Layout.ChromeActionsEnterW && Affords(false, true);
+            // Only the avatar chip HAS a name column to open (the other three forms are already a caption or a labelled
+            // button), so the stage is Profile-only and `FixedBudget` charges ChromeProfileNameW for that form alone.
+            name = actionsInRow && chip == FrameRules.ChipForm.Profile
+                && width >= Layout.ChromeNameEnterW && Affords(true, true);
+
+            // THE HONEST FIELD TEST (#88). Ask what the centre lane can actually hand over, then ask whether that is at
+            // least the field's own minimum. The previous form compared the leftover against `PreferredSearchWidth`,
+            // which clamps UP to 280 — so it read as "is there room for the field's DESIRE", which happens to be the
+            // same question only while the desire is exactly the minimum. Above 1000 DIP the desire runs ahead of the
+            // minimum and the test became stricter than the row; the real damage was the other half of the contract
+            // (`Compose` handing back 280+ whatever the lane was), which is what seated a clipped stub.
+            float lane = SearchLane(width, naturalTabExtent, name, actionsInRow, forward, back, newTab, trailing, chip);
+            bool field = lane >= Layout.ChromeSearchMinW;
             return new Stage(name, actionsInRow, forward, back, newTab, trailing, field);
         }
 
-        static Chrome Compose(float width, float naturalTabExtent, in Stage stage, float? previousLeadClusterW)
+        static Chrome Compose(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip,
+            float? previousLeadClusterW)
         {
-            float searchWidth = stage.Field ? PreferredSearchWidth(width) : Layout.ChromeSearchIconW;
-            return new Chrome(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing,
+            float searchWidth = SearchWidthFor(width, naturalTabExtent, in stage, chip);
+            return new Chrome(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip,
                 stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth,
-                LeadClusterFor(width, naturalTabExtent, in stage, searchWidth, previousLeadClusterW));
+                LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW));
+        }
+
+        /// <summary>The field is sized to the LANE, capped by the desire and floored at the minimum — so the published
+        /// <see cref="SearchWidth"/> is by construction a width the row can seat
+        /// (<c>FixedBudget + SearchWidth + RequiredTabExtent ≤ width</c>), which is the invariant the view then trusts
+        /// instead of second-guessing it against a measurement. (#88)</summary>
+        static float SearchWidthFor(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip)
+        {
+            if (!stage.Field) return Layout.ChromeSearchIconW;
+            float lane = SearchLane(width, naturalTabExtent,
+                stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip);
+            return Math.Clamp(MathF.Min(PreferredSearchWidth(width), QuantiseDown(lane)),
+                Layout.ChromeSearchMinW, Layout.ChromeSearchMaxW);
         }
 
         /// <summary>The tab lane's reserved width. Bounded by what the row can spare once the resolved fixed budget
         /// and search allotment are taken out — the SAME budget the boolean stages already pay, so this can never
         /// over-reserve and starve the row — and then held with the widen-now / narrow-later shape.</summary>
-        static float LeadClusterFor(float width, float naturalTabExtent, in Stage stage, float searchWidth,
-            float? previousLeadClusterW)
+        static float LeadClusterFor(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip,
+            float searchWidth, float? previousLeadClusterW)
         {
-            float budget = FixedBudget(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing);
+            float budget = FixedBudget(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip);
             float available = MathF.Max(Layout.ChromeTabViewportMinW, width - budget - searchWidth);
             float desired = MathF.Max(Layout.ChromeTabViewportMinW,
                 MathF.Min(RequiredTabExtent(naturalTabExtent), available));

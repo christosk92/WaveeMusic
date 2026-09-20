@@ -1081,8 +1081,8 @@ public static partial class Lyrics
     /// <summary>The lyrics preferences as the lyrics surfaces speak them.
     ///
     /// <para><b>No state lives here.</b> The epoch, <see cref="Available"/> and the secondary-line state machine are
-    /// owner L's `Platform/Prefs.cs` (`Prefs.Lyrics`, ch 30) — the one cross-surface epoch the Settings picker and both
-    /// header toggles bump. This class carried its own `Signal`s until that file landed in the same wave; a second epoch
+    /// owner L's `Platform/Prefs.cs` (`Prefs.Lyrics`, ch 30) — the one cross-surface epoch the blur dial and both globe
+    /// toggles bump. This class carried its own `Signal`s until that file landed in the same wave; a second epoch
     /// is a second authority (a Settings write that bumps one and not the other is "the toggle shows the old layer"), so
     /// every member FORWARDS to the same instances. What it adds is only what `Prefs.cs` does not know: the blur dial
     /// RESOLVED against the GPU tier (<see cref="BlurPolicy"/>), which is this file's rule.</para>
@@ -1122,17 +1122,15 @@ public static partial class Lyrics
         /// <summary>The toggle's tooltip — it names the state the view is in NOW, never the next one.</summary>
         public static string Tooltip(int mode) => global::Wavee.Prefs.Lyrics.Tooltip(mode);
 
-        /// <summary>Reactive read of the persisted secondary-line mode, clamped.</summary>
+        /// <summary>Reactive read of the SESSION's secondary-line mode, clamped. No longer persisted — the Settings row
+        /// is gone and every launch starts at <see cref="None"/>.</summary>
         public static int SecondaryLine() => global::Wavee.Prefs.Lyrics.SecondaryLine();
 
         /// <summary>Reactive read of the blur strength RESOLVED (0..100) — the stored −1 means AUTO and is interpreted
         /// here, once, through <see cref="BlurPolicy.Resolve"/>.</summary>
         public static int BlurStrength(bool weakGpu) => BlurPolicy.Resolve(global::Wavee.Prefs.Lyrics.BlurStrength(), weakGpu);
 
-        /// <summary>Reactive read of the animated-backdrop switch. Reduced motion holds the backdrop still regardless.</summary>
-        public static bool AnimatedBackdrop() => global::Wavee.Prefs.Lyrics.AnimatedBackdrop();
-
-        /// <summary>The ONE writer the Settings picker and both header toggles go through: persist, then bump.</summary>
+        /// <summary>The ONE writer both globe toggles go through: set the session mode, then bump.</summary>
         public static void SetSecondaryLine(int mode) => global::Wavee.Prefs.Lyrics.SetSecondaryLine(mode);
 
         /// <summary>Persist a blur strength (−1 = auto, else 0..100) and bump.</summary>

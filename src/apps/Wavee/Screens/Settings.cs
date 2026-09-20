@@ -57,8 +57,11 @@ public static partial class Settings
     {
         public readonly record struct Section(Tab Tab, string Title, string Glyph);
 
-        /// <summary><paramref name="RowId"/> is unique within its <paramref name="Tab"/>, not merely its section.</summary>
-        public readonly record struct Row(Tab Tab, string Section, string RowId, string Glyph);
+        /// <summary><paramref name="RowId"/> is unique within its <paramref name="Tab"/>, not merely its section.
+        /// <para><paramref name="DeveloperOnly"/> rows are COMPOSED AWAY outside developer mode — absent, never
+        /// greyed (that shape is reserved for a row whose write is merely unavailable, like the FPS overlay). They stay
+        /// in this table because the row still exists, and its glyph still has to be unique, when the switch is on.</para></summary>
+        public readonly record struct Row(Tab Tab, string Section, string RowId, string Glyph, bool DeveloperOnly = false);
 
         public static readonly Section[] Sections =
         [
@@ -101,7 +104,7 @@ public static partial class Settings
             new(Tab.General, "Developer", "developerMode", "Settings"),
             new(Tab.General, "Developer", "fpsOverlay", "Clock"),
             new(Tab.General, "Developer", "dealerArchive", "Document"),
-            new(Tab.General, "Developer", "simulateUpdate", "Refresh"),
+            new(Tab.General, "Developer", "simulateUpdate", "Refresh", DeveloperOnly: true),
 
             new(Tab.Appearance, "Theme", "theme", "Sun"),
             new(Tab.Appearance, "Theme", "zoom", "Zoom"),
@@ -110,7 +113,7 @@ public static partial class Settings
             // "Movie", not "Design": `colorWashes` above already took Design, and a glyph may not repeat inside a
             // section (SettingsCatalogTests.NoGlyph_RepeatsWithinASection) — two identical icons in one list are two
             // rows the eye cannot tell apart at a glance, which is the whole point of the rule.
-            new(Tab.Appearance, "Theme", "pageMotion", "Movie"),
+            new(Tab.Appearance, "Theme", "pageMotion", "Movie", DeveloperOnly: true),
             new(Tab.Appearance, "Lists", "rowDensity", "RowSize"),
             new(Tab.Appearance, "Lists", "hideTrackArtwork", "Picture"),
             new(Tab.Appearance, "Lists", "trackListStyle", "ViewList"),
@@ -119,10 +122,10 @@ public static partial class Settings
             new(Tab.Appearance, "Lists", "railReset", "Delete"),
             new(Tab.Appearance, "Sidebar", "sidebarDesign", "SplitView"),
             new(Tab.Appearance, "Sidebar", "sidebarCustomize", "Edit"),
-            new(Tab.Appearance, "Lyrics", "lyricsSecondary", "Globe"),
-            new(Tab.Appearance, "Lyrics", "lyricsBackdrop", "RefineSparkle"),
+            // "Lyrics second line" (Globe) and "Animated lyrics backdrop" (RefineSparkle) are GONE, not gated: neither
+            // is a setting any more. The blur dial is what is left of the section.
             new(Tab.Appearance, "Lyrics", "lyricsBlur", "Filter"),
-            new(Tab.Appearance, "Now playing", "npvPresentation", "Picture"),
+            new(Tab.Appearance, "Now playing", "npvPresentation", "Picture", DeveloperOnly: true),
             new(Tab.Appearance, "Now playing", "npvStyle", "Settings"),
 
             new(Tab.Playback, "Audio", "audioQuality", "Headphones"),
@@ -170,6 +173,17 @@ public static partial class Settings
             foreach (var r in Rows)
                 if (r.Tab == tab && string.Equals(r.RowId, rowId, StringComparison.Ordinal))
                     return r.Glyph;
+            throw new InvalidOperationException("SettingsCatalog: no row '" + rowId + "' on tab " + tab + ".");
+        }
+
+        /// <summary>Is a row composed at all? The ONE gate the tabs call, so "which rows are developer-only" is a fact of
+        /// this table rather than a condition scattered through the UI files. An unknown row id throws, exactly as
+        /// <see cref="RowGlyph"/> does — a typo must fail loudly, never silently hide a row.</summary>
+        public static bool RowVisible(Tab tab, string rowId, bool developerMode)
+        {
+            foreach (var r in Rows)
+                if (r.Tab == tab && string.Equals(r.RowId, rowId, StringComparison.Ordinal))
+                    return developerMode || !r.DeveloperOnly;
             throw new InvalidOperationException("SettingsCatalog: no row '" + rowId + "' on tab " + tab + ".");
         }
     }

@@ -1,7 +1,11 @@
 // ── Screens/Settings.UI.Appearance.cs ──────────────────────────────────────────────────────────────────────────────
-// the Appearance tab: Theme (theme, zoom, marquee, colour washes) · Lists (the three collapsed picker groups: row density
-// + hide artwork, track list style, track page layout + the two rail rows) · Sidebar (the design picker's three compact
-// cards + "Customize sidebar") · Lyrics (second line, animated backdrop, blur) · Now playing (hero, player style)
+// the Appearance tab: Theme (theme, zoom, marquee, colour washes, page motion*) · Lists (the three collapsed picker groups:
+// row density + hide artwork, track list style, track page layout + the two rail rows) · Sidebar (the design picker's three
+// compact cards + "Customize sidebar") · Lyrics (blur) · Now playing (hero*, player style)
+//
+// * DEVELOPER-ONLY rows (`Catalog.RowVisible`): page motion and the Cover/‹Player› hero switch are composed away while the
+// developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a
+// setting any more (the backdrop is a fixed constant; the second line is session state the lyrics globe toggles own).
 //
 // Role: UI
 // Owner: R
@@ -11,9 +15,9 @@
 // items 12-20; ch 30 §1.1 (which epoch each write bumps) + N12 (the row-density write reaches mounted pages); ch 25 W21
 // (the design cards — no 0.3 `SidebarDesignPicker` exists, so the compact cards are built here on owner L's picker)
 //
-// EVERY ROW WRITES THROUGH ITS OWN EPOCH (ch 27 W2 "three facts"): marquee / washes / animated backdrop / hide artwork /
+// EVERY ROW WRITES THROUGH ITS OWN EPOCH (ch 27 W2 "three facts"): marquee / washes / hide artwork /
 // row density / track list style → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`;
-// lyrics second line and blur → `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` with NO page `Bump()` (the
+// the lyrics blur → `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` with NO page `Bump()` (the
 // tab reads that epoch). The tab body reads the store directly (never a foreign epoch it does not need), so a write
 // re-renders this page once, through `Bump()`.
 //
@@ -60,15 +64,16 @@ public static partial class Settings
     private static partial Element AppearanceTab()
     {
         int themeMode = Math.Clamp(Platform.Settings.Get(Platform.Keys.ThemeMode), 0, 2);
-        int lyricsSecondary = Prefs.Lyrics.ClampMode(Platform.Settings.Get(Platform.Keys.LyricsSecondaryLine));
         bool lyricsBlurAuto = Platform.Settings.Get(Platform.Keys.LyricsBlurStrength) < 0;
+        bool dev = Platform.Developer.Enabled.Value;
         // The Now-playing rows' ONE foreign epoch (ch 27 §7): the header row, the flyout, the art menu and the palette all
         // write it, and these two rows must follow them live.
         int npvPresentation = Rail.PlayerPrefs.Presentation();
         var npvPreset = Rail.PlayerPrefs.CurrentPreset();
         int pageMotion = Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount);
 
-        return TabStack(
+        var kids = new List<Element>(20)
+        {
             SectionHeader(Loc.Get(Strings.Settings.Appearance.Title), SectionGlyph(Tab.Appearance, "Theme"),
                 Loc.Get(Strings.Settings.Appearance.Subtitle)),
             Row(Loc.Get(Strings.Settings.Appearance.Theme), Loc.Get(Strings.Settings.Appearance.ThemeSub),
@@ -81,47 +86,46 @@ public static partial class Settings
                 AppearanceToggle(Platform.Keys.MarqueeEnabled), RowGlyph(Tab.Appearance, "marquee")),
             Row(Loc.Get(Strings.Settings.Appearance.ColorWashes), Loc.Get(Strings.Settings.Appearance.ColorWashesSub),
                 AppearanceToggle(Platform.Keys.ColorWashesEnabled), RowGlyph(Tab.Appearance, "colorWashes")),
-            // A SelectorBar, not a ComboBox: it re-pushes its selected index every render (ch 27 §0's frozen-inputs
-            // rule), so the row needs no dedicated stable-signal component the way Zoom/NPV-style do.
-            Row(Loc.Get(Strings.Settings.Appearance.PageMotion), Loc.Get(Strings.Settings.Appearance.PageMotionSub),
+        };
+
+        // A SelectorBar, not a ComboBox: it re-pushes its selected index every render (ch 27 §0's frozen-inputs rule),
+        // so the row needs no dedicated stable-signal component the way Zoom/NPV-style do. DEVELOPER-ONLY: a normal
+        // build navigates at `Design.Nav.DefaultStyle` (Classic) and is offered no choice.
+        if (RowVisible(Tab.Appearance, "pageMotion", dev))
+            kids.Add(Row(Loc.Get(Strings.Settings.Appearance.PageMotion), Loc.Get(Strings.Settings.Appearance.PageMotionSub),
                 SelectorBar.Create(PageMotionLabels(), new Signal<int>(pageMotion), onChange: static i => SetPageMotionStyle(i)),
-                RowGlyph(Tab.Appearance, "pageMotion")),
+                RowGlyph(Tab.Appearance, "pageMotion")));
 
-            SectionHeader(Loc.Get(Strings.Settings.Layout.Title), SectionGlyph(Tab.Appearance, "Lists"),
-                Loc.Get(Strings.Settings.Layout.Subtitle)),
-            DensityGroup(),
-            TrackListStyleGroup(),
-            PageLayoutGroup(),
+        kids.Add(SectionHeader(Loc.Get(Strings.Settings.Layout.Title), SectionGlyph(Tab.Appearance, "Lists"),
+            Loc.Get(Strings.Settings.Layout.Subtitle)));
+        kids.Add(DensityGroup());
+        kids.Add(TrackListStyleGroup());
+        kids.Add(PageLayoutGroup());
 
-            SectionHeader(Loc.Get(Strings.Settings.Sidebar.Title), SectionGlyph(Tab.Appearance, "Sidebar"),
-                Loc.Get(Strings.Settings.Sidebar.Subtitle)),
-            Embed.Comp(static () => new SidebarDesignCard()),
+        kids.Add(SectionHeader(Loc.Get(Strings.Settings.Sidebar.Title), SectionGlyph(Tab.Appearance, "Sidebar"),
+            Loc.Get(Strings.Settings.Sidebar.Subtitle)));
+        kids.Add(Embed.Comp(static () => new SidebarDesignCard()));
 
-            SectionHeader(Loc.Get(Strings.Settings.Lyrics.Title), SectionGlyph(Tab.Appearance, "Lyrics"),
-                Loc.Get(Strings.Settings.Lyrics.Subtitle)),
-            Row(Loc.Get(Strings.Settings.Appearance.LyricsSecondary), Loc.Get(Strings.Settings.Appearance.LyricsSecondarySub),
-                SelectorBar.Create(LyricsSecondaryLabels(), new Signal<int>(lyricsSecondary), onChange: static i =>
-                {
-                    Prefs.Lyrics.SetSecondaryLine(i);   // persists the clamped mode + bumps the lyrics epoch once
-                    Bump();
-                }),
-                RowGlyph(Tab.Appearance, "lyricsSecondary")),
-            // Prefs.Lyrics.AnimatedBackdrop reads BOTH epochs, so the appearance bump reaches an open immersive stage.
-            Row(Loc.Get(Strings.Settings.Appearance.LyricsBackdrop), Loc.Get(Strings.Settings.Appearance.LyricsBackdropSub),
-                AppearanceToggle(Platform.Keys.LyricsAnimatedBackdrop), RowGlyph(Tab.Appearance, "lyricsBackdrop")),
-            Row(Loc.Get(Strings.Settings.Appearance.LyricsBlur), Loc.Get(Strings.Settings.Appearance.LyricsBlurSub),
-                LyricsBlurControl(lyricsBlurAuto), RowGlyph(Tab.Appearance, "lyricsBlur")),
+        // ONE row left in this section: the second line and the animated backdrop are no longer settings at all.
+        kids.Add(SectionHeader(Loc.Get(Strings.Settings.Lyrics.Title), SectionGlyph(Tab.Appearance, "Lyrics"),
+            Loc.Get(Strings.Settings.Lyrics.Subtitle)));
+        kids.Add(Row(Loc.Get(Strings.Settings.Appearance.LyricsBlur), Loc.Get(Strings.Settings.Appearance.LyricsBlurSub),
+            LyricsBlurControl(lyricsBlurAuto), RowGlyph(Tab.Appearance, "lyricsBlur")));
 
-            SectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title), SectionGlyph(Tab.Appearance, "Now playing"),
-                Loc.Get(Strings.Settings.NowPlaying.Subtitle)),
-            // The second label FOLLOWS the current style; SelectorBar re-pushes its items, so it relabels in place.
-            Row(Loc.Get(Strings.Settings.Appearance.NpvPresentation), Loc.Get(Strings.Settings.Appearance.NpvPresentationSub),
+        kids.Add(SectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title), SectionGlyph(Tab.Appearance, "Now playing"),
+            Loc.Get(Strings.Settings.NowPlaying.Subtitle)));
+        // The second label FOLLOWS the current style; SelectorBar re-pushes its items, so it relabels in place.
+        // DEVELOPER-ONLY, exactly like the rail header switch it duplicates — a normal build shows the cover.
+        if (RowVisible(Tab.Appearance, "npvPresentation", dev))
+            kids.Add(Row(Loc.Get(Strings.Settings.Appearance.NpvPresentation), Loc.Get(Strings.Settings.Appearance.NpvPresentationSub),
                 SelectorBar.Create([Loc.Get(Strings.Player.PresentationCover), Loc.Get(npvPreset.ShortLabelKey)],
                     new Signal<int>(npvPresentation),
                     onChange: static i => Rail.PlayerPrefs.SetPresentation(i, Rail.NpvDiagnostics.SourceSettings)),
-                RowGlyph(Tab.Appearance, "npvPresentation")),
-            Row(Loc.Get(Strings.Settings.Appearance.NpvStyle), Loc.Get(Strings.Settings.Appearance.NpvStyleSub),
-                Embed.Comp(static () => new NpvStylePicker()), RowGlyph(Tab.Appearance, "npvStyle")));
+                RowGlyph(Tab.Appearance, "npvPresentation")));
+        kids.Add(Row(Loc.Get(Strings.Settings.Appearance.NpvStyle), Loc.Get(Strings.Settings.Appearance.NpvStyleSub),
+            Embed.Comp(static () => new NpvStylePicker()), RowGlyph(Tab.Appearance, "npvStyle")));
+
+        return TabStack(kids.ToArray());
     }
 
     // ══ 3. THEME + ZOOM ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -156,7 +160,7 @@ public static partial class Settings
     }
 
     /// <summary>Ordered to match the stored value (<see cref="Design.PageMotionStyle"/>'s declaration order) — the
-    /// index IS the store, same contract as <see cref="LyricsSecondaryLabels"/>.</summary>
+    /// index IS the store.</summary>
     static string[] PageMotionLabels() =>
     [
         Loc.Get(Strings.Settings.Appearance.PageMotionFluent),
@@ -619,14 +623,6 @@ public static partial class Settings
     };
 
     // ══ 6. LYRICS + NOW PLAYING ═══════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>Ordered to match the stored value (0 none · 1 translation · 2 romanization) — the index IS the store.</summary>
-    static string[] LyricsSecondaryLabels() =>
-    [
-        Loc.Get(Strings.Settings.Choice.Off),
-        Loc.Get(Strings.Settings.Choice.Translation),
-        Loc.Get(Strings.Settings.Choice.Romanization),
-    ];
 
     /// <summary>The 0..100 slider plus, ONLY while the setting is pinned to an explicit value, an "Auto" link 12 DIP away
     /// (ch 27 W2). The slider always sits in slot 0 of the same box, so the link appearing on the first drag never

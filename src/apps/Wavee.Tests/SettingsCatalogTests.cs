@@ -56,6 +56,46 @@ public class SettingsCatalogTests
     public void RowGlyph_ThrowsForAnUnknownRow()
         => Assert.Throws<InvalidOperationException>(() => Settings.Catalog.RowGlyph(Settings.Tab.General, "no-such-row"));
 
+    /// <summary>A DEVELOPER-ONLY row is ABSENT while the switch is off and present while it is on — never greyed, which is
+    /// the shape reserved for a row whose write is merely unavailable (the FPS overlay). This is the gate the tabs call,
+    /// so the table IS the answer rather than a condition repeated in each UI file.</summary>
+    [Theory]
+    [InlineData(Settings.Tab.Appearance, "pageMotion")]
+    [InlineData(Settings.Tab.Appearance, "npvPresentation")]
+    [InlineData(Settings.Tab.General, "simulateUpdate")]
+    public void A_developer_only_row_is_absent_without_developer_mode_and_present_with_it(Settings.Tab tab, string rowId)
+    {
+        Assert.False(Settings.Catalog.RowVisible(tab, rowId, developerMode: false));
+        Assert.True(Settings.Catalog.RowVisible(tab, rowId, developerMode: true));
+    }
+
+    /// <summary>Everything else is visible in BOTH states — a gate that leaked would empty the page for normal users.</summary>
+    [Fact]
+    public void Only_the_three_declared_rows_are_developer_only()
+    {
+        var gated = Settings.Catalog.Rows.Where(r => !Settings.Catalog.RowVisible(r.Tab, r.RowId, developerMode: false))
+                                         .Select(r => r.Tab + "/" + r.RowId)
+                                         .OrderBy(s => s, StringComparer.Ordinal).ToArray();
+        Assert.Equal(new[] { "Appearance/npvPresentation", "Appearance/pageMotion", "General/simulateUpdate" }, gated);
+        foreach (var row in Settings.Catalog.Rows)
+            Assert.True(Settings.Catalog.RowVisible(row.Tab, row.RowId, developerMode: true));
+    }
+
+    [Fact]
+    public void RowVisible_ThrowsForAnUnknownRow()
+        => Assert.Throws<InvalidOperationException>(() => Settings.Catalog.RowVisible(Settings.Tab.General, "no-such-row", true));
+
+    /// <summary>The two lyrics rows were REMOVED, not gated: neither is a setting any longer, so no developer mode brings
+    /// them back and the catalog does not know them at all.</summary>
+    [Theory]
+    [InlineData("lyricsSecondary")]
+    [InlineData("lyricsBackdrop")]
+    public void The_removed_lyrics_rows_are_not_in_the_catalog_at_all(string rowId)
+    {
+        Assert.DoesNotContain(Settings.Catalog.Rows, r => r.RowId == rowId);
+        Assert.Throws<InvalidOperationException>(() => Settings.Catalog.RowVisible(Settings.Tab.Appearance, rowId, true));
+    }
+
     [Fact]
     public void SectionGlyph_ThrowsForAnUnknownSection()
         => Assert.Throws<InvalidOperationException>(() => Settings.Catalog.SectionGlyph(Settings.Tab.General, "No Such Section"));

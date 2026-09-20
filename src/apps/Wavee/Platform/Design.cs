@@ -1614,10 +1614,10 @@ public static partial class Design
     /// peaking at 1.83), then the outgoing page popping out. Only the GEOMETRY differs per style; the CLOCK
     /// (<see cref="Nav.ExitDurationMs"/> / <see cref="Nav.EnterDelayMs"/> / <see cref="Nav.EnterDurationMs"/>) is
     /// shared by every sequenced style — Material's fade-through, verified clean.
-    /// <para><see cref="Fluent"/>: a plain cross-fade, no geometry, on every relation. <see cref="Spatial"/> (the
-    /// DEFAULT): Entrance fades, DrillIn is a semantic zoom, Sibling slides the INCOMING page only. <see cref="WinUi"/>:
+    /// <para><see cref="Fluent"/>: a plain cross-fade, no geometry, on every relation. <see cref="Spatial"/>: Entrance
+    /// fades, DrillIn is a semantic zoom, Sibling slides the INCOMING page only. <see cref="WinUi"/>:
     /// WinUI's own page-refresh Entrance (a 140-DIP rise, the outgoing side only fades), the same zoom as Spatial for
-    /// DrillIn, and a Sibling where both pages move by different amounts. <see cref="Classic"/>: the 0.2.x
+    /// DrillIn, and a Sibling where both pages move by different amounts. <see cref="Classic"/> (the DEFAULT): the 0.2.x
     /// fade-through, an 8-DIP badge-twitch translate, uniform across every relation. <see cref="None"/>: an instant
     /// cut — no motion at all.</para></summary>
     public enum PageMotionStyle : byte { Fluent, Spatial, WinUi, Classic, None }
@@ -1662,8 +1662,12 @@ public static partial class Design
 
         // ── PAGE-MOTION STYLE: the sequenced clock + per-style geometry (the fix) ───────────────────────────────────
 
-        /// <summary>The style Settings ▸ Appearance ▸ Page motion defaults to when nothing is persisted yet.</summary>
-        public const PageMotionStyle DefaultStyle = PageMotionStyle.Spatial;
+        /// <summary>The style Settings ▸ Appearance ▸ Page motion defaults to when nothing is persisted yet — and, since
+        /// that row is DEVELOPER-ONLY, the style a normal build navigates with. <see cref="PageMotionStyle.Classic"/>: the
+        /// 0.2.x fade-through, uniform across every relation. <c>Platform.Keys.PageMotionStyle</c> takes its persisted
+        /// default FROM this constant, so a profile that never picked a style follows it and one that did keeps its
+        /// pick.</summary>
+        public const PageMotionStyle DefaultStyle = PageMotionStyle.Classic;
 
         /// <summary>The exit leg's duration for every SEQUENCED style (everything but <see cref="PageMotionStyle.None"/>)
         /// — Material's fade-through, verified to have zero overlap.</summary>

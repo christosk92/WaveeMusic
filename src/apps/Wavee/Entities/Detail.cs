@@ -258,9 +258,17 @@ public static partial class Detail
         /// <summary>Description line cap: shorter beside the artwork, taller when the copy owns the column.</summary>
         public static int DescriptionMaxLines(bool rowFlow) => rowFlow ? 3 : 4;
 
-        /// <summary>Row flow's identity MinHeight = the artwork edge (issue #78); stacked has nothing to defend (0).</summary>
-        public static float IdentityMinHeightFor(float colW, bool rowFlow)
-            => rowFlow ? ArtworkFor(colW, rowFlow) : 0f;
+        /// <summary>The identity column's MinHeight: always 0, in both flows. Issue #78 once forced this to the
+        /// artwork's edge in row flow so a short column's slack could be redistributed as growth of one of its own
+        /// rows rather than left as dead space under the action row — but that only RELOCATED the same blank band
+        /// to inside the column (between the metadata and the actions, or under a bare accent rule when nothing
+        /// else was reserved), which is exactly the "large band of dead whitespace" a column with a tall cover and
+        /// little text produces. The BAND already covers the artwork (<see cref="HeroBandHeight(float,bool,in TitleTypePlan,bool,bool,bool,bool,bool,bool)"/>'s
+        /// <c>MathF.Max(art, identity)</c>): a taller cover simply runs on past a shorter column, top-aligned
+        /// (<c>AlignItems.Start</c>) — nothing inside the column is ever stretched to fill space it has no content
+        /// for. Kept as a named decision, not inlined, so a future author cannot silently reintroduce the forcing
+        /// without breaking a test.</summary>
+        public static float IdentityMinHeightFor(float colW, bool rowFlow) => 0f;
 
         // ── the hero BAND, as a height: ONE arithmetic with two consumers (the loading skeleton's reserved band and the
         //    loaded hero's pre-measure collapse binds) that must never disagree (D49). Nominal natural heights, in order.

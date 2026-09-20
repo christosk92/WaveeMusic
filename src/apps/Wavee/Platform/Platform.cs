@@ -125,9 +125,10 @@ public static partial class Platform
         /// is that the collection cover is made of the user's own music, and every treatment degrades to the bundled PNG
         /// until the library owns enough distinct artwork — so a fresh install still paints what it painted before.</summary>
         public static readonly SettingKey<int> LikedCoverStyle = new("appearance.likedCover.style", 1);
-        /// <summary>The page-swap MOTION STYLE (Settings ▸ Appearance ▸ Page motion). DEFAULT 1 = Design.PageMotionStyle.Spatial —
-        /// a fresh install gets the spatial slide/scale/fade hybrid, not the plain Fluent cross-fade.</summary>
-        public static readonly SettingKey<int> PageMotionStyle = new("appearance.pageMotion.style", (int)Design.PageMotionStyle.Spatial);
+        /// <summary>The page-swap MOTION STYLE (Settings ▸ Appearance ▸ Page motion — a DEVELOPER-ONLY row). The default IS
+        /// <see cref="Design.Nav.DefaultStyle"/>, never a literal, so the persisted default and the code default cannot
+        /// drift: a fresh profile gets Classic's fade-through, and a profile that already picked a style keeps it.</summary>
+        public static readonly SettingKey<int> PageMotionStyle = new("appearance.pageMotion.style", (int)Design.Nav.DefaultStyle);
         /// <summary>BPM · Key as its own COLUMN. Off: it is enrichment most listeners never scan for and it costs width on
         /// every row; it is always available inside a row's expander regardless.</summary>
         public static readonly SettingKey<bool> TempoColumn = new("detail.tempoColumn", false);
@@ -151,8 +152,9 @@ public static partial class Platform
         public static readonly SettingKey<int> ZoomModeBootstrapVersion = new("appearance.zoom.mode.bootstrap.version", 0);
 
         // ── lyrics ──
-        public static readonly SettingKey<bool> LyricsAnimatedBackdrop = new("lyrics.backdrop.animated", true);
-        public static readonly SettingKey<int> LyricsSecondaryLine = new("lyrics.secondary", 0);   // 0 Off · 1 Translation · 2 Romanization
+        // The animated backdrop and the secondary line are no longer SETTINGS (both Settings rows are gone): the backdrop
+        // is a fixed constant and the secondary line is session state the two lyrics globe toggles own. Neither carries a
+        // key any more, so a value persisted by an older build can never resurrect either.
         public static readonly SettingKey<int> LyricsBlurStrength = new("appearance.lyrics.blurStrength", -1);   // -1 = Auto
 
         // ── detail rails + shell rail. The four widths default to Design.cs tokens (RailAlbum 280 / RailPlaylist 240 /

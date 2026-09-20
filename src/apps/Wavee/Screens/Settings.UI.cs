@@ -356,6 +356,10 @@ public static partial class Settings
 
     static string RowGlyph(Tab tab, string rowId) => Glyph(Catalog.RowGlyph(tab, rowId));
 
+    /// <summary>Is this row composed at all? The catalog owns the answer (it carries the developer-only flag), so no tab
+    /// invents its own condition. A developer-only row is ABSENT while the switch is off, never greyed.</summary>
+    internal static bool RowVisible(Tab tab, string rowId, bool developerMode) => Catalog.RowVisible(tab, rowId, developerMode);
+
     // ══ 5. GENERAL (W1; tray plan §8) ══════════════════════════════════════════════════════════════════════════════
 
     static Element GeneralTab()
@@ -481,7 +485,7 @@ public static partial class Settings
             Toggle(Platform.Keys.FpsOverlay, isEnabled: dev), RowGlyph(Tab.General, "fpsOverlay"), isEnabled: dev));
         kids.Add(Row(Loc.Get(Strings.Settings.Diag.DealerArchive), Loc.Get(Strings.Settings.Diag.DealerArchiveSub),
             Toggle(Platform.Keys.DealerArchiveEnabled), RowGlyph(Tab.General, "dealerArchive")));
-        if (dev)
+        if (RowVisible(Tab.General, "simulateUpdate", dev))
             kids.Add(Row(Loc.Get(Strings.Settings.Diag.SimulateUpdate), Loc.Get(Strings.Settings.Diag.SimulateUpdateSub),
                 Button.Standard(Loc.Get(Strings.Settings.Diag.SimulateUpdateButton), static () => Update.Host.SimulateUpdate()),
                 RowGlyph(Tab.General, "simulateUpdate")));

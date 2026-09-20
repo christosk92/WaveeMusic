@@ -32,19 +32,66 @@ public class PlayerBarStateFoldTests
     }
 
     [Fact]
-    public void Nothing_playing_and_loading_kill_the_primary()
+    public void Only_an_empty_deck_kills_the_primary()
     {
         var idle = Shell.PlayerBarRules.Fold(false, Playback.Fault.None, Playback.Phase.Idle, false,
             Playback.RecoveryKind.None, true, true);
         Assert.Equal(Shell.PlayerState.NoTrack, idle.State);
+        Assert.Equal(Shell.PrimaryVerb.None, idle.Primary);
         Assert.False(idle.PrimaryEnabled);
         Assert.False(idle.CanTransport);
         Assert.False(idle.PrevEnabled);
 
+        // A LOAD keeps the primary alive. Skipping while playing spends 100-250 ms in Loading, and the old
+        // PrimaryVerb.None made the glyph flip pause -> play -> pause and grey out in between on every skip. The
+        // user's intent through that gap is "playing", and `Playback.IsPlaying` — not this fold — picks the glyph.
         var loading = Shell.PlayerBarRules.Fold(true, Playback.Fault.None, Playback.Phase.Loading, false,
             Playback.RecoveryKind.None, true, true);
         Assert.Equal(Shell.PlayerState.Loading, loading.State);
-        Assert.False(loading.PrimaryEnabled);
+        Assert.Equal(Shell.PrimaryVerb.TogglePlay, loading.Primary);
+        Assert.True(loading.PrimaryEnabled);
+    }
+
+    [Theory]
+    [InlineData(Shell.PlayerState.NoTrack, Shell.PrimaryVerb.None)]
+    [InlineData(Shell.PlayerState.Loading, Shell.PrimaryVerb.TogglePlay)]
+    [InlineData(Shell.PlayerState.Reconnecting, Shell.PrimaryVerb.TogglePlay)]
+    [InlineData(Shell.PlayerState.Active, Shell.PrimaryVerb.TogglePlay)]
+    [InlineData(Shell.PlayerState.Error, Shell.PrimaryVerb.Retry)]
+    public void The_primary_verb_of_every_state(Shell.PlayerState state, Shell.PrimaryVerb expected)
+    {
+        var f = state switch
+        {
+            Shell.PlayerState.NoTrack => Shell.PlayerBarRules.Fold(false, Playback.Fault.None, Playback.Phase.Idle,
+                false, Playback.RecoveryKind.None, true, true),
+            Shell.PlayerState.Loading => Shell.PlayerBarRules.Fold(true, Playback.Fault.None, Playback.Phase.Loading,
+                false, Playback.RecoveryKind.None, true, true),
+            Shell.PlayerState.Reconnecting => Shell.PlayerBarRules.Fold(true, Playback.Fault.None, Playback.Phase.Playing,
+                false, Playback.RecoveryKind.Network, true, true),
+            Shell.PlayerState.Error => Shell.PlayerBarRules.Fold(true, Playback.Fault.Network, Playback.Phase.Playing,
+                false, Playback.RecoveryKind.None, true, true),
+            _ => Shell.PlayerBarRules.Fold(true, Playback.Fault.None, Playback.Phase.Playing, false,
+                Playback.RecoveryKind.None, true, true),
+        };
+        Assert.Equal(state, f.State);
+        Assert.Equal(expected, f.Primary);
+    }
+
+    [Fact]
+    public void The_primary_s_face_is_the_intent_and_a_load_never_flips_it()
+    {
+        // Settled states read the model verbatim.
+        Assert.True(Shell.PlayerBarRules.ShowsPauseGlyph(Shell.PlayerState.Active, isPlaying: true, false));
+        Assert.False(Shell.PlayerBarRules.ShowsPauseGlyph(Shell.PlayerState.Active, isPlaying: false, true));
+        Assert.True(Shell.PlayerBarRules.ShowsPauseGlyph(Shell.PlayerState.Reconnecting, true, false));
+
+        // THE SKIP: `IsPlaying` is Phase == Playing, so it is FALSE for the 150 ms a track change takes. Reading it
+        // raw flipped the glyph pause -> play -> pause on every skip; the load keeps the last settled answer instead.
+        Assert.True(Shell.PlayerBarRules.ShowsPauseGlyph(Shell.PlayerState.Loading, isPlaying: false,
+            playingBeforeLoad: true));
+        // Skipping while PAUSED keeps the play glyph until the new row actually starts — one change, not three.
+        Assert.False(Shell.PlayerBarRules.ShowsPauseGlyph(Shell.PlayerState.Loading, isPlaying: false,
+            playingBeforeLoad: false));
     }
 
     [Fact]
@@ -53,7 +100,7 @@ public class PlayerBarStateFoldTests
         var f = Shell.PlayerBarRules.Fold(true, Playback.Fault.None, Playback.Phase.Loading, buffering: true,
             Playback.RecoveryKind.None, true, true);
         Assert.True(f.CanTransport);
-        Assert.False(f.PrimaryEnabled);
+        Assert.True(f.PrimaryEnabled);
     }
 
     [Fact]
@@ -140,10 +187,72 @@ public class PlayerBarStateFoldTests
     [Fact]
     public void The_top_edge_sweeps_for_loading_buffering_and_reconnecting_only()
     {
-        Assert.True(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Loading, false, Playback.RecoveryKind.None));
-        Assert.True(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Playing, true, Playback.RecoveryKind.None));
-        Assert.True(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Paused, false, Playback.RecoveryKind.Network));
-        Assert.False(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Playing, false, Playback.RecoveryKind.None));
+        // Past the grace, a load and a refill still sweep…
+        float past = Shell.PlayerBarRules.SweepDelayMs;
+        Assert.True(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Loading, false, Playback.RecoveryKind.None, past));
+        Assert.True(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Playing, true, Playback.RecoveryKind.None, past));
+        Assert.True(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Paused, false, Playback.RecoveryKind.Network, past));
+        Assert.False(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Playing, false, Playback.RecoveryKind.None, past));
+    }
+
+    [Fact]
+    public void A_short_load_never_sweeps_but_a_network_recovery_sweeps_at_once()
+    {
+        // THE SKIP. A track change spends 100-250 ms in Loading; nothing may run a high-contrast indeterminate sweep
+        // across the bar for it. The sweep is for a WAIT, and only once the wait is real.
+        Assert.False(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Loading, false, Playback.RecoveryKind.None, 0f));
+        Assert.False(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Loading, false, Playback.RecoveryKind.None, 250f));
+        Assert.False(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Loading, false, Playback.RecoveryKind.None,
+            Shell.PlayerBarRules.SweepDelayMs - 1f));
+        // The boundary is inclusive: at the delay itself the wait has lasted long enough to say so.
+        Assert.True(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Loading, false, Playback.RecoveryKind.None,
+            Shell.PlayerBarRules.SweepDelayMs));
+        // Buffering (a refill mid-track) takes the same grace.
+        Assert.False(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Playing, true, Playback.RecoveryKind.None, 100f));
+
+        // A NETWORK RECOVERY is a real, user-meaningful condition — no grace, whatever the phase says.
+        Assert.True(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Playing, false, Playback.RecoveryKind.Network, 0f));
+        Assert.True(Shell.PlayerBarRules.TopEdgeSweeps(Playback.Phase.Loading, true, Playback.RecoveryKind.Network, 0f));
+    }
+
+    [Fact]
+    public void The_face_holds_the_outgoing_identity_through_a_short_load()
+    {
+        // A RESOLVED title is always live.
+        Assert.Equal(Shell.FaceArm.Live,
+            Shell.PlayerBarRules.FaceOf(Shell.PlayerState.Active, titleKnown: true, hasHeldFace: true, 0f));
+        Assert.Equal(Shell.FaceArm.Live,
+            Shell.PlayerBarRules.FaceOf(Shell.PlayerState.Loading, titleKnown: true, hasHeldFace: true, 10_000f));
+
+        // THE SKIP: no title yet, an outgoing face still fresh — hold it, so the bar changes nothing at all.
+        Assert.Equal(Shell.FaceArm.Hold,
+            Shell.PlayerBarRules.FaceOf(Shell.PlayerState.Loading, false, hasHeldFace: true, 0f));
+        Assert.Equal(Shell.FaceArm.Hold,
+            Shell.PlayerBarRules.FaceOf(Shell.PlayerState.Loading, false, hasHeldFace: true, 250f));
+        Assert.Equal(Shell.FaceArm.Hold,
+            Shell.PlayerBarRules.FaceOf(Shell.PlayerState.Loading, false, hasHeldFace: true,
+                Shell.PlayerBarRules.FaceHoldMs - 1f));
+        // THE BOUNDARY is exclusive: at FaceHoldMs exactly the hold is over and the placeholder takes it.
+        Assert.Equal(Shell.FaceArm.Placeholder,
+            Shell.PlayerBarRules.FaceOf(Shell.PlayerState.Loading, false, hasHeldFace: true,
+                Shell.PlayerBarRules.FaceHoldMs));
+
+        // Nothing to hold — a cold start, or a held row that has itself been evicted: today's placeholder, unchanged.
+        Assert.Equal(Shell.FaceArm.Placeholder,
+            Shell.PlayerBarRules.FaceOf(Shell.PlayerState.Loading, false, hasHeldFace: false, 0f));
+        Assert.Equal(Shell.FaceArm.Placeholder,
+            Shell.PlayerBarRules.FaceOf(Shell.PlayerState.Reconnecting, false, hasHeldFace: false, 10f));
+
+        // NoTrack and Error author their own copy ("Nothing playing", the fault sentence) and are never masked by a
+        // held track, however fresh it is.
+        Assert.Equal(Shell.FaceArm.Live,
+            Shell.PlayerBarRules.FaceOf(Shell.PlayerState.NoTrack, false, hasHeldFace: true, 0f));
+        Assert.Equal(Shell.FaceArm.Live,
+            Shell.PlayerBarRules.FaceOf(Shell.PlayerState.Error, false, hasHeldFace: true, 0f));
+
+        Assert.True(Shell.PlayerBarRules.IdentityShowing(Shell.FaceArm.Live));
+        Assert.True(Shell.PlayerBarRules.IdentityShowing(Shell.FaceArm.Hold));
+        Assert.False(Shell.PlayerBarRules.IdentityShowing(Shell.FaceArm.Placeholder));
     }
 
     [Fact]
@@ -433,11 +542,21 @@ public class PlayerBarSlotReservationTests
     {
         var minimal = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Minimal);
         var wide = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide);
-        Assert.True(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Active));
-        Assert.True(Shell.PlayerBarRules.LikeFaceVisible(minimal, Shell.PlayerState.Active));   // identity-first
-        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Loading));
-        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.NoTrack));
-        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Error));
+        Assert.True(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Active, identityShowing: true));
+        Assert.True(Shell.PlayerBarRules.LikeFaceVisible(minimal, Shell.PlayerState.Active, true));   // identity-first
+        // THE SKIP: the state is Loading but the face is still there (held), so the heart stays LIT. Keying this on
+        // `state == Active` was what made it fade out and back on every track change.
+        Assert.True(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Loading, identityShowing: true));
+        Assert.True(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Reconnecting, identityShowing: true));
+        // A load with nothing to show has nothing to save either.
+        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Loading, identityShowing: false));
+        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Active, identityShowing: false));
+        // NoTrack and Error have no playable to save, whatever the arm says.
+        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.NoTrack, identityShowing: true));
+        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(wide, Shell.PlayerState.Error, identityShowing: true));
+        // The tier still owns the SLOT: no slot, no face, however live the identity is.
+        var noSlot = wide with { ShowLikeSlot = false };
+        Assert.False(Shell.PlayerBarRules.LikeFaceVisible(noSlot, Shell.PlayerState.Active, identityShowing: true));
     }
 
     [Fact]

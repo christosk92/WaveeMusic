@@ -106,6 +106,24 @@ public static partial class Shell
         Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut));
 
+    /// <summary>THE FACE SWAP. When the shown identity genuinely changes — <see cref="FaceArm.Live"/> onto a
+    /// DIFFERENT playable, the one change a skip cannot avoid — the identity block CROSS-FADES instead of cutting:
+    /// opacity 0 → 1 over <see cref="Design.Motion"/>'s Standard beat on <see cref="Easing.FluentDecelerate"/>,
+    /// played on the meta column's captured node (the same imperative shape the heart's like-pop uses, and for the
+    /// same reason: a keyed remount of the marquee host would reset it mid-swap).
+    ///
+    /// <para>OPACITY ONLY, never through the layout: no scale, no slide, no Bounds/Reflow channel — the row must not
+    /// move while it re-letters (the rule <see cref="BarFaceMotion"/> already follows for a lighting slot). The ART is
+    /// deliberately NOT on this timeline: the engine already dissolves an <c>ImageEl</c> whose source changes from the
+    /// old texture to the new (hold-last-good → <c>ImageCache.SwapCrossfadeMs</c>, 150 ms), and a second fade stacked
+    /// on top would double-dip the tile. The art blanked to shimmer before this change only because <c>BarArtUrl</c>
+    /// went NULL mid-skip and the tile un-mounted its image outright; holding the url is that whole fix.</para>
+    ///
+    /// <para>Reduced motion is a VALUE, not a branch: the token carries <see cref="ReducedMotionPolicy.KeepFade"/>,
+    /// the engine's own answer for an opacity cross-fade — a fade aids orientation, it is not motion.</para></summary>
+    static readonly MotionTokenDef BarFaceSwap =
+        MotionTokenDef.Eased(Design.Motion.Standard, Easing.FluentDecelerate, ReducedMotionPolicy.KeepFade);
+
     /// <summary>The now-playing marquee's cadence: one slow pass every 14 s, a 3 s rest at each end and a 2 s hold on
     /// the start before the first pass — slower than the 10 s / 2.5 s hover cadence it replaces, because this one runs
     /// unattended.</summary>
@@ -160,12 +178,20 @@ public static partial class Shell
     {
         readonly IReadSignal<PlayerBarLayout> _layout = layout;
 
+        /// <summary>The ONE wake a load costs. Nothing else re-renders the bar while a playable resolves: the face
+        /// hold and the top edge's grace are both DEADLINES, and a deadline that nothing is watching would leave the
+        /// bar showing the held face (or no sweep) forever. Two <c>UseTimeout</c>s below bump it; this render reads
+        /// it through <see cref="BarFaceNow"/>.</summary>
+        Action? _wake;
+
         public override Element Render()
         {
             // ── hooks first, stable order ──
             var titleLinkHover = UseSignal(false);      // the title's link ink (the marquees scroll unattended)
             var likeNode = UseRef<NodeHandle>(default);
             var likePrevious = UseRef((0, false));
+            var metaNode = UseRef<NodeHandle>(default);            // the text block the face swap cross-fades
+            var facePrevious = UseRef<EntityRef>(default);         // the identity that block last stated
             var videoAnchor = UseRef<NodeHandle>(default);
             var videoMenu = UseRef<OverlayHandle?>(null);
             var overlay = UseContext(Overlay.Service);
@@ -190,6 +216,15 @@ public static partial class Shell
                 Playback.PrevAllowedByContext.Value, Playback.NextAllowedByContext.Value);
             bool active = facts.Active;
             bool playing = Playback.IsPlaying.Value;
+            // ── WHICH IDENTITY THE FACE SHOWS ───────────────────────────────────────────────────────────────────
+            // One arm for the whole block (art, title, artists, heart, both routes), so its parts cannot disagree
+            // while a skip lands. `BarFaceNow` is the same read the bound channels below make, so the marquee's text
+            // and this render's art can never be one frame apart.
+            var (faceArm, faceRef) = BarFaceNow();
+            bool identityShowing = PlayerBarRules.IdentityShowing(faceArm);
+            bool holding = faceArm == FaceArm.Hold;
+            bool titleKnown = BarPlayableTitle(current).Length > 0;
+            bool loadingNow = phase == Playback.Phase.Loading || buffering;
             bool shuffle = Playback.Shuffle.Value;
             var repeat = Playback.Repeat.Value;
             bool ownsTransport = PlayerBarRules.OwnsTransport(Video.State.Transport.Value);
@@ -199,22 +234,55 @@ public static partial class Shell
             bool isTrack = !current.IsNone && current.Kind == EntityKind.Track;
             var track = isTrack ? new Track(current.Slot) : default;
             bool hasVideo = isTrack && track.IsValid && track.HasVideo;
-            string? playingUri = BarPlayingUri(current);
-            var episode = !current.IsNone && current.Kind == EntityKind.Episode ? new Episode(current.Slot) : default;
-            bool liked = isEpisode ? Spotify.Podcasts.IsSaved(episode)
+            // The SAVE target is the face's row, not the deck's: while the face is held the heart states the held
+            // track's savedness (and is inert — see `likeEnabled`), so it cannot flicker off and back on a skip.
+            bool faceIsEpisode = faceRef.Kind == EntityKind.Episode;
+            string? playingUri = BarPlayingUri(faceRef);
+            var episode = faceIsEpisode ? new Episode(faceRef.Slot) : default;
+            bool liked = faceIsEpisode ? Spotify.Podcasts.IsSaved(episode)
                 : playingUri is not null && Controls.Library is { } library && library.IsSaved(playingUri);
-            bool saveReady = !isEpisode || episode.IsValid && Spotify.Podcasts.SavedReady && !Spotify.Podcasts.SavedBusy;
+            bool saveReady = !faceIsEpisode || episode.IsValid && Spotify.Podcasts.SavedReady && !Spotify.Podcasts.SavedBusy;
             uint savedEpoch = Entities.ScopeEpoch.Value;
             UseLayoutEffect(() =>
             {
                 if (isEpisode && !Spotify.Podcasts.SavedReady && !Spotify.Podcasts.SavedBusy)
                     _ = Spotify.Podcasts.ReadSavedAsync(System.Threading.CancellationToken.None);
             }, DepKey.From((int)savedEpoch, isEpisode ? 1 : 0));
-            bool likeLit = PlayerBarRules.LikeFaceVisible(L, facts.State);
+            bool likeLit = PlayerBarRules.LikeFaceVisible(L, facts.State, identityShowing);
+            // Lit but INERT while held: the held row is no longer the deck row, and `BarToggleLike` saves the DECK.
+            // The slot is reserved either way, so this costs no geometry.
+            bool likeEnabled = likeLit && saveReady && !holding;
+
+            // ── the hold's bookkeeping, committed AFTER the render that read it ──────────────────────────────────
+            // Statics, not signals: the shell mounts exactly one dock, this component owns the writes, and the only
+            // thing a reader must REACT to — a deadline passing — is `BarFaceHold.Wake`, which the timers bump.
+            UseLayoutEffect(() =>
+            {
+                if (!current.Equals(BarFaceHold.Identity))
+                {
+                    BarFaceHold.Identity = current;
+                    BarFaceHold.ChangedAtMs = Playback.FrameNowMs();
+                }
+                // An empty deck CLEARS the held face: "Nothing playing" is its own authored copy, and pressing play
+                // from idle must not flash the previous session's track for 450 ms on the way in.
+                if (current.IsNone) { BarFaceHold.Held = default; BarFaceHold.Context = default; }
+                else if (titleKnown) { BarFaceHold.Held = current; BarFaceHold.Context = Playback.ContextUri.Peek(); }
+            }, DepKey.From((int)current.Kind, current.Slot, titleKnown ? 1 : 0, 0));
+            UseLayoutEffect(() => BarFaceHold.LoadingSinceMs = loadingNow ? Playback.FrameNowMs() : 0L,
+                DepKey.From(loadingNow ? 1 : 0));
+            // The primary's face is the INTENT: a load keeps whatever the answer settled on last.
+            UseLayoutEffect(() =>
+            {
+                if (facts.State != PlayerState.Loading) BarFaceHold.PlayingBeforeLoad = playing;
+            }, DepKey.From((int)facts.State, playing ? 1 : 0));
+            bool pauseGlyph = PlayerBarRules.ShowsPauseGlyph(facts.State, playing, BarFaceHold.PlayingBeforeLoad);
+            _wake ??= static () => BarFaceHold.Wake.Value = BarFaceHold.Wake.Peek() + 1;
+            UseTimeout(_wake, PlayerBarRules.FaceHoldMs, DepKey.From((int)current.Kind, current.Slot));
+            UseTimeout(_wake, PlayerBarRules.SweepDelayMs, DepKey.From(loadingNow ? 1 : 0));
 
             // The heart pops on the SAME playable's save edge only — played on the captured node, because a keyed
             // remount of a focusable button would reset its hover/focus mid-toggle.
-            int playingSlot = current.IsNone ? 0 : current.Slot;
+            int playingSlot = faceRef.IsNone ? 0 : faceRef.Slot;
             UseLayoutEffect(() =>
             {
                 var (previousSlot, previouslyLiked) = likePrevious.Value;
@@ -299,8 +367,20 @@ public static partial class Shell
                 Key = "meta", Animate = BarMoveMotion,
                 Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Shrink = 1f,
                 Gap = 2f, Justify = FlexJustify.Center, ClipToBounds = true,
+                OnRealized = h => metaNode.Value = h,
                 Children = metaKids.ToArray(),
             };
+            // The face's ONE authored change: the text block cross-fades when the identity it states actually swaps.
+            // Never on the way INTO a hold or out of it — the held face IS the outgoing one, so nothing changed.
+            UseLayoutEffect(() =>
+            {
+                var was = facePrevious.Value;
+                facePrevious.Value = faceRef;
+                if (was.IsNone || faceRef.IsNone || was.Equals(faceRef)) return;
+                if (metaNode.Value.IsNull || Context.Anim is not { } anim) return;
+                anim.Animate(metaNode.Value, AnimChannel.Opacity, 0f, 1f,
+                    BarFaceSwap.EffectiveDurationMs(AnimChannel.Opacity), Easing.FluentDecelerate);
+            }, DepKey.From((int)faceRef.Kind, faceRef.Slot));
 
             bool artNav = !BarArtRoute().IsNone;
             var art = new BoxEl
@@ -310,13 +390,13 @@ public static partial class Shell
                 OnClick = artNav ? static () => BarGo(BarArtRoute()) : null,
                 Role = artNav ? AutomationRole.Hyperlink : AutomationRole.None,
                 Focusable = artNav,
-                Children = [Controls.Artwork(BarArtUrl(current), L.ArtSize, L.ArtSize, 6f, scale: artScale)],
+                Children = [Controls.Artwork(BarArtUrl(faceRef), L.ArtSize, L.ArtSize, 6f, scale: artScale)],
             };
             // The heart's SLOT is the tier's; an idle bar shows no face in it (and the face cannot be hit or focused).
-            var saveIcon = isEpisode ? ActionIcons.Resolve(ActionIcons.Save, liked) : ActionIcons.Resolve(ActionIcons.Heart, liked);
-            var saveButton = BarButton(saveIcon.Glyph ?? Icons.Add, static () => BarToggleLike(), likeLit && saveReady, liked,
+            var saveIcon = faceIsEpisode ? ActionIcons.Resolve(ActionIcons.Save, liked) : ActionIcons.Resolve(ActionIcons.Heart, liked);
+            var saveButton = BarButton(saveIcon.Glyph ?? Icons.Add, static () => BarToggleLike(), likeEnabled, liked,
                 box, glyph, onRealized: h => likeNode.Value = h) with { BlocksDragArm = true };
-            Element saveFace = isEpisode ? ToolTip.Wrap(saveButton,
+            Element saveFace = faceIsEpisode ? ToolTip.Wrap(saveButton,
                 Loc.Get(liked ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save)) : saveButton;
             var likeSlot = Slot("like", box, box, likeLit, saveFace);
 
@@ -343,7 +423,7 @@ public static partial class Shell
                 transportKids.Add(BarSeekStepButton(-10_000, box) with { Key = "seek-back-10" });
             if (ownsTransport)
                 transportKids.Add(BarPrimaryButton(
-                        facts.State == PlayerState.Error ? Icons.Play : playing ? Icons.Pause : Icons.Play,
+                        facts.State == PlayerState.Error ? Icons.Play : pauseGlyph ? Icons.Pause : Icons.Play,
                         facts.Primary, L.PrimaryBox, L.PrimaryGlyph)
                     with { Key = "primary", Animate = BarMoveMotion });
             if (ownsTransport && L.ShowPrevNext)
@@ -499,7 +579,12 @@ public static partial class Shell
             };
 
             // ── assemble: the top activity edge + the single centred row ────────────────────────────────────────────
-            Element topEdge = PlayerBarRules.TopEdgeSweeps(phase, buffering, recovery)
+            // A load that has only just begun shows NO sweep; `BarFaceHold.LoadingSinceMs` is stamped by the layout
+            // effect above, so the render that OPENS the window reads 0 here and the wake timer brings the sweep in
+            // at SweepDelayMs if the load is still running.
+            float msInPhase = loadingNow && BarFaceHold.LoadingSinceMs > 0L
+                ? (float)(Playback.FrameNowMs() - BarFaceHold.LoadingSinceMs) : 0f;
+            Element topEdge = PlayerBarRules.TopEdgeSweeps(phase, buffering, recovery, msInPhase)
                 ? ProgressBar.Indeterminate(L.TopEdgeWidth)
                 : new BoxEl
                 {
@@ -562,6 +647,63 @@ public static partial class Shell
         return (r.Kind, r.Slot, (uint)r.Slot < (uint)table.Count ? table.Version[r.Slot] : 0u);
     }
 
+    /// <summary>THE HELD FACE. The last identity that fully RESOLVED, when the deck last changed under it, and when
+    /// the current load began — the three facts <see cref="PlayerBarRules.FaceOf"/> and
+    /// <see cref="PlayerBarRules.TopEdgeSweeps"/> need and the model does not carry.
+    ///
+    /// <para>Plain statics with ONE signal, deliberately: the shell mounts exactly one player dock, <see
+    /// cref="PlayerBarContent"/> owns every write (from layout effects, after the render that read them), and the only
+    /// thing a reader must RE-RUN for is a deadline passing — which is what <see cref="Wake"/> is. Making the values
+    /// themselves signals would publish them a frame late to the bound title channel and flash "Loading…" for exactly
+    /// the frame this whole change exists to remove.</para></summary>
+    static class BarFaceHold
+    {
+        /// <summary>The last playable whose title was known — the face the bar keeps through a short load.</summary>
+        public static EntityRef Held;
+
+        /// <summary>The playback context <see cref="Held"/> was resolved under, so a held art click still lands on the
+        /// playlist the held track came from rather than the one being loaded into.</summary>
+        public static EntityId Context;
+
+        /// <summary>The deck row <see cref="ChangedAtMs"/> belongs to.</summary>
+        public static EntityRef Identity;
+
+        /// <summary>Frame-clock stamp of the last identity change — the hold window's origin.</summary>
+        public static long ChangedAtMs;
+
+        /// <summary>Frame-clock stamp of the open loading/buffering window, or 0 — the sweep grace's origin.</summary>
+        public static long LoadingSinceMs;
+
+        /// <summary>The last SETTLED answer to "is it playing", i.e. the model's <c>IsPlaying</c> outside a load —
+        /// which is the user's intent through the gap a skip opens (<see cref="PlayerBarRules.ShowsPauseGlyph"/>).
+        /// <c>IsPlaying</c> is <c>Phase == Playing</c> and therefore FALSE for the 150 ms a skip takes; the primary's
+        /// face must not read that, or it flips pause → play → pause on every track change.</summary>
+        public static bool PlayingBeforeLoad;
+
+        /// <summary>Bumped by the bar's two grace timers: the ONLY thing that re-renders the bar for a deadline.</summary>
+        public static readonly Signal<int> Wake = new(0);
+    }
+
+    /// <summary>WHICH identity the now-playing face shows, and the arm that chose it. Every part of the face reads
+    /// THIS — the render for the art, the heart and the routes, the bound title channel, the artists line — so the
+    /// six things that used to change at once on a skip now change together or not at all.
+    ///
+    /// <para>Reactive: it reads <c>Playback.Current</c>, the row's own table (through <see cref="BarPlayableTitle"/>)
+    /// and <see cref="BarFaceHold.Wake"/>, so a caller inside a bound channel re-runs when the face flips arm.</para></summary>
+    static (FaceArm Arm, EntityRef Ref) BarFaceNow()
+    {
+        var current = Playback.Current.Value;
+        _ = BarFaceHold.Wake.Value;                 // the hold deadline (nothing else wakes a reader for it)
+        var held = BarFaceHold.Held;
+        // A held row that has itself been evicted (its title no longer reads) is not a face worth showing.
+        bool hasHeldFace = !held.IsNone && !held.Equals(current) && BarPlayableTitle(held).Length > 0;
+        float sinceMs = current.Equals(BarFaceHold.Identity)
+            ? (float)(Playback.FrameNowMs() - BarFaceHold.ChangedAtMs)
+            : 0f;                                   // the change is landing in THIS render; the stamp follows it
+        var arm = PlayerBarRules.FaceOf(BarStateNow(), BarPlayableTitle(current).Length > 0, hasHeldFace, sinceMs);
+        return (arm, arm == FaceArm.Hold ? held : current);
+    }
+
     static PlayerState BarStateNow()
         => PlayerBarRules.StateOf(!Playback.CurrentId.Value.IsEmpty, Playback.Error.Value, Playback.PhaseSignal.Value,
             Playback.Recovery.Value);
@@ -576,8 +718,11 @@ public static partial class Shell
     /// <summary>The title line's text, read LIVE inside a bound channel (the marquee host freezes its ctor args).</summary>
     static string BarTitleText()
     {
-        var r = Playback.Current.Value;
+        var (arm, r) = BarFaceNow();
         string title = BarPlayableTitle(r);
+        // A HELD face states the outgoing title verbatim — never "Loading…", which is the placeholder's word and
+        // was the loudest of the six things a 150 ms skip used to change.
+        if (arm == FaceArm.Hold) return title;
         return PlayerBarRules.TextOf(BarStateNow(), title.Length > 0) switch
         {
             NowPlayingText.Title => title,
@@ -643,10 +788,12 @@ public static partial class Shell
 
     static bool BarHasVideoPeek() => BarTrackPeek() is { IsValid: true } t && t.HasVideo;
 
-    /// <summary>Title → the album (a track) or the show (an episode). Resolved at INVOKE time.</summary>
+    /// <summary>Title → the album (a track) or the show (an episode). Resolved at INVOKE time, against the row the
+    /// face is SHOWING: a click on a held title goes where the held title says, not where the row still loading
+    /// behind it would.</summary>
     static Route BarTitleRoute()
     {
-        var r = Playback.Current.Peek();
+        var r = BarFaceNow().Ref;
         if (r.IsNone) return Route.None;
         if (r.Kind == EntityKind.Episode)
         {
@@ -661,9 +808,11 @@ public static partial class Shell
     /// module slot answers first and the context uri is the fallback.</summary>
     static Route BarArtRoute()
     {
-        var t = BarTrackPeek();
+        var (arm, r) = BarFaceNow();
+        var t = r.Kind == EntityKind.Track ? new Track(r.Slot) : default;
         if (t.IsValid && LinkFor(t, LinkSlot.Art) is { IsNone: false } module) return module;
-        var context = Playback.ContextUri.Peek();
+        // Held: the context the held row was RESOLVED under, not the one being loaded into.
+        var context = arm == FaceArm.Hold ? BarFaceHold.Context : Playback.ContextUri.Peek();
         return context.IsEmpty ? Route.None : For(new EntityUri(context));
     }
 
@@ -742,7 +891,9 @@ public static partial class Shell
         public override Element Render()
         {
             _ = UseComputed<long>(ArtistLineStamp).Value;
-            var r = Playback.Current.Value;
+            // The FACE's row: a held face keeps its credits, so the line never empties and the text block never
+            // re-centres from two lines to one and back on a skip.
+            var r = BarFaceNow().Ref;
             if (r.IsNone) return new BoxEl { Direction = 0 };
 
             if (r.Kind == EntityKind.Episode)
@@ -797,7 +948,7 @@ public static partial class Shell
         /// rows change.</summary>
         static long ArtistLineStamp()
         {
-            var r = Playback.Current.Value;
+            var r = BarFaceNow().Ref;
             if (r.IsNone) return 0L;
             if (r.Kind == EntityKind.Episode)
             {

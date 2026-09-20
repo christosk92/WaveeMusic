@@ -273,9 +273,12 @@ public static partial class Shell
                 if (!editor.IsNull) hooks.FocusNode?.Invoke(editor, true);
             }, DepKey.From(ticket));
 
-            float width = ChromeLayout.Value.SearchWidth;
-            float available = avail.Value;
-            if (float.IsFinite(available) && available > 0f) width = MathF.Min(width, available);
+            // ONE rule, in the allocator (Shell.Chrome.cs `Chrome.LaidOutSearchWidth`): the ladder has already proved the
+            // row can seat this field, so the bar's measured centre width may only TRIM it, never take it below its own
+            // minimum. Under the elastic tabs lane that measurement is a feedback of this very width, so the old bare
+            // `min(SearchWidth, avail)` was a floorless ratchet — one bad frame latched the field at ~40 DIP and the
+            // placeholder rendered as a clipped "Sear" stub. (#88)
+            float width = ChromeLayout.Value.LaidOutSearchWidth(avail.Value);
             return new BoxEl
             {
                 Key = "chrome-search-field", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Width = width,

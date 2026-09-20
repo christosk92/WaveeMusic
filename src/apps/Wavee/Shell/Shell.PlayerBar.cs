@@ -36,6 +36,17 @@ public static partial class Shell
     /// <summary>Which sentence the now-playing title line carries.</summary>
     public enum NowPlayingText : byte { Title, NothingPlaying, Loading, Reconnecting, CannotPlay }
 
+    /// <summary>WHICH identity the now-playing face is showing — the one decision the whole face (art, title, artists,
+    /// heart, routes) reads, so its six parts can never disagree mid-skip.
+    /// <list type="bullet">
+    /// <item><see cref="Live"/> — the deck's own row, resolved (or a state that authors its own copy).</item>
+    /// <item><see cref="Hold"/> — the OUTGOING row, kept on screen while the incoming one resolves
+    /// (<see cref="PlayerBarRules.FaceHoldMs"/>). A 150 ms skip between two rows the client already has therefore
+    /// changes NOTHING but the content itself.</item>
+    /// <item><see cref="Placeholder"/> — nothing to show: the shimmer tile and "Loading…", exactly as before.</item>
+    /// </list></summary>
+    public enum FaceArm : byte { Live, Hold, Placeholder }
+
     /// <summary>The title line's ink rung.</summary>
     public enum NowPlayingInk : byte { Primary, Secondary, Critical }
 
@@ -105,6 +116,33 @@ public static partial class Shell
         /// <summary>The software mute's restore level when there is no output device to mute (the fake path).</summary>
         public const float SoftwareUnmuteLevel = 0.7f;
 
+        /// <summary>How long the bar keeps showing the OUTGOING identity while the incoming one resolves. A skip
+        /// between two rows the client already holds resolves in 100-250 ms, so the whole gap fits inside this and the
+        /// face never degrades; a load that outlives it was never a skip and falls back to the placeholder.</summary>
+        public const float FaceHoldMs = 450f;
+
+        /// <summary>How long a <c>Loading</c>/buffering phase must LAST before the top edge sweeps. The sweep is for a
+        /// wait, not for a transition: a normal skip is over long before this and shows no sweep at all. A network
+        /// recovery is exempt — it is a real, user-meaningful condition and sweeps immediately.</summary>
+        public const float SweepDelayMs = 450f;
+
+        /// <summary>WHICH identity the face shows. <c>NoTrack</c> and <c>Error</c> answer <see cref="FaceArm.Live"/>
+        /// unconditionally: both author their own copy ("Nothing playing", the fault sentence) and must never be masked
+        /// by a held track. Otherwise a resolved title is <see cref="FaceArm.Live"/>, an unresolved one HOLDS the
+        /// outgoing face while it is fresh (&lt; <see cref="FaceHoldMs"/>), and everything else is the placeholder.
+        /// <paramref name="hasHeldFace"/> is the caller's answer to "is there an outgoing identity still worth
+        /// showing" — a held row that has itself been evicted is not.</summary>
+        public static FaceArm FaceOf(PlayerState state, bool titleKnown, bool hasHeldFace, float msSinceIdentityChange)
+            => state is PlayerState.NoTrack or PlayerState.Error ? FaceArm.Live
+             : titleKnown ? FaceArm.Live
+             : hasHeldFace && msSinceIdentityChange < FaceHoldMs ? FaceArm.Hold
+             : FaceArm.Placeholder;
+
+        /// <summary>Is an IDENTITY on screen at all (as opposed to the placeholder)? The one question the parts of the
+        /// face that are not text ask of <see cref="FaceOf"/> — the heart above, and the art/route reads at the call
+        /// site.</summary>
+        public static bool IdentityShowing(FaceArm arm) => arm is FaceArm.Live or FaceArm.Hold;
+
         /// <summary>The ORDER is 0.2.9's: an error outranks everything, a missing playable outranks loading, loading
         /// outranks a network recovery.</summary>
         public static PlayerState StateOf(bool hasCurrent, Playback.Fault error, Playback.Phase phase,
@@ -117,8 +155,14 @@ public static partial class Shell
 
         /// <summary>The whole fold. <c>canTransport = active || buffering || reconnecting</c> verbatim; Previous/Next
         /// additionally AND the model's folded restriction bits (a context the cluster says cannot skip greys them —
-        /// 0.3's <c>CanSkipNext</c>/<c>CanSkipPrev</c>, which 0.2.9 did not have). The primary is a RETRY while
-        /// errored and dead only for NoTrack/Loading — merely buffering keeps it live.</summary>
+        /// 0.3's <c>CanSkipNext</c>/<c>CanSkipPrev</c>, which 0.2.9 did not have).
+        ///
+        /// <para>THE PRIMARY IS THE USER'S INTENT, NOT THE PIPELINE'S STATE. It is a RETRY while errored and dead only
+        /// for <see cref="PlayerState.NoTrack"/> — there is nothing to toggle with no playable. <c>Loading</c> keeps
+        /// <see cref="PrimaryVerb.TogglePlay"/>: a skip while playing spends 100-250 ms in that state, and the old
+        /// <c>None</c> made the glyph flip pause → play → pause and grey out in between, three discrete changes for a
+        /// gap the user experiences as one continuous "still playing". The intent through that gap is PLAYING, so the
+        /// button keeps saying so — and <c>Playback.IsPlaying</c>, not this fold, still picks WHICH glyph is drawn.</para></summary>
         public static PlayerBarFacts Fold(bool hasCurrent, Playback.Fault error, Playback.Phase phase, bool buffering,
             Playback.RecoveryKind recovery, bool canSkipPrev, bool canSkipNext)
         {
@@ -132,7 +176,7 @@ public static partial class Shell
             var primary = state switch
             {
                 PlayerState.Error => PrimaryVerb.Retry,
-                PlayerState.NoTrack or PlayerState.Loading => PrimaryVerb.None,
+                PlayerState.NoTrack => PrimaryVerb.None,
                 _ => PrimaryVerb.TogglePlay,
             };
             return new PlayerBarFacts(state, canTransport, canSkip && canSkipPrev, canSkip && canSkipNext, primary);
@@ -166,9 +210,25 @@ public static partial class Shell
         public static bool ShowsArtistLine(PlayerState state, bool showSubtitle)
             => showSubtitle && state != PlayerState.NoTrack && state != PlayerState.Error;
 
-        /// <summary>The global activity cue: the top edge sweeps while opening, refilling or reconnecting.</summary>
-        public static bool TopEdgeSweeps(Playback.Phase phase, bool buffering, Playback.RecoveryKind recovery)
-            => phase == Playback.Phase.Loading || buffering || recovery == Playback.RecoveryKind.Network;
+        /// <summary>WHICH FACE the primary wears — pause (true) or play. <paramref name="isPlaying"/> is the model's
+        /// <c>Phase == Playing</c>, which a skip drops for the 100-250 ms it spends loading: reading it raw makes the
+        /// glyph flip pause → play → pause on every track change, which <see cref="Fold"/>'s verb alone does not fix.
+        /// A LOAD therefore keeps the last SETTLED answer (<paramref name="playingBeforeLoad"/>) — the user's intent
+        /// through the gap — so skipping while playing shows one uninterrupted pause glyph, and skipping while paused
+        /// shows play until the new row actually starts.</summary>
+        public static bool ShowsPauseGlyph(PlayerState state, bool isPlaying, bool playingBeforeLoad)
+            => state == PlayerState.Loading ? playingBeforeLoad : isPlaying;
+
+        /// <summary>The global activity cue: the top edge sweeps while opening, refilling or reconnecting — but a
+        /// LOAD only once it has lasted <see cref="SweepDelayMs"/> (<paramref name="msInPhase"/> is how long the
+        /// current loading/buffering window has been open). A track skip is a transition, not a wait: running a
+        /// high-contrast indeterminate sweep across the whole bar for 150 ms is the single loudest thing the old bar
+        /// did on every skip. A network recovery keeps sweeping IMMEDIATELY — that one is a real condition the user is
+        /// owed, not a frame of latency.</summary>
+        public static bool TopEdgeSweeps(Playback.Phase phase, bool buffering, Playback.RecoveryKind recovery,
+            float msInPhase)
+            => recovery == Playback.RecoveryKind.Network
+            || ((phase == Playback.Phase.Loading || buffering) && msInPhase >= SweepDelayMs);
 
         /// <summary>ONE transport per WINDOW: the bar keeps it for every placement except full-bleed fullscreen, where
         /// the shell unmounts the bar outright (ch 20 §0 item 15).</summary>
@@ -246,10 +306,15 @@ public static partial class Shell
             _ => true,
         };
 
-        /// <summary>The heart's slot is the tier's (<see cref="PlayerBarLayout.ShowLikeSlot"/>); its face needs a
-        /// playable to like.</summary>
-        public static bool LikeFaceVisible(in PlayerBarLayout layout, PlayerState state)
-            => layout.ShowLikeSlot && state == PlayerState.Active;
+        /// <summary>The heart's slot is the tier's (<see cref="PlayerBarLayout.ShowLikeSlot"/>); its face needs an
+        /// IDENTITY on screen to like — <paramref name="identityShowing"/>, i.e. <see cref="IdentityShowing"/> of the
+        /// face's arm — never <c>state == Active</c>. Keying on Active made the heart fade out and back on every skip,
+        /// because the face it belongs to is still right there being held. It stays dark for NoTrack and Error, which
+        /// have no playable to save. (Whether the heart can be CLICKED is a separate question the bar answers at the
+        /// call site: a HELD face is not the deck row, so its heart is lit but inert. The slot is reserved either way,
+        /// so neither answer moves anything.)</summary>
+        public static bool LikeFaceVisible(in PlayerBarLayout layout, PlayerState state, bool identityShowing)
+            => layout.ShowLikeSlot && identityShowing && state is not (PlayerState.NoTrack or PlayerState.Error);
 
         /// <summary>Below Medium an ACTIVE bar carries Mute/Unmute in the overflow; an idle one has no volume
         /// affordance at all.</summary>

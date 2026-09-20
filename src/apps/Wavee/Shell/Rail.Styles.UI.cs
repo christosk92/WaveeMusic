@@ -177,17 +177,25 @@ public static partial class Rail
     // ── the artwork context menu (W10) ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Cover / ‹Player› as ONE mutually exclusive radio choice, a separator, then "Player style…" opening the SAME
-    /// popup the gear owns (one controlled signal, one flyout instance — never a second copy).</summary>
-    static ContextMenuModel? ArtMenu(int presentation, in PlayerCatalog.Preset preset) => new ContextMenuModel(
-    [
-        MenuFlyoutItem.RadioItem(Loc.Get(Strings.Player.PresentationCover), presentation == PlayerPrefs.Cover,
-            static () => PlayerPrefs.SetPresentation(PlayerPrefs.Cover, NpvDiagnostics.SourceArtMenu), Icons.Picture),
-        MenuFlyoutItem.RadioItem(Loc.Get(preset.ShortLabelKey), presentation == PlayerPrefs.Player,
-            static () => PlayerPrefs.SetPresentation(PlayerPrefs.Player, NpvDiagnostics.SourceArtMenu), Icons.Album),
-        MenuFlyoutItem.Separator,
-        new MenuFlyoutItem(Loc.Get(Strings.Player.PlayerStyleEllipsis), Icons.Settings,
-            Invoke: static () => PlayerPrefs.StyleFlyoutOpen.Value = true),
-    ]);
+    /// popup the gear owns (one controlled signal, one flyout instance — never a second copy).
+    /// <para>The radio PAIR is the header's switch in menu form, so it follows the same developer-only gate
+    /// (<paramref name="switchVisible"/>): outside developer mode the menu is "Player style…" alone, never a choice that
+    /// cannot change the face.</para></summary>
+    static ContextMenuModel? ArtMenu(int presentation, in PlayerCatalog.Preset preset, bool switchVisible)
+    {
+        var style = new MenuFlyoutItem(Loc.Get(Strings.Player.PlayerStyleEllipsis), Icons.Settings,
+            Invoke: static () => PlayerPrefs.StyleFlyoutOpen.Value = true);
+        if (!switchVisible) return new ContextMenuModel([style]);
+        return new ContextMenuModel(
+        [
+            MenuFlyoutItem.RadioItem(Loc.Get(Strings.Player.PresentationCover), presentation == PlayerPrefs.Cover,
+                static () => PlayerPrefs.SetPresentation(PlayerPrefs.Cover, NpvDiagnostics.SourceArtMenu), Icons.Picture),
+            MenuFlyoutItem.RadioItem(Loc.Get(preset.ShortLabelKey), presentation == PlayerPrefs.Player,
+                static () => PlayerPrefs.SetPresentation(PlayerPrefs.Player, NpvDiagnostics.SourceArtMenu), Icons.Album),
+            MenuFlyoutItem.Separator,
+            style,
+        ]);
+    }
 
     // ── the twelve mini-arts (NpvThumbnails.cs, verbatim geometry) ───────────────────────────────────────────────────
 

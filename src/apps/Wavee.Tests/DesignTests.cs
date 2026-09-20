@@ -684,6 +684,18 @@ public class DesignNavMotionTests
     /// — the enter delay must be AT LEAST the exit duration, or two full-bleed pages are briefly both legible (measured:
     /// summed opacity peaking at 1.83 for ~130ms). <c>ExitDelayMs</c> must be the explicit 0f, never null (null inherits
     /// `DelayMs` and pushes the exit out by the same amount, flashing the content card empty).</summary>
+    /// <summary>The DEFAULT page motion is Classic — the 0.2.x fade-through — and the default-style overloads really do
+    /// hand it back. The Settings row that offers the other four is developer-only, so this constant is what a normal
+    /// build navigates with, not merely what an untouched profile starts at.</summary>
+    [Fact]
+    public void The_default_page_motion_is_Classic_and_the_default_overloads_use_it()
+    {
+        Assert.Equal(Design.PageMotionStyle.Classic, Design.Nav.DefaultStyle);
+        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
+        foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
+            Assert.Equal(Design.Nav.RecipeFor(Design.PageMotionStyle.Classic, kind, relation), Design.Nav.RecipeFor(kind, relation));
+    }
+
     [Fact]
     public void Every_sequenced_style_finishes_the_exit_leg_before_the_enter_leg_starts()
     {
@@ -788,11 +800,13 @@ public class DesignNavMotionTests
         }
     }
 
+    /// <summary>Spatial's DrillIn, named explicitly: the DEFAULT style is Classic, whose DrillIn is the uniform
+    /// fade-through, so this fact belongs to the style rather than to <c>Design.Nav.DefaultStyle</c>.</summary>
     [Fact]
     public void DrillIn_is_a_semantic_zoom_not_an_eight_DIP_fade()
     {
-        var fwd = Design.Nav.RecipeFor(Design.NavTransitionKind.Forward, Design.NavRelation.DrillIn);
-        var back = Design.Nav.RecipeFor(Design.NavTransitionKind.Back, Design.NavRelation.DrillIn);
+        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.DrillIn);
+        var back = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Back, Design.NavRelation.DrillIn);
         Assert.True(fwd.Enter.Sx is > 0f and < 1f);
         Assert.True(fwd.Exit.Sx > 1f);
         Assert.True(back.Enter.Sx > 1f);

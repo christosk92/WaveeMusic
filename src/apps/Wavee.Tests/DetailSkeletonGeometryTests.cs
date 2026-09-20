@@ -480,12 +480,17 @@ public class DetailSkeletonGeometryTests
             VerticalLayout.HeroBandHeight(0f, rowFlow, true, true, true, true));
     }
 
-    // ── issue #78: the identity fill block redistributes slack WITHOUT growing the band ─────────────────────────────
+    // ── the identity column never inflates past its own content (supersedes issue #78's forced MinHeight) ───────────
 
-    /// <summary>A bare identity is SHORTER than the artwork at a real row-flow width; the row arm's MinHeight closes that
-    /// gap as max(natural, art) — exactly HeroBandHeight's cross size, so the fix adds NO height.</summary>
+    /// <summary>A bare identity is SHORTER than the artwork at a real row-flow width. The column no longer forces
+    /// itself up to the artwork's edge to close that gap: issue #78's fix only RELOCATED the resulting dead band
+    /// from under the action row to a blank strip INSIDE the identity column (between the metadata and the actions,
+    /// or under a bare accent rule when nothing else was reserved) — exactly the "large band of dead whitespace" a
+    /// tall cover beside little text produces. The BAND's own height still covers the artwork
+    /// (<c>MathF.Max(art, identity)</c>): a taller cover simply runs on past a shorter, natural column, top-aligned,
+    /// so nothing inside the column is ever stretched to fill space it has no content for.</summary>
     [Fact]
-    public void IdentityFill_RedistributesInsideTheColumnAndAddsNothingToTheBand()
+    public void IdentityMinHeight_NeverInflatesTheColumnPastItsNaturalContent()
     {
         const float w = 424f;
         const bool rowFlow = true;
@@ -494,21 +499,22 @@ public class DetailSkeletonGeometryTests
         float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, false, false, false, false);
         Assert.True(identity < art, $"fixture assumption broken: identity {identity} is not shorter than art {art}");
 
-        float minH = VerticalLayout.IdentityMinHeightFor(w, rowFlow);
-        Assert.Equal(art, minH);
+        // The column reports NO MinHeight — never forced taller than its own content, in either flow.
+        Assert.Equal(0f, VerticalLayout.IdentityMinHeightFor(w, rowFlow: true));
+        Assert.Equal(0f, VerticalLayout.IdentityMinHeightFor(w, rowFlow: false));
+        for (float sw = LadderMin; sw <= LadderMax; sw += 1f)
+        {
+            Assert.Equal(0f, VerticalLayout.IdentityMinHeightFor(sw, rowFlow: false));
+            Assert.Equal(0f, VerticalLayout.IdentityMinHeightFor(sw, rowFlow: true));
+        }
 
-        float occupied = MathF.Max(identity, minH);
-        Assert.Equal(art, occupied);
-
+        // The BAND still covers the artwork — removing the column's forced MinHeight changes nothing about the
+        // RESERVED total, only where (if anywhere) the surplus between the cover and the text is allowed to show.
         float band = VerticalLayout.HeroBandHeight(w, rowFlow, false, false, false, false);
-        float expectedBand = VerticalLayout.HeroPadFor(w, rowFlow) + occupied + VerticalLayout.HeroBottomPad
+        float expectedBand = VerticalLayout.HeroPadFor(w, rowFlow) + MathF.Max(art, identity) + VerticalLayout.HeroBottomPad
                             + VerticalLayout.ExpandedToolbarTopPad + VerticalLayout.ToolbarRowHeight
                             + VerticalLayout.ExpandedToolbarBottomPad;
         Assert.Equal(expectedBand, band);
-
-        Assert.Equal(0f, VerticalLayout.IdentityMinHeightFor(w, rowFlow: false));
-        for (float sw = LadderMin; sw <= LadderMax; sw += 1f)
-            Assert.Equal(0f, VerticalLayout.IdentityMinHeightFor(sw, rowFlow: false));
     }
 
     // ── the toolbar reservation (issue #78/#79/#80 parity item D) ────────────────────────────────────────────────────

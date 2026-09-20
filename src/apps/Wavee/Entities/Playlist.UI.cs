@@ -31,6 +31,48 @@ using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
+/// <summary>AN OPTIMISTIC SWITCH, AS A RULE (ch 06 §0.12 "optimistic, then honest", W17). The access panel's two
+/// switches write through <c>Spotify.PlaylistEdits</c>, which flips the model at once and puts it back only if the
+/// server refuses — and the settle then RE-READS the list. That re-read can land the pre-write value (it raced the
+/// write on the server side, or it is a dealer echo of the older head), and a switch that simply mirrors the model
+/// flips back on its own. So the switch does not mirror the model: it holds the user's INTENT until an authoritative
+/// answer AGREES with it, and reverts exactly once, on a refusal.
+/// <list type="bullet">
+/// <item><see cref="Flip"/> — the click: the intent paints immediately and is held; the switch is busy.</item>
+/// <item><see cref="Observe"/> — a table publication: accepted while it agrees with the intent (the write landed) or
+/// while nothing is held; a DISAGREEING publication under a held intent is a read that raced the write and is recorded
+/// but not painted.</item>
+/// <item><see cref="Answered"/> — the write's own verdict: accepted keeps the intent held until the model catches up;
+/// refused reverts ONCE, to the model the edit host has already put back.</item>
+/// </list>
+/// PURE — no table, no signal, no clock.</summary>
+/// <param name="Model">The last value the tables published.</param>
+/// <param name="Wanted">The value the user asked for (== <paramref name="Model"/> when nothing is held).</param>
+/// <param name="Writing">A write is out: the row shows its busy chip and the switch is disabled.</param>
+/// <param name="Holding">Paint <paramref name="Wanted"/>, not <paramref name="Model"/>.</param>
+public readonly record struct OptimisticSwitch(bool Model, bool Wanted, bool Writing, bool Holding)
+{
+    /// <summary>What the switch paints.</summary>
+    public bool Shown => Holding ? Wanted : Model;
+
+    /// <summary>Is a write out for this switch?</summary>
+    public bool Busy => Writing;
+
+    /// <summary>Settled on <paramref name="model"/>: nothing held, nothing out.</summary>
+    public static OptimisticSwitch At(bool model) => new(model, model, false, false);
+
+    /// <summary>The user flipped it.</summary>
+    public OptimisticSwitch Flip(bool wanted) => new(Model, wanted, true, true);
+
+    /// <summary>The tables published <paramref name="model"/>.</summary>
+    public OptimisticSwitch Observe(bool model)
+        => Holding && model != Wanted ? this with { Model = model } : new(model, model, Writing, false);
+
+    /// <summary>The write answered: <paramref name="ok"/>, against the model as it stands now.</summary>
+    public OptimisticSwitch Answered(bool ok, bool model)
+        => ok ? new(model, Wanted, false, model != Wanted) : At(model);
+}
+
 /// <summary>0.2.9 <c>PlaylistEditErrors</c>: the ONE raise — the mapped sentence and the Informational/Error split.</summary>
 public static class PlaylistEditErrors
 {
@@ -49,6 +91,12 @@ public readonly partial struct Playlist
     const float PencilBox = 20f;
     const float EditButtonH = 32f;
     const float InviteRoundEdge = 28f, InviteWideFrom = 260f;
+    /// <summary>THE RESERVED OWNER ROW (W17/W29). Its two arms are different sizes — the owner run is a 24 DIP portrait,
+    /// the collaborator pile is a 32 DIP framed face (<c>Controls.FaceOuter</c>) — and the invite pill between them is
+    /// 28. Flipping "Collaborative" swaps the arms, so an unreserved row changed height AND width mid-interaction: the
+    /// Play pill stepped down, the invite button stepped sideways, and the access flyout anchored to that button moved
+    /// under the cursor. One height for both arms, and a grown leading arm so the invite pill keeps its x.</summary>
+    const float OwnerRowHeight = Controls.FaceOuter;
     const float AccessPanelW = 300f, TunePanelW = 336f;
     const float SavedHoldMs = 1800f;
     static readonly ColorF ScrimHover = ColorF.FromRgba(0, 0, 0, 133);    // #000 @ .52
@@ -521,19 +569,37 @@ public readonly partial struct Playlist
             // Item 58: the invite affordance also needs a live Spotify edit path (the stamp carries the session phase).
             bool invite = stamp.EditsLive && p.Live && p.IsOwner && p.CanAdministratePermissions;
 
-            var kids = new List<Element>(3);
-            if (pile) kids.Add(PileButton(p));
+            // THE LEADING ARM lives in its own GROWN box, so the pile and the owner run measure the same and the invite
+            // pill after them never moves sideways when "Collaborative" flips (the flyout is anchored to that pill).
+            Element lead;
+            if (pile) lead = PileButton(p);
             else
             {
                 var owner = p.Owner;
                 string name = NameOf(owner);
-                kids.Add(PersonPicture.Create("", 24f, displayName: name, imageSourcePath: Controls.ArtUrl(owner.ImageId)));
-                kids.Add(Design.Type.TrackTitle(name) with { Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
+                lead = new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Children =
+                    [
+                        PersonPicture.Create("", 24f, displayName: name, imageSourcePath: Controls.ArtUrl(owner.ImageId)),
+                        Design.Type.TrackTitle(name) with { Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    ],
+                };
             }
+            var kids = new List<Element>(2)
+            {
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    Children = [lead],
+                },
+            };
             if (invite) kids.Add(InviteButton(props.Width));
             return new BoxEl
             {
                 Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Height = OwnerRowHeight,      // RESERVED: the taller arm's height, always (see the const's summary)
                 MaxWidth = float.IsFinite(props.Width) && props.Width > 0f ? props.Width : float.NaN,
                 Children = kids.ToArray(),
             };
@@ -553,8 +619,10 @@ public readonly partial struct Playlist
                          : p.IsCollaborative ? Loc.Get(Strings.Detail.CollabOpen) : NameOf(new User(_members[0]));
             return ToolTip.Wrap(new BoxEl
             {
+                // No VERTICAL padding: the framed face is already OwnerRowHeight tall and the reserved row is measured
+                // on it — 4 DIP more here would make the collaborative arm the taller one all over again.
                 Direction = 0, Gap = 4f, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f,
-                Padding = new Edges4(6f, 4f, 6f, 4f), Corners = CornerRadius4.All(8f),
+                Padding = new Edges4(6f, 0f, 6f, 0f), Corners = CornerRadius4.All(8f),
                 HoverFill = Tok.FillCardDefault, PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = _openMembers,
                 OnRealized = n => _pileNode = n,
@@ -591,10 +659,19 @@ public readonly partial struct Playlist
             return wide ? box : ToolTip.Wrap(box, label);
         }
 
+        /// <summary>THE LATCHED OPEN (W17). The overlay host FOLLOWS a node anchor: <c>AfterAnimations</c> re-places an
+        /// open, node-anchored entry whenever the resolved anchor rect drifts by more than half a DIP. This popup is
+        /// anchored to a button that its OWN switches move (the eyebrow and the owner row re-read the same row), so the
+        /// panel used to slide out from under the cursor mid-interaction. Opening it against a RECT captured at open
+        /// time takes it out of that follow entirely (the host skips rect-anchored entries) — the panel keeps the
+        /// placement it opened with for the life of the interaction, and only this popup: nothing global is disabled.
+        /// The button is still passed as the OWNER, so the panel still cascade-closes and still dies with its page.</summary>
         void OpenAccess()
         {
             if (Controls.IsNullOverlay(_overlay)) return;
-            OpenAccessPanel(_overlay, new Playlist(_slot), _inviteAnchor, FlyoutPlacement.BottomEdgeAlignedLeft);
+            var scene = Context.Scene;
+            RectF latched = scene is not null && !_inviteNode.IsNull && scene.IsLive(_inviteNode) ? scene.AbsoluteRect(_inviteNode) : default;
+            OpenAccessPanel(_overlay, new Playlist(_slot), _inviteAnchor, latched, FlyoutPlacement.BottomEdgeAlignedLeft);
         }
 
         void OpenMembers()
@@ -641,16 +718,27 @@ public readonly partial struct Playlist
 
     // ══ 5. INVITE & ACCESS (W17) ═════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Open the access panel anchored to <paramref name="anchor"/>; with none (the ⋯ menu is gone by invoke time)
-    /// it opens as a centred dialog, the picker's own reason.</summary>
+    /// <inheritdoc cref="OpenAccessPanel(IOverlayService, Playlist, Func{NodeHandle}?, RectF, FlyoutPlacement)"/>
     internal static void OpenAccessPanel(IOverlayService overlay, Playlist p, Func<NodeHandle>? anchor, FlyoutPlacement placement)
+        => OpenAccessPanel(overlay, p, anchor, default, placement);
+
+    /// <summary>Open the access panel at <paramref name="latched"/> — the anchor's window rect AS IT STOOD when the
+    /// user clicked (see <c>OwnerBlock.OpenAccess</c>) — with <paramref name="anchor"/> as the owner for the cascade
+    /// and the orphan prune. With neither (the ⋯ menu is gone by invoke time) it opens as a centred dialog, the
+    /// picker's own reason.</summary>
+    internal static void OpenAccessPanel(IOverlayService overlay, Playlist p, Func<NodeHandle>? anchor, RectF latched,
+                                         FlyoutPlacement placement)
     {
         int slot = p.Slot;
         OverlayHandle? handle = null;
         Action close = () => handle?.Close();
-        if (anchor is not null)
-            handle = overlay.Open(anchor, () => Embed.Comp(new AccessProps(slot, close), static () => new AccessPanel()), placement,
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = false });
+        var options = new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
+            { ConstrainToRootBounds = false };
+        if (anchor is not null && !latched.IsEmpty)
+            handle = overlay.OpenAt(() => latched, () => Embed.Comp(new AccessProps(slot, close), static () => new AccessPanel()),
+                placement, options, anchor);
+        else if (anchor is not null)
+            handle = overlay.Open(anchor, () => Embed.Comp(new AccessProps(slot, close), static () => new AccessPanel()), placement, options);
         else
             handle = ContentDialog.Show(overlay, d =>
             {
@@ -672,8 +760,11 @@ public readonly partial struct Playlist
     sealed class AccessPanel : Component
     {
         readonly Signal<int> _invite = new(0);                 // 0 idle · 1 busy · 2 copied
-        readonly Signal<bool> _collaborative = new(false), _public = new(true);
+        // What the two switches PAINT and whether they are busy — the signals the render and ToggleSwitch read. The
+        // decision behind them is OptimisticSwitch's; these are only its two outputs.
+        readonly Signal<bool> _collaborative = new(false), _public = new(false);
         readonly Signal<bool> _savingCollab = new(false), _savingPublic = new(false);
+        OptimisticSwitch _collabState, _publicState;
         int _slot;
         readonly Action _copy, _sync;
         readonly Action<bool> _onCollaborative, _onPublic;
@@ -683,13 +774,28 @@ public readonly partial struct Playlist
             _copy = CopyInvite;
             _onCollaborative = OnCollaborative;
             _onPublic = OnPublic;
-            // The switches show the MODEL except while their own write is in flight (optimistic-only, W17).
+            // Every table publication goes through the rule: it is accepted while it agrees with what the user asked
+            // for, and a settle's re-read that still carries the pre-write value cannot flip the switch back (W17).
             _sync = () =>
             {
                 var p = new Playlist(_slot);
-                if (!_savingCollab.Peek()) _collaborative.Value = p.IsCollaborative;
-                if (!_savingPublic.Peek()) _public.Value = p.IsPublic;
+                SetCollab(_collabState.Observe(p.IsCollaborative));
+                SetPublic(_publicState.Observe(p.IsPublic));
             };
+        }
+
+        void SetCollab(OptimisticSwitch next)
+        {
+            _collabState = next;
+            _collaborative.Value = next.Shown;
+            _savingCollab.Value = next.Busy;
+        }
+
+        void SetPublic(OptimisticSwitch next)
+        {
+            _publicState = next;
+            _public.Value = next.Shown;
+            _savingPublic.Value = next.Busy;
         }
 
         public override Element Render()
@@ -784,16 +890,18 @@ public readonly partial struct Playlist
 
         void OnCollaborative(bool on)
         {
-            var saving = _savingCollab;
-            saving.Value = true;
-            Spotify.PlaylistEdits.SetCollaborative(new Playlist(_slot), on, _ => saving.Value = false);
+            int slot = _slot;
+            SetCollab(_collabState.Flip(on));
+            Spotify.PlaylistEdits.SetCollaborative(new Playlist(slot), on,
+                ok => SetCollab(_collabState.Answered(ok, new Playlist(slot).IsCollaborative)));
         }
 
         void OnPublic(bool on)
         {
-            var saving = _savingPublic;
-            saving.Value = true;
-            Spotify.PlaylistEdits.SetVisibility(new Playlist(_slot), on, _ => saving.Value = false);
+            int slot = _slot;
+            SetPublic(_publicState.Flip(on));
+            Spotify.PlaylistEdits.SetVisibility(new Playlist(slot), on,
+                ok => SetPublic(_publicState.Answered(ok, new Playlist(slot).IsPublic)));
         }
     }
 

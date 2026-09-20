@@ -348,7 +348,10 @@ public static partial class Rail
         {
             var overlay = UseContext(Overlay.Service);
             var track = NowTrack();
-            int presentation = PlayerPrefs.Presentation();
+            // The RESOLVED face, not the stored one: the Cover/‹Player› switch is developer-only, so a normal build paints
+            // the cover whatever is stored (and a stored ‹Player› is waiting, intact, for developer mode to come back).
+            int presentation = PlayerPrefs.ResolvedPresentation();
+            bool devSwitch = PlayerPrefs.PresentationSwitchVisible();
             var preset = PlayerPrefs.CurrentPreset();
             float side = Hero.Side(Shell.Ui.RailWidth.Value);
             if (!track.IsValid) return new BoxEl();                        // nothing playing: no square, no strip
@@ -364,7 +367,7 @@ public static partial class Rail
                 };
 
             var heroBox = new BoxEl { Direction = 1, Shrink = 0f, Children = [hero] }
-                .WithContextMenu(overlay, () => ArtMenu(presentation, preset));
+                .WithContextMenu(overlay, () => ArtMenu(presentation, preset, devSwitch));
 
             return new BoxEl
             {
@@ -377,7 +380,10 @@ public static partial class Rail
 
     /// <summary>Eyebrow · Cover|‹Player› · gear. The SelectorBar's index is a component-owned MIRROR written by the bar on
     /// click (the pill moves in the press frame) and re-synced by an effect when another surface moved the pref — never
-    /// written during Render.</summary>
+    /// written during Render.
+    /// <para>The switch is DEVELOPER-ONLY: outside developer mode it is not composed at all (never disabled-and-shown),
+    /// and <see cref="PlayerPrefs.ResolvedPresentation"/> paints the cover. The gear keeps its place either way — the
+    /// eyebrow then sits beside it alone.</para></summary>
     sealed class HeaderRow : Component
     {
         static readonly string?[] ModeIcons = [Icons.Picture, Icons.Album];
@@ -404,38 +410,43 @@ public static partial class Rail
             var presentation = UseSignal(stored);
             UseEffect(() => { presentation.SetIfChanged(stored); }, DepKey.From(epoch));
             bool open = PlayerPrefs.StyleFlyoutOpen.Value;              // the gear lights wherever the flyout was opened from
+            bool devSwitch = PlayerPrefs.PresentationSwitchVisible();
 
             string[] items = [Loc.Get(Strings.Player.PresentationCover), Loc.Get(preset.ShortLabelKey)];
             Element gear = HeaderButton(Icons.Settings, Loc.Get(Strings.Player.PlayerStyle),
                 static () => PlayerPrefs.StyleFlyoutOpen.Value = !PlayerPrefs.StyleFlyoutOpen.Peek(), active: open);
 
+            // Sentence case, never .ToUpper() on a localized string.
+            Element eyebrow = Design.Type.Eyebrow(Loc.Get(Strings.Player.NowPlaying)) with
+            {
+                Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+            };
+            // A plain wrapper takes the row's Center: the popup's own anchor wrapper is AlignSelf=Start.
+            Element gearBox = new BoxEl
+            {
+                Direction = 0, Shrink = 0f,
+                Children =
+                [
+                    Popup.Create(gear, static () => StyleFlyout(), PlayerPrefs.StyleFlyoutOpen,
+                        onOpenChanged: static nowOpen => { if (!nowOpen) NpvDiagnostics.FlyoutClosed(); },
+                        placement: FlyoutPlacement.BottomEdgeAlignedRight,
+                        options: new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)),
+                ],
+            };
+
             return new BoxEl
             {
                 Direction = 0, Height = Hero.HeaderRowH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
-                Children =
-                [
-                    // Sentence case, never .ToUpper() on a localized string.
-                    Design.Type.Eyebrow(Loc.Get(Strings.Player.NowPlaying)) with
-                    {
-                        Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    },
-                    SelectorBar.Create(items, presentation,
-                        onChange: static i => PlayerPrefs.SetPresentation(i, NpvDiagnostics.SourceHeader),
-                        parts: CompactBar, icons: ModeIcons),
-                    // A plain wrapper takes the row's Center: the popup's own anchor wrapper is AlignSelf=Start.
-                    new BoxEl
-                    {
-                        Direction = 0, Shrink = 0f,
-                        Children =
-                        [
-                            Popup.Create(gear, static () => StyleFlyout(), PlayerPrefs.StyleFlyoutOpen,
-                                onOpenChanged: static nowOpen => { if (!nowOpen) NpvDiagnostics.FlyoutClosed(); },
-                                placement: FlyoutPlacement.BottomEdgeAlignedRight,
-                                options: new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)),
-                        ],
-                    },
-                ],
+                Children = devSwitch
+                    ? [
+                        eyebrow,
+                        SelectorBar.Create(items, presentation,
+                            onChange: static i => PlayerPrefs.SetPresentation(i, NpvDiagnostics.SourceHeader),
+                            parts: CompactBar, icons: ModeIcons),
+                        gearBox,
+                      ]
+                    : [eyebrow, gearBox],
             };
         }
     }

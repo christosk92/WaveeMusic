@@ -260,7 +260,9 @@ public static partial class Stage
                 if (!next.Equals(prev)) stage.Value = next;
             });
 
-            bool drift = Prefs.Lyrics.AnimatedBackdrop() && !Design.Reduced;
+            // The animated backdrop is no longer a setting — it is ON, as its removed row defaulted. Reduced motion is
+            // still the one thing that holds it still.
+            bool drift = !Design.Reduced;
             var track = CurrentTrack();
             string art = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
             bool runDrift = Drift.Runs(drift, false, Playback.IsPlaying.Value, art.Length > 0);

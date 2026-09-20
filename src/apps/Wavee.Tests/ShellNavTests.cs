@@ -14,6 +14,12 @@
 //   THE TAB LANE IS A RESERVATION WITH THE OPPOSITE HYSTERESIS POLARITY. A hug makes the centred search box jump by
 //   half a title's length whenever a tab title changes (#88).
 //
+//   THE SEARCH LANE IS WHAT THE ROW CAN GIVE, NOT WHAT THE SEARCH WANTS. `PreferredSearchWidth` clamps UP to the
+//   280-DIP minimum, so it can never be the test for whether a field fits; `Chrome.SearchLane` is. And a published
+//   field is a PROMISE — `Chrome.FieldWidthFor` is the only place a measurement may narrow it, and never below the
+//   minimum, because the bar's centre column HUGS the field and measuring against it is otherwise a floorless
+//   ratchet (the clipped "Sear" stub, #88).
+//
 //   A TAB SWITCH IS NOT A GO. No back-stack push (Back must still LEAVE the page, not undo the switch), no origin
 //   write (the arrival's crumb stands), no history record.
 //
@@ -420,6 +426,326 @@ public class MergedChromeLayoutTests
         var wide = Shell.Chrome.Resolve(1900f, 900f, null);
         var narrow = Shell.Chrome.Resolve(700f, 900f, wide);
         Assert.True(narrow.LeadClusterW < wide.LeadClusterW);   // the hold never overflows the row
+    }
+
+    // ══ THE SEARCH LANE (#88) ═══════════════════════════════════════════════════════════════════════════════════════
+    //
+    // The defect these cover: the row chose `Field` against a width it could not actually deliver, and NOTHING then
+    // stopped the field being laid out below its own 280-DIP minimum — the view clamped it down to the bar's measured
+    // centre width with no floor, and under the elastic tabs lane that measurement is a feedback of the field's own
+    // width, so one bad frame latched it at ~40 DIP and the placeholder rendered as a clipped "Sear" stub.
+    //
+    // The two halves of the contract, asserted over a sweep of real window widths rather than at hand-picked points:
+    //   1. a published Field is SEATABLE  — FixedBudget + SearchWidth + RequiredTabExtent ≤ width;
+    //   2. a laid-out Field is USABLE     — never below ChromeSearchMinW, whatever the measurement says.
+
+    static readonly float[] SweepExtents = [110f, 220f, 330f, 440f, 660f, 990f];
+
+    /// <summary>Every form <see cref="Shell.FrameRules.ChipFor"/> can select. The budget used to know only the avatar,
+    /// so the other three were 52-68 DIP of unpriced row for the whole of a sign-in or a resume (#88).</summary>
+    static readonly Shell.FrameRules.ChipForm[] SweepChips =
+    [
+        Shell.FrameRules.ChipForm.Profile, Shell.FrameRules.ChipForm.Connecting,
+        Shell.FrameRules.ChipForm.Reconnect, Shell.FrameRules.ChipForm.SignIn,
+    ];
+
+    [Theory]
+    // width · measured tab extent · the mode the row can honestly seat · the field width it publishes
+    [InlineData(847f, 110f, false, Shell.Layout.ChromeSearchIconW)]   // one tab: 847 − 458 − 110 = 279, one DIP short
+    [InlineData(848f, 110f, true, Shell.Layout.ChromeSearchMinW)]     // …and 280 exactly seats the minimum field
+    [InlineData(957f, 220f, false, Shell.Layout.ChromeSearchIconW)]   // two tabs cost 110 more, so the flip moves 110 up
+    [InlineData(958f, 220f, true, Shell.Layout.ChromeSearchMinW)]
+    [InlineData(1250f, 270f, true, 340f)]                             // the lane (346) is under the DESIRE (350): take the lane
+    [InlineData(2400f, 330f, true, Shell.Layout.ChromeSearchMaxW)]    // plenty spare: the desire caps at the max
+    public void The_field_is_chosen_and_sized_by_the_lane_the_row_can_really_give(
+        float width, float extent, bool field, float searchWidth)
+    {
+        var c = Shell.Chrome.Resolve(width, extent);
+        Assert.Equal(field ? Shell.MergedSearchMode.Field : Shell.MergedSearchMode.Icon, c.SearchMode);
+        Assert.Equal(searchWidth, c.SearchWidth, 3);
+    }
+
+    [Fact]
+    public void Every_field_the_ladder_publishes_is_one_the_row_can_actually_seat()
+    {
+        foreach (var chip in SweepChips)
+        foreach (float extent in SweepExtents)
+        {
+            for (float w = 200f; w <= 2600f; w += 1f)
+            {
+                var c = Shell.Chrome.Resolve(w, extent, null, chip);
+                Assert.Equal(chip, c.Chip);
+                if (c.SearchMode == Shell.MergedSearchMode.Icon)
+                {
+                    Assert.Equal(Shell.Layout.ChromeSearchIconW, c.SearchWidth);
+                    continue;
+                }
+                // 1. the row's own arithmetic seats it, tabs and the chip form ON SCREEN included…
+                Assert.True(c.FootprintFor(extent) <= w,
+                    $"Field at width {w} (extent {extent}, chip {chip}) needs {c.FootprintFor(extent)} DIP.");
+                // …which is the same statement as a non-negative lane.
+                Assert.True(Shell.Chrome.SearchLane(w, extent, c.ShowName, c.ShowActions, c.ShowForward, c.ShowBack,
+                    c.ShowNewTab, c.ShowTrailing, c.Chip) >= c.SearchWidth);
+                // 2. and it is a width the field can actually use.
+                Assert.InRange(c.SearchWidth, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
+                Assert.Equal(0f, c.SearchWidth % Shell.Layout.ChromeWidthQuantumW, 3);
+            }
+        }
+    }
+
+    [Fact]
+    public void No_stage_the_row_enters_costs_more_than_the_row_can_seat()
+    {
+        // The other half of the seating invariant, and the one the raw thresholds broke: an OPTIONAL island is only ever
+        // in the row when the fixed budget it produced, plus the search at its 280-DIP minimum, plus the tabs at their
+        // required extent, still fit inside the window. Which is why a promotion can never demote the field.
+        foreach (var chip in SweepChips)
+        foreach (float extent in SweepExtents)
+        {
+            for (float w = 200f; w <= 2600f; w += 1f)
+            {
+                var c = Shell.Chrome.Resolve(w, extent, null, chip);
+                if (!c.ShowActions && !c.ShowName) continue;
+                Assert.True(
+                    c.FixedBudgetFor() + Shell.Layout.ChromeSearchMinW + Shell.Chrome.RequiredTabExtent(extent) <= w,
+                    $"Stage at width {w} (extent {extent}, chip {chip}) costs "
+                    + $"{c.FixedBudgetFor() + Shell.Layout.ChromeSearchMinW + Shell.Chrome.RequiredTabExtent(extent)} DIP.");
+                Assert.Equal(Shell.MergedSearchMode.Field, c.SearchMode);   // …so the field is standing, by construction
+                // The ladder's priority order: the NAME is the first thing to go, so it never shows while the four
+                // trailing actions are still folded into the profile menu.
+                if (c.ShowName) Assert.True(c.ShowActions);
+                // And only the avatar chip has a name column to open at all.
+                if (c.ShowName) Assert.Equal(Shell.FrameRules.ChipForm.Profile, c.Chip);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    [InlineData(-50f)]
+    [InlineData(0f)]
+    [InlineData(1f)]
+    [InlineData(40f)]        // the stub the bug actually produced
+    [InlineData(279f)]
+    [InlineData(280f)]
+    [InlineData(320f)]
+    [InlineData(10_000f)]
+    public void A_measured_centre_column_may_trim_the_field_but_can_never_clip_it(float measured)
+    {
+        var field = Shell.Chrome.Resolve(1600f, 220f);
+        Assert.Equal(Shell.MergedSearchMode.Field, field.SearchMode);
+
+        float laid = field.LaidOutSearchWidth(measured);
+        Assert.InRange(laid, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
+        Assert.True(laid <= field.SearchWidth);                 // a measurement only ever trims
+        if (measured >= Shell.Layout.ChromeSearchMinW) Assert.Equal(MathF.Min(field.SearchWidth, measured), laid, 3);
+        else Assert.Equal(field.SearchWidth, laid, 3);          // below the minimum the MEASUREMENT is what is wrong
+
+        // Icon mode ignores the measurement outright — the magnifier is a fixed 44.
+        var icon = Shell.Chrome.Resolve(700f, 220f);
+        Assert.Equal(Shell.MergedSearchMode.Icon, icon.SearchMode);
+        Assert.Equal(Shell.Layout.ChromeSearchIconW, icon.LaidOutSearchWidth(measured));
+    }
+
+    [Fact]
+    public void The_measurement_feedback_loop_has_a_floor_so_the_field_cannot_ratchet_itself_shut()
+    {
+        // The bar's centre column HUGS the field under the elastic tabs lane, so what it measures next frame is what the
+        // field asked for this frame. Feeding the output back in is therefore the real loop — it must settle, not decay.
+        var field = Shell.Chrome.Resolve(1600f, 220f);
+        float w = 40f;                                          // seeded by one bad frame
+        for (int i = 0; i < 16; i++) w = field.LaidOutSearchWidth(w);
+        Assert.Equal(field.SearchWidth, w, 3);
+        Assert.True(w >= Shell.Layout.ChromeSearchMinW);
+    }
+
+    [Fact]
+    public void The_search_promotes_after_the_reserve_and_demotes_at_once()
+    {
+        var icon = Shell.Chrome.Resolve(700f, 110f);
+        Assert.Equal(Shell.MergedSearchMode.Icon, icon.SearchMode);
+
+        // 848 is the first width whose lane seats the minimum; a PROMOTION re-resolves at (width − 40) and so waits.
+        Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(848f, 110f, icon).SearchMode);
+        Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(887f, 110f, icon).SearchMode);
+        var promoted = Shell.Chrome.Resolve(888f, 110f, icon);
+        Assert.Equal(Shell.MergedSearchMode.Field, promoted.SearchMode);
+
+        // Coming back down, a demotion is immediate — a field is never left in a row that cannot seat it.
+        Assert.Equal(Shell.MergedSearchMode.Field, Shell.Chrome.Resolve(848f, 110f, promoted).SearchMode);
+        Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(847f, 110f, promoted).SearchMode);
+    }
+
+    [Fact]
+    public void Dragging_the_window_edge_across_the_band_commits_one_flip_not_a_flicker()
+    {
+        // The band is [848, 888). Inside it the mode must depend only on where the drag came FROM, and re-resolving at
+        // a standing width must never move it again (the per-frame resolve is a fixed point).
+        var state = Shell.Chrome.Resolve(700f, 110f);
+        int flips = 0;
+        var mode = state.SearchMode;
+        for (int pass = 0; pass < 4; pass++)
+        {
+            bool up = pass % 2 == 0;
+            for (float w = up ? 830f : 910f; up ? w <= 910f : w >= 830f; w += up ? 1f : -1f)
+            {
+                state = Shell.Chrome.Resolve(w, 110f, state);
+                Assert.Equal(state, Shell.Chrome.Resolve(w, 110f, state));   // idempotent at a standing width
+                if (state.SearchMode != mode) { flips++; mode = state.SearchMode; }
+            }
+        }
+        Assert.Equal(4, flips);   // exactly one per sweep — never two inside a single pass
+    }
+
+    [Fact]
+    public void A_wider_window_never_takes_the_search_field_away()
+    {
+        // Monotonicity, now unconditional. This test used to PERMIT a Field → Icon step wherever the fixed budget grew,
+        // which is exactly the defect: the trailing actions (1200, +176 DIP) and the profile name (1360, +90) entered on
+        // the RAW width with nothing asking whether the row could afford them, so widening past 1200 took the search box
+        // away — across ≈[1200, 1244) with three tabs, ≈[1200, 1354) with four — and past 1360 again. Both promotions
+        // are budget-checked now, so growing the window is a one-way improvement for the search at every width.
+        foreach (var chip in SweepChips)
+        foreach (float extent in SweepExtents)
+        {
+            var prev = Shell.Chrome.Resolve(200f, extent, null, chip);
+            for (float w = 201f; w <= 2600f; w += 1f)
+            {
+                var next = Shell.Chrome.Resolve(w, extent, null, chip);
+                Assert.False(prev.SearchMode == Shell.MergedSearchMode.Field
+                             && next.SearchMode == Shell.MergedSearchMode.Icon,
+                    $"Widening to {w} (extent {extent}, chip {chip}) demoted the field.");
+                prev = next;
+            }
+        }
+    }
+
+    // ══ THE PROMOTION RULE: A THRESHOLD IS A PERMISSION, NOT A DECISION (#88) ═══════════════════════════════════════
+
+    [Theory]
+    // measured tab extent · the RAW threshold · the width the row can first afford the stage at
+    [InlineData(330f, Shell.Layout.ChromeActionsEnterW, 1244f)]   // three tabs: 634 + 280 + 330
+    [InlineData(440f, Shell.Layout.ChromeActionsEnterW, 1354f)]   // four tabs:  634 + 280 + 440
+    public void The_trailing_actions_wait_until_the_row_can_seat_them_beside_the_field(
+        float extent, float raw, float afford)
+    {
+        // Across the whole band the four buttons stay FOLDED (bell and friends are profile-menu rows; pin is on the tab
+        // menu) and the search keeps its field — the trade the ladder always meant to make and the raw threshold broke.
+        for (float w = raw; w < afford; w += 1f)
+        {
+            var c = Shell.Chrome.Resolve(w, extent);
+            Assert.False(c.ShowActions, $"Actions entered at {w} (extent {extent}) without the row affording them.");
+            Assert.True(c.ActionsInMenu);
+            Assert.Equal(Shell.MergedSearchMode.Field, c.SearchMode);
+        }
+        var at = Shell.Chrome.Resolve(afford, extent);
+        Assert.True(at.ShowActions);
+        Assert.Equal(Shell.MergedSearchMode.Field, at.SearchMode);   // …and buying them still leaves the field standing
+    }
+
+    [Fact]
+    public void The_profile_name_waits_for_the_same_check_on_top_of_the_actions()
+    {
+        // Four tabs: the name's raw threshold is 1360 but the row cannot seat 724 + 280 + 440 until 1444.
+        for (float w = Shell.Layout.ChromeNameEnterW; w < 1444f; w += 1f)
+        {
+            var c = Shell.Chrome.Resolve(w, 440f);
+            Assert.False(c.ShowName, $"The name entered at {w} without the row affording it.");
+            Assert.Equal(Shell.MergedSearchMode.Field, c.SearchMode);
+        }
+        var at = Shell.Chrome.Resolve(1444f, 440f);
+        Assert.True(at.ShowName);
+        Assert.Equal(Shell.MergedSearchMode.Field, at.SearchMode);
+
+        // The common single-tab case is untouched: both stages still land exactly on their own thresholds.
+        Assert.False(Shell.Chrome.Resolve(1199f, 110f).ShowActions);
+        Assert.True(Shell.Chrome.Resolve(1200f, 110f).ShowActions);
+        Assert.False(Shell.Chrome.Resolve(1359f, 110f).ShowName);
+        Assert.True(Shell.Chrome.Resolve(1360f, 110f).ShowName);
+    }
+
+    [Fact]
+    public void The_budget_checked_actions_stage_still_promotes_late_and_demotes_at_once()
+    {
+        // The hysteresis POLARITY is unchanged by the budget check: a promotion re-resolves at (width − 40), a demotion
+        // is immediate — so a resize drag across the new band commits one flip instead of oscillating.
+        var narrow = Shell.Chrome.Resolve(Shell.Layout.ChromeActionsEnterW, 440f);
+        Assert.False(narrow.ShowActions);
+
+        Assert.False(Shell.Chrome.Resolve(1354f, 440f, narrow).ShowActions);   // at the affordable width: still held
+        Assert.False(Shell.Chrome.Resolve(1393f, 440f, narrow).ShowActions);
+        var promoted = Shell.Chrome.Resolve(1394f, 440f, narrow);              // …a full reserve past it
+        Assert.True(promoted.ShowActions);
+        Assert.Equal(Shell.MergedSearchMode.Field, promoted.SearchMode);
+
+        Assert.True(Shell.Chrome.Resolve(1354f, 440f, promoted).ShowActions);  // coming back down it holds…
+        Assert.False(Shell.Chrome.Resolve(1353f, 440f, promoted).ShowActions); // …and then goes at once
+    }
+
+    // ══ THE AUTH CHIP'S REAL WIDTH (#88) ════════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public void The_avatar_still_costs_what_it_did_and_the_other_three_forms_cost_what_they_are()
+    {
+        Assert.Equal(Shell.Layout.ChromeProfileChipW, Shell.Chrome.ChipWidth(Shell.FrameRules.ChipForm.Profile));
+        Assert.Equal(Shell.Layout.ChromeConnectingChipW, Shell.Chrome.ChipWidth(Shell.FrameRules.ChipForm.Connecting));
+        Assert.Equal(Shell.Layout.ChromeReconnectChipW, Shell.Chrome.ChipWidth(Shell.FrameRules.ChipForm.Reconnect));
+        Assert.Equal(Shell.Layout.ChromeSignInChipW, Shell.Chrome.ChipWidth(Shell.FrameRules.ChipForm.SignIn));
+
+        // Why guessing the avatar was not a rounding error: every other form overruns it by more than the whole gutter
+        // cushion, so the row genuinely overflowed into the clipped tabs island for the duration of a sign-in.
+        foreach (var chip in SweepChips)
+        {
+            if (chip == Shell.FrameRules.ChipForm.Profile) continue;
+            Assert.True(Shell.Chrome.ChipWidth(chip) - Shell.Layout.ChromeProfileChipW > 2f * Shell.Layout.ChromeGutterMinW);
+        }
+    }
+
+    [Theory]
+    // the chip on screen · the first width whose lane seats a minimum field beside one tab
+    [InlineData(Shell.FrameRules.ChipForm.Profile, 848f)]
+    [InlineData(Shell.FrameRules.ChipForm.SignIn, 900f)]
+    [InlineData(Shell.FrameRules.ChipForm.Connecting, 906f)]
+    [InlineData(Shell.FrameRules.ChipForm.Reconnect, 916f)]
+    public void The_field_flip_moves_by_exactly_what_the_chip_on_screen_costs(Shell.FrameRules.ChipForm chip, float flip)
+    {
+        Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(flip - 1f, 110f, null, chip).SearchMode);
+        Assert.Equal(Shell.MergedSearchMode.Field, Shell.Chrome.Resolve(flip, 110f, null, chip).SearchMode);
+        // The avatar's 848 is the baseline, and every other form's flip is that plus the DIPs it really occupies —
+        // nothing else about the ladder moved.
+        Assert.Equal(flip - 848f, Shell.Chrome.ChipWidth(chip) - Shell.Layout.ChromeProfileChipW, 3);
+    }
+
+    [Fact]
+    public void The_chip_form_is_part_of_the_allocation_so_the_tree_and_the_budget_cannot_disagree()
+    {
+        // The view reads the form back off the resolved row, so an auth transition is a re-allocation, not a silent
+        // 58-DIP overdraft on a row that was already sized for an avatar.
+        var live = Shell.Chrome.Resolve(1000f, 110f, null, Shell.FrameRules.ChipForm.Profile);
+        var connecting = Shell.Chrome.Resolve(1000f, 110f, live, Shell.FrameRules.ChipForm.Connecting);
+        Assert.Equal(Shell.FrameRules.ChipForm.Connecting, connecting.Chip);
+        Assert.NotEqual(live, connecting);
+        Assert.Equal(Shell.Layout.ChromeConnectingChipW - Shell.Layout.ChromeProfileChipW,
+            connecting.FixedBudgetFor() - live.FixedBudgetFor(), 3);
+    }
+
+    // ══ THE ESTIMATED EXTENT IS AN UPWARD-ONLY SEED (correct as designed) ═══════════════════════════════════════════
+
+    [Fact]
+    public void The_estimated_extent_is_a_pre_measure_seed_and_only_ever_raises()
+    {
+        // EstimatedTabExtent puts every tab at its 110-DIP floor, so it is optimistic by up to 90 DIP a tab until the
+        // strip's own measurement lands. That direction is the right one — the seed RAISES the extent, never lowers it,
+        // so the row collapses the search in the same turn a tab is added rather than a frame late.
+        Assert.Equal(3f * Shell.Layout.ChromeTabMinW, Shell.Chrome.EstimatedTabExtent(3));
+        Assert.True(Shell.Chrome.EstimatedTabExtent(3) <= 3f * Shell.Layout.ChromeTabMaxW);
+        Assert.Equal(900f, Shell.Chrome.SeedTabExtent(900f, tabCount: 3, pinnedCount: 0));
+
+        // …and FromWidth IS that seed, nothing more: it is the pre-measure entry point only (Shell.Host's initial
+        // ChromeLayout), never a stand-in for the measured path the shell's viewport effect uses.
+        Assert.Equal(Shell.Chrome.Resolve(1600f, Shell.Chrome.EstimatedTabExtent(3)), Shell.Chrome.FromWidth(1600f, 3));
     }
 }
 

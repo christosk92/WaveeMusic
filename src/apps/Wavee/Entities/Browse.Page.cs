@@ -52,6 +52,27 @@ using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
+// ── the load-boundary rule (gap: a retry that could not re-arm) ────────────────────────────────────────────────────
+//
+// A row that is Known is Ready WHATEVER it holds — an empty answer is not a failure, it is an empty band — and a row
+// only reads Failed once it has actually been demanded and nothing is left on the wire for it (`Asked && Inflight ==
+// 0`, the same "asked, nothing coming" shape every other surface reads off the table); anything else is still
+// Pending. Extracted the same way `LibraryNavReadiness` / `AlbumPaneReadiness` are (CLAUDE.md's "SetupGating"
+// pattern): pure, engine-free, and the one truth table the directory page and a category page both gate their
+// `SkelRegionEl` on, rather than three copies of the same three-way `if` with room for one of them to drift.
+
+/// <summary>The three states a Browse load can be in. <see cref="Ready"/> covers a Known-but-empty answer too — an
+/// empty deck or an empty directory is never a failure.</summary>
+public enum BrowseLoad : byte { Pending, Ready, Failed }
+
+/// <summary>Pure over the three marks a page already reads off its table. See the section header above for why
+/// <paramref name="known"/> alone decides Ready, and why Failed needs BOTH a demand and an empty in-flight count.</summary>
+public static class BrowseLoadGate
+{
+    public static BrowseLoad Of(bool known, bool demanded, bool inflight)
+        => known ? BrowseLoad.Ready : demanded && !inflight ? BrowseLoad.Failed : BrowseLoad.Pending;
+}
+
 public readonly partial struct Browse
 {
     // ══ 1. THE DIRECTORY PAGE ═══════════════════════════════════════════════════════════════════════════════════════
@@ -76,7 +97,7 @@ public readonly partial struct Browse
 
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
-        readonly Action _demand;
+        readonly Action _demand, _retry;
         readonly Action<bool> _onClip;
         readonly Func<int, Element> _chartsBandAt;
 
@@ -87,7 +108,11 @@ public readonly partial struct Browse
             _contentFn = () => _body ?? new BoxEl();
             _shimmerFn = () => _skeleton ??= DirectorySkeleton();
             _demand = Demand;
-            _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _demand);
+            _retry = Retry;
+            // Retry vacancy: `Entities.Refresh`, never `Demand`'s `Ensure` — a row the planner has already sealed
+            // Asked-and-unanswered is exactly a no-op for `Ensure` (P4's dedupe: `wanted & ~known & ~asked`), so a
+            // failed directory's Retry button did nothing until it un-asks first (root cause of the failure card).
+            _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _retry);
             // Written only on the clip's engage / release EDGE, never per scroll frame.
             _onClip = v => { if (_underBand.Peek() != v) _underBand.Value = v; };
             _chartsBandAt = static index => new BoxEl
@@ -115,8 +140,10 @@ public readonly partial struct Browse
 
             var d = _dir;
             var edges = scope.Edges;
-            _ready = d.IsValid && (d.Knows(BrowseFields.Identity) || edges.BrowseDirectory.State(d.Slot) != EdgeState.Unknown);
-            _failed = !_ready && _demanded && d.IsValid && scope.Browses.Inflight[d.Slot] == 0;
+            bool known = d.IsValid && (d.Knows(BrowseFields.Identity) || edges.BrowseDirectory.State(d.Slot) != EdgeState.Unknown);
+            var load = BrowseLoadGate.Of(known, _demanded, scope.Browses.Inflight[d.Slot] != 0);
+            _ready = load == BrowseLoad.Ready;
+            _failed = load == BrowseLoad.Failed;
             if (_ready)
             {
                 // The body is rebuilt ONLY when the tile list or a tile row changed — the under-band edge re-render below
@@ -162,6 +189,18 @@ public readonly partial struct Browse
             Entities.Ensure(d, BrowseFields.All);
             _demanded = true;
         }
+
+        /// <summary>The directory's Retry vacancy: ask for everything it waits on AGAIN, whatever the scope sealed
+        /// (<see cref="Entities.Refresh"/> un-asks first) — <see cref="Demand"/>'s plain <see cref="Entities.Ensure"/>
+        /// would no-op on a row the planner already marked Asked-and-unanswered.</summary>
+        void Retry()
+        {
+            var d = _dir;
+            if (!d.IsValid) return;
+            int slot = d.Slot;
+            Entities.Refresh(Entities.Current.Browses, new ReadOnlySpan<int>(in slot), (uint)BrowseFields.All);
+            _demanded = true;
+        }
     }
 
     /// <summary>The Charts band (0.2.9 <c>BrowseDirectory.ChartsBand</c>): the SAME Fold deck Home's Charts row renders,
@@ -175,12 +214,13 @@ public readonly partial struct Browse
 
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
-        readonly Action _demand, _openHeader;
+        readonly Action _demand, _retry, _openHeader;
         readonly Action<HomeSectionView> _openTile;
 
         public ChartsBand()
         {
             _demand = HomeBrowseCards.EnsureChartDeck;
+            _retry = Retry;
             _openTile = static s => HomeCardNav.OpenBrowseSection(s, DirectoryOrigin);
             _openHeader = static () => Shell.GoTo(BrowseTiles.PageRoute(ChartPages.Charts, Loc.Get(Strings.Home.Charts)));
             _pendingFn = () => _state == HomeLoad.Pending;
@@ -189,7 +229,26 @@ public readonly partial struct Browse
                 ? Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Home.ChartsEmpty), subtitle: "")
                 : HomeModules.FoldDeck(_deck, Loc.Get(Strings.Browse.Charts), _openTile, _openHeader);
             _shimmerFn = static () => HomeModules.FoldDeck(HomeBrowseCards.ChartDeckSeed, Loc.Get(Strings.Browse.Charts), s_noopSection);
-            _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, onAction: _demand);
+            // Retry, never `_demand`: by the time this band reads Failed, `ChartSections.Featured` is exactly the row
+            // shape `Entities.Ensure`'s dedupe skips (Asked survives the answer on purpose — Fetch.cs's "the seal that
+            // stops a thin track re-resolving on every cluster update"). Only `Entities.Refresh` un-asks it, which is
+            // what turns this button back into a real retry instead of a card that reappears no matter how many times
+            // it is pressed.
+            _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, onAction: _retry);
+        }
+
+        /// <summary>Ask every chart section row AGAIN, whatever the scope sealed — the Charts band's own Retry
+        /// (ch 13 §9 gap 6: "Browse has two retry buttons, not one", this is the second one, and it refetches only
+        /// the deck).</summary>
+        static void Retry()
+        {
+            var scope = Entities.Current;
+            var uris = ChartSections.All;
+            for (int i = 0; i < uris.Count; i++)
+            {
+                int slot = Entities.BrowseSection(uris[i].AsSpan()).Slot;
+                Entities.Refresh(scope.Sections, new ReadOnlySpan<int>(in slot), (uint)SectionFields.Identity);
+            }
         }
 
         public override Element Render()
@@ -264,7 +323,7 @@ public readonly partial struct Browse
 
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _failedPanelFn;
-        readonly Action _demand, _demandCards, _publish, _loadMore, _disarmTail;
+        readonly Action _demand, _retry, _demandCards, _publish, _loadMore, _disarmTail;
         readonly Action<HomeCard> _openCard;
 
         public CategoryPage()
@@ -274,13 +333,16 @@ public readonly partial struct Browse
             _failedFn = () => _failed;
             _contentFn = () => _body ?? new BoxEl();
             _demand = Demand;
+            _retry = Retry;
             _demandCards = DemandCards;
             _publish = Publish;
             _loadMore = LoadMore;
             _disarmTail = DisarmTail;
             _openCard = static c => HomeCardNav.Open(in c);
             // W22 + 0.3's Retry (§9 gap 9): the error arm offers Retry AND the Explore link, inside the scroll frame.
-            _failedPanelFn = () => Framed(Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _demand));
+            // `_retry`, never `_demand`: the page only reads Failed once the row is Asked-and-unanswered, which is
+            // exactly the shape `Entities.Ensure` no-ops on — `Entities.Refresh` un-asks it first.
+            _failedPanelFn = () => Framed(Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _retry));
         }
 
         public override Element Render()
@@ -324,7 +386,7 @@ public readonly partial struct Browse
 
             // An address that is not a browse node has nothing to load: it reads as the "unavailable" arm at once.
             _known = !b.IsValid || b.Knows(BrowseFields.Page);
-            _failed = !_known && _demanded && scope.Browses.Inflight[b.Slot] == 0;
+            _failed = BrowseLoadGate.Of(_known, _demanded, scope.Browses.Inflight[b.Slot] != 0) == BrowseLoad.Failed;
             if (_known) Project(scope);
             else _layout = s_noSections;
 
@@ -576,6 +638,18 @@ public readonly partial struct Browse
             var b = _page;
             if (!b.IsValid) return;
             Entities.Ensure(b, BrowseFields.All);
+            _demanded = true;
+        }
+
+        /// <summary>The category page's Retry vacancy: ask for the whole page model AGAIN, whatever the scope sealed
+        /// (<see cref="Entities.Refresh"/> un-asks first) — <see cref="Demand"/>'s plain <see cref="Entities.Ensure"/>
+        /// would no-op on a row the planner already marked Asked-and-unanswered.</summary>
+        void Retry()
+        {
+            var b = _page;
+            if (!b.IsValid) return;
+            int slot = b.Slot;
+            Entities.Refresh(Entities.Current.Browses, new ReadOnlySpan<int>(in slot), (uint)BrowseFields.All);
             _demanded = true;
         }
 

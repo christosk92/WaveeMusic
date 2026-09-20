@@ -238,9 +238,6 @@ public static partial class Detail
             if (f.Meta) blocks.Add(Block("hero-meta", HeroMeta(id, contentW), late: true));
             if (f.Pulse && slots.Pulse is { } pulse) blocks.Add(Block("hero-pulse", pulse(), late: true));
             if (f.Chart) blocks.Add(Block("hero-chart", ChartCaption(id, slots), late: true));
-            // The FILL block: in row flow the surplus the identity's MinHeight opens lands between the metadata and the
-            // actions, never as dead space under the action row (issue #78).
-            if (blocks[^1] is BoxEl fill) blocks[^1] = fill with { Grow = 1f };
             blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts)));
 
             Element? description = null;
@@ -536,7 +533,6 @@ public static partial class Detail
         if (f.Meta) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight));
         if (f.Pulse) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.PulseFraction), VerticalLayout.PulseRowHeight));
         if (f.Chart) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.ChartFraction), VerticalLayout.ChartRowHeight));
-        if (blocks[^1] is BoxEl fill) blocks[^1] = fill with { Grow = 1f };   // the same fill block the hero grows
         blocks.Add(SkeletonActionRow());
         if (f.Description)
             blocks.Add(Lines(contentW, VerticalLayout.DescriptionLineHeight, VerticalLayout.DescriptionMaxLines(rowFlow),

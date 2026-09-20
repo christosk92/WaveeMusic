@@ -138,7 +138,11 @@ public static partial class Prefs
     /// <para><see cref="Available"/> is published by whichever lyrics surface prepared the document (once per document)
     /// and read by the rail header and the immersive top bar: the toggle is not rendered AT ALL for a document with
     /// neither layer, and it CYCLES only through the layers that document actually has. Both surfaces prepare the SAME
-    /// document, so their writes agree and the signal coalesces the second one.</para></summary>
+    /// document, so their writes agree and the signal coalesces the second one.</para>
+    ///
+    /// <para><b>The secondary line is SESSION state, not a setting.</b> Settings ▸ Appearance ▸ Lyrics no longer offers
+    /// it and no key persists it, so every launch starts at <see cref="None"/> — the old default — and the two globe
+    /// toggles are the only writers. The layers themselves are untouched; only the stored preference is gone.</para></summary>
     public static class Lyrics
     {
         /// <inheritdoc cref="Lyrics"/>
@@ -186,11 +190,16 @@ public static partial class Prefs
             _ => Loc.Get(Strings.Player.LyricsSecondaryOff),
         };
 
-        /// <summary>Reactive read of the persisted secondary-line mode.</summary>
+        /// <summary>The secondary line CHOSEN in this session. Not persisted (see the class summary): a fresh process
+        /// starts at <see cref="None"/>, which is exactly what the removed setting defaulted to.</summary>
+        static int s_secondaryLine = None;
+
+        /// <summary>Reactive read of the session's secondary-line mode. Still epoch-gated, so the globe toggles and the
+        /// lyrics surfaces settle on the same frame they always did.</summary>
         public static int SecondaryLine()
         {
             _ = Epoch.Value;
-            return ClampMode(Platform.Settings.Get(Platform.Keys.LyricsSecondaryLine));
+            return ClampMode(s_secondaryLine);
         }
 
         /// <summary>Reactive read of the lyrics blur strength. <b>−1 means AUTO</b> and is a real, persisted value — the
@@ -203,21 +212,11 @@ public static partial class Prefs
             return v < 0 ? -1 : System.Math.Min(v, 100);
         }
 
-        /// <summary>Reactive read of the animated-backdrop switch. The Settings row that writes it sits on the
-        /// APPEARANCE tab, so this subscribes to BOTH epochs — which is what lets a lyrics surface hold one
-        /// subscription instead of two.</summary>
-        public static bool AnimatedBackdrop()
-        {
-            _ = Epoch.Value;
-            _ = Appearance.Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.LyricsAnimatedBackdrop);
-        }
-
-        /// <summary>The ONE writer both the Settings picker and the two header toggles go through: persist the clamped
-        /// mode, then bump so every mounted lyrics surface re-reads it on the same frame.</summary>
+        /// <summary>The ONE writer both globe toggles go through: store the clamped mode for this session, then bump so
+        /// every mounted lyrics surface re-reads it on the same frame.</summary>
         public static void SetSecondaryLine(int mode)
         {
-            Platform.Settings.Set(Platform.Keys.LyricsSecondaryLine, ClampMode(mode));
+            s_secondaryLine = ClampMode(mode);
             Bump();
         }
 

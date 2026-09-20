@@ -130,14 +130,62 @@ public readonly partial struct Playlist
     /// the memo that computes this, so a publication that leaves it equal — a cover grading, an unrelated row, a straggler
     /// on another page's edge — never re-renders the page, rebuilds its <c>Detail.Identity</c> or pushes a new
     /// <c>FrameSpec</c>.</summary>
+    /// <param name="Membership">The membership edge's READINESS (<c>EdgeTableBase.Readiness</c>, G-050), never its raw
+    /// <c>State</c>: an Unknown list whose last ask failed — or was answered with nothing — must reach the identity as
+    /// <see cref="EdgeState.Failed"/>, because the meta line's loading arm is the membership's (see
+    /// <see cref="PageRules.MetaArmFor"/>).</param>
     public readonly record struct PageStamp(uint Epoch, int Slot, uint Row, EdgeState Membership, uint MembersEdge, ulong Members,
                                             int OwnerSlot, uint Owner, EdgeState Recommendations, uint Tuning, bool EditsLive, bool Facts,
                                             bool Holding);
 
+    /// <summary>What the hero's meta line ("N songs · 2 hr 59 min") shows. THREE answers, never a fourth.</summary>
+    public enum MetaArm : byte
+    {
+        /// <summary>A fact is genuinely on its way: the open's own budgeted hold, or a membership nobody has answered
+        /// YET. <c>Detail.MetaRow</c> paints the shimmer bar shaped "00 songs · 0 hr 00 min".</summary>
+        Loading,
+        /// <summary>A count can be stated.</summary>
+        Text,
+        /// <summary>Nothing can be stated and nothing more is coming. The row leaves the hero entirely
+        /// (<c>Detail.Identity.Meta</c> null + <c>MetaLoading</c> false ⇒ the hero's <c>Meta</c> flag is false and the
+        /// block is never added) rather than shimmer at a fact that will not arrive.</summary>
+        Absent,
+    }
+
     /// <summary>The playlist page's engine-free decisions (the pure half <c>Wavee.Tests</c> pins): which optional
-    /// sections mount and the two value-cache masks the render keys its profile and slots on.</summary>
+    /// sections mount, the meta line's arm, and the two value-cache masks the render keys its profile and slots on.</summary>
     public static class PageRules
     {
+        /// <summary>THE META LINE'S ARM (the fix for an eternal shimmer). <c>Detail.MetaRow</c> paints a
+        /// <c>SkelRegionEl</c> whose <c>Pending</c> is hard-wired true and whose <c>Failed</c> is hard-wired false, so
+        /// an identity that says "loading" and never stops says it FOREVER — the page is the only thing that can end
+        /// that state, and it must be able to end it in every case.
+        /// <list type="bullet">
+        /// <item><paramref name="holding"/> (the open's revalidation hold, <see cref="ListOpen"/>) ⇒
+        /// <see cref="MetaArm.Loading"/>: the count and duration ARE the list's, so they wait with it — and that hold
+        /// carries its own budget (<see cref="ListFreshness.BlockingBudgetMs"/>), so it always ends.</item>
+        /// <item>a count the page can state ⇒ <see cref="MetaArm.Text"/>: the header's own length
+        /// (<paramref name="countKnown"/>), resident rows, or a membership that ANSWERED — Complete with no rows is a
+        /// real, renderable "0 songs" (ch 03 §7).</item>
+        /// <item>a membership that FAILED, with no count to fall back on ⇒ <see cref="MetaArm.Absent"/>.</item>
+        /// <item>otherwise ⇒ <see cref="MetaArm.Loading"/>: the ask is out (the page's own
+        /// <c>ListOpen.Open</c>) and its answer — landing, failing or answering with nothing — moves
+        /// <paramref name="readiness"/> off Unknown.</item>
+        /// </list>
+        /// <para><b>Why the count cannot simply be demanded.</b> <see cref="PlaylistFields.TrackCount"/> is named by no
+        /// route in <see cref="FetchRoutes"/> (its own doc says so: "no route names this bit in its Primary/Groups") —
+        /// only the one decoder that actually sees the wire's length fills it, and that decoder IS the membership read.
+        /// "Ask for the count" is not a thing this page can do, so the meta line's loading state is the MEMBERSHIP's,
+        /// and it must therefore read the membership's FAILURE too. <paramref name="readiness"/> is
+        /// <c>EdgeTableBase.Readiness</c>, which is the only reading that ever answers
+        /// <see cref="EdgeState.Failed"/>.</para></summary>
+        public static MetaArm MetaArmFor(bool holding, EdgeState readiness, bool countKnown, int residentRows)
+        {
+            if (holding) return MetaArm.Loading;
+            if (countKnown || residentRows > 0 || readiness is EdgeState.Complete or EdgeState.Partial) return MetaArm.Text;
+            return readiness == EdgeState.Failed ? MetaArm.Absent : MetaArm.Loading;
+        }
+
         /// <summary>The Recommended Songs section mounts for an editable Spotify playlist on a remote route, once a live
         /// edit path exists OR the recommendations edge has already answered (a signed-out reopen keeps a landed
         /// batch; item 58: absent under <c>--fake</c> until the edge lands).</summary>
@@ -174,12 +222,17 @@ public readonly partial struct Playlist
         // equal spec — so an unmoved identity must cost nothing above the compare.
         Detail.Identity? _identity;
         PageStamp _identityFor;
+        /// <summary>The owner slot whose thin profile this page already re-asked (<see cref="DemandOwnerProfile"/>).</summary>
+        int _ownerAsked = Table.None;
         readonly User.LensCell _lens = new();
 
         readonly Detail.FrameActions _actions, _actionsReadOnly;
         readonly Func<ColorF> _accent;
         readonly Func<PageStamp> _stamp;
-        readonly Action _demand, _demandRows, _observe, _activated, _tune;
+        readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired;
+        /// <summary>The open hold's deadline wake (<see cref="HoldExpired"/>), re-armed from its own fire while the hold
+        /// still has budget — a wake that lands a frame early must not be the last one.</summary>
+        TimerHandle _holdWake;
         readonly Func<bool> _editable;
         readonly Func<DragPayload, int?, bool> _deposit;
         readonly Func<ReadOnlySpan<RowRef>, int, bool> _moveRows;
@@ -197,6 +250,7 @@ public readonly partial struct Playlist
             _demand = Demand;
             _demandRows = DemandRows;
             _observe = () => ListOpen.Observe(_playlist.Slot);
+            _holdExpired = HoldExpired;
             _activated = Activated;
             _tune = () => { if (!Controls.IsNullOverlay(_overlay)) OpenTune(_overlay, _playlist); };
             _editable = () => _playlist.Editable;
@@ -240,6 +294,7 @@ public readonly partial struct Playlist
                 _source = null;
                 _identity = null;
                 _visibleCover = null;
+                _ownerAsked = Table.None;
             }
             var pl = _playlist;
             // The source BEFORE the gate: the stamp's Facts arm scans it (User.FactsHas), so it must exist by then. It is the
@@ -363,7 +418,9 @@ public readonly partial struct Playlist
             var owner = pl.Owner;
             bool holding = _source is not null && _source.Held;
             bool facts = _source is not null && User.FactsHas(_source, DetailKind.Playlist);
-            return new PageStamp(epoch, slot, pl.Version, e.PlaylistTracks.State(slot), e.PlaylistTracks.Version(slot),
+            // Readiness, not State: a failed / unanswered membership must MOVE the stamp, or the identity is never
+            // rebuilt and the meta line keeps the shimmer it can no longer earn (PageRules.MetaArmFor).
+            return new PageStamp(epoch, slot, pl.Version, e.PlaylistTracks.Readiness(slot), e.PlaylistTracks.Version(slot),
                                  RowFold.Rows(scope.Tracks, pl.TrackSlots), owner.Slot, RowFold.Version(scope.Users, owner.Slot),
                                  e.PlaylistRecs.State(slot), e.PlaylistTuning.Version(slot), editsLive, facts, holding);
         }
@@ -376,6 +433,10 @@ public readonly partial struct Playlist
         {
             var slots = pl.TrackSlots;
             var state = pl.MembershipState;
+            // THE reveal discipline the rest of the app already reads (EdgeTableBase.Readiness, G-050): an Unknown list
+            // whose last ask FAILED — or was answered with nothing (MarkUnanswered's NoRoute) — reads Failed here. Raw
+            // State never answers Failed, which is exactly why this line shimmered forever on a list nobody could read.
+            var readiness = Entities.Current.Edges.PlaylistTracks.Readiness(pl.Slot);
             long totalMs = 0;
             bool durationsKnown = state == EdgeState.Complete;
             for (int i = 0; i < slots.Length; i++)
@@ -384,10 +445,13 @@ public readonly partial struct Playlist
                 totalMs += t.DurationMs;
                 if (!t.Knows(TrackFields.Duration)) durationsKnown = false;
             }
-            bool known = state != EdgeState.Unknown;
-            bool metaLoading = holding || (!known && slots.Length == 0);
-            int count = !_local && pl.Knows(PlaylistFields.Identity) && pl.TrackCount > 0 ? pl.TrackCount : slots.Length;
-            string? meta = metaLoading ? null
+            // A count this page can state WITHOUT the membership: the bit the one length-bearing decoder sets (a real
+            // `length: 0` included, bug A1), or a nonzero count some answer wrote beside Identity.
+            bool countKnown = !_local && (pl.Knows(PlaylistFields.TrackCount) || (pl.Knows(PlaylistFields.Identity) && pl.TrackCount > 0));
+            var arm = PageRules.MetaArmFor(holding, readiness, countKnown, slots.Length);
+            bool metaLoading = arm == MetaArm.Loading;
+            int count = countKnown && pl.TrackCount > 0 ? pl.TrackCount : slots.Length;
+            string? meta = arm != MetaArm.Text ? null
                 : Detail.Text.PlaylistMeta(count, totalMs, durationsKnown && slots.Length > 0, pl.Knows(PlaylistFields.Saves) ? pl.Saves : 0, pl.EpisodeCount);
 
             string? incoming = Controls.ArtUrl(pl.ImageId);
@@ -459,6 +523,10 @@ public readonly partial struct Playlist
             var scope = Entities.Current;
             _ = scope.Edges.PlaylistTracks.Changed.Value;
             _ = scope.Tracks.Changed.Value;
+            // The OWNER arrives with the playlist ROW, not with the membership: a page opened before its header landed
+            // has no owner slot to ask about on its first run, and without this subscription the effect never ran again
+            // on a list whose membership never publishes. That is why the owner avatar was "not always resolved".
+            _ = scope.Playlists.Changed.Value;
             var pl = _playlist;
             if (!pl.IsValid) return;
             var slots = pl.TrackSlots;
@@ -467,8 +535,26 @@ public readonly partial struct Playlist
             Span<int> people = stackalloc int[64];
             int n = pl.CollaboratorSlots(people);
             if (n > 0 && !_local) Entities.Ensure(scope.Users, people[..n], (uint)UserFields.Identity);
+            if (!_local) DemandOwnerProfile(scope, pl.Owner.Slot);
             if (pl.MembershipState == EdgeState.Partial) Entities.EnsureEdge(FetchEdge.PlaylistTracks, pl.Slot, pl.TrackSlots.Length);
             pl.Refold();
+        }
+
+        /// <summary>THE OWNER'S PORTRAIT. A CARD's answer stages the owner's NAME alone at <see cref="Authority.Thin"/>
+        /// and stamps <see cref="UserFields.Identity"/> KNOWN on that row (<c>Spotify.Decode.Home</c>'s owner arm, the
+        /// pathfinder's user node) — and <see cref="Entities.Ensure"/> asks only for <c>wanted &amp; ~known</c>, so the
+        /// row above never asks for the profile that actually carries the avatar. The owner line then renders the
+        /// monogram forever on any route reached through a card, and resolves only when the page is the first thing to
+        /// name the user. So: ONE invalidate per (page, owner slot), and only while the group is known at less than
+        /// <see cref="Authority.Full"/> — an account that genuinely has no picture answers Full with no image and is
+        /// never asked again (the monogram is then the correct, deliberate fallback, not a missing fetch).</summary>
+        void DemandOwnerProfile(Scope scope, int owner)
+        {
+            if (owner <= Table.None || owner == _ownerAsked || owner >= scope.Users.Count) return;
+            if ((scope.Users.Known[owner] & (uint)UserFields.Identity) == 0) return;            // Ensure above owns this case
+            if ((Authority)scope.Users.IdentityAuthority[owner] >= Authority.Full) return;
+            _ownerAsked = owner;
+            Entities.Invalidate(scope.Users, new ReadOnlySpan<int>(in owner), (uint)UserFields.Identity);
         }
 
         /// <summary>The Local Files header and membership are settled LOCALLY — there is no remote to ask (G-110).</summary>

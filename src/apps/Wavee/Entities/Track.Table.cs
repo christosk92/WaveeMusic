@@ -1218,7 +1218,13 @@ public readonly partial struct Track
                 layout,
                 new ListOptions
                 {
-                    SelectionMode = visible > 0 ? Cfg.Selection : ItemsSelectionMode.None,
+                    // NEVER data-dependent. `ItemsView.Create` is an `Embed.Comp` factory, so SelectionMode
+                    // FREEZES at mount (component-props contract): a list that mounted while its rows were
+                    // still landing used to freeze at `None` for its whole life, and WinUI's CanRaiseItemInvoked
+                    // matrix invokes on a single TAP in that mode. Same page, same click, play-or-select decided
+                    // by whether the rows happened to arrive first — the owner's "coinflip", 2026-09-20. An empty
+                    // list has nothing to select, so the guard bought nothing.
+                    SelectionMode = Cfg.Selection,
                     Selection = _selection,
                     IsItemInvokedEnabled = true,
                     OnInvoked = i => { if (_rowItems!.TryPeek(i, out _, prefix)) PlayRow(i - prefix); },

@@ -382,7 +382,10 @@ public static partial class Shell
                 _ = TabsVersion.Value;
                 float extent = s_tabExtent.Value;
                 var old = ChromeLayout.Peek();
-                var next = Chrome.Resolve(w, extent, old);
+                // The identity chip's FORM is a budget input, not a decoration: "Connecting" and "Reconnect" are 58-68
+                // DIP wider than the avatar, well past the 16-DIP gutter cushion (#88). Reading it here also subscribes
+                // this effect to the auth fold, so a sign-in or a resume RE-ALLOCATES the row instead of overflowing it.
+                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value));
                 if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_searchFocused.Peek(), s_searchFlyoutOpen.Peek()))
                     SearchFocusRequest.Value = SearchFocusRequest.Peek() + 1;
                 ChromeLayout.SetIfChanged(next);
@@ -1171,7 +1174,7 @@ public static partial class Shell
     {
         var l = ChromeLayout.Value;
         if (!l.ShowTrailing) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
-        var kids = new List<Element>(5) { AuthChip() };
+        var kids = new List<Element>(5) { AuthChip(l.Chip) };
         // The ONE "actions in row" stage: bell, friends, pin and settings enter together. Below it they fold into the
         // profile menu (pin simply drops — the tab menu still offers it).
         if (l.ActionsInRow)
@@ -1189,8 +1192,12 @@ public static partial class Shell
     }
 
     /// <summary>The identity form from the AUTH FOLD, never raw session status: a silent resume behind the cache-first
-    /// shell is Connecting, and an actionable "Sign in" there would race it (ch 18 W17).</summary>
-    static Element AuthChip() => FrameRules.ChipFor(Auth.Value) switch
+    /// shell is Connecting, and an actionable "Sign in" there would race it (ch 18 W17).
+    /// <para>The form comes from the RESOLVED row (<c>Chrome.Chip</c>), not from <c>Auth</c> directly, for the same
+    /// reason <see cref="PinButton"/> reserves its 44 DIP unconditionally: the element tree must never be a form the
+    /// budget did not price. The allocator reads the same <see cref="FrameRules.ChipFor"/> fold, so the two can only
+    /// ever agree. (#88)</para></summary>
+    static Element AuthChip(FrameRules.ChipForm chip) => chip switch
     {
         FrameRules.ChipForm.Profile => ProfileChip() with { Key = "chrome-profile" },
         FrameRules.ChipForm.Connecting => new BoxEl
