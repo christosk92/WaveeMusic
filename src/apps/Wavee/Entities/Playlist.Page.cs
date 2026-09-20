@@ -308,6 +308,17 @@ public readonly partial struct Playlist
             UseEffect(_demandRows);
             // The open's revalidation: subscribed to the tables that publish its answer, settled when the model says how it ended.
             UseEffect(_observe);
+            // …and the OTHER way that hold ends: its budget simply running out. That edge is the wall clock's, not a
+            // table's — nothing settles and nothing publishes — so this page, the only surface holding, arms it on the
+            // frame clock and settles it itself (ListOpen.ExpireHold ⇒ Changed ⇒ the Stamp memo below re-runs with
+            // Holding false and the meta line's arm flips off Loading). Without it the shimmer stood until something
+            // unrelated re-rendered the page, which is exactly why resizing the window "fixed" it.
+            // UseTimeout arms from mount and RE-ARMS on a dep change, so the fire that counts is the one keyed on the
+            // hold this page actually took; HoldExpired re-checks rather than assuming, and re-arms itself while
+            // budget is left (the first frame renders before the demand effect has opened anything, so the mount's own
+            // arm always fires against no hold at all).
+            int holdLeftMs = pl.IsValid ? ListOpen.RemainingHoldMs(pl.Slot) : 0;
+            _holdWake = UseTimeout(_holdExpired, holdLeftMs + ListOpenPolicy.HoldWakeSlackMs, DepKey.From(pl.Slot, holdLeftMs));
             // 0 while no lens is on, 36 while one is (ch 04 item 34): a memo, so a filter edit that does not flip the answer
             // never re-renders the page. Hooks before the early return.
             var lensMemo = UseComputed(_lensExtent);
@@ -515,6 +526,20 @@ public readonly partial struct Playlist
             var pl = _playlist;
             if (_local || !pl.IsValid || !ReferenceEquals(_scope, Entities.Current)) return;
             ListOpen.Open(pl, ListOpenPolicy.Surface.Revisit);
+        }
+
+        /// <summary>THE OPEN HOLD'S DEADLINE, as an event (the eternal meta-line shimmer). The timer arms from mount and
+        /// re-arms on its dep key, so a fire can land with no hold at all (the mount's own), or a frame before a live
+        /// one's deadline on a clock that is not the deadline's — <see cref="ListOpen.ExpireHold"/> re-checks both and
+        /// settles nothing it should not. Whatever is left of the budget after that is re-armed here, so an early or an
+        /// unrelated fire is never the last word; the settle itself writes <see cref="ListOpen.Changed"/>, which is what
+        /// re-runs <see cref="Stamp"/> and repaints the meta line with no resize and no pointer input.</summary>
+        void HoldExpired()
+        {
+            int slot = _playlist.Slot;
+            ListOpen.ExpireHold(slot);
+            int left = ListOpen.RemainingHoldMs(slot);
+            if (left > 0) _holdWake.RestartIn(left + ListOpenPolicy.HoldWakeSlackMs);
         }
 
         void DemandRows()

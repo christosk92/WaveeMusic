@@ -167,10 +167,35 @@ public static class ListOpenPolicy
     }
 
     /// <summary>Is the surface still holding? Only while nothing has been observed AND the deadline has not passed —
-    /// "the revalidation answers or the budget elapses, whichever first". The deadline is compared as a difference, so a
-    /// wrapping millisecond counter never strands a hold.</summary>
+    /// "the revalidation answers or the budget elapses, whichever first". One expression of
+    /// <see cref="RemainingHoldMs"/>, so the two can never disagree about whether a hold is live.</summary>
     public static bool Holds(bool hold, int holdUntilMs, int nowMs, Observed observed)
-        => hold && observed == Observed.Pending && unchecked(holdUntilMs - nowMs) > 0;
+        => RemainingHoldMs(hold, holdUntilMs, nowMs, observed) > 0;
+
+    /// <summary>HOW MUCH BUDGET IS LEFT on a hold, in milliseconds — the other half of <see cref="Holds"/>, and the
+    /// number a surface arms its OWN deadline with (<c>Playlist.PlaylistPage</c>'s <c>UseTimeout</c>).
+    /// <para>A hold ends one of two ways. When the model OBSERVES something — answered, failed, paged, moved — the
+    /// record settles and <see cref="ListOpen.Changed"/> is written, so every memo that reads the hold re-runs. The
+    /// other way is the BUDGET simply running out, and that edge belongs to the wall clock: nothing settles, nothing
+    /// publishes, and <see cref="Holds"/> merely starts answering false the next time somebody happens to ask. A
+    /// surface that renders off the hold would keep its shimmer until an unrelated re-render (a window resize) asked
+    /// again. This is what lets a surface turn that edge into an EVENT instead: arm a wake for exactly this long, and
+    /// call <see cref="ListOpen.ExpireHold"/> when it fires.</para>
+    /// <para>ZERO when there is no live hold — not holding, already observed, or the deadline has passed. The deadline
+    /// is compared as a DIFFERENCE, so a wrapping millisecond counter never strands a hold nor reports a budget half
+    /// the counter's range long.</para></summary>
+    public static int RemainingHoldMs(bool hold, int holdUntilMs, int nowMs, Observed observed)
+    {
+        if (!hold || observed != Observed.Pending) return 0;
+        int left = unchecked(holdUntilMs - nowMs);
+        return left > 0 ? left : 0;
+    }
+
+    /// <summary>The SLACK a surface adds to <see cref="RemainingHoldMs"/> when it arms its wake. The frame clock a
+    /// <c>UseTimeout</c> schedules on is not the clock a hold's deadline is written in (<c>ListStamps.NowMs</c>), so a
+    /// wake armed at exactly the remaining budget can land a hair BEFORE the deadline — and the no-op that follows
+    /// would leave nothing to re-arm it. One frame of slack puts the wake strictly past the deadline.</summary>
+    public const int HoldWakeSlackMs = 16;
 
     /// <summary>How a settled revalidation ended, from the model's facts at the moment it settled:
     /// <list type="bullet">
@@ -211,8 +236,9 @@ public static class ListOpenPolicy
 /// <para>A record SETTLES — and the list's rolling header is re-asked when <see cref="ListFreshness.ReaskHeader"/> says
 /// so — when the answer path reports it (<see cref="Settled"/>: the edge door's answer or terminal failure for the parent),
 /// or when a surface's effect sees the model already say how it ended (<see cref="Observe"/>: the list moved, a page of a
-/// full read landed, the ask failed). The hold lets go on either, or at its deadline: ONE timer, armed to the earliest,
-/// posts to the UI thread and bumps <see cref="Changed"/>.</para>
+/// full read landed, the ask failed). The hold lets go on either — or at its DEADLINE, which is a fact no table
+/// publishes, so the holding surface arms a wake for <see cref="RemainingHoldMs"/> on its own frame clock and calls
+/// <see cref="ExpireHold"/> when it fires. All three settle the record and bump <see cref="Changed"/>.</para>
 /// <para>Memory-only and per scope (a record from another epoch, or for a recycled slot, is dropped when met), bounded by
 /// <see cref="ListOpenPolicy.InFlightMs"/>. UI THREAD ONLY (C1); nothing here allocates after warm-up except the uri a
 /// Spotify list's stamps are keyed by and the always-on <c>list.*</c> lines.</para></summary>
@@ -226,7 +252,6 @@ public static class ListOpen
         public int AskedAtMs;
         public bool Blocking;
         public bool Hold;
-        public bool Spent;              // the hold's deadline has passed (the timer said so)
         public int HoldUntilMs;
         public FetchPriority Priority;  // the most urgent surface that opened it: the rolling header re-asks at this
         public bool BaseSeen;
@@ -236,10 +261,6 @@ public static class ListOpen
 
     static Entry[] s_entries = new Entry[8];
     static int s_count;
-    static System.Threading.Timer? s_wake;
-    static bool s_armed;
-    static int s_armedFor;
-    static readonly Action s_expire = Expire;
 
     /// <summary>Bumps when a record is taken, joined, settled, dropped or its hold runs out of budget. Read it (tracked)
     /// wherever <see cref="Holding"/> is read.</summary>
@@ -293,7 +314,6 @@ public static class ListOpen
                 changed = true;
             }
         }
-        if (plan.Hold) Arm(plan.HoldUntilMs, now);
         if (changed) Bump();
         LogOpen(uri, surface, in facts, in plan, joined: !plan.Stamp && at >= 0, now);
     }
@@ -316,18 +336,54 @@ public static class ListOpen
     /// <summary>THE FACT THE REVEAL GATE READS: is a surface holding this list's reveal on its open revalidation — not
     /// yet answered as far as the model can tell, and inside its budget? A read, never a subscription: read
     /// <see cref="Changed"/> (and the membership / playlist tables' signals) in the same tracked scope.</summary>
-    public static bool Holding(int slot)
+    public static bool Holding(int slot) => RemainingHoldMs(slot) > 0;
+
+    /// <summary>HOW LONG THIS SLOT'S HOLD HAS LEFT (0 when it is not holding) — what a surface arms its own deadline
+    /// wake with, so the budget edge becomes an event (<see cref="ListOpenPolicy.RemainingHoldMs"/>). The same record,
+    /// the same liveness check and the same <see cref="ListOpenPolicy.Observed"/> reading <see cref="Holding"/> makes —
+    /// <see cref="Holding"/> IS this, compared against zero, so the two can never disagree about whether a hold is
+    /// live. A read, never a subscription: read <see cref="Changed"/> in the same tracked scope.</summary>
+    public static int RemainingHoldMs(int slot)
     {
-        if (s_count == 0) return false;
+        if (s_count == 0) return 0;
         int at = IndexOf(slot);
-        if (at < 0) return false;
+        if (at < 0) return 0;
         ref readonly Entry e = ref s_entries[at];
-        if (!e.Hold || e.Spent) return false;
+        if (!e.Hold) return 0;
         var scope = Entities.Current;
-        if (scope is null || !Live(in e, scope)) return false;
+        if (scope is null || !Live(in e, scope)) return 0;
         var edges = scope.Edges.PlaylistTracks;
         var observed = ListOpenPolicy.Observe(edges.State(slot), edges.IsFailed(slot), e.BaseSeen, Moved(in e, scope));
-        return ListOpenPolicy.Holds(e.Hold, e.HoldUntilMs, ListStamps.NowMs(), observed);
+        return ListOpenPolicy.RemainingHoldMs(e.Hold, e.HoldUntilMs, ListStamps.NowMs(), observed);
+    }
+
+    /// <summary>END A HOLD BECAUSE ITS BUDGET ELAPSED — the surface's deadline wake calling in (the playlist page's
+    /// <c>UseTimeout</c>, armed for <see cref="RemainingHoldMs"/>). This is the one way a hold can end that no table
+    /// publishes, so it is settled EXPLICITLY, through the same <see cref="Settle"/> path an observed or answered
+    /// revalidation takes: the record leaves, <see cref="Changed"/> is written, and every memo that reads the hold
+    /// re-runs — which is what flips the meta line's arm off <c>Loading</c> with no resize and no pointer input. The
+    /// always-on <c>list.settle</c> line names it <c>budget</c>, beside <c>observed</c> / <c>answered</c> /
+    /// <c>failed</c>.
+    /// <para>A NO-OP when the slot has no live hold, when the model can already see how the revalidation ended (that
+    /// is <see cref="Observe"/>'s settle, and it names how), or when the budget has not actually elapsed — so a wake
+    /// that lands a frame early, or late over a hold taken since, settles nothing. UI thread.</para></summary>
+    public static void ExpireHold(int slot)
+    {
+        if (s_count == 0) return;
+        int at = IndexOf(slot);
+        if (at < 0) return;
+        var scope = Entities.Current;
+        if (scope is null) return;
+        if (!Live(in s_entries[at], scope)) { Drop(at); return; }
+        ref readonly Entry e = ref s_entries[at];
+        if (!e.Hold) return;
+        var edges = scope.Edges.PlaylistTracks;
+        EdgeState state = edges.State(slot);
+        bool failed = edges.IsFailed(slot), moved = Moved(in e, scope);
+        var observed = ListOpenPolicy.Observe(state, failed, e.BaseSeen, moved);
+        if (observed != ListOpenPolicy.Observed.Pending) return;
+        if (ListOpenPolicy.RemainingHoldMs(e.Hold, e.HoldUntilMs, ListStamps.NowMs(), observed) > 0) return;
+        Settle(at, ListOpenPolicy.Classify(failed, state, e.BaseSeen, moved), "budget");
     }
 
     /// <summary>A surface's half of its list's open revalidation, run from an auto-tracked EFFECT: subscribes the effect to
@@ -415,7 +471,7 @@ public static class ListOpen
             WaveeLogField.Of("outcome", outcome.ToString()),
             WaveeLogField.Of("how", how),
             WaveeLogField.Of("ms", unchecked(ListStamps.NowMs() - e.AskedAtMs)),
-            WaveeLogField.Of("held", e.Hold && !e.Spent),
+            WaveeLogField.Of("held", e.Hold),
             WaveeLogField.Of("reask", reask));
     }
 
@@ -468,49 +524,13 @@ public static class ListOpen
     static void Bump() => Changed.Value = Changed.Peek() + 1;
 
     // ── the budget ──────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Wake the UI thread at <paramref name="holdUntilMs"/> — unless an earlier wake is already set, which re-arms
-    /// for the rest when it fires. ONE timer for every hold.</summary>
-    static void Arm(int holdUntilMs, int nowMs)
-    {
-        if (s_armed && unchecked(s_armedFor - holdUntilMs) <= 0) return;
-        s_armed = true;
-        s_armedFor = holdUntilMs;
-        s_wake ??= new System.Threading.Timer(static _ => Spotify.Post(s_expire), null,
-                                              System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
-        s_wake.Change(Math.Max(1, unchecked(holdUntilMs - nowMs)), System.Threading.Timeout.Infinite);
-    }
-
-    /// <summary>UI thread, from the timer's post: every hold whose deadline has passed is spent (readers re-read and
-    /// reveal what they have — the revalidation still lands after, and updates in place); the earliest still to come is
-    /// re-armed. A fire a millisecond early just re-arms.</summary>
-    static void Expire()
-    {
-        s_armed = false;
-        int now = ListStamps.NowMs();
-        bool spent = false, pending = false;
-        int next = 0;
-        var scope = Entities.Current;
-        for (int i = 0; i < s_count; i++)
-        {
-            ref Entry e = ref s_entries[i];
-            if (!e.Hold || e.Spent) continue;
-            if (unchecked(e.HoldUntilMs - now) > 0)
-            {
-                if (!pending || unchecked(e.HoldUntilMs - next) < 0) next = e.HoldUntilMs;
-                pending = true;
-                continue;
-            }
-            e.Spent = true;
-            spent = true;
-            if (scope is not null && Live(in e, scope) && Log.IsEnabled(WaveeLogLevel.Info))
-                Log.Event(WaveeLogLevel.Info, "list", "list.hold.spent", "", null, -1, null,
-                    WaveeLogField.Of("uri", new Playlist(e.Slot).Uri.Text),
-                    WaveeLogField.Of("ms", unchecked(now - e.AskedAtMs)));
-        }
-        if (spent) Bump();
-        if (pending) Arm(next, now);
-    }
+    //
+    // There is no background timer here, and that is deliberate. A hold exists for exactly one reason — a SURFACE is
+    // holding its reveal on it — and only a surface can act on the budget running out: it is the thing that has to
+    // re-render. So the deadline is armed where the hold is read, on the SAME frame clock the surface paints with
+    // (Playlist.PlaylistPage: UseTimeout for ListOpen.RemainingHoldMs, firing ListOpen.ExpireHold), and the settle it
+    // produces goes through Changed like every other. A thread-pool timer posting into the UI queue could mark the
+    // record spent without anything re-rendering, which is the eternal shimmer this replaced.
 
     static void LogOpen(string? uri, ListOpenPolicy.Surface surface, in ListOpenPolicy.Facts facts, in ListOpenPolicy.Plan plan,
                         bool joined, int now)
