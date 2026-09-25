@@ -1,0 +1,34 @@
+{
+  "name": "wavee-crash-dashboard",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "shots": "node shots/take.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fluentui/react-charts": "^9.3.27",
+    "@fluentui/react-components": "^9.74.9",
+    "@fluentui/react-icons": "^2.0.341",
+    "@tanstack/react-query": "^5.103.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.6"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^25.0.1",
+    "playwright": "^1.63.0",
+    "typescript": "^5.7.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

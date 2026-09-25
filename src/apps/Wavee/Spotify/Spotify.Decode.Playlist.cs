@@ -89,8 +89,8 @@ public static partial class Spotify
             if (token.Length >= 2 && (token[0] == (byte)'"' || token[0] == (byte)'\'') && token[^1] == token[0])
                 token = token[1..^1].Trim((byte)' ');
             if (token.IsEmpty) return default;
-            int offset = query.Offset + (int)OffsetOf(s.Utf8(query), token);
-            return new TextRef(offset, token.Length);
+            int offset = (int)OffsetOf(s.Utf8(query), token);
+            return query.Slice(offset, token.Length);
 
             // The token is a sub-slice of the staged query: its offset inside it is pointer arithmetic, not a copy.
             static long OffsetOf(ReadOnlySpan<byte> whole, ReadOnlySpan<byte> part)

@@ -19,24 +19,30 @@ the design are in `docs/plans/wavee/scroll-feel-and-recording-defects-2026-09-16
 - **`Entities.Invalidate` / `InvalidateEdge` — the planner's fifth mark, `Stale`.** A known group can now be declared
   out of date without blanking it: the row keeps rendering, the planner re-asks through the ordinary demand path, the
   next answer at any authority lands, and the mark clears itself. (#n)
-- **`frame.slack` and a `slackFrames=` count in `scroll.trace`.** When the loop did not run for more than 12 ms while a
-  scroll was live, the frame line now says whether the gap was a GC pause, the wake model sleeping or pre-emption, so a
-  hole mid-drag names itself instead of showing up as an unattributed `dtMax`. (#n)
-- **`scroll.trace` separates a resting finger, clamp pins and structural rebases from real stalls.** A drag contact that
-  is down but not moving for three frames or more is reported as `holdFrames=` instead of zero-motion stalls; a frame
-  that pinned a body at a clamp carries a `p` marker and is counted in `pins=`; a frame that rebased a body (an anchor
-  shift or a clamp rebase, which is not motion) carries `s`, is counted in `structural=`, and is left out of the stall,
-  dip and jitter figures. Neither a held nor a structural frame can trigger `present-hitch` or `stalled-frames`. (#n)
-- **A per-frame scroll trace in the always-on log.** Every wheel/drag burst now ends with a `scroll.trace` line: the
-  kernel's per-frame displacement, the wheel notches applied, the refreshes that passed with no frame WHILE the list was
-  moving, zero-motion frames, velocity dips, late frames and the step-jitter median, plus the shift sequence itself and
-  a one-word verdict. The screen-capture probe that diagnosed the stepping needed synthetic input; this needs only a
-  hand scroll. `ops/tools/scroll-reference.html` prints the same figures for Chromium on the same machine, so the
-  browser's scroll and ours compare as numbers. The `scroll.frames` line also names which planner input made the
-  sidebar re-plan during the burst (`sidebarReplans= railBumps= causes=`).
+- **`frame.slack`.** When the loop did not run for more than 12 ms while a scroll was live, a `frame.slack` line now
+  says whether the gap was a GC pause, the wake model sleeping or pre-emption, so a hole mid-drag names itself instead
+  of showing up as an unattributed long frame. (#n)
+- **`scroll.frames` names the sidebar's re-plans.** Every wheel/drag burst's `scroll.frames` line also says which
+  planner input made the sidebar re-plan during the burst (`sidebarReplans= railBumps= causes=`).
+
+### Changed
+
+- **Scrolling runs on the engine's new plan-based scroll system.** Every list and page now scrolls through one scroll
+  handle per viewport (wheel, touchpad, touch, scrollbar and keyboard all author one closed-form motion plan, posed on
+  the render thread at each present), sticky headers, clips, parallax and fades are declared as scroll effects with an
+  explicit sticky scope, the lyrics resync is the engine's user-yielding follow glide, and the realize window is sized
+  by velocity instead of per-list overscan knobs. Every wheel/drag burst also writes a `scroll.burst` line (the
+  engine's own per-burst verdict, written while the scroll probe is at Summary or Trace), and Diagnostics gains a Scroll card:
+  probe level, feel profile and a CSV export to `logs/scroll-<timestamp>.csv`, both settings persisted. Scroll
+  positions are remembered per tab. (scroll rework, issue pending)
 
 ### Fixed
 
+- **Music videos stuttered a few seconds in, and again every time the pop-out was reopened.** Every quality change is a
+  decoder and swap-chain rebuild, and the ladder made three of them per play: the throughput estimator discarded every
+  sample a fast link produced (a 5 MB burst that finished under 200 ms), then acted on its 2 Mbps prior, and a rebuilt
+  player started from that prior again. Large aggregates now count, a prior never moves the ladder, one controller lives
+  for the process, and the last measured estimate is remembered across launches and picks the opening rung. (#n)
 - **The daylist stuck at 00:00:00 and kept showing the previous edition.** Both countdowns disarmed at zero and nothing
   re-asked Spotify for the new window, so the hero card and the playlist page carried the old title, description, cover
   and tracks until a relaunch — and after a relaunch the persisted header outranked the fresh feed's. The rollover is
@@ -88,8 +94,7 @@ the design are in `docs/plans/wavee/scroll-feel-and-recording-defects-2026-09-16
   release velocity comes from the raw packet totals. (#n)
 - **A coast lost a step whenever a frame repeated its clock stamp.** The host handed the kernel dt = 0 for a frame whose
   frame stamp had not advanced although the wall clock had; the step is now credited from the wall clock in whole
-  refresh intervals. `scroll.trace` names any remaining zero coast frame by cause (`zero=dt/skip/pin/other`) and marks
-  repaired frames with `r`. (#n)
+  refresh intervals. (#n)
 - **A fling lost a frame of travel whenever the list grew under it.** When a coast reached the end of what was laid
   out so far, the frame it hit the clamp was pinned while its velocity still decayed, and the next frame resumed one
   step slower without ever re-applying the pinned distance — a visible hitch on artist and album pages as their sections
@@ -109,9 +114,6 @@ the design are in `docs/plans/wavee/scroll-feel-and-recording-defects-2026-09-16
   120 Hz frames give even shifts. (#n)
 - **Pages crept for a dozen frames after opening.** The programmatic scroll restore chased its target asymptotically in
   sub-pixel steps; it now lands exactly, with the same displacement floor and distance snap the wheel glide has. (#n)
-- **`scroll.trace` blamed the idle gap before a burst on its second frame.** Missed vblanks are read one frame after the
-  present they belong to, so every burst's second frame carried the pre-burst idle as "held while moving" and was graded
-  a present hitch. The delta is attributed to the frame it measured and the pre-burst one is dropped. (#n)
 - **Playing another track from the same album or playlist re-asked autoplay and appended fifty rows each time.** The
   queue rebuild kept only the user's queued rows; the autoplay tail is now kept too when the landing context is the one
   already on the deck, along with its next page. (#n)

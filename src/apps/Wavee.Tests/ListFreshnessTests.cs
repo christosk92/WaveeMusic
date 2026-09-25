@@ -1,4 +1,4 @@
-// ── Wavee.Tests/ListFreshnessTests.cs — when an open paints, and when it asks first (plan §2, §3.3) ─────────────────
+﻿// ── Wavee.Tests/ListFreshnessTests.cs — when an open paints, and when it asks first (plan §2, §3.3) ─────────────────
 //
 // Correctness is the revision + /diff on open; the stamps are memory-only, so the first open of a session always asks.
 // A stale baseline blocks the open on the diff for at most 1500 ms — yesterday's copy is never painted-then-swapped.
@@ -67,7 +67,15 @@ public class ListFreshnessTests
     [InlineData(ListFreshness.Outcome.Failed, false)]
     public void A_rolling_identity_re_asks_its_header_after_any_outcome_that_did_not_re_read_it(ListFreshness.Outcome outcome, bool reask)
     {
-        Assert.Equal(reask, ListFreshness.ReaskHeader(rolling: true, outcome));
-        Assert.False(ListFreshness.ReaskHeader(rolling: false, outcome));
+        Assert.Equal(reask, ListFreshness.ReaskHeader(rolling: true, formatKnown: true, outcome));
+        Assert.False(ListFreshness.ReaskHeader(rolling: false, formatKnown: true, outcome));
     }
+
+    [Theory]
+    [InlineData(ListFreshness.Outcome.Unchanged, true)]
+    [InlineData(ListFreshness.Outcome.Replayed, true)]
+    [InlineData(ListFreshness.Outcome.FullRead, false)]
+    [InlineData(ListFreshness.Outcome.Failed, false)]
+    public void An_identity_whose_format_is_unknown_this_session_re_asks_like_a_rolling_one(ListFreshness.Outcome outcome, bool reask)
+        => Assert.Equal(reask, ListFreshness.ReaskHeader(rolling: false, formatKnown: false, outcome));
 }

@@ -362,6 +362,30 @@ public static partial class Queue
         return SeedSource.CurrentOnly;
     }
 
+    // ── the mirror-follow decision (queue fix (a), realtime-capture-implementation.md) ─────────────────────────────
+    //
+    // A FOREIGN device advancing to its next track never re-runs `DecideSeed` — that gate is deliberately one-shot
+    // (see the doc above: "never re-decides a queue once it leaves Unknown"), and `MirrorRemote` (Playback.cs) only
+    // ever touches `State.Current`/`CurrentId`, never the queue's own buckets. So a mirrored queue that already left
+    // Unknown (an earlier `SeedFromForeignQueue` ran once) sits with STALE buckets forever: the row that is now
+    // playing still carries whatever bucket it had (History, or worse, still NextUp), and the rail's "Next up" keeps
+    // starting from the OLD now-playing row. The fix is not a new seed — the rows are already right, an owner's own
+    // cluster keeps mirroring them via `set_queue`/cluster pushes — it is a re-bucket around the row the current
+    // track landed at, exactly what `QueueOrder.Follow`/`Queue.Follow` already do for a LOCAL cursor move.
+
+    /// <summary>Should the mirrored queue be re-bucketed (<see cref="QueueOrder.Follow"/>) around the row the current
+    /// track was just found at? PURE: an index/bucket lookup the caller already has in hand (<see cref="IndexOfItem"/>
+    /// or a linear scan by ref), never touching the live queue itself.
+    /// <para>Only for a FOREIGN mirror (a local session follows its own cursor through the ordinary transport path,
+    /// never through this seam) whose queue has already left <see cref="EdgeState.Unknown"/> (an <c>Unknown</c> queue
+    /// is <see cref="DecideSeed"/>'s job, not this one's) and whose current row was actually found in it
+    /// (<paramref name="foundIndex"/> &gt;= 0 — a row the mirrored list does not carry yet has nothing to re-bucket
+    /// around). False when the row already sits in <see cref="QueueBucket.NowPlaying"/> — the common no-op case
+    /// where an earlier follow (or a fresh `Replace`) already put it there, so a re-bucket would only cost a version
+    /// bump for nothing.</para></summary>
+    public static bool ShouldFollowMirror(EdgeState state, bool isForeign, int foundIndex, byte foundBucket)
+        => isForeign && state != EdgeState.Unknown && foundIndex >= 0 && foundBucket != (byte)QueueBucket.NowPlaying;
+
     // ── the seed retry decision (bug: a boot-time context resolve asked before the session authorises) ───────────────
     //
     // `SeedSource.Context` still has to go run `ContextResolve` on an api thread (`Playback.Host.Context.cs`'s
@@ -534,6 +558,11 @@ public static partial class Queue
             run.Targets[at] = packed;
             run.Rows[at] = new QueueEdge(itemId != 0 ? itemId : MintItemIds(1), (byte)QueueProvider.Queue, (byte)QueueBucket.UserQueue);
             Land(in run);
+            // §2.5 step 2's "optimistic local mutation" — the exact position it landed at, read off this splice's
+            // own return value, never recomputed. `row.Id.Text` can allocate (EntityId.Text's own doc), so it is
+            // read only once `Capture.Enabled` is already known true (§2.4's zero-cost-when-off guarantee).
+            if (Capture.Enabled)
+                Capture.Point(CaptureKind.QueueMutation, Capture.AmbientUiCauseId, a: "insert", b: row.Id.Text, n0: at);
         }
         finally { Return(in run); }
     }

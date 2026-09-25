@@ -1200,9 +1200,10 @@ public static partial class Lyrics
         /// <summary>The video note's top inset.</summary>
         public static float VideoNoteTopPad(bool large) => large ? 20f : 12f;
 
-        /// <summary>The whole document is realized (a 4-5 row overscan pops text shaping and blur layers in as the
-        /// document travels) — capped here.</summary>
-        public const int OverscanCap = 400;
+        /// <summary>The whole document is realized and MEASURED (<c>VirtualListEl.MeasureAll</c>) up to this many lines, so
+        /// every follow target is a real row offset, not an estimate, and no row pops its text shaping or blur layer in as
+        /// the document travels. A longer document (a podcast transcript) keeps the ordinary window.</summary>
+        public const int MeasureAllCap = 400;
 
         /// <summary>The six loading bars.</summary>
         public const int ShimmerRows = 6;
@@ -1219,7 +1220,8 @@ public static partial class Lyrics
         public const float ShimmerRadius = 6f;
     }
 
-    /// <summary>The follow scroll: the latch target, the resync countdown and the resync glide's constants.</summary>
+    /// <summary>The follow scroll: the latch target and the resync countdown (the resync glide itself is the engine's
+    /// <c>ScrollMove.Follow</c> — its constants are scroll feel data, not the lyrics').</summary>
     public static class Follow
     {
         /// <summary>A delta at or under this is "already there" — no latch, no cascade.</summary>
@@ -1228,8 +1230,6 @@ public static partial class Lyrics
         public const long ResyncIdleMs = 4000L;
         /// <summary>The countdown ring's resolution.</summary>
         public const int ResyncProgressSteps = 120;
-        /// <summary>The resync glide: the kernel's ζ=1 chase, 110 ms half-life, settling at 4 DIP/s.</summary>
-        public const float ResyncHalfLifeMs = 110f, ResyncSettleVel = 4f;
         /// <summary>Frames the follow re-evaluates after an interlude-reserve edge (the height reaches the extent table
         /// only on the next arrange).</summary>
         public const int ReserveRelatchFrames = 4;

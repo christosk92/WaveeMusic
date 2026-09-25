@@ -40,6 +40,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
+using FluentGpu.Scroll.Effects;
 using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Dialogs;
 using static FluentGpu.Dsl.Ui;
@@ -405,13 +406,10 @@ public readonly partial struct Artist
         }.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
 
         // Shared by both arms: the expanded presentation slides up and fades as the band takes over.
-        ScrollBindDsl[] collapseBinds =
+        ScrollEffectSpec[] collapseEffects =
         [
-            new() { From = ScrollChannel.Offset, To = BindSink.TransY,
-                Range = ScrollRange.Px(0f, collapse), OutStart = 0f, OutEnd = -collapse, Ease = Easing.Linear },
-            new() { From = ScrollChannel.Offset, To = BindSink.Opacity,
-                Range = ScrollRange.Px(ArtistHeroLayout.ExpandedFadeStart(collapse), collapse),
-                OutStart = 1f, OutEnd = 0f, Ease = Easing.Linear },
+            new(ScrollEffect.Parallax(0.0, collapse, 0f, -collapse)),
+            new(ScrollEffect.Fade(ArtistHeroLayout.ExpandedFadeStart(collapse), collapse, 1f, 0f)),
         ];
 
         Element identity = HeroIdentity(in text, uri, w, in m, accent, play, shuffle, radio);
@@ -422,7 +420,7 @@ public readonly partial struct Artist
             expanded = new BoxEl
             {
                 Width = w, Height = height, Direction = 1,
-                HitTestVisible = !compactCanHit, ScrollBinds = collapseBinds,
+                HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
                 Children =
                 [
                     media,
@@ -455,16 +453,19 @@ public readonly partial struct Artist
             expanded = new BoxEl
             {
                 Width = w, Height = height, ZStack = true,
-                HitTestVisible = !compactCanHit, ScrollBinds = collapseBinds,
+                HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
                 Children = [media, veil, copy],
             };
         }
 
+        // Pinned at the viewport top and COLLAPSING into the compact band: over the collapse distance the presented height
+        // shrinks from the banner height to the band, and the clipping root cuts the expanded presentation (paint and
+        // input) at that edge. Leading-anchored — the presentation carries its own slide-away (collapseEffects).
         return new BoxEl
         {
             Direction = 1, Height = height, ClipToBounds = true, ZStack = true,
             Children = band is null ? [expanded] : [expanded, band],
-        }.Collapse(height, ArtistHeroLayout.CompactIdentityHeight, collapse);
+        }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
     }
 
     /// <summary>Verified · name · first sentence · meta, then the action row (Hero.cs:34-95).</summary>
@@ -846,7 +847,7 @@ public readonly partial struct Artist
     sealed class GalleryLightbox : Component
     {
         const float IdleHideMs = 2600f, UnzoomSettleMs = 260f;
-        const float ZoomMax = 4f, ZoomClick = 2.2f, ZoomWheelK = 0.0022f;
+        const float ZoomMax = 4f, ZoomClick = 2.2f, ZoomWheelK = 0.0011f;   // per DIP of wheel delta: ~7 % zoom per 64 DIP notch
         const float Thumb = 56f, StripPad = 14f;
 
         static readonly GradientSpec TopScrim = GradientDown(

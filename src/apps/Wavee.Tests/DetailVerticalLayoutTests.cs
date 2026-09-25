@@ -375,7 +375,7 @@ public class DetailVerticalLayoutTests
                 var plan = VerticalLayout.TitleTypeFor(w, rowFlow: true, title,
                     eyebrow: true, attribution: true, meta: true);
                 float h = VerticalLayout.IdentityHeightFor(plan, rowFlow: true,
-                    eyebrow: true, attribution: true, meta: true, description: false);
+                    eyebrow: true, attribution: true, meta: true);
                 float art = VerticalLayout.ArtworkFor(w, rowFlow: true);
                 Assert.True(h <= art + 8f, $"identity {h} overflows the cover {art} by more than a snap step at w={w} title={title}");
             }
@@ -457,7 +457,7 @@ public class DetailVerticalLayoutTests
     [Fact]
     public void DescriptionMaxLines_IsShorterBesideTheArtwork()
     {
-        Assert.Equal(3, VerticalLayout.DescriptionMaxLines(rowFlow: true));
+        Assert.Equal(2, VerticalLayout.DescriptionMaxLines(rowFlow: true));
         Assert.Equal(4, VerticalLayout.DescriptionMaxLines(rowFlow: false));
     }
 

@@ -577,6 +577,7 @@ public static partial class Setup
                 case WizardPage.Terms:
                     // A consent leaves a durable record BEFORE the advance, so a crash in between cannot lose it.
                     Platform.Settings.Set(Platform.Keys.TermsAcceptedVersion, Gating.TermsVersion);
+                    WizardRules.MarkConsentAsked(Platform.Settings, Entry);   // crash-diagnostics §F: consent asked iff the card was shown
                     if (Entry == WizardEntry.TermsRearm) Finish();
                     else Advance(Gating.NextPage(WizardPage.Terms, SkipSignIn));
                     break;
@@ -913,7 +914,8 @@ public static partial class Setup
 
         public override Element Render()
         {
-            Element body = SetupText.Stack(
+            var kids = new List<Element>(12)
+            {
                 SetupText.Lead(Loc.Get(Strings.Setup.Terms.Start)),
                 SetupText.Body(Loc.Get(Strings.Setup.Terms.LastUpdated)),
                 SetupText.Body(Loc.Get(Strings.Setup.Welcome.Lead)),
@@ -923,8 +925,50 @@ public static partial class Setup
                 SetupText.Lead(Loc.Get(Strings.Setup.Terms.Section4Title)), SetupText.Body(Loc.Get(Strings.Setup.Terms.Section4Body)),
                 SetupText.Group(
                     SetupText.Secondary(Loc.Get(Strings.Setup.Terms.Fine)),
-                    HyperlinkButton.Create(Loc.Get(Strings.Setup.Terms.PrivacyLink), static () => OpenExternal(PrivacyUrl), size: ControlSize.Small)));
+                    HyperlinkButton.Create(Loc.Get(Strings.Setup.Terms.PrivacyLink), static () => OpenExternal(PrivacyUrl), size: ControlSize.Small)),
+            };
+            // crash-diagnostics plan §D/§F: the consent card never shows on a re-auth (WizardRules.ConsentShown gates it
+            // the same way the durable write does in WizardSession.Primary, so the two never disagree).
+            if (WizardRules.ConsentShown(session.Entry))
+                kids.Add(Embed.Comp(static () => new CrashConsentCard()) with { Key = "setup:terms:crash-consent" });
+
+            Element body = SetupText.Stack(kids.ToArray());
             return WizardFrame(WizardPage.Terms, Loc.Get(WizardRules.TermsHeaderKey(session.Entry)), body, backAutoPadding: false);
+        }
+    }
+
+    /// <summary>The Terms page's opt-in crash-reporting card (crash-diagnostics plan §D "Wizard consent"): title + an
+    /// "Optional" pill, the one-line question, a three-way <see cref="Segmented"/> choice (No · Ask me first · Always
+    /// send — <see cref="Crash.Reporting"/> Off/Ask/Auto, default Off), the scrub summary and the Privacy link. The
+    /// choice writes <see cref="Platform.Keys.CrashReporting"/> the instant it changes — never waits for Continue, so a
+    /// crash between the click and the wizard's own advance cannot lose it. Consent-asked itself is stamped once, on
+    /// Continue, by <see cref="WizardRules.MarkConsentAsked"/> (<c>WizardSession.Primary</c>), not here.</summary>
+    sealed class CrashConsentCard : Component
+    {
+        const string PrivacyUrl = "https://github.com/christosk92/WaveeMusic/blob/main/PRIVACY.md";
+
+        public override Element Render()
+        {
+            var index = UseSignal(Platform.Settings.Get(Platform.Keys.CrashReporting));   // seeded once from the store
+
+            // A vertical radio group (the Windows privacy-settings shape), not a segmented switcher: three labels of
+            // very different length never fit three equal-width segments, and a consent choice reads as a list.
+            Element choice = RadioButtons.Create(
+                [Loc.Get(Strings.Setup.Terms.CrashNo), Loc.Get(Strings.Setup.Terms.CrashAsk), Loc.Get(Strings.Setup.Terms.CrashAlways)],
+                index,
+                onChange: static i => Platform.Settings.Set(Platform.Keys.CrashReporting, i));
+
+            Element titleRow = new BoxEl
+            {
+                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = true,
+                Children = [SetupText.Lead(Loc.Get(Strings.Setup.Terms.CrashTitle)), ReleaseNotes.Pill(Loc.Get(Strings.Setup.Terms.CrashOptional))],
+            };
+
+            // The card carries the question as its header and the what-is-sent line as its description; the choice sits
+            // in the content slot. The page already shows the Privacy link in the fine print above — not repeated here.
+            return SetupText.Group(
+                titleRow,
+                SetupText.Card(Loc.Get(Strings.Setup.Terms.CrashLead), Loc.Get(Strings.Setup.Terms.CrashSub), null, choice));
         }
     }
 

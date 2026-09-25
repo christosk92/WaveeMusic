@@ -1,0 +1,5 @@
+node_modules
+dist
+shots/out
+*.local
+.DS_Store

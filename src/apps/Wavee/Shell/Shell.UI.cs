@@ -860,7 +860,7 @@ public static partial class Shell
         switch (FrameRules.BodyFor(route, factory is not null, Platform.Settings.Get(Platform.Keys.DeveloperMode)))
         {
             case FrameRules.BodyKind.Page:
-                return PageBox("page:" + NameOf(route), factory!(route));
+                return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab), PageBox("page:" + NameOf(route), factory!(route)));
             case FrameRules.BodyKind.Empty:
                 return PageBox("page-empty:" + NameOf(route), null);
             default:

@@ -59,10 +59,31 @@ public class ContextBandLayoutTests
 
     // ── the scroll spy ───────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>At the top of the page the FIRST section is the answer, not "none".</summary>
+    /// <summary>At the top of the page, with no pivot section past the activation line yet, NO section is here: the
+    /// hero and the Top tracks band sit above the first pivot section (Albums / Singles &amp; EPs), and lighting that
+    /// section's underline while Top tracks fills the screen is the 2026-09-25 defect (E). "None" is its own answer —
+    /// distinct from −1, "hold what you had" (D40).</summary>
     [Fact]
-    public void AtRest_TheFirstSectionIsActive()
-        => Assert.Equal(0, BandLayout.ActiveSection([600f, 1200f, 1800f], BandLayout.Height, 800f, atScrollEnd: false));
+    public void AtRest_AboveTheFirstSection_NoSectionIsActive()
+        => Assert.Equal(BandLayout.NoSection, BandLayout.ActiveSection([600f, 1200f, 1800f], BandLayout.Height, 800f, atScrollEnd: false));
+
+    /// <summary>The owner's case: Top tracks on screen, the first pivot section's top at 900 DIP and the second at 1500,
+    /// under the 56-DIP band in an 800-DIP viewport (activation line 250) ⇒ none.</summary>
+    [Fact]
+    public void TopTracksOnScreen_LightsNoPivotSection()
+        => Assert.Equal(BandLayout.NoSection, BandLayout.ActiveSection([900f, 1500f], 56f, 800f, atScrollEnd: false));
+
+    /// <summary>"None" draws no underline; a real answer draws its link's; "hold" never reaches the pivot (the caller
+    /// keeps its last answer), and a past-the-end index clamps to the last link.</summary>
+    [Fact]
+    public void ThePivotDrawsNoUnderlineForNone()
+    {
+        Assert.Equal(-1, BandLayout.PivotCurrent(BandLayout.NoSection, 3));
+        Assert.Equal(0, BandLayout.PivotCurrent(0, 3));
+        Assert.Equal(2, BandLayout.PivotCurrent(2, 3));
+        Assert.Equal(2, BandLayout.PivotCurrent(7, 3));
+        Assert.Equal(-1, BandLayout.PivotCurrent(0, 0));
+    }
 
     /// <summary>Arrival is measured at the upper quarter of the usable region below the band, plus the probe.</summary>
     [Fact]

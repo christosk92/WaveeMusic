@@ -43,24 +43,29 @@ public static partial class Diagnostics
 
     /// <summary>Install everything owner S owns for a GUI launch. Called ONCE by the composition root AFTER
     /// <c>Shell.InstallMarshallers()</c> (the network host posts through <c>Playback.ToUi</c>), <c>Shell.InstallUi()</c> and
-    /// <c>Settings.InstallScreens()</c>, and BEFORE <c>Update.Host.Start</c> (the crash prompt reads <c>app.lastRunVersion</c>
-    /// before the updater rewrites it) and <c>Shell.Run()</c> (the pre-loop hook must be set before the window). Never from
-    /// the headless arm.
+    /// <c>Settings.InstallScreens()</c>, and BEFORE <c>Update.Host.Start</c> (<c>Crash.Host.BeginGuiRun</c> reads
+    /// <c>app.lastRunVersion</c> before the updater rewrites it) and <c>Shell.Run()</c> (the pre-loop hook must be set
+    /// before the window). Never from the headless arm.
     /// <list type="bullet">
-    /// <item>the run marker, the WER dump probe and the crash-prompt latch;</item>
+    /// <item>the crash pipeline's run marker + boot-failure streak + this-launch bundle latch (<c>Crash.Host.BeginGuiRun</c>);</item>
     /// <item>the two diagnostics pages (`playback-diagnostics`, `connect-diagnostics`);</item>
     /// <item>the frame watch as <c>Shell.RouteNoted</c>'s consumer (G-197);</item>
     /// <item>the NLM cost host; the pre-loop hook (ambient power + the GUI probe arms);</item>
     /// <item>the seams the Wave-6 screens left for owner S: the logs panel, "Send event", the report dialog's diagnostics
-    /// text / past sessions / crash files / crash probe, and the updater's metered read.</item>
+    /// text / past sessions, and the updater's metered read.</item>
     /// </list></summary>
     public static void Install()
     {
         if (Interlocked.Exchange(ref s_installed, 1) != 0) return;
-        BeginGuiRun();
+        // crash-diagnostics-implementation.md §I "WP-B": the same versionChanged input the old Diagnostics.BeginGuiRun
+        // computed — an update deployment killing every open window is not evidence of a boot-time crash loop.
+        bool versionChanged = Array.IndexOf(Environment.GetCommandLineArgs(), Platform.RelaunchedAfterUpdateFlag) >= 0
+            || Platform.Settings.Get(Platform.Keys.LastRunVersion) != Platform.Version.LastRunKey;
+        Crash.Host.BeginGuiRun(Platform.Settings, versionChanged);
 
         Shell.SetPage(Shell.RouteKind.PlaybackDiagnostics, static (in Shell.Route _) => RuntimePage());
         Shell.SetPage(Shell.RouteKind.ConnectDiagnostics, static (in Shell.Route _) => ConnectPage());
+        Shell.SetPage(Shell.RouteKind.CaptureDiagnostics, static (in Shell.Route _) => CapturePage());
         Shell.RouteNoted += static route => NavigationFrameWatch.NoteRoute(route);
         NavigationFrameWatch.Attach();
 
@@ -71,8 +76,6 @@ public static partial class Diagnostics
         Settings.SendTestEvent = static topic => ToTestEvent(NotificationSimulator.Send(topic));
         Feedback.DiagnosticsText = static () => InfoText();
         Feedback.PastSessionLog = static key => PastSessionLines(key);
-        Feedback.ListCrashReports = static max => CrashReport.List(max);
-        Feedback.CrashProbeMode = static () => Probe.CrashProbeMode;
         Update.Host.IsMetered = static () => Platform.Network.IsMetered;
         // The stream sizes its read-ahead down on a metered link (ch 29 W9's invisible effect): a volatile snapshot read,
         // any thread. The headless arm leaves the seam null = unmetered, which is what an unknown cost is.

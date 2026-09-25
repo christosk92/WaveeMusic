@@ -207,6 +207,9 @@ public static partial class Platform
         public static readonly SettingKey<int> PlaybackQuality = new("playback.quality", 2);
         public static readonly SettingKey<int> MeteredQualityCap = new("playback.quality.meteredCap", 1);
         public static readonly SettingKey<int> VideoQuality = new("playback.video.quality", 0);
+        /// <summary>The last measured link estimate (kbps), remembered so the NEXT launch opens video on the rung this
+        /// machine can carry instead of re-learning it through visible representation switches (`Playback.Video.LinkMemory`).</summary>
+        public static readonly SettingKey<double> VideoLinkKbps = new("playback.video.linkKbps", 0.0);
         public static readonly SettingKey<int> VideoMeteredMaxHeight = new("playback.video.quality.meteredMaxHeight", 480);
         public static readonly SettingKey<bool> RememberVolume = new("playback.volume.remember", true);
         public static readonly SettingKey<float> SavedVolume = new("playback.volume", 0.7f);
@@ -272,11 +275,31 @@ public static partial class Platform
         public static readonly SettingKey<string> ReleaseNotesPendingFrom = new("app.whatsnew.pendingFrom", "");
         public static readonly SettingKey<string> ReleaseNotesPreviousVersion = new("app.whatsnew.previousVersion", "");
         public static readonly SettingKey<string> RunMarker = new("app.runMarker", "");
-        public static readonly SettingKey<string> PendingCrashReport = new("crash.pendingReport", "");
-        public static readonly SettingKey<bool> CrashPromptOptOut = new("crash.promptOptOut", false);
-        public static readonly SettingKey<bool> UncleanExitOffered = new("crash.uncleanExitOffered", false);
-        public static readonly SettingKey<string> LastSeenCrashDumpPath = new("diagnostics.crash.lastDumpPath", "");
-        public static readonly SettingKey<long> LastSeenCrashDumpTicksUtc = new("diagnostics.crash.lastDumpTicksUtc", 0L);
+
+        // ── crash & diagnostics pipeline (docs/plans/wavee/crash-diagnostics-implementation.md §B.2) ──
+        /// <summary>0 Off · 1 Ask · 2 Auto (<see cref="Crash.Reporting"/>). DEFAULT Off: crash reporting is opt-in.</summary>
+        public static readonly SettingKey<int> CrashReporting = new("crash.reporting", 0);
+        /// <summary>Whether a minidump rides along with an automatic/queued send. A manual Send always previews and
+        /// asks separately regardless of this bit. DEFAULT false — the dump is the heaviest, most sensitive part of a
+        /// bundle (live tokens, the DPAPI-unprotected credential live in the heap it can carry).</summary>
+        public static readonly SettingKey<bool> CrashIncludeDump = new("crash.includeDump", false);
+        /// <summary>Whether the setup wizard's consent card (or the first crash prompt) has ever been shown to this
+        /// profile, so neither re-arms once the user has made a choice either way.</summary>
+        public static readonly SettingKey<bool> CrashConsentAsked = new("crash.consentAsked", false);
+        /// <summary>A random per-install GUID ("N" format, no dashes), generated on first use by
+        /// <see cref="Crash.InstallId.Ensure"/> and sent with every report — never the device id, never anything
+        /// account-linked. Wiped by a factory reset like every other local artifact.</summary>
+        public static readonly SettingKey<string> CrashInstallId = new("crash.installId", "");
+        /// <summary>Consecutive launches that died before their first rendered frame (<see cref="Wavee.RunMarker"/>'s
+        /// running-vs-frame distinction, not a plain unclean exit); <see cref="Crash.RecoveryPolicy"/> reads it to
+        /// detect a boot loop and drop into recovery mode at <see cref="Crash.RecoveryPolicy.BootFailuresForRecovery"/>.</summary>
+        /// <summary>The bundle directory this launch should offer (the in-app prompt or the recovery dialog), latched
+        /// by the GUI run from the newest unseen bundle on disk. Empty when there is none.</summary>
+        /// <summary>The newest bundle FOLDER NAME <see cref="Crash.Host.BeginGuiRun"/> has already offered (or would
+        /// have, had there been one) — bundle names sort ordinally by their fixed-width stamp, so "the newest unseen
+        /// bundle" is exactly the newest one whose name sorts after this. Updated to the newest bundle's name on
+        /// EVERY launch, whether or not that bundle was offered.</summary>
+        public static readonly SettingKey<string> CrashSeenBundle = new("crash.seenBundle", "");
 
         // ── notification area (docs/plans/wavee/wavee-0.3-tray-implementation.md §8, defaults per its §13) ──
         /// <summary>0 Always · 1 Only while the window is hidden · 2 Never (<see cref="Tray.IconMode"/>; read it through
@@ -304,6 +327,11 @@ public static partial class Platform
         public static readonly SettingKey<bool> DeveloperMode = new("diag.developerMode", false);
         public static readonly SettingKey<bool> FpsOverlay = new("diag.fpsOverlay", false);
         public static readonly SettingKey<bool> DealerArchiveEnabled = new("diag.dealerArchive", false);
+        /// <summary>The engine scroll probe's level (<c>ScrollProbe.Level</c>: 0 Off · 1 Summary · 2 Trace), set from the
+        /// Diagnostics ▸ Scroll card. Summary (the default) keeps the per-burst <c>scroll.burst</c> log line on.</summary>
+        public static readonly SettingKey<int> ScrollProbeLevel = new("diag.scrollProbeLevel", ScrollDiagRules.LevelSummary);
+        /// <summary>The scroll feel profile (a <c>FeelProfiles</c> name), set from the same card.</summary>
+        public static readonly SettingKey<string> ScrollFeelProfile = new("diag.scrollFeelProfile", ScrollDiagRules.DefaultProfile);
 
         // ── PER-SUBJECT keys (ch 30 §9.3(7)) ────────────────────────────────────────────────────────────────────────────
         // There is one of these per album/playlist/library kind/sidebar design the user has ever touched, so they cannot
@@ -848,12 +876,18 @@ public static partial class Platform
         /// instance. It must never consume the factory-reset marker the real relaunch has to act on.</summary>
         public static bool RelaunchBroker { get; private set; }
 
+        /// <summary>`--recovery`: skip straight to the engine-free recovery screen (<see cref="Recovery.Reason.Switch"/>,
+        /// <c>Screens/Recovery.cs</c>) instead of a normal boot — independent of a boot loop or a thrown
+        /// <c>Platform.Boot()</c>, the other two ways in (crash-diagnostics plan §B.8, §I "WP-D").</summary>
+        public static bool Recovery { get; private set; }
+
         internal static void Parse(string[] argv)
         {
             Fake = Array.IndexOf(argv, "--fake") >= 0;
             FakeLiveClock = Fake && Array.IndexOf(argv, "--live-clock") >= 0;
             Headless = Array.IndexOf(argv, "--headless") >= 0;
             RelaunchBroker = Array.IndexOf(argv, "--relaunch-after") >= 0;
+            Recovery = Array.IndexOf(argv, "--recovery") >= 0;
         }
     }
 
@@ -1080,6 +1114,7 @@ public static partial class Platform
         HostOpenSettings();
         ZoomAutoPolicy.MigrateMode(Settings);
         Developer.Load(Settings);
+        Diagnostics.ScrollSettings.Load(Settings);   // the scroll probe level + feel profile, before the first window
         string osCulture = "";
         HostOsCulture(ref osCulture);
         var locale = AppLocale.Resolve(Settings, osCulture);
@@ -1106,6 +1141,7 @@ public static partial class Platform
     public static void Shutdown()
     {
         Log.Info("app", "Wavee exiting");
+        RealtimeCaptureHost.Shutdown();   // best-effort flush of whatever the capture writer still has queued
         Log.Flush();
     }
 
@@ -1131,7 +1167,7 @@ internal sealed partial class CredentialJson : JsonSerializerContext { }
 
 // ── WHERE OWNER S's WAVE-6 HALF LANDED (G-199) ───────────────────────────────────────────────────────────────────────
 //   · `Platform.Settings.cs` (the named partial): the settings-backing selection, `Developer`, `Network`, `AmbientPower`,
-//     `LogCapturePolicy`, `WaveeLogSessions` (pure), `WaveeVersionInfo`, `RunMarker`/`CrashPromptPolicy`,
+//     `LogCapturePolicy`, `WaveeLogSessions` (pure), `WaveeVersionInfo`, `RunMarker`,
 //     `FactoryResetPlan`, `ProvisioningOutcome`, `Keys.StageRects`.
 //   · `Platform.Host.cs`: the profile-file / in-memory settings stores, the log levels through `LogCapturePolicy`, the
 //     crash-writer install, the factory-reset apply/request and the restart broker's spawn, the NLM cost host, the

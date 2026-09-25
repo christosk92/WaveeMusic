@@ -40,6 +40,8 @@ static class Program
                 }
                 case "render":
                     return Render(a);
+                case "symbol-map":
+                    return SymbolMapCommand.Run(a);
                 case "help" or "--help" or "-h" or "":
                     PrintUsage();
                     return a.Command.Length == 0 ? Validator.ExitUsage : Validator.ExitOk;
@@ -115,6 +117,8 @@ static class Program
           validate    Check CHANGELOG.md + ops/release/wavee/<semver>/whatsnew.json against each other and
                       against GitHub, then emit the release artefacts into --out.
           render      Print the release body for an already emitted whatsnew.json (no network, no writes).
+          symbol-map  Read a Wavee.exe + its matching Wavee.pdb (DbgHelp) and write a binary .symmap the
+                      crash-ingest Worker resolves report RVAs against.
           help        This text.
 
         VALIDATE OPTIONS
@@ -149,6 +153,19 @@ static class Program
           --markdown                Print RELEASE_BODY.md to stdout (the default).
           --store-listing           Print store-listing.txt to stdout instead.
 
+        SYMBOL-MAP OPTIONS
+          --pdb <Wavee.pdb>         Required. The native PDB link.exe wrote for --exe (NativeDebugSymbols=true).
+          --exe <Wavee.exe>         Required. The exe whose RSDS debug directory (GUID/age/PdbPath) and RVAs the
+                                    map is built from; the loaded --pdb's own GUID/age must match it exactly or
+                                    the command fails (a stale symbol map is worse than none).
+          --out <file.symmap>       Required. Where the binary map is written (parent directories are created).
+
+        EXIT CODES (symbol-map)
+          0  ok
+          1  usage error, or --pdb/--exe not found
+          2  the exe has no readable debug directory, --pdb does not match --exe's debug id, or DbgHelp failed
+             (SymInitializeW/SymLoadModuleExW/SymGetModuleInfoW64/SymEnumSymbolsW)
+
         OUTPUTS (validate)
           <out>/whatsnew.json       The authored document merged with the CHANGELOG sections, the quad, the
                                     channel, the date, the links, the media hashes and generatedAt.
@@ -157,16 +174,21 @@ static class Program
           <out>/store-listing.txt   Tagline + highlight titles, capped at 1500 characters.
           <out>/media/*             Every referenced media file, flat, by basename.
 
-        EXIT CODES
+        EXIT CODES (validate)
           0  ok
           1  usage or I/O error
           2  validation failed (nothing was written)
 
-        EXAMPLE
+        EXAMPLES
           dotnet run --project src/apps/Wavee.ReleaseTool -- validate ^
             --semver 0.2.0 --quad 0.2.0.17 --codename Breaker --channel stable ^
             --changelog CHANGELOG.md --notes ops/release/wavee/0.2.0 ^
             --out artifacts/release/0.2.0/notes --repo christosk92/WaveeMusic ^
             --previous-tag wavee-v0.1.2 --commits artifacts/release/0.2.0/commits.json --github-token $env:GITHUB_TOKEN
+
+          dotnet run --project src/apps/Wavee.ReleaseTool -c Release -- symbol-map ^
+            --pdb artifacts/release/0.3.0/symbols/0.3.0.41/win-x64/Wavee.pdb ^
+            --exe artifacts/release/0.3.0/pkg/win-x64/Wavee.exe ^
+            --out artifacts/release/0.3.0/symbols/0.3.0.41/win-x64/Wavee.symmap
         """;
 }

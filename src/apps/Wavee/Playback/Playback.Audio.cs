@@ -867,8 +867,19 @@ public static partial class Playback
             MediaSource source = MediaSource.FromPull(bytes).WithKind(MediaKind.PcmAudio);
 
             if (PlayIntentGate.ShouldAnnounceBuffering(s_playIntent)) PostSignal(AudioSignal.Buffering, epoch);
+            long openStart = System.Diagnostics.Stopwatch.GetTimestamp();
             Fault openFault = await AwaitOpenAsync(player.OpenAsync(source).AsTask(), bytes, token).ConfigureAwait(false);
             s_decoderForOpen.Value = null;
+
+            // ALWAYS-ON, one line per load: which way the backend open went. The two silent exits below (a stale chain,
+            // a cancelled token) and a backend that never created a session left NOTHING in the log — 2026-09-22, the
+            // hand-back from a closed video window: `audio.open` logged, then no device open, no first frames, no
+            // warning, and the transport clock ran with no sound.
+            Log.Info("audio", "audio.session.open fault=" + openFault + " stale=" + (IsStale(chain) ? 1 : 0)
+                + " cancelled=" + (token.IsCancellationRequested ? 1 : 0)
+                + " session=" + (player.Session is PcmAudioSession ? 1 : 0)
+                + " error=" + (player.Error.Peek() is { } e0 ? e0.ToString() : "-")
+                + " ms=" + (long)((System.Diagnostics.Stopwatch.GetTimestamp() - openStart) * 1000.0 / System.Diagnostics.Stopwatch.Frequency));
 
             if (IsStale(chain) || token.IsCancellationRequested) { bytes.Close(); return; }
             if (openFault != Fault.None) { bytes.Close(); PostFault(openFault, epoch); return; }

@@ -76,6 +76,7 @@ public sealed class BootOrderingTests : IDisposable
         // factories:
         Shell.SetPage(Shell.RouteKind.PlaybackDiagnostics, static (in Shell.Route _) => Diagnostics.RuntimePage());
         Shell.SetPage(Shell.RouteKind.ConnectDiagnostics, static (in Shell.Route _) => Diagnostics.ConnectPage());
+        Shell.SetPage(Shell.RouteKind.CaptureDiagnostics, static (in Shell.Route _) => Diagnostics.CapturePage());
 
         // Exhaustive, not a hand-picked subset (the brief's explicit instruction): every kind, one arm each.
         for (int i = 0; i < Shell.RouteKindCount; i++)
@@ -93,13 +94,14 @@ public sealed class BootOrderingTests : IDisposable
         }
 
         // Pinned by ShellRouteTableTests too — restated here because a drift in the count would silently narrow the
-        // loop above into "most kinds", exactly what this guard exists to refuse. 32 since the podcast rework's
+        // loop above into "most kinds", exactly what this guard exists to refuse. 33 since the podcast rework's
         // wave P2 appended RouteKind.Episode (plan §5.11) — its page resolves through the SAME Album.InstallPages
         // lazy-group miss the loop above already exercises via RouteKind.Album/Prerelease/Show — and A2 (plan §3.6)
         // appended RouteKind.LibraryAudiobooks, resolved through the SAME Playlist.InstallPages lazy-group miss as
         // LibraryAlbums/LibraryArtists/LibraryPodcasts (Playlist.Page.cs's InstallPages still owes it one more
-        // Shell.SetPage(RouteKind.LibraryAudiobooks, User.LibraryPageFor) line — outside this wave's ownership).
-        Assert.Equal(32, Shell.RouteKindCount);
+        // Shell.SetPage(RouteKind.LibraryAudiobooks, User.LibraryPageFor) line — outside this wave's ownership) —
+        // and realtime-capture-implementation.md unit 6 appended RouteKind.CaptureDiagnostics, registered above.
+        Assert.Equal(33, Shell.RouteKindCount);
     }
 
     // ══ LAZY_GROUP: a miss installs its whole group once, the hit path never re-installs ══════════════════════════

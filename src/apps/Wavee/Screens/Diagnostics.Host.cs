@@ -1,25 +1,30 @@
-// ── Screens/Diagnostics.Host.cs ────────────────────────────────────────────────────────────────────────────────────
-// WaveeLogSessions' disk walk + export, the crash report writer and CrashReport.List, the GUI run's crash-prompt latch
-// (the run marker + the WER dump probe), NavigationFrameWatch + MemorySampler (the always-on frame and memory lines,
-// the Shell.RouteNoted consumer), the lyrics evidence bundle
+﻿// ── Screens/Diagnostics.Host.cs ────────────────────────────────────────────────────────────────────────────────────
+// WaveeLogSessions' disk walk + export, NavigationFrameWatch + MemorySampler (the always-on frame and memory lines,
+// the Shell.RouteNoted consumer), the lyrics evidence bundle. The old crash-report writer + GUI-run crash-prompt
+// latch (Diagnostics.CrashReport, Diagnostics.BeginGuiRun, NewCrashDump) retired here — see
+// docs/plans/wavee/crash-diagnostics-implementation.md §E "Deletions"; the crash & diagnostics pipeline now lives in
+// Platform/Crash*.cs (WP-A/B/C) and Crash.Host.BeginGuiRun (called from Diagnostics.UI.cs's Install).
 //
 // Role: SHELL
 // Owner: S
 // Wave: 6
 // Budget: 500 lines
-// Spec: ch 27 §9.3, §7 G11/G12; gaps G-094 (S half), G-153, G-183, G-197
+// Spec: ch 27 §9.3, §7 G11/G12; gaps G-153, G-183, G-197
 //
 // Every decision is `Diagnostics.cs` / `Platform.Settings.cs` (CORE, tested); this file reads the disk, the process and
 // the engine's frame relay. The frame watch runs on EVERY rendered frame, so its non-logging path allocates nothing: the
 // counters are structs, and a string is built only for a line that is actually written. The line SHAPES
 // (`nav.frames`, `scroll.frames`, `frame.slow`, `frame.churn`, `session.frames`, `mem.sample`) are 0.2.9's verbatim (`frame.slack` is new) —
-// `ops/tools/perf-tour*.ps1` and `scroll-capture.ps1` parse them.
+// `ops/tools/perf-tour*.ps1` and `scroll-capture.ps1` parse them. `scroll.burst` is the engine's own scroll-probe
+// verdict for the same burst (`ScrollProbe.EndBurst` → `BurstSummary.FormatLine`), written only while the probe level
+// (Diagnostics ▸ Scroll, persisted) is Summary or Trace.
 
 using System.Globalization;
 using System.Text;
 using FluentGpu;
 using FluentGpu.Hosting;
 using FluentGpu.Scene;
+using FluentGpu.Scroll.Diag;
 
 namespace Wavee;
 
@@ -60,213 +65,19 @@ public static partial class WaveeLogSessions
 
 public static partial class Diagnostics
 {
-    // ══ 2. THE CRASH REPORT (G-094, S half) ═════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The one-file crash artifact: the build stamp, arch, pid, framework, OS and module base, the exception, its
-    /// frame RVAs, and the tail of the app log. A shipped build is NativeAOT with no stack-trace metadata, so its frames are
-    /// module offsets only — the header carries what a later symbolication needs (the commit + quad pick the symbols zip,
-    /// the module base turns offsets into addresses). Written by `Platform.Host.cs`'s unhandled-exception handler; the path
-    /// is stashed in <c>crash.pendingReport</c> so the next launch can offer it.</summary>
-    public static class CrashReport
-    {
-        /// <summary>Enough to see a pattern across a few days, small enough that a crash loop cannot fill the folder.</summary>
-        public const int DefaultKeep = 10;
-
-        /// <summary>The SAME folder the app log lives in, so "open the report folder" lands beside the logs it quotes.</summary>
-        public static string DefaultDirectory => Platform.LogFolder;
-
-        static string? s_written;
-
-        /// <summary>Write (once per process — both handlers fire for one crash and the second gets the first's path), then
-        /// prune. Throws on a disk failure; the caller logs it.</summary>
-        public static string Write(Exception ex, string? logPath)
-        {
-            if (s_written is { } already) return already;
-            string dir = DefaultDirectory;
-            Directory.CreateDirectory(dir);
-            string path = Path.Combine(dir, CrashFiles.NameFor(DateTimeOffset.Now));
-            var sb = new StringBuilder(32 * 1024).Append("Wavee crash report\n=================\n");
-            Describe(ex, sb);
-            if (!string.IsNullOrWhiteSpace(logPath) && File.Exists(logPath))
-            {
-                sb.Append("\nwavee.log tail\n--------------\n");
-                foreach (string line in TailLines(logPath, 600)) sb.Append(line).Append('\n');
-            }
-            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
-            s_written = path;
-            Prune(dir);
-            return path;
-        }
-
-        /// <summary>The report minus the banner and the tail, for a handler that logs rather than writes a file.</summary>
-        public static string Describe(Exception ex)
-        {
-            var sb = new StringBuilder(4 * 1024);
-            Describe(ex, sb);
-            return sb.ToString();
-        }
-
-        static void Describe(Exception ex, StringBuilder sb)
-        {
-            // version FIRST after the banner: a report pasted into an issue is usually truncated after a few lines.
-            WaveeVersionInfo? v = null;
-            try { v = Platform.Version; } catch { }
-            string Or(string? s) => string.IsNullOrEmpty(s) ? "unknown" : s;
-            sb.Append("version=").Append(Or(v?.SemVer)).Append('\n')
-              .Append("commit=").Append(Or(v?.Commit)).Append('\n')
-              .Append("buildDate=").Append(Or(v?.BuildDate)).Append('\n')
-              .Append("channel=").Append(Or(v?.Channel)).Append('\n')
-              .Append("quad=").Append(Or(v?.Quad)).Append('\n')
-              .Append("arch=").Append(System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()).Append('\n')
-              .Append("timeLocal=").Append(DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture)).Append('\n')
-              .Append("pid=").Append(Environment.ProcessId.ToString(CultureInfo.InvariantCulture)).Append('\n')
-              .Append("framework=").Append(System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription).Append('\n')
-              .Append("os=").Append(System.Runtime.InteropServices.RuntimeInformation.OSDescription).Append('\n')
-              .Append(MainModuleLine()).Append("\n\nException\n---------\n");
-            // The whole ToString(), not StackTrace: an inner exception's frames (an async continuation's real fault) are
-            // only in the former, and the section is pasted into a symbol lookup as-is.
-            string text = ex.ToString();
-            sb.Append(text).Append('\n');
-            var rvas = CrashFiles.ParseRvas(text);
-            if (rvas.Count == 0) return;
-            sb.Append("\nFrames (RVA)\n------------\n")
-              .Append("# offsets from the module base above, in stack-trace order (innermost first);\n")
-              .Append("# resolve each with `ln Wavee+0x<rva>` against the release's Wavee-<quad>-<rid>-symbols.zip\n");
-            foreach (long rva in rvas) sb.Append("0x").Append(rva.ToString("x", CultureInfo.InvariantCulture)).Append('\n');
-        }
-
-        /// <summary>Delete all but the newest <paramref name="keep"/> reports, ordered by NAME. Best-effort.</summary>
-        public static void Prune(string dir, int keep = DefaultKeep)
-        {
-            try
-            {
-                if (!Directory.Exists(dir)) return;
-                string[] files = Directory.GetFiles(dir, CrashFiles.Prefix + "*" + CrashFiles.Suffix, SearchOption.TopDirectoryOnly);
-                if (files.Length <= Math.Max(0, keep)) return;
-                Array.Sort(files, CrashFiles.NewestFirst);
-                for (int i = Math.Max(0, keep); i < files.Length; i++) try { File.Delete(files[i]); } catch { }
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-        }
-
-        /// <summary>The newest <paramref name="max"/> reports, newest name first (the Crash reports card, owner R). A missing
-        /// folder or an I/O failure is an empty list — this backs a settings card, not a gate.</summary>
-        public static (string Path, DateTime Stamp)[] List(int max = DefaultKeep)
-        {
-            if (max <= 0) return [];
-            string[] files;
-            try
-            {
-                string dir = DefaultDirectory;
-                if (!Directory.Exists(dir)) return [];
-                files = Directory.GetFiles(dir, CrashFiles.Prefix + "*" + CrashFiles.Suffix, SearchOption.TopDirectoryOnly);
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return []; }
-            Array.Sort(files, CrashFiles.NewestFirst);
-            var result = new List<(string, DateTime)>(Math.Min(max, files.Length));
-            foreach (string file in files)
-            {
-                if (result.Count == max) break;
-                if (CrashFiles.TryStamp(Path.GetFileName(file), out var stamp)) result.Add((file, stamp));
-            }
-            return result.ToArray();
-        }
-
-        static string MainModuleLine()
-        {
-            string path = Environment.ProcessPath ?? "unknown";
-            try
-            {
-                using var proc = System.Diagnostics.Process.GetCurrentProcess();
-                if (proc.MainModule is { } main)
-                    return "module=" + (string.IsNullOrEmpty(main.FileName) ? path : main.FileName)
-                         + " base=0x" + main.BaseAddress.ToInt64().ToString("x", CultureInfo.InvariantCulture)
-                         + " size=0x" + main.ModuleMemorySize.ToString("x", CultureInfo.InvariantCulture);
-            }
-            catch { }
-            return "module=" + path + " base=unknown size=unknown";
-        }
-
-        static Queue<string> TailLines(string path, int maxLines)
-        {
-            var q = new Queue<string>(maxLines);
-            foreach (string line in WaveeLogSessions.ReadSharedLines(path))
-            {
-                if (q.Count == maxLines) q.Dequeue();
-                q.Enqueue(line);
-            }
-            return q;
-        }
-    }
-
-    // ══ 3. THE GUI RUN: the run marker, the WER dump probe, the crash-prompt latch (G-094, S half) ═══════════════════
-
-    /// <summary>Once per GUI launch, before the window (from <see cref="Install"/>; never the headless arm, whose settings
-    /// writes are an overlay). MUST run before `Update.Host.Start` rewrites <c>app.lastRunVersion</c>: the version-changed
-    /// input is read here. The report chrome (owner R) consumes <see cref="CrashPromptPolicy.ThisLaunch"/> once.</summary>
-    internal static void BeginGuiRun()
-    {
-        var settings = Platform.Settings;
-        string? dump = NewCrashDump(settings);
-        RunOutcome previous = RunMarker.Begin(settings);
-        bool versionChanged = Array.IndexOf(Environment.GetCommandLineArgs(), Platform.RelaunchedAfterUpdateFlag) >= 0
-            || settings.Get(Platform.Keys.LastRunVersion) != Platform.Version.LastRunKey;
-        var decision = CrashPromptPolicy.Decide(settings.Get(Platform.Keys.PendingCrashReport), dump, previous,
-            settings.Get(Platform.Keys.CrashPromptOptOut), versionChanged, settings.Get(Platform.Keys.UncleanExitOffered));
-        CrashPromptPolicy.ThisLaunch = decision;
-        if (decision.Source == CrashSource.UncleanExit) settings.Set(Platform.Keys.UncleanExitOffered, true);
-        settings.Set(Platform.Keys.PendingCrashReport, "");
-        Log.Event(WaveeLogLevel.Info, "crash", "run.begin", "previous run " + previous, null, -1, null,
-            WaveeLogField.Of("prompt", decision.Mode.ToString()), WaveeLogField.Of("source", decision.Source.ToString()),
-            WaveeLogField.Of("versionChanged", versionChanged));
-        // ProcessExit is the one hook that ALSO fires when Windows force-closes an otherwise-orderly shutdown.
-        AppDomain.CurrentDomain.ProcessExit += static (_, _) => { try { RunMarker.End(Platform.Settings); } catch { } };
-    }
-
-    /// <summary>A NEW Windows Error Reporting dump since the last launch looked, logged as a breadcrumb (a hard crash that
-    /// ran no managed handler still leaves one). Null when there is none, it was already seen, or the probe failed.</summary>
-    static string? NewCrashDump(IAppSettings settings)
-    {
-        try
-        {
-            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrashDumps");
-            if (!Directory.Exists(dir)) return null;
-            string? newest = null;
-            DateTime newestWrite = default;
-            foreach (string d in Directory.GetFiles(dir, "Wavee.exe*.dmp"))
-            {
-                DateTime w = File.GetLastWriteTimeUtc(d);
-                if (newest is null || w > newestWrite) { newest = d; newestWrite = w; }
-            }
-            if (newest is null) return null;
-            if (string.Equals(settings.Get(Platform.Keys.LastSeenCrashDumpPath), newest, StringComparison.OrdinalIgnoreCase)
-                && settings.Get(Platform.Keys.LastSeenCrashDumpTicksUtc) == newestWrite.Ticks) return null;
-            long size = 0;
-            try { size = new FileInfo(newest).Length; } catch { }
-            Log.Event(WaveeLogLevel.Critical, "crash", "wer.dump.detected", "Previous run left a Windows crash dump", null, -1, null,
-                WaveeLogField.Of("path", newest), WaveeLogField.Of("writtenUtc", newestWrite.ToString("O", CultureInfo.InvariantCulture)),
-                WaveeLogField.Of("sizeBytes", size));
-            settings.Set(Platform.Keys.LastSeenCrashDumpPath, newest);
-            settings.Set(Platform.Keys.LastSeenCrashDumpTicksUtc, newestWrite.Ticks);
-            return newest;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Log.Error("crash", "wer.dump.detect.failed", ex);
-            return null;
-        }
-    }
-
     // ══ 4. THE FRAME WATCH (G-197: the Shell.RouteNoted consumer) ═══════════════════════════════════════════════════
 
     /// <summary>The always-on frame cost log: <c>frame.slow</c> per over-budget frame (≤ 6 a second, the rest counted),
-    /// <c>nav.frames</c> for the four seconds after a route change, <c>scroll.frames</c> per wheel/drag burst, the
+    /// <c>nav.frames</c> for the four seconds after a route change, <c>scroll.frames</c> (+ <c>scroll.burst</c> while the
+    /// scroll probe records) per wheel/drag burst, the
     /// once-a-second <c>frame.churn</c> census, and <c>session.frames</c> every 5 s. UI thread only (the engine raises the
     /// frame event inside the frame).</summary>
     public static class NavigationFrameWatch
     {
         const double WindowMs = 4000, SlowMs = 33.4, StallMs = 100, ScrollQuietMs = 500;
         const int SlowLinesPerSecond = 6, ScrollMinFrames = 5;
+        /// <summary>A scrolling frame whose engine-reported slack exceeds this is a slack frame (and gets its own line).</summary>
+        const float SlackMs = 12f;
         static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
         static readonly Action<FrameStats> s_onFrame = OnFrame;
         static string s_route = "", s_routeKey = "", s_scrollRoute = "";
@@ -275,13 +86,7 @@ public static partial class Diagnostics
         static long s_navigationId, s_scrollNavigationId;
         static double s_slowBucketAt = double.NegativeInfinity, s_navAt = double.NaN, s_firstFrameMs = double.NaN;
         static double s_scrollLastAt = double.NaN, s_scrollStartAt = double.NaN, s_lastSessionLogAt;
-        // The per-frame motion trace of the current burst (Diagnostics.ScrollTrace.cs): dt from the previous COMPLETED
-        // frame (live or not), the kernel's displacement, the present counter's delta as read this frame (the ring moves
-        // it to the frame it belongs to), the notches applied, the engine's slack.
-        static readonly ScrollTraceRing s_trace = new();
-        static double s_lastFrameAt = double.NaN;
-        static long s_lastMissed = long.MinValue;
-        static float s_traceRefreshMs;
+        static double s_refreshIntervalMs;
         static int s_slowTokens, s_slowSuppressed;
         static Window s_nav, s_scroll;
         static FrameSessionTotals s_session;
@@ -294,6 +99,9 @@ public static partial class Diagnostics
         public static long NavigationId => Interlocked.Read(ref s_navigationId);
         public static string Route => s_route;
         public static string? Arg => s_arg;
+        /// <summary>The most recent frame's refresh interval (ms; 0 before the first frame) — the scroll CSV export's
+        /// <c>display_refresh_hz</c>.</summary>
+        public static double RefreshIntervalMs => s_refreshIntervalMs;
         /// <summary>Milliseconds since the last route change; NaN before any.</summary>
         public static double SinceNavMs => double.IsNaN(s_navAt) ? double.NaN : Clock.Elapsed.TotalMilliseconds - s_navAt;
 
@@ -367,9 +175,7 @@ public static partial class Diagnostics
         {
             if (!s_imagesAttached) AttachImages();
             double now = Clock.Elapsed.TotalMilliseconds;
-            float dtMs = double.IsNaN(s_lastFrameAt) ? 0f : (float)(now - s_lastFrameAt);
-            int missed = s_lastMissed == long.MinValue ? 0 : (int)Math.Clamp(stats.MissedVsyncs - s_lastMissed, 0, int.MaxValue);
-            s_lastFrameAt = now; s_lastMissed = stats.MissedVsyncs;
+            s_refreshIntervalMs = stats.RefreshIntervalMs;
             s_session.Add(stats.FrameMs, stats.RefreshIntervalMs);
             if (now - s_lastSessionLogAt >= 5000) LogSession(false);
             if (stats.FrameMs > FrameBudgetMs(stats.RefreshIntervalMs)) NoteSlowFrame(in stats, now);
@@ -377,7 +183,8 @@ public static partial class Diagnostics
             else if (stats.Census is { Length: > 0 } census)
                 Log.Event(WaveeLogLevel.Info, "ui", "frame.churn", "steady churn route=" + s_route + (stats.ScrollActive ? " scroll=1 " : " scroll=0 ")
                     + "frameMs=" + F(stats.FrameMs) + " census=" + census);
-            NoteScrollFrame(in stats, now, dtMs, missed);
+            NoteScrollFrame(in stats, now);
+            EvidenceAuto.OnFrame(in stats);   // item G: one bundle on the first coverage clamp of a burst (rate-limited)
             MemorySampler.OnFrame();
             if (double.IsNaN(s_navAt)) return;
             double since = now - s_navAt;
@@ -418,9 +225,32 @@ public static partial class Diagnostics
                 + " scroll=1 frameMs=" + F(stats.FrameMs) + Slack(in stats));
         }
 
-        static bool HasSlack(in FrameStats s) => s.ScrollActive && s.SlackMs > ScrollTraceRules.SlackMs;
+        static bool HasSlack(in FrameStats s) => s.ScrollActive && s.SlackMs > SlackMs;
 
-        static string Slack(in FrameStats s) => HasSlack(in s) ? " slack=" + F(s.SlackMs) + " cause=" + SlackCauseName(in s) : "";
+        static string Slack(in FrameStats s) => HasSlack(in s) ? " slack=" + F(s.SlackMs) + " cause=" + SlackCauseName(in s) + Gap(in s) : "";
+
+        /// <summary>The engine's decomposition of the UI-thread gap in front of this frame (<see cref="FrameStats.UiGap"/>,
+        /// 2026-09-25, owner-approved RCA: "Preempted" was only a residual). <c>gap=</c> the whole hole (previous Paint's
+        /// end → this Paint's start), <c>waitReq=</c>/<c>waitBlocked=</c> what the loop asked WaitForWork for (negative =
+        /// infinite) vs how long it actually sat in it (<c>waits=</c> how many), <c>msgs=</c> Win32 message dispatch,
+        /// <c>input=</c> input dispatch, <c>posts=</c> cross-thread UI posts, <c>cold=</c> cold maintenance,
+        /// <c>other=</c> the unmeasured rest, <c>run=</c> the thread's own CPU time across the gap (cycle counter; NaN =
+        /// unavailable; a lower bound on ARM64), then the pure classifier's split <c>blocked= notSched= overrun=</c> and
+        /// <c>verdict=</c> (NotScheduled / Busy / Blocked), <c>atMs=</c> the gap's start on the QPC clock (joins
+        /// <c>[render.pace]</c>'s <c>worst(… atMs=)</c> — a freeze on BOTH threads at one instant is the process or the
+        /// machine, not our code).</summary>
+        static string Gap(in FrameStats s)
+        {
+            UiGapReport g = s.UiGap;
+            return " gap=" + F(g.GapMs) + " waitReq=" + F(g.GapWaitRequestedMs) + " waitBlocked=" + F(g.GapWaitBlockedMs)
+                 + " waits=" + g.GapWaits.ToString(CultureInfo.InvariantCulture)
+                 + " msgs=" + F(g.GapMessagesMs) + " input=" + F(g.GapInputMs) + " posts=" + F(g.GapPostsMs)
+                 + " cold=" + F(g.GapColdMs) + " other=" + F(g.GapOtherMs)
+                 + " run=" + (float.IsNaN(g.GapRunMs) ? "NaN" : F(g.GapRunMs))
+                 + " blocked=" + F(g.GapBlockedMs) + " notSched=" + F(g.GapNotScheduledMs) + " overrun=" + F(g.GapOverrunMs)
+                 + " verdict=" + g.GapVerdict.ToString()
+                 + " atMs=" + (g.GapStartQpc * 1000.0 / System.Diagnostics.Stopwatch.Frequency).ToString("0.0", CultureInfo.InvariantCulture);
+        }
 
         // Const names by declaration order (None/Gc/WakeSlept/Preempted): Enum.ToString allocates.
         static string SlackCauseName(in FrameStats s) => (int)s.SlackCause switch
@@ -441,6 +271,7 @@ public static partial class Diagnostics
             if (s_nav.Frames > 0)
                 Log.Event(s_nav.Stalls > 0 ? WaveeLogLevel.Warning : WaveeLogLevel.Info, "ui", "nav.frames",
                     "navigation frames route=" + s_route + " navId=" + s_navigationId + " firstFrameMs=" + F(s_firstFrameMs) + " " + s_nav.Rollup(wall, presentCadence: false));
+            LogImageLatency("nav", s_route);
             if (sampleMemory) MemorySampler.Sample("nav-end route=" + s_route);
             s_navAt = double.NaN;
             if (SidebarPaneFrame is { } pane)
@@ -456,7 +287,7 @@ public static partial class Diagnostics
             }
         }
 
-        static void NoteScrollFrame(in FrameStats stats, double now, float dtMs, int missed)
+        static void NoteScrollFrame(in FrameStats stats, double now)
         {
             if (!double.IsNaN(s_scrollLastAt) && now - s_scrollLastAt > ScrollQuietMs) FlushScroll();
             if (!stats.ScrollActive) return;
@@ -464,17 +295,15 @@ public static partial class Diagnostics
             {
                 s_scrollStartAt = now; s_scrollNavigationId = s_navigationId; s_scrollRoute = s_route;
                 s_scroll.Reset(in stats);
-                s_trace.Clear();
                 Shell.SidebarReplanCensus.Reset();   // the burst's own re-plan count (Sidebar.Census.cs)
             }
             s_scrollLastAt = now;
             s_scroll.Add(in stats);
-            s_traceRefreshMs = (float)stats.RefreshIntervalMs;
-            s_trace.Add(new ScrollTraceSample(dtMs, stats.ScrollDeltaDip, missed, stats.WheelNotches, stats.ScrollLiveMotion, stats.SlackMs,
-                stats.ScrollContactHeld, stats.ScrollEdgePins, stats.ScrollStructuralDip, (byte)stats.ScrollZeroReason, stats.ScrollDtRepaired));
         }
 
-        /// <summary>A page open moves its viewport for a frame or two (a restore); only a burst of ≥ 5 frames is a scroll.</summary>
+        /// <summary>A page open moves its viewport for a frame or two (a restore); only a burst of ≥ 5 frames is a scroll.
+        /// The probe's burst is closed on EVERY flush (a short nudge included) so the next burst's summary never inherits
+        /// its records; only a real burst writes the line.</summary>
         static void FlushScroll(bool sampleMemory = true)
         {
             if (double.IsNaN(s_scrollLastAt)) return;
@@ -484,16 +313,33 @@ public static partial class Diagnostics
                 Log.Event(s_scroll.Stalls > 0 ? WaveeLogLevel.Warning : WaveeLogLevel.Info, "ui", "scroll.frames",
                     "scroll frames route=" + s_scrollRoute + " navId=" + s_scrollNavigationId + " " + s_scroll.Rollup(wall, presentCadence: true)
                     + Shell.SidebarReplanCensus.Drain());
-                // The verdict line: the burst's per-frame shifts and what they say (Diagnostics.ScrollTrace.cs). A
-                // Warning when the user saw a hitch (a vblank without a present while the kernel was moving something).
-                var samples = s_trace.Samples();
-                var verdict = ScrollTraceRules.Analyse(samples, s_traceRefreshMs);
-                Log.Event(verdict.LiveMissed > 0 || verdict.LiveZero > 0 ? WaveeLogLevel.Warning : WaveeLogLevel.Info, "ui", "scroll.trace",
-                    "scroll trace route=" + s_scrollRoute + " navId=" + s_scrollNavigationId + " refreshMs=" + F(s_traceRefreshMs) + " "
-                    + ScrollTraceRules.Describe(in verdict) + " shifts=" + ScrollTraceRules.Format(samples, s_traceRefreshMs));
+                if (ScrollProbe.Level >= ProbeLevel.Summary)
+                {
+                    // The engine's own verdict for this burst: notches, presents, coverage clamps, late extent jumps,
+                    // pose jitter, per-phase cost. A Warning when the verdict is anything but Smooth.
+                    var burst = ScrollProbe.EndBurst(System.Diagnostics.Stopwatch.GetTimestamp());
+                    Log.Event(burst.Verdict == ScrollVerdict.Smooth ? WaveeLogLevel.Info : WaveeLogLevel.Warning, "ui", "scroll.burst",
+                        "scroll burst route=" + s_scrollRoute + " navId=" + s_scrollNavigationId + " " + burst.FormatLine());
+                }
+                LogImageLatency("scroll", s_scrollRoute);
                 if (sampleMemory) MemorySampler.Sample("scroll-end route=" + s_route);
             }
+            else if (ScrollProbe.Level >= ProbeLevel.Summary) ScrollProbe.EndBurst(System.Diagnostics.Stopwatch.GetTimestamp());
             s_scrollLastAt = s_scrollStartAt = double.NaN;
+        }
+
+        /// <summary>Always-on: where the pictures' time went since the last window closed (the engine's
+        /// <see cref="FluentGpu.Scene.ImageLatencyCensus"/>). <c>srcWait</c> is a bound image sitting on an EMPTY source
+        /// (its row's cover url had not landed), <c>fetch</c> a cache miss's request-to-texture time, <c>reveal</c> which
+        /// fade each landing got, <c>canceled</c> the pending decodes a de-realized row gave up. One line per nav/scroll
+        /// window, only when something happened.</summary>
+        static void LogImageLatency(string window, string route)
+        {
+            if (FluentApp.EngineImages is not { } images) return;
+            var census = images.Latency;
+            if (census.IsEmpty) return;
+            Log.Event(WaveeLogLevel.Info, "image", "image.latency", "image latency window=" + window + " route=" + route + " " + census.FormatLine());
+            census.Reset();
         }
 
         static void LogSession(bool final)
@@ -509,6 +355,20 @@ public static partial class Diagnostics
         {
             public int Frames, OverBudget, Slow, Stalls, Comps, WithCensus, Gc0, Gc1, Gc2;
             public double SumMs, WorstMs, SumFlush, SumLayout, SumRecord, SumSubmit;
+            // Itch plan item H: the closest RENDER-SIDE proxy for present-latency wait FrameStats currently exposes.
+            // `FenceWaitMs`'s own doc (AppHost.cs ~183-184) is explicit that it is "submitting-thread wall-time
+            // BLOCKED on back-buffer retirement + present-latency waitable INSIDE SubmitDrawList" — i.e. it already
+            // conflates GPU fence wait with the swapchain's frame-latency-waitable wait, which is exactly the
+            // "latW"/LastLatencyWaitMs figure the plan asked for. It is NOT the same thing as
+            // `FluentGpu.Rhi.PresentStats.LatencyWaitMs` (Seams/Rhi/PresentStats.cs), which the engine samples
+            // separately from DXGI and does NOT surface on `FrameStats` at all — see `Rollup`'s doc below for what
+            // is genuinely missing and would need an engine change.
+            public double SumFenceWaitMs, MaxFenceWaitMs, SumLatencyWaitMs, MaxLatencyWaitMs;
+            public long DwmDropped, DwmMissed, DwmLate;
+            // Why spans were re-recorded instead of reused, summed over the burst (FrameStats.SpanMisses).
+            public long MissGlobal, MissScoped, MissDirty, MissKey, MissClip, MissCapacity;
+            // Frames that recorded nothing (every retained slice kept; only composite poses moved — FrameStats.CompositeOnlyTurn).
+            public long CompositeOnly;
             public long HotAlloc;
             public FrameStats Worst, First, Last;
 
@@ -518,6 +378,13 @@ public static partial class Diagnostics
             {
                 Last = s; Frames++; SumMs += s.FrameMs;
                 SumFlush += s.FlushMs; SumLayout += s.LayoutMs; SumRecord += s.RecordMs; SumSubmit += s.SubmitMs;
+                SumFenceWaitMs += s.FenceWaitMs; if (s.FenceWaitMs > MaxFenceWaitMs) MaxFenceWaitMs = s.FenceWaitMs;
+                SumLatencyWaitMs += s.LatencyWaitMs; if (s.LatencyWaitMs > MaxLatencyWaitMs) MaxLatencyWaitMs = s.LatencyWaitMs;
+                DwmDropped += s.DwmDropped; DwmMissed += s.DwmMissed; DwmLate += s.DwmLate;
+                var m = s.SpanMisses;
+                MissGlobal += m.GlobalDisabled; MissScoped += m.ScopedBlocked; MissDirty += m.ExactDirty; MissKey += m.ExactKey;
+                MissClip += m.ExactClip; MissCapacity += m.ExactCapacity;
+                if (s.CompositeOnlyTurn) CompositeOnly++;
                 HotAlloc += s.HotPhaseAllocBytes; Comps += s.ComponentsRendered;
                 Gc0 += s.Gc0Delta; Gc1 += s.Gc1Delta; Gc2 += s.Gc2Delta;
                 if (s.Census is not null) WithCensus++;
@@ -527,17 +394,54 @@ public static partial class Diagnostics
                 if (s.FrameMs > WorstMs) { WorstMs = s.FrameMs; Worst = s; }
             }
 
-            /// <summary><paramref name="presentCadence"/> adds <c>presented=</c>/<c>missedVblanks=</c>. The engine counts a
-            /// missed vblank for every refresh interval BETWEEN two consecutive presents (AppHost.NotePresented), so the
-            /// figure is only meaningful while the loop is continuously live — a scroll burst. A navigation window is
-            /// four seconds of mostly idle vblanks (nothing to present is not a miss), where it read as "missed=301 of
-            /// 162 presented" on an album page the user was simply reading (2026-09-16); the nav rollup keeps
-            /// overBudget/slow33/stall100, which count the frames that actually ran long.</summary>
+            /// <summary><paramref name="presentCadence"/> adds <c>presented=</c>/<c>missedVblanks=</c>/<c>fenceWaitAvg=</c>/
+            /// <c>fenceWaitMax=</c> — the scroll-burst-only figures (a navigation window is mostly idle vblanks, where
+            /// present cadence reads as noise, not a hitch). The engine counts a missed vblank for every refresh interval
+            /// BETWEEN two consecutive presents (AppHost.NotePresented), so the figure is only meaningful while the loop
+            /// is continuously live — a scroll burst. A navigation window is four seconds of mostly idle vblanks (nothing
+            /// to present is not a miss), where it read as "missed=301 of 162 presented" on an album page the user was
+            /// simply reading (2026-09-16); the nav rollup keeps overBudget/slow33/stall100, which count the frames that
+            /// actually ran long.
+            /// <para>Itch plan item H ("make the scroll instruments truthful"): <c>fenceWaitAvg</c>/<c>fenceWaitMax</c> are
+            /// the render-side wait figures this burst — see <see cref="SumFenceWaitMs"/>'s doc for why `FenceWaitMs` is
+            /// the honest stand-in for a per-burst LastLatencyWaitMs. What is genuinely NOT available and would need an
+            /// engine change (no engine file was touched to add this — reported here instead, per the itch plan):
+            /// <list type="bullet">
+            /// <item>A true present-latency-wait figure distinct from GPU fence wait: `FrameStats` would need a new field
+            /// (e.g. <c>LastLatencyWaitMs</c>) mirroring <c>ISwapchain.LastPresentStats.LatencyWaitMs</c>
+            /// (FluentGpu.Engine/Seams/Rhi/PresentStats.cs) — today that value is read internally by AppHost
+            /// (`_swapchain.LastPresentStats`, AppHost.cs ~5423/~5456) but never copied onto the per-frame stats record
+            /// the host's `FrameCompleted` event hands to this file.</item>
+            /// <item>DXGI/DWM presented-vs-displayed-vs-repeated deltas: `PresentStats` already carries
+            /// <c>DwmFramesDroppedDelta</c> ("we were late"), <c>DwmFramesMissedDelta</c> ("we starved the compositor")
+            /// and <c>DwmFramesLateDelta</c> (the compositor's own lateness), plus the raw DXGI <c>PresentCount</c> /
+            /// <c>PresentRefreshCount</c> pair a burst could difference for a vblank-attested repeat count — none of
+            /// these are on `FrameStats` either, for the same reason: nothing copies `LastPresentStats` onto it per
+            /// frame. `MissedVsyncs` (already logged as `missedVblanks=`) is the one present-cadence figure that DOES
+            /// reach here today, and it is engine-derived from the present thread's own bookkeeping, not from DXGI's
+            /// PresentStats sample.</item>
+            /// </list></para></summary>
             public readonly string Rollup(double wall, bool presentCadence)
             {
                 double fps = wall > 0 ? Frames * 1000.0 / wall : 0, n = Math.Max(1, Frames);
                 string cadence = presentCadence
                     ? " presented=" + (Last.PresentedFrames - First.PresentedFrames) + " missedVblanks=" + (Last.MissedVsyncs - First.MissedVsyncs)
+                        + " fenceWaitAvg=" + F(SumFenceWaitMs / n) + " fenceWaitMax=" + F(MaxFenceWaitMs)
+                        + " latWaitAvg=" + F(SumLatencyWaitMs / n) + " latWaitMax=" + F(MaxLatencyWaitMs)
+                        + " dwmDropped=" + DwmDropped + " dwmMissed=" + DwmMissed + " dwmLate=" + DwmLate
+                        + " renderFresh=" + (Last.RenderFreshPresents - First.RenderFreshPresents)
+                        + " renderMotion=" + (Last.RenderMotionPresents - First.RenderMotionPresents)
+                        + " raceHits=" + (Last.RenderRaceHits - First.RenderRaceHits)
+                        + " freshLongWaits=" + (Last.RenderFreshLongWaits - First.RenderFreshLongWaits)
+                        + " motionLongWaits=" + (Last.RenderMotionLongWaits - First.RenderMotionLongWaits)
+                        + " skippedTicks=" + (Last.RenderSkippedTicks - First.RenderSkippedTicks)
+                        // OS-attested (DXGI frame statistics via the engine's PresentStatisticsLedger): what reached the
+                        // glass, what DWM dropped, and vblanks that repeated the previous image.
+                        + " displayed=" + (Last.PresentsDisplayed - First.PresentsDisplayed)
+                        + " dropped=" + (Last.PresentsDropped - First.PresentsDropped)
+                        + " repeated=" + (Last.VblanksRepeated - First.VblanksRepeated)
+                        + " spanMiss=[global=" + MissGlobal + " scoped=" + MissScoped + " dirty=" + MissDirty + " key=" + MissKey
+                        + " clip=" + MissClip + " cap=" + MissCapacity + "] compositeOnly=" + CompositeOnly
                     : "";
                 return "frames=" + Frames + " wallMs=" + F(wall) + " fps=" + F(fps) + " budgetMs=" + F(FrameBudgetMs(Last.RefreshIntervalMs))
                     + " overBudget=" + OverBudget + " slow33=" + Slow + " stall100=" + Stalls + " avgFrameMs=" + F(SumMs / n)
@@ -553,13 +457,17 @@ public static partial class Diagnostics
             "frameMs=" + F(s.FrameMs) + " flush=" + F(s.FlushMs) + " reactive=" + F(s.ReactiveFlushMs) + " realize=" + F(s.VirtualRealizeMs)
             + " layout=" + F(s.LayoutMs) + " layoutSolve=" + F(s.LayoutSolveMs) + " layoutEffects=" + F(s.LayoutEffectsMs)
             + " anim=" + F(s.AnimMs) + " record=" + F(s.RecordMs) + " imagePump=" + F(s.ImagePumpMs) + " realizeCatchup=" + F(s.RealizeCatchupMs)
-            + " submit=" + F(s.SubmitMs) + " fenceWait=" + F(s.FenceWaitMs) + " present=" + F(s.PresentMs) + " gpu=" + F(s.GpuRenderMs)
+            + " submit=" + F(s.SubmitMs) + " (hash=" + F(s.SubmitHashMs) + " capture=" + F(s.SubmitCaptureMs)
+            + (s.CaptureIncremental ? "/inc" : "/full") + ":" + s.CapturedNodes + "[scene=" + F(s.CaptureSceneMs)
+            + " cfg=" + F(s.CaptureConfigMs) + " img=" + F(s.CaptureImagesMs) + " anim=" + F(s.CaptureAnimMs) + "]"
+            + " tail=" + F(s.SubmitTailMs) + ")"
+            + " fenceWait=" + F(s.FenceWaitMs) + " present=" + F(s.PresentMs) + " gpu=" + F(s.GpuRenderMs)
             + " unaccounted=" + F(s.FrameMs - s.FlushMs - s.LayoutMs - s.AnimMs - s.RecordMs - s.SubmitMs)
             + " comps=" + s.ComponentsRendered + " nodes=" + s.NodesVisited + " draw=" + s.DrawNodeCount + " cmds=" + s.DrawCommandCount
             + " hotAlloc=" + s.HotPhaseAllocBytes + " measures=" + s.MeasureCount + " shapes=" + s.TextShapes + " textMiss=" + s.TextShapeMisses
             + " bindFires=" + s.BindingFires + " bindWrites=" + s.BindingWrites + " gc=" + s.Gc0Delta + "/" + s.Gc1Delta + "/" + s.Gc2Delta
             + " spansReused=" + s.SpansReused + " spansReRecorded=" + s.SpansReRecorded + " blurGroups=" + s.BlurGroupCount
-            + " blurHeld=" + s.BlurSuppressedByScrollCount + " repaintPct=" + (double.IsNaN(s.RepaintCoverage) ? "-" : (s.RepaintCoverage * 100.0).ToString("0.00", CultureInfo.InvariantCulture))
+            + " repaintPct=" + (double.IsNaN(s.RepaintCoverage) ? "-" : (s.RepaintCoverage * 100.0).ToString("0.00", CultureInfo.InvariantCulture))
             + " gaps=" + s.PublicationGaps;
 
         static string F(double v) => double.IsNaN(v) ? "-" : v.ToString("0.0", CultureInfo.InvariantCulture);

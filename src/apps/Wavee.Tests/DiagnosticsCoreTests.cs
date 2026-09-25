@@ -227,42 +227,9 @@ public class RuntimeReportTests
     }
 }
 
-public class CrashFilesTests
-{
-    [Fact]
-    public void A_report_name_round_trips_its_stamp_and_a_stray_file_does_not_parse()
-    {
-        var at = new DateTimeOffset(2026, 9, 13, 18, 5, 9, 123, TimeSpan.Zero);
-        string name = Diagnostics.CrashFiles.NameFor(at);
-        Assert.Equal("crash-report-20260913-180509-123.txt", name);
-        Assert.True(Diagnostics.CrashFiles.TryStamp(name, out var stamp));
-        Assert.Equal(new DateTime(2026, 9, 13, 18, 5, 9), stamp);
-        Assert.True(Diagnostics.CrashFiles.TryStamp("crash-report-20260913-180509.txt", out _));   // 0.2.x names
-        Assert.False(Diagnostics.CrashFiles.TryStamp("crash-report-yesterday.txt", out _));
-        Assert.False(Diagnostics.CrashFiles.TryStamp("notes.txt", out _));
-        Assert.False(Diagnostics.CrashFiles.TryStamp("crash-report-20260913-180509-12345.txt", out _));
-    }
-
-    [Fact]
-    public void Newest_name_sorts_first()
-    {
-        var files = new[] { @"C:\l\crash-report-20260101-000000.txt", @"C:\l\crash-report-20260913-000000.txt", @"C:\l\crash-report-20260501-000000.txt" };
-        Array.Sort(files, Diagnostics.CrashFiles.NewestFirst);
-        Assert.EndsWith("20260913-000000.txt", files[0], StringComparison.Ordinal);
-        Assert.EndsWith("20260101-000000.txt", files[2], StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void The_nativeaot_frames_parse_in_order_with_duplicates_and_nothing_else_does()
-    {
-        const string trace = "System.InvalidOperationException: x\n   at Wavee!<BaseAddress>+0x7b1fc6\n   at Wavee!<BaseAddress>+0x10\n"
-                           + "--- End of stack trace from previous location ---\n   at Wavee!<BaseAddress>+0x7b1fc6\n   at Foo.Bar() in x.cs:line 3\n"
-                           + "   at Wavee!<BaseAddress>+0x\n   at Wavee!<BaseAddress>+0x1234567890abcdef0";
-        Assert.Equal(new long[] { 0x7b1fc6, 0x10, 0x7b1fc6 }, Diagnostics.CrashFiles.ParseRvas(trace));
-        Assert.Empty(Diagnostics.CrashFiles.ParseRvas(null));
-        Assert.Empty(Diagnostics.CrashFiles.ParseRvas("at Foo.Bar() in x.cs:line 3"));
-    }
-}
+// Diagnostics.CrashFiles retired (crash-diagnostics-implementation.md §E "Deletions"): its naming/parse/prune shape
+// moved to Crash.Files (Platform/Crash.cs, WP-A, tested in CrashCoreTests.cs) and its RVA parser to
+// Crash.Report.ParseRvas (Platform/Crash.Report.cs, WP-B).
 
 public class FrameWatchRulesTests
 {

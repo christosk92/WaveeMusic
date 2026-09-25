@@ -78,13 +78,65 @@ public static class App
     {
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency; // P16a, once
         Glyphs.Register();               // wavee-icons.otf PUA + bundled SegoeFluentIcons.ttf, BEFORE the harness runs, or every Fluent-Icons glyph is tofu on Win10 (ch 00 §9.5)
+        // The crash handler's whole life is here, before ANYTHING else — it never opens settings, the store or the
+        // app log (crash-diagnostics-implementation.md §B.1, §I: "Child arm").
+        if (Crash.Handler.TryRun(args, out int handlerCode)) return handlerCode;
         Platform.ProfileRoot = Diagnostics.Probe.ProfileArg(args);   // "" = the default profile folder; read by LocalFolder (headless plan §3.6)
-        Platform.Boot();                 // log, credentials, settings, update policy (shell); parses --fake; migrates the zoom mode at settings load (ch 00 §9.5)
-        Log.Event(WaveeLogLevel.Info, "app", "boot.platform", "", null, Log.SinceStartMs);
-        if (Diagnostics.Probe.TryRun(args, out int code))              // --headless (headless plan §3.2): no window, no Shell; installs its own marshallers
+        bool bootThrew = false;
+        try
         {
-            Platform.Shutdown();
-            return code;
+            Platform.Boot();              // log, credentials, settings, update policy (shell); parses --fake; migrates the zoom mode at settings load (ch 00 §9.5)
+        }
+        catch (Exception bootEx)
+        {
+            // Boot() failing is itself a boot-time crash (crash-diagnostics-implementation.md §B.8): no log, no
+            // settings and possibly no console either yet, so stderr is the one channel guaranteed to still work.
+            bootThrew = true;
+            try { Console.Error.WriteLine(bootEx); } catch { }
+        }
+        if (!bootThrew)
+        {
+            Log.Event(WaveeLogLevel.Info, "app", "boot.platform", "", null, Log.SinceStartMs);
+            if (Diagnostics.Probe.TryRun(args, out int code))          // --headless (headless plan §3.2): no window, no Shell; installs its own marshallers
+            {
+                Platform.Shutdown();
+                return code;
+            }
+        }
+
+        // Recovery mode (§B.8): `--recovery`, Boot() throwing, or a boot-time crash loop (the logs\crash\bootfailures file, left by
+        // the PREVIOUS launch's Crash.Host.BeginGuiRun — this launch's own BeginGuiRun has not run yet). Every
+        // Platform access here is guarded: when Boot threw, neither settings nor the log folder are guaranteed.
+        bool recoverySwitch = false;
+        try { recoverySwitch = Platform.Args.Recovery; } catch { }
+        string logFolder;
+        try { logFolder = Platform.LogFolder; }
+        catch { logFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee", "logs"); }
+        int bootFailures = Crash.Host.BootFailures(logFolder);   // a file in the crash folder: readable even when Boot() threw
+        if (recoverySwitch || bootThrew || Crash.RecoveryPolicy.Enter(false, bootFailures, false))
+        {
+            var reason = recoverySwitch ? Recovery.Reason.Switch : bootThrew ? Recovery.Reason.BootFailed : Recovery.Reason.BootLoop;
+            Crash.BundleInfo? latest = null;
+            try { var bundles = Crash.Host.Bundles(); latest = bundles.Count > 0 ? bundles[0] : null; } catch { }
+            var outcome = Recovery.Run(reason, bootFailures, latest, logFolder);
+            if (outcome == Recovery.Outcome.Quit)
+            {
+                try { Platform.Shutdown(); } catch { }
+                return 0;
+            }
+            if (bootThrew)
+            {
+                // "Start Wavee" after a failed Boot(): the user may just have freed the disk or fixed the folder — try the
+                // boot ONCE more instead of running headfirst into the same fault. A second failure ends the process with
+                // a non-zero code (the handler is not up yet, so there is nothing to catch it either way).
+                try { Platform.Boot(); bootThrew = false; }
+                catch (Exception bootEx)
+                {
+                    try { Console.Error.WriteLine(bootEx); } catch { }
+                    return 1;
+                }
+                Log.Event(WaveeLogLevel.Info, "app", "boot.platform", "after recovery", null, Log.SinceStartMs);
+            }
         }
 
         Shell.InstallMarshallers();      // FIRST of the GUI boot: every seam posts to the UI thread; posts queue until the root attaches (G-013)
@@ -164,11 +216,15 @@ public static class App
         Diagnostics.Install();           // run marker, diagnostics pages, network cost host, the screens' diagnostics seams (WP-6.S)
         Log.Event(WaveeLogLevel.Info, "app", "boot.pages", "", null, Log.SinceStartMs);
         Shell.StartUpdater();            // AFTER Diagnostics.Install: the updater reads Update.Host.IsMetered at start (WP-6.R)
+        Crash.Uploader.Install(Playback.ToUi);   // the outbox drains on connectivity edges; after the updater, same UI poster as Platform.Network (crash-diagnostics plan B.5)
         if (!Platform.Args.Fake)         // --fake stays providerless (ch 31 GAP 7 is a fixture owner Q's, not this seam's)
             Lyrics.Boot(Lyrics.ResolveRequest, Spotify.Api.GetTextAsync, Spotify.SpclientBaseUrl);   // G-008: compose the lyrics stack once
         if (Platform.Args.Fake) Spotify.BootFake();                        // --fake: the session presents Online over the seeded account, no network (G-065)
         else if (Platform.HasStoredCredential()) Spotify.Login();         // resume the stored credential at launch (G-002); its posts wait for the root's poster
         Shell.Run();                     // window + engine loop; never returns until exit
+        // The loop is gone — no more beats reach the crash handler from here on, and the exit tail below can run for
+        // up to 10 minutes (Update.Host.ApplyOnExit); without this the watchdog would eventually read that as a hang.
+        Crash.Host.NoteExiting();
         Platform.UiThreadId = null;      // the loop and its SettingsChanged subscribers are gone: the exit tail writes settings from Main
 
         // The exit tail (G-012), after the loop and while the log is still alive: layout write, telemetry batch, audio,

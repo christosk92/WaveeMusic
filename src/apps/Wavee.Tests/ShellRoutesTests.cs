@@ -36,8 +36,8 @@ public class ShellRouteTableTests
         for (int i = 0; i < Shell.RouteKindCount; i++)
             Assert.Equal((Shell.RouteKind)i, Shell.Row((Shell.RouteKind)i).Kind);
         // 16 exact (15 + LibraryAudiobooks, A2 plan §3.6) + 10 prefix + 3 concert + Episode (podcast rework wave P2)
-        // + ConnectDiagnostics + NotFound
-        Assert.Equal(32, Shell.RouteKindCount);
+        // + ConnectDiagnostics + CaptureDiagnostics (realtime-capture-implementation.md unit 6) + NotFound
+        Assert.Equal(33, Shell.RouteKindCount);
     }
 
     [Fact]
@@ -432,4 +432,57 @@ public class DeepLinkTests
     public void A_uri_embedded_in_a_command_line_is_extracted()
         => Assert.Equal(Shell.DeepLinkKind.Open,
             Shell.DeepLink("C:\\Wavee\\Wavee.exe wavee://open?route=home --other").Kind);
+}
+
+/// <summary>The evidence harness's <c>wavee://diag</c> verbs (evidence-diagnostics §B): developer-only, parsed into a
+/// <see cref="DiagVerb"/>, refused when a required argument is missing, and never raising the window.</summary>
+public class DiagDeepLinkTests
+{
+    static Shell.DeepLinkVerb Dev(string uri) => Shell.DeepLink(uri, developerMode: true);
+
+    [Fact]
+    public void A_diag_verb_is_refused_outside_developer_mode()
+    {
+        Assert.Equal(Shell.DeepLinkKind.None, Shell.DeepLink("wavee://diag?cmd=bundle&tag=x", developerMode: false).Kind);
+        Assert.Equal(Shell.DeepLinkKind.Diag, Dev("wavee://diag?cmd=bundle&tag=x").Kind);
+    }
+
+    [Theory]
+    [InlineData("wavee://diag?cmd=bundle&tag=band-16", DiagCommand.Bundle)]
+    [InlineData("wavee://diag?cmd=bundle", DiagCommand.Bundle)]
+    [InlineData("wavee://diag?cmd=pixel&x=612&y=71", DiagCommand.Pixel)]
+    [InlineData("wavee://diag?cmd=scroll&vp=artist&to=812.5&move=glide", DiagCommand.Scroll)]
+    [InlineData("wavee://diag?cmd=vps", DiagCommand.Viewports)]
+    [InlineData("wavee://diag?cmd=probe&level=trace", DiagCommand.Probe)]
+    public void Each_command_parses(string uri, DiagCommand command)
+    {
+        var v = Dev(uri);
+        Assert.Equal(Shell.DeepLinkKind.Diag, v.Kind);
+        Assert.Equal(command, v.Diag.Command);
+    }
+
+    [Theory]
+    [InlineData("wavee://diag")]
+    [InlineData("wavee://diag?cmd=nope")]
+    [InlineData("wavee://diag?cmd=pixel&x=1")]
+    [InlineData("wavee://diag?cmd=scroll&to=5")]
+    [InlineData("wavee://diag?cmd=scroll&vp=a&to=far")]
+    [InlineData("wavee://diag?cmd=probe&level=loud")]
+    public void A_diag_verb_missing_its_arguments_is_refused(string uri)
+        => Assert.Equal(Shell.DeepLinkKind.None, Dev(uri).Kind);
+
+    [Fact]
+    public void The_arguments_arrive_decoded()
+    {
+        var p = Dev("wavee://diag?cmd=pixel&x=612.9&y=71&dip=1").Diag;
+        Assert.Equal((612, 71, true), (p.X, p.Y, p.Dip));
+        var s = Dev("wavee://diag?cmd=scroll&vp=tab0%2Fartist&to=-4&move=immediate").Diag;
+        Assert.Equal(("tab0/artist", -4.0, false), (s.Viewport, s.To, s.Glide));
+        Assert.Equal("band_ramp_16", Dev("wavee://diag?cmd=bundle&tag=band%20ramp_16").Diag.Tag);   // a space is not folder-safe
+        Assert.Equal(2, Dev("wavee://diag?cmd=probe&level=TRACE").Diag.Level);
+    }
+
+    [Fact]
+    public void A_diag_verb_never_raises_the_window()
+        => Assert.False(Tray.WakeFor(Shell.DeepLinkKind.Diag));
 }

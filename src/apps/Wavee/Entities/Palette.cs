@@ -672,9 +672,7 @@ public sealed class StagedGradingList : StagedList
     public ref StagedGrading Add()
     {
         if (Count == _a.Length) Array.Resize(ref _a, _a.Length * 2);
-        ref var g = ref _a[Count++];
-        g = default;
-        return ref g;
+        return ref FreshSlot.Of(_a, Count++);
     }
 
     public ref StagedGrading this[int i] => ref _a[i];

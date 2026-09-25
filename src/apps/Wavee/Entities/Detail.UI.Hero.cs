@@ -12,10 +12,11 @@
 //
 // ── WHO CALLS WHAT ───────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// The TABLE (Track.Table.cs) owns the vertical list: it calls Hero(spec, parts) for item 0 (wrapping it in its
-// Collapse root) and HeroSkeleton(...) for its shimmer, and pins its chrome with Sticky(56, onStuck). This file never
-// scrolls anything: the expanded presentation binds TransY/Opacity to the NEAREST scroller, the band reveals over the
-// last 44 DIP of the collapse, and the onStuck flag the table publishes moves hit-testing between the two.
+// The TABLE (Track.Table.cs) owns the vertical list: it calls Hero(spec, parts) for item 0 (pinning it with Sticky(0) and
+// collapsing its presented height with Collapse) and HeroSkeleton(...) for its shimmer, and pins its chrome with
+// Sticky(56, engaged:). This file never scrolls anything: the expanded presentation binds TransY/Opacity to the NEAREST
+// scroller, the band reveals over the last 44 DIP of the collapse, and the chrome's engaged edge the table publishes
+// (CompactInteractive) moves hit-testing between the two.
 //
 // ── THE THREE NUMBERS THAT MUST AGREE (D49) ──────────────────────────────────────────────────────────────────────────
 //
@@ -32,6 +33,8 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Scroll.Effects;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -210,6 +213,7 @@ public static partial class Detail
             float art = VerticalLayout.ArtworkFor(bw, rowFlow);
             float contentW = VerticalLayout.ContentWidthFor(bw, rowFlow);
             int descLines = VerticalLayout.DescriptionMaxLines(rowFlow);
+            float descW = VerticalLayout.DescriptionWidthFor(bw, rowFlow);
             // Unmeasured asks the 256 bucket the preview/skeleton already resolved (a cache hit, not a guess).
             int decodePx = VerticalLayout.ArtworkDecodePx(art, _boundsSeen);
             ColorF accent = spec.Accent();
@@ -240,16 +244,17 @@ public static partial class Detail
             if (f.Chart) blocks.Add(Block("hero-chart", ChartCaption(id, slots), late: true));
             blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts)));
 
+            // The description is no longer a row of the identity column: it is the padded box's second child, after
+            // the whole [artwork, identity] row, in both flows (D49's band arithmetic already excludes it here).
             Element? description = null;
             if (id.EditableMetadata && slots.Description is { } editDescription)
-                description = editDescription(contentW);
+                description = editDescription(descW);
             else if (id.DescriptionHtml is { Length: > 0 } html)
-                description = Controls.ExpandableRichText(html, 13f, Tok.TextSecondary, accent, contentW, descLines,
+                description = Controls.ExpandableRichText(html, 13f, Tok.TextSecondary, accent, descW, descLines,
                                                           id.Subject.Text, s_navRoute);
-            if (description is not null) blocks.Add(Block("hero-description", description, late: true));
 
             float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
-                f.Eyebrow, f.Attribution, f.Meta, description is not null, pulse: f.Pulse, chart: f.Chart);
+                f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart);
 
             // AlignItems Stretch (+ a definite width when stacked) is load-bearing: the action row WRAPS, and a wrap
             // needs a definite width to wrap against.
@@ -293,7 +298,10 @@ public static partial class Detail
                     {
                         Direction = 1, Animate = HeroReflowMotion,
                         Padding = new Edges4(pad, pad, pad, VerticalLayout.HeroBottomPad),
-                        Children = [hero],
+                        Children = description is null
+                            ? [hero]
+                            : [hero, Block("hero-description", description, late: true) with
+                                  { Margin = new Edges4(0f, VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f) }],
                     },
                     new BoxEl
                     {
@@ -372,28 +380,13 @@ public static partial class Detail
                 ZStack = true, Width = availW, Height = BandLayout.Height,
                 HitTestVisible = compactCanHit, HitTestPassThrough = true,
                 Children = [bandContent],
-            }.Reveal(VerticalLayout.CompactRevealStart(cd), cd, Spacing.XS);
+            }.Reveal(VerticalLayout.CompactRevealStart(cd), cd - VerticalLayout.CompactRevealStart(cd), Design.Reduced ? 0f : Spacing.XS);
 
             // …and the scrolled-away hero stops eating clicks at the same edge.
-            Element presentation = ZStack(expanded) with
-            {
-                Direction = 1,
-                HitTestVisible = !compactCanHit,
-                ScrollBinds =
-                [
-                    new ScrollBindDsl
-                    {
-                        From = ScrollChannel.Offset, To = BindSink.TransY,
-                        Range = ScrollRange.Px(0f, cd), OutStart = 0f, OutEnd = -cd, Ease = Easing.Linear,
-                    },
-                    new ScrollBindDsl
-                    {
-                        From = ScrollChannel.Offset, To = BindSink.Opacity,
-                        Range = ScrollRange.Px(VerticalLayout.ExpandedFadeStart(cd), cd),
-                        OutStart = 1f, OutEnd = 0f, Ease = Easing.Linear,
-                    },
-                ],
-            };
+            // It rides the scroll back out of the pinned hero (0 → −cd over the collapse) and fades over the tail of it.
+            Element presentation = (ZStack(expanded) with { Direction = 1, HitTestVisible = !compactCanHit })
+                .Parallax(0.0, cd, 0f, -cd)
+                .Fade(VerticalLayout.ExpandedFadeStart(cd), cd, 1f, 0f);
             return ZStack(presentation, compact) with { Direction = 1 };
         }
 
@@ -490,14 +483,7 @@ public static partial class Detail
 
     /// <summary>The hero meta line (12/16, two whole-word lines at the content measure), or its loading bar.</summary>
     static Element HeroMeta(Identity id, float contentW)
-    {
-        if (!id.MetaLoading && id.Meta is { Length: > 0 } meta)
-            return Design.Type.TrackMeta(meta) with
-            {
-                MaxWidth = contentW, MaxLines = 2, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
-            };
-        return MetaRow(id, float.NaN, maxLines: 1);
-    }
+        => MetaLine(id, width: float.NaN, contentW, maxLines: 2);
 
     // ══ 4. THE SKELETON BAND (D49) ═══════════════════════════════════════════════════════════════════════════════════
 
@@ -515,13 +501,14 @@ public static partial class Detail
         float gap = VerticalLayout.HeroGapFor(bw, rowFlow);
         float art = VerticalLayout.ArtworkFor(bw, rowFlow);
         float contentW = VerticalLayout.ContentWidthFor(bw, rowFlow);
+        float descW = VerticalLayout.DescriptionWidthFor(bw, rowFlow);
         // The PESSIMISTIC plan (title: null) — the one the pre-measure collapse height builds too.
         var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, title: null,
             eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart);
         float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
-            f.Eyebrow, f.Attribution, f.Meta, f.Description, pulse: f.Pulse, chart: f.Chart);
+            f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart);
 
-        var blocks = new List<Element>(9);
+        var blocks = new List<Element>(8);
         if (f.Eyebrow) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.EyebrowFraction), VerticalLayout.EyebrowRowHeight));
         blocks.Add(Lines(plan.WrapWidth, plan.LineHeight, plan.Lines, Skeleton.TitleLastLineFraction));
         blocks.Add(new BoxEl
@@ -534,9 +521,6 @@ public static partial class Detail
         if (f.Pulse) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.PulseFraction), VerticalLayout.PulseRowHeight));
         if (f.Chart) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.ChartFraction), VerticalLayout.ChartRowHeight));
         blocks.Add(SkeletonActionRow());
-        if (f.Description)
-            blocks.Add(Lines(contentW, VerticalLayout.DescriptionLineHeight, VerticalLayout.DescriptionMaxLines(rowFlow),
-                             Skeleton.DescriptionLastLineFraction));
 
         Element identity = new BoxEl
         {
@@ -578,7 +562,11 @@ public static partial class Detail
                 new BoxEl
                 {
                     Direction = 1, Padding = new Edges4(pad, pad, pad, VerticalLayout.HeroBottomPad),
-                    Children = [hero],
+                    Children = f.Description
+                        ? [hero, Lines(descW, VerticalLayout.DescriptionLineHeight,
+                              VerticalLayout.DescriptionMaxLines(rowFlow), Skeleton.DescriptionLastLineFraction) with
+                              { Margin = new Edges4(0f, VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f) }]
+                        : [hero],
                 },
                 new BoxEl
                 {
@@ -597,7 +585,7 @@ public static partial class Detail
     };
 
     /// <summary>N stacked runs at the measure, the last one short — zero gap (the run's own line height is the spacing).</summary>
-    static Element Lines(float measure, float lineHeight, int lines, float lastFraction)
+    static BoxEl Lines(float measure, float lineHeight, int lines, float lastFraction)
     {
         int count = Skeleton.LineCount(lines);
         var kids = new Element[count];
@@ -753,7 +741,7 @@ public static partial class Detail
             int shown = Math.Min(p.Sections.Count, MaxItems);
             EnsureSlots(shown);
             int active = p.Active.Value;                           // re-renders only on a boundary crossing
-            int current = shown > 0 ? Math.Clamp(active, 0, shown - 1) : -1;
+            int current = BandLayout.PivotCurrent(active, shown);
             _revealIndex = current;
             UseLayoutEffect(_reveal, DepKey.From(current, shown));
             if (shown == 0) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
@@ -797,7 +785,7 @@ public static partial class Detail
                 {
                     if (_latest is not { } live) return ColorF.Transparent;
                     int shown = Math.Min(live.Sections.Count, MaxItems);
-                    int current = shown > 0 ? Math.Clamp(live.Active.Value, 0, shown - 1) : -1;
+                    int current = BandLayout.PivotCurrent(live.Active.Value, shown);
                     return index == current ? live.Accent() : ColorF.Transparent;
                 };
             }
@@ -807,9 +795,8 @@ public static partial class Detail
         void RevealActive()
         {
             int i = _revealIndex;
-            if ((uint)i >= (uint)_tabNodes.Length || _tabNodes[i].IsNull || _viewport.IsNull) return;
-            FluentGpu.Scroll.ScrollIntoView.BringInto(Context, _viewport, _tabNodes[i], Spacing.S,
-                animate: _seeded && !Design.Reduced);
+            if ((uint)i >= (uint)_tabNodes.Length || _tabNodes[i].IsNull || _viewport.IsNull || Context.Scene is not { } scene) return;
+            scene.BringIntoView(_viewport, _tabNodes[i], float.NaN, _seeded && !Design.Reduced ? ScrollMove.Glide : ScrollMove.Immediate, Spacing.S);
             _seeded = true;
         }
 

@@ -101,9 +101,7 @@ public sealed class StagedEdgeList : StagedList
     public ref StagedEdge Add()
     {
         if (Count == _edges.Length) Array.Resize(ref _edges, _edges.Length * 2);
-        ref var e = ref _edges[Count++];
-        e = default;
-        return ref e;
+        return ref FreshSlot.Of(_edges, Count++);
     }
 
     public ReadOnlySpan<StagedEdge> Span => _edges.AsSpan(0, Count);
@@ -192,9 +190,7 @@ public sealed class StagedEdgeList : StagedList
     public ref StagedEdge Push()
     {
         if (_pendingCount == _pending.Length) Array.Resize(ref _pending, _pending.Length * 2);
-        ref var e = ref _pending[_pendingCount++];
-        e = default;
-        return ref e;
+        return ref FreshSlot.Of(_pending, _pendingCount++);
     }
 
     /// <summary>Abandon everything pushed since <paramref name="mark"/> — a list whose parent turned out to have no
@@ -570,7 +566,7 @@ public static partial class Entities
                             ref readonly var e = ref page[j];
                             ref var row = ref merch.Row[first + j];
                             row.Name = s.Intern(e.Text);
-                            row.Price = s.Intern(new TextRef(e.At, e.U0));
+                            row.Price = s.Intern(s.TextAt(e.At, e.U0));
                             row.ImageId = s.Intern(e.Target.Text);
                             row.ShopUrl = s.Intern(e.Aux.Text);
                             s_edgeTargets[j] = first + j;

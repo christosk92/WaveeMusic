@@ -439,6 +439,63 @@ function Test-AssetContentLength {
     $false
 }
 
+function Get-CrashIngestGate {
+    <#
+    .SYNOPSIS
+      Decide whether a release should WARN about shipping with no crash-ingest endpoint stamped (crash & diagnostics
+      plan §B.6).
+    .DESCRIPTION
+      A `stable` release with an empty -CrashIngestUrl is not a failure - the Cloudflare Worker may simply not exist
+      yet, or the caller is deliberately rehearsing - but it must never be a SILENT gap: every crash on that build is
+      then unreported and unrecoverable after the fact. Any other channel (beta/dev/store) or a non-empty URL is
+      quiet. wavee-release.ps1 wires this into a 'soft' Add-Check, whose only effect on FAIL is a Warn, never a throw.
+    .OUTPUTS
+      pscustomobject @{ Warn = [bool]; Message = [string] }   (Message is '' when Warn is $false)
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Channel,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$CrashIngestUrl)
+
+    if ($Channel -ne 'stable') { return [pscustomobject]@{ Warn = $false; Message = '' } }
+    if ("$CrashIngestUrl".Trim().Length -gt 0) { return [pscustomobject]@{ Warn = $false; Message = '' } }
+    [pscustomobject]@{
+        Warn    = $true
+        Message = 'stable release with no -CrashIngestUrl: crashes on this build will never reach the crash service (crash & diagnostics plan §B.6)'
+    }
+}
+
+function Invoke-SymbolsUpload {
+    <#
+    .SYNOPSIS
+      Upload one architecture's .symmap to R2 with `wrangler r2 object put`, or report why it was skipped.
+    .DESCRIPTION
+      The R2 key and the wrangler argument list are computed HERE, not inline in wavee-release.ps1's `symbols` phase,
+      so Wavee.Release.Tests.ps1 can assert on them (via a mocked `wrangler`) without a real Cloudflare account or a
+      real .symmap. -Skip covers both -DryRun and -NoUpload - the caller decides which and passes -SkipReason for the
+      Warn text; this function itself never inspects the orchestrator's switches.
+    .OUTPUTS
+      pscustomobject @{ Uploaded = [bool]; Key = "symbols/<quad>/win-<arch>.symmap"; Reason = [string] }
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$SymmapPath,
+        [Parameter(Mandatory = $true)][string]$Quad,
+        [Parameter(Mandatory = $true)][string]$Arch,
+        [string]$Bucket = 'wavee-crash',
+        [switch]$Skip,
+        [string]$SkipReason = 'nothing will be uploaded')
+
+    $key = "symbols/$Quad/win-$Arch.symmap"
+    if ($Skip) {
+        return [pscustomobject]@{ Uploaded = $false; Key = $key; Reason = $SkipReason }
+    }
+    if (-not (Test-Path $SymmapPath)) { throw "Invoke-SymbolsUpload: symmap not found: $SymmapPath" }
+
+    Invoke-Native 'wrangler' @('r2', 'object', 'put', "$Bucket/$key", '--file', $SymmapPath, '--remote') | Out-Null
+    [pscustomobject]@{ Uploaded = $true; Key = $key; Reason = '' }
+}
+
 function Publish-WaveeRelease {
     <#
     .SYNOPSIS
@@ -782,6 +839,8 @@ Export-ModuleMember -Function @(
     'Get-GhRelease',
     'Get-GhReleaseAssetUrl',
     'Test-AssetContentLength',
+    'Get-CrashIngestGate',
+    'Invoke-SymbolsUpload',
     'Publish-WaveeRelease',
     'Update-WaveeFeed',
     'Get-ReleaseState',

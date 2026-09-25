@@ -667,6 +667,37 @@ public static partial class Video
         }
     }
 
+    /// <summary>The placement MENU's own truth: why a disabled row is disabled, so "no video on this track" and "this
+    /// host cannot open a second window" never draw the same greyed-out row with no explanation. Deliberately separate
+    /// from <see cref="UpgradeGate"/>'s <c>Available</c> fold — that value answers "what CAN this playable mount right
+    /// now", stamped only at a track boundary or an explicit click; the menu needs the reason live, at OPEN time,
+    /// without waiting for (or forcing) a re-stamp.</summary>
+    public static class PlacementMenuRules
+    {
+        /// <summary>The set the menu should show as enabled: content-capable ∧ host-capable, same law as
+        /// <see cref="UpgradeGate.AvailabilityFor"/> (kept as its own entry point so the menu never has to reach into
+        /// the upgrade-gate's vocabulary to ask a simpler question).</summary>
+        public static PlacementSet Available(bool hasVideo, PlacementSet hostCapable)
+            => UpgradeGate.AvailabilityFor(hasVideo, hostCapable);
+
+        /// <summary>Why <paramref name="p"/> is disabled, or <c>null</c> when it is allowed. No video beats every host
+        /// reason (a track with no video is not "waiting on a wider window"); past that each row gets ITS OWN reason —
+        /// Floating included, so a disabled mini-player row can never read as if nothing were wrong with it.</summary>
+        public static string? ReasonKey(bool hasVideo, PlacementSet hostCapable, SurfacePlacement p)
+        {
+            if (!hasVideo) return Strings.Player.NoVideoForThisSong;
+            if (PlacementCore.Allows(Available(hasVideo, hostCapable), p)) return null;
+            return p switch
+            {
+                SurfacePlacement.Docked => Strings.Player.VideoNeedsWiderWindow,
+                SurfacePlacement.Detached => Strings.Player.VideoNoSecondWindow,
+                SurfacePlacement.Fullscreen => Strings.Player.VideoNoFullscreen,
+                SurfacePlacement.Floating => Strings.Player.VideoMiniPlayerUnavailable,
+                _ => null,
+            };
+        }
+    }
+
     /// <summary>The Connect-wire half of the same rule: which video facts the cluster has ALREADY been told about the
     /// current track. A badge-only association land changes no media host and fires no playback event, so nothing
     /// would otherwise re-publish the player state — remote controllers would never see the offer for the song they
@@ -701,23 +732,6 @@ public static partial class Video
     /// the engine's cursor policy so the test assembly stays FluentGpu-free.</summary>
     public static class StageInput
     {
-        /// <summary>Whether a press on the PICTURE that travels past the drag box moves the WINDOW (the OS move loop —
-        /// Aero Snap, the snap bar and monitor hops included). Only the pop-out OWNS its window, and that window is
-        /// chromeless, so the picture is the only thing to grab. Dragging the mini player's or the docked card's
-        /// picture must never move the MAIN window (and a drag capture inside a scroller would steal touch pans); a
-        /// fullscreen window has nowhere to go.</summary>
-        /// <param name="identity">The surface's transport identity (constant for the life of the surface).</param>
-        /// <param name="hostFullscreen">Whether the surface is presenting fullscreen right now.</param>
-        /// <param name="hasTitleBand">Whether the surface draws its own draggable title band.</param>
-        /// <remarks>ONE drag path per window. The pop-out now carries a visible 44-DIP title band that moves the
-        /// window itself, so the picture must NOT also arm a move: two independent arms both start the same OS modal
-        /// loop, which is how a release could leave the window trailing the cursor with nothing held. The band is also
-        /// the better affordance — it is visible, it carries the title, and it takes the move cursor, none of which an
-        /// invisible whole-picture drag can do. With the band present the picture goes back to being ordinary content:
-        /// click, double-click for fullscreen, right-click for the menu.</remarks>
-        public static bool DragMovesWindow(TransportOwner identity, bool hostFullscreen, bool hasTitleBand)
-            => identity == TransportOwner.PopOut && !hostFullscreen && !hasTitleBand;
-
         /// <summary>Whether the idle cursor hides with the chrome while WINDOWED. A dedicated video window hides it
         /// (mpv's windowed default); an inline surface keeps the page's cursor and hides it only in fullscreen —
         /// hiding it over a small video steals it from the page around it, and the user cannot tell whether the app
@@ -861,6 +875,21 @@ public static partial class Video
 
         public static double LoadRatio(double raw)
             => double.IsFinite(raw) && raw > 0.01 && raw < 100.0 ? raw : DefaultCustomRatio;
+    }
+
+    /// <summary>The numeric-ratio rows the on-media ⋯ → Aspect ratio cascade offers below the four modes, matching the
+    /// engine's own transport list (<c>MediaPlayerElement.cs:1749-1760</c>) that <c>SuppressTransport</c> hides from
+    /// the user otherwise. Pure: no <c>Platform.Settings</c> read here, so it is reachable from a plain unit test.</summary>
+    public static class AspectRatioRows
+    {
+        /// <summary>16:9, 4:3, 21:9, 2.39:1 — in the order the menu lists them.</summary>
+        public static readonly double[] Standard = [16.0 / 9.0, 4.0 / 3.0, 21.0 / 9.0, 2.39];
+
+        /// <summary>A ratio row reads as checked only under Custom, and only for the row whose ratio the stored
+        /// <paramref name="current"/> actually matches (a persisted 2.3900001 must still land on 2.39, not miss every
+        /// row) — never for Fit/Crop/Stretch/Native, which do not carry a ratio at all.</summary>
+        public static bool IsChecked(AspectPreference mode, double current, double r)
+            => mode == AspectPreference.Custom && Math.Abs(current - r) < 0.01;
     }
 
     // ── local video attachments ─────────────────────────────────────────────────────────────────────────────────────
@@ -1489,8 +1518,10 @@ public static partial class Video
             // is the jarring half of "ugly".
             if (s.Wanted && !s.FrameSeen && s.Phase == SwitchPhase.Failed) return JoinVisual.Failed;
             // A briefly-null SOURCE must never tear the stage down (the pump lives on the mounted element) — the PLAYER
-            // is the discriminator, here as everywhere, and past this line there is none.
-            if (SurfaceMount.ShouldMountPlayerStage(s.PlayerPresent)) return JoinVisual.Video;
+            // is the discriminator, here as everywhere, and past this line there is none. But a bound player with no
+            // picture yet is still the poster's story: `ShouldMountPlayerStage` alone dropped the poster ~1s before
+            // `FrameSeen`, showing a blank/stale stage under the "video" label. The picture only counts once framed.
+            if (SurfaceMount.ShouldMountPlayerStage(s.PlayerPresent) && s.FrameSeen) return JoinVisual.Video;
             if (!s.Wanted) return JoinVisual.Poster;
             return IsJoining(in s) && ShowsSpinner(joinElapsedMs) ? JoinVisual.Working : JoinVisual.Poster;
         }

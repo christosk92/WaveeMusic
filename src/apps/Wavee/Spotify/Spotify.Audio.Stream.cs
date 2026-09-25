@@ -838,7 +838,9 @@ public static partial class Spotify
             /// (<see cref="StallMs"/>).</summary>
             public const int Starved = -3;
             const int PollMs = 4;
-            const int RefusedBackoffMs = 250;
+            /// <summary>When every mirror refused a range, the ring plans nothing until this long after the refusal settled
+            /// (a dead CDN costs four requests a second until the read bound reports it, never a busy loop).</summary>
+            public const int RefusedBackoffMs = 250;
 
             readonly Body _body;
             readonly Fetcher _fetch;
@@ -906,6 +908,8 @@ public static partial class Spotify
             public int Starves => Volatile.Read(ref _starves);
             /// <summary>The file offset a read is blocked on, or −1.</summary>
             public long Want => Volatile.Read(ref _want);
+            /// <summary>The <c>Environment.TickCount64</c> before which the ring plans nothing after a refusal (0 = none).</summary>
+            public long RetryAfter { get { lock (_gate) return _retryAfter; } }
             /// <summary>The decoder's position, FILE coordinates.</summary>
             public long Cursor => Volatile.Read(ref _cursor);
 

@@ -53,7 +53,9 @@ public static partial class Notify
     {
         s_post = post;
         s_deepLink = deepLink;
-        if (s_registered || !ToastNotifier.IsSupported) return;
+        // A --profile instance (a verify / scratch profile beside the user's Wavee) never registers the toast activator:
+        // it is process-global OS state that would re-point the user's banners at this exe (InstanceIdRules).
+        if (s_registered || !ToastNotifier.IsSupported || !InstanceIdRules.OwnsOsIntegration(Platform.ProfileRoot)) return;
         try
         {
             // The dispatcher is re-assigned even on a second call, so a re-entry updates the hop without

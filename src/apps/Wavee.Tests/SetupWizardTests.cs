@@ -388,6 +388,13 @@ public class SetupWizardRulesTests
         Assert.Equal(Strings.Setup.Terms.Header, Setup.WizardRules.TermsHeaderKey(Setup.WizardEntry.Reauth));
     }
 
+    [Theory]
+    [InlineData(Setup.WizardEntry.FirstRun, true)]      // fresh --profile: the card shows
+    [InlineData(Setup.WizardEntry.TermsRearm, true)]    // re-arm: a live Terms page again, so the card shows again
+    [InlineData(Setup.WizardEntry.Reauth, false)]        // re-auth jumps straight to Sign in — no Terms page to host it
+    public void The_crash_consent_card_shows_on_every_terms_entry_but_reauth(Setup.WizardEntry entry, bool expected)
+        => Assert.Equal(expected, Setup.WizardRules.ConsentShown(entry));
+
     [Fact]
     public void A_signed_in_walk_from_terms_never_reaches_sign_in()
     {

@@ -49,12 +49,16 @@
 using System.Collections.Concurrent;
 using System.Threading;
 
+using System.Linq;
+
 using FluentGpu.Foundation;
 using FluentGpu.Media;
 using FluentGpu.Media.Adaptive;
 using FluentGpu.Media.Windows;
 using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Media.PlayReady;
+
+using TrackKind = FluentGpu.Media.TrackKind;
 
 namespace Wavee;
 
@@ -141,13 +145,42 @@ public static partial class Playback
         /// <summary>The facts the switch decision needs. A record struct so a test is one line.</summary>
         public readonly record struct SwitchInput(bool HasPlayer, bool Faulted, string LiveKey, string RequestKey, long StartAtMs);
 
+        /// <summary>WHY <see cref="Plan"/> chose what it chose — the `why=` of `[video] switch.begin`. Two facts
+        /// (<c>!HasPlayer</c>, <c>Faulted</c>) both drive <see cref="SwitchAction.Rebuild"/>, and a Rebuild pays the
+        /// full cold-open cost either way, so the log line collapsing them into one `plan=Rebuild` hid which of "no
+        /// player at all" and "the live one died" actually happened.</summary>
+        public enum SwitchReason : byte
+        {
+            /// <summary><see cref="SwitchAction.None"/>: same key, same position, healthy player. Nothing to explain.</summary>
+            None,
+            /// <summary>No player is bound at all (cold start, or torn down since).</summary>
+            NoPlayer,
+            /// <summary>A player is bound but the live one faulted — never switched in place.</summary>
+            Faulted,
+            /// <summary>Healthy player, different content key: re-open in place.</summary>
+            KeyChanged,
+            /// <summary>Same key, a carried start position: one seek, no open.</summary>
+            SeekOnly,
+        }
+
         /// <summary>Ported from 0.2.9's `VideoSwitchPolicy`. A faulted player is never switched in place, and "same key,
         /// same position" never re-opens — a docked→fullscreen placement move re-asks for the video already playing.</summary>
-        public static SwitchAction Plan(in SwitchInput i)
+        public static SwitchAction Plan(in SwitchInput i) => PlanWithReason(in i, out _);
+
+        /// <summary>Same law as <see cref="Plan"/>, plus WHY — the two independent <see cref="SwitchAction.Rebuild"/>
+        /// causes (no player vs. faulted) are told apart here even though they choose the same action.</summary>
+        public static SwitchAction PlanWithReason(in SwitchInput i, out SwitchReason reason)
         {
-            if (!i.HasPlayer || i.Faulted) return SwitchAction.Rebuild;
-            if (!string.Equals(i.LiveKey, i.RequestKey, StringComparison.Ordinal)) return SwitchAction.Switch;
-            return i.StartAtMs > 0 ? SwitchAction.SeekOnly : SwitchAction.None;
+            if (!i.HasPlayer) { reason = SwitchReason.NoPlayer; return SwitchAction.Rebuild; }
+            if (i.Faulted) { reason = SwitchReason.Faulted; return SwitchAction.Rebuild; }
+            if (!string.Equals(i.LiveKey, i.RequestKey, StringComparison.Ordinal))
+            {
+                reason = SwitchReason.KeyChanged;
+                return SwitchAction.Switch;
+            }
+            if (i.StartAtMs > 0) { reason = SwitchReason.SeekOnly; return SwitchAction.SeekOnly; }
+            reason = SwitchReason.None;
+            return SwitchAction.None;
         }
 
         /// <summary>The net under the engine's own start deadline. It catches the one failure that cannot be seen from
@@ -282,6 +315,13 @@ public static partial class Playback
         static ProtectedMediaBackend? s_backend;
         static Timer? s_ticker;
         static bool s_disposed;
+
+        // A1/A2 (video stutter fix, 2026-09-22): the process-lifetime ABR controller survives a player rebuild. The
+        // cap it ran under (and the viewport-clamped effective one, carried across the rebuild so the opening pick never
+        // trusts a stale small-pop-out ceiling), plus the last-persisted link estimate and when it was written.
+        static int s_policyCap = int.MaxValue, s_lastViewportCap = int.MaxValue;
+        static double s_linkPersisted;
+        static long s_linkWriteMs;
 
         // per-load state (all under s_gate)
         static string s_key = "";
@@ -591,6 +631,9 @@ public static partial class Playback
         static IPreparedItem? s_prepared;
         static string s_preparedKey = "";
         static RowKey s_claim = RowKey.None;
+        // A3: the descriptor the prepare opened, re-pointed at the opening rung — reused by the open that adopts it, so
+        // the two compute the same rung. Set in PrepareQuietlyAsync (key = source.Key); cleared wherever s_prepared is.
+        static DashSourceDescriptor? s_preparedDescriptor;
 
         /// <summary>The level already reached for <paramref name="id"/> — the schedule's <c>Already</c>. UI thread.</summary>
         public static PrefetchLevel PrefetchedLevel(EntityId id) => id.Equals(s_prefetchId) ? s_prefetchLevel : PrefetchLevel.None;
@@ -681,6 +724,7 @@ public static partial class Playback
                     superseded = s_prepared;
                     s_prepared = null;
                     s_preparedKey = "";
+                    s_preparedDescriptor = null;
                 }
             }
             if (superseded is not null) _ = superseded.DisposeAsync();
@@ -730,7 +774,7 @@ public static partial class Playback
         static async Task PrepareQuietlyAsync(VideoSource source, int atMs)
         {
             ValueTask<IPreparedItem> pending;
-            try { pending = Backend.PrepareAtAsync(BuildMediaSource(source), TimeSpan.FromMilliseconds(atMs)); }
+            try { pending = Backend.PrepareAtAsync(BuildMediaSource(source, forPrepare: true), TimeSpan.FromMilliseconds(atMs)); }
             catch (Exception ex) { Log.Warn("video", "prefetch prepare failed", ex); ClosePrepareSlot(); return; }
 
             OpenPrepareGate();                     // the backend has the session now — an adopting load may stop waiting
@@ -789,6 +833,7 @@ public static partial class Playback
                 if (item is null || (keepKey is not null && string.Equals(s_preparedKey, keepKey, StringComparison.Ordinal))) return;
                 s_prepared = null;
                 s_preparedKey = "";
+                s_preparedDescriptor = null;
             }
             _ = item.DisposeAsync();
         }
@@ -798,12 +843,13 @@ public static partial class Playback
         /// ones nothing will ever load (a shed, a shutdown).</summary>
         static void CondemnPreparing()
         {
-            lock (s_gate) if (s_preparingGate is not null) s_dropPreparing = true;
+            lock (s_gate) if (s_preparingGate is not null) { s_dropPreparing = true; s_preparedDescriptor = null; }
         }
 
         /// <summary>Shut down for good. Drains the pump so a session is not torn down mid-open.</summary>
         public static void Shutdown()
         {
+            PersistLink(force: true);
             s_disposed = true;
             Stop();
             try { s_worker.Wait(TeardownTimeoutMs * 2); } catch { }
@@ -811,6 +857,7 @@ public static partial class Playback
             try { s_ticker?.Dispose(); } catch { }
             s_ticker = null;
             DisposeWarmTimer();
+            Shed(wasWarm: false);                  // drops the runtime keep-alive too: shutdown must let the engine tear down
             CondemnPreparing();                    // whatever is still landing dies on arrival…
             ReleasePrepared(keepKey: null);        // …and whatever landed already is freed here
             DrainDisposals();
@@ -867,7 +914,7 @@ public static partial class Playback
             lock (s_gate) { live = s_player; liveKey = s_key; faulted = s_errorReported; }
 
             req = req with { StartAtMs = HostRules.StartAt(req.StartAtMs, req.Source.DrmDescriptor?.DurationMs ?? 0) };
-            SwitchAction plan = Plan(new SwitchInput(live is not null, faulted, liveKey, req.Source.Key, req.StartAtMs));
+            SwitchAction plan = PlanWithReason(new SwitchInput(live is not null, faulted, liveKey, req.Source.Key, req.StartAtMs), out SwitchReason why);
             Interlocked.Exchange(ref s_switchAtMs, FrameNowMs());
 
             // G1 rule 2, BEFORE the log line and before any open: adopt the prepare this very switch was fetched for, or
@@ -875,7 +922,7 @@ public static partial class Playback
             // §4.3 gate reads it for.
             var row = new RowKey(req.Source.PlayableUri, req.Source.Key);
             await ResolvePrepareAsync(row, plan is SwitchAction.Switch or SwitchAction.Rebuild).ConfigureAwait(false);
-            LogLine(new VideoLog.SwitchBegin(Tail(req.Source.Key), req.StartAtMs, plan, WarmFor(req.Source), req.Epoch));
+            LogLine(new VideoLog.SwitchBegin(Tail(req.Source.Key), req.StartAtMs, plan, why, WarmFor(req.Source), req.Epoch));
             ReleasePrepared(keepKey: req.Source.Key);
 
             switch (plan)
@@ -939,7 +986,7 @@ public static partial class Playback
             long startedAt = FrameNowMs();
             try
             {
-                await built.OpenAsync(BuildMediaSource(req.Source), options).AsTask()
+                await built.OpenAsync(BuildMediaSource(req.Source, forPrepare: false), options).AsTask()
                     .WaitAsync(TimeSpan.FromMilliseconds(OpenTimeoutMs)).ConfigureAwait(false);
             }
             catch (TimeoutException)
@@ -968,7 +1015,7 @@ public static partial class Playback
             long startedAt = FrameNowMs();
             try
             {
-                await live.OpenAsync(BuildMediaSource(req.Source), options).AsTask()
+                await live.OpenAsync(BuildMediaSource(req.Source, forPrepare: false), options).AsTask()
                     .WaitAsync(TimeSpan.FromMilliseconds(OpenTimeoutMs)).ConfigureAwait(false);
                 Log.Info("video", $"[video] open.ok key={Tail(req.Source.Key)} epoch={req.Epoch} openMs={FrameNowMs() - startedAt} rebuild=false");
                 ReleasePrepared(keepKey: null);    // the open took it (the dispose is then a no-op) or never will
@@ -1092,12 +1139,36 @@ public static partial class Playback
         /// <summary>ONE long-lived player for clear, local and every DRM source, over the process-lifetime protected
         /// backend. The descriptor rides the source (`DrmConfig.SourceDescriptor`) and the relay rides the open
         /// (`MediaOpenOptions.LicenseRelay`); the builder's relay is only the KID-routed fallback (G-145: no per-load
-        /// relay slot any more).</summary>
+        /// relay slot any more).
+        /// <para>A1 (video stutter fix, 2026-09-22): ONE <see cref="AdaptiveBitrateController"/> for the process. A
+        /// rebuilt player (pop-out reopen, a warm-runtime shed, a fault) must not forget what the link measured: that
+        /// re-ran the whole climb, and every rung is a visible freeze. The cap is re-pushed on every build because
+        /// ProtectedMediaSession snapshots MaxHeight as its policy cap at open and clamps it to the viewport afterwards —
+        /// a previous session's small pop-out must not become the next session's ceiling. ApplyQualityCaps does the same
+        /// on load.</para></summary>
         static MediaPlayer BuildPlayer()
         {
             int cap = HostRules.QualityCap(Platform.Settings.Get(Platform.Keys.VideoQuality), Platform.Network.EffectiveVideoMaxHeight());
-            var abr = new AdaptiveBitrateController { MaxHeight = cap };
-            lock (s_gate) s_abr = abr;
+            AdaptiveBitrateController abr;
+            lock (s_gate)
+            {
+                // ONE controller for the process.
+                abr = s_abr ??= new AdaptiveBitrateController();
+                // The OPENING pick (A3) must see the cap the last session actually ran under: the engine element clamps
+                // MaxHeight to the viewport on every pump, floored at 720, and a rebuild that re-pushed the bare policy
+                // cap would open a measured link at 1080p in an 848 px pop-out, only for the new session's first pump to
+                // clamp it and force a 720p downswitch — the very switch this plan removes. Carry a VIEWPORT clamp
+                // across the rebuild; never a stale metered/pin cap.
+                int effective = abr.MaxHeight;
+                s_lastViewportCap = effective < s_policyCap ? effective : int.MaxValue;
+                s_policyCap = cap;
+                abr.MaxHeight = cap;
+                abr.Selection = QualitySelection.Auto;   // a rebuild starts Auto, as a fresh controller did: a pin taken
+                                                          // in the Settings tab lives on as the MaxHeight cap
+                                                          // (HostRules.QualityCap), and a new session never re-issues
+                                                          // SelectVideoRepresentation for a stale one
+                if (abr.EstimateIsPrior) abr.SeedEstimate(LinkMemory.Load(Platform.Settings));
+            }
             return MediaPlayer.Build()
                 .WithBackend(MediaKind.MfVideoOrFile, new MfMediaPlayer(Backend))
                 .WithAbr(abr)
@@ -1105,12 +1176,71 @@ public static partial class Playback
                 .Build();
         }
 
-        static MediaSource BuildMediaSource(VideoSource src)
-            => src.FilePath is { } file ? MediaSource.FromFile(file)
-             : src.IsDrm ? MediaSource.FromUri(src.DrmDescriptor!.InitUrl)
-                   .With(new DrmConfig(DrmSystem.PlayReady, src.LicenseServerUri) { SourceDescriptor = src.DrmDescriptor })
-             : MediaSource.FromUri(src.ClearUrl ?? "")
-                   .WithLiveness(src.IsLive ? SourceLiveness.Live : SourceLiveness.Auto);
+        /// <summary>Persist the link estimate when LinkMemory says so. Writes INLINE when there is no live UI thread
+        /// (Shutdown runs from Main after Shell.Run returned, where ToUi would post to a loop that no longer pumps and
+        /// the exit write would be lost every time) or when already on it; otherwise through ToUi, because Settings.Set
+        /// asserts the UI thread in Debug. Reads of s_abr's EWMAs off the pump thread are lock-free gates only.</summary>
+        static void PersistLink(bool force)
+        {
+            double k; bool measured;
+            lock (s_gate) { if (s_abr is not { } abr) return; k = Math.Min(abr.EstimatedKbps, LinkMemory.MaxKbps); measured = !abr.EstimateIsPrior; }
+            long now = Environment.TickCount64;
+            lock (s_gate) if (!LinkMemory.ShouldPersist(measured, k, s_linkPersisted, now, s_linkWriteMs, force)) return;
+            void Write()
+            {
+                lock (s_gate) { s_linkPersisted = k; s_linkWriteMs = now; }
+                Platform.Settings.Set(Platform.Keys.VideoLinkKbps, Math.Round(k));
+                Log.Info("video", $"[video] link.memory kbps={k:F0}{(force ? " why=shutdown" : "")}");   // always-on, one per write
+            }
+            if (Platform.UiThreadId is null || Platform.UiThreadId == Environment.CurrentManagedThreadId) Write(); else ToUi(Write);
+        }
+
+        /// <summary>The link state an OPEN reasons from: the live controller's, or — before the first player exists —
+        /// what BuildPlayer is about to seed it with (the remembered estimate under the policy cap), so a prepare and the
+        /// open that adopts it compute the same rung. The cap is the last session's effective (viewport-clamped) one —
+        /// see BuildPlayer.</summary>
+        static (double Kbps, bool Prior, int Cap) LinkState()
+        {
+            lock (s_gate)
+                if (s_abr is { } abr) return (abr.EstimatedKbps, abr.EstimateIsPrior, Math.Min(abr.MaxHeight, s_lastViewportCap));
+            return (LinkMemory.Load(Platform.Settings), true,
+                    HostRules.QualityCap(Platform.Settings.Get(Platform.Keys.VideoQuality), Platform.Network.EffectiveVideoMaxHeight()));
+        }
+
+        /// <summary>A3: build the media source for an open or a prepare. <paramref name="forPrepare"/> distinguishes the
+        /// two: a prepare always picks its own opening rung and remembers the descriptor it picked; an open ADOPTS that
+        /// descriptor when it is for the exact same row (so a first measurement landing between the prepare and the open
+        /// cannot lift the prior ceiling and pick a different rung), and otherwise picks its own rung fresh.</summary>
+        static MediaSource BuildMediaSource(VideoSource src, bool forPrepare)
+        {
+            if (src.FilePath is { } file) return MediaSource.FromFile(file);
+            if (!src.IsDrm)
+                return MediaSource.FromUri(src.ClearUrl ?? "")
+                    .WithLiveness(src.IsLive ? SourceLiveness.Live : SourceLiveness.Auto);
+            DashSourceDescriptor d = src.DrmDescriptor!;
+            DashSourceDescriptor? adopt = null;
+            lock (s_gate) if (!forPrepare && string.Equals(s_preparedKey, src.Key, StringComparison.Ordinal)) adopt = s_preparedDescriptor;
+            d = adopt ?? Opening(d);
+            if (forPrepare) lock (s_gate) s_preparedDescriptor = d;
+            return MediaSource.FromUri(d.InitUrl).With(new DrmConfig(DrmSystem.PlayReady, src.LicenseServerUri) { SourceDescriptor = d });
+        }
+
+        /// <summary>The descriptor re-pointed at the opening rung (a `with` over the record; every other field, the
+        /// catalog and the audio addressing included, is untouched). `Codecs` is left as the descriptor's default —
+        /// nothing consumes it for video (the native open reads the codec from the init segment).</summary>
+        static DashSourceDescriptor Opening(DashSourceDescriptor d)
+        {
+            var video = d.Catalog?.Tracks.FirstOrDefault(t => t.Kind == TrackKind.Video)?.Representations;
+            if (video is not { Count: > 1 }) return d;
+            var (kbps, prior, cap) = LinkState();
+            if (prior && kbps <= ThroughputEstimator.DefaultSeedKbps) kbps = 0;   // the bare seed is not an estimate: cold rule
+            Span<(int, int)> rungs = stackalloc (int, int)[video.Count];
+            for (int i = 0; i < video.Count; i++) rungs[i] = (video[i].Quality.Resolution.Height, video[i].Quality.Bitrate);
+            var rep = video[OpeningRung(rungs, kbps, prior, cap)];
+            if (string.Equals(rep.InitUrl, d.InitUrl, StringComparison.Ordinal)) return d;
+            Log.Info("video", $"[video] open.rung {rep.Quality.Resolution.Width}x{rep.Quality.Resolution.Height}@{rep.Quality.Bitrate} kbps={kbps:F0} why={(prior ? "prior" : "measured")} cap={cap}");
+            return d with { InitUrl = rep.InitUrl, SegmentBaseUrl = rep.SegmentBaseUrl, SegmentPrefix = rep.SegmentPrefix, SegmentSuffix = rep.SegmentSuffix, RepresentationId = rep.Id };
+        }
 
         static void PublishBinding(MediaPlayer? p, long generation)
             => ToUi(() => Player.Value = new Binding(p, generation));
@@ -1130,6 +1260,7 @@ public static partial class Playback
 
         static void Tick()
         {
+            PersistLink(force: false);
             MediaPlayer? p;
             uint epoch;
             bool intent;

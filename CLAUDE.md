@@ -45,6 +45,7 @@ without it still builds — the public-only variant — which is why the release
 dotnet build Wavee.slnx                                   # Debug — the app, pulling in the engine via $(EngineRoot)
 dotnet build Wavee.slnx -c Release                        # AND Release: the engine's diag-gate arms differ per configuration
 dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj       # 6.6k+ tests; baseline in docs/guide/releasing-wavee.md §gates
+dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj -c Release   # AND Release: only the optimising (tier-1 PGO) JIT shows JIT-sensitive bugs
 dotnet run --project src/apps/Wavee -- --fake             # offline FakeData demo (no login / network)
 Invoke-Pester -Path ops/release/tests                     # release tooling + local feed server (pure tests)
 powershell -File ops/release/tests/local-update-e2e.ps1 -Scenario inapp   # elevated; the real update path over a loopback feed
@@ -52,7 +53,8 @@ powershell -File ops/release/tests/local-update-e2e.ps1 -Scenario os      # elev
 powershell -File ops/release/wavee-release.ps1 -DryRun -SkipTests         # release rehearsal; the real thing without -DryRun
 ```
 
-Before claiming done: Debug **and** Release build clean (`TreatWarningsAsErrors`), `Wavee.Tests` green, and for
+Before claiming done: Debug **and** Release build clean (`TreatWarningsAsErrors`), `Wavee.Tests` green in Debug
+**and** Release (the .NET 10.0.8 dropped-zeroing miscompile behind `FreshSlot` only reproduces under the Release JIT), and for
 engine-touching work the engine's own gates in `..\fluent-gpu`. Packaged runs write into the package's
 `LocalCache` — never leave a real `%LOCALAPPDATA%\Wavee` (an unpackaged `dotnet run` creates it) around when
 testing a packaged build; the E2E harness wipes it and the startup log line prints `logResolved=` for exactly
@@ -76,4 +78,5 @@ this reason.
 - App skills: `.claude/skills/wavee` (deep links, backend, diagnostics), `wavee-sidebar` (the sidebar platform),
   `releasing` (the release runbook + gotchas), `github-triage` (labels, milestones, the project board, issue
   forms — every modifying `gh` call is approved by the user first). Sidebar platform design: `docs/guide/sidebar-extension-platform.md`;
-  playback modules: `docs/guide/playback-modules.md`; releasing: `docs/guide/releasing-wavee.md`.
+  playback modules: `docs/guide/playback-modules.md`; releasing: `docs/guide/releasing-wavee.md`; scrolling:
+  `docs/guide/scrolling.md`.

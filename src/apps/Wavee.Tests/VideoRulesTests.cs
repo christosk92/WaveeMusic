@@ -531,6 +531,128 @@ public class VideoRetentionWindowTests
     }
 }
 
+// ── the opening rung — the video stutter fix (2026-09-22) ─────────────────────────────────────────────────────────────
+
+public class OpeningRungTests
+{
+    // ascending by height: 320p / 480p / 720p / 1080p
+    static readonly (int Height, int Bitrate)[] Ladder =
+    [
+        (320, 400_000),
+        (480, 1_800_000),
+        (720, 3_000_000),
+        (1080, 4_500_000),
+    ];
+
+    [Fact]
+    public void Opening_rung_with_no_estimate_never_exceeds_four_eighty_p()
+    {
+        // Cold: the descriptor's own conservative pick — nobody has measured anything yet.
+        int pick = V.OpeningRung(Ladder, estimateKbps: 0, estimateIsPrior: true, capHeight: int.MaxValue);
+        Assert.Equal(480, Ladder[pick].Height);
+    }
+
+    [Fact]
+    public void Opening_rung_never_trusts_a_prior_above_720p()
+    {
+        // A remembered (or seeded) estimate is still a PRIOR: it may lift the ceiling off cold-480p, but never past 720p
+        // — the first real sample decides whether 1080p is safe, not a number from last launch (or the 2 Mbps seed).
+        int pick = V.OpeningRung(Ladder, estimateKbps: 300_000, estimateIsPrior: true, capHeight: 1091);
+        Assert.Equal(720, Ladder[pick].Height);
+    }
+
+    [Fact]
+    public void Opening_rung_trusts_a_real_measurement_up_to_the_cap()
+    {
+        int pick = V.OpeningRung(Ladder, estimateKbps: 300_000, estimateIsPrior: false, capHeight: 1091);
+        Assert.Equal(1080, Ladder[pick].Height);
+    }
+
+    [Fact]
+    public void Opening_rung_never_picks_a_rung_the_budget_cannot_afford()
+    {
+        // 2 000 kbps × 0.85 headroom = 1 700 000 bps: only the 320p rung's bitrate clears it.
+        int pick = V.OpeningRung(Ladder, estimateKbps: 2_000, estimateIsPrior: false, capHeight: int.MaxValue);
+        Assert.Equal(320, Ladder[pick].Height);
+    }
+
+    [Fact]
+    public void Opening_rung_returns_index_zero_when_the_cap_excludes_every_rung()
+    {
+        (int, int)[] aboveCap = [(480, 800_000), (720, 1_800_000), (1080, 4_000_000)];
+        Assert.Equal(0, V.OpeningRung(aboveCap, estimateKbps: 0, estimateIsPrior: true, capHeight: 400));
+    }
+
+    [Fact]
+    public void Opening_rung_returns_index_zero_when_the_budget_excludes_every_rung()
+    {
+        Assert.Equal(0, V.OpeningRung(Ladder, estimateKbps: 1, estimateIsPrior: false, capHeight: int.MaxValue));
+    }
+
+    [Fact]
+    public void Opening_rung_bounds_a_measurement_at_a_narrow_viewport_cap()
+    {
+        int pick = V.OpeningRung(Ladder, estimateKbps: 300_000, estimateIsPrior: false, capHeight: 878);
+        Assert.Equal(720, Ladder[pick].Height);
+    }
+}
+
+// ── link memory — the estimate remembered across launches (video stutter fix, 2026-09-22) ─────────────────────────────
+
+public class LinkMemoryTests
+{
+    [Fact]
+    public void Usable_rejects_nonfinite_and_out_of_range_values()
+    {
+        Assert.False(V.LinkMemory.Usable(double.NaN));
+        Assert.False(V.LinkMemory.Usable(double.PositiveInfinity));
+        Assert.False(V.LinkMemory.Usable(0));
+        Assert.False(V.LinkMemory.Usable(499));
+        Assert.True(V.LinkMemory.Usable(500));
+        Assert.True(V.LinkMemory.Usable(1_000_000));
+        Assert.False(V.LinkMemory.Usable(1_000_001));
+    }
+
+    [Fact]
+    public void Load_ignores_a_stored_value_outside_the_usable_range()
+    {
+        var settings = new MemoryAppSettings();
+        settings.Set(Platform.Keys.VideoLinkKbps, 42.0);
+        Assert.Equal(0, V.LinkMemory.Load(settings));
+
+        settings.Set(Platform.Keys.VideoLinkKbps, 3_500.0);
+        Assert.Equal(3_500, V.LinkMemory.Load(settings));
+    }
+
+    [Fact]
+    public void A_prior_is_never_persisted()
+        => Assert.False(V.LinkMemory.ShouldPersist(measured: false, kbps: 5_000, lastPersisted: 0, nowMs: 100_000, lastWriteMs: 0, force: false));
+
+    [Fact]
+    public void A_measurement_within_the_interval_waits()
+        => Assert.False(V.LinkMemory.ShouldPersist(measured: true, kbps: 5_000, lastPersisted: 4_000, nowMs: 10_000, lastWriteMs: 0, force: false));
+
+    [Fact]
+    public void A_measurement_that_climbed_a_quarter_after_the_interval_persists()
+    {
+        // +25 % clears the ratio gate.
+        Assert.True(V.LinkMemory.ShouldPersist(measured: true, kbps: 5_000, lastPersisted: 4_000, nowMs: 40_000, lastWriteMs: 0, force: false));
+        // +5 % does not.
+        Assert.False(V.LinkMemory.ShouldPersist(measured: true, kbps: 4_200, lastPersisted: 4_000, nowMs: 40_000, lastWriteMs: 0, force: false));
+    }
+
+    [Fact]
+    public void A_measurement_that_dropped_a_quarter_after_the_interval_persists()
+        => Assert.True(V.LinkMemory.ShouldPersist(measured: true, kbps: 3_000, lastPersisted: 4_000, nowMs: 40_000, lastWriteMs: 0, force: false));
+
+    [Fact]
+    public void Force_writes_any_change_and_nothing_else()
+    {
+        Assert.True(V.LinkMemory.ShouldPersist(measured: true, kbps: 4_100, lastPersisted: 4_000, nowMs: 1_000, lastWriteMs: 0, force: true));
+        Assert.False(V.LinkMemory.ShouldPersist(measured: true, kbps: 4_000, lastPersisted: 4_000, nowMs: 1_000, lastWriteMs: 0, force: true));
+    }
+}
+
 // ── the position clock (S7) ────────────────────────────────────────────────────────────────────────────────────────
 
 public class VideoPositionClockTests
@@ -614,8 +736,8 @@ public class VideoLogFormatTests
     {
         char[] buf = new char[V.VideoLog.MaxLineChars];
 
-        int n = V.VideoLog.Format(new V.VideoLog.SwitchBegin("spotify:video:abc", 83_000, V.SwitchAction.Switch, true, 7), buf);
-        Assert.Equal("[video] switch.begin key=spotify:video:abc from=83000ms plan=Switch warm=true epoch=7", new string(buf, 0, n));
+        int n = V.VideoLog.Format(new V.VideoLog.SwitchBegin("spotify:video:abc", 83_000, V.SwitchAction.Switch, V.SwitchReason.KeyChanged, true, 7), buf);
+        Assert.Equal("[video] switch.begin key=spotify:video:abc from=83000ms plan=Switch why=KeyChanged warm=true epoch=7", new string(buf, 0, n));
 
         n = V.VideoLog.Format(new V.VideoLog.FirstFrame("spotify:video:abc", 7, 284, 141, 83_000, 854, 480), buf);
         Assert.Equal("[video] first.frame key=spotify:video:abc epoch=7 sinceSwitchMs=284 sinceAttachMs=141 pos=83000ms natural=854x480",

@@ -174,6 +174,7 @@ public readonly partial struct Artist
 
             _ready = ArtistReadiness.Chart(Owner);
             _failed = !_ready && ChartFailedNow(scope);
+            NoteGate(scope);
             RefreshItems();
             Selection.ItemCount = _items.Length;
 
@@ -284,12 +285,76 @@ public readonly partial struct Artist
             if (!Owner.IsValid) return;
             var scope = Entities.Current;
             int slot = Owner.Slot;
+            // Evidence (2026-09-25): the Retry vacancy is a USER act that re-plans the whole chart — the owner's log could
+            // not tell a click from a timer. One always-on line per press, before the asks it causes.
+            if (Log.IsEnabled(WaveeLogLevel.Info))
+                Log.Event(WaveeLogLevel.Info, "ui", "ui.action", "", null, -1, null,
+                    WaveeLogField.Of("action", "chart.retry"),
+                    WaveeLogField.Of("artist", Owner.Uri.Text),
+                    WaveeLogField.Of("targets", scope.Edges.ArtistPopular.Targets(slot).Length),
+                    WaveeLogField.Of("state", _gateState.ToString()));
             Entities.RefreshEdge(FetchEdge.ArtistPopular, slot);
             Entities.Refresh(scope.Artists, new ReadOnlySpan<int>(in slot), (uint)ArtistFields.Chart);
             var popular = scope.Edges.ArtistPopular.Targets(slot);
             if (popular.Length > 0) Entities.Refresh(scope.Tracks, popular, (uint)(TrackFields.Row | TrackFields.Video));
             _deadline.Restart();
             _recheck.Value = _recheck.Peek() + 1;
+        }
+
+        // ── evidence: the gate's flips (2026-09-25) ──────────────────────────────────────────────────────────────────
+        //
+        // `artist.chart artist= state= prev= reason= index= slot= uri= missing= known= asked= inflight= targets= edge=
+        // chart=` — ONE line each time the chart's verdict (pending / ready / failed) CHANGES, naming the input that
+        // decided it (`ArtistReadiness.Explain`): which charted row, which of its groups are missing, and its asked /
+        // in-flight marks. It is the line that says "row 8682 is missing PlayCount, asked, nothing in flight ⇒ failed".
+        // A steady render writes nothing (one enum compare).
+
+        enum GateState : byte { None, Pending, Ready, Failed }
+        GateState _gateState;
+
+        void NoteGate(Scope scope)
+        {
+            GateState state = _ready ? GateState.Ready : _failed ? GateState.Failed : GateState.Pending;
+            if (state == _gateState) return;
+            GateState prev = _gateState;
+            _gateState = state;
+            if (!Owner.IsValid || !Log.IsEnabled(WaveeLogLevel.Info)) return;
+            int slot = Owner.Slot;
+            var edges = scope.Edges.ArtistPopular;
+            var tracks = scope.Tracks;
+            ReadOnlySpan<int> targets = edges.Targets(slot);
+            int n = targets.Length;
+            var known = new uint[n];
+            var asked = new uint[n];
+            var inflight = new uint[n];
+            for (int i = 0; i < n; i++)
+            {
+                int t = targets[i];
+                bool live = t > Table.None && t < tracks.Count;
+                known[i] = live ? tracks.Known[t] : 0u;
+                asked[i] = live ? tracks.Asked[t] : 0u;
+                inflight[i] = live ? tracks.Inflight[t] : 0u;
+            }
+            var trace = ArtistReadiness.Explain(Owner.Knows(ArtistFields.Chart), scope.Artists.Asked[slot], scope.Artists.Inflight[slot],
+                edges.State(slot), edges.Readiness(slot), known, asked, inflight);
+            int deciding = trace.Index >= 0 && trace.Index < n ? targets[trace.Index] : 0;
+            string uri = deciding > Table.None && deciding < tracks.Count ? new Track(deciding).Uri.Text : "-";
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            Log.Event(WaveeLogLevel.Info, "ui", "artist.chart", "", null, -1, null,
+                WaveeLogField.Of("artist", Owner.Uri.Text),
+                WaveeLogField.Of("state", state.ToString()),
+                WaveeLogField.Of("prev", prev.ToString()),
+                WaveeLogField.Of("reason", trace.Reason.ToString()),
+                WaveeLogField.Of("index", trace.Index),
+                WaveeLogField.Of("slot", deciding),
+                WaveeLogField.Of("uri", uri),
+                WaveeLogField.Of("missing", "0x" + trace.Missing.ToString("x", inv)),
+                WaveeLogField.Of("known", "0x" + trace.Known.ToString("x", inv)),
+                WaveeLogField.Of("asked", "0x" + trace.Asked.ToString("x", inv)),
+                WaveeLogField.Of("inflight", (long)trace.Inflight),
+                WaveeLogField.Of("targets", n),
+                WaveeLogField.Of("edge", edges.State(slot).ToString()),
+                WaveeLogField.Of("chart", Owner.Knows(ArtistFields.Chart)));
         }
 
         /// <summary>The deadline: re-read the marks (a failed batch publishes nothing, so nothing else would), and re-arm

@@ -53,8 +53,8 @@ Three pieces, three owners:
 
 | Piece | Lives in | What it is |
 |---|---|---|
-| **The SDK** | `src/apps/Wavee.Sdk/**` | The public contract: manifest + DTOs, the JSON-RPC framing/connection, `WaveeModule`, `ModuleRunner`, `ModuleTestHost`, `ModuleUri`, and the reusable byte-stream building blocks in `Wavee.Sdk.Streams`. **Zero project references** — not even `Wavee.Core`. It is the NuGet a third-party module consumes. |
-| **The host** | `src/apps/Wavee/Backend/Modules/**` | Discovery and manifest validation (`ModuleCatalog` → `InstalledModule` / `ModuleRejection`), the child process and its lifecycle (`ModuleProcess`, `ModuleProcessState`, `ModuleTimeouts`, `ChildProcessChannel` behind the `IModuleChannel`/`ModuleSpawn` test seam), the façade the app composes (`ModuleHost`), one `IPlayableMediaProvider` per module (`ModuleMediaProvider`), the sync answer cache (`ModulePlayableCache` / `ModulePlayables`), paste-URL routing (`ModuleRouter`, `ModuleCapabilities`), module-served bytes (`ModuleByteStream`), the module→host service handlers (`ModuleHostServices`, `IModuleSecretStore`) and per-module counters (`ModuleStats`). |
+| **The SDK** | `src/apps/Wavee.Sdk/**` | The public contract: manifest + DTOs, the JSON-RPC framing/connection, `WaveeModule`, `ModuleRunner`, `ModuleTestHost`, `ModuleUri`, and the reusable byte-stream building blocks in `Wavee.Sdk.Streams`. **Zero project references**. It is the NuGet a third-party module consumes. |
+| **The host** | `src/apps/Wavee/Platform/Modules.Host.cs`, `Modules.cs`, `Modules.UI.cs` | Discovery and manifest validation (`ModuleCatalog` → `InstalledModule` / `ModuleRejection`), the child process and its lifecycle (`ModuleProcess`, `ModuleProcessState`, `ModuleTimeouts`, `ChildProcessChannel` behind the `IModuleChannel`/`ModuleSpawn` test seam), the façade the app composes (`ModuleHost`), one `IPlayableMediaProvider` per module (`ModuleMediaProvider`), the sync answer cache (`ModulePlayableCache` / `ModulePlayables`), paste-URL routing (`ModuleRouter`, `ModuleCapabilities`), module-served bytes (`ModuleByteStream`), the module→host service handlers (`ModuleHostServices`, `IModuleSecretStore`) and per-module counters (`ModuleStats`). |
 | **The modules** | `src/apps/modules/Wavee.Module.{YouTube,Twitch,Radio}/**` | Three bundled first-party modules. Each is a `net10.0` `Exe` with `PublishAot=true`, references **only** `Wavee.Sdk`, and ships a `wavee-module.json` beside its entry point. |
 
 Two rules the composition enforces (see `docs/plans/wavee/architecture.md §4.3`):
@@ -579,12 +579,13 @@ script packs this repo's three modules and the playplay repo's Spotify module.
 |---|---|
 | The wire (a method, a DTO, framing) | `src/apps/Wavee.Sdk/Protocol/**` — and both sides at once; they share this code |
 | The author surface (`WaveeModule`, `IModuleHost`) | `src/apps/Wavee.Sdk/{WaveeModule,IModuleHost,ModuleRunner}.cs` |
-| The page document (a section kind, a budget) | `src/apps/Wavee.Sdk/ModulePage.cs` — and the app renderer in `src/apps/Wavee/Features/Modules/ModulePage.cs` |
-| Discovery / process lifecycle / routing | `src/apps/Wavee/Backend/Modules/**` |
+| The page document (a section kind, a budget) | `src/apps/Wavee.Sdk/ModulePage.cs` — and the app renderer in `src/apps/Wavee/Platform/Modules.UI.cs` |
+| Discovery / process lifecycle / routing / host services | `src/apps/Wavee/Platform/Modules.Host.cs` (+ the pure rules in `Platform/Modules.cs`) |
 | A bundled module's behaviour | `src/apps/modules/Wavee.Module.<Name>/**` (+ fixtures in `src/apps/Wavee.Tests/Modules/`) |
 | The dev copy layout | `CopyBundledModules` in `src/apps/Wavee/Wavee.csproj` |
 | The publish/MSIX layout | `ops/build/publish-wavee-modules.ps1` (called by `publish-wavee-aot.ps1` + `pack-wavee-msix.ps1`) |
-| The solution | `src/FluentGpu.slnx` (`/Apps/` folder) |
+| The solution | `Wavee.slnx` |
+| Trust, events, providers, pages v2 (planned) | `docs/plans/wavee/wavee-extension-platform-implementation.md` |
 
 ---
 
@@ -642,8 +643,12 @@ many publishers; third-party defaults to untrusted-confirmation, exactly the Pla
 
 ## 10. Spotify as a module
 
-Spotify playback is **designed for** by this system and moves out of this repo next, into the private playplay repo
-(`docs/guide/playplay-private-split.md`). This section is the plan of record.
+Spotify playback is **designed for** by this system.
+
+> **Superseded 2026-09-21** by `docs/plans/wavee/wavee-extension-platform-implementation.md` §11: the module is
+> **public** (`src/apps/modules/Wavee.Module.Spotify`) and only the key source is source-linked from the private
+> playplay repo; the cut line there is expressed in the 0.3 tree's types (`Spotify/Spotify.Audio*.cs`). The byte
+> flow and the host-services table below still hold; the component names in the cut-line table are the 0.2.9 ones.
 
 ### The cut line
 

@@ -12,6 +12,12 @@
          non-cancellable unit tests. TreatWarningsAsErrors stays inherited (true) — this is new code. -->
     <NoWarn>$(NoWarn);xUnit1051;CA1416</NoWarn>   <!-- CA1416: the tests run on Windows only; the OS bridge facts name WinRT enums -->
     <DefineConstants>$(DefineConstants);WAVEE_TESTS</DefineConstants>
+    <!-- Non-concurrent (blocking) gen2 GC — a MEASUREMENT fix for the zero-allocation facts that assert
+         GC.GetAllocatedBytesForCurrentThread() deltas == 0 (the app keeps background GC on via Directory.Build.props).
+         With background GC on, the counter over-reports up to ~8 KB when a background gen2 GC suspends the runtime
+         inside the measured window, so an allocation-free loop can read non-zero under load. Same override as the
+         engine's VerticalSlice harness and test projects. -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

@@ -196,7 +196,6 @@ public readonly partial struct Show
             else
             {
                 kids.Add(FilterWords(host, m));
-                kids.Add(new BoxEl { Grow = 1f, Shrink = 0f, MinWidth = Spacing.S });
                 kids.Add(stage == ToolbarStage.Full
                     ? FindField(m, fill: false)
                     : RailToggle(Icons.Search, Loc.Get(Strings.Podcast.Find), s_never, host.OpenFind, host.Tone));
@@ -219,14 +218,11 @@ public readonly partial struct Show
         }
     }
 
-    /// <summary>The filter words at their natural measure. The rail itself NEVER wraps (a second line would grow the
-    /// sticky plane, which is the list's mount-time clip inset), so the box around it shrinks and clips instead —
-    /// a window narrower than the ladder's last rung loses the tail of the counts, never the trailing controls.</summary>
-    static Element FilterWords(ReaderHost host, ReaderModel m) => new BoxEl
-    {
-        Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, AlignItems = FlexAlign.Center,
-        Children = [Controls.Words.Rail(host.FilterWords!, m.Status, host.Tone)],
-    };
+    /// <summary>The filter words as a `fill` rail: a horizontal-scroll viewport (never a wrap — a second line would grow
+    /// the sticky plane, which is the list's mount-time clip inset) that feathers instead of hard-clipping, and is
+    /// itself the row's flexible child — it takes whatever width the find box / sort words / select toggle leave it.</summary>
+    static Element FilterWords(ReaderHost host, ReaderModel m)
+        => Controls.Words.Rail(host.FilterWords!, m.Status, host.Tone, fill: true);
 
     /// <summary>The hairline between the find box and the sort words.</summary>
     static Element RailDivider() => new BoxEl

@@ -591,9 +591,7 @@ public sealed class StagedConcertEdgeList : StagedList
     public ref StagedConcertEdge Add()
     {
         if (Count == _edges.Length) Array.Resize(ref _edges, _edges.Length * 2);
-        ref var e = ref _edges[Count++];
-        e = default;
-        return ref e;
+        return ref FreshSlot.Of(_edges, Count++);
     }
 
     public ReadOnlySpan<StagedConcertEdge> Span => _edges.AsSpan(0, Count);
@@ -609,9 +607,7 @@ public sealed class StagedConcertEdgeList : StagedList
     public ref StagedConcertEdge Push()
     {
         if (_pendingCount == _pending.Length) Array.Resize(ref _pending, _pending.Length * 2);
-        ref var e = ref _pending[_pendingCount++];
-        e = default;
-        return ref e;
+        return ref FreshSlot.Of(_pending, _pendingCount++);
     }
 
     /// <summary>Abandon everything pushed since <paramref name="mark"/>.</summary>

@@ -1602,7 +1602,10 @@ public static partial class Playback
         EntityId context = takeover && !s.MirrorContext.IsEmpty ? s.MirrorContext : i.Context;
 
         long activeSince = s.Own.Kind == Owner.Us && s.StartedPlayingAtMs > 0 ? s.StartedPlayingAtMs : i.NowMs;
-        Ownership.Claim(ref s.Own, cause, ++s.PublishSeq, activeSince, i.NowMs, acknowledged: true);
+        Owner ownerBefore = s.Own.Kind;
+        OwnerFx claimFx = Ownership.Claim(ref s.Own, cause, ++s.PublishSeq, activeSince, i.NowMs, acknowledged: true);
+        Capture.Decision(CaptureKind.OwnershipTransition, inbound ? 0 : Capture.AmbientUiCauseId, claimFx,
+            ownerBefore, s.Own.Kind, reason: Capture.Enabled ? cause.ToString() : null);
         ReportEnd(ref s, ref fx, inbound ? PlayReason.Remote : PlayReason.ClickRow, s.Position(i.NowMs));
         if (!context.Equals(s.Context)) ResetRefill(ref s);
         s.Context = context;
@@ -1746,7 +1749,10 @@ public static partial class Playback
             if (takeover && !s.MirrorContext.IsEmpty) s.Context = s.MirrorContext;
 
             long activeSince = s.Own.Kind == Owner.Us && s.StartedPlayingAtMs > 0 ? s.StartedPlayingAtMs : i.NowMs;
-            Ownership.Claim(ref s.Own, ClaimCause.UserPlay, ++s.PublishSeq, activeSince, i.NowMs, acknowledged: true);
+            Owner resumeOwnerBefore = s.Own.Kind;
+            OwnerFx resumeClaimFx = Ownership.Claim(ref s.Own, ClaimCause.UserPlay, ++s.PublishSeq, activeSince, i.NowMs, acknowledged: true);
+            Capture.Decision(CaptureKind.OwnershipTransition, Capture.AmbientUiCauseId, resumeClaimFx,
+                resumeOwnerBefore, s.Own.Kind, reason: nameof(ClaimCause.UserPlay));
             s.StartedPlayingAtMs = activeSince;
             s.HasBeenPlayingForMs = 0;
 
@@ -1773,7 +1779,10 @@ public static partial class Playback
             if (takeover) fx.TakeoverSeed = true;
             return;
         }
-        Ownership.Claim(ref s.Own, ClaimCause.UserResume, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, acknowledged: true);
+        Owner resumeUserOwnerBefore = s.Own.Kind;
+        OwnerFx resumeUserClaimFx = Ownership.Claim(ref s.Own, ClaimCause.UserResume, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, acknowledged: true);
+        Capture.Decision(CaptureKind.OwnershipTransition, Capture.AmbientUiCauseId, resumeUserClaimFx,
+            resumeUserOwnerBefore, s.Own.Kind, reason: nameof(ClaimCause.UserResume));
         s.PosQpc = i.NowMs;
         s.Phase = Phase.Playing;
         Bump(ref s);
@@ -2041,6 +2050,10 @@ public static partial class Playback
     {
         Owner before = s.Own.Kind;
         OwnerFx owner = Ownership.Fold(ref s.Own, in i.Frame, s.Us);
+        // §3.3's ownership-transition row: the ONE cluster-apply call site. Remote-originated (a dealer push or the
+        // response to our own PUT) — causeId 0, per §2.2.
+        Capture.Decision(CaptureKind.OwnershipTransition, causeId: 0L, owner, before, s.Own.Kind,
+            reason: Capture.Enabled ? i.Frame.Origin.ToString() : null);
         bool dropped = (owner & OwnerFx.DropFrame) != 0;
         bool stop = (owner & OwnerFx.StopHost) != 0;
         bool changed = s.Own.Kind != before;
@@ -2186,6 +2199,12 @@ public static partial class Playback
 
         // A command is owed a correlated state even if its requested value already holds.
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+
+        // §3.3's "RemoteCmd switch in DoRemote" row: the case taken IS the decision — no separate verdict type. A
+        // remote command is its own root (causeId 0, per §2.2: "a remote-originated Input stamps CauseId = 0" — this
+        // plan does not thread a cause id through `RemoteCommand`, so this is deliberately not `Capture.AmbientUiCauseId`).
+        Capture.Decision(CaptureKind.RemoteRequest, causeId: 0, c.Kind, reason: Capture.Enabled ? c.MessageId.ToString() : null);
+        Owner ownerBeforeRemote = s.Own.Kind;
         switch (c.Kind)
         {
             case RemoteCmd.Play:
@@ -2193,15 +2212,18 @@ public static partial class Playback
                 // An inbound play/transfer IS a claim: the controller addressed US, so we own playback from this
                 // Step, before any cluster confirms it. The host resolves what it asks for (`RemoteLoadArrived`) and
                 // folds the real Play with the inbound cause.
-                Ownership.Claim(ref s.Own,
-                    c.Kind == RemoteCmd.Transfer ? ClaimCause.InboundTransfer : ClaimCause.InboundPlay,
-                    ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
+                ClaimCause loadCause = c.Kind == RemoteCmd.Transfer ? ClaimCause.InboundTransfer : ClaimCause.InboundPlay;
+                OwnerFx loadClaimFx = Ownership.Claim(ref s.Own,
+                    loadCause, ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
+                Capture.Decision(CaptureKind.OwnershipTransition, 0L, loadClaimFx, ownerBeforeRemote, s.Own.Kind, Capture.Enabled ? loadCause.ToString() : null);
                 Bump(ref s);
                 Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
                 break;
 
             case RemoteCmd.Resume:
-                Ownership.Claim(ref s.Own, ClaimCause.InboundResume, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                OwnerFx resumeRemoteClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundResume, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                Capture.Decision(CaptureKind.OwnershipTransition, 0L, resumeRemoteClaimFx,
+                    ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundResume));
                 DoResume(ref s, in i, ref fx);
                 break;
 
@@ -2210,12 +2232,16 @@ public static partial class Playback
                 break;
 
             case RemoteCmd.SkipNext:
-                Ownership.Claim(ref s.Own, ClaimCause.InboundSkip, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                OwnerFx skipNextClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundSkip, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                Capture.Decision(CaptureKind.OwnershipTransition, 0L, skipNextClaimFx,
+                    ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundSkip));
                 Advance(ref s, in i, ref fx, forward: true, PlayReason.Remote);
                 break;
 
             case RemoteCmd.SkipPrev:
-                Ownership.Claim(ref s.Own, ClaimCause.InboundSkip, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                OwnerFx skipPrevClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundSkip, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                Capture.Decision(CaptureKind.OwnershipTransition, 0L, skipPrevClaimFx,
+                    ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundSkip));
                 Advance(ref s, in i, ref fx, forward: false, PlayReason.Remote);
                 break;
 
@@ -2258,7 +2284,9 @@ public static partial class Playback
             // A controller that queues onto us has addressed us: the claim is ours, and the write is the host's
             // (`Queue.Enqueue`, G-074) — whose version bump re-arms the next row on the following drain.
             case RemoteCmd.AddToQueue:
-                Ownership.Claim(ref s.Own, ClaimCause.InboundQueueStart, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                OwnerFx addQueueClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundQueueStart, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                Capture.Decision(CaptureKind.OwnershipTransition, 0L, addQueueClaimFx,
+                    ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundQueueStart));
                 if (!c.Track.IsEmpty) { fx.QueueAdd = true; fx.QueueAddId = c.Track; }
                 Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
                 break;
@@ -2269,7 +2297,9 @@ public static partial class Playback
             // queue. set_options never reaches here: the glue folds it to the shuffle / repeat verbs above.
             case RemoteCmd.SetQueue:
             case RemoteCmd.UpdateContext:
-                Ownership.Claim(ref s.Own, ClaimCause.InboundQueueStart, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                OwnerFx setQueueClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundQueueStart, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
+                Capture.Decision(CaptureKind.OwnershipTransition, 0L, setQueueClaimFx,
+                    ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundQueueStart));
                 Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
                 break;
 
@@ -2283,7 +2313,10 @@ public static partial class Playback
     {
         ulong target = (ulong)i.LongArg;
         if (target == 0 || target == s.Us) return;       // self-to-self is a 400; the caller must not ask
-        Ownership.Release(ref s.Own, ReleaseCause.TransferAway);
+        Owner transferOwnerBefore = s.Own.Kind;
+        OwnerFx transferReleaseFx = Ownership.Release(ref s.Own, ReleaseCause.TransferAway);
+        Capture.Decision(CaptureKind.OwnershipTransition, Capture.AmbientUiCauseId, transferReleaseFx,
+            transferOwnerBefore, s.Own.Kind, nameof(ReleaseCause.TransferAway));
         s.StreamFormat = StringId.Empty;
         Bump(ref s);
         LoseHost(ref s, in i, ref fx, StopReason.Released, PlayReason.Remote);
@@ -2312,14 +2345,21 @@ public static partial class Playback
     static void DoVerdict(ref State s, in Input i)
     {
         if (i.LongArg != 0) return;                      // accepted: the response cluster is the judge
-        if (Ownership.PutFailed(ref s.Own, (uint)i.IntArg) != OwnerFx.None) Bump(ref s);
+        Owner verdictOwnerBefore = s.Own.Kind;
+        OwnerFx verdictFx = Ownership.PutFailed(ref s.Own, (uint)i.IntArg);
+        Capture.Decision(CaptureKind.OwnershipTransition, causeId: 0L, verdictFx, verdictOwnerBefore, s.Own.Kind,
+            reason: "PutFailed");
+        if (verdictFx != OwnerFx.None) Bump(ref s);
     }
 
     static void DoDeviceLost(ref State s, ref Effects fx)
     {
         if (s.Own.Kind != Owner.Foreign) return;
         var frame = new ClusterFrame(ClusterOrigin.Push, 0, 0, s.Own.LastServerTs);
-        Ownership.Fold(ref s.Own, in frame, s.Us);       // F5: Foreign → Nobody(FromForeign), snapshot kept
+        Owner deviceLostOwnerBefore = s.Own.Kind;
+        OwnerFx deviceLostFx = Ownership.Fold(ref s.Own, in frame, s.Us);       // F5: Foreign → Nobody(FromForeign), snapshot kept
+        Capture.Decision(CaptureKind.OwnershipTransition, causeId: 0L, deviceLostFx,
+            deviceLostOwnerBefore, s.Own.Kind, reason: "DeviceLost");
         s.ActiveDeviceSlot = -1;
         Bump(ref s);
         fx.Smtc = true;
@@ -2330,7 +2370,10 @@ public static partial class Playback
     {
         var cause = (ReleaseCause)i.IntArg;
         bool wasUs = s.Own.Kind == Owner.Us;
+        Owner releaseOwnerBefore = s.Own.Kind;
         OwnerFx owner = Ownership.Release(ref s.Own, cause);
+        Capture.Decision(CaptureKind.OwnershipTransition, Capture.AmbientUiCauseId, owner,
+            releaseOwnerBefore, s.Own.Kind, reason: Capture.Enabled ? cause.ToString() : null);
         if (cause == ReleaseCause.Logout) { SignOut(ref s, in i, ref fx, wasUs); return; }
         if (owner == OwnerFx.None) return;
         if ((owner & OwnerFx.StopHost) != 0)
@@ -2443,7 +2486,11 @@ public static partial class Playback
             s.PosQpc = i.NowMs;
             fx.SmtcTimeline = true;
         }
+        Owner tickOwnerBefore = s.Own.Kind;
         OwnerFx owner = Ownership.Tick(ref s.Own, i.NowMs);
+        if (owner != OwnerFx.None)
+            Capture.Decision(CaptureKind.OwnershipTransition, causeId: 0L, owner, tickOwnerBefore, s.Own.Kind,
+                reason: "ClaimExpiry");
         if ((owner & OwnerFx.StopHost) == 0) return;
         Bump(ref s);
         LoseHost(ref s, in i, ref fx, StopReason.LostOwnership, PlayReason.Remote);

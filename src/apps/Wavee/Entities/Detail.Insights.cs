@@ -366,7 +366,8 @@ public static partial class Detail
     //     at rest the band is fully transparent, and once stuck the hero is gone. What overlaps is a crossfade, which
     //     is the handoff, not two buttons competing for the same glance;
     //   · INPUT is exclusive by construction and follows the pin, not the paint: the band takes hits only once its
-    //     chrome is stuck (`TableHost._onStuck` → `CompactInteractive` → the band's HitTestVisible) and the hero's
+    //     chrome is stuck (the chrome sticky's engaged edge → `TableHost._compactInteractive` → the band's HitTestVisible)
+    //     and the hero's
     //     presentation stops taking them at the same edge. InsightsSheet.BandToggleTakesInput / HeroToggleTakesInput
     //     state that invariant, and DetailInsightsSheetTests pins it: at every scroll position EXACTLY ONE of the two
     //     is reachable. Dropping the hero one would therefore leave the whole pre-stuck range — the top of the page,

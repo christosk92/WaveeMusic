@@ -591,7 +591,11 @@ public readonly partial struct Playlist
                 string name = NameOf(owner);
                 lead = new BoxEl
                 {
-                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    // Grow/Basis 0 is load-bearing: the name below is Basis 0, and a row with a finite width measures a
+                    // Basis-0 child at exactly 0 (FlexLayout's intrinsic-suppression rule). Without its own grow this
+                    // run was measured 24 + gap + 0 and arranged at that width — the avatar painted, the name got 0 DIP
+                    // and ellipsised to nothing. The pile arm stays content-sized, so the invite pill still keeps its x.
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f, MinWidth = 0f,
                     Children =
                     [
                         PersonPicture.Create("", 24f, displayName: name, imageSourcePath: Controls.ArtUrl(owner.ImageId)),

@@ -70,6 +70,8 @@ public static partial class Settings
             // tray plan §8: between Links and Graphics
             new(Tab.General, "Notification area", "ThisPc"),
             new(Tab.General, "Graphics", "Devices"),
+            // crash-diagnostics-implementation.md §D/§F "E · In-app UI": between Graphics and Developer.
+            new(Tab.General, "Privacy & diagnostics", "Info"),
             new(Tab.General, "Developer", "Code"),
 
             new(Tab.Appearance, "Theme", "Brush"),
@@ -101,9 +103,20 @@ public static partial class Settings
             new(Tab.General, "Notification area", "startOnLogin", "Contact"),
             // "Device" (singular), not "Devices": the section owns the plural.
             new(Tab.General, "Graphics", "preferredGpu", "Device"),
+            // crash-diagnostics-implementation.md §D/§J — Crash.PrivacyRows (Screens/Crash.UI.cs) renders these six;
+            // this table exists so the section's row/glyph invariants stay one fact (SettingsCatalogTests).
+            new(Tab.General, "Privacy & diagnostics", "crashMode", "StatusWarning"),
+            new(Tab.General, "Privacy & diagnostics", "crashDump", "Camera"),
+            new(Tab.General, "Privacy & diagnostics", "crashQueue", "Forward"),
+            new(Tab.General, "Privacy & diagnostics", "crashSaved", "Folder"),
+            new(Tab.General, "Privacy & diagnostics", "crashPrivacy", "OpenInNewWindow"),
+            new(Tab.General, "Privacy & diagnostics", "crashErase", "Delete"),
             new(Tab.General, "Developer", "developerMode", "Settings"),
             new(Tab.General, "Developer", "fpsOverlay", "Clock"),
             new(Tab.General, "Developer", "dealerArchive", "Document"),
+            // realtime-capture-implementation.md unit 6: the two doors beside the toggle itself.
+            new(Tab.General, "Developer", "openCaptureFolder", "FolderOpen"),
+            new(Tab.General, "Developer", "openCaptureViewer", "Devices"),
             new(Tab.General, "Developer", "simulateUpdate", "Refresh", DeveloperOnly: true),
 
             new(Tab.Appearance, "Theme", "theme", "Sun"),

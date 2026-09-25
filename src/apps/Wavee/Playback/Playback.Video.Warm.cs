@@ -21,11 +21,13 @@
 // keeps the native runtime alive: `ProtectedVideoRuntime.EnsureLicense` brings the runtime up when it is down and
 // hands its reference straight back, so the engine's own 30 s warm-idle window is what finally sheds it.
 //
-// D15 ("runtime never idle while placement ≠ None, 30 s after off"), honestly. There is no PUBLIC way for the app to
-// hold a reference on the native runtime — `Acquire`/`Release` are the engine's own — so the first half is kept as
-// "never idle for longer than one beat": a runtime that shed is recreated by the next `WarmPolicy.HeartbeatMs` tick,
-// on an api thread and off the user's switch. The second half is exact: when the surface closes the beat stops, the
-// keeper drops the prepared session and the KIDs it was holding, and nothing in the app extends the engine's window.
+// D15 ("runtime never idle while placement ≠ None, 30 s after off"), exactly. The keeper holds ONE
+// `ProtectedVideoRuntime.TakeKeepAlive()` token for as long as it beats: the engine's warm-idle destroy is refcounted,
+// so while the token is held the runtime — and the KID license cache that lives and dies with it — cannot shed. Without
+// it (measured, sid=db4da393) a track that had been badge-prefetched 30 s earlier paid the whole challenge again at the
+// switch (`license.acquire … cached=false`, 632 ms of the 966 ms to the first frame): the beat re-acquired keys into a
+// cache the idle timer had just wiped. The second half is exact too: `Shed` disposes the token, and from then on the
+// engine's own window is the only thing keeping the runtime alive.
 //
 // AUDIO ALWAYS WINS (§3.1.4). The beat never touches the api pool while a track is opening
 // (`Playback.PhaseSignal == Loading`), and it queues at most ONE warm item at a time — a licence POST can never be
@@ -63,6 +65,10 @@ public static partial class Playback
         // hand costs two dictionary probes and queues nothing at all.
         static EntityId s_warmCurrentId, s_warmNextId;
         static string s_warmCurrentKid = "", s_warmNextKid = "";
+        // The runtime reference the beat holds (D15's first half). Taken on the first beat that finds nothing to shed,
+        // disposed by Shed. Null while the native component is missing (StartupError says why) — the beat then keeps
+        // re-trying, which is also what recreates a runtime the user's OS killed.
+        static IDisposable? s_warmKeepAlive;
 
         /// <summary>UI THREAD (`Video.HostObserver`). Tell the keeper what to hold warm. Idempotent — a request equal to
         /// the live one leaves the beat exactly as it is, which matters because this runs off a signal effect.</summary>
@@ -131,6 +137,7 @@ public static partial class Playback
                 if (offAt == 0 || WarmPolicy.Sheds(r.VideoOn, prepareAhead, FrameNowMs() - offAt)) Shed(offAt > 0);
                 return;
             }
+            HoldRuntime();
             if (Volatile.Read(ref s_warmBusy) != 0) return;            // one warm item in the api pool, ever
             bool current = WarmPolicy.Acquires(r.VideoOn, prepareAhead, r.AudioBusy, !NeedsKey(r.Current, knownCurrent, currentKid));
             bool next = WarmPolicy.Acquires(r.VideoOn, prepareAhead, r.AudioBusy, !NeedsKey(r.Next, knownNext, nextKid));
@@ -190,20 +197,36 @@ public static partial class Playback
             return source.DrmDescriptor!.DefaultKid ?? "";
         }
 
-        /// <summary>D15's second half. The beat stops, the prepared session the keeper may still be holding is disposed
-        /// and the KID memory is dropped: from here the native runtime's own warm-idle window is the only thing keeping
-        /// it alive, and nothing in the app is extending it.</summary>
+        /// <summary>D15's first half: while the beat runs, the keeper holds the native runtime's reference so the
+        /// engine's warm-idle destroy — and the license-cache wipe that comes with it — cannot fire between beats.
+        /// Idempotent; a failed native bring-up leaves it null and the next beat tries again.</summary>
+        static void HoldRuntime()
+        {
+            lock (s_warmGate)
+            {
+                if (s_warmKeepAlive is not null) return;
+                s_warmKeepAlive = ProtectedVideoRuntime.Shared.TakeKeepAlive();
+                if (s_warmKeepAlive is not null) Log.Info("video", "[video] warm.hold runtime keep-alive taken");
+            }
+        }
+
+        /// <summary>D15's second half. The beat stops, the prepared session the keeper may still be holding is disposed,
+        /// the KID memory is dropped and the runtime reference is let go: from here the native runtime's own warm-idle
+        /// window is the only thing keeping it alive, and nothing in the app is extending it.</summary>
         static void Shed(bool wasWarm)
         {
             StopWarmTimer();
             CondemnPreparing();
             ReleasePrepared(keepKey: null);
+            IDisposable? keepAlive;
             lock (s_warmGate)
             {
                 s_warmOffAtMs = 0;
                 s_warmCurrentId = default; s_warmCurrentKid = "";
                 s_warmNextId = default; s_warmNextKid = "";
+                keepAlive = s_warmKeepAlive; s_warmKeepAlive = null;
             }
+            keepAlive?.Dispose();   // outside the gate: Release may run the idle timer's bookkeeping
             if (wasWarm) Log.Info("video", "[video] warm.shed afterMs=" + WarmPolicy.ShedMs);
         }
     }

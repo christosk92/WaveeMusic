@@ -34,12 +34,40 @@ public class VideoJoinVisualTests
     public void A_bound_player_is_the_picture_and_the_app_draws_nothing_over_it()
     {
         // ch 24 §9 "must not be simplified": a live stage shows the stage ALONE — the engine element is the one
-        // loading affordance, and stacking the app's overlay on it produced two spinners at once.
+        // loading affordance, and stacking the app's overlay on it produced two spinners at once. Only once FRAMED,
+        // though: a bound-but-unframed player used to read as `Video` too, which dropped the poster ~1s before the
+        // first frame actually landed and showed a blank/stale stage under the "video" label.
         foreach (var phase in EveryLoadingPhase)
         {
-            Assert.Equal(JoinVisual.Video, Joining.Decide(new JoinState(phase, true, true, false), 0));
-            Assert.Equal(JoinVisual.Video, Joining.Decide(new JoinState(phase, true, true, false), 60_000));
+            Assert.Equal(JoinVisual.Video, Joining.Decide(new JoinState(phase, true, true, true), 0));
+            Assert.Equal(JoinVisual.Video, Joining.Decide(new JoinState(phase, true, true, true), 60_000));
         }
+    }
+
+    [Fact]
+    public void A_bound_but_unframed_player_is_still_the_poster_until_the_first_frame_lands()
+    {
+        // The regression this item fixes: `ShouldMountPlayerStage` (player-bound) alone used to short-circuit to
+        // `Video` before `FrameSeen`. Now a player-bound-but-unframed join falls through to the SAME
+        // IsJoining/ShowsSpinner budget as the no-player case — poster under the budget, the ring past it — for the
+        // four phases the join actually spans.
+        foreach (var phase in new[] { Phase.Resolving, Phase.Licensing, Phase.Buffering, Phase.Attaching })
+        {
+            var s = new JoinState(phase, PlayerPresent: true, Wanted: true, FrameSeen: false);
+            Assert.Equal(JoinVisual.Poster, Joining.Decide(s, Joining.SpinnerDelayMs - 1));
+            Assert.Equal(JoinVisual.Working, Joining.Decide(s, Joining.SpinnerDelayMs));
+            Assert.NotEqual(JoinVisual.Video, Joining.Decide(s, 60_000));
+        }
+    }
+
+    [Fact]
+    public void The_first_frame_flips_the_same_state_straight_to_video()
+    {
+        // The only difference between "still loading" and "onscreen" is `FrameSeen` — same phase, same elapsed clock.
+        var unframed = new JoinState(Phase.Attaching, PlayerPresent: true, Wanted: true, FrameSeen: false);
+        var framed = unframed with { FrameSeen = true };
+        Assert.NotEqual(JoinVisual.Video, Joining.Decide(unframed, 0));
+        Assert.Equal(JoinVisual.Video, Joining.Decide(framed, 0));
     }
 
     [Fact]

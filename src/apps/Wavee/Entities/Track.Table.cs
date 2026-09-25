@@ -38,6 +38,8 @@ using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
+using FluentGpu.Scroll.Effects;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -401,7 +403,6 @@ public readonly partial struct Track
     {
         /// <summary>The ceiling for "Play next" / "Add to queue" on the whole context (0.2.9 DetailQueueActions.MaxBatch).</summary>
         const int MaxQueueBatch = 50;
-        const int Overscan = 8;
         const int ReDealReversalMs = 200;
         const int ReDealRows = 24;
 
@@ -453,18 +454,20 @@ public readonly partial struct Track
 
         // ── the vertical arm ───────────────────────────────────────────────────────────────────────────────────────
         readonly Signal<float> _heroH = new(0f);
+        // The chrome sticky's ENGAGED edge (`Sticky(… engaged:)` — the engine writes it on its flip, before the frame
+        // publishes): the compact band's input hand-off. (The body clip's feather is the clip's own composite-time
+        // parameter, EdgeFadeSpec.WhileStuck — no engaged signal, no re-render; RCA 2026-09-25 F(ii).)
         readonly Signal<bool> _compactInteractive = new(false);
-        readonly Signal<bool> _bodyClipEngaged = new(false);
         readonly Signal<bool> _verticalFacts = new(false);
         readonly Signal<int> _verticalItemCount = new(Detail.VerticalLayout.ItemCount(0, false));
 
         // ── selection · list controller · counts ───────────────────────────────────────────────────────────────────
         readonly SelectionModel _selection = new();
         readonly ItemsViewController _listCtl = new();
-        /// <summary>The list viewport's <see cref="IScrollController"/> seam — the target the column header names in its
-        /// <c>WheelTarget</c>, so a wheel over the header (laid out ABOVE the list, outside its viewport) glides the rows
-        /// exactly as a wheel over them would.</summary>
-        readonly AnnotatedScrollBarController _wheelCtl = new();
+        /// <summary>The list viewport's scroll handle — also the target the column header names in its <c>WheelTarget</c>,
+        /// so a wheel over the header (laid out ABOVE the list, outside its viewport) glides the rows exactly as a wheel
+        /// over them would.</summary>
+        readonly ScrollHandle _listScroll = new();
         readonly Signal<int> _visible = new(0);
         readonly Signal<int> _listCount = new(0);
         readonly Signal<string> _expanded = new("");   // MembershipDiff.RowKey of the ONE open drawer, "" = none
@@ -510,7 +513,6 @@ public readonly partial struct Track
         // ── cached delegates (mount-stable; list options freeze at mount and must read live state) ─────────────────
         readonly Action<RectF> _onBounds;
         readonly Action<float> _onHeroMeasured;
-        readonly Action<bool> _onStuck, _onBodyClip;
         readonly Action _playAll, _shuffle;
         Detail.VerticalSpec? _heroSpecFrom, _heroSpec;
         readonly Func<bool> _checksRead, _rampActiveRead, _false = static () => false;
@@ -522,8 +524,6 @@ public readonly partial struct Track
         {
             _onBounds = OnColumnBounds;
             _onHeroMeasured = h => { if (h > 1f && MathF.Abs(_heroH.Peek() - h) > 1f) _heroH.Value = h; };
-            _onStuck = pinned => { if (_compactInteractive.Peek() != pinned) _compactInteractive.Value = pinned; };
-            _onBodyClip = engaged => { if (_bodyClipEngaged.Peek() != engaged) _bodyClipEngaged.Value = engaged; };
             _playAll = () => StartVisible(0);
             _shuffle = Shuffle;
             _checksRead = () => _checksVisible?.Value ?? false;
@@ -899,6 +899,7 @@ public readonly partial struct Track
             var args = _args.Value!;
             _overlay = UseContext(Overlay.Service);
             _hooks = UseContext(InputHooks.Current);
+            _scrollScope = UseContext(Shell.PageScrollScope);
             _post = UsePost();
 
             _snapshot = UseComputed(ComputeSnapshot);
@@ -1033,9 +1034,12 @@ public readonly partial struct Track
             string filterKey = vertical ? "" : ":q" + HashCode.Combine(snap.Query, snap.Filters).ToString(System.Globalization.CultureInfo.InvariantCulture);
             string listKey = "list:" + args.ScrollKey + ":" + (vertical ? "vh:" : "") + "d" + shape.Density
                              + (shape.Set.Classic ? ":classic" : ":modern") + filterKey + ":r" + _resetEpoch + (recsCapable ? ":rec" : "");
+            // The list's box names the hero arm's sticky SCOPE: the prefix items pin inside the list's viewport, and a scope
+            // that encloses the whole scroller releases only at the content's end (see VerticalList).
             Element listKeyed = new BoxEl
             {
                 Key = listKey, Grow = trailing ? 0f : 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Children = [region],
+                ScrollScope = vertical && !trailing ? TableScope : null,
             };
 
             Element body = trailing ? TrailingBody(listKeyed, vertical, stickyInset, in shape, chips, lens) : listKeyed;
@@ -1044,13 +1048,12 @@ public readonly partial struct Track
                 Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f,
                 OnBoundsChanged = _onBounds,
                 // The two-column chrome (toolbar · chips · lens · column header) sits ABOVE the list, outside its
-                // viewport, so a wheel over it reached nothing; it names the list as its wheel target and the notch
-                // glides the rows. In the album (trailing) arm the OUTER ScrollView owns scrolling and exposes no
-                // IScrollController seam, so there is no target to name yet. The hero arm's chrome is item 1 of the
-                // list itself and needs none.
+                // viewport, so a wheel over it reached nothing; it names the list's scroll handle as its wheel target and
+                // the notch glides the rows. In the album (trailing) arm the OUTER ScrollView owns scrolling, not the
+                // list, so the header names nothing. The hero arm's chrome is item 1 of the list itself and needs none.
                 Children = vertical
                     ? [body]
-                    : [Chrome(in shape, chips, lens) with { WheelTarget = trailing ? null : _wheelCtl }, body],
+                    : [Chrome(in shape, chips, lens) with { WheelTarget = trailing ? null : _listScroll }, body],
             };
 
             // The per-frame reveal clock, mounted ONLY while a ramp is in flight so the frame loop quiesces after it; a
@@ -1144,7 +1147,10 @@ public readonly partial struct Track
 
         // ══ 4. THE LIST ARMS ═════════════════════════════════════════════════════════════════════════════════════════
 
-        string ListScrollKey => _latest.ScrollKey + ":r" + _resetEpoch;
+        /// <summary>The page's scroll scope (<see cref="Shell.PageScrollScope"/> — the tab), composed onto every restore key.</summary>
+        string _scrollScope = "";
+
+        string ListScrollKey => _scrollScope + _latest.ScrollKey + ":r" + _resetEpoch;
 
         Element FlatList(RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(_rowItems!,
@@ -1157,12 +1163,11 @@ public readonly partial struct Track
                     IsItemInvokedEnabled = true,
                     OnInvokedTyped = (i, _) => PlayRow(i),
                     ContentType = i => (int)RowKindAt(i),
-                    Overscan = Overscan,
                     Grow = trailing ? 0f : 1f,
                     Controller = _listCtl,
                     // Alpha-mask edge fade: the page floats over a tone plane with no opaque plate. Nested in the album
                     // trailing scroller, the OUTER ScrollView owns scrolling and its cue.
-                    Scroll = new ScrollOptions { AutoEdgeFade = !trailing, ScrollKey = ListScrollKey, VerticalScrollController = _wheelCtl },
+                    Scroll = new ScrollOptions { AutoEdgeFade = !trailing, ScrollKey = ListScrollKey, Handle = _listScroll },
                     Reorder = new ReorderOptions { DisplacementVersion = _dispVer },
                     Insertion = Insertion(),
                     Entrance = new EntranceOptions { ItemFlipFrom = _flipFrom, ItemFadeFrom = _fadeFrom },
@@ -1181,49 +1186,33 @@ public readonly partial struct Track
                     IsItemInvokedEnabled = true,
                     OnInvoked = i => { if (_rowItems!.TryPeek(i, out _)) PlayRow(i); },
                     IsItemEnabled = i => _rowItems!.TryPeek(i, out _),
-                    Overscan = Overscan,
                     Grow = trailing ? 0f : 1f,
                     Controller = _listCtl,
                     CountSignal = _listCount,
-                    Scroll = new ScrollOptions { AutoEdgeFade = !trailing, ScrollKey = ListScrollKey, VerticalScrollController = _wheelCtl },
+                    Scroll = new ScrollOptions { AutoEdgeFade = !trailing, ScrollKey = ListScrollKey, Handle = _listScroll },
                     Reorder = new ReorderOptions { DisplacementVersion = _dispVer },
                     Insertion = Insertion(),
                     Entrance = new EntranceOptions { ItemFlipFrom = _flipFrom, ItemFadeFrom = _fadeFrom },
                 });
 
-        /// <summary>Playlist/Liked hero system: a HARD viewport whose items 0 and 1 are the hero (collapsing into the 56-DIP
+        /// <summary>The sticky scope of the hero arm's list (named on the list's own box, which encloses the scroller: a
+        /// pin clamped to it releases only at the content's end).</summary>
+        const string TableScope = "track-table";
+
+        /// <summary>The album arm's sticky scopes: the scroller's content column (the hero pins across all of it) and the
+        /// table block (chrome + rows — the chrome releases at the last row, never over the trailing shelves).</summary>
+        const string TrailScope = "track-table:trail", TableBlockScope = "track-table:block";
+
+        /// <summary>Playlist/Liked hero system: a HARD viewport whose items 0 and 1 are the hero (pinned under the 56-DIP
         /// band) and the chrome (sticky at 56), kept mounted; the recyclable suffix is clipped by ONE shared band at the sticky
-        /// inset with a 24-DIP feather, and no stock scroll-edge cue (ch 03 §0.16).
-        /// <para>THE PIN LIVES ON A RAW WRAPPER, NOT ON THE ITEM COMPONENT. Every slot's content is a
-        /// <see cref="TableVerticalItem"/>, and a component anchor MIRRORS its rendered child's size
-        /// (<c>Reconciler.MirrorParticipation</c>) while <c>ScrollBindEval.ApplyPin</c> clamps a pin to its IMMEDIATE
-        /// parent (<c>limit = parent.H − node.H</c>) — a bind on the component's rendered root therefore gets
-        /// <c>limit == 0</c> and never pins. So the two persistent prefix slots get a RAW <see cref="BoxEl"/> wrapper
-        /// that carries the bind, chosen ONCE per slot from <c>scope.Index.Peek()</c> (slots 0/1 never recycle —
-        /// <see cref="ListOptions.PersistentPrefixCount"/>); every other slot stays the bare component.</para></summary>
+        /// inset with a 24-DIP feather, and no stock scroll-edge cue (ch 03 §0.16). The two prefix items pin from their
+        /// component's own rendered root (<see cref="HeroItem"/>, <see cref="ChromeItem"/>) against the declared
+        /// <see cref="TableScope"/> — a named scope, so no raw wrapper is needed around the item component.</summary>
         Element VerticalList(int visible, RepeatLayout layout, float stickyInset, bool facts, bool narrate)
         {
             int prefix = Detail.VerticalLayout.PrefixCount;
             return ItemsView.CreateBound(Detail.VerticalLayout.ItemCount(visible, facts),
-                scope =>
-                {
-                    Element content = Embed.Comp(() => new TableVerticalItem(this, scope, narrate));
-                    int initial = scope.Index.Peek();
-                    if (initial > 1) return content;
-                    // Item 0 — the hero's PIN. Its companion PresentedH row stays on the item's own root
-                    // (TableVerticalItem → HeroItem), which re-bakes when the measured hero height settles; a child clip
-                    // rides with this wrapper's pin translation, so the two halves of the old `.Collapse` read identically
-                    // split across wrapper and inner. Item 1 — the chrome's sticky at the compact band, whose `_onStuck`
-                    // edge is the input handoff the hero reads.
-                    return new BoxEl
-                    {
-                        Key = initial == 0 ? "vitem:hero" : "vitem:chrome",
-                        Direction = 1, MinWidth = 0f, Children = [content],
-                        ScrollBinds = initial == 0
-                            ? [new ScrollBindDsl { PinTop = 0f }]
-                            : [new ScrollBindDsl { PinTop = Detail.VerticalLayout.CompactIdentityHeight, OnFlag = _onStuck }],
-                    };
-                },
+                scope => Embed.Comp(() => new TableVerticalItem(this, scope, narrate)),
                 layout,
                 new ListOptions
                 {
@@ -1240,7 +1229,6 @@ public readonly partial struct Track
                     ItemText = i => _rowItems!.TryPeek(i, out var t, prefix) ? t.Title : "",
                     IsItemEnabled = i => _rowItems!.TryPeek(i, out _, prefix),
                     ContentType = i => i < prefix ? -1 - i : (int)RowKindAt(i - prefix),
-                    Overscan = Overscan,
                     PersistentPrefixCount = prefix,
                     Grow = 1f,
                     Controller = _listCtl,
@@ -1259,15 +1247,12 @@ public readonly partial struct Track
                 });
         }
 
-        /// <summary>Album/single (HasTrailing): one outer scroller. In the hero arm the hero is the first child; the
-        /// chrome no longer shares the WHOLE page column as its sticky containing block (that pinned it past the last
-        /// row, over the trailing shelves — the engine's sticky/clip binds clamp to the IMMEDIATE PARENT's bounds,
-        /// <c>ScrollBindEval.cs:214-233</c>, and the DSL has no range-end, so the containing block IS the release rule).
-        /// <c>tableBlock</c> wraps the chrome and the rows as ONE box whose height ends with the last row, so
-        /// <see cref="ChromeRoot"/>'s <c>.Sticky</c> releases there; the trailing shelves sit AFTER it, in their own
-        /// block, clipped at the same compact-band line so nothing shows through it while still riding under the band.
-        /// Both wrappers stay RAW <see cref="BoxEl"/>s — a component anchor mirrors its child's height (limit 0, never
-        /// pins; see Artist.Reader.cs:364-372 for the same rule).</summary>
+        /// <summary>Album/single (HasTrailing): one outer scroller. In the hero arm the hero is the first child and pins
+        /// across the whole content column (<see cref="TrailScope"/>); the chrome's sticky scope is
+        /// <see cref="TableBlockScope"/> — <c>tableBlock</c> holds the chrome and the rows as ONE box whose height ends
+        /// with the last row, so the chrome releases there instead of pinning over the trailing shelves. The trailing
+        /// shelves sit AFTER it, in their own block, clipped at the same compact-band line so nothing shows through it
+        /// while still riding under the band.</summary>
         Element TrailingBody(Element listKeyed, bool vertical, float stickyInset, in Shape shape, Element? chips, Element? lens)
         {
             var spec = _latest.Vertical;
@@ -1289,42 +1274,56 @@ public readonly partial struct Track
                 Element listBlock = new BoxEl
                 {
                     Direction = 1,
-                    EdgeFade = _bodyClipEngaged.Value
-                        ? new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand)
-                        : null,
-                    ScrollBinds = [new ScrollBindDsl { ClipTopAtViewport = stickyInset, OnFlag = _onBodyClip }],
+                    // Feathered exactly while the body clip is engaged, on the render turn that poses it (WhileStuck —
+                    // RCA 2026-09-25 F(ii): a re-render off an engaged signal lagged the cut by two presents).
+                    EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
                     Children = [listKeyed],
+                }.StickyClip(stickyInset);
+                Element tableBlock = new BoxEl
+                {
+                    Direction = 1, ScrollScope = TableBlockScope,
+                    Children =
+                    [
+                        Chrome(in shape, chips, lens).Sticky(Detail.VerticalLayout.CompactIdentityHeight, TableBlockScope, engaged: _compactInteractive),
+                        listBlock,
+                    ],
                 };
-                Element tableBlock = new BoxEl { Direction = 1, Children = [ChromeRoot(in shape, chips, lens), listBlock] };
                 Element trailBlock = new BoxEl { Direction = 1, Children = kids.ToArray() }
-                    .ClipBelow(Detail.VerticalLayout.TrailingClipInset);
-                children = [HeroRoot(spec), tableBlock, trailBlock];
+                    .StickyClip(Detail.VerticalLayout.TrailingClipInset);
+                children = [TrailHero(spec), tableBlock, trailBlock];
             }
             else
             {
                 Element content = new BoxEl
                 {
                     Direction = 1,
-                    EdgeFade = vertical && _bodyClipEngaged.Value
-                        ? new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand)
+                    EdgeFade = vertical
+                        ? new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true }
                         : null,
-                    ScrollBinds = vertical ? [new ScrollBindDsl { ClipTopAtViewport = stickyInset, OnFlag = _onBodyClip }] : [],
                     Children = [listKeyed, .. kids],
                 };
-                children = [content];
+                children = [vertical ? content.StickyClip(stickyInset) : content];
             }
             // Keyed by the route/pane identity: a host that PERSISTS across contents (the library pane re-skins in place)
             // must not hand the next album the previous one's offset, and a ScrollEl restores by node, not by a key of
             // its own. A page mounts one per route anyway, so this only ever costs the pane a fresh viewport.
-            return ScrollView(new BoxEl { Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, Children = children }) with
+            return ScrollView(new BoxEl { Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, ScrollScope = TrailScope, Children = children }) with
             {
                 Key = "trail:" + _latest.ScrollKey,
                 Grow = 1f,
+                // WinUI's per-notch distance (15 % of the viewport, floored at 48 DIP) snapped to a whole number of
+                // rows at the live density, so a notch lands on a row boundary instead of slicing one in half. Dynamic
+                // on purpose — the density control changes RowH under the same viewport.
+                ScrollLineDip = shape.RowH,
                 EdgeCues = vertical ? ScrollEdgeCues.None : ScrollEdgeCues.Auto,
             };
         }
 
-        Element HeroRoot(Detail.VerticalSpec spec)
+        /// <summary>The album arm's hero, pinned at the viewport top across the whole content column and COLLAPSING into
+        /// the compact band: over the collapse distance its presented height shrinks from the hero height to the band, and
+        /// the clipping root cuts the expanded presentation (paint and input) at that edge — below it the chrome and rows
+        /// take the input. Leading-anchored: the presentation carries its own slide-away (Detail.Hero's parallax).</summary>
+        Element TrailHero(Detail.VerticalSpec spec)
         {
             float colW = ColumnWidth();
             float heroH = HeroHeightFor(spec, colW);
@@ -1332,7 +1331,9 @@ public readonly partial struct Track
             {
                 Key = "vertical:hero-root", Direction = 1, ClipToBounds = true,
                 Children = [new BoxEl { Key = "vhero:header", Direction = 1, Children = [Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))] }],
-            }.Collapse(heroH, Detail.VerticalLayout.CompactIdentityHeight, Detail.VerticalLayout.CollapseDistance(heroH));
+            }
+            .Sticky(0f, TrailScope)
+            .Collapse(Detail.VerticalLayout.CollapseDistance(heroH), Detail.VerticalLayout.CompactIdentityHeight, CollapseAnchor.Leading);
         }
 
         /// <summary>The hero's spec with its shuffle satellite pointed at THIS table's <see cref="Shuffle"/> (G-264): the
@@ -1349,10 +1350,6 @@ public readonly partial struct Track
             }
             return cached;
         }
-
-        Element ChromeRoot(in Shape shape, Element? chips, Element? lens)
-            => new BoxEl { Key = "vertical:chrome-root", Direction = 1, Children = [Chrome(in shape, chips, lens)] }
-                .Sticky(Detail.VerticalLayout.CompactIdentityHeight, _onStuck);
 
         float HeroHeightFor(Detail.VerticalSpec spec, float colW)
         {
@@ -1385,53 +1382,39 @@ public readonly partial struct Track
                 OnHeroMeasured: _onHeroMeasured);
         }
 
-        // ── THE RULE, STATED ONCE (three authors have now tripped over it) ──────────────────────────────────────────
-        // A SCROLL BIND MUST SIT ON A RAW ELEMENT, NEVER ON A COMPONENT'S RENDERED ROOT.
-        // `ScrollBindEval.ApplyPin` clamps a pin to its IMMEDIATE parent (`limit = parent.H − node.H`), and a component
-        // anchor MIRRORS its rendered child's size (`Reconciler.MirrorParticipation`). Put `.Collapse`/`.Sticky` on what
-        // a component returns and the parent IS that mirror: `limit == 0`, the node never pins, `StickyPinned` is never
-        // set and the `onStuck` callback never fires — while the item band still reserves `StickyClipInset` for a pinned
-        // hero + chrome (the empty 93–177 DIP header band) and the hero's inner presentation still translates by −offset
-        // to cancel a pin that is not happening (the 2× hero scroll). So: `TableHost.VerticalList` wraps these two items
-        // in a RAW `BoxEl` and puts the pin/sticky THERE; the album arm goes through `TrailingBody`, whose `HeroRoot`/
-        // `ChromeRoot` are already raw `BoxEl`s, which is why it was never affected.
-        // What may stay here: a PAINT-only row (`PresentedH`, clip) — it has no containing-block clamp and rides the
-        // wrapper's pin translation, so it belongs with the measured height that re-bakes it.
+        // ── THE RULE, STATED ONCE ───────────────────────────────────────────────────────────────────────────────────
+        // A sticky with NO named scope clamps to its IMMEDIATE parent (CSS containing block), and a component anchor
+        // MIRRORS its rendered child's size — so a `.Sticky` on what a component returns, with no scope, never pins. The
+        // two prefix items below therefore name `TableScope` (declared on the list's own box, see VerticalList) and pin
+        // from the component's rendered root directly.
 
-        /// <summary>Item 0 of the vertical list: the hero collapsing into the band — its PAINT half only. The
-        /// <c>PresentedH</c> row re-bakes here when the measured height settles (this item component re-renders on
-        /// `_heroH`); the PIN half of the old `.Collapse` lives on the raw wrapper <see cref="VerticalList"/> mounts
-        /// around this component — see THE RULE above.</summary>
+        /// <summary>Item 0 of the vertical list: the hero, pinned at the viewport top against <see cref="TableScope"/> and
+        /// collapsing into the compact band — its presented height shrinks from the hero height to the band over the collapse
+        /// distance (hit-testing follows it, so the band below hands its input to the chrome and rows).
+        /// <para>The spec is read through <c>_args</c>, never <c>_latest</c>: this runs inside a RECYCLED bound item, so a
+        /// plain-field read subscribes it to nothing. A spec change that keeps the hero's height (the meta line going
+        /// shimmer → "15 songs · 52 min" at the same 16 DIP) then never reached the hero, which shimmered until an
+        /// unrelated relayout. <c>_args</c> is written with <c>SetIfChanged</c> under <see cref="TableArgs"/>' data
+        /// equality (which covers <c>Vertical</c>), so this item re-renders exactly when its spec changes.</para></summary>
         internal Element HeroItem()
         {
-            var spec = _latest.Vertical!;
+            var spec = _args.Value!.Vertical!;
             float colW = ColumnWidth();
             float heroH = HeroHeightFor(spec, colW);
-            return new BoxEl
-            {
-                Direction = 1,
-                Children = [Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))],
-                ScrollBinds =
-                [
-                    new ScrollBindDsl
-                    {
-                        From = ScrollChannel.Offset, To = BindSink.PresentedH,
-                        Range = ScrollRange.Px(0f, Detail.VerticalLayout.CollapseDistance(heroH)),
-                        OutStart = heroH, OutEnd = Detail.VerticalLayout.CompactIdentityHeight,
-                    },
-                ],
-            };
+            return Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))
+                .Sticky(0f, TableScope)
+                .Collapse(Detail.VerticalLayout.CollapseDistance(heroH), Detail.VerticalLayout.CompactIdentityHeight, CollapseAnchor.Leading);
         }
 
-        /// <summary>Item 1: chips · lens · column header. The sticky pin at 56 and its onStuck flag — the input handoff
-        /// the hero reads (ch 03 §0.18) — live on the raw wrapper <see cref="VerticalList"/> mounts around this
-        /// component, NOT here: see THE RULE above.</summary>
+        /// <summary>Item 1: chips · lens · column header, sticky at the compact band (56) against <see cref="TableScope"/>
+        /// — see THE RULE above. Its engaged edge writes <c>_compactInteractive</c>: the input hand-off the hero reads.</summary>
         internal Element ChromeItem()
         {
+            _ = _args.Value;   // a recycled bound item: subscribe to the props its chips/lens builders read (see HeroItem)
             var shape = _shape!.Value;
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
-            return Chrome(in shape, chips, lens);
+            return Chrome(in shape, chips, lens).Sticky(Detail.VerticalLayout.CompactIdentityHeight, TableScope, engaged: _compactInteractive);
         }
 
         internal Element FooterItem()
@@ -2302,8 +2285,12 @@ public readonly partial struct Track
 
         public override Element Render()
         {
-            int display = _scope.Index.Value - _start;
-            var kind = _host.RowKindAt(display);
+            // A RECYCLE (a write to `_scope.Index`) must not re-render the slot: the skin's closures, the check lane and the
+            // row content all read the index through bound props / memos, so rebuilding them per recycle only allocated —
+            // the whole Skin tree, ~17 KB per recycled row, every row of a fast thumb drag (EventPipe allocation ticks,
+            // 2026-09-25: TableSlot.Render 35 MB of a 4-leg drag, Skin alone 17 MB). The slot subscribes to the row's KIND
+            // (track / episode), which is all its shape depends on; the display index is peeked where it is needed.
+            var kind = UseComputed(() => _host.RowKindAt(_scope.Index.Value - _start)).Value;
 
             // An episode row is never wrapped by Skin — it IS the show reader's own row (Episode.ReaderRow), self-
             // contained (click, hover, check lane, "…"), built through Episode.RowContext from this host's own
@@ -2339,6 +2326,7 @@ public readonly partial struct Track
             Element row = _host.Skin(_scope, content, in shape, flow, isOpen, _start, hovered, _narrate) with { Key = "row" };
             if (!isOpen) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [row] };
             var t = _trackItem!.Peek();
+            int display = _scope.Index.Peek() - _start;
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f,
@@ -2425,13 +2413,21 @@ public readonly partial struct Track
         readonly RowScope _scope = scope;
         readonly bool _narrate = narrate;
 
+        /// <summary>What this slot renders, as one value: its role and, for the empty/blank role, whether it is the first
+        /// suffix slot (the empty-state item). A recycle between two track rows changes neither, so it re-renders nothing.</summary>
+        readonly record struct Slot(VerticalItemRole Role, bool First);
+
         public override Element Render()
         {
-            int i = _scope.Index.Value;
-            int visible = _host.VisibleCountValue;
-            bool facts = _host.FactsValue;
             int prefix = Detail.VerticalLayout.PrefixCount;
-            switch (Detail.VerticalLayout.ItemRole(i, visible, facts))
+            // Subscribes to the ROLE, never to the raw index (see TableSlot.Render: a per-recycle re-render here rebuilt this
+            // wrapper and its component factory for every recycled row of a drag).
+            var slot = UseComputed(() =>
+            {
+                int i = _scope.Index.Value;
+                return new Slot(Detail.VerticalLayout.ItemRole(i, _host.VisibleCountValue, _host.FactsValue), i == prefix);
+            }).Value;
+            switch (slot.Role)
             {
                 case VerticalItemRole.Hero:
                     return _host.HeroItem();
@@ -2451,7 +2447,7 @@ public readonly partial struct Track
                 case VerticalItemRole.Footer:
                     return _host.FooterItem();
                 default:
-                    return i == prefix ? _host.EmptyItem() : new BoxEl { Key = "vitem:blank" };
+                    return slot.First ? _host.EmptyItem() : new BoxEl { Key = "vitem:blank" };
             }
         }
     }
@@ -2465,9 +2461,14 @@ public readonly partial struct Track
 
         public override Element Render()
         {
-            int i = _scope.Index.Value;
-            int visible = _host.VisibleCountValue;
-            if (i < visible)
+            // The slot's ROLE (−1 track row, 0 the section, 1 empty), not the raw index: a recycle between two track rows
+            // re-renders nothing (see TableSlot.Render).
+            int role = UseComputed(() =>
+            {
+                int at = _scope.Index.Value, n = _host.VisibleCountValue;
+                return at < n ? -1 : at == n ? 0 : 1;
+            }).Value;
+            if (role < 0)
             {
                 var host = _host;
                 var scope = _scope;
@@ -2478,7 +2479,7 @@ public readonly partial struct Track
                     Children = [Embed.Comp(() => new TableSlot(host, scope, 0, narrate))],
                 };
             }
-            Element? section = i == visible ? _host.RecommendationsElement() : null;
+            Element? section = role == 0 ? _host.RecommendationsElement() : null;
             return new BoxEl
             {
                 Key = section is null ? "rec:empty" : "rec:section", Direction = 1,

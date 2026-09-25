@@ -285,11 +285,30 @@ public static partial class Playback
         if (Entities.Current is null) return;
         bool foreign = takeover || s_state.Own.Kind == Owner.Foreign;
         bool hasClusterTracks = foreign && (s_foreign.PrevCount > 0 || s_foreign.NextCount > 0);
-        switch (Queue.DecideSeed(Queue.State, s_state.HasCurrent, hasClusterTracks, hasContext: false, takeover))
+        // Bug (b), realtime-capture-implementation.md: this used to hardcode `hasContext: false`, discarding
+        // `s_state.MirrorContext` that `MirrorRemote` (Playback.cs) already cached — so a foreign session whose
+        // first fold carried no prev/next tracks fell straight to `SeedSource.CurrentOnly` (an empty queue, only the
+        // card) instead of resolving the richer context `DecideSeed` would otherwise have asked for.
+        bool hasContext = foreign && !s_state.MirrorContext.IsEmpty;
+        Queue.SeedSource source = Queue.DecideSeed(Queue.State, s_state.HasCurrent, hasClusterTracks, hasContext, takeover);
+        Capture.Decision(CaptureKind.QueueSeed, Capture.AmbientUiCauseId, source, reason: foreign ? "foreign" : "local");
+        switch (source)
         {
             case Queue.SeedSource.Cluster:
                 SeedFromForeignQueue();
                 CancelArmedSeedRetry();     // a boot-time seed waiting on Online (Restore) is answered by this instead
+                break;
+            case Queue.SeedSource.Context:
+                // The same background resolve `Restore`'s own SeedSource.Context branch uses (Playback.Host.Context.cs)
+                // — landed later by `LandSeedContext`, never blocking this drain. A full api queue falls back to the
+                // bare current row exactly like `CurrentOnly` below.
+                if (!ResolveSeedContext(++s_seedSeq, s_state.MirrorContext, s_state.CurrentId))
+                {
+                    SeedCurrentRow(s_state.Current);
+                    s_state.Cursor = Queue.CursorOf(0);
+                    RequestDrain();
+                }
+                CancelArmedSeedRetry();
                 break;
             case Queue.SeedSource.CurrentOnly:
                 SeedCurrentRow(s_state.Current);
@@ -297,6 +316,33 @@ public static partial class Playback
                 RequestDrain();
                 CancelArmedSeedRetry();     // ditto
                 break;
+        }
+
+        // Bug (a), realtime-capture-implementation.md: a FOREIGN mirror's queue is seeded ONCE (`DecideSeed`'s own
+        // one-shot gate, above) and never re-decided — but `MirrorRemote` keeps updating `State.Current`/`CurrentId`
+        // on every advance, with no re-bucket. Left alone, "Next up" keeps starting from the row that used to be
+        // playing and the count never drops. Find where the (already-updated) current row sits in the mirrored list
+        // and, unless it is already the NowPlaying bucket, re-bucket around it — the same `QueueOrder.Follow` a local
+        // cursor move already runs through `Queue.Follow`. A harmless no-op right after a fresh seed above: the seed
+        // itself already lands the row in the NowPlaying bucket.
+        if (foreign)
+        {
+            ReadOnlySpan<QueueEdge> mirrorRows = Queue.Rows;
+            int foundIndex = -1;
+            for (int k = 0; k < mirrorRows.Length; k++)
+                if (Queue.RefAt(k) == s_state.Current) { foundIndex = k; break; }
+            byte foundBucket = foundIndex >= 0 ? mirrorRows[foundIndex].Bucket : (byte)0;
+            if (Queue.ShouldFollowMirror(Queue.State, foreign, foundIndex, foundBucket))
+            {
+                QueueCursor followCursor = Queue.CursorOf(foundIndex);
+                if (Queue.Follow(followCursor))
+                {
+                    s_state.Cursor = followCursor;
+                    Capture.Point(CaptureKind.QueueMutation, Capture.AmbientUiCauseId,
+                        a: "follow-mirror", n0: foundIndex, n1: foundBucket);
+                    RequestDrain();
+                }
+            }
         }
     }
 

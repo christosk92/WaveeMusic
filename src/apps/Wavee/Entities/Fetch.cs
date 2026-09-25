@@ -49,11 +49,15 @@
 //                              only); `Refresh` un-asks on demand (a Retry); the scope being replaced drops every mark
 //                              with its tables. An auth refusal (401/403, `Queue.SeedRetryOn`) is un-asked AND remembered
 //                              (`s_refused`), so the next Online transition re-plans it (`Resume`) without a remount.
-//   `Inflight[slot] == stamp`  a request for this row is out right now. `Table.Applied` clears it when a group lands, and
-//                              a batch settling (`Answer` or `Failed`) clears it for every row it carried — an answer
-//                              that did not name a row is still that row's answer, and `Asked && Inflight == 0` is how a
-//                              surface reads "asked, nothing coming" (Search.Page.cs, Artist.UI.Chart.cs). The store's
-//                              trim reads it as "pinned". It does not gate the dedupe — `Asked` does.
+//   `Inflight[slot] == stamp`  a request for this row is out right now. `Table.Outstanding[slot]` counts the requests
+//                              naming it (row-bucket seats + row batches on the wire); a batch settling (`Answer` or
+//                              `Failed`) unseats every row it carried and clears the stamp for the rows it was the LAST
+//                              request of, and `Table.Applied` clears it only when nothing is outstanding — an answer that
+//                              did not name a row is still that row's answer, but an EDGE answer or a second batch writing
+//                              the row is not the end of its own request (the artist chart's Failed flash, 2026-09-25).
+//                              `Asked && Inflight == 0` is how a surface reads "asked, nothing coming" (Search.Page.cs,
+//                              Artist.UI.Chart.cs). The store's trim reads it as "pinned". It does not gate the dedupe —
+//                              `Asked` does.
 //   `FetchedAt[slot] != 0`     somebody has answered about this row before — including the disk answering "I do not
 //                              have it" (Store.ReadCore stamps the whole batch). It is what makes the disk leg run
 //                              ONCE per row per session instead of once per page mount.
@@ -213,6 +217,27 @@ public sealed class FetchBatch
     }
 }
 
+/// <summary>Which door put a row into a planner bucket — the <c>from=</c> field of the always-on <c>fetch.send</c> line.
+/// Evidence only.</summary>
+public enum DemandDoor : byte
+{
+    /// <summary><c>Plan</c>/<c>Continue</c>/<c>Resume</c> — a page's <c>Ensure</c>, the disk leg's remainder, a re-plan.</summary>
+    Plan = 0,
+    /// <summary><c>Refresh</c> — a Retry vacancy asking again.</summary>
+    Refresh = 1,
+    /// <summary><c>Invalidate</c> — a rollover re-asking a known group.</summary>
+    Invalidate = 2,
+    /// <summary><c>ReviewMisses</c>' retry of an entity a 200 answer omitted.</summary>
+    Miss = 3,
+    /// <summary><c>Failed</c>' retryable arm (a 429 / 5xx / transport error).</summary>
+    Fail = 4,
+    /// <summary><c>SettleTicket</c> putting back an edge ask a row batch had pre-empted.</summary>
+    Edge = 5,
+}
+
+/// <summary>Who called <see cref="Fetch.Pump"/> — the <c>via=</c> field of the always-on <c>fetch.send</c> line.</summary>
+public enum PumpVia : byte { External = 0, Drain = 1, Playback = 2, Answer = 3, Failed = 4, Wake = 5 }
+
 /// <summary>A transport that can answer for one provider's uris. Wave 2's Spotify session is one; the local-files
 /// opener and each playback module are others (<see cref="EntityProvider"/> is the routing key).
 ///
@@ -362,11 +387,26 @@ public static partial class Fetch
         public EntityId[] Ids = new EntityId[64];
         /// <summary>App seconds before which this bucket must not be sent (the backoff, and only that).</summary>
         public int ReadyAt;
+        /// <summary>The same deadline as a <see cref="Stopwatch"/> timestamp (0 = no backoff since the bucket last
+        /// emptied): the always-on <c>fetch.send</c> line's <c>lateMs=</c> — how long a due bucket waited past its
+        /// backoff for something to pump it. Evidence only; nothing gates on it.</summary>
+        public long ReadyTicks;
         /// <summary>How many attempts the last failure had burned; carried onto the next batch out of this bucket.</summary>
         public int Attempt;
+        /// <summary>Rows joined per door since the bucket last emptied (<see cref="DemandDoor"/>): the <c>fetch.send</c>
+        /// line's <c>from=</c>. Evidence only — it says WHICH door put each row into a request.</summary>
+        public readonly int[] Doors = new int[DemandDoorCount];
+        /// <summary>The slots waiting here — ONE SEAT PER SLOT (RCA 2026-09-25 D: the miss retry, the chart's re-run
+        /// Ensure and the Retry's Refresh each seated the same eight tracks, ticket 74 carried 22 rows for 8 slots, and
+        /// every repeat of an omitted entity burned one more miss). A shape is (provider, subject, kind, need), so a slot
+        /// already here is already being asked exactly this; a second seat is only a second copy of the same question.
+        /// Grows with the bucket and never shrinks — allocation-free after warm-up like the arrays beside it.</summary>
+        readonly HashSet<int> _seated = new(64);
 
-        public void Add(int slot, in EntityId id)
+        /// <summary>Seat a row. False — nothing added — when the slot already waits here.</summary>
+        public bool Add(int slot, in EntityId id, DemandDoor door)
         {
+            if (!_seated.Add(slot)) return false;
             if (Count == Slots.Length)
             {
                 Array.Resize(ref Slots, Slots.Length * 2);
@@ -374,12 +414,18 @@ public static partial class Fetch
             }
             Slots[Count] = slot;
             Ids[Count++] = id;
+            Doors[(int)door]++;
+            // A ROW seat is a request naming the row until the batch that carries it settles (`Table.Outstanding`;
+            // `Unask` unseats). An edge seat names a PARENT, whose in-flight mark the edge door never stamps.
+            if (Subject != FetchSubject.Edge) Table.Seat(slot);
+            return true;
         }
 
         /// <summary>Drop the first <paramref name="n"/> rows (they just went out) and keep the rest for the next pump.</summary>
         public void Drop(int n)
         {
-            if (n >= Count) { Count = 0; return; }
+            if (n >= Count) { Count = 0; Array.Clear(Doors); _seated.Clear(); return; }
+            for (int i = 0; i < n; i++) _seated.Remove(Slots[i]);
             Array.Copy(Slots, n, Slots, 0, Count - n);
             Array.Copy(Ids, n, Ids, 0, Count - n);
             Count -= n;
@@ -405,6 +451,17 @@ public static partial class Fetch
     // everything that can go, so "owed" never outlives the pump that satisfied it.
     static bool s_drainOwed;
     static bool s_held;
+
+    // ── the evidence the two always-on lines carry (2026-09-25, owner-approved RCA of the Oscar Dunbar log) ────────────
+    //
+    // `fetch.send` says WHICH door put each row into the bucket (`from=`: a page's plan, a Retry's refresh, a rollover's
+    // invalidate, an omitted-entity miss retry, a transport retry, a pre-empted edge put back), how many of the window's
+    // slots are already in it (`dup=`), which caller pumped it (`via=`) and — for a backed-off bucket — how long it sat
+    // DUE before anything pumped it (`lateMs=`). Nothing here decides anything; the doors below only tag what they add.
+    const int DemandDoorCount = 6;
+    static DemandDoor s_door = DemandDoor.Plan;
+    static PumpVia s_via = PumpVia.External;
+    static readonly HashSet<int> s_dupScratch = new(64);
 
     /// <summary>May this provider send right now? A <c>false</c> HOLDS its buckets — never drops them, never un-asks a
     /// row, never re-plans — so the boot burst leaves as a few full batches when the session comes Online instead of as
@@ -530,6 +587,7 @@ public static partial class Fetch
     /// (they are transports, not data); everything that refers to a table set does not.</summary>
     public static void Boot()
     {
+        ReleaseSeats();
         s_buckets.Clear();
         s_order.Clear();
         s_active.Clear();
@@ -542,6 +600,31 @@ public static partial class Fetch
         // Boot may run before `Entities.Boot` has a scope (a test calling Reset): read defensively.
         Scope? current = Entities.Current;
         s_scopeEpoch = current is null ? 0u : current.Epoch;
+    }
+
+    /// <summary>A boot forgets every bucket and every active batch; the rows they named give their seats back
+    /// (<c>Table.Outstanding</c>), or a table that outlives the boot (the test seam's <see cref="Reset"/>) would keep
+    /// rows "outstanding" that nothing will ever settle. Buckets carry their table; an active batch's rows are unseated
+    /// only while the scope it was sent for is still the current one (after a switch its tables are garbage).</summary>
+    static void ReleaseSeats()
+    {
+        for (int i = 0; i < s_order.Count; i++)
+        {
+            Demand d = s_order[i];
+            if (d.Subject == FetchSubject.Edge) continue;
+            for (int k = 0; k < d.Count; k++)
+            {
+                int slot = d.Slots[k];
+                if (slot > Table.None && slot < d.Table.Count && d.Table.Id[slot] == d.Ids[k]) d.Table.Unseat(slot);
+            }
+        }
+        Scope? current = Entities.Current;
+        if (current is null || current.Epoch != s_scopeEpoch) return;
+        foreach (FetchBatch batch in s_active.Values)
+        {
+            if (batch.Subject == FetchSubject.Edge || batch.Epoch != s_scopeEpoch) continue;
+            if (TableOf(current, batch) is { } table) Unask(batch, table, 0);
+        }
     }
 
     /// <summary>Attach a transport. One per provider; the last one wins, so a test can replace the live session. Rows
@@ -715,9 +798,8 @@ public static partial class Fetch
             // that asks for `Row | Files` in one `Ensure` therefore produces two requests, which is what it is.
             uint derived = tracks is null ? 0u : need & (uint)TrackFields.Files;
             uint plain = need & ~derived;
-            if (plain != 0)
+            if (plain != 0 && Bucket(table, subject, provider, plain, FetchEdge.None, 0, priority).Add(slot, id, s_door))
             {
-                Bucket(table, subject, provider, plain, FetchEdge.None, 0, priority).Add(slot, id);
                 s_toNetwork++;
                 queued++;
             }
@@ -725,9 +807,11 @@ public static partial class Fetch
 
             if (tracks!.OriginalAudio[slot] != UInt128.Zero)
             {
-                Bucket(table, subject, provider, derived, FetchEdge.None, 0, priority).Add(slot, id);
-                s_toNetwork++;
-                queued++;
+                if (Bucket(table, subject, provider, derived, FetchEdge.None, 0, priority).Add(slot, id, s_door))
+                {
+                    s_toNetwork++;
+                    queued++;
+                }
             }
             else
             {
@@ -737,7 +821,7 @@ public static partial class Fetch
                 // the question is merely premature: un-ask it, so the next `Ensure` after the identity lands really
                 // asks. (When the plain half went out, that batch's own `Applied` clears the in-flight mark.)
                 table.Asked[slot] &= ~(uint)TrackFields.Files;
-                if (plain == 0) table.Inflight[slot] = 0;
+                if (plain == 0 && table.Outstanding[slot] == 0) table.Inflight[slot] = 0;
                 s_abandoned++;
             }
         }
@@ -801,6 +885,7 @@ public static partial class Fetch
                 d.Priority = priority;
                 d.Attempt = 0;
                 d.Since = Stopwatch.GetTimestamp();
+                d.ReadyTicks = 0;
             }
             else if (priority > d.Priority)
             {
@@ -856,8 +941,28 @@ public static partial class Fetch
     /// away the queueing behind one-uri requests that <see cref="MaxInFlight"/> caused. UI THREAD.</summary>
     public static void Drain()
     {
-        if (!s_drainOwed && !s_held) return;
-        Pump();
+        if (!s_drainOwed && !s_held && !AnyDue()) return;
+        Pump(PumpVia.Drain);
+    }
+
+    /// <summary>Is a backed-off bucket DUE and sendable right now — past its deadline, its provider registered and not
+    /// held by the online gate, and a request slot free for it? The tick's drain pumps for exactly this, and
+    /// <see cref="NextWakeAt"/> answers "now" for it (RCA 2026-09-25 C: a retry bucket owes no drain, so before this a
+    /// due one sat until something unrelated pumped — ticket 74, `waitedMs=12315` behind a 1 s backoff). A bucket the
+    /// gate holds is not due (it waits for the session), and with every request slot taken the next settle pumps it — so
+    /// a tick never pumps for nothing and the idle wake never spins. One pass over a handful of buckets; allocation-free.</summary>
+    static bool AnyDue()
+    {
+        if (s_inFlight >= MaxInFlight || s_order.Count == 0) return false;
+        int now = Entities.Now;
+        Func<EntityProvider, bool>? canSend = CanSend;
+        for (int i = 0; i < s_order.Count; i++)
+        {
+            Demand d = s_order[i];
+            if (d.Count == 0 || d.ReadyAt > now || s_providers[(byte)d.Provider] is null) continue;
+            if (canSend is null || canSend(d.Provider)) return true;
+        }
+        return false;
     }
 
     /// <summary>A row just joined a bucket: the tick's drain owes a pump. The FIRST owe since the last pump wakes the host
@@ -875,19 +980,23 @@ public static partial class Fetch
     /// leave together.</summary>
     static void SendOrOwe(FetchPriority priority)
     {
-        if (priority == FetchPriority.Playback) Pump();
+        if (priority == FetchPriority.Playback) Pump(PumpVia.Playback);
         else Owe();
     }
 
     /// <summary>The earliest app second at which something becomes sendable: <see cref="Entities.Now"/> while a drain is
-    /// owed (an idle window must still drain within one tick), otherwise the earliest backed-off bucket's deadline, or
-    /// <see cref="int.MaxValue"/> when nothing waits. The host arms its one idle wake timer to it (decision D23), so an
-    /// expired backoff re-sends while the window is idle, minimized or hidden. A HELD bucket is deliberately not a
-    /// deadline: it waits for the session, not the clock, and a wake per tick while offline would be a busy loop. UI THREAD.</summary>
+    /// owed or a backed-off bucket is already DUE (<see cref="AnyDue"/> — an idle window must still send within one
+    /// wake), otherwise the earliest backed-off bucket's deadline, or <see cref="int.MaxValue"/> when nothing waits. The
+    /// host arms its one idle wake timer to it (decision D23), so an expired backoff re-sends while the window is idle,
+    /// minimized or hidden. A HELD bucket is deliberately not a deadline: it waits for the session, not the clock, and a
+    /// wake per tick while offline would be a busy loop. UI THREAD.
+    /// <para>2026-09-25 (RCA C): a bucket whose deadline second had ARRIVED used to be skipped (only <c>ReadyAt &gt;
+    /// now</c> counted), so the frame tick that moved <see cref="Entities.Now"/> onto the deadline re-armed the wake to
+    /// "nothing" and cancelled it — and the tick's <see cref="Drain"/>, which pumps only when owed, never sent it.</para></summary>
     public static int NextWakeAt()
     {
         int now = Entities.Now, next = int.MaxValue;
-        if (s_drainOwed) return now;
+        if (s_drainOwed || AnyDue()) return now;
         for (int i = 0; i < s_order.Count; i++)
         {
             Demand d = s_order[i];
@@ -908,10 +1017,11 @@ public static partial class Fetch
     /// that has been waiting is a page that has been showing skeletons.</para>
     /// <para>THE GATE: a bucket whose provider <see cref="CanSend"/> refuses is passed over and stays exactly as it is —
     /// rows, marks, attempt — and the pump remembers that it held something, so the next tick's drain looks again.</para></summary>
-    public static void Pump()
+    public static void Pump(PumpVia via = PumpVia.External)
     {
         s_drainOwed = false;
         s_held = false;
+        s_via = via;                  // evidence: the `fetch.send` lines this pump writes say who pumped
         Sync();
         int now = Entities.Now;
         Func<EntityProvider, bool>? canSend = CanSend;
@@ -988,13 +1098,19 @@ public static partial class Fetch
         batch.Attempt = d.Attempt;
         batch.Ticket = ++s_ticket;
         long waitedMs = (long)Stopwatch.GetElapsedTime(d.Since).TotalMilliseconds;
+        // Evidence, read BEFORE the drop empties the bucket's door tally: how long this bucket sat past its backoff
+        // deadline (−1 = it had none), which doors filled it, how many of this window's slots are repeats.
+        bool logging = Log.IsEnabled(WaveeLogLevel.Info);
+        long lateMs = d.ReadyTicks != 0 ? (long)Stopwatch.GetElapsedTime(d.ReadyTicks).TotalMilliseconds : -1;
+        string from = logging ? DoorsText(d.Doors) : "";
+        int dup = logging ? DuplicateSlots(batch.Slots, send) : 0;
         d.Drop(take);                      // the whole window: `send` went out, the rest is recorded in `s_pendingEdges`
 
         s_active[batch.Ticket] = batch;
         s_inFlight++;
         IndexRoute(batch);
         batch.SentAt = Stopwatch.GetTimestamp();
-        LogSend(batch, waitedMs);          // before Start: a transport that throws settles inline, and send comes first
+        LogSend(batch, waitedMs, lateMs, from, dup);   // before Start: a transport that throws settles inline, and send comes first
         FetchProvider provider = s_providers[(byte)d.Provider]!;
         try { provider.Start(batch); }
         catch (Exception)
@@ -1013,7 +1129,11 @@ public static partial class Fetch
     // bucket — and the ticket joins the two. One entry per REQUEST, never per row, and built only when Info passes, so a
     // filtered log costs one compare. The D4 gate reads them: rows per send ≫ 1, nothing Spotify before `logged in`.
 
-    static void LogSend(FetchBatch batch, long waitedMs)
+    // 2026-09-25: `lateMs=` (the ms a backed-off bucket sat DUE before a pump took it; −1 = no backoff), `via=` (who
+    // pumped: Drain / Playback / Answer / Failed / Wake / External), `from=` (which doors filled the bucket, e.g.
+    // `plan:7,miss:7,refresh:8`) and `dup=` (slots of this window that repeat an earlier one). The Oscar Dunbar log's
+    // ticket 74 (rows=22 for 8 slots, waitedMs=12315) is what these name.
+    static void LogSend(FetchBatch batch, long waitedMs, long lateMs, string from, int dup)
     {
         if (!Log.IsEnabled(WaveeLogLevel.Info)) return;
         Log.Event(WaveeLogLevel.Info, "fetch", "fetch.send", "", null, -1, null,
@@ -1027,7 +1147,37 @@ public static partial class Fetch
             WaveeLogField.Of("need", Groups(batch.Wanted)),
             WaveeLogField.Of("prio", batch.Priority.ToString()),
             WaveeLogField.Of("attempt", batch.Attempt),
-            WaveeLogField.Of("waitedMs", waitedMs));
+            WaveeLogField.Of("waitedMs", waitedMs),
+            WaveeLogField.Of("lateMs", lateMs),
+            WaveeLogField.Of("via", s_via.ToString()),
+            WaveeLogField.Of("from", from),
+            WaveeLogField.Of("dup", dup));
+    }
+
+    /// <summary>The <c>from=</c> field: every door with a non-zero tally, <c>door:count</c>, comma-separated (lowercase).
+    /// Log path only (allocates).</summary>
+    static string DoorsText(int[] doors)
+    {
+        var sb = new System.Text.StringBuilder(32);
+        for (int i = 0; i < doors.Length; i++)
+        {
+            if (doors[i] == 0) continue;
+            if (sb.Length > 0) sb.Append(',');
+            sb.Append(((DemandDoor)i).ToString().ToLowerInvariant()).Append(':')
+              .Append(doors[i].ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return sb.Length == 0 ? "-" : sb.ToString();
+    }
+
+    /// <summary>How many of the first <paramref name="count"/> slots repeat an earlier one — the <c>dup=</c> field. Log
+    /// path only.</summary>
+    static int DuplicateSlots(int[] slots, int count)
+    {
+        s_dupScratch.Clear();
+        int dup = 0;
+        for (int i = 0; i < count; i++) if (!s_dupScratch.Add(slots[i])) dup++;
+        s_dupScratch.Clear();
+        return dup;
     }
 
     /// <summary>The <c>fetch.answer</c> line. <paramref name="status"/> is <c>"ok"</c> for an answer and the HTTP status
@@ -1145,7 +1295,7 @@ public static partial class Fetch
             if (p.Slot <= Table.None || p.Slot >= p.Table.Count || p.Table.Id[p.Slot] != p.Id) continue;
             EdgeTableBase? edges = EdgeTableOf(Entities.Current, p.Edge);
             if (edges is null || edges.State(p.Slot) != EdgeState.Unknown) continue;
-            Bucket(p.Table, FetchSubject.Edge, p.Provider, 0, p.Edge, p.Offset, p.Priority).Add(p.Slot, p.Id);
+            Bucket(p.Table, FetchSubject.Edge, p.Provider, 0, p.Edge, p.Offset, p.Priority).Add(p.Slot, p.Id, DemandDoor.Edge);
             s_toNetwork++;
         }
     }
@@ -1242,7 +1392,7 @@ public static partial class Fetch
 
         Recycle(batch);
         Settled.Value = Settled.Peek() + 1;
-        Pump();
+        Pump(PumpVia.Answer);
     }
 
     /// <summary>A provider could not answer. UI THREAD ONLY.
@@ -1268,10 +1418,15 @@ public static partial class Fetch
         if (retry)
         {
             Demand d = Bucket(table!, batch.Subject, batch.Provider, batch.Wanted, batch.Edge, batch.Offset, batch.Priority);
-            for (int i = 0; i < batch.Count; i++) d.Add(batch.Slots[i], batch.Ids[i]);
+            for (int i = 0; i < batch.Count; i++) d.Add(batch.Slots[i], batch.Ids[i], DemandDoor.Fail);
             d.Attempt = batch.Attempt + 1;
-            d.ReadyAt = Entities.Now + Backoff(batch.Attempt, status, retryAfterSeconds);
+            int backoff = Backoff(batch.Attempt, status, retryAfterSeconds);
+            d.ReadyAt = Entities.Now + backoff;
+            d.ReadyTicks = Stopwatch.GetTimestamp() + backoff * Stopwatch.Frequency;
             s_retried++;
+            // The failed batch's seats end here; the re-queued ones above keep the rows outstanding (in flight) through
+            // the backoff. Groups 0: nothing is un-asked.
+            if (batch.Subject != FetchSubject.Edge) Unask(batch, table!, 0);
         }
         else
         {
@@ -1295,10 +1450,12 @@ public static partial class Fetch
 
         Recycle(batch);
         Settled.Value = Settled.Peek() + 1;
-        Pump();
+        Pump(PumpVia.Failed);
     }
 
-    /// <summary>Settle a row batch's marks: the in-flight mark goes for every row it carried, and so do the
+    /// <summary>Settle a row batch's marks: each row it carried is unseated (<c>Table.Outstanding</c>) and its in-flight
+    /// mark goes when this was the row's LAST outstanding request — another bucket seat or batch still naming it keeps
+    /// it in flight — and so do the
     /// <paramref name="groups"/> a row does not know — the whole batch's groups for a terminal failure (the marks are
     /// what suppress the next request, and a failure must not suppress it), the groups of the routes that did not
     /// answer for an answer (<see cref="Answer"/>'s <c>unfilled</c>), nothing for a clean one. A group the row DOES know
@@ -1311,7 +1468,7 @@ public static partial class Fetch
         {
             int slot = batch.Slots[i];
             if (slot <= Table.None || slot >= table.Count || table.Id[slot] != batch.Ids[i]) continue;
-            if (table.Inflight[slot] == stamp) table.Inflight[slot] = 0;
+            if (table.Unseat(slot) && table.Inflight[slot] == stamp) table.Inflight[slot] = 0;
             uint unask = groups & ~table.Settled(slot);
             if (unask != 0) table.Asked[slot] &= ~unask;
         }
@@ -1418,7 +1575,9 @@ public static partial class Fetch
             // starts counting from zero rather than sealing on the first repeat.
             if (s_misses.Count > 0) s_misses.Remove((table, slot));
         }
-        Plan(scope, table, slots, groups, priority);
+        s_door = DemandDoor.Refresh;
+        try { Plan(scope, table, slots, groups, priority); }
+        finally { s_door = DemandDoor.Plan; }
     }
 
     /// <summary>Mark these KNOWN groups as belonging to an ended edition and ask for them again (the fifth mark): the
@@ -1443,7 +1602,9 @@ public static partial class Fetch
         }
         if (!any) return;
         table.MarkDirty();
-        Plan(scope, table, slots, groups, priority);
+        s_door = DemandDoor.Invalidate;
+        try { Plan(scope, table, slots, groups, priority); }
+        finally { s_door = DemandDoor.Plan; }
     }
 
     /// <summary>The table a batch's rows index in the CURRENT scope — by subject, since four tables share a kind; for an

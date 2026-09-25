@@ -1,4 +1,4 @@
-// ── Entities/Playlist.Open.cs — the list OPEN rule and its model-side state (wave D3, owner U1) ──────────────────────
+﻿// ── Entities/Playlist.Open.cs — the list OPEN rule and its model-side state (wave D3, owner U1) ──────────────────────
 //
 // Role: CORE (ListOpenPolicy, pure) + model state (ListOpen, UI thread) · Spec: cache-integrity-and-playlist-diff-
 // implementation.md §2, §3.3 "Freshness". Moved out of Playlist.Page.cs so the fetch layer's answer hook
@@ -488,7 +488,8 @@ public static class ListOpen
         RemoveAt(at);
         Bump();
         var pl = new Playlist(e.Slot);
-        bool reask = ListFreshness.ReaskHeader(ListOpenPolicy.IsRolling(pl.Format, pl.DaylistExpiresAt), outcome);
+        bool reask = ListFreshness.ReaskHeader(ListOpenPolicy.IsRolling(pl.Format, pl.DaylistExpiresAt),
+            formatKnown: pl.Knows(PlaylistFields.Format), outcome);
         if (reask) Entities.Invalidate(pl, DaylistRollover.Groups, e.Priority);
         if (!Log.IsEnabled(WaveeLogLevel.Info)) return;
         Log.Event(WaveeLogLevel.Info, "list", "list.settle", "", null, -1, null,

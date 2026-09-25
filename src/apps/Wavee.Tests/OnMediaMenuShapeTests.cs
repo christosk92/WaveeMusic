@@ -63,9 +63,11 @@ public class OnMediaMenuShapeTests
         });
     }
 
-    /// <summary>Each cascade is a RADIO set with exactly one mark, so "what is it set to" survives being hidden one
-    /// level down. Quality is Auto plus whatever rungs the live manifest offers; with no player open that is Auto
-    /// alone, and Auto is still the checked one.</summary>
+    /// <summary>Each cascade is a RADIO set (separators aside) with exactly one mark, so "what is it set to" survives
+    /// being hidden one level down. Quality is Auto plus whatever rungs the live manifest offers; with no player open
+    /// that is Auto alone, and Auto is still the checked one. Aspect now carries a separator between its four modes
+    /// and the four numeric-ratio rows below it (see the dedicated shape fact below), so this fact skips separators
+    /// rather than asserting every row is a radio.</summary>
     [Fact]
     public void Every_cascade_carries_exactly_one_checked_radio()
     {
@@ -73,10 +75,43 @@ public class OnMediaMenuShapeTests
         {
             foreach (var sub in Cascades(OnMedia.MoreMenu()))
             {
-                var rows = sub.SubItems!;
+                var rows = sub.SubItems!.Where(r => !r.IsSeparator).ToArray();
                 Assert.All(rows, r => Assert.Equal(MenuItemKind.Radio, r.Kind));
                 Assert.Equal(1, rows.Count(r => r.IsChecked));
             }
+        });
+    }
+
+    /// <summary>The Aspect cascade's exact shape: the four modes, one separator, then the four numeric ratios — in
+    /// that order, matching the engine's own (suppressed) transport list.</summary>
+    [Fact]
+    public void The_aspect_cascade_is_four_rows_a_separator_and_four_rows()
+    {
+        WithStore(() =>
+        {
+            var aspect = Cascades(OnMedia.MoreMenu()).Single(s => s.Label == Loc.Get(Strings.Player.AspectMenu));
+            var rows = aspect.SubItems!;
+
+            Assert.Equal(9, rows.Count);
+            for (int i = 0; i < 4; i++) Assert.Equal(MenuItemKind.Radio, rows[i].Kind);
+            Assert.True(rows[4].IsSeparator);
+            for (int i = 5; i < 9; i++) Assert.Equal(MenuItemKind.Radio, rows[i].Kind);
+        });
+    }
+
+    /// <summary>Choosing Custom at 4:3 checks exactly the "4:3" ratio row, and none of the four fixed modes.</summary>
+    [Fact]
+    public void Choosing_custom_4_3_checks_only_the_4_3_row()
+    {
+        WithStore(() =>
+        {
+            Video.Prefs.SetAspect(Platform.Settings, Video.AspectPreference.Custom, 4.0 / 3.0);
+            var aspect = Cascades(OnMedia.MoreMenu()).Single(s => s.Label == Loc.Get(Strings.Player.AspectMenu));
+            var rows = aspect.SubItems!;
+
+            Assert.Equal(1, rows.Count(r => r.IsChecked));
+            Assert.True(rows[6].IsChecked, "the 4:3 row (index 6) should be the checked one");
+            Assert.Equal(Loc.Get(Strings.Player.AspectRatio43), rows[6].Label);
         });
     }
 

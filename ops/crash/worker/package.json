@@ -1,0 +1,23 @@
+{
+  "name": "wavee-crash-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker ingest + query service for Wavee's opt-in crash reports (R2 + D1). Deployed by hand, no CI.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc --noEmit --project tsconfig.test.json",
+    "dev": "npx wrangler@latest dev --local",
+    "deploy": "npx wrangler@latest deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250924.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.2",
+    "better-sqlite3": "^11.3.0",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.1"
+  }
+}

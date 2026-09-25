@@ -1,6 +1,6 @@
 // ── Platform/Platform.Settings.cs ──────────────────────────────────────────────────────────────────────────────────
 // the settings-backing selection, the developer-mode signals, NetworkPolicy (the decisions + the signals),
-// LogCapturePolicy, WaveeLogSessions (the line and session parse), WaveeVersionInfo, RunMarker + CrashPromptPolicy, the
+// LogCapturePolicy, WaveeLogSessions (the line and session parse), WaveeVersionInfo, RunMarker, the
 // factory-reset marker plan, the ambient power verdict, ProvisioningOutcome, the Wave-6 settings keys
 //
 // Role: CORE
@@ -527,9 +527,13 @@ public static partial class WaveeLogSessions
 /// <param name="Channel">"stable" · "beta" · "dev" · "store".</param>
 /// <param name="FeedRelease">The rolling release carrying the .appinstaller feed (build-time metadata, never a switch).</param>
 /// <param name="UpdateBaseUrl">Where the feed's assets live; always ends in "/".</param>
+/// <param name="CrashIngestUrl">The opt-in crash pipeline's ingest endpoint (crash & diagnostics plan §B.5); "" on every
+/// `dotnet run` and E2E package, which is what keeps <c>Crash.Uploader.Configured</c> false and uploads off entirely.</param>
+/// <param name="CrashIngestKey">The <c>X-Wavee-Ingest</c> public key sent with every crash upload; "" when unstamped.</param>
 public sealed record WaveeVersionInfo(
     string SemVer, string Core, int? Beta, string Quad, string Codename, string Channel, string Commit, string BuildDate,
-    string FeedRelease = "wavee-stable", string UpdateBaseUrl = WaveeVersionInfo.DefaultUpdateBaseUrl, string StoreId = "")
+    string FeedRelease = "wavee-stable", string UpdateBaseUrl = WaveeVersionInfo.DefaultUpdateBaseUrl, string StoreId = "",
+    string CrashIngestUrl = "", string CrashIngestKey = "")
 {
     public const string DefaultUpdateBaseUrl = "https://github.com/christosk92/WaveeMusic/releases/download/";
 
@@ -586,7 +590,8 @@ public sealed record WaveeVersionInfo(
         string feed = Get("FeedRelease");
         if (feed.Length == 0) feed = "wavee-stable";
         return new(semver, core, beta, Get("PackageVersion"), Get("Codename"), channel, Get("Commit"), Get("BuildDate"),
-                   feed, NormalizeUpdateBaseUrl(Get("UpdateBaseUrl")), Get("StoreId"));
+                   feed, NormalizeUpdateBaseUrl(Get("UpdateBaseUrl")), Get("StoreId"),
+                   Get("CrashIngestUrl"), Get("CrashIngestKey"));
     }
 }
 
@@ -595,71 +600,55 @@ public sealed record WaveeVersionInfo(
 /// <summary>The outcome of the PREVIOUS run, read at the start of this one.</summary>
 public enum RunOutcome : byte { Unknown, Clean, Unclean }
 
-/// <summary>A one-value "was the last run clean" breadcrumb bracketing every GUI launch: <see cref="Begin"/> reads what the
-/// previous process left and overwrites it with "running"; <see cref="End"/> flips it to "clean" on an orderly exit. A
-/// marker still reading "running" means the previous process never reached its shutdown — a crash, a kill, or an
-/// OS-forced termination. "crashed" is written by a handler that already wrote its report and reads as Unclean, so a
-/// report that failed to land still leaves the fallback prompt.</summary>
+/// <summary>A one-value "was the last run clean" breadcrumb bracketing every GUI launch: <see cref="Begin(IAppSettings)"/>
+/// reads what the previous process left and overwrites it with "running"; <see cref="MarkFrame"/> upgrades that to
+/// "frame" once the UI has rendered its first frame; <see cref="End"/> flips the marker to "clean" on an orderly exit.
+/// A marker still reading "running" OR "frame" means the previous process never reached <see cref="End"/> — a crash, a
+/// kill, or an OS-forced termination — and "frame" additionally says it got at least as far as a rendered window,
+/// which is exactly the running-vs-reached-first-frame distinction <see cref="Crash.RecoveryPolicy.NextBootFailures"/>
+/// needs to tell a boot-time crash loop from a crash that happens after the app is already up. "crashed" is written by
+/// a handler that already wrote its report and reads as Unclean, so a report that failed to land still leaves the
+/// fallback prompt.</summary>
 public static class RunMarker
 {
-    public const string Running = "running", Clean = "clean", Crashed = "crashed";
+    public const string Running = "running", Clean = "clean", Crashed = "crashed", Frame = "frame";
 
-    public static RunOutcome Begin(IAppSettings s)
+    public static RunOutcome Begin(IAppSettings s) => Begin(s, out _);
+
+    /// <param name="previousReachedFirstFrame">TRUE when the previous marker was "frame" or "clean" — the previous
+    /// process rendered at least one frame before whatever happened to it next (a clean exit rendered many; a "frame"
+    /// marker rendered one and then died without <see cref="End"/>). FALSE for "running" (died before ever reaching a
+    /// frame) and for "crashed"/"" (no first-frame evidence either way).</param>
+    public static RunOutcome Begin(IAppSettings s, out bool previousReachedFirstFrame)
     {
         string prev = s.Get(Platform.Keys.RunMarker);
+        previousReachedFirstFrame = prev is Frame or Clean;
         s.Set(Platform.Keys.RunMarker, Running);
-        return prev switch { "" => RunOutcome.Unknown, Running or Crashed => RunOutcome.Unclean, _ => RunOutcome.Clean };
+        return prev switch { "" => RunOutcome.Unknown, Running or Crashed or Frame => RunOutcome.Unclean, _ => RunOutcome.Clean };
     }
 
-    /// <summary>Only downgrades our own "running" (never a "crashed" a handler wrote for THIS run); an orderly exit ends
-    /// an unclean streak, so the next stale marker is offer-worthy again.</summary>
+    /// <summary>Called once the UI has rendered its first frame (<c>Shell.OnFirstFrameRendered</c>). Only upgrades our
+    /// own "running" — NEVER stomps a "crashed" a handler already wrote for this same run (a managed crash on the very
+    /// first frame must still read as a crash, not a clean-ish "frame").</summary>
+    public static void MarkFrame(IAppSettings s)
+    {
+        if (s.Get(Platform.Keys.RunMarker) == Running) s.Set(Platform.Keys.RunMarker, Frame);
+    }
+
+    /// <summary>Only downgrades our own "running"/"frame" (never a "crashed" a handler wrote for THIS run); an orderly
+    /// exit ends an unclean streak, so the next stale marker is offer-worthy again.</summary>
     public static void End(IAppSettings s)
     {
-        if (s.Get(Platform.Keys.RunMarker) == Running) s.Set(Platform.Keys.RunMarker, Clean);
-        s.Set(Platform.Keys.UncleanExitOffered, false);
+        string cur = s.Get(Platform.Keys.RunMarker);
+        if (cur is Running or Frame) s.Set(Platform.Keys.RunMarker, Clean);
     }
 
-    public static void MarkCrashed(IAppSettings s)
-    {
-        s.Set(Platform.Keys.RunMarker, Crashed);
-        s.Set(Platform.Keys.UncleanExitOffered, false);
-    }
+    public static void MarkCrashed(IAppSettings s) => s.Set(Platform.Keys.RunMarker, Crashed);
 }
 
-/// <summary>Where the evidence that the previous run crashed came from, strongest first.</summary>
-public enum CrashSource : byte { None, ManagedReport, WerDump, UncleanExit }
-
-/// <summary>How this launch surfaces the crash.</summary>
-public enum CrashPromptMode : byte { None, Dialog, Toast }
-
-public readonly record struct CrashPromptDecision(CrashPromptMode Mode, CrashSource Source, string? ReportPath, string? DumpPath);
-
-/// <summary>Decides, once per launch, whether and how to tell the user the previous run crashed. The GUI run computes it
-/// (`Diagnostics.Host.cs`) and latches it on <see cref="ThisLaunch"/>; the report chrome (`Feedback.UI.cs`, owner R)
-/// consumes it once.</summary>
-public static class CrashPromptPolicy
-{
-    /// <summary>Latched for this launch; the consumer resets it to default (one-shot).</summary>
-    public static CrashPromptDecision ThisLaunch;
-
-    /// <param name="versionChanged">The previous process was killed by an update deployment: suppresses ONLY the
-    /// evidence-free UncleanExit, never a managed report or a WER dump.</param>
-    /// <param name="uncleanExitOffered">An UncleanExit prompt was already offered in this unclean streak — a process
-    /// stopped from Task Manager every run must not re-ask after every dismissal.</param>
-    public static CrashPromptDecision Decide(string pendingReport, string? newDumpPath, RunOutcome previousRun, bool optOut,
-        bool versionChanged, bool uncleanExitOffered)
-    {
-        CrashSource src = pendingReport.Length > 0 ? CrashSource.ManagedReport
-                        // The dump folder is machine-wide (every Wavee.exe, any checkout or profile): a dump is evidence about THIS
-                        // profile only when the profile has run before. A fresh profile (a --fake run, a new --profile) never prompts.
-                        : newDumpPath is { Length: > 0 } && previousRun != RunOutcome.Unknown ? CrashSource.WerDump
-                        : previousRun == RunOutcome.Unclean && !versionChanged && !uncleanExitOffered && !optOut ? CrashSource.UncleanExit
-                        : CrashSource.None;
-        if (src == CrashSource.None) return default;
-        return new CrashPromptDecision(optOut ? CrashPromptMode.Toast : CrashPromptMode.Dialog, src,
-            src == CrashSource.ManagedReport ? pendingReport : null, newDumpPath);
-    }
-}
+// CrashSource / CrashPromptMode / CrashPromptDecision / CrashPromptPolicy retired
+// (docs/plans/wavee/crash-diagnostics-implementation.md §E "Deletions"): the opt-in crash pipeline's own
+// Crash.ConsentPolicy (Platform/Crash.cs, WP-A) decides once per launch off Crash.Reporting + Crash.Kind now.
 
 // ── 10. the factory-reset marker plan (G-094, S half) ────────────────────────────────────────────────────────────────
 

@@ -122,6 +122,7 @@ public static partial class Shell
         FluentApp.FrameCompleted -= s_firstFrameMark;
         s_firstFrameMark = null;
         Log.Event(WaveeLogLevel.Info, "app", "boot.firstframe", "", null, Log.SinceStartMs);
+        Crash.Host.NoteFirstFrame();
     }
 
     // ══ 2. THE GATE, THEN RUN — the window and the engine loop ══════════════════════════════════════════════════════
@@ -162,7 +163,9 @@ public static partial class Shell
         s_activation = ActivationArgs.FromCurrentProcess("wavee");
         // A sign-in StartupTask carries its task id, not a deep link: to a running instance it is a bare relaunch.
         string payload = s_activation.Kind is ActivationKind.Launch or ActivationKind.StartupTask ? "" : s_activation.Argument;
-        if (s_gate.TryAcquire("Wavee", "FluentGpuWindow", payload)) return true;
+        // The instance is PROFILE-scoped (InstanceIdRules): a --profile run is its own instance beside the user's Wavee
+        // (evidence-diagnostics §A.7) — a second launch of the same profile still redirects to it, never across profiles.
+        if (s_gate.TryAcquire(InstanceIdRules.For(Platform.ProfileRoot), "FluentGpuWindow", payload)) return true;
 
         // A second launch handed its payload to the running instance through the gate; leaving is the whole point —
         // nothing after this call may open a store or write a setting.
@@ -199,6 +202,8 @@ public static partial class Shell
         ParseArgs(args, out int frames, out string? screenshot, out int winW, out int winH);
 
         InstallCrashNet();
+        if (!Platform.Args.Headless && !Platform.Args.RelaunchBroker)
+            Crash.Host.Install(Platform.LogFolder, Log.FilePath);
         InstallMarshallers();
 
         // The gate itself was already acquired by AcquireInstance, before RegisterShapes/Store.Use/Entities.Boot ran;
@@ -238,6 +243,9 @@ public static partial class Shell
             Log.Event(WaveeLogLevel.Info, "app", "boot.window", "", null, Log.SinceStartMs);
             s_firstFrameMark = OnFirstFrameRendered;
             FluentApp.FrameCompleted += s_firstFrameMark;
+            // `--crash-probe boot`: a deliberate boot-time throw, BEFORE the harness ever creates a window — the
+            // report chrome (Crash.Host.ArmProbe) never mounts to dispatch it, so this is the boot arm's only wiring.
+            if (Crash.Host.ProbeMode() == "boot") throw new InvalidOperationException("--crash-probe boot");
             FluentAppHarness.Run(
                 static () => new RootHost(),
                 new AppOptions
@@ -257,6 +265,10 @@ public static partial class Shell
                     // allocated. ALWAYS ON: a slow frame that cannot be attributed is a slow frame that does not get
                     // fixed.
                     RenderCensus = true,
+                    // The scene store starts at its steady-state size and the idle trim never shrinks below it: growing
+                    // from 64 by doubling ~45 column arrays put LOH allocations and gen2 collections inside the first
+                    // scrolls and navigations (realize=6.8/13.9 ms frames with gc=…/1, 2026-09-23).
+                    InitialSceneCapacity = 8192,
                     // App-wide UI zoom, seeded BEFORE the first frame (the theme discipline: no startup jump from
                     // 100 % to the user's scale).
                     Zoom = Platform.Settings.Get(Platform.Keys.ZoomLevel),
@@ -379,7 +391,7 @@ public static partial class Shell
         // relay, so an idle window (no frames) ticks nothing — a palette deadline that lands while idle is served on the
         // next frame, which that layer documents as a delay, never a loss. The lambda is static: zero allocation per
         // frame. The payload is the engine's `FrameStats` (`Action<FrameStats>`), read here for ONE bit: `ScrollActive` —
-        // did this frame drive a scroll, or sit inside the engine's 120 ms post-scroll hold.
+        // was any viewport in user-driven motion this frame or the last (`AppHost.AnyUserScrollMoving`).
         FluentApp.FrameCompleted += static stats =>
         {
             // The planner's clock (app seconds) FIRST: nothing else in the GUI moves `Entities.Now`, so without this a
@@ -411,8 +423,9 @@ public static partial class Shell
     // `Entities.Publish` early-outs on an empty dirty set, so a no-op reset costs one compare), which keeps the beat
     // steady instead of bursting the moment something lands.
 
-    /// <summary>Did the most recent rendered frame drive a scroll (or sit inside the engine's post-scroll hold)? Written
-    /// only by the frame tick, on the UI thread; read by the palette pump's self re-arm gate. False until the first frame.
+    /// <summary>Was any viewport in user-driven scroll motion on the most recent rendered frame (or the one before —
+    /// <c>AppHost.AnyUserScrollMoving</c>)? Written only by the frame tick, on the UI thread; read by the palette pump's
+    /// self re-arm gate and the lyrics glow deferral. False until the first frame.
     /// </summary>
     public static bool ScrollActive { get; private set; }
 
@@ -517,7 +530,7 @@ public static partial class Shell
     {
         s_fetchWakeAt = int.MaxValue;
         Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        Fetch.Pump();
+        Fetch.Pump(PumpVia.Wake);
         ArmFetchWake();
     }
 
@@ -605,7 +618,8 @@ public static partial class Shell
     /// logs its own COM failures.</summary>
     static void ArmJumpList()
     {
-        if (s_jumpList is not null) return;
+        // The jump list is keyed by the app's AUMID — shared with the user's Wavee: a --profile instance leaves it alone.
+        if (s_jumpList is not null || !InstanceIdRules.OwnsOsIntegration(Platform.ProfileRoot)) return;
         s_jumpList = new System.Threading.Timer(static _ => s_marshal?.Invoke(static () => Playback.Os.JumpList.Attach(
                 recentContexts: static max => PlayLog.RecentContexts(max),
                 recentSurfaces: static max => History.RecentSurfaces(History.Store.Entries, max))),
@@ -645,6 +659,10 @@ public static partial class Shell
             try { Session.Flush(); } catch (Exception) { }
             try { Log.Flush(); } catch (Exception) { }
         };
+
+        // WP-0 spike (crash-diagnostics-implementation.md §B.0): registers the filter/VEH candidates so a native AV in
+        // foreign code (`--crash-probe native`) proves — or disproves — that either sees it under NativeAOT.
+        Crash.NativeHook.Install();
     }
 
     /// <summary>Seed the theme BEFORE the window comes up (no startup flash): honour the persisted preference, falling
@@ -672,7 +690,9 @@ public static partial class Shell
     /// association pointing at an install path that moves on every update.</summary>
     static void RegisterProtocols()
     {
-        if (PackageIdentity.IsPackaged) return;
+        // Only the default profile owns the OS registrations: a --profile instance must never re-point the user's
+        // wavee:// / spotify: handlers or their sign-in start at this exe (InstanceIdRules.OwnsOsIntegration).
+        if (PackageIdentity.IsPackaged || !InstanceIdRules.OwnsOsIntegration(Platform.ProfileRoot)) return;
         try
         {
             if (Environment.ProcessPath is not { Length: > 0 } exe) return;
@@ -695,7 +715,8 @@ public static partial class Shell
     /// toggle reaches the NEXT sign-in rather than the one after the next launch. Fail-soft.</summary>
     public static void SyncStartupRegistration()
     {
-        if (PackageIdentity.IsPackaged || Environment.ProcessPath is not { Length: > 0 } exe) return;
+        if (PackageIdentity.IsPackaged || !InstanceIdRules.OwnsOsIntegration(Platform.ProfileRoot)
+            || Environment.ProcessPath is not { Length: > 0 } exe) return;
         try
         {
             if (Platform.Settings.Get(Platform.Keys.StartOnLogin))
@@ -757,6 +778,9 @@ public static partial class Shell
                 break;
             case DeepLinkKind.Quit:
                 Tray.Host.Quit();   // the latch first: a quit is never turned into a hide by close-to-tray
+                break;
+            case DeepLinkKind.Diag:
+                Diagnostics.Evidence.Apply(verb.Diag);   // the evidence harness (EvidenceBundle.cs); replies are files
                 break;
             default:
                 Log.Warn("nav", "deeplink.refused: " + raw.ToString());

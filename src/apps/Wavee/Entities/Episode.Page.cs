@@ -5,6 +5,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -228,9 +229,10 @@ public readonly partial struct Episode
         readonly Action[] _sectionClicks = new Action[SectionCount];
         NodeHandle _viewport;
         readonly Action<NodeHandle> _captureViewport;
-        readonly Action _resolveSpy;
-        readonly Func<ScrollGeometry, long> _projectScroll;
-        readonly Action<ScrollGeometry> _onScroll;
+        readonly Action _resolveSpy, _watchScroll;
+        /// <summary>The reader viewport's scroll handle; the spy's coarse geometry is projected off it.</summary>
+        readonly ScrollHandle _scroll = new();
+        long _scrollKey = long.MinValue;
 
         public EpisodeReader()
         {
@@ -242,8 +244,16 @@ public readonly partial struct Episode
             }
             _captureViewport = h => _viewport = h;
             _resolveSpy = ResolveSpy;
-            _projectScroll = static g => HashCode.Combine((int)(g.OffsetY / 24f), (int)MathF.Round(g.ViewportH / Spacing.XS));
-            _onScroll = g => { _scrollY.Value = g.OffsetY; _viewportH.SetIfChanged(g.ViewportH); };
+            // A COARSE key: the 24-DIP write floor and the viewport height in 4-DIP steps.
+            _watchScroll = () =>
+            {
+                float y = (float)_scroll.Offset.Value, vh = (float)_scroll.ViewportSignal.Value;
+                long key = HashCode.Combine((int)(y / 24f), (int)MathF.Round(vh / Spacing.XS));
+                if (key == _scrollKey) return;
+                _scrollKey = key;
+                _scrollY.Value = y;
+                _viewportH.SetIfChanged(vh);
+            };
         }
 
         public override Element Render()
@@ -253,6 +263,7 @@ public readonly partial struct Episode
             if (!e.IsValid) return new BoxEl();
             string key = epoch + ":" + p.Subject.Text;
             UseEffect(_resolveSpy);   // auto-tracks _scrollY/_viewportH — re-answers on every scroll step let through
+            UseSignalEffect(_watchScroll);
 
             (string Label, Action OnClick)[] pivotItems =
             [
@@ -307,9 +318,9 @@ public readonly partial struct Episode
                     band,
                     ScrollView(sections) with
                     {
-                        Key = "episode-scroll:" + key, Grow = 1, MinHeight = 0, ScrollKey = key,
+                        Key = "episode-scroll:" + key, Grow = 1, MinHeight = 0, ScrollKey = UseContext(Shell.PageScrollScope) + key,
                         AutoEdgeFade = true, AutoEdgeFadeBand = 24f,
-                        OnRealized = _captureViewport, OnScrollGeometryChanged = (_projectScroll, _onScroll),
+                        OnRealized = _captureViewport, Handle = _scroll,
                     },
                 ],
             };
@@ -329,8 +340,8 @@ public readonly partial struct Episode
             var scene = Context.Scene;
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
-            FluentGpu.Scroll.ScrollIntoView.BringInto(Context, _viewport, node, margin: Detail.BandLayout.Height,
-                alignmentRatio: 0f, animate: !Design.Reduced);
+            scene.BringIntoView(_viewport, node, align: 0f, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide,
+                margin: Detail.BandLayout.Height);
         }
 
         /// <summary>THE SPY: Detail.ScrollSpy.ActiveSectionOf over each anchor's viewport-relative top (the SAME

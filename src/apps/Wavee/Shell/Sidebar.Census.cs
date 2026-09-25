@@ -3,7 +3,7 @@
 // WHY THIS EXISTS. The first `scroll.trace` session (2026-09-16, 20:18) showed the sidebar rail re-rendering about
 // every fifth frame of a playlist scroll — `RailHost×1 a=305K` in the render census, 24 times a second, the single
 // largest scroll-time allocator left (38 MB over a 4.6 s burst, gen0 seven times, gen1 twice). The rail re-renders only
-// when `PaneView.PublishStage` bumps `_railVersion`, which happens only when a re-plan ran, which happens only when
+// when `PaneView.PublishStage` bumps `RailVersion`, which happens only when a re-plan ran, which happens only when
 // `PlanDep` moved. The census says WHICH of the ten planner inputs moved, so the log names the culprit instead of a
 // session guessing at `InputVersion` vs `Entries.Version` vs the play log.
 //

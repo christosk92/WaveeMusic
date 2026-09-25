@@ -88,7 +88,7 @@ public static partial class Spotify
                 if (_textLength + utf8.Length > _text.Length)
                     Array.Resize(ref _text, Math.Max(_textLength + utf8.Length, _text.Length * 2));
                 utf8.CopyTo(_text.AsSpan(_textLength));
-                var r = new TextRef(_textLength, utf8.Length);
+                var r = new TextRef(_textLength, utf8.Length, 0);   // this arena is not a Staging: no generations
                 _textLength += utf8.Length;
                 return r;
             }
@@ -98,17 +98,13 @@ public static partial class Spotify
             public ref ClusterDevice AddDevice()
             {
                 if (DeviceCount == _devices.Length) Array.Resize(ref _devices, _devices.Length * 2);
-                ref var d = ref _devices[DeviceCount++];
-                d = default;
-                return ref d;
+                return ref FreshSlot.Of(_devices, DeviceCount++);
             }
 
             public ref ClusterTrack AddTrack()
             {
                 if (TrackCount == _tracks.Length) Array.Resize(ref _tracks, _tracks.Length * 2);
-                ref var t = ref _tracks[TrackCount++];
-                t = default;
-                return ref t;
+                return ref FreshSlot.Of(_tracks, TrackCount++);
             }
 
             public ReadOnlySpan<ClusterDevice> Devices(int start, int length) => _devices.AsSpan(start, length);
@@ -161,7 +157,7 @@ public static partial class Spotify
                             if (id.IsEmpty) break;
                             if (!changed.IsEmpty) into.AddText(","u8);
                             TextRef added = into.AddText(id);
-                            changed = changed.IsEmpty ? added : new TextRef(changed.Offset, added.Offset + added.Length - changed.Offset);
+                            changed = changed.IsEmpty ? added : changed.Slice(0, added.Offset + added.Length - changed.Offset);
                             break;
                         }
                     default: r.Skip(); break;

@@ -235,6 +235,33 @@ Describe 'Get-FeedContentType' {
     }
 }
 
+Describe 'Get-ReportIdFromMultipart' {
+
+    It 'finds the reportId inside the summary JSON part' {
+        $body = "--BOUNDARY`r`nContent-Disposition: form-data; name=`"summary`"`r`n`r`n" +
+                '{"reportId":"3f9c1a2b-0000-0000-0000-000000000000","kind":"Managed"}' +
+                "`r`n--BOUNDARY--`r`n"
+        Get-ReportIdFromMultipart -BodyText $body | Should Be '3f9c1a2b-0000-0000-0000-000000000000'
+    }
+
+    It 'is not fooled by whitespace around the colon' {
+        $body = '{"reportId"   :    "abc123"}'
+        Get-ReportIdFromMultipart -BodyText $body | Should Be 'abc123'
+    }
+
+    It 'returns x when there is no reportId field' {
+        Get-ReportIdFromMultipart -BodyText '{"kind":"Hang"}' | Should Be 'x'
+    }
+
+    It 'returns x for an empty body' {
+        Get-ReportIdFromMultipart -BodyText '' | Should Be 'x'
+    }
+
+    It 'returns x for an empty reportId value rather than the empty string' {
+        Get-ReportIdFromMultipart -BodyText '{"reportId":""}' | Should Be 'x'
+    }
+}
+
 # ===================================================================================================================
 # The evidence helpers the end-to-end harness reasons with. All pure: rows in, verdict out - no listener, no
 # registry, no processes. They exist because the cmdlet-shaped answers they replace were observed to be WRONG
@@ -592,6 +619,52 @@ Describe 'Start-LocalFeedServer (live listener)' {
         (($lines[2] -split ([string][char]9))[3]) | Should Be '206'
         (($lines[2] -split ([string][char]9))[4]) | Should Be 'bytes=10-19'
         (($lines[3] -split ([string][char]9))[3]) | Should Be '404'
+    }
+
+    It 'answers POST /v1/report with 201 {id}, or 503 under -FailIngest' -Skip:(-not $script:IsElevated) {
+        $root = Join-Path $script:TmpRoot 'live-report'
+        New-Item -ItemType Directory -Force -Path $root | Out-Null
+        $port = Get-Random -Minimum 20000 -Maximum 40000
+
+        $srv = Start-LocalFeedServer -Root $root -Port $port -BindHost '127.0.0.1'
+        try {
+            $bytes = [Text.Encoding]::UTF8.GetBytes('{"reportId":"deadbeef-0000-0000-0000-000000000000"}')
+            $req = [Net.HttpWebRequest]::Create($srv.Prefix + 'v1/report')
+            $req.Proxy = $null
+            $req.Method = 'POST'
+            $req.ContentType = 'multipart/form-data; boundary=X'
+            $req.ContentLength = $bytes.Length
+            $stream = $req.GetRequestStream()
+            $stream.Write($bytes, 0, $bytes.Length); $stream.Close()
+            $resp = $req.GetResponse()
+            [int]$resp.StatusCode | Should Be 201
+            $sr = New-Object IO.StreamReader($resp.GetResponseStream())
+            $sr.ReadToEnd() | Should Be '{"id":"deadbeef-0000-0000-0000-000000000000"}'
+            $resp.Close()
+        }
+        finally { Stop-LocalFeedServer $srv }
+
+        $port2 = Get-Random -Minimum 20000 -Maximum 40000
+        $srv2 = Start-LocalFeedServer -Root $root -Port $port2 -BindHost '127.0.0.1' -FailIngest
+        try {
+            $status503 = 0
+            try {
+                $req = [Net.HttpWebRequest]::Create($srv2.Prefix + 'v1/report')
+                $req.Proxy = $null
+                $req.Method = 'POST'
+                $req.ContentLength = 0
+                $resp = $req.GetResponse()
+                $resp.Close()
+            }
+            catch [Net.WebException] {
+                if ($_.Exception.Response) {
+                    $status503 = [int]$_.Exception.Response.StatusCode
+                    $_.Exception.Response.Close()
+                }
+            }
+            $status503 | Should Be 503
+        }
+        finally { Stop-LocalFeedServer $srv2 }
     }
 }
 

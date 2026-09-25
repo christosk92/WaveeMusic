@@ -75,6 +75,12 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
 - [deep-linking.md](deep-linking.md) — the `wavee://` verb map and the one activation entry every surface routes through.
 - [receipts.md](receipts.md) — the About "Wavee right now" perf receipts and the GPU-vs-app memory split.
 - [focus-pitfalls.md](focus-pitfalls.md) — programmatic focus: focus the editable node, not its chrome.
+- [scrolling.md](scrolling.md) — **Scrolling in Wavee**: one `ScrollHandle` + a `ScrollKey` composed under
+  `Shell.PageScrollScope` per scroller, `ItemsView` `ScrollOptions`, `WheelTarget`, sticky/clip with scopes and
+  `engaged:` signals, hero `Collapse`/`StretchFromTop`/`Parallax`/`Fade`, lyrics `ScrollMove.Follow` + `MeasureAll`, the
+  Diagnostics Scroll + Tiles cards and the `scroll.frames` / `scroll.burst` log lines. **No app-side workarounds for
+  engine scroll behaviour** — reproduce, then fix in `..\fluent-gpu` (its `fluentgpu-scroll` skill). Guide:
+  `docs/guide/scrolling.md`.
 - [probes.md](probes.md) — the headless CLI probe flags (`--spotify-metadata`, `--spotify-login`, ...), how to
   build/run one against the live account, and the credential-store caveat. Read before running or adding a probe.
 - **`wavee-sidebar` skill** (`.claude/skills/wavee-sidebar/`) — the left sidebar: the three designs as documents

@@ -188,7 +188,12 @@ public static partial class Spotify
             byte[] scratch = t_scratch ??= new byte[256 * 1024];
             DealerMessage message;
             try { message = DealerFrame.Parse(frame, scratch); }
-            catch (Exception ex) { Log.Warn("spotify", "dealer frame unparseable: " + ex.GetType().Name); return; }
+            catch (Exception ex)
+            {
+                Log.Warn("spotify", "dealer frame unparseable: " + ex.GetType().Name);
+                if (Capture.Enabled) Capture.Point(CaptureKind.DecodeFailed, causeId: 0, a: ex.GetType().Name, b: "dealer-frame");
+                return;
+            }
 
             uint epoch = Current.Epoch;
 
@@ -201,6 +206,7 @@ public static partial class Spotify
                 {
                     Decode.ClusterBuffer.Return(buffer);
                     Log.Error("spotify", "cluster decode faulted", ex);
+                    if (Capture.Enabled) Capture.Point(CaptureKind.DecodeFailed, causeId: 0, a: ex.GetType().Name, b: "cluster-update");
                     return;
                 }
                 // The free clock sample, fed BEFORE the delta is visible to anyone (C5).
@@ -214,15 +220,30 @@ public static partial class Spotify
             {
                 Decode.RemoteCommand command;
                 try { command = Decode.ConnectCommand(message.Payload); }
-                catch (Exception ex) { Log.Error("spotify", "connect command decode faulted", ex); command = default; }
+                catch (Exception ex)
+                {
+                    Log.Error("spotify", "connect command decode faulted", ex);
+                    if (Capture.Enabled) Capture.Point(CaptureKind.DecodeFailed, causeId: 0, a: ex.GetType().Name, b: "connect-command");
+                    command = default;
+                }
+
+                // §3.3's inbound-REQUEST row: the wire request is its own root (causeId 0 — a §3.3 note names the
+                // refinement "quotes our own last-sent messageId ⇒ the CommandAttribution window's cause" as a gap
+                // this plan leaves to the Playback-side unit; `command.MessageId` is captured on the record itself
+                // so a later reader can still make that join). Closed once the ack is sent AND the command is routed
+                // — "what was asked, which handler ran, what changed" is the Decision `DoRemote` itself already
+                // emits (Playback.cs), keyed under THIS Begin's own id via `Reply`'s threaded causeId.
+                long remoteRequestId = Capture.Begin(CaptureKind.RemoteRequest, causeId: 0,
+                    a: command.Kind.ToString(), b: command.MessageId.ToString(), n0: unchecked((long)command.SenderHash));
 
                 // ACK FIRST, ALWAYS. The controller retries an unacked command, and a retry storm from a phone in a
                 // pocket is worse than a command we could not read: `Ok` says whether we understood the BODY, and a
                 // body we did not understand is still a command we received.
-                Reply(message.Key, ok: true);
+                Reply(message.Key, ok: true, causeId: remoteRequestId);
                 // A play/transfer goes to the playback host with its decoded body (claim and load in ONE slot, G-071); the
                 // verbs with a body are folded or decoded first (G-074). Spotify.Connect.Commands.cs.
                 RouteCommand(in command, message.Payload, epoch);
+                Capture.End(remoteRequestId, n0: 1 /* ok: true, always — see the ack comment above */);
                 return;
             }
 
@@ -250,10 +271,25 @@ public static partial class Spotify
             // (Spotify.Library.cs). The payload rides along for the per-playlist push (its ops replay in place, wave D3);
             // a truncated one is handed over EMPTY, which that host reads as "unreadable ⇒ mark the list dirty".
             if (message.Kind == DealerFrameKind.Message)
-                if (!Playback.OnSpeedSettings(message.Uri, message.Truncated ? default : message.Payload)
-                    && !Telemetry.OnDealerProgress(message.Uri, message.Truncated ? default : message.Payload))
+            {
+                bool handledLocally = Playback.OnSpeedSettings(message.Uri, message.Truncated ? default : message.Payload)
+                    || Telemetry.OnDealerProgress(message.Uri, message.Truncated ? default : message.Payload);
+                if (!handledLocally)
+                {
+                    // §3.3's "everything else … is not an error and is not logged per push" fall-through — made
+                    // visible to the CAPTURE (never to the always-on log; §1's own words for why `FrameIgnored`
+                    // exists at all). `Unclassified` here because THIS layer does not know what `Library.OnDealerPush`
+                    // will do with it (a rootlist/collection/playlist push all settle asynchronously there) — the
+                    // capture records "not ours", not "nobody wanted it".
+                    if (Capture.Enabled)
+                        Capture.Point(CaptureKind.FrameIgnored, causeId: 0,
+                            a: DealerCaptureLabel(message.Uri), b: CaptureIgnoreReason.Unclassified.ToString());
                     Library.OnDealerPush(message.Uri, message.Truncated ? default : message.Payload);
+                }
+            }
         }
+
+        static string DealerCaptureLabel(ReadOnlySpan<byte> uri) => uri.IsEmpty ? "(unknown)" : Encoding.UTF8.GetString(uri);
 
         // ── 3. out: put-state ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -272,6 +308,12 @@ public static partial class Spotify
         static bool s_pendingActive;
         static Playback.Snapshot s_pendingSnapshot;
         static bool s_hasPending;
+        /// <summary>§2.2's explicit propagation for THIS crossing: `PublishState`/`PublishNow` run on whatever thread
+        /// called them (often the UI thread's own reducer drain), but the PUT itself goes out from `FlushOnce` on an
+        /// api thread (`Api.Run`) — a thread-static ambient cause would not survive that hop, so the id rides here,
+        /// on the exact field the debounce already coalesces through. 0 (the default) when a caller does not know —
+        /// the resulting `ConnectStatePut` capture record is then its own root, never a crash.</summary>
+        static long s_pendingCauseId;
 
         /// <summary>The last message id we sent. The put-state response quotes it, which is how the ownership fold
         /// knows the cluster it just read is the answer to OUR claim and not somebody else's (C5).</summary>
@@ -284,16 +326,20 @@ public static partial class Spotify
         /// reducer's drain (`Playback.Host.cs`), because <c>Playback.State</c> is the UI thread's alone (C1) and this
         /// debounce plus the PUT below both run on an api thread. <c>isActive</c> came off the snapshot with it — its
         /// one writer is <c>Playback.Ownership.IsActiveOnWire</c>.</para></summary>
-        static readonly System.Collections.Generic.Queue<Playback.Snapshot> s_commandStates = new();
+        static readonly System.Collections.Generic.Queue<(Playback.Snapshot Snapshot, long CauseId)> s_commandStates = new();
 
-        /// <summary>Command receipts are a sequence; unlike local slider state they must not coalesce.</summary>
-        public static void PublishCommand(in Playback.Snapshot snapshot)
+        /// <summary>Command receipts are a sequence; unlike local slider state they must not coalesce.
+        /// <paramref name="causeId"/> (added, §2.2/§3.3): 0 keeps every existing caller compiling unchanged — a
+        /// caller that knows the id of whatever caused this command (an `ActionInvoke` root, a `RemoteRequest`)
+        /// threads it through so the eventual `ConnectStatePut` capture parents correctly instead of becoming its
+        /// own orphan root.</summary>
+        public static void PublishCommand(in Playback.Snapshot snapshot, long causeId = 0)
         {
-            lock (s_publishLock) { s_commandStates.Enqueue(snapshot); s_hasPending = false; }
+            lock (s_publishLock) { s_commandStates.Enqueue((snapshot, causeId)); s_hasPending = false; }
             Api.Run(Flush);
         }
 
-        public static void PublishState(in Playback.Snapshot snapshot, PutReason reason)
+        public static void PublishState(in Playback.Snapshot snapshot, PutReason reason, long causeId = 0)
         {
             lock (s_publishLock)
             {
@@ -304,6 +350,7 @@ public static partial class Spotify
                 s_hasPending = true;
                 s_pendingReason = reason;
                 s_pendingActive = snapshot.IsActive;
+                s_pendingCauseId = causeId;
                 s_debounce ??= new Timer(static _ => Api.Run(Flush), null, Timeout.Infinite, Timeout.Infinite);
                 s_debounce.Change(PublishDebounceMs, Timeout.Infinite);
             }
@@ -311,13 +358,13 @@ public static partial class Spotify
 
         /// <summary>Announce NOW, skipping the window. The new-connection announce uses it: a fresh connection id that
         /// waits 50 ms is a device the picker does not show for 50 ms longer than it has to.</summary>
-        public static void PublishNow(in Playback.Snapshot snapshot, PutReason reason)
+        public static void PublishNow(in Playback.Snapshot snapshot, PutReason reason, long causeId = 0)
         {
             bool proceed;
             lock (s_publishLock)
             {
                 proceed = !GateOrHold(in snapshot, reason, hasConnectionId: !Current.ConnectionId.IsEmpty);
-                if (proceed) { s_hasPending = true; s_pendingSnapshot = snapshot; s_pendingReason = reason; s_pendingActive = snapshot.IsActive; }
+                if (proceed) { s_hasPending = true; s_pendingSnapshot = snapshot; s_pendingReason = reason; s_pendingActive = snapshot.IsActive; s_pendingCauseId = causeId; }
             }
             if (proceed) Api.Run(Flush);
         }
@@ -520,15 +567,23 @@ public static partial class Spotify
         static void SendRetire(in Playback.Snapshot snapshot)
         {
             byte[] rented = ArrayPool<byte>.Shared.Rent(Decode.PutStateCapacity(in snapshot));
+            long putCaptureId = 0;
             try
             {
                 int written = Decode.PutState(in snapshot, rented);
+                putCaptureId = Capture.Begin(CaptureKind.ConnectStatePut, causeId: 0, a: "BecameInactive",
+                    n0: snapshot.MessageId, payload: rented.AsMemory(0, written));
                 var args = new RequestArgs { Id = OurDeviceId, Body = rented.AsSpan(0, written) };
                 using var bounded = new CancellationTokenSource(RetireTimeoutMs);
                 Api.Result result = Api.Send(RequestKind.ConnectStatePut, args, bounded.Token);
+                Capture.End(putCaptureId, n0: result.Status, payload: result.Body);
                 Log.Info("spotify", "put-state BecameInactive before sign-out msgId=" + snapshot.MessageId + " status=" + result.Status);
             }
-            catch (Exception ex) { Log.Warn("spotify", "the sign-out's inactive put-state failed", ex); }
+            catch (Exception ex)
+            {
+                Log.Warn("spotify", "the sign-out's inactive put-state failed", ex);
+                if (Capture.Enabled) Capture.Point(CaptureKind.DecodeFailed, causeId: putCaptureId, a: ex.GetType().Name, b: "put-state-retire");
+            }
             finally { ArrayPool<byte>.Shared.Return(rented); }
         }
 
@@ -614,6 +669,7 @@ public static partial class Spotify
             PutReason reason;
             bool isActive;
             uint messageId;
+            long causeId;
             Playback.Snapshot snapshot;
             bool proceed;
             lock (s_publishLock)
@@ -621,7 +677,18 @@ public static partial class Spotify
                 bool command = s_commandStates.Count > 0;
                 if (!command && !s_hasPending) return;
                 if (!command) s_hasPending = false;
-                Playback.Snapshot pending = command ? s_commandStates.Dequeue() : s_pendingSnapshot;
+                Playback.Snapshot pending;
+                if (command)
+                {
+                    (Playback.Snapshot Snapshot, long CauseId) dequeued = s_commandStates.Dequeue();
+                    pending = dequeued.Snapshot;
+                    causeId = dequeued.CauseId;
+                }
+                else
+                {
+                    pending = s_pendingSnapshot;
+                    causeId = s_pendingCauseId;
+                }
                 reason = command ? PutReason.PlayerStateChanged : s_pendingReason;
                 isActive = pending.IsActive;
                 // The id is minted HERE, inside the window, so the ten captures that coalesced into this one PUT all
@@ -641,6 +708,11 @@ public static partial class Spotify
 
             // Sized to the snapshot: a 50 + 50 window with its rows' metadata is several times the old fixed 64 KB (G-240).
             byte[] rented = ArrayPool<byte>.Shared.Rent(Decode.PutStateCapacity(in snapshot));
+            // §3.3's ConnectStatePut row: Begin right before the request leaves, so a reader's causal tree already
+            // has the send the moment it happens; every exit below (soft-ack, rejection, decode fault, the plain OK
+            // path) closes this SAME id exactly once, right after the response comes back — never left dangling
+            // except by an actual timeout, which is §2.5's `EchoMissing` read-time inference, not this shell's job.
+            long putCaptureId = 0;
             try
             {
                 // started_playing_at is UNIX ms on the wire and the reducer stamps the frame clock: the two clocks sampled
@@ -655,8 +727,17 @@ public static partial class Spotify
                 // Protected — and audible — for the full 5 s expiry instead of hearing about the failure at once.
                 Playback.Post(Playback.Input.PutSent(messageId, isActive));
 
+                // The PutState body is protobuf player state, never a bearer token — no Redactor pass needed (§4's
+                // targets are headers/JSON secrets, not this wire shape). `n0` carries OUR messageId so a reader
+                // does not need to decode the body to find "which PUT was this" (§2.5's echo table).
+                putCaptureId = Capture.Begin(CaptureKind.ConnectStatePut, causeId, a: reason.ToString(),
+                    n0: messageId, payload: rented.AsMemory(0, written));
+
                 var args = new RequestArgs { Id = OurDeviceId, Body = rented.AsSpan(0, written) };
                 Api.Result result = Api.Send(RequestKind.ConnectStatePut, args, CancellationToken.None);
+                // Closed here, unconditionally, the moment the response is in hand — a non-2xx is an ORDINARY End
+                // whose n0 sits outside 200-299 (§3.3's error row), not a special capture path.
+                Capture.End(putCaptureId, n0: result.Status, payload: result.Body);
                 if (!result.Ok)
                 {
                     // 422 after a BecameInactive is the service saying "you already were" — a soft acknowledgement,
@@ -702,6 +783,17 @@ public static partial class Spotify
                     delta.PutMsgId = messageId;
                     if (delta.ServerTimestampMs > 0) ObserveClusterTimestamp(delta.ServerTimestampMs);
                     TraceEcho(in delta, buffer, messageId);
+                    if (Capture.Enabled)
+                    {
+                        // §2.5's echo-correlation ids, on the record a reader pairs against this ConnectStatePut's own
+                        // Begin: `b` is the EXACT match §2.5's table asks for (delta.PutMsgId == our own messageId —
+                        // no timing race, same HTTP round trip), `a` is the server's QueueRevision version stamp,
+                        // `n0`/`n1` are ServerTimestampMs/PutMsgId themselves for a reader that wants the raw values.
+                        string queueRevision = delta.QueueRevision.IsEmpty ? "" : Encoding.UTF8.GetString(buffer.Utf8(delta.QueueRevision));
+                        Capture.Point(CaptureKind.ConnectStatePutResponse, causeId: putCaptureId,
+                            a: queueRevision, b: (delta.PutMsgId == messageId).ToString(),
+                            n0: delta.ServerTimestampMs, n1: delta.PutMsgId);
+                    }
                     // Always-on: a claim the service did NOT adopt is the one line that explains "other devices do not
                     // show Wavee" (2026-09-16) — the diagnostics page's echo card is not in the log the user sends.
                     if (isActive)
@@ -718,6 +810,7 @@ public static partial class Spotify
                 {
                     Decode.ClusterBuffer.Return(buffer);
                     Log.Error("spotify", "put-state response decode faulted", ex);
+                    if (Capture.Enabled) Capture.Point(CaptureKind.DecodeFailed, causeId: putCaptureId, a: ex.GetType().Name, b: "put-state-response");
                 }
             }
             finally

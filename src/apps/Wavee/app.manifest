@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Wavee.exe's Win32 manifest — added for the engine-free recovery screen (docs/plans/wavee/crash-diagnostics-implementation.md
+  §B.8, §D, §I "WP-D"): TaskDialogIndirect needs the v6 common controls, which only load with an explicit
+  Microsoft.Windows.Common-Controls dependency (the OS ships v5 by default; v6 is side-by-side, opt-in only).
+
+  DELIBERATELY NO <dpiAware>/<dpiAwareness> element here. The engine already calls SetProcessDpiAwarenessContext
+  itself at runtime (fluent-gpu's Win32Platform.cs, PER_MONITOR_AWARE_V2) before any window is created; a manifest
+  DPI declaration is fixed at process-creation time and would either fight that call or (if it merely agreed) start
+  masking a future change to it. Recovery mode runs before the engine too, but it never creates a window that reads
+  DPI (TaskDialogIndirect/MessageBoxW auto-scale themselves) — see the crash-diagnostics plan §H item 4.
+-->
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity type="win32" name="Wavee.Wavee" version="1.0.0.0" />
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+
+  <!-- Windows 10 and Windows 11 share this supportedOS GUID (Windows 11 did not get its own). -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+
+  <!-- comctl32 v6 — required for TaskDialogIndirect (Screens/Recovery.Win32.cs). Without this dependency the OS
+       loads v5, TaskDialogIndirect fails to resolve/returns an error, and recovery mode falls back to MessageBoxW. -->
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0"
+                        processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*" />
+    </dependentAssembly>
+  </dependency>
+</assembly>

@@ -1,14 +1,15 @@
 // ── Screens/Settings.UI.About.cs ───────────────────────────────────────────────────────────────────────────────────
 // the About tab: the update panel (the version hero + the W20 state matrix, the status card, channel, install-on-quit,
-// metered download, what's-new auto-show — or the Store card), the links card, the crash-reports card mount, the "Wavee
-// right now" receipts (the GPU line, a 5 s interval on a child), the two license expanders
+// metered download, what's-new auto-show — or the Store card), the links card, the "Wavee right now" receipts (the GPU
+// line, a 5 s interval on a child), the two license expanders. The crash-reports card moved to Settings › General ›
+// Privacy & diagnostics and Settings › Logs › Reports (crash-diagnostics-implementation.md §D, §E — Crash.UI.cs, WP-E).
 //
 // Role: UI
 // Owner: R
 // Wave: 6
 // Budget: 350 lines
 // Spec: ch 27 §0 N12, W19, W20, §3 (About rows), §5 (receipts tick, update progress), §7 (+ G8-G10, G12), §8, §10 parity
-// 50-56; ch 28 §1.4 (CrashReportsCard) and §6.4 (the report entry points)
+// 50-56; ch 28 §6.4 (the report entry points)
 //
 // Everything with LIVE state is an embedded child component (AboutTab is called behind the page's tab switch, so a hook
 // in it would be conditional): `AboutUpdatePanel` reads `Notify.Update`, `ReceiptsCard` owns the interval.
@@ -30,11 +31,11 @@ public static partial class Settings
 {
     // ══ 1. THE TAB ═════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Order: update panel, links, crash reports (beside "Report a problem"), the receipts, Licenses.</summary>
+    /// <summary>Order: update panel, links, the receipts, Licenses. Crash reports moved to Settings › General ›
+    /// Privacy &amp; diagnostics and Settings › Logs › Reports (crash-diagnostics-implementation.md §D, §E).</summary>
     private static partial Element AboutTab() => TabStack(
         Embed.Comp(static () => new AboutUpdatePanel()) with { Key = "about:update" },
         AboutLinksCard(),
-        Feedback.CrashReportsCard(),
         SectionHeader(Loc.Get(Strings.Settings.About.RightNow), Icons.Info),
         Embed.Comp(static () => new ReceiptsCard()),
         SectionHeader(Loc.Get(Strings.Settings.About.Licenses), Icons.Document),

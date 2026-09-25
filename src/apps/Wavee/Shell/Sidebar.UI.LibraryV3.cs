@@ -23,7 +23,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
-using FluentGpu.Scroll;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -704,10 +704,9 @@ public static partial class Sidebar
     internal sealed class V3NavBand : Component
     {
         readonly V3Session _s;
-        // W4 — the word rail's pager state. Mounted once per pane, so plain fields persist across renders.
-        NodeHandle _railViewport = NodeHandle.Null;
-        readonly Signal<bool> _railCanScrollLeft = new(false);
-        readonly Signal<bool> _railCanScrollRight = new(false);
+        // W4 — the word rail's pager state: its scroll handle, whose AtStart/AtEnd edge signals ARE "is there more to
+        // reach" on each side. Mounted once per pane, so plain fields persist across renders.
+        readonly ScrollHandle _railScroll = new();
         readonly Action _pageBack, _pageForward;
 
         public V3NavBand(V3Session s)
@@ -806,8 +805,9 @@ public static partial class Sidebar
                 };
             }
 
-            // ONE truth for "is there more to reach", feeding both the fade mask and the chevrons.
-            bool canLeft = _railCanScrollLeft.Value, canRight = _railCanScrollRight.Value;
+            // ONE truth for "is there more to reach", feeding both the fade mask and the chevrons: the handle's edge flags
+            // flip on an enable/disable EDGE only, never per pixel.
+            bool canLeft = !_railScroll.AtStart.Value, canRight = !_railScroll.AtEnd.Value;
             EdgeMask fadeMask = (canLeft, canRight) switch
             {
                 (true, true) => EdgeMask.Horizontal,
@@ -824,15 +824,7 @@ public static partial class Sidebar
             }, horizontal: true) with
             {
                 ContentSized = true, Grow = 1f,
-                // Change-only observer projected to a 2-bit key: fires on an enable/disable EDGE, never per pixel.
-                OnScrollGeometryChanged = (
-                    g => (g.OffsetX > 0.5f ? 1L : 0L) | (g.OffsetX < g.ContentW - g.ViewportW - 0.5f ? 2L : 0L),
-                    g =>
-                    {
-                        _railCanScrollLeft.Value = g.OffsetX > 0.5f;
-                        _railCanScrollRight.Value = g.OffsetX < g.ContentW - g.ViewportW - 0.5f;
-                    }),
-                OnRealized = h => _railViewport = h,
+                Handle = _railScroll,
             };
 
             return new BoxEl
@@ -878,21 +870,12 @@ public static partial class Sidebar
                              LibraryV3Metrics.DestinationRailChevronGlyph, Tok.TextSecondary)],
         };
 
-        /// <summary>Read the viewport's LIVE offset/extent (copied out before the call — <c>ScrollTo</c> takes its own ref)
-        /// and glide 0.8 × the live viewport through the engine's one programmatic scroll seam.</summary>
+        /// <summary>Glide 0.8 × the live viewport from the SHOWN offset through the rail's scroll handle.</summary>
         void ScrollRailBy(int dir)
         {
-            if (Context.Scene is not { } scene) return;
-            var vp = _railViewport;
-            if (vp.IsNull || !scene.IsLive(vp) || !scene.HasScroll(vp)) return;
-            float offset, viewportW;
-            {
-                ref ScrollState sc = ref scene.ScrollRef(vp);
-                offset = sc.OffsetX;
-                viewportW = sc.ViewportW;
-            }
-            float target = offset + dir * viewportW * LibraryV3Metrics.DestinationRailPageStep;
-            ScrollIntoView.ScrollTo(Context, vp, target, animate: !Motion.ReducedMotion);
+            if (!_railScroll.IsBound) return;
+            double target = _railScroll.Offset.Peek() + dir * _railScroll.Viewport * LibraryV3Metrics.DestinationRailPageStep;
+            _railScroll.ScrollTo(target, Motion.ReducedMotion ? ScrollMove.Immediate : ScrollMove.Glide);
         }
 
         /// <summary>The destination's library count, or null for Local files (never countable) and while its relation is
@@ -1338,7 +1321,7 @@ public static partial class Sidebar
             var focusedKey = UseSignal<string?>(null);
             var nodes = UseMemo(static () => new Dictionary<string, NodeHandle>(8), DepKey.Empty);
             var stale = UseMemo(static () => new List<string>(4), DepKey.Empty);
-            var controller = UseMemo(static () => new ScrollController(), DepKey.Empty);
+            var scroll = UseMemo(static () => new ScrollHandle(), DepKey.Empty);
 
             int filter = LibraryV3Metrics.NormalizeFilter(V3Filter.Value);
             int qualifier = LibraryV3Metrics.NormalizeQualifier(V3Qualifier.Value);
@@ -1369,7 +1352,7 @@ public static partial class Sidebar
             foreach (var key in stale) nodes.Remove(key);
 
             // HOME the rail on a filter/qualifier change: the ✕ and the selected facet always lead it.
-            UseLayoutEffect(() => controller.ScrollTo(0f), DepKey.From(filter, qualifier));
+            UseLayoutEffect(() => scroll.ScrollTo(0.0), DepKey.From(filter, qualifier));
 
             var chips = new Element[slots.Count];
             for (int i = 0; i < slots.Count; i++) chips[i] = Chip(nodes, slots[i], qualifier, i == focusIdx);
@@ -1389,7 +1372,7 @@ public static partial class Sidebar
             }, horizontal: true) with
             {
                 Grow = 0f, Height = LibraryV3Metrics.ChipRailHeight, AutoEdgeFade = true, SuppressScrollBar = true,
-                ScrollKey = "sidebar.v3.chips", Controller = controller,
+                ScrollKey = "sidebar.v3.chips", Handle = scroll,
             };
         }
 

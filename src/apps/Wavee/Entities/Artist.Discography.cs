@@ -39,6 +39,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Render;
+using FluentGpu.Scroll.Effects;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 using DrawerVerdict = Wavee.Album.DrawerVerdict;
@@ -580,9 +582,8 @@ public readonly partial struct Artist
     sealed class FacetHost : Component
     {
         readonly Signal<LazyGridVisibleRange> _visible = new(default);
-        readonly Signal<bool> _gridClipped = new(false);
+
         readonly Action<LazyGridVisibleRange> _onVisible;
-        readonly Action<bool> _onClipped;
         readonly Func<ColorF> _accent;
         readonly Action _demand;
         readonly Func<ulong> _yearFold;                          // the era memo's value gate (UseComputed in Render)
@@ -599,7 +600,6 @@ public readonly partial struct Artist
         public FacetHost()
         {
             _onVisible = r => { if (_visible.Peek() != r) _visible.Value = r; };
-            _onClipped = c => { if (_gridClipped.Peek() != c) _gridClipped.Value = c; };
             _accent = () => _p is { } p ? p.Accent() : Tok.AccentDefault;
             _demand = Demand;
             _yearFold = YearFold;
@@ -683,11 +683,13 @@ public readonly partial struct Artist
             Element grid = new BoxEl
             {
                 Direction = 1,
-                EdgeFade = _gridClipped.Value ? new EdgeFadeSpec(EdgeMask.Top, Detail.BandLayout.ClipFadeBand) : null,
+                // Feathered exactly while the grid's own clip is engaged, on the render turn that poses it (WhileStuck —
+                // RCA 2026-09-25 F(ii): a re-render off an engaged signal lagged the cut by two presents).
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.BandLayout.ClipFadeBand) { WhileStuck = true },
                 // Bug D: no facet-identity demotion — the grid's own next-page paging stays scroll-paced (DemandNextPage
                 // via _ensureRange/OnVisible below); only page ONE's priority changed, and it defaults to Visible.
                 Children = [Grid(a, p.Facet, _accent, _onVisible, p.ExpandedTopInset)],
-            }.ClipBelow(inset, _onClipped);
+            }.StickyClip(inset);
 
             return new BoxEl
             {
@@ -735,7 +737,7 @@ public readonly partial struct Artist
                     BorderWidth = 0f,
                     Corners = CornerRadius4.All(0f),
                     BrushTransitionMs = 0f,
-                    ScrollBinds = [new() { PinTop = pinTop }],
+                    ScrollEffects = [new ScrollEffectSpec(ScrollEffect.Sticky(pinTop))],
                 },
                 [Expander.PartChevron] = element => element with
                 {
@@ -1524,13 +1526,28 @@ public readonly partial struct Artist
     sealed class DiscoPageHost : Component
     {
         readonly Signal<float> _scroll = new(0f);
+        /// <summary>The page viewport's scroll handle; <see cref="_scroll"/> is its offset on the 24-DIP write floor.</summary>
+        readonly ScrollHandle _handle = new();
+        readonly Action _watchScroll;
+        int _scrollStep = int.MinValue;
         readonly Action _demand;
         Artist _artist;
         DiscoFacet _facet;
         Scope? _scope;
         EntityUri _subject;
 
-        public DiscoPageHost() => _demand = Demand;
+        public DiscoPageHost()
+        {
+            _demand = Demand;
+            _watchScroll = () =>
+            {
+                float y = (float)_handle.Offset.Value;
+                int step = (int)(y / 24f);
+                if (step == _scrollStep) return;
+                _scrollStep = step;
+                _scroll.Value = y;
+            };
+        }
 
         void Demand()
         {
@@ -1545,6 +1562,7 @@ public readonly partial struct Artist
         public override Element Render()
         {
             var p = UseProps<DiscoPageProps>();
+            string scrollScope = UseContext(Shell.PageScrollScope);
             _ = Entities.ScopeEpoch.Value;
             var scope = Entities.Current;
             _ = scope.Artists.Changed.Value;
@@ -1558,6 +1576,7 @@ public readonly partial struct Artist
             }
             _facet = facet;
             UseEffect(_demand, DepKey.From(_artist.Slot, (int)facet));
+            UseSignalEffect(_watchScroll);
             if (!parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
             var a = _artist;
@@ -1595,8 +1614,7 @@ public readonly partial struct Artist
             };
             var scroll = ScrollView(content) with
             {
-                Grow = 1f, ScrollKey = p.Key,
-                OnScrollGeometryChanged = (static g => (long)(g.OffsetY / 24f), g => _scroll.Value = g.OffsetY),
+                Grow = 1f, ScrollKey = scrollScope + p.Key, Handle = _handle,
             };
             return Ctx.Provide(LazyScroll.Slot, (IReadSignal<float>)_scroll, scroll);
         }

@@ -616,7 +616,6 @@ public readonly partial struct Search
                 ItemLayout = new AspectGridVirtualLayout(cols, 1f, FacetGridChrome + (FacetGridRowGap - FacetGridGap), FacetGridGap),
                 RenderItem = i => GridCell(r, i, in c),
                 KeyOf = i => r.ResultRef(i) is { IsNone: false } hit ? KeyOf(hit) : "search-card:placeholder:" + i.ToString(CultureInfo.InvariantCulture),
-                Overscan = 2,
                 Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch,
             } with { Key = "search-facet-grid:" + cols.ToString(CultureInfo.InvariantCulture) };
         }, fallback: HomeModuleLayout.FallbackWidth, grow: 1f);

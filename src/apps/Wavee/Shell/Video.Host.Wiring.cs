@@ -281,8 +281,10 @@ public static partial class Video
         }
 
         /// <summary>Does the playing row carry a video (catalogue or attachment)? Subscribing reads the tracks table's
-        /// publication, so a kind-99 land re-runs the caller.</summary>
-        static bool CurrentHasVideo(bool subscribe)
+        /// publication, so a kind-99 land re-runs the caller. Internal (not private): <c>PlacementMenu</c>
+        /// (<c>Video.UI.cs</c>) reads this SAME source with <c>subscribe: false</c> so the menu's "no video" reason
+        /// never disagrees with the fold that stamped <c>Available</c>.</summary>
+        internal static bool CurrentHasVideo(bool subscribe)
         {
             EntityRef row = Playback.Current.Value;
             if (row.Kind != EntityKind.Track || row.IsNone || Entities.Current is not { } scope) return false;

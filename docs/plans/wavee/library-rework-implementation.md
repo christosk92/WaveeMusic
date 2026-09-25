@@ -285,6 +285,34 @@ Depth 2 is gone for artists (the reader is the leaf); albums keep 0/1. `LibraryS
 83 ms), the underline a 2-DIP `AccentDefault` box under the active word, gap 14, height 32. Focus ring: the
 engine's default on each word's `BoxEl` (`Focusable`, `Role = Button`). Keyboard: Left/Right move between words.
 
+#### W8a — The narrow pane: a scrolling rail, never a hard clip
+
+A left pane narrow enough that "recents alphabetical artist recently added release date" cannot fit beside the
+view toggle used to hard-clip mid-label — the selected word could be cut in half and every word after it, plus
+the toggle itself, could vanish past the pane's edge. `Controls.Words.Rail(..., fill: true)` replaces the clip
+with a horizontal-scroll viewport that feathers its overflow edges and keeps the ACTIVE word fully in view:
+
+```
+WIDE    | recents  alphabetical  artist  recently added  release date        [=][#][...] |
+MEDIUM  | recents  alphabetical  artist  recently added  rele░░  [=][#][...] |
+NARROW  | ░░ist  recently added  re░░  [=][#][...] |
+```
+
+Rules:
+- **The toggle has priority.** It is `Shrink = 0` and sits OUTSIDE the rail; the rail is the row's flexible child
+  (`Grow = 1, Shrink = 1, Basis = 0, MinWidth = 0`), so it is always the rail that gives ground, never the toggle.
+- **A feather, never a hard cut.** The viewport's `AutoEdgeFade` dissolves whatever overflows past either edge into
+  the surface behind it — a word is never sliced mid-glyph the way `ClipToBounds` sliced it.
+- **The selected word is always revealed** — brought fully inside the viewport, clear of the feather band — on a
+  selection change (glide), on the rail's first frame or a geometry-only re-run (snap: mount, an unchanged
+  selection, or reduced motion), on a resize that no longer fits it, and on keyboard focus landing on a
+  scrolled-out word.
+- **The viewport is parent-sized, never `ContentSized`.** A `ContentSized` scroller is a relayout firewall
+  (`LayoutInvalidator.IsHardScrollBoundary`) that hugs its content's natural extent once and stops re-measuring;
+  this rail's words ride binds and the rail itself never re-renders, so a late-answering count, the desc chevron,
+  or a language switch would leave a `ContentSized` viewport hugging a STALE width forever. `Grow/Shrink/Basis = 0`
+  keeps the viewport's main-axis extent flex-owned by its parent every layout pass instead.
+
 ---
 
 ## 3. Component trees
@@ -326,7 +354,7 @@ User.LibraryPage (kind = artists)
    └─ ReadingPane("lib:reader")
        └─ Artist.Reader  ← Embed.Comp(new Artist.ReaderProps(artistSlot, Scope, RSort, RDesc), static () => new Artist.Reader())
            ├─ ArtistBand(a)                  72 avatar · name link · "In your library: …" · Play all · ⤨ · FollowButton · ↗
-           ├─ SubRail (sticky, Fill Card)     User.WordRail(scope words) · spacer · User.WordRail(newest/oldest/a–z)
+           ├─ SubRail (sticky, Fill Card)     User.ScopeRail(fill: true) · User.ReaderSortRail(newest/oldest/a–z)
            └─ HStack
                ├─ Spine (Width 56, sticky)   Flow.For over the shape's blocks → 36-px covers, bound ring on _current
                └─ ItemsView.Create(shape.Count, BlockAt, RepeatLayout.Extents(_extentOf, 320f), _options)

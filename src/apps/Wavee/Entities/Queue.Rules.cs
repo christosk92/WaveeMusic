@@ -438,6 +438,8 @@ public static partial class Queue
                 w++;
             }
             Land(in run);
+            Capture.Point(CaptureKind.QueueMutation, Capture.AmbientUiCauseId,
+                a: userIndex == 0 ? "play-next" : "add-to-queue", n0: at, n1: valid);
             return valid;
         }
         finally { Return(in run); }
@@ -456,6 +458,7 @@ public static partial class Queue
         var rows = Rows;
         if (!IsUpcoming(rows, Divider(rows, cursor.Index), index)) return false;
         Q.RemoveAt(Session, index);
+        Capture.Point(CaptureKind.QueueMutation, Capture.AmbientUiCauseId, a: "remove", n0: index);
         return true;
     }
 
@@ -475,6 +478,7 @@ public static partial class Queue
             Array.Copy(run.Rows, first + n, run.Rows, first, run.Count - first - n);
             run.Count -= n;
             Land(in run);
+            Capture.Point(CaptureKind.QueueMutation, Capture.AmbientUiCauseId, a: "clear-user-queue", n0: n);
             return n;
         }
         finally { Return(in run); }
@@ -494,6 +498,10 @@ public static partial class Queue
                 if (IsUpcoming(run.R, divider, i) && SectionOf(run.Rows[i]) == section) positions[n++] = i;
             if (!QueueOrder.Move(run.T, run.R, positions.AsSpan(0, n), from, to)) return false;
             Land(in run);
+            // `section.ToString()` would allocate unconditionally as an eagerly-evaluated argument — guarded on
+            // `Capture.Enabled` first so the off-path never pays for it (§2.4).
+            if (Capture.Enabled)
+                Capture.Point(CaptureKind.QueueMutation, Capture.AmbientUiCauseId, a: "move", b: section.ToString(), n0: from, n1: to);
             return true;
         }
         finally { ArrayPool<int>.Shared.Return(positions); Return(in run); }
@@ -513,6 +521,7 @@ public static partial class Queue
             if (at < 0) return false;
             Land(in run);
             cursor = CursorOf(at);
+            Capture.Point(CaptureKind.QueueMutation, Capture.AmbientUiCauseId, a: "skip-to", n0: index, n1: at);
             return true;
         }
         finally { Return(in run); }

@@ -39,6 +39,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -364,6 +365,9 @@ public static partial class Queue
 
         readonly Signal<int> _userPages = new(1), _nextPages = new(1), _autoPages = new(1);
         readonly SwipeGroup _swipe = new();
+        /// <summary>The panel viewport's scroll handle: any scroll while a row's swipe is open closes it.</summary>
+        readonly ScrollHandle _scroll = new();
+        readonly Action _closeSwipeOnScroll;
 
         // The chip accent: resolved per render through the shared ladder, written to a signal by an effect (never during
         // render), read by three Prop thunks the pills bind once.
@@ -376,6 +380,11 @@ public static partial class Queue
         public RailPanel() : base(RowExtent)
         {
             _pushChip = () => _chipAccent.Value = _chipPending;
+            _closeSwipeOnScroll = () =>
+            {
+                _ = _scroll.Offset.Value;   // re-runs on every offset the handle publishes
+                if (_swipe.AnyOpen) _swipe.Close();
+            };
             _chipFill = Prop.Of(() => _chipAccent.Value);
             _chipHover = Prop.Of(() => _chipAccent.Value with { A = 0.88f });
             _chipPressed = Prop.Of(() => _chipAccent.Value with { A = 0.78f });
@@ -408,6 +417,7 @@ public static partial class Queue
         {
             var rows = Prologue();
             UseEffect(() => { _userPages.Value = 1; _nextPages.Value = 1; _autoPages.Value = 1; }, DepKey.From(ContextId.GetHashCode()));
+            UseSignalEffect(_closeSwipeOnScroll);
             bool classic = Prefs.Appearance.TrackRowStyle() == 1;
             bool art = !classic && !Prefs.Appearance.TrackArtworkHidden();
             bool shuffle = Playback.Shuffle.Value;
@@ -451,8 +461,7 @@ public static partial class Queue
                     },
                     new ScrollEl
                     {
-                        Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "queuepanel",
-                        OnScrollGeometryChanged = (g => _swipe.AnyOpen ? BitConverter.SingleToInt32Bits(g.OffsetY) : 0L, _ => _swipe.Close()),
+                        Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "queuepanel", Handle = _scroll,
                         Content = body,
                     },
                 ],
@@ -483,6 +492,12 @@ public static partial class Queue
             if (dump == _lastDump) return;
             _lastDump = dump;
             Log.Info("queue", "queue.panel.rows " + dump);
+            // §2.5 step 4: tap the EXISTING "what changed" dump rather than inventing a render-observation layer.
+            // The ambient UI-thread cause (§2.2) is the best cause id available at this seam without threading one
+            // through the whole render path — an optimistic mutation and its later echo both re-render through here,
+            // each tagged with whichever cause was ambient at the time, exactly the "captured TWICE per cause" shape
+            // §2.5 describes.
+            Capture.Point(CaptureKind.UiRerender, Capture.AmbientUiCauseId, a: dump);
         }
 
         Element Upcoming(ReadOnlySpan<QueueEdge> rows, bool art, bool classic)

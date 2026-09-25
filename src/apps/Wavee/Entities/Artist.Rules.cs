@@ -55,9 +55,19 @@ public static class ArtistReadiness
         var targets = edges.Targets(a.Slot);
         if (!Chart(a.Knows(ArtistFields.Chart), edges.State(a.Slot))) return false;
         for (int i = 0; i < targets.Length; i++)
-            if (targets[i] <= Table.None || !tracks.Knows(targets[i], (uint)TrackFields.Row)) return false;
+            if (targets[i] <= Table.None || !tracks.Knows(targets[i], ChartRowGroup)) return false;
         return true;
     }
+
+    /// <summary>The track group every charted row must KNOW before the chart reveals, and whose "nothing coming" fails
+    /// it (<see cref="ChartFailed(bool,uint,uint,EdgeState,ReadOnlySpan{uint},ReadOnlySpan{uint},ReadOnlySpan{uint})"/>).
+    /// ONE constant so the gate, its failure twin and the evidence line (<see cref="Explain"/>) can never disagree.
+    /// <para>What a chart row PAINTS: its face (title, album, duration, explicit, cover — <see cref="TrackFields.Face"/>,
+    /// which leaves out the credit line a disk-restored row withholds) and the availability verdict. NOT the play count:
+    /// kind 185 is a separate extension that fills into a visible row (this gate's own doc). Until 2026-09-25 this was
+    /// <see cref="TrackFields.Row"/>, so one track the play-count answer left out (the Oscar Dunbar page, slot 8682)
+    /// held the whole chart and then failed it — "Something went wrong" over a row whose only gap was a number.</para></summary>
+    public const uint ChartRowGroup = (uint)(TrackFields.Face | TrackFields.Availability);
 
     /// <summary>The chart gate's edge half, pure: answered AND complete.</summary>
     public static bool Chart(bool knowsChart, EdgeState popularState) => knowsChart && popularState == EdgeState.Complete;
@@ -67,7 +77,7 @@ public static class ArtistReadiness
     {
         if (!Chart(knowsChart, popularState)) return false;
         for (int i = 0; i < targetKnown.Length; i++)
-            if ((targetKnown[i] & (uint)TrackFields.Row) != (uint)TrackFields.Row) return false;
+            if ((targetKnown[i] & ChartRowGroup) != ChartRowGroup) return false;
         return true;
     }
 
@@ -81,7 +91,7 @@ public static class ArtistReadiness
     /// <item>the artist's <see cref="ArtistFields.Chart"/> group: known ⇒ fine; not known and no longer asked (the
     /// planner un-asked it: a 401 on the top-tracks REST beside a 200 overview, or a terminal failure) ⇒ failed; asked
     /// with nothing in flight (the batch settled without it — a 404) ⇒ failed; asked and in flight ⇒ still pending;</item>
-    /// <item>every target's <see cref="TrackFields.Row"/>: the same reading, per row. A target whose missing groups
+    /// <item>every target's <see cref="ChartRowGroup"/>: the same reading, per row. A target whose missing groups
     /// are still asked and in flight keeps the chart pending; one nothing is coming for fails it.</item>
     /// </list>
     /// The caller passes the target marks only once IT has asked for the targets — before that, "not asked" means
@@ -94,10 +104,66 @@ public static class ArtistReadiness
         if (popularReadiness == EdgeState.Failed) return true;
         uint chart = (uint)ArtistFields.Chart;
         if (NothingComing(knowsChart ? chart : 0u, artistAsked, artistInflight, chart)) return true;
-        uint row = (uint)TrackFields.Row;
+        uint row = ChartRowGroup;
         for (int i = 0; i < targetKnown.Length && i < targetAsked.Length && i < targetInflight.Length; i++)
             if (NothingComing(targetKnown[i], targetAsked[i], targetInflight[i], row)) return true;
         return false;
+    }
+
+    /// <summary>Why the chart gate reads what it reads — the always-on <c>artist.chart</c> line's fields (2026-09-25).</summary>
+    public enum ChartGateReason : byte
+    {
+        /// <summary>Nothing blocks: every input is known.</summary>
+        Ready,
+        /// <summary>The popular edge answered Failed.</summary>
+        EdgeFailed,
+        /// <summary>The artist's Chart group is missing and nothing is coming for it.</summary>
+        ChartNothingComing,
+        /// <summary>The artist's Chart group is missing and still coming.</summary>
+        ChartPending,
+        /// <summary>The popular edge is not Complete yet.</summary>
+        EdgePending,
+        /// <summary>A charted row misses part of <see cref="ChartRowGroup"/> and nothing is coming for it.</summary>
+        TargetNothingComing,
+        /// <summary>A charted row misses part of <see cref="ChartRowGroup"/> and it is still coming.</summary>
+        TargetPending,
+    }
+
+    /// <summary>The DECIDING input of the chart gate, pure over the same marks the gate reads: the first reason in the
+    /// order the gate and its failure twin test them, and — for a target reason — the index of the first charted row
+    /// behind it and its marks. <c>Missing</c> is <c>ChartRowGroup &amp; ~known</c> (or the Chart bit). What the
+    /// <c>artist.chart</c> line prints when the gate flips; it decides nothing itself.</summary>
+    public readonly record struct ChartGateTrace(ChartGateReason Reason, int Index, uint Missing, uint Known, uint Asked, uint Inflight);
+
+    /// <inheritdoc cref="ChartGateTrace"/>
+    public static ChartGateTrace Explain(bool knowsChart, uint artistAsked, uint artistInflight, EdgeState popularState,
+                                         EdgeState popularReadiness, ReadOnlySpan<uint> targetKnown,
+                                         ReadOnlySpan<uint> targetAsked, ReadOnlySpan<uint> targetInflight)
+    {
+        if (popularReadiness == EdgeState.Failed) return new(ChartGateReason.EdgeFailed, -1, 0, 0, 0, 0);
+        uint chart = (uint)ArtistFields.Chart;
+        if (!knowsChart)
+            return NothingComing(0u, artistAsked, artistInflight, chart)
+                ? new(ChartGateReason.ChartNothingComing, -1, chart, 0, artistAsked, artistInflight)
+                : new(ChartGateReason.ChartPending, -1, chart, 0, artistAsked, artistInflight);
+        if (popularState != EdgeState.Complete) return new(ChartGateReason.EdgePending, -1, 0, 0, 0, 0);
+        int pending = -1;
+        for (int i = 0; i < targetKnown.Length; i++)
+        {
+            uint missing = ChartRowGroup & ~targetKnown[i];
+            if (missing == 0) continue;
+            uint asked = i < targetAsked.Length ? targetAsked[i] : 0u, inflight = i < targetInflight.Length ? targetInflight[i] : 0u;
+            if (NothingComing(targetKnown[i], asked, inflight, ChartRowGroup))
+                return new(ChartGateReason.TargetNothingComing, i, missing, targetKnown[i], asked, inflight);
+            if (pending < 0) pending = i;
+        }
+        if (pending >= 0)
+        {
+            uint asked = pending < targetAsked.Length ? targetAsked[pending] : 0u;
+            uint inflight = pending < targetInflight.Length ? targetInflight[pending] : 0u;
+            return new(ChartGateReason.TargetPending, pending, ChartRowGroup & ~targetKnown[pending], targetKnown[pending], asked, inflight);
+        }
+        return new(ChartGateReason.Ready, -1, 0, 0, 0, 0);
     }
 
     /// <summary>Is a group of one row past hope? Nothing missing ⇒ no (it is known). Otherwise something is still coming

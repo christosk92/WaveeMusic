@@ -1,4 +1,4 @@
-// ── Wavee.Tests/ListOpenPolicyTests.cs — the open rule as asks: which door, what priority, stamp, hold (plan §2, §3.3) ─
+﻿// ── Wavee.Tests/ListOpenPolicyTests.cs — the open rule as asks: which door, what priority, stamp, hold (plan §2, §3.3) ─
 //
 // ListFreshness.Decide is the rule (ListFreshnessTests); these pin its mapping onto the edge door that the playlist page,
 // a revisited page and the queue's context all go through (ListOpen.Open): every verdict → the right ask + priority +
@@ -319,12 +319,12 @@ public class ListOpenPolicyTests
     public void A_rolling_identity_re_asks_its_header_after_an_unchanged_or_replayed_answer_and_never_after_a_re_read_or_a_failure()
     {
         bool daylist = P.IsRolling(PlaylistFormat.Daylist, 0);
-        Assert.True(ListFreshness.ReaskHeader(daylist, P.Classify(false, EdgeState.Complete, true, false)));    // unchanged
-        Assert.True(ListFreshness.ReaskHeader(daylist, P.Classify(false, EdgeState.Complete, true, true)));     // replayed
-        Assert.False(ListFreshness.ReaskHeader(daylist, P.Classify(false, EdgeState.Complete, false, false)));  // a first read carries its header
-        Assert.False(ListFreshness.ReaskHeader(daylist, P.Classify(false, EdgeState.Partial, true, false)));
-        Assert.False(ListFreshness.ReaskHeader(daylist, P.Classify(true, EdgeState.Complete, true, false)));
-        Assert.False(ListFreshness.ReaskHeader(P.IsRolling(PlaylistFormat.Editorial, 0), P.Classify(false, EdgeState.Complete, true, false)));
+        Assert.True(ListFreshness.ReaskHeader(daylist, formatKnown: true, P.Classify(false, EdgeState.Complete, true, false)));    // unchanged
+        Assert.True(ListFreshness.ReaskHeader(daylist, formatKnown: true, P.Classify(false, EdgeState.Complete, true, true)));     // replayed
+        Assert.False(ListFreshness.ReaskHeader(daylist, formatKnown: true, P.Classify(false, EdgeState.Complete, false, false)));  // a first read carries its header
+        Assert.False(ListFreshness.ReaskHeader(daylist, formatKnown: true, P.Classify(false, EdgeState.Partial, true, false)));
+        Assert.False(ListFreshness.ReaskHeader(daylist, formatKnown: true, P.Classify(true, EdgeState.Complete, true, false)));
+        Assert.False(ListFreshness.ReaskHeader(P.IsRolling(PlaylistFormat.Editorial, 0), formatKnown: true, P.Classify(false, EdgeState.Complete, true, false)));
     }
 
     [Theory]

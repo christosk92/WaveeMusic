@@ -6,7 +6,7 @@
 // Wave: 4
 // Budget: 550 lines
 // Spec: ch 25 §0.9-11, §2 W5/W6, §3 (rail rows), §5, §6, §9
-// NAMED PARTIAL of Sidebar.UI.cs (J1): Rail (Build + IconTile/ArtTile/Divider) and RailFolderFlyout
+// NAMED PARTIAL of Sidebar.UI.cs (J1): Rail (Frame + RailSlot + IconTile/ArtTile/Divider) and RailFolderFlyout
 
 using System;
 using System.Collections.Generic;
@@ -22,12 +22,20 @@ namespace Wavee;
 public static partial class Sidebar
 {
     /// <summary>THE ONE 56-DIP RAIL. Its content is data: the rail plan (`SidebarRowPlanner.BuildRail` — `ShowInRail`
-    /// sections in document order, caps applied, dividers collapsed); this class only draws tiles, so no design's rail can
-    /// drift. Not virtualized: the planner caps the strip at `RailTileCap` = 40, bounded by construction.
-    /// <para>The pane MEMOIZES <see cref="Build"/> (plan version, theme, culture, rail head, route), so a cue that needed a
-    /// render would never appear: every drop cue here is a BOUND prop. Selection, on the other hand, rides the memo's
-    /// rebuild as a plain VALUE — a bind wires at mount only, so a selection captured inside a thunk would go stale on the
-    /// reused tile node (ch 25 §9 traps). That is why a drop cue lives on its own always-mounted overlay node.</para></summary>
+    /// sections in document order, dividers collapsed); this class only draws tiles, so no design's rail can drift.
+    /// VIRTUALIZED (Detail hero + full rail plan, Part 2): the rail is ONE bound <c>ItemsView</c> — the ONE scroller
+    /// for head chrome, plan rows AND footer chrome alike (<see cref="SidebarRailItems"/> maps an item index to which
+    /// of the three it is), recycled by content type exactly like <see cref="PaneSlot"/>. A 10k-entry library keeps
+    /// the whole rail reachable by scrolling, never truncated at a hard tile ceiling. (An EARLIER cut of this pinned
+    /// head/footer OUTSIDE the scroller; on a normal window that left the virtualized viewport between them showing
+    /// ~2 tiles, because the OLD unvirtualized rail scrolled everything as ONE surface and tiles got the whole
+    /// height — restored here.)
+    /// <para>A recycled <see cref="RailSlot"/> is a FROZEN child (ch 25 §9): a ROW item reads its own row's epoch
+    /// (<see cref="PaneView.SubscribeRailEpoch"/>, bumped by a publish or the selection sweep) rather than
+    /// re-rendering on a memo edge, and it PEEKS the selected route (bakes <c>selected</c> in as a value on every
+    /// render, never a bind) — a drop cue is the one thing that still needs a live BOUND prop, because it must update
+    /// a tile that never re-renders during the hover that arms it. The head/footer items are not row-epoch driven —
+    /// they read their OWN live edges directly (see <see cref="RailSlot"/>).</para></summary>
     internal static class Rail
     {
         /// <summary>The rail tile box (40×40 inside the 56-DIP strip).</summary>
@@ -36,54 +44,152 @@ public static partial class Sidebar
         /// <summary>The art edge inside an <see cref="ArtTile"/> (the 2-DIP accent ring needs the 2-DIP inset).</summary>
         public const float ArtEdge = 36f;
 
+        /// <summary>The tile row's extent — <see cref="SidebarRailExtents.Pitch"/>, the pure/testable home for this
+        /// number (Box + the 6-DIP gap the old column's <c>Gap</c> used to add after every child).</summary>
+        public const float Pitch = SidebarRailExtents.Pitch;
+
+        /// <summary>The rule row's extent — <see cref="SidebarRailExtents.DividerExtent"/> (<see cref="Divider"/>'s
+        /// own height plus its vertical margin).</summary>
+        public const float DividerExtent = SidebarRailExtents.DividerExtent;
+
         const int PendingTiles = 4;
 
-        public static Element Build(PaneView owner, SidebarRowPlan plan)
+        /// <summary>The rail's frame — ONE virtualized list (head item, plan rows, footer item; any of the three may
+        /// be absent). Pending and nothing resolved yet ⇒ the rail shimmers instead of looking like an empty pane
+        /// (kept simple: the WHOLE frame is the pending stack then, no head/footer/list split — a transient state,
+        /// and the mode's own chrome has nothing live to show yet either).</summary>
+        public static Element Frame(PaneView owner)
         {
-            // PEEKED: the route is in the pane's memo dep key; a subscription here would re-render the pane per navigation.
-            string sel = owner.SelectedRoutePeek;
-            var rows = plan.Rows;
-            var kids = new List<Element>(rows.Count + 6);
+            var plan = owner.RailPlan;
+            if (plan.Rows.Count == 0 && Binder is null) return Skeletons.RailStack(PendingTiles);
 
-            // A mode whose nav band is chrome, not a section (Library V3), hands the rail its own tiles, ahead of the plan.
-            if (owner.Config.RailHead?.Invoke() is { } head)
+            bool hasHead = owner.HasRailHead;
+            bool hasFooter = owner.HasRailFooter;
+            int count = SidebarRailItems.Count(hasHead, hasFooter, plan.Rows.Count);
+
+            var list = ItemsView.CreateBound(
+                count,
+                scope => Embed.Comp(() => new RailSlot(owner, scope)),
+                owner.RailLayout,
+                new ListOptions
+                {
+                    SelectionMode = ItemsSelectionMode.None,
+                    Selector = SelectorVisual.None,
+                    Grow = 1f,
+                    CountSignal = owner.RailRowCount,
+                    Controller = owner.RailListController,
+                    // One recycle pool per row kind, plus two reserved negative kinds for the head/footer chrome —
+                    // a divider slot never rebinds into a tile's shape, and neither ever rebinds into the head's.
+                    ContentType = owner.RailContentTypeOf,
+                    // The head item never recycles into a body row (mirrors Track.Table's vertical list, whose own
+                    // hero/chrome prefix uses the same option) — chrome identity stays put while rows scroll under it.
+                    PersistentPrefixCount = hasHead ? 1 : 0,
+                    Scroll = new ScrollOptions
+                    {
+                        AutoEdgeFade = true,
+                        // Never ".drawer": the rail is never mounted in the narrow drawer (Sidebar.UI.cs Render).
+                        ScrollKey = owner.Config.ScrollKeyPrefix + ".rail",
+                    },
+                }) with { Key = "rail-list" };
+
+            // A ComponentEl anchor mirrors its rendered child's size rather than carrying flex props of its own, so
+            // Grow/Basis/MinHeight land on a thin wrapper, not on `list` itself.
+            return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, Children = [list] };
+        }
+
+        /// <summary>ONE bound slot of the rail's ONE list — <see cref="PaneSlot"/>'s exact contract at 56 DIP: NO
+        /// hooks (every item kind is a plain method call), recycled by <c>ContentType</c> = item kind, reads
+        /// <c>scope.Index</c> and maps it (<see cref="SidebarRailItems.Map"/>) to Head / Row / Footer.
+        /// <para>A ROW item reads THIS row's rail epoch and PEEKS the selected route (a bind wires at mount only, so
+        /// a selection captured inside a thunk would go stale on the reused tile node — the reason the pane's own
+        /// rail selection sweep bumps the epoch instead of asking the tile to subscribe). The Head/Footer items are
+        /// NOT in the row-epoch table (they are not plan rows) — they read their own live edges directly so a
+        /// recycled slot at index 0 (or the last index) never goes stale: <c>LayoutVersion</c> for the head (the rail
+        /// head's own document epoch, exactly what <c>RailHost</c> used to gate on) and the rail's own re-plan edge
+        /// plus culture/binder for the footer, since a mode's footer can read plan-derived facts (V3's Expand).</para>
+        /// <para>FILLS THE SLOT'S WIDTH at every item kind: the ItemsView wraps each item in a flex ROW, so a root
+        /// without <c>Grow</c> arranges at its measured content width instead of the strip's 56 DIP — the same trap
+        /// <c>PaneSlot.FillSlot</c> exists for.</para></summary>
+        internal sealed class RailSlot(PaneView o, RowScope scope) : Component
+        {
+            public override Element Render()
             {
-                kids.Add(head);
-                kids.Add(Divider());
+                int index = scope.Index.Value;   // a recycle writes this → exactly this item re-renders
+                bool hasHead = o.HasRailHead;
+                bool hasFooter = o.HasRailFooter;
+                var plan = o.RailPlan;
+                int rowCount = plan.Rows.Count;
+                int count = SidebarRailItems.Count(hasHead, hasFooter, rowCount);
+                // The count signal lands one layout effect after the plan: render nothing rather than clamp onto a
+                // foreign item (PaneSlot's own rule, ch 25 §9).
+                if ((uint)index >= (uint)count) return Nothing;
+                var (kind, rowIndex) = SidebarRailItems.Map(index, hasHead, hasFooter, rowCount);
+
+                switch (kind)
+                {
+                    case SidebarRailItemKind.Head:
+                    {
+                        _ = LayoutVersion.Value;   // the rail head's own document epoch — authored chrome, not a plan row
+                        _ = Localization.CultureEpoch.Value;
+                        var head = o.Config.RailHead?.Invoke();
+                        if (head is null) return Nothing;
+                        return new BoxEl
+                        {
+                            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center,
+                            Padding = new Edges4(0f, SidebarRailExtents.TopPad, 0f, 0f),
+                            Children = [head, Divider()],
+                        };
+                    }
+
+                    case SidebarRailItemKind.Footer:
+                    {
+                        _ = o.RailVersion.Value;   // the rail's own re-plan edge — a mode's footer can read plan facts
+                        _ = Localization.CultureEpoch.Value;
+                        _ = s_binderEpoch.Value;
+                        var kids = new List<Element>(4);
+                        if (o.Config.RailFooter?.Invoke() is { } footerEl) { kids.Add(Divider()); kids.Add(footerEl); }
+                        if (o.Config.RailLayoutMenu) { kids.Add(Divider()); kids.Add(LayoutMenu.Button(Box)); }
+                        if (kids.Count == 0) return Nothing;
+                        return new BoxEl
+                        {
+                            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center,
+                            Padding = new Edges4(0f, 0f, 0f, SidebarRailExtents.BottomPad),
+                            Children = [.. kids],
+                        };
+                    }
+
+                    case SidebarRailItemKind.Row:
+                    {
+                        _ = o.SubscribeRailEpoch(rowIndex);   // THIS row's epoch only
+                        if ((uint)rowIndex >= (uint)plan.Rows.Count) return Nothing;
+                        var row = plan.Rows[rowIndex];
+                        bool isDivider = row.Kind == SidebarRowKind.Divider;
+                        Element content = isDivider ? Divider()
+                            : o.SectionOf(row.SectionId) is { } section
+                                ? Tile(o, section, in row, plan.Entries, o.SelectedRoutePeek) ?? Nothing
+                                : Nothing;
+                        // The rail's own top/bottom inset lands on the edge ITEM: the head/footer above when the mode
+                        // supplies one, else this row (SidebarRailExtents.ExtentOf folds the SAME pad into the seed,
+                        // so this stays a fixed-height row with no post-realize correction).
+                        float baseExtent = isDivider ? SidebarRailExtents.DividerExtent : SidebarRailExtents.Pitch;
+                        float topPad = !hasHead && rowIndex == 0 ? SidebarRailExtents.TopPad : 0f;
+                        float bottomPad = !hasFooter && rowIndex == plan.Rows.Count - 1 ? SidebarRailExtents.BottomPad : 0f;
+                        return new BoxEl
+                        {
+                            Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                            Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+                            Height = baseExtent + topPad + bottomPad,
+                            Padding = new Edges4(0f, topPad, 0f, bottomPad),
+                            Children = [content],
+                        };
+                    }
+
+                    default:
+                        return Nothing;
+                }
             }
 
-            for (int i = 0; i < rows.Count; i++)
-            {
-                var row = rows[i];
-                if (row.Kind == SidebarRowKind.Divider) { kids.Add(Divider()); continue; }
-                if (owner.SectionOf(row.SectionId) is not { } section) continue;
-                if (Tile(owner, section, in row, plan.Entries, sel) is { } tile) kids.Add(tile);
-            }
-
-            // Pending and nothing resolved ⇒ the rail shimmers instead of looking like an empty pane.
-            if (kids.Count == 0 && Binder is null) kids.Add(Skeletons.RailStack(PendingTiles));
-
-            // The mode's own rail affordance (Classic's "+", V3's Expand + "+"): authored chrome a plan cannot express.
-            if (owner.Config.RailFooter?.Invoke() is { } footer)
-            {
-                kids.Add(Divider());
-                kids.Add(footer);
-            }
-
-            // The quick layout menu, so a collapsed pane can still switch designs (V3 embeds its rows in its overflow).
-            if (owner.Config.RailLayoutMenu)
-            {
-                kids.Add(Divider());
-                kids.Add(LayoutMenu.Button(Box));
-            }
-
-            return new BoxEl
-            {
-                // Grow fills the strip's WIDTH so AlignItems=Center centres the 40-DIP tiles (the body wrapper is a ROW).
-                Grow = 1f,
-                Direction = 1, Gap = 6f, Padding = new Edges4(0f, 8f, 0f, 12f), AlignItems = FlexAlign.Center,
-                Children = [.. kids],
-            };
+            static Element Nothing => new BoxEl { Height = 0f, Shrink = 0f };
         }
 
         static Element? Tile(PaneView owner, SidebarSectionSpec section, in SidebarRow row,

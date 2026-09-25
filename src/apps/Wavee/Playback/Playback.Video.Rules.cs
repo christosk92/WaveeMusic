@@ -418,6 +418,51 @@ public static partial class Playback
             }
         }
 
+        // ── 6b. link memory — the estimate remembered across launches (video stutter fix, 2026-09-22) ──────────────────
+
+        /// <summary>The last measured link estimate, remembered so the NEXT launch opens video on the rung this machine
+        /// can carry instead of re-learning it from a 2 Mbps prior through two visible representation switches. A stale
+        /// value costs nothing: it is only ever a PRIOR (AdaptiveBitrateController.SeedEstimate) — replaced by the first
+        /// real sample, never acted on by itself.</summary>
+        public static class LinkMemory
+        {
+            public const double MinKbps = 500, MaxKbps = 1_000_000;   // outside this the stored value is garbage: ignore it
+            public const double PersistRatio = 1.25;                  // write only when the estimate moved ≥ 25 %…
+            public const long PersistIntervalMs = 30_000;             // …and at most every 30 s (settings = registry)
+
+            public static double Load(IAppSettings s) => Usable(s.Get(Platform.Keys.VideoLinkKbps)) ? s.Get(Platform.Keys.VideoLinkKbps) : 0;
+            public static bool Usable(double kbps) => double.IsFinite(kbps) && kbps >= MinKbps && kbps <= MaxKbps;
+
+            /// <summary>Persist now? Only a MEASUREMENT (never the prior), only when it moved enough and not too often;
+            /// <paramref name="force"/> (shutdown) writes any changed measurement.</summary>
+            public static bool ShouldPersist(bool measured, double kbps, double lastPersisted, long nowMs, long lastWriteMs, bool force)
+            {
+                if (!measured || !Usable(kbps)) return false;
+                if (force) return lastPersisted <= 0 || kbps != lastPersisted;
+                if (nowMs - lastWriteMs < PersistIntervalMs) return false;
+                return lastPersisted <= 0 || kbps >= lastPersisted * PersistRatio || kbps * PersistRatio <= lastPersisted;
+            }
+        }
+
+        // ── 6c. the opening rung — chosen at OPEN time from the estimate the link carries (video stutter fix) ──────────
+
+        /// <summary>The rung a source OPENS on. With a usable estimate (a measurement, or last launch's remembered one):
+        /// the highest rung whose bitrate fits 0.85 × the estimate under the height cap — bounded at 720p while the
+        /// estimate is still a PRIOR, so a remembered fast link never opens a cold connection at 1080p (the first sample
+        /// decides that, one measured switch later). No estimate: the highest rung ≤ 480p (the descriptor's own pick).
+        /// Nothing fits: index 0.</summary>
+        public static int OpeningRung(ReadOnlySpan<(int Height, int Bitrate)> rungsAscending, double estimateKbps, bool estimateIsPrior, int capHeight)
+        {
+            const double Headroom = 0.85; const int PriorCeiling = 720; const int ColdCeiling = 480;
+            bool haveEstimate = estimateKbps > 0;
+            int ceiling = !haveEstimate ? Math.Min(ColdCeiling, capHeight) : estimateIsPrior ? Math.Min(PriorCeiling, capHeight) : capHeight;
+            double budgetBps = haveEstimate ? estimateKbps * 1000.0 * Headroom : double.MaxValue;
+            int pick = -1;
+            for (int i = 0; i < rungsAscending.Length; i++)
+                if (rungsAscending[i].Height <= ceiling && rungsAscending[i].Bitrate <= budgetBps) pick = i;   // ascending ⇒ last fit is highest
+            return pick >= 0 ? pick : 0;
+        }
+
         // ── 7. the budgets the manual gate reads (§3.5) ─────────────────────────────────────────────────────────────
 
         /// <summary>Named so a test can fail when a number drifts, and so `§4.3`'s gate quotes a constant and not a memory.</summary>
@@ -445,7 +490,7 @@ public static partial class Playback
             /// <summary>256 chars holds the longest line with a 64-char key.</summary>
             public const int MaxLineChars = 256;
 
-            public readonly record struct SwitchBegin(string Key, long FromMs, SwitchAction Plan, bool Warm, uint Epoch);
+            public readonly record struct SwitchBegin(string Key, long FromMs, SwitchAction Plan, SwitchReason Why, bool Warm, uint Epoch);
             public readonly record struct FirstFrame(string Key, uint Epoch, long SinceSwitchMs, long SinceAttachMs, long PosMs, int Width, int Height);
             public readonly record struct AudioCut(int FadeMs, long SongPosMs, long VideoPosMs, long GapMs);
             public readonly record struct SeekPlanned(long TargetMs, SeekIntent Intent, SeekVerb Verb, long KeyframeMs, int SegmentIndex, long DecodeMs);
@@ -456,7 +501,8 @@ public static partial class Playback
             {
                 var b = new Writer(d);
                 b.Text("[video] switch.begin key="); b.Text(l.Key); b.Text(" from="); b.Num(l.FromMs);
-                b.Text("ms plan="); b.Text(Name(l.Plan)); b.Text(" warm="); b.Flag(l.Warm); b.Text(" epoch="); b.Num(l.Epoch);
+                b.Text("ms plan="); b.Text(Name(l.Plan)); b.Text(" why="); b.Text(Name(l.Why));
+                b.Text(" warm="); b.Flag(l.Warm); b.Text(" epoch="); b.Num(l.Epoch);
                 return b.Done;
             }
 
@@ -507,6 +553,12 @@ public static partial class Playback
             {
                 SwitchAction.None => "None", SwitchAction.SeekOnly => "SeekOnly",
                 SwitchAction.Switch => "Switch", SwitchAction.Rebuild => "Rebuild", _ => "?",
+            };
+
+            public static string Name(SwitchReason v) => v switch
+            {
+                SwitchReason.None => "None", SwitchReason.NoPlayer => "NoPlayer", SwitchReason.Faulted => "Faulted",
+                SwitchReason.KeyChanged => "KeyChanged", SwitchReason.SeekOnly => "SeekOnly", _ => "?",
             };
 
             public static string Name(SeekIntent v) => v == SeekIntent.Preview ? "Preview" : "Commit";

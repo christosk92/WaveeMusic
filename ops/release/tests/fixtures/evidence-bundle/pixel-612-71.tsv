@@ -1,0 +1,4 @@
+# pixel x=612 y=71 frame=12 publishSeq=99 scale=1.5
+order	item	kind	node	nodeKey	slice	alpha	feather1	feather2	coverage	tile	rasterFrame	rasterHash	wantHash	stale
+0	3	Tiles	7:2	artist-hero	3	1.000	1.000	1.000	1.000	0,0	9120	00000000000000aa	00000000000000aa	0
+1	9	Region	40:3	artist-band/1/0	5	0.070	1.000	1.000	0.070	0,0	8811	00000000000000ab	00000000000000cd	1

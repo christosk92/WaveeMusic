@@ -392,74 +392,23 @@ public class RunMarkerTests
     }
 
     [Fact]
-    public void End_downgrades_only_our_own_running_mark_and_ends_the_unclean_streak()
+    public void End_downgrades_only_our_own_running_mark()
     {
         var s = new MemoryAppSettings();
         s.Set(Platform.Keys.RunMarker, RunMarker.Crashed);
-        s.Set(Platform.Keys.UncleanExitOffered, true);
         RunMarker.End(s);
         Assert.Equal(RunMarker.Crashed, s.Get(Platform.Keys.RunMarker));   // never stomps a handler's "crashed"
-        Assert.False(s.Get(Platform.Keys.UncleanExitOffered));
         s.Set(Platform.Keys.RunMarker, RunMarker.Running);
         RunMarker.End(s);
         Assert.Equal(RunMarker.Clean, s.Get(Platform.Keys.RunMarker));
     }
 
     [Fact]
-    public void MarkCrashed_writes_crashed_and_rearms_the_offer()
+    public void MarkCrashed_writes_crashed()
     {
         var s = new MemoryAppSettings();
-        s.Set(Platform.Keys.UncleanExitOffered, true);
         RunMarker.MarkCrashed(s);
         Assert.Equal(RunMarker.Crashed, s.Get(Platform.Keys.RunMarker));
-        Assert.False(s.Get(Platform.Keys.UncleanExitOffered));
-    }
-}
-
-public class CrashPromptPolicyTests
-{
-    [Fact]
-    public void A_managed_report_outranks_a_dump_and_an_unclean_exit()
-    {
-        var d = CrashPromptPolicy.Decide("C:\\logs\\crash-report-1.txt", "C:\\dumps\\w.dmp", RunOutcome.Unclean, false, false, false);
-        Assert.Equal(CrashSource.ManagedReport, d.Source);
-        Assert.Equal(CrashPromptMode.Dialog, d.Mode);
-        Assert.Equal("C:\\logs\\crash-report-1.txt", d.ReportPath);
-        Assert.Equal("C:\\dumps\\w.dmp", d.DumpPath);
-    }
-
-    [Fact]
-    public void A_dump_without_a_report_is_the_second_rung()
-    {
-        var d = CrashPromptPolicy.Decide("", "C:\\dumps\\w.dmp", RunOutcome.Clean, false, false, false);
-        Assert.Equal(CrashSource.WerDump, d.Source);
-        Assert.Null(d.ReportPath);
-    }
-
-    [Fact]
-    public void An_unclean_exit_is_offered_once_per_streak_never_after_an_update_and_never_when_opted_out()
-    {
-        Assert.Equal(CrashSource.UncleanExit, CrashPromptPolicy.Decide("", null, RunOutcome.Unclean, false, false, false).Source);
-        Assert.Equal(CrashSource.None, CrashPromptPolicy.Decide("", null, RunOutcome.Unclean, false, false, uncleanExitOffered: true).Source);
-        Assert.Equal(CrashSource.None, CrashPromptPolicy.Decide("", null, RunOutcome.Unclean, false, versionChanged: true, false).Source);
-        Assert.Equal(CrashSource.None, CrashPromptPolicy.Decide("", null, RunOutcome.Unclean, optOut: true, false, false).Source);
-        Assert.Equal(CrashSource.None, CrashPromptPolicy.Decide("", null, RunOutcome.Clean, false, false, false).Source);
-    }
-
-    [Fact]
-    public void A_windows_crash_dump_never_prompts_a_profile_that_has_not_run_before()
-    {
-        // The CrashDumps folder is shared by every Wavee.exe on the machine; a fresh profile has no run of its own to blame.
-        Assert.Equal(CrashSource.None, CrashPromptPolicy.Decide("", @"C:\dumps\w.dmp", RunOutcome.Unknown, false, false, false).Source);
-        Assert.Equal(CrashSource.WerDump, CrashPromptPolicy.Decide("", @"C:\dumps\w.dmp", RunOutcome.Unclean, false, false, false).Source);
-    }
-
-    [Fact]
-    public void Opting_out_turns_real_evidence_into_a_passive_toast()
-    {
-        var d = CrashPromptPolicy.Decide("r.txt", null, RunOutcome.Unclean, optOut: true, versionChanged: true, uncleanExitOffered: true);
-        Assert.Equal(CrashSource.ManagedReport, d.Source);
-        Assert.Equal(CrashPromptMode.Toast, d.Mode);
     }
 }
 

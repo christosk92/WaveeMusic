@@ -48,6 +48,8 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Scroll.Effects;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
@@ -702,6 +704,10 @@ public readonly partial struct Show
         readonly Func<int> _selectedOf;
         Memo<int>? _selected;
         readonly ItemsViewController _ctl = new();
+        /// <summary>The episode list's scroll handle: the pinned month is re-read off every offset it publishes.</summary>
+        readonly ScrollHandle _scroll = new();
+        readonly Action _watchSticky;
+        string _scrollScope = "";   // the tab (Shell.PageScrollScope), composed onto the restore key
         // the date rail (report 4b): the month groups projected out of the snapshot's items, their distinct years, and
         // the month pinned at the list's top
         JumpGroup[] _groups = new JumpGroup[ShowDateIndex.MaxGroups];
@@ -731,6 +737,11 @@ public readonly partial struct Show
             _selectionCommands = fit => EpisodeSelection.Commands(fit, Selection);
             _selectedOf = () => Selection.SelectedCount;
             _jumpYear = JumpToYear;
+            _watchSticky = () =>
+            {
+                _ = _scroll.Offset.Value;   // re-runs on every published offset; the write is value-gated
+                _stickyMonth.SetIfChanged((int)MonthAtTop());
+            };
             _yearsOf = YearsOf;
             _toneOf = () =>
             {
@@ -812,10 +823,6 @@ public readonly partial struct Show
 
         /// <summary>The month pinned at the list's top: the item under the viewport's top edge, read through the
         /// controller (the list's extents are variable, so there is no offset table to index).</summary>
-        long ProjectSticky(ScrollGeometry g) => MonthAtTop();
-
-        void UpdateSticky(ScrollGeometry g) => _stickyMonth.SetIfChanged((int)MonthAtTop());
-
         long MonthAtTop()
         {
             var s = _m?.Peek();
@@ -836,6 +843,7 @@ public readonly partial struct Show
             _ = _props.Value;
             var overlay = UseContext(Overlay.Service);
             _accent = UseContext(Design.AccentCtx.Slot);
+            _scrollScope = UseContext(Shell.PageScrollScope);
             _width = UseMeasuredWidth(4f);
             Narrow = UseComputed(_narrowOf);
             Toolbar = UseComputed(_toolbarStageOf);
@@ -843,6 +851,7 @@ public readonly partial struct Show
             _selected = UseComputed(_selectedOf);
             _yearsMemo = UseComputed(_yearsOf);
             UseEffect(_demandRows);
+            UseSignalEffect(_watchSticky);
             var m = Model;
             HeadRowCtx ??= new Episode.RowContext
             {
@@ -890,6 +899,7 @@ public readonly partial struct Show
 
         ListOptions<ReaderItem> OptionsFor(string routeKey)
         {
+            routeKey = _scrollScope + routeKey;
             if (_options is null || !string.Equals(_optionsKey, routeKey, StringComparison.Ordinal))
             {
                 _optionsKey = routeKey;
@@ -910,7 +920,7 @@ public readonly partial struct Show
                         AutoEdgeFade = false,                           // the rail's clip band owns the top feather
                         ItemClipTopInset = RailHeight,
                         ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand,
-                        OnScrollGeometryChanged = (ProjectSticky, UpdateSticky),
+                        Handle = _scroll,
                     },
                 };
             }

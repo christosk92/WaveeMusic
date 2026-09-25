@@ -84,7 +84,7 @@ public static partial class Fetch
                 edges.MarkDiskAsked(parent);
                 if (AskDisk(scope, edge, parent, id, priority)) { s_toDisk++; continue; }
             }
-            Bucket(table, FetchSubject.Edge, provider, 0, edge, offset, priority).Add(parent, id);
+            Bucket(table, FetchSubject.Edge, provider, 0, edge, offset, priority).Add(parent, id, s_door);
             s_toNetwork++;
             queued = true;
         }
@@ -112,7 +112,7 @@ public static partial class Fetch
         if (table is null || parent <= Table.None || parent >= table.Count || table.Id[parent] != id) return;
         EntityProvider provider = ProviderFor(scope, SubjectOf(scope, table, parent), id);
         if (provider == EntityProvider.None) return;
-        Bucket(table, FetchSubject.Edge, provider, 0, edge, 0, priority).Add(parent, id);
+        Bucket(table, FetchSubject.Edge, provider, 0, edge, 0, priority).Add(parent, id, s_door);
         s_toNetwork++;
         SendOrOwe(priority);                    // disk reads landing in one loop pass leave as one request per shape
     }

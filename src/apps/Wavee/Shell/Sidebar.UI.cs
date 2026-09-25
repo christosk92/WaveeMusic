@@ -435,10 +435,12 @@ public static partial class Sidebar
         readonly Signal<int> _rowCount = new(0);
         readonly Signal<int> _planVersion = new(0);
         /// <summary>Bumped by a publish ONLY when the RAIL plan's rows (or the entries they address) differ from the
-        /// presented rail's, or the publish was wholesale — <see cref="RailHost"/>'s one re-render edge (W3-A2). A
-        /// re-plan that hydrated a row in the expanded list, or toggled a folder past the rail's tile cap, moves
+        /// presented rail's, or the publish was wholesale — the rail's frame element re-plans off it, exactly as
+        /// <see cref="_planVersion"/> is the pane's. A re-plan that only touched the expanded list moves
         /// <see cref="_planVersion"/> and leaves this alone.</summary>
-        readonly Signal<int> _railVersion = new(0);
+        internal readonly Signal<int> RailVersion = new(0);
+        /// <summary>The rail's OWN row count — the rail's <c>ItemsView</c> edge, mirroring <see cref="_rowCount"/>.</summary>
+        internal readonly Signal<int> RailRowCount = new(0);
         readonly Signal<int> _dispVersion = new(0);
         readonly Signal<int> _disclosureVersion = new(0);
 
@@ -460,6 +462,10 @@ public static partial class Sidebar
         readonly List<int> _rowSelSet = new(), _rowSelNext = new(), _rowSelFlip = new();
         Func<string, SidebarSectionSpec?>? _sectionOf;
 
+        // ── per-RAIL-row epochs (same GROW-ONLY contract, over RailPlan instead of Plan) ──
+        Signal<int>[] _railEpochs = Array.Empty<Signal<int>>();
+        readonly List<int> _railSelSet = new(), _railSelNext = new(), _railSelFlip = new();
+
         // ── disclosure ──
         string? _activeDisclosureKey;
         string? _activeDisclosureId;
@@ -474,6 +480,7 @@ public static partial class Sidebar
         Action<ItemDisclosureDiagnostic>? _disclosureLog;
 
         readonly ItemsViewController _listController = new();
+        internal readonly ItemsViewController RailListController = new();
 
         /// <summary>THE ONE published drop slot — written once per hover, read by the row's line, its plate and the commit.</summary>
         readonly Signal<SidebarDropSlot> _dropSlot = new(SidebarDropSlot.None);
@@ -498,8 +505,6 @@ public static partial class Sidebar
         readonly Dictionary<string, byte> _pinnedDepths = new(StringComparer.Ordinal);
         readonly Dictionary<string, SidebarSectionSpec> _sections = new(StringComparer.Ordinal);
 
-        /// <summary>Playlist-tree tiles the rail may draw before the rest of the document gets its turn.</summary>
-        const int RailTreeTiles = 20;
         /// <summary>The context-menu SHIELD's key — the node MUST stay childless (see Render).</summary>
         internal const string ContextShieldKey = "sidebar:context-shield";
 
@@ -539,6 +544,10 @@ public static partial class Sidebar
         /// anything realizes.</summary>
         readonly RepeatLayout _rowLayout;
 
+        /// <summary>The rail's own layout: two fixed extents (a tile's <see cref="Rail.Pitch"/> or
+        /// <see cref="Rail.DividerExtent"/>), seeded analytically from <see cref="RailPlan"/> — never measured.</summary>
+        internal readonly RepeatLayout RailLayout;
+
         /// <summary>Reordering rides <c>MotionTok.ItemPlacement</c>.</summary>
         static readonly LayoutTransition RowPlacement = new(TransitionChannels.Position, MotionTok.ItemPlacement.ToDynamics());
 
@@ -551,6 +560,7 @@ public static partial class Sidebar
             Config = config;
             InDrawer = inDrawer;
             _rowLayout = RepeatLayout.Extents(RowExtentSeed, estimatedExtent: SidebarRowGeometry.ClassicHeight);
+            RailLayout = RepeatLayout.Extents(RailExtentSeed, estimatedExtent: Rail.Pitch);
         }
 
         public override Element Render()
@@ -578,6 +588,9 @@ public static partial class Sidebar
             TrackSelection(SelectedRoute);
             UseSignalEffect(RefreshPlayState);
             UseSignalEffect(RefreshSelection);
+            // The rail's own sweep: RailHost no longer subscribes SelectedRoute (a recycled RailSlot bakes selected in
+            // as a value, ch 25 §9), so THIS is what re-skins the two rail tiles a navigation concerns.
+            UseSignalEffect(RefreshRailSelection);
             UseLayoutEffect(RunSelectionTransaction, _selEpoch);
             // THE COUNT, never the plan version (W3-A2). This render decides two things off the published plan — empty
             // pane vs list, and whether a pending expansion has its rows yet — and both are functions of the COUNT. The
@@ -694,8 +707,6 @@ public static partial class Sidebar
             {
                 SelectionMode = ItemsSelectionMode.None,
                 Selector = SelectorVisual.None,
-                Overscan = 2,
-                CacheExtentPx = 240f,
                 Grow = 1f,
                 CountSignal = _rowCount,
                 Controller = _listController,
@@ -766,6 +777,33 @@ public static partial class Sidebar
         {
             var rows = Plan.Rows;
             return (uint)index < (uint)rows.Count ? (int)rows[index].Kind : 0;
+        }
+
+        /// <summary>Whether the rail's ONE list carries a head item — item 0, when the mode supplies one
+        /// (<see cref="SidebarRailItems"/>). <c>Config</c> is frozen at mount, so this never flips mid-life.</summary>
+        internal bool HasRailHead => Config.RailHead is not null;
+
+        /// <summary>Whether the rail's ONE list carries a footer item — the LAST item, when the mode supplies footer
+        /// content OR the quick layout menu. Frozen for the same reason.</summary>
+        internal bool HasRailFooter => Config.RailFooter is not null || Config.RailLayoutMenu;
+
+        /// <summary>Distinct NEGATIVE content types for the head/footer chrome items, so a recycled slot never
+        /// rebinds a tile's shape into the head's (or the head's into a tile's) — the same discipline
+        /// <c>Track.Table</c>'s persistent-prefix items use (<c>i &lt; prefix ? -1 - i : (int)RowKindAt(...)</c>).</summary>
+        internal const int RailContentTypeHead = -1;
+        internal const int RailContentTypeFooter = -2;
+
+        internal int RailContentTypeOf(int index)
+        {
+            var rows = RailPlan.Rows;
+            var (kind, rowIndex) = SidebarRailItems.Map(index, HasRailHead, HasRailFooter, rows.Count);
+            return kind switch
+            {
+                SidebarRailItemKind.Head => RailContentTypeHead,
+                SidebarRailItemKind.Footer => RailContentTypeFooter,
+                SidebarRailItemKind.Row when (uint)rowIndex < (uint)rows.Count => (int)rows[rowIndex].Kind,
+                _ => 0,
+            };
         }
 
         // ── planning ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -882,13 +920,16 @@ public static partial class Sidebar
             RebuildIndex(Plan);
             ConfigureReorder();
             EnsureRowSlots(Plan.Rows.Count);
+            EnsureRailSlots(RailPlan.Rows.Count);
             if (wholesale) ReseedRowExtents();
+            if (railChanged) ReseedRailExtents();
             if (!notify)
             {
                 // The FIRST publish runs synchronously inside the pane's render, before anything has read the count
                 // signal: seeding it here is a forward write (no subscriber yet), and Render's read right after it sees
                 // the real count on frame one.
                 _rowCount.Value = Plan.Rows.Count;
+                RailRowCount.Value = SidebarRailItems.Count(HasRailHead, HasRailFooter, RailPlan.Rows.Count);
                 return;
             }
 
@@ -897,9 +938,15 @@ public static partial class Sidebar
             {
                 _rowCount.Value = Plan.Rows.Count;
                 _planVersion.Value = _planVersion.Peek() + 1;
-                if (railChanged) _railVersion.Value = _railVersion.Peek() + 1;
                 if (wholesale) BumpAllRowEpochs();
                 else BumpChangedRowEpochs(oldRows, oldEntries);
+                if (railChanged)
+                {
+                    RailRowCount.Value = SidebarRailItems.Count(HasRailHead, HasRailFooter, RailPlan.Rows.Count);
+                    RailVersion.Value = RailVersion.Peek() + 1;
+                    if (wholesale) BumpAllRailEpochs();
+                    else BumpChangedRailEpochs(oldRail.Rows, oldRail.Entries);
+                }
             }
             if (Context.Runtime is { } runtime) runtime.Batch(PublishSignals);
             else PublishSignals();
@@ -922,8 +969,6 @@ public static partial class Sidebar
                     ConcertsState = SidebarSourceState.Pending,
                 };
             }
-            // A 200-playlist rootlist must not eat the whole 40-tile rail budget.
-            input = input with { RailTreeCap = RailTreeTiles };
             if (Config.Input is { } shape) input = shape(input);
             if (search.Length > 0) input = input with { Search = search };
             return input;
@@ -1230,6 +1275,15 @@ public static partial class Sidebar
             return (uint)index < (uint)epochs.Length ? epochs[index].Value : _planVersion.Value;
         }
 
+        /// <summary>Subscribe the CALLING computation to ONE rail row's epoch — the rail slot's mirror of
+        /// <see cref="SubscribeRowEpoch"/>. Load-bearing for the same reason: a recycled <c>RailSlot</c> is a frozen
+        /// child, so its only path back to fresh content is reading this epoch on every render.</summary>
+        internal int SubscribeRailEpoch(int index)
+        {
+            var epochs = _railEpochs;
+            return (uint)index < (uint)epochs.Length ? epochs[index].Value : RailVersion.Value;
+        }
+
         internal (bool Playing, bool Animated) RowPlayState(int index)
         {
             var play = _rowPlay;
@@ -1249,6 +1303,19 @@ public static partial class Sidebar
             Array.Copy(_rowPlay, play, _rowPlay.Length);
             _rowEpochs = epochs;
             _rowPlay = play;
+        }
+
+        /// <summary>The rail's mirror of <see cref="EnsureRowSlots"/> — no play-state array: a 56-DIP tile draws no
+        /// playing glyph at all (only its selection ring), so the rail has nothing for a play sweep to bump.</summary>
+        void EnsureRailSlots(int count)
+        {
+            if (count <= _railEpochs.Length) return;
+            int cap = Math.Max(32, _railEpochs.Length);
+            while (cap < count) cap *= 2;
+            var epochs = new Signal<int>[cap];
+            Array.Copy(_railEpochs, epochs, _railEpochs.Length);
+            for (int i = _railEpochs.Length; i < cap; i++) epochs[i] = new Signal<int>(0);
+            _railEpochs = epochs;
         }
 
         void BumpRowEpoch(int index)
@@ -1271,6 +1338,27 @@ public static partial class Sidebar
             var entries = Plan.Entries;
             for (int i = 0; i < rows.Count; i++)
                 if (PlanDiff.RowChanged(oldRows, oldEntries, rows, entries, i)) BumpRowEpoch(i);
+        }
+
+        void BumpRailEpoch(int index)
+        {
+            var epochs = _railEpochs;
+            if ((uint)index < (uint)epochs.Length) epochs[index].Value = epochs[index].Peek() + 1;
+        }
+
+        void BumpAllRailEpochs()
+        {
+            var epochs = _railEpochs;
+            for (int i = 0; i < epochs.Length; i++) epochs[i].Value = epochs[i].Peek() + 1;
+        }
+
+        /// <summary>The rail's mirror of <see cref="BumpChangedRowEpochs"/>, over <see cref="RailPlan"/>.</summary>
+        void BumpChangedRailEpochs(IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries)
+        {
+            var rows = RailPlan.Rows;
+            var entries = RailPlan.Entries;
+            for (int i = 0; i < rows.Count; i++)
+                if (PlanDiff.RowChanged(oldRows, oldEntries, rows, entries, i)) BumpRailEpoch(i);
         }
 
         /// <summary>The pane's ONE read of playback on behalf of every row: the coarse active-context gate first (an idle
@@ -1344,11 +1432,12 @@ public static partial class Sidebar
             return _routeKeyCache;
         }
 
-        /// <summary>The live selected route key. SUBSCRIBES the caller — only the pane's own render and the
-        /// <see cref="RailHost"/> (whose tiles bake the selected state in as a value) use it.</summary>
+        /// <summary>The live selected route key. SUBSCRIBES the caller — only the pane's own render and
+        /// <see cref="RefreshRailSelection"/> (the rail's own selection sweep) use it.</summary>
         internal string SelectedRoute => RouteKeyOf(Shell.Current.Value);
 
-        /// <summary>The selected route key WITHOUT subscribing (rows re-render on their epoch; the rail memo keys on it).</summary>
+        /// <summary>The selected route key WITHOUT subscribing (pane rows and rail tiles re-render on their own
+        /// epoch; a recycled <c>Rail.RailSlot</c> peeks this every render instead of binding to it).</summary>
         internal string SelectedRoutePeek => RouteKeyOf(Shell.Current.Peek());
 
         /// <summary>Does row <paramref name="index"/> draw SELECTED for <paramref name="route"/>? The ONE rule the sweep
@@ -1375,6 +1464,25 @@ public static partial class Sidebar
             flipped.Clear();
             SidebarRowResolve.Flipped(prev, next, flipped);
             for (int i = 0; i < flipped.Count; i++) BumpRowEpoch(flipped[i]);
+            prev.Clear();
+            for (int i = 0; i < next.Count; i++) prev.Add(next[i]);
+        }
+
+        /// <summary>The rail's mirror of <see cref="RefreshSelection"/>, over <see cref="RailPlan"/> — bumps exactly
+        /// the rail tiles whose selected state flipped, which is what makes it safe for a recycled
+        /// <c>Rail.RailSlot</c> to bake <c>selected</c> in as a plain VALUE instead of a bound read.</summary>
+        void RefreshRailSelection()
+        {
+            string route = SelectedRoute;
+            _ = RailVersion.Value;   // a rail republish re-plans which index holds which entity
+            var next = _railSelNext;
+            next.Clear();
+            SidebarRowResolve.Sweep(RailPlan.Rows, RailPlan.Entries, _sectionOf ??= SectionOf, route, next);
+            var prev = _railSelSet;
+            var flipped = _railSelFlip;
+            flipped.Clear();
+            SidebarRowResolve.Flipped(prev, next, flipped);
+            for (int i = 0; i < flipped.Count; i++) BumpRailEpoch(flipped[i]);
             prev.Clear();
             for (int i = 0; i < next.Count; i++) prev.Add(next[i]);
         }
@@ -1473,6 +1581,14 @@ public static partial class Sidebar
         void ReseedRowExtents()
         {
             if (_rowLayout.CustomLayout is MeasuredStackVirtualLayout measured) measured.Reseed(Plan.Rows.Count);
+        }
+
+        /// <summary>The rail's analytic seed: two fixed extents, no measurement — <see cref="SidebarRailExtents.ExtentOf"/>.</summary>
+        float RailExtentSeed(int index) => SidebarRailExtents.ExtentOf(RailPlan.Rows, index, HasRailHead, HasRailFooter);
+
+        void ReseedRailExtents()
+        {
+            if (RailLayout.CustomLayout is MeasuredStackVirtualLayout measured) measured.Reseed(RailPlan.Rows.Count);
         }
 
         /// <summary>The row's LIVE laid-out height (bound-safe: one peek + one rect read), 44 on any degenerate answer.</summary>
@@ -1859,23 +1975,27 @@ public static partial class Sidebar
         /// binder's content gates had let through, re-rendered the pane (it read <c>_planVersion</c>) and the memo rebuilt
         /// ~26 tooltip-wrapped tiles: <c>ToolTipSlots</c> compares its target by REFERENCE, so every rebuilt tile re-pushed
         /// and re-rendered its ToolTip — the <c>ToolTip×33</c> line of the scroll census, while the sidebar itself never
-        /// scrolled. This host subscribes to <see cref="_railVersion"/> instead, which <see cref="PublishStage"/> bumps only
-        /// when the RAIL plan's rows or their entries differ (or the publish was wholesale); plus the route (a tile bakes
-        /// <c>selected</c> in as a value — a bind would freeze on the reused node, ch 25 §9), the culture, the rail head's
-        /// document epoch and the binder's first publish (the pending-skeleton edge). A retheme re-renders the tree
-        /// engine-side, so <c>Tok.Epoch</c> is read for parity with the old key only. The pane hands the rail its plan as a
-        /// plain field, exactly as it hands the slots theirs.</summary>
+        /// scrolled. The rail is now a VIRTUALIZED bound list over the SAME uncapped rail plan (Detail hero + full rail
+        /// plan, Part 2): this host still re-renders on <see cref="RailVersion"/> (so the head/footer chrome, built
+        /// fresh from live state, never goes stale), plus the culture, the rail head's document epoch and the binder's
+        /// first publish (the pending-skeleton edge) — but NO LONGER on the route. Rebuilding the frame on every rail
+        /// republish is cheap: <c>ItemsView.CreateBound</c>'s <c>Embed.Comp</c> factory runs once at MOUNT, so the
+        /// reconciler keeps the SAME underlying <c>ItemsView</c> (and every realized <see cref="Rail.RailSlot"/>)
+        /// across the rebuild — a recycled slot reads its own row epoch instead of re-rendering here, which is what
+        /// keeps a republish from rebuilding ~26 tooltip-wrapped tiles. Selection likewise reaches a tile through
+        /// <see cref="RefreshRailSelection"/>'s per-row epoch bump, never through this host re-rendering. A retheme
+        /// re-renders the tree engine-side, so <c>Tok.Epoch</c> is read for parity with the old key only. The pane
+        /// hands the rail its plan as a plain field, exactly as it hands the slots theirs.</summary>
         sealed class RailHost(PaneView owner) : Component
         {
             public override Element Render()
             {
-                _ = owner._railVersion.Value;
+                _ = owner.RailVersion.Value;
                 _ = Localization.CultureEpoch.Value;
                 _ = s_binderEpoch.Value;
                 _ = Tok.Epoch;
                 if (owner.Config.RailHead is not null) _ = LayoutVersion.Value;
-                _ = owner.SelectedRoute;   // subscribes THIS host, not the pane: a navigation re-skins the selected tile
-                return ScrollView(Rail.Build(owner, owner.RailPlan)) with { Grow = 1f, AutoEdgeFade = true, SuppressScrollBar = true };
+                return Rail.Frame(owner);
             }
         }
 

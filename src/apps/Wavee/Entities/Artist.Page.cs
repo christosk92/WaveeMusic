@@ -41,6 +41,8 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using FluentGpu.Animation;
+using FluentGpu.Scroll.Effects;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -117,8 +119,14 @@ public readonly partial struct Artist
         readonly Signal<float> _scrollY = new(0f);
         readonly Signal<float> _viewportH = new(0f);
         readonly Signal<bool> _atEnd = new(false);
-        readonly Signal<bool> _compact = new(false);
-        readonly Signal<int> _active = new(0);
+        // The sentinel's sticky ENGAGED edge (`Sticky(56, engaged: _compact)` — written by the engine on the flip, before
+        // the frame publishes): the band's input switch and the magazine feather's gate.
+        readonly Signal<bool> _compact = new(false) { DebugName = "artist.compact" };
+        /// <summary>The page viewport's scroll handle: the spy's coarse geometry is projected off it, and the band title
+        /// scrolls it home.</summary>
+        readonly ScrollHandle _scroll = new();
+        long _scrollKey = long.MinValue;   // the last coarse geometry key the watch let through
+        readonly Signal<int> _active = new(Detail.BandLayout.NoSection);   // nothing lit until the spy answers (RCA E)
         readonly Signal<int> _pivotEpoch = new(0);
         NodeHandle _viewport;
         readonly NodeHandle[] _anchors = new NodeHandle[ArtistSections.Count];
@@ -162,9 +170,8 @@ public readonly partial struct Artist
         readonly Action _play, _shuffle, _radio, _scrollToTop;
         readonly Action<NodeHandle> _captureViewport;
         readonly Action<RectF> _measure;
-        readonly Action<bool> _onStuck;
-        readonly Func<ScrollGeometry, long> _projectScroll;
-        readonly Action<ScrollGeometry> _onScroll;
+        readonly Action _watchScroll;
+        readonly Func<long> _stampFn;
 
         public PageHost()
         {
@@ -192,7 +199,6 @@ public readonly partial struct Artist
             _radio = Radio;
             _scrollToTop = ScrollToTop;
             _captureViewport = h => _viewport = h;
-            _onStuck = v => _compact.SetIfChanged(v);
             _measure = r =>
             {
                 // The 0.5-DIP write floor: a smaller one writes every frame of a resize (ch 08 §9 traps).
@@ -206,17 +212,20 @@ public readonly partial struct Artist
                 }
                 if (MathF.Abs(r.W - _heroWidth.Peek()) > 0.5f) _heroWidth.Value = r.W;
             };
-            // A COARSE key: the 24-DIP write floor, the viewport height in 4-DIP steps and the at-end edge.
-            _projectScroll = static g => HashCode.Combine(
-                (int)(g.OffsetY / 24f),
-                (int)MathF.Round(g.ViewportH / Spacing.XS),
-                Detail.BandLayout.IsAtScrollEnd(g.OffsetY, g.ViewportH, g.ContentH));
-            _onScroll = g =>
+            // A COARSE key off the page's scroll handle: the 24-DIP write floor, the viewport height in 4-DIP steps and
+            // the at-end edge. The watch re-runs on every moved frame and writes only when the key changes.
+            _watchScroll = () =>
             {
-                _scrollY.Value = g.OffsetY;                 // → the inline facet grids window against it (LazyScroll)
-                _viewportH.SetIfChanged(g.ViewportH);
-                _atEnd.SetIfChanged(Detail.BandLayout.IsAtScrollEnd(g.OffsetY, g.ViewportH, g.ContentH));
+                float y = (float)_scroll.Offset.Value, vh = (float)_scroll.ViewportSignal.Value, ch = (float)_scroll.ExtentSignal.Value;
+                bool atEnd = Detail.BandLayout.IsAtScrollEnd(y, vh, ch);
+                long key = HashCode.Combine((int)(y / 24f), (int)MathF.Round(vh / Spacing.XS), atEnd);
+                if (key == _scrollKey) return;
+                _scrollKey = key;
+                _scrollY.Value = y;                         // → the inline facet grids window against it (LazyScroll)
+                _viewportH.SetIfChanged(vh);
+                _atEnd.SetIfChanged(atEnd);
             };
+            _stampFn = Stamp;
         }
 
         public void ApplyProps(object props)
@@ -238,23 +247,6 @@ public readonly partial struct Artist
             uint scopeEpoch = Entities.ScopeEpoch.Value;          // FIRST: a scope switch re-points every table below
             var scope = Entities.Current;
             var e = scope.Edges;
-            _ = scope.Artists.Changed.Value;
-            _ = scope.ArtistPicks.Changed.Value;
-            _ = scope.ArtistPreReleases.Changed.Value;
-            _ = e.ArtistPopular.Changed.Value;
-            _ = e.ArtistAlbums.Changed.Value;
-            _ = e.ArtistSingles.Changed.Value;
-            _ = e.ArtistCompilations.Changed.Value;
-            _ = e.ArtistAppearsOn.Changed.Value;
-            _ = e.ArtistRelated.Changed.Value;
-            _ = e.ArtistGallery.Changed.Value;
-            _ = e.ArtistPlaylists.Changed.Value;
-            _ = e.ArtistVideos.Changed.Value;
-            _ = e.ArtistMerch.Changed.Value;
-            _ = e.ArtistCities.Changed.Value;
-            _ = e.ArtistLinks.Changed.Value;
-            _ = e.ArtistConcerts.Changed.Value;
-            _ = e.FollowedArtists.Changed.Value;
 
             if (!ReferenceEquals(_scope, scope) || !_subject.Equals(p.Subject))
             {
@@ -281,6 +273,18 @@ public readonly partial struct Artist
             var shellSlot = UseContext(ShellMaterial.Slot);
             float scale = UseContext(Viewport.Scale);
             var a = _artist;
+            // THE RENDER-COST FOLD (ch 08 render-cost fix): one UseComputed<long> replacing the sixteen table-wide
+            // Changed reads this Render used to make directly. Stamp() still reads every one of those Changed signals
+            // (the WAKE — a publication anywhere in that table recomputes the fold), but folds only the slot-specific
+            // Version/Readiness values Render and Compose actually paint (the PUSH — Memo's push-pull equality
+            // cut-off), so an unrelated artist's shelf landing elsewhere recomputes this cheaply without re-rendering
+            // the whole page. See Stamp()'s doc for the exact dependency table.
+            _ = UseComputed(_stampFn).Value;
+            // THE ONE EXCEPTION (ch 08 §9): ArtistReadiness.Chart/ChartFailed additionally read every popular
+            // track's Known/Asked/Inflight bits (up to ArtistPopularTracks.ExtendedCap rows), which change per
+            // in-flight row — folding them would cost as much as just re-rendering on them. Kept as a literal
+            // table-wide subscription, same as before.
+            _ = e.ArtistPopular.Changed.Value;
             UseEffect(_demand, DepKey.From(a.Slot, (int)scopeEpoch));   // once per artist per scope
             UseEffect(_demandRows);                                       // re-runs as the lists land
             UseEffect(_publishAccent);                                    // the watched chrome accent
@@ -359,6 +363,7 @@ public readonly partial struct Artist
             if (_bodyReady) _heroGateOpened = true;
             _body = _bodyReady ? Compose(a, paletteUrl, _heroUrl, washes, routeKey) : null;
             UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch));   // a new section set → re-resolve the spy
+            UseSignalEffect(_watchScroll);
 
             // ONE region, and the shimmer is DERIVED — `PageShimmer` is a ShimmerSource (a representative tree at the
             // loaded page's geometry), never a tree to mount. Rendering it directly painted its own placeholder copy
@@ -389,12 +394,12 @@ public readonly partial struct Artist
                 Children = [new BoxEl { Key = "artist-body:" + scopeEpoch.ToString(CultureInfo.InvariantCulture), Direction = 1, Children = [region] }],
             }) with
             {
-                Key = "artist-scroll:" + routeKey, Grow = 1f, ScrollKey = routeKey,
+                Key = "artist-scroll:" + routeKey, Grow = 1f, ScrollKey = UseContext(Shell.PageScrollScope) + routeKey,
                 // The spy resolves against, and a pivot click scrolls, THIS viewport — never a nested scroller.
                 OnRealized = _captureViewport,
                 // The band itself is the occlusion cue; the default colour cue resolved the wrong surface.
                 EdgeCues = ScrollEdgeCues.None,
-                OnScrollGeometryChanged = (_projectScroll, _onScroll),
+                Handle = _scroll,
             };
 
             // The page PROVIDES its accent (Design.AccentCtx): the heart and every other ambient consumer read it.
@@ -499,9 +504,12 @@ public readonly partial struct Artist
             Element hero = HeroBanner(HeroText.For(a), uri, heroUrl, paletteUrl, width, in m, accent,
                 compact, _play, _shuffle, _radio, band, headerAccent: a.HeaderAccent);
 
-            // One edge-only hand-off: the sentinel's PinTop(56) edge IS the band's input switch and the feather's gate.
+            // One edge-only hand-off: the sentinel's sticky(56) ENGAGED edge is the band's input switch (`_compact`). The
+            // magazine's feather is NOT switched by it (RCA 2026-09-25 F(ii): a re-render off the engaged edge landed two
+            // presents after the render-posed clip — `[scroll.engaged.present] ticksAfterCross=2`); it is the clip's own
+            // composite-time parameter below (EdgeFadeSpec.WhileStuck).
             Element sentinel = new BoxEl { Height = 0f, HitTestVisible = false }
-                .Sticky(ArtistHeroLayout.CompactIdentityHeight, _onStuck);
+                .Sticky(ArtistHeroLayout.CompactIdentityHeight, engaged: _compact);
 
             // The blend wash, from the RESOLVED metrics (ch 08 §9 inconsistency #1); a cover-keyed leaf, so a grading
             // re-renders only the wash. Colour washes off ⇒ it renders nothing (the veil and the Play colour stay, §4).
@@ -510,7 +518,8 @@ public readonly partial struct Artist
                 payloadAccent: a.HeaderAccent);
 
             // THE CLIP IS THE CONTRACT: the band paints nothing, so nothing may render into its 56 DIP — the magazine and
-            // the wash are both cut at the line, and the magazine's cut is feathered while the band is engaged. No gate
+            // the wash are both cut at the line, and the magazine's cut is feathered exactly while its clip is engaged, on
+            // the same render turn that poses the cut (EdgeFadeSpec.WhileStuck; nothing is softened at rest). No gate
             // of its own (ch 08 BUG F, restored to 0.2.10's model): the page-level `region` above already keeps the
             // whole body — this magazine included — unmounted until the overview lands, so a second, nested
             // SkelRegionEl here pending on the SAME predicate would never once see Pending() true and would only add a
@@ -518,13 +527,13 @@ public readonly partial struct Artist
             Element magazine = new BoxEl
             {
                 Key = "artist-under-band", Direction = 1,
-                EdgeFade = compact ? new EdgeFadeSpec(EdgeMask.Top, Detail.BandLayout.ClipFadeBand) : null,
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.BandLayout.ClipFadeBand) { WhileStuck = true },
                 Children =
                 [
                     new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false },
                     new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Magazine(sections, m.Gutter)] },
                 ],
-            }.ClipBelow(Detail.BandLayout.ClipInset);
+            }.StickyClip(Detail.BandLayout.ClipInset);
 
             return new BoxEl
             {
@@ -532,7 +541,7 @@ public readonly partial struct Artist
                 Children =
                 [
                     new BoxEl { Key = "artist-wash-clip", Direction = 1, HitTestVisible = false, Children = [wash] }
-                        .ClipBelow(Detail.BandLayout.ClipInset),
+                        .StickyClip(Detail.BandLayout.ClipInset),
                     new BoxEl { Direction = 1, Children = [hero, sentinel, magazine] },
                 ],
             };
@@ -639,7 +648,8 @@ public readonly partial struct Artist
                         HitTestVisible = false, Children = [Detail.BandHairline()],
                     },
                 ],
-            }.Reveal(ArtistHeroLayout.CompactRevealStart(collapse), collapse, Spacing.XS).Skeletonized(false);
+            }.Reveal(ArtistHeroLayout.CompactRevealStart(collapse), collapse - ArtistHeroLayout.CompactRevealStart(collapse),
+                Design.Reduced ? 0f : Spacing.XS).Skeletonized(false);
         }
 
         /// <summary>A pivot click parks the section's top exactly under the band, animated unless reduced motion is on,
@@ -649,13 +659,13 @@ public readonly partial struct Artist
             var scene = Context.Scene;
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
-            FluentGpu.Scroll.ScrollIntoView.BringInto(Context, _viewport, node, margin: Detail.BandLayout.Height,
-                alignmentRatio: 0f, animate: !Design.Reduced);
+            scene.BringIntoView(_viewport, node, align: 0f, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide,
+                margin: Detail.BandLayout.Height);
         }
 
         /// <summary>The band title's click target: no "Overview" pivot tab, so the title itself is the way back to the
         /// hero. A raw offset, not <see cref="GoToSection"/> — the top of the page has no section anchor to bring in.</summary>
-        void ScrollToTop() => FluentGpu.Scroll.ScrollIntoView.ScrollTo(Context, _viewport, 0f, animate: !Design.Reduced);
+        void ScrollToTop() => _scroll.ScrollTo(0.0, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide);
 
         /// <summary>THE SPY: one AbsoluteRect per pivot section, only on a scroll step the 24-DIP projector let through,
         /// stopping at the first unrealized section; the pivot re-renders only when the answer changes.</summary>
@@ -679,7 +689,35 @@ public readonly partial struct Artist
             float viewportHeight = _viewportH.Peek();
             if (viewportHeight <= 0f) viewportHeight = vp.H;
             int at = Detail.BandLayout.ActiveSection(tops[..n], Detail.BandLayout.Height, viewportHeight, atEnd);
-            if (at >= 0) _active.SetIfChanged(at);   // −1 = no answer: hold what we had (D40)
+            if (at != _spyLogged) LogSpy(at, tops[..n], viewportHeight, atEnd);
+            if (at != -1) _active.SetIfChanged(at);   // −1 = no answer: hold what we had (D40); NoSection lights nothing
+        }
+
+        // Evidence (2026-09-25): `ui.spy page=artist at= label= tops= line= vh= atEnd=` — one line each time the spy's
+        // ANSWER changes (never per scroll step), so "the pivot lit Singles & EPs while Top tracks was on screen" is a
+        // recorded fact with the section tops and the activation line that produced it. Allocates only on a change.
+        int _spyLogged = int.MinValue;
+
+        void LogSpy(int at, ReadOnlySpan<float> tops, float viewportHeight, bool atEnd)
+        {
+            _spyLogged = at;
+            if (!Log.IsEnabled(WaveeLogLevel.Info)) return;
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var sb = new System.Text.StringBuilder(tops.Length * 8);
+            for (int i = 0; i < tops.Length; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append(float.IsNaN(tops[i]) ? "NaN" : tops[i].ToString("0", inv));
+            }
+            string label = at >= 0 && at < _pivotCount ? PivotLabel(_pivot[at]) : at == -1 ? "(hold)" : "(none)";
+            Log.Event(WaveeLogLevel.Info, "ui", "ui.spy", "", null, -1, null,
+                WaveeLogField.Of("page", "artist"),
+                WaveeLogField.Of("at", at),
+                WaveeLogField.Of("label", label),
+                WaveeLogField.Of("tops", sb.ToString()),
+                WaveeLogField.Of("line", (double)Detail.BandLayout.SpyLine(Detail.BandLayout.Height, viewportHeight)),
+                WaveeLogField.Of("vh", (double)viewportHeight),
+                WaveeLogField.Of("atEnd", atEnd));
         }
 
         // ── 2.3 the Top-tracks band (TopTracks.cs:17-104) ──────────────────────────────────────────────────────────
@@ -729,6 +767,131 @@ public readonly partial struct Artist
             if (e.ArtistPopular.State(a.Slot) == EdgeState.Unknown) Entities.EnsureEdge(FetchEdge.ArtistPopular, a.Slot);
             DemandDiscography(a);
             if (e.ArtistConcerts.State(a.Slot) == EdgeState.Unknown) Entities.EnsureEdge(FetchEdge.ArtistConcerts, a.Slot);
+        }
+
+        /// <summary>THE RENDER-COST FOLD (ch 08 render-cost fix, part 2): everything Render — and the Compose/SectionBody
+        /// helpers it calls INLINE, never a separately-gated child (<see cref="FacetSection"/>'s FacetHost and
+        /// <see cref="Controls.FollowTextAction"/>/<see cref="PageUpcomingClock"/> subscribe themselves and are
+        /// deliberately NOT folded here) — reads from the entity tables, folded into one value the same shape as
+        /// <see cref="RowStamp"/>/<see cref="RowFold"/> (Album.Page.cs) and Shell.PlayerBar.UI.cs's <c>ArtistLineStamp</c>:
+        /// read the table's <c>Changed</c> for the WAKE (a publication anywhere in that table must recompute this, so a
+        /// real answer for THIS row is never missed), then fold only the SLOT-SPECIFIC <c>Version</c>/count values Render
+        /// actually paints for the PUSH (<see cref="Memo{T}"/>'s push-pull equality cut-off: recompute is cheap — a
+        /// handful of array reads — and only a value that MOVED re-renders the page).
+        ///
+        /// <para><b>The dependency table</b> (every datum Render/Compose reads, and the term covering it):</para>
+        /// <list type="bullet">
+        /// <item>this artist's row (identity, header/hero images, header accent, bio, monthly/followers, the pick, the
+        /// pre-release, the latest-release POINTER, the tour text) — <c>RowFold.Row(scope.Artists, slot)</c>. The pick
+        /// and pre-release side-slab CONTENT (<see cref="ArtistPickTable"/>/<see cref="ArtistPreReleaseTable"/>) is
+        /// written and <c>Applied</c> in the same commit as the row's own pointer (Artist.cs's overview decode), so the
+        /// row's <c>Version</c> alone covers it — <c>scope.ArtistPicks</c>/<c>ArtistPreReleases</c>' own <c>Changed</c>
+        /// is redundant and is no longer read.</item>
+        /// <item>the latest release's OWN fields (<see cref="AlbumFields.DiscoCard"/>, read for <c>Facts.LatestRelease</c>
+        /// and painted by <see cref="LatestBanner"/>) — a DIFFERENT table (Albums): <c>RowFold.Row(scope.Albums,
+        /// a.Latest.Slot)</c>.</item>
+        /// <item>the ten section-presence / facet edges whose ONLY page-level use is <c>ShelfPresent</c>/<c>FacetPresent</c>
+        /// — Albums, Singles, Compilations, Gallery, Merch, Cities, Links — <c>Version(slot)</c> alone: <c>ShelfPresent</c>'s
+        /// boolean cannot move on a Version-less Readiness flip (a <c>MarkFailed</c> without a structural write) because
+        /// Unknown and Failed both read as "not Complete", the same branch either way; <c>FacetPresent</c> reads the
+        /// edge's raw <c>State</c>, never <c>Readiness</c>, so it cannot see a failure mark at all.</item>
+        /// <item>the four shelves whose CARDS are OTHER rows — AppearsOn (Albums), Playlists (Playlists), Videos
+        /// (Tracks), Concerts (Concerts) — the edge's own <c>Version(slot)</c> (which/how many) AND every target row's
+        /// <c>Version</c> (a title/cover hydrating after the edge landed, so <see cref="Items"/>'s value-record rebuilds
+        /// exactly that shelf's cards next time Compose runs).</item>
+        /// <item>Related artists / the "fans also like" fallback — <c>e.ArtistRelated.Version(slot)</c> then every
+        /// related artist's <c>Version</c>; when the related edge is genuinely empty (mirrors Compose's own
+        /// <c>relatedShell</c> branch exactly), the me-row's <see cref="Edges.FollowedArtists"/> edge at
+        /// <c>scope.MeSlot</c> — A DIFFERENT PARENT, so it is its own term, never conflated with this artist's slot —
+        /// then every artist <see cref="ArtistSections.Fans"/> would actually pick.</item>
+        /// <item>Gallery/Merch payload TEXT (pills, tiles) carries no separate target row — it lands whole with the
+        /// edge's own <c>Replace</c>, so the edge's <c>Version(slot)</c> above is already the whole story.</item>
+        /// </list>
+        ///
+        /// <para><b>Kept OUT of this fold</b> (too dynamic to fold cheaply, per the render-cost fix's own escape
+        /// hatch): <see cref="ArtistReadiness.Chart"/>/<see cref="ArtistReadiness.ChartFailed(Artist)"/> additionally
+        /// read every popular track's <c>Known</c>/<c>Asked</c>/<c>Inflight</c> bits (up to
+        /// <see cref="ArtistPopularTracks.ExtendedCap"/> rows, each landing independently) to decide the chart gate —
+        /// folding that is as expensive as just re-rendering on it. Render keeps a literal
+        /// <c>e.ArtistPopular.Changed</c> subscription instead, exactly as before.</para></summary>
+        long Stamp()
+        {
+            _ = Entities.ScopeEpoch.Value;                      // FIRST (ch 08 §9 / G-179): re-point every table below
+            var a = _artist;
+            if (!a.IsValid) return 0L;
+            var scope = Entities.Current;
+            var e = scope.Edges;
+            int slot = a.Slot;
+            var artists = scope.Artists;
+            var albums = scope.Albums;
+            var playlists = scope.Playlists;
+            var tracks = scope.Tracks;
+            var concerts = scope.Concerts;
+
+            // ── the wakes ──
+            _ = artists.Changed.Value;
+            _ = albums.Changed.Value;
+            _ = playlists.Changed.Value;
+            _ = tracks.Changed.Value;
+            _ = concerts.Changed.Value;
+            _ = e.ArtistAlbums.Changed.Value;
+            _ = e.ArtistSingles.Changed.Value;
+            _ = e.ArtistCompilations.Changed.Value;
+            _ = e.ArtistAppearsOn.Changed.Value;
+            _ = e.ArtistRelated.Changed.Value;
+            _ = e.ArtistGallery.Changed.Value;
+            _ = e.ArtistPlaylists.Changed.Value;
+            _ = e.ArtistVideos.Changed.Value;
+            _ = e.ArtistMerch.Changed.Value;
+            _ = e.ArtistCities.Changed.Value;
+            _ = e.ArtistLinks.Changed.Value;
+            _ = e.ArtistConcerts.Changed.Value;
+            _ = e.FollowedArtists.Changed.Value;
+
+            // ── the fold ──
+            ulong h = RowFold.Row(RowFold.Seed, artists, slot);
+            h = RowFold.Row(h, albums, a.Latest.Slot);
+
+            h = RowFold.Add(h, (int)e.ArtistAlbums.Version(slot));
+            h = RowFold.Add(h, (int)e.ArtistSingles.Version(slot));
+            h = RowFold.Add(h, (int)e.ArtistCompilations.Version(slot));
+            h = RowFold.Add(h, (int)e.ArtistGallery.Version(slot));
+            h = RowFold.Add(h, (int)e.ArtistMerch.Version(slot));
+            h = RowFold.Add(h, (int)e.ArtistCities.Version(slot));
+            h = RowFold.Add(h, (int)e.ArtistLinks.Version(slot));
+
+            h = RowFold.Add(h, (int)e.ArtistAppearsOn.Version(slot));
+            var appears = e.ArtistAppearsOn.Targets(slot);
+            for (int i = 0; i < appears.Length; i++) h = RowFold.Row(h, albums, appears[i]);
+
+            h = RowFold.Add(h, (int)e.ArtistPlaylists.Version(slot));
+            var pls = e.ArtistPlaylists.Targets(slot);
+            for (int i = 0; i < pls.Length; i++) h = RowFold.Row(h, playlists, pls[i]);
+
+            h = RowFold.Add(h, (int)e.ArtistVideos.Version(slot));
+            var videos = e.ArtistVideos.Targets(slot);
+            for (int i = 0; i < videos.Length; i++) h = RowFold.Row(h, tracks, videos[i]);
+
+            h = RowFold.Add(h, (int)e.ArtistConcerts.Version(slot));
+            var shows = e.ArtistConcerts.Targets(slot);
+            for (int i = 0; i < shows.Length; i++) h = RowFold.Row(h, concerts, shows[i]);
+
+            h = RowFold.Add(h, (int)e.ArtistRelated.Version(slot));
+            var related = e.ArtistRelated.Targets(slot);
+            for (int i = 0; i < related.Length; i++) h = RowFold.Row(h, artists, related[i]);
+
+            // Mirrors Compose's OWN `relatedShell` branch exactly (ArtistReadiness.ShelfPresent over the same edge):
+            // the followed-artists fallback is only ever consulted — and only ever rendered — while it is true.
+            bool relatedShell = ArtistReadiness.ShelfPresent(e.ArtistRelated.Readiness(slot), related.Length);
+            if (!relatedShell)
+            {
+                h = RowFold.Add(h, (int)e.FollowedArtists.Version(scope.MeSlot));
+                Span<int> fanSlots = stackalloc int[ArtistSections.FansCap];
+                int fanCount = ArtistSections.Fans(e.FollowedArtists.Targets(scope.MeSlot), slot, fanSlots);
+                for (int i = 0; i < fanCount; i++) h = RowFold.Row(h, artists, fanSlots[i]);
+            }
+
+            return unchecked((long)h);
         }
 
         /// <summary>Auto-tracked: as each list lands, ask for the rows it points at — the chart rows at their full row

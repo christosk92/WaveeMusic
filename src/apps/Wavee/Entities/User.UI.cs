@@ -108,7 +108,7 @@ public readonly partial struct User
             words[i] = new Controls.Words.Word(Loc.Bind(LibraryWordRail.WordKey(codes[i])), Code: c,
                                                Chevron: () => sort.Value == c && desc.Value);
         }
-        return Controls.Words.Rail(words, sort,
+        return Controls.Words.Rail(words, sort, fill: true,
             onReselect: _ => desc.Value = !desc.Peek(),
             onSelect: _ => desc.Value = false);
     }
@@ -119,8 +119,9 @@ public readonly partial struct User
     /// <para><paramref name="compact"/> is the narrow reader's word: "all · N" instead of "all releases · N" while it
     /// answers true. It is a PREDICATE read INSIDE the bound text, so a column drag across the breakpoint re-fires one
     /// text bind and never re-renders the rail; null — the default, and what the two-argument call still is — is the
-    /// long word forever.</para></summary>
-    public static Element ScopeRail(Signal<int> scope, Prop<int> total, Func<bool>? compact = null)
+    /// long word forever. <paramref name="fill"/> forwards to <see cref="Controls.Words.Rail"/> — the reader's horizontal
+    /// scroll viewport instead of a hard clip.</para></summary>
+    public static Element ScopeRail(Signal<int> scope, Prop<int> total, Func<bool>? compact = null, bool fill = false)
     {
         // TWO caches, one per word: ONE cache keyed on the count alone would rewrite its entry on every crossing of the
         // breakpoint (the same N, the other word), which is exactly the formatting the cache exists to avoid.
@@ -134,7 +135,7 @@ public readonly partial struct User
         [
             new Controls.Words.Word(Loc.Bind(Strings.Library.Scope.InLibrary)),
             new Controls.Words.Word(all),
-        ], scope);
+        ], scope, fill: fill);
     }
 
     static readonly FormatCache<int> s_allReleases = new(), s_allShort = new();

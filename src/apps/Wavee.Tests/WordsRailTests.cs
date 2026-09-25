@@ -61,6 +61,130 @@ public class WordsRailTests
     }
 }
 
+public class WordsRailRevealTests
+{
+    // A real rail's grain: five words 52 / 86 / 40 / 108 / 84 DIP wide, 14-DIP gaps — built once, never mutated.
+    static readonly float[] W = [52f, 86f, 40f, 108f, 84f];
+    static readonly float[] X = BuildX(W, 14f);
+    static readonly float Content = X[^1] + W[^1];
+    const float Band = Controls.Words.FadeBand;
+
+    static float[] BuildX(float[] w, float gap)
+    {
+        var x = new float[w.Length];
+        float cur = 0f;
+        for (int i = 0; i < w.Length; i++) { x[i] = cur; cur += w[i] + gap; }
+        return x;
+    }
+
+    [Fact]
+    public void Every_word_lands_fully_visible_and_clear_of_its_live_feather()
+    {
+        for (float viewport = 60f; viewport <= 520f; viewport += 20f)
+        {
+            float maxOffset = MathF.Max(0f, Content - viewport);
+            float[] starts = [0f, 40f, 120f, 250f, maxOffset];
+            foreach (float start in starts)
+            {
+                for (int i = 0; i < W.Length; i++)
+                {
+                    float t = Controls.Words.RevealOffset(X[i], W[i], viewport, Content, start, Band);
+                    float offset = float.IsNaN(t) ? start : t;
+                    string ctx = $"viewport={viewport} start={start} word={i}";
+
+                    // A word narrower than the viewport is fully inside the reveal's own destination window —
+                    // never partially clipped by the reveal it produced.
+                    if (W[i] < viewport)
+                    {
+                        Assert.True(X[i] >= offset - 0.01f, ctx);
+                        Assert.True(X[i] + W[i] <= offset + viewport + 0.01f, ctx);
+                    }
+
+                    // And, when both bands fit beside it, clear of whichever feather is actually LIVE at the
+                    // landing offset (a feather at an edge with nothing past it is not drawn, so it cannot clip).
+                    if (W[i] + 2f * Band <= viewport)
+                    {
+                        bool leadingLive = offset > 0.5f;
+                        bool trailingLive = offset < maxOffset - 0.5f;
+                        if (leadingLive) Assert.True(X[i] >= offset + Band - 0.01f, ctx);
+                        if (trailingLive) Assert.True(X[i] + W[i] <= offset + viewport - Band + 0.01f, ctx);
+                    }
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void The_first_word_lands_at_the_leading_edge()
+    {
+        const float viewport = 200f;
+        float start = MathF.Max(0f, Content - viewport);   // scrolled all the way to the tail
+        Assert.Equal(0f, Controls.Words.RevealOffset(X[0], W[0], viewport, Content, start, Band), 2);
+    }
+
+    [Fact]
+    public void The_last_word_lands_at_the_maximum_offset()
+    {
+        const float viewport = 200f;
+        float max = Content - viewport;
+        Assert.Equal(max, Controls.Words.RevealOffset(X[^1], W[^1], viewport, Content, 0f, Band), 2);
+    }
+
+    [Fact]
+    public void An_already_visible_word_does_not_move()
+        => Assert.True(float.IsNaN(Controls.Words.RevealOffset(X[0], W[0], 200f, Content, 0f, Band)));
+
+    [Fact]
+    public void A_word_wider_than_the_viewport_pins_its_leading_edge()
+    {
+        // Word 3 is 108 DIP; a 60-DIP viewport cannot fit it clear of the band on either side.
+        float t = Controls.Words.RevealOffset(X[3], W[3], 60f, Content, 0f, Band);
+        Assert.Equal(X[3], t, 2);
+    }
+
+    [Fact]
+    public void A_collapsed_word_never_moves_the_rail()
+        => Assert.True(float.IsNaN(Controls.Words.RevealOffset(100f, 0f, 200f, Content, 0f, Band)));
+
+    [Fact]
+    public void A_word_with_no_laid_out_x_never_moves_the_rail()
+        => Assert.True(float.IsNaN(Controls.Words.RevealOffset(float.NaN, 50f, 200f, Content, 0f, Band)));
+}
+
+public class WordsRailRevealPolicyTests
+{
+    [Fact]
+    public void The_first_frame_snaps()
+        => Assert.Equal(Controls.Words.Reveal.Snap, Controls.Words.RevealFor(int.MinValue, 2, reducedMotion: false));
+
+    [Fact]
+    public void An_unchanged_selection_snaps()
+        => Assert.Equal(Controls.Words.Reveal.Snap, Controls.Words.RevealFor(2, 2, reducedMotion: false));
+
+    [Fact]
+    public void Reduced_motion_always_snaps()
+        => Assert.Equal(Controls.Words.Reveal.Snap, Controls.Words.RevealFor(0, 3, reducedMotion: true));
+
+    [Fact]
+    public void A_real_change_glides()
+        => Assert.Equal(Controls.Words.Reveal.Glide, Controls.Words.RevealFor(0, 3, reducedMotion: false));
+}
+
+public class WordsRailGeometryKeyTests
+{
+    [Fact]
+    public void A_sub_DIP_wobble_in_the_same_cell_keeps_the_same_key()
+        => Assert.Equal(Controls.Words.GeometryKey(400f, 800f), Controls.Words.GeometryKey(400.6f, 800.6f));
+
+    [Fact]
+    public void A_viewport_change_changes_the_key()
+        => Assert.NotEqual(Controls.Words.GeometryKey(400f, 800f), Controls.Words.GeometryKey(440f, 800f));
+
+    [Fact]
+    public void A_content_change_changes_the_key()
+        => Assert.NotEqual(Controls.Words.GeometryKey(400f, 800f), Controls.Words.GeometryKey(400f, 840f));
+}
+
 public class LedgerBarTests
 {
     [Fact]

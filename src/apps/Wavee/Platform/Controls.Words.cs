@@ -48,6 +48,8 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Scene;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -124,6 +126,42 @@ public static partial class Controls
             return new Slide(true, fromX - toX, fromW / toW);
         }
 
+        /// <summary>A <c>fill</c> rail's edge-fade band (DIP), on both the viewport's <c>AutoEdgeFadeBand</c> and
+        /// <see cref="RevealOffset"/>'s margin — one number, so the word a reveal parks past the band is exactly the word
+        /// the fade would otherwise dim.</summary>
+        public const float FadeBand = 24f;
+
+        /// <summary>How a reveal moves the rail: <c>Snap</c> for the mount frame, an unchanged selection (a geometry-only
+        /// re-run) or reduced motion; <c>Glide</c> for a real selection change.</summary>
+        public enum Reveal : byte { Snap, Glide }
+
+        /// <summary>The reveal STYLE for a selection landing on <paramref name="selected"/> that was previously
+        /// <paramref name="shown"/> (<see cref="int.MinValue"/> = the first frame, nothing shown yet).</summary>
+        public static Reveal RevealFor(int shown, int selected, bool reducedMotion)
+            => shown == int.MinValue || shown == selected || reducedMotion ? Reveal.Snap : Reveal.Glide;
+
+        /// <summary>A coarse, DIP-grid key over the two extents a <c>fill</c> rail's reveal must react to — a resize or a
+        /// late word answering. Deliberately NEVER folds in the OFFSET: the user's own scroll must not re-trigger a
+        /// reveal of the already-selected word.</summary>
+        public static long GeometryKey(float viewportW, float contentW)
+            => ((long)MathF.Round(viewportW / 2f) << 32) | (uint)MathF.Round(contentW / 2f);
+
+        /// <summary>The offset that brings the word at <c>[x, x+w]</c> fully inside the viewport and clear of the
+        /// <paramref name="band"/>-wide edge fade on whichever side it is nearer — degrading to plain centring when the
+        /// word is too wide for both bands to fit, and pinning the LEADING edge when it is wider than the viewport
+        /// itself. Returns <see cref="float.NaN"/> when nothing needs to move (already clear, not laid out, or the
+        /// viewport has no geometry yet).</summary>
+        public static float RevealOffset(float x, float w, float viewport, float content, float offset, float band)
+        {
+            if (!(viewport > 1f) || !(w > MinSlideWidth) || !float.IsFinite(x)) return float.NaN;
+            float m = MathF.Min(band, MathF.Max(0f, (viewport - w) * 0.5f));
+            float lo = x + w + m - viewport;
+            float hi = x - m;
+            float t = lo > hi ? hi : offset < lo ? lo : offset > hi ? hi : offset;
+            t = Math.Clamp(t, 0f, MathF.Max(0f, content - viewport));
+            return MathF.Abs(t - offset) < 0.5f ? float.NaN : t;
+        }
+
         // ══ THE RAIL ═════════════════════════════════════════════════════════════════════════════════════════════════
 
         /// <summary>A rail bound to one int signal: the active word 100 % ink at the heavy weight over a 2-DIP
@@ -135,11 +173,15 @@ public static partial class Controls
         /// <paramref name="role"/> — <c>Button</c> for a filter/sort rail, <c>Tab</c> for the episode tabs. (The engine
         /// has no toolbar/tab-list role for the row itself; like the stock SelectorBar, only the words expose peers.)</para>
         /// <para><paramref name="big"/> is the episode page's Display-face rail (20/26, 300 → 400, gap 22, height 40).
-        /// The words are FROZEN at mount (a different set is a remount); their labels, counts and presence are live.</para></summary>
+        /// The words are FROZEN at mount (a different set is a remount); their labels, counts and presence are live.</para>
+        /// <para><paramref name="fill"/> is a horizontal-scroll viewport instead of the natural-width row: a narrow pane
+        /// clips nothing and feathers instead, and the selected word is always brought fully into view (on selection, on
+        /// resize, on the first frame it answers, and on keyboard focus). <c>false</c> (the default) is exactly today's
+        /// element.</para></summary>
         public static Element Rail(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF>? tone = null,
                                    bool big = false, AutomationRole role = AutomationRole.Button,
-                                   Action<int>? onReselect = null, Action<int>? onSelect = null, bool wrap = false)
-            => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, wrap));
+                                   Action<int>? onReselect = null, Action<int>? onSelect = null, bool fill = false)
+            => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill));
 
         sealed class RailHost : Component
         {
@@ -147,7 +189,7 @@ public static partial class Controls
             readonly Signal<int> _selected;
             readonly Func<ColorF> _tone;
             readonly bool _big;
-            readonly bool _wrap;
+            readonly bool _fill;
             readonly AutomationRole _role;
             readonly Action<int>? _onReselect, _onSelect;
             // Built ONCE: every state rides a bind, so the rail never re-renders on a selection change.
@@ -156,29 +198,46 @@ public static partial class Controls
             // — plain fields, never signals: the slide reads them at the edge and nothing re-renders for them.
             readonly float[] _x, _w;
             readonly NodeHandle[] _bars;
-            Element? _row;
-            Action? _slideBar;
+            // `fill` only: the viewport's scroll handle, and a coarse geometry bump (GeometryKey over its viewport/extent
+            // signals) so `AfterLayout` re-runs the reveal on a resize or a late-answering word — never on the user's own
+            // scroll (GeometryKey folds in no offset).
+            readonly ScrollHandle? _scroll;
+            readonly Signal<int> _geom = new(0);
+            long _geomKey = long.MinValue;
+            Element? _row, _mount;
+            Action? _afterLayout;
             int _shown = int.MinValue;   // the code whose underline was last on screen — the slide's "from"
 
             public RailHost(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF> tone, bool big,
-                            AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool wrap)
+                            AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool fill)
             {
                 _words = words; _selected = selected; _tone = tone; _big = big; _role = role;
                 _onReselect = onReselect; _onSelect = onSelect;
-                _wrap = wrap;
+                _fill = fill;
                 _codes = new int[words.Count];
                 _x = new float[words.Count];
                 _w = new float[words.Count];
                 _bars = new NodeHandle[words.Count];
+                if (_fill) _scroll = new ScrollHandle();
             }
 
             public override Element Render()
             {
                 _row ??= Build();
-                // Auto-tracked LAYOUT effect: it reads `selected`, so a selection change re-runs it after that frame's
-                // layout and BEFORE its paint — the new bar is seeded at the old bar's rect on the very frame it appears.
-                UseLayoutEffect(_slideBar ??= SlideBar);
-                return _row;
+                _mount ??= _fill ? Scroller(_row) : _row;
+                if (_scroll is { } scroll)
+                    UseSignalEffect(() =>
+                    {
+                        long key = GeometryKey((float)scroll.ViewportSignal.Value, (float)scroll.ExtentSignal.Value);
+                        if (key == _geomKey) return;
+                        _geomKey = key;
+                        _geom.Value = _geom.Peek() + 1;
+                    });
+                // Auto-tracked LAYOUT effect: it reads `selected` (and, `fill`, the geometry bump), so a selection change
+                // or a resize re-runs it after that frame's layout and BEFORE its paint — the new bar is seeded at the
+                // old bar's rect on the very frame it appears, and a scrolled-out selection is already back in view.
+                UseLayoutEffect(_afterLayout ??= AfterLayout);
+                return _mount;
             }
 
             Element Build()
@@ -187,11 +246,21 @@ public static partial class Controls
                 for (int i = 0; i < kids.Length; i++) kids[i] = BuildWord(i);
                 return new BoxEl
                 {
-                    Direction = 0, Height = _wrap ? float.NaN : _big ? BigHeight : Height, Wrap = _wrap,
-                    MinWidth = 0, Gap = _big ? BigGap : Gap,
+                    Direction = 0, Height = _big ? BigHeight : Height, Gap = _big ? BigGap : Gap,
                     AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids,
                 };
             }
+
+            /// <summary>The row's horizontal-scroll viewport (`fill`): parent-sized, NEVER <c>ContentSized</c> — this
+            /// rail rides binds and never re-renders, so a hugged width would go stale the moment a late count or the
+            /// desc chevron changed the row's natural extent underneath it.</summary>
+            Element Scroller(Element row) => new ScrollEl
+            {
+                Horizontal = true, Content = row,
+                Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Height = _big ? BigHeight : Height,
+                SuppressScrollBar = true, AutoEdgeFade = true, AutoEdgeFadeBand = FadeBand,
+                Handle = _scroll,
+            };
 
             Element BuildWord(int i)
             {
@@ -219,6 +288,9 @@ public static partial class Controls
                     Opacity = Prop.Of(() => isOn() ? 1f : RestInk), HoverOpacity = HoverInk, Transition = s_inkFade,
                     Visible = w.Visible ?? true,
                     OnBoundsChanged = r => { _x[i] = r.X; _w[i] = r.W; },
+                    // Keyboard tabbing onto a word scrolled out of a `fill` rail's viewport brings it back — a no-op
+                    // (RevealWord's own `!_fill` guard) on every other rail.
+                    OnFocusChanged = on => { if (on) RevealWord(i, Design.Reduced ? Reveal.Snap : Reveal.Glide); },
                     Children =
                     [
                         head,
@@ -270,12 +342,15 @@ public static partial class Controls
                 _onSelect?.Invoke(code);
             }
 
-            void SlideBar()
+            void AfterLayout()
             {
-                int code = _selected.Value;   // the subscription
+                int code = _selected.Value;             // subscription 1
+                if (_fill) _ = _geom.Value;              // subscription 2 — a resize or a late word re-runs this too
                 int from = _shown;
                 _shown = code;
-                if (_wrap) return;
+
+                RevealWord(IndexOf(code), RevealFor(from, code, Design.Reduced));
+
                 if (from == code || from == int.MinValue || Context.Anim is not { } anim) return;
                 int a = IndexOf(from), b = IndexOf(code);
                 if (a < 0 || b < 0 || _bars[b].IsNull) return;
@@ -283,6 +358,15 @@ public static partial class Controls
                 if (!s.Animate) return;
                 anim.SeedValue(_bars[b], AnimChannel.TranslateX, 0f, in s_slide, from: s.Dx);
                 anim.SeedValue(_bars[b], AnimChannel.ScaleX, 1f, in s_slide, from: s.Scale);
+            }
+
+            /// <summary>Bring word <paramref name="index"/> fully into a `fill` viewport, clear of its edge fade — a
+            /// no-op on every other rail (no viewport) and while the viewport has not published its geometry yet.</summary>
+            void RevealWord(int index, Reveal how)
+            {
+                if (_scroll is not { IsBound: true } scroll || (uint)index >= (uint)_x.Length) return;
+                float t = RevealOffset(_x[index], _w[index], (float)scroll.Viewport, (float)scroll.Extent, (float)scroll.Offset.Peek(), FadeBand);
+                if (!float.IsNaN(t)) scroll.ScrollTo(t, how == Reveal.Glide ? ScrollMove.Glide : ScrollMove.Immediate);
             }
 
             int IndexOf(int code)

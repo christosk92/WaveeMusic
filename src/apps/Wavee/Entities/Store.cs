@@ -317,24 +317,22 @@ public sealed class RowWriter
     /// <summary>Bind a CROSS-REFERENCE column from a <see cref="StagedId"/> — a track's <c>album_uri</c>, a show's
     /// owner, an episode's parent show: another row's identity, staged in whichever form the wire gave it. Text-form
     /// binds the arena <see cref="TextRef"/> directly, exactly as <see cref="Text"/> does (free — the bytes are
-    /// already in <paramref name="s"/>'s arena). Gid-form is the one this method exists for: unlike the row's OWN key
-    /// (<see cref="Emit(in EntityId,uint,int,int)"/>, which binds straight to its own dedicated parameter), a generic
-    /// column can only be bound through <see cref="Text"/>, so the packed id is formatted to a stack buffer, its UTF-8
-    /// bytes are copied into the staging arena (one more row's worth, same arena the shape's own rows already use),
-    /// and the resulting <see cref="TextRef"/> is bound — one string per non-null cross-reference, still never through
-    /// the interner (file header). Empty or a stray text-form value inside <see cref="StagedId.Packed"/> (never
-    /// produced by a decoder, but not this thread's to assume) both bind NULL — the latter counted via
-    /// <see cref="Store.BadKey"/>, same as the row-key door.</summary>
+    /// already in <paramref name="s"/>'s arena). Gid-form is formatted to a stack buffer and bound as the one string the
+    /// cell needs — one string per non-null cross-reference, still never through the interner (file header).
+    /// <para><b>It never writes into <paramref name="s"/>.</b> The staging was HANDED to this thread; until 2026-09-25 the
+    /// formatted uri was appended to its arena first (<c>s.AddText</c>) and bound from there — the store thread writing
+    /// into an arena that, once a second owner held the same instance, another api thread was writing too. Reading the
+    /// arena is the store thread's whole business with a handed-over staging; appending is not.</para>
+    /// Empty or a stray text-form value inside <see cref="StagedId.Packed"/> (never produced by a decoder, but not this
+    /// thread's to assume) both bind NULL — the latter counted via <see cref="Store.BadKey"/>, same as the row-key door.</summary>
     public void Id(int i, Staging s, in StagedId id)
     {
-        if (!id.Text.IsEmpty) { Text(i, id.Text); return; }
+        if (!id.Text.IsEmpty) { Cols[i].Value = Encoding.UTF8.GetString(s.Utf8(id.Text)); return; }
         if (id.Packed.IsEmpty) { Null(i); return; }
         if (id.Packed.Form != EntityForm.Gid) { Store.BadKey(id.Packed.Form); Null(i); return; }
         Span<char> chars = stackalloc char[EntityId.MaxGidTextChars];
         int n = id.Packed.Format(chars);
-        Span<byte> bytes = stackalloc byte[EntityId.MaxGidTextChars * 3];
-        int written = Encoding.UTF8.GetBytes(chars[..n], bytes);
-        Text(i, s.AddText(bytes[..written]));
+        Cols[i].Value = new string(chars[..n]);
     }
 
     /// <summary>The <see cref="StagedId"/> spelling of the row's own key: dispatches to whichever form the wire
@@ -1002,6 +1000,11 @@ public static partial class Store
 
         try
         {
+            // ONE-TIME, per file (Store.Repair.cs): rows the 2026-09-25 staging-arena aliasing persisted with another
+            // row's text are deleted, so the provider answers them again. A failure leaves the file unmarked and the
+            // next open tries again; it never costs the session its cache.
+            try { RepairCorruptText(write); }
+            catch (SqliteException ex) { Log.Warn("store", "store.repair failed — tried again at the next open", ex); }
             report.Pages = Scalar(write, "PRAGMA page_count;");
             return new Db(path, write, OpenReader(path), s_generation);
         }

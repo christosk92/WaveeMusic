@@ -20,7 +20,7 @@
 //  LibraryPage (keyed "library:"+route)            ─ seeds every persisted signal in its CONSTRUCTOR (frame one = saved)
 //  └─ root BoxEl (OnBoundsChanged → _collapsed, 640/24 hysteresis)
 //     ├─ WIDE "lib:wide": NavPanel "lib:nav"[Toolbar · ListBody | LeftSearchBody] │ "lib:grip" ColumnGrip(LeftW) │ right
-//     │        Toolbar = PageHero + the bound count · User.WordRail + spacer + User.ViewToggle · the filter box
+//     │        Toolbar = PageHero + the bound count · User.WordRail (fill) + User.ViewToggle · the filter box
 //     │        right   = DetailColumn → Album.Pane (albums) | LibraryShowPane (podcasts)
 //     │                  ReaderColumn → Artist.Reader (artists, 280 + the rest — no MidW, no third pane)
 //     │                  the two SEARCH column shapes (unchanged, still MidW + _midGrip)
@@ -113,6 +113,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -273,9 +274,7 @@ public readonly partial struct User
         /// <summary>The mount <see cref="OnNavMounted"/> last logged, kept ONLY to name which half of the identity moved
         /// (<c>reason=view|size|letters</c>) — never consulted for control flow.</summary>
         LibraryNavMount _lastMount;
-        /// <summary>True once the FIRST navigator mount has fired. Gates <see cref="OptionsFor"/>'s <c>Entrance</c>: the
-        /// cold-realize ramp plays once, for the page's first paint; every later remount (a view/size toggle) mounts its
-        /// visible window in one frame (library-stabilization-plan §3.3, F5).</summary>
+        /// <summary>True once the FIRST navigator mount has fired — the mount log's <c>reason=first</c>.</summary>
         bool _navEverMounted;
         /// <summary>Whether any row this shape is trying to gate a–z on has a TERMINALLY FAILED title fetch
         /// (<see cref="FillRowVersions"/>) — folded alongside <see cref="NavShape.TitlesKnown"/> so the readiness gate
@@ -304,9 +303,11 @@ public readonly partial struct User
         readonly Action<NodeHandle> _onNavMounted;
         readonly Func<int, float> _extentOf;
         readonly Func<int, int> _contentType;
-        readonly Func<ScrollGeometry, long> _projectLetters;
-        readonly Action<ScrollGeometry> _updateLetters;
-        readonly (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Action) _geometry;
+        /// <summary>The nav list's scroll handle (every nav mount re-binds the same one): the sticky letter watches it.</summary>
+        readonly ScrollHandle _navHandle = new();
+        string _scrollScope = "";   // the tab (Shell.PageScrollScope), composed onto the restore keys
+        readonly Action _watchLetters;
+        long _lettersKey = long.MinValue;
         readonly Func<int, Element> _navContent;
         readonly Func<Element> _navNoMatch;
         /// <summary>The toolbar's count, as ONE bound property allocated once: a row landing re-fires this thunk and
@@ -339,7 +340,7 @@ public readonly partial struct User
                 _ => ("albums", EntityKind.Album, LibraryEdgeKind.SavedAlbums, FetchEdge.SavedAlbums),
             };
             var s = Platform.Settings;
-            _navScroll = new ScrollOptions { ScrollKey = "lib:nav:" + _kind };
+            _navScroll = new ScrollOptions { ScrollKey = "lib:nav:" + _kind, Handle = _navHandle };
             LeftW = new(s.Get(Platform.Keys.LibraryLeftW(_kind)));
             MidW = new(s.Get(Platform.Keys.LibraryMidW(_kind)));
             Sort = new(s.Get(Platform.Keys.LibrarySort(_kind)));
@@ -380,9 +381,7 @@ public readonly partial struct User
             _onNavMounted = OnNavMounted;
             _extentOf = ExtentOf;
             _contentType = ContentTypeOf;
-            _projectLetters = ProjectLetters;
-            _updateLetters = UpdateLetters;
-            _geometry = (_projectLetters, _updateLetters);
+            _watchLetters = WatchLetters;
             _navContent = _ => NavList();
             _navNoMatch = () => EmptyCompact(Loc.Get(Strings.Library.NoMatch));
             _countText = Prop.Of(() => FormatCache.Int(_shape is { } shape ? shape.Value.Count : 0));
@@ -393,15 +392,13 @@ public readonly partial struct User
             _cardCompactT = scope => NavCard(scope, entity, compact: true);
 
             // `ListOptions<T>` is UNPACKED at factory time and FROZEN at mount, so BOTH variants are built once, here —
-            // the lettered one adds the header recycle pool, the header skip, and the sticky band's clip + observer.
+            // the lettered one adds the header recycle pool, the header skip, and the sticky band's clip.
             _navOptions = new ListOptions<LibraryNavItem>
             {
                 SelectionMode = ItemsSelectionMode.Single, Selection = _navSel, Controller = _navCtl, Grow = 1f,
                 Scroll = _navScroll, OnChange = _onNavSel,
                 // typeahead (item 68) — a header item carries a NEGATIVE slot and has no title to type at.
                 ItemTextTyped = static (_, it) => it.Slot > Table.None ? LibraryRows.TitleOf(it.Kind, it.Slot) : "",
-                // `Entrance` is NOT set here: `OptionsFor` decides it per mount key (the page's first mount only —
-                // library-stabilization-plan §3.3, F5), so it must not be frozen into the base record both variants share.
             };
             _navOptionsLettered = _navOptions with
             {
@@ -409,7 +406,6 @@ public readonly partial struct User
                 IsItemEnabledTyped = static (_, it) => it.Slot > Table.None,
                 Scroll = _navScroll with
                 {
-                    OnScrollGeometryChanged = _geometry,
                     // rows scroll UNDER the pinned letter: clipped at exactly 28 with a 24-DIP feather
                     ItemClipTopInset = LibraryLetters.HeaderExtent,
                     ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand,
@@ -420,6 +416,7 @@ public readonly partial struct User
         public override Element Render()
         {
             uint epoch = Entities.ScopeEpoch.Value;          // FIRST: a scope switch re-points every table below
+            _scrollScope = UseContext(Shell.PageScrollScope);
             _shape = UseComputed(_computeShape);
             SelectedSlot = UseComputed(_resolveSelected);
             _searchActive = UseComputed(_isSearching);
@@ -427,6 +424,7 @@ public readonly partial struct User
             uint hitsGeneration = UseComputed(_runSearch).Value;
             UseEffect(_demandEdge, DepKey.From((int)epoch, Entities.Current.MeSlot));   // once per scope; a failed ask never re-arms here
             UseEffect(_demandRows);                                                     // re-runs as the relation lands
+            UseSignalEffect(_watchLetters);                                             // the sticky letter off the nav scroll
 
             _items ??= BoundItems.Project(_shape, static s => s.FlatCount, (_, i) => ItemAt(i), default(LibraryNavItem));
 
@@ -917,21 +915,33 @@ public readonly partial struct User
             }
         }
 
-        /// <summary>The coarse key the engine compares: the pinned letter plus its push quantized to 2 DIP. Two signals
-        /// per geometry CHANGE, never per frame.</summary>
-        long ProjectLetters(ScrollGeometry g)
+        /// <summary>The sticky letter's watch over the nav list's scroll handle: it re-runs on every published offset (and
+        /// extent) and writes the two signals only when the coarse key moves.</summary>
+        void WatchLetters()
+        {
+            float offsetY = (float)_navHandle.Offset.Value;
+            _ = _navHandle.ExtentSignal.Value;   // a measured-extent correction re-projects too
+            long key = ProjectLetters(offsetY);
+            if (key == _lettersKey) return;
+            _lettersKey = key;
+            UpdateLetters(offsetY);
+        }
+
+        /// <summary>The coarse key: the pinned letter plus its push quantized to 2 DIP. Two signals per key CHANGE, never
+        /// per frame.</summary>
+        long ProjectLetters(float offsetY)
         {
             if (!_hasLetters) return 0L;
-            int letter = _letters.StickyLetterAt(g.OffsetY);
-            int quantized = letter < 0 ? 0 : (int)MathF.Round(PushOf(g.OffsetY, letter) / Spacing.XXS);
+            int letter = _letters.StickyLetterAt(offsetY);
+            int quantized = letter < 0 ? 0 : (int)MathF.Round(PushOf(offsetY, letter) / Spacing.XXS);
             return ((long)(letter + 1) << 16) | (uint)(ushort)(quantized + 32768);
         }
 
-        void UpdateLetters(ScrollGeometry g)
+        void UpdateLetters(float offsetY)
         {
-            int letter = _hasLetters ? _letters.StickyLetterAt(g.OffsetY) : -1;
+            int letter = _hasLetters ? _letters.StickyLetterAt(offsetY) : -1;
             _stickyLetter.SetIfChanged(letter);
-            _stickyPush.SetIfChanged(letter < 0 ? 0f : MathF.Round(PushOf(g.OffsetY, letter) / Spacing.XXS) * Spacing.XXS);
+            _stickyPush.SetIfChanged(letter < 0 ? 0f : MathF.Round(PushOf(offsetY, letter) / Spacing.XXS) * Spacing.XXS);
         }
 
         /// <summary>The next header's top minus the viewport top minus the overlay's height, clamped ≤ 0: the pinned
@@ -993,11 +1003,11 @@ public readonly partial struct User
             // words, not a wrapper of its own.
             _picker ??= new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
                 Children = IsPodcasts
-                    ? [Controls.Words.Rail([new(Loc.Bind(Strings.Podcast.Reader.FollowedShows)), new(Loc.Bind(Strings.Podcast.Reader.YourEpisodes))], _savedEpisodes),
-                       new BoxEl { Grow = 1f }, ViewToggle(View, Size)]
-                    : [WordRail(_entity, Sort, Desc), new BoxEl { Grow = 1f }, ViewToggle(View, Size)],
+                    ? [Controls.Words.Rail([new(Loc.Bind(Strings.Podcast.Reader.FollowedShows)), new(Loc.Bind(Strings.Podcast.Reader.YourEpisodes))], _savedEpisodes, fill: true),
+                       ViewToggle(View, Size)]
+                    : [WordRail(_entity, Sort, Desc), ViewToggle(View, Size)],
             };
             Element filter = AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: Filter, queryIcon: Icons.Search,
                 grow: 1f, maxFillWidth: 9999f, minHeight: 32f, cornerRadius: Radii.Control);
@@ -1066,11 +1076,6 @@ public readonly partial struct User
             };
         };
 
-        /// <summary>The engine's cold-realize ramp, bounded to the realized window (the bound path's own knob) — ONLY
-        /// for the page's very first navigator mount (<see cref="OptionsFor"/>). A view/size remount is not cold: its
-        /// visible window should materialize in one frame (F5).</summary>
-        static readonly EntranceOptions s_coldEntrance = new() { StaggerColdRealize = true };
-
         /// <summary>The real navigator (library-stabilization-plan §3.3, A1). The ROOT returned here is the region's
         /// single-child slot — UNKEYED and the SAME shape (a plain row `BoxEl`) every single render, forever, because a
         /// `Key` in that slot is INERT (RC1: <c>ReconcileSkeletonRegion</c> pairs a region's content root by
@@ -1129,18 +1134,14 @@ public readonly partial struct User
         }
 
         /// <summary>The mount's OPTIONS, built once per key inside <see cref="NavMountCache"/>: the base record
-        /// (constructor-built, frozen) plus the two facts that vary PER MOUNT rather than per page — <c>Entrance</c>
-        /// (the cold-realize ramp plays once, on the page's first mount; every later remount materializes its window in
-        /// one frame, F5) and <c>Scroll.ScrollKey</c> (per layout FAMILY, so a list's restored offset is never handed to
-        /// a grid — RC4/F7).</summary>
+        /// (constructor-built, frozen) plus the one fact that varies PER MOUNT rather than per page —
+        /// <c>Scroll.ScrollKey</c> (per layout FAMILY, so a list's restored offset is never handed to a grid — RC4/F7).
+        /// Every mount, the first included, realizes its whole window in its first frame (the engine has no cold-realize
+        /// ramp any more).</summary>
         ListOptions<LibraryNavItem> OptionsFor(in LibraryNavMount mount)
         {
             var baseOptions = mount.Lettered ? _navOptionsLettered : _navOptions;
-            return baseOptions with
-            {
-                Entrance = _navEverMounted ? null : s_coldEntrance,
-                Scroll = baseOptions.Scroll! with { ScrollKey = mount.ScrollKey },
-            };
+            return baseOptions with { Scroll = baseOptions.Scroll! with { ScrollKey = _scrollScope + mount.ScrollKey } };
         }
 
         Func<BoundItemScope<LibraryNavItem>, Element> TemplateOf(LibraryNavTemplate template) => template switch

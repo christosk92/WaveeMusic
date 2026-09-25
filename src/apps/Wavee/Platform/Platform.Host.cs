@@ -130,30 +130,32 @@ public static partial class Platform
         if (Array.IndexOf(Environment.GetCommandLineArgs(), RelaunchedAfterUpdateFlag) >= 0)
             Log.Event(WaveeLogLevel.Info, "app", "startup", "relaunched by Windows after an update", null, -1, null,
                 WaveeLogField.Of("flag", RelaunchedAfterUpdateFlag));
+
+        // realtime-capture-implementation.md unit 2: seed Capture.Enabled from the persisted
+        // diag.dealerArchive toggle right after the app log itself opens, so a capture-on-launch user gets a
+        // segment from the very first frame instead of having to retoggle the setting.
+        RealtimeCaptureHost.Init();
     }
 
     // ── 1.1 the crash writers (G-094, S half) ───────────────────────────────────────────────────────────────────────
 
-    /// <summary>A crash on ANY thread leaves a report on disk, arms <c>crash.pendingReport</c> for the next launch and
-    /// marks the run "crashed". The report body is <c>Diagnostics.CrashReport</c> (beside the files list it shares its
-    /// naming and prune rule with); `Shell.Host.cs`'s own crash net only logs. Everything here is best-effort (we are
-    /// terminating), but a failure is LOGGED, never swallowed — a silent catch here is how a lost report goes unnoticed.
-    /// The Shell's app-loop catch rethrows into this handler, and <c>CrashReport.Write</c> is idempotent per process.</summary>
+    /// <summary>A crash on ANY thread leaves a bundle on disk (<c>Crash.Host.OnManagedCrash</c> — summary, report,
+    /// log tail and, once the out-of-process handler replies, a minidump) and marks the run "crashed". `Shell.Host.cs`'s
+    /// own crash net only logs. Everything here is best-effort (we are terminating), but a failure is LOGGED, never
+    /// swallowed — a silent catch here is how a lost bundle goes unnoticed. The Shell's app-loop catch rethrows into
+    /// this handler, and <c>Crash.Host.OnManagedCrash</c> is idempotent per process.</summary>
     static partial void HostInstallCrashWriters()
     {
         AppDomain.CurrentDomain.UnhandledException += static (_, e) =>
         {
             if (e.ExceptionObject is not Exception fatal) return;
-            try
-            {
-                string report = Diagnostics.CrashReport.Write(fatal, Log.FilePath);
-                if (report.Length > 0) Settings.Set(Keys.PendingCrashReport, report);
-            }
+            try { Crash.Host.OnManagedCrash(fatal); }
             catch (Exception writeEx)
             {
-                try { Log.Warn("crash", "Crash report could not be written or armed", writeEx); } catch { }
+                try { Log.Warn("crash", "Crash bundle could not be written", writeEx); } catch { }
             }
-            try { RunMarker.MarkCrashed(Settings); } catch { }
+            // No RunMarker.MarkCrashed here: it is a settings write on the crashing thread (fatal off the UI thread, see
+            // Crash.Host.OnManagedCrash). The bundle on disk plus the stale "running"/"frame" marker already say "crashed".
             try { Log.Flush(); } catch { }
         };
     }
@@ -844,10 +846,16 @@ public static partial class Log
     /// engine line is therefore invisible on disk even in a Debug build with Verbose ticked.</summary>
     public enum DiagRoute : byte { Debug, Info, Warn }
 
+    /// <summary><c>[post]</c>: the engine's UI post drain caught an exception a posted action threw (the frame went
+    /// on). Until 2026-09-25 that catch was silent; it must clear the file gate because it is the only trace a
+    /// swallowed app fault leaves — the `--crash-probe throw-ui` arm proves the line lands.</summary>
+    static bool PostedActionFault(string s) => s.StartsWith("[post]", StringComparison.Ordinal);
+
     /// <summary>Which route an engine diagnostic takes. Pure, so "is this instrument actually on?" is a unit test
     /// rather than something discovered by grepping a log that never contained the line.</summary>
     public static DiagRoute RouteFor(string s)
-        => GpuForensic(s) ? DiagRoute.Warn
+        => PostedActionFault(s) ? DiagRoute.Warn
+         : GpuForensic(s) ? DiagRoute.Warn
          : AlwaysOn(s) ? DiagRoute.Info
          : DiagRoute.Debug;
 
@@ -862,13 +870,39 @@ public static partial class Log
     /// never lease an HWND, and the only way to state that is a line that does not appear.</item>
     /// <item><c>[window.move]</c> / <c>[window.size]</c> — the OS move/size loop edges. A stuck resize capture is a
     /// <c>begin</c> with no <c>end</c>, which is unreadable if the pair is Debug-gated.</item>
+    /// <item><c>[pointer]</c> — one line per LOST primary contact (capture stolen, leave-while-down, the OS move loop
+    /// taking the press). The stuck-drag class ("the window follows my cursor with no button down") is invisible
+    /// without it: a pop-out session on 2026-09-22 had two <c>[window.move] begin</c> per gesture and no way to tell
+    /// whether the engine contact was ever cancelled.</item>
+    /// <item><c>[detached]</c> — a detached child window's frame failed and was withdrawn; the main window survives.</item>
+    /// <item><c>[d3d12.debug]</c> — the D3D12 debug layer's own messages (Debug builds with the layer armed): the
+    /// ONLY thing that names the recording call behind a <c>cmdList.Close</c> failure.</item>
+    /// <item><c>[tiles.stale]</c> — a composite turn ended with a STALE tile (valid pixels the stream no longer
+    /// describes: node, tiles, wanted vs rastered content, when it rastered). Edge-gated per offender; must never
+    /// appear (evidence-diagnostics §A.1).</item>
+    /// <item><c>[d3d12.scratch]</c> — a composite turn REFUSED scratch leases (an inline group / blur / degraded chunk
+    /// drew nothing). Edge-gated; must never appear (§A.3).</item>
+    /// <item><c>[evidence]</c> — the engine's own evidence lines (a capture readback that failed).</item>
+    /// <item><c>[scroll.engaged]</c> / <c>[scroll.engaged.present]</c> — one line per sticky ENGAGED-edge flip: the UI
+    /// frame that carries the flip's re-render against the render tick whose pose first crossed the threshold, then the
+    /// present that showed it (2026-09-25, the magazine feather's one-frame lag). Edge-gated; a scroll across the band
+    /// line writes two.</item>
     /// </list></summary>
     static bool AlwaysOn(string s)
         => s.StartsWith("[video]", StringComparison.Ordinal)
         || s.StartsWith("[media.chrome]", StringComparison.Ordinal)
         || s.StartsWith("[overlay] wantWindowed", StringComparison.Ordinal)
         || s.StartsWith("[window.move]", StringComparison.Ordinal)
-        || s.StartsWith("[window.size]", StringComparison.Ordinal);
+        || s.StartsWith("[window.loop]", StringComparison.Ordinal)
+        || s.StartsWith("[window.size]", StringComparison.Ordinal)
+        || s.StartsWith("[pointer]", StringComparison.Ordinal)
+        || s.StartsWith("[detached]", StringComparison.Ordinal)
+        || s.StartsWith("[video.surface]", StringComparison.Ordinal)
+        || s.StartsWith("[d3d12.debug]", StringComparison.Ordinal)
+        || s.StartsWith("[tiles.stale]", StringComparison.Ordinal)
+        || s.StartsWith("[d3d12.scratch]", StringComparison.Ordinal)
+        || s.StartsWith("[evidence]", StringComparison.Ordinal)
+        || s.StartsWith("[scroll.engaged", StringComparison.Ordinal);
 
     /// <summary>True for the sink-routed engine lines that name a GPU stall, loss, recovery or adapter — the evidence
     /// that must survive the Info file gate. Allocation-free ordinal prefix/substring checks.</summary>
@@ -877,6 +911,8 @@ public static partial class Log
         // The compositor-clock latch silently drops production from vblank pacing to a wall-clock timer for the rest
         // of the session; it must reach the Info file.
         || s.StartsWith("[compositor-clock]", StringComparison.Ordinal)
+        // The render thread's 1 Hz pacing line while motion is live: presents by kind, skipped ticks, slot wait, lag.
+        || s.StartsWith("[render.pace]", StringComparison.Ordinal)
         || s.StartsWith("[device-lost]", StringComparison.Ordinal)
         // The always-on wake census: one line per 30 s naming the frame rate and WHICH wake term held the loop awake.
         // It has to clear the Info gate or it answers nothing after the fact — "pinned at panel rate, cause unknown"
@@ -891,6 +927,10 @@ public static partial class Log
         || s.StartsWith("[d3d12.present]", StringComparison.Ordinal)
         || s.StartsWith("[d3d12.display]", StringComparison.Ordinal)
         || s.StartsWith("[d3d12.stall]", StringComparison.Ordinal)
+        // The always-on forensic ring's failure line (INCIDENT 2026-09, detached-window-render-isolation-implementation.md
+        // §2.5/§2.6): the last 64 recorded D3D12 state ops named on a cmdList.Close failure — the only evidence a
+        // Release-build crash leaves in the field.
+        || s.StartsWith("[d3d12.forensic]", StringComparison.Ordinal)
         || s.StartsWith("[d3d12] ", StringComparison.Ordinal)
         || s.Contains("dwmGlitches", StringComparison.Ordinal);
 }

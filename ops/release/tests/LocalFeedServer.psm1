@@ -22,6 +22,9 @@
     Exports:
       Get-RangeSlice        pure: "bytes=a-b" + entity length -> @{ Status; Start; End; Count }
       Get-FeedContentType   pure: path -> Content-Type
+      Get-ReportIdFromMultipart
+                            pure: a raw POST /v1/report body -> the "reportId" the fixture echoes back, or 'x'
+                            (crash & diagnostics plan section B.5/H; not a real multipart parser, see its own header)
       Resolve-FeedFile      pure: root + url path -> a full path inside root, or $null (traversal-safe)
       ConvertTo-FeedPath    pure: a feed URL or a logged RawUrl -> the comparable '/a/b.appinstaller' form
       Get-FeedAssociationRequests
@@ -35,7 +38,8 @@
       Test-QuadMatch        pure: two version-ish values -> do they name the same quad
       Test-AnyQuadMatch     pure: a set of version-ish values + one expected quad -> does ANY of them match
       Start-LocalFeedServer binds the listener on THIS thread (so a bind failure throws here, with the netsh hint)
-                            and runs the accept loop in a background runspace
+                            and runs the accept loop in a background runspace; -FailIngest makes POST /v1/report
+                            answer 503 instead of 201, for a crash-outbox retry rehearsal
       Stop-LocalFeedServer  stops the listener, drains the loop, disposes the runspace
 #>
 
@@ -137,6 +141,25 @@ function Get-FeedContentType {
         '.mp4'          { return 'video/mp4' }
         default         { return 'application/octet-stream' }
     }
+}
+
+function Get-ReportIdFromMultipart {
+    <#
+    .SYNOPSIS
+      Best-effort reportId extraction from a POST /v1/report body, for THIS fixture server only.
+    .DESCRIPTION
+      The real Cloudflare Worker parses true multipart/form-data and validates summary.json against a schema (crash
+      & diagnostics plan section B.5/H); this fixture only needs to hand back an id so the client's outbox can log what it
+      sent and delete the bundle on 2xx. A raw-text search for the "summary" part's "reportId" field is enough for
+      that and is far simpler than a real multipart parser — never throws, 'x' when nothing was found (no summary
+      part, no reportId field, or an empty POST, which a manual outbox-retry rehearsal may deliberately send).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$BodyText)
+
+    $m = [regex]::Match("$BodyText", '"reportId"\s*:\s*"([^"]*)"')
+    if ($m.Success -and $m.Groups[1].Value.Length -gt 0) { return $m.Groups[1].Value }
+    'x'
 }
 
 function Resolve-FeedFile {
@@ -455,7 +478,11 @@ function Start-LocalFeedServer {
         [Parameter(Mandatory = $true)][string]$Root,
         [int]$Port = 8099,
         [string]$BindHost = '127.0.0.1',
-        [string]$LogPath = '')
+        [string]$LogPath = '',
+        # POST /v1/report (crash & diagnostics plan section B.5/H's client<->Worker contract): normally 201 {"id":...}; with
+        # this switch, 503, so a later crash-outbox E2E can exercise the client's retry-with-backoff path against a
+        # real HTTP failure instead of simulating one.
+        [switch]$FailIngest)
 
     if (-not (Test-Path -LiteralPath $Root -PathType Container)) { throw "feed root not found: $Root" }
     $rootFull = (Resolve-Path -LiteralPath $Root).Path
@@ -483,15 +510,16 @@ function Start-LocalFeedServer {
                "  netsh http add urlacl url=http://" + $BindHost + ":" + $Port + "/ user=$who")
     }
 
-    # The accept loop needs the three pure helpers plus the logger; hand it their source rather than importing the
+    # The accept loop needs the pure helpers plus the logger; hand it their source rather than importing the
     # module again inside the runspace (one definition, no second copy to drift).
     $defs = @()
-    foreach ($n in @('Get-RangeSlice', 'Get-FeedContentType', 'Resolve-FeedFile', 'Write-FeedLog')) {
+    foreach ($n in @('Get-RangeSlice', 'Get-FeedContentType', 'Resolve-FeedFile', 'Write-FeedLog', 'Get-ReportIdFromMultipart')) {
         $defs += ('function ' + $n + ' {' + (Get-Item ('function:' + $n)).Definition + '}')
     }
+    $failIngestFlag = [bool]$FailIngest
 
     $loopBody = @'
-param($Listener, $RootFull, $LogPath)
+param($Listener, $RootFull, $LogPath, $FailIngest)
 $ErrorActionPreference = 'Continue'
 while ($true) {
     if (-not $Listener.IsListening) { break }
@@ -520,7 +548,38 @@ while ($true) {
         $res.AddHeader('Accept-Ranges', 'bytes')
         $res.AddHeader('Cache-Control', 'no-cache')
 
-        if ($method -ne 'GET' -and $method -ne 'HEAD') {
+        if ($method -eq 'POST' -and "$($req.Url.AbsolutePath)" -eq '/v1/report') {
+            # A stand-in for the crash-ingest Worker's POST /v1/report (crash & diagnostics plan section B.5/H): no
+            # real multipart parsing, just enough to hand a later E2E's outbox something to log and retry against.
+            $bodyText = ''
+            try {
+                $sr = New-Object IO.StreamReader($req.InputStream, [Text.Encoding]::UTF8)
+                try { $bodyText = $sr.ReadToEnd() } finally { $sr.Dispose() }
+            }
+            catch { $bodyText = '' }
+
+            if ($FailIngest) {
+                $body = [Text.Encoding]::UTF8.GetBytes('{"error":"ingest unavailable"}')
+                $res.StatusCode = 503
+                $res.ContentType = 'application/json'
+                $res.ContentLength64 = $body.Length
+                $res.OutputStream.Write($body, 0, $body.Length)
+                $status = 503
+                $sent = $body.Length
+            }
+            else {
+                $id = Get-ReportIdFromMultipart -BodyText $bodyText
+                $json = '{"id":"' + $id.Replace('\', '\\').Replace('"', '\"') + '"}'
+                $body = [Text.Encoding]::UTF8.GetBytes($json)
+                $res.StatusCode = 201
+                $res.ContentType = 'application/json'
+                $res.ContentLength64 = $body.Length
+                $res.OutputStream.Write($body, 0, $body.Length)
+                $status = 201
+                $sent = $body.Length
+            }
+        }
+        elseif ($method -ne 'GET' -and $method -ne 'HEAD') {
             $body = [Text.Encoding]::UTF8.GetBytes("405 method not allowed: $method")
             $res.StatusCode = 405
             $res.AddHeader('Allow', 'GET, HEAD')
@@ -612,13 +671,14 @@ while ($true) {
     # param(...) must be the FIRST statement of the runspace script: the helper definitions go AFTER it, otherwise the
     # script fails to parse, the accept loop never runs, and every request dies with "status 0" while the bind looks fine.
     $nl = [Environment]::NewLine
-    $paramLine = 'param($Listener, $RootFull, $LogPath)'
+    $paramLine = 'param($Listener, $RootFull, $LogPath, $FailIngest)'
     $bodyNoParam = $loopBody.Substring($loopBody.IndexOf($nl) + $nl.Length)
     if (-not $loopBody.StartsWith('param(')) { throw 'loop body must start with its param block' }
     $ps.AddScript($paramLine + $nl + ($defs -join $nl) + $nl + $bodyNoParam) | Out-Null
     $ps.AddArgument($listener) | Out-Null
     $ps.AddArgument($rootFull) | Out-Null
     $ps.AddArgument($LogPath) | Out-Null
+    $ps.AddArgument($failIngestFlag) | Out-Null
     $handle = $ps.BeginInvoke()
 
     [pscustomobject]@{
@@ -662,6 +722,7 @@ function Stop-LocalFeedServer {
 Export-ModuleMember -Function @(
     'Get-RangeSlice',
     'Get-FeedContentType',
+    'Get-ReportIdFromMultipart',
     'Resolve-FeedFile',
     'ConvertTo-FeedPath',
     'Get-FeedAssociationRequests',

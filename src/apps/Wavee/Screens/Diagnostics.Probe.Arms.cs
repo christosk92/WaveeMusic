@@ -1,4 +1,4 @@
-// ── Screens/Diagnostics.Probe.Arms.cs ──────────────────────────────────────────────────────────────────────────────
+﻿// ── Screens/Diagnostics.Probe.Arms.cs ──────────────────────────────────────────────────────────────────────────────
 // the Wave-6 CLI probe arms: --qr-dump, --relaunch-after (the restart broker), --perf-bench, --startup-bench,
 // --crash-probe, --lyrics-advance-probe, the probe-out directory, and the NotificationSimulator ("Send event")
 //
@@ -34,6 +34,7 @@ using FluentGpu.Pal;
 using FluentGpu.Pal.Windows;
 using FluentGpu.Rhi;
 using FluentGpu.Rhi.D3D12;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.WindowsApi.Notifications;
 using FluentGpu.WindowsApi.Packaging;
 
@@ -151,7 +152,7 @@ public static partial class Diagnostics
                     null, -1, null, WaveeLogField.Of("mode", s_options.CrashProbe));
         }
 
-        /// <summary>`--crash-probe [throw|failfast]` → "throw" | "failfast", null without the flag. The report chrome
+        /// <summary>`--crash-probe [throw|failfast|native|hang|boot]` → one of those five, null without the flag. The report chrome
         /// (`Feedback.UI.cs`, owner R — 0.2.9's ReportChrome) owns the 2 s timer and the crash itself, so the whole
         /// crash-prompt pipeline (managed report vs. WER dump vs. unclean exit) rehearses end to end through the surface
         /// that consumes it; `Diagnostics.Install` hands this to its `Feedback.CrashProbeMode` seam.</summary>
@@ -444,8 +445,9 @@ public static partial class Diagnostics
         /// <summary>Drives the lyrics media clock SYNCHRONOUSLY (<c>Lyrics.ViewCore.ProbeStep</c>, the stepper silenced by
         /// <c>ProbeSyncMode</c>), so a line advance and the frame that records it are the SAME frame. P1 asserts the handoff
         /// cascade: (a) the offset lands in ONE frame, (b) every line's comp decays monotonically with zero overshoot, (c) the
-        /// settle is ≤ 0.55 s of wall time, (d) onset order is top-first, (e) steady-state HotPhaseAllocBytes == 0; plus the
-        /// BUG1 check (the lyric DoF never goes absent on a content-advance frame). P3 counts skip-submit defeats at idle.
+        /// settle is ≤ 0.55 s of wall time, (d) onset order is top-first, (e) steady-state HotPhaseAllocBytes == 0. P3 counts
+        /// skip-submit defeats at idle. The lyrics viewport's motion is read off its <see cref="ScrollHandle"/>
+        /// (<c>Motion.Kind</c> / <c>UserDriven</c>) — the engine keeps no per-surface scroll fields on <c>FrameStats</c>.
         /// It refuses <c>--fake</c> and can never be a button: it owns the frame loop.</summary>
         static bool TryLyricsAdvanceProbe(AppHost host, IPlatformWindow window, IGpuDevice device)
         {
@@ -480,19 +482,20 @@ public static partial class Diagnostics
 
             var view = Lyrics.ViewCore.ProbeActive!;
             int lineCount = view.ProbeLineCount;
-            host.ProbeLyricsViewport = vp;
+            ScrollHandle ly = view.ProbeScroll;
             string track = Playback.Snap().CurrentId.Text;
             Say("[lyrics-advance] track: " + track + "; lines=" + lineCount + "; sync-driving (stepper silenced)");
 
             var csv = new StringBuilder(1 << 16)
-                .AppendLine("phase,line,frame,label,activeLine,lyMode,lyUserScroll,lyContentDirty,lyOff,blurCandidates,blurGroups,blurHold,frameMs,recordMs,submitMs,fenceWaitMs,presentMs,presented,animMs,hotAllocBytes");
-            float OffsetY() => host.Scene.TryGetScroll(vp, out var sc) ? sc.OffsetY : 0f;
+                .AppendLine("phase,line,frame,label,activeLine,lyMode,lyUserScroll,lyOff,blurCandidates,blurGroups,frameMs,recordMs,submitMs,fenceWaitMs,presentMs,presented,animMs,hotAllocBytes");
+            float OffsetY() => (float)ly.Offset.Peek();
+            bool Programmatic() => ly.Motion.Peek() is { Kind: FluentGpu.Scroll.Motion.MotionKind.Programmatic, IsMoving: true };
             void Row(string phase, int line, int frame, string label, in FrameStats s) => csv
                 .Append(phase).Append(',').Append(Bench.Int(line)).Append(',').Append(Bench.Int(frame)).Append(',').Append(label).Append(',')
-                .Append(Bench.Int(view.ProbeActiveLine)).Append(',').Append(Bench.Int(s.LyricsScrollMode)).Append(',')
-                .Append(s.LyricsUserScrollActive ? '1' : '0').Append(',').Append(s.LyricsContentDirtyAtRecord ? '1' : '0').Append(',')
+                .Append(Bench.Int(view.ProbeActiveLine)).Append(',').Append(Bench.Int((int)ly.Motion.Peek().Kind)).Append(',')
+                .Append(ly.Motion.Peek().UserDriven ? '1' : '0').Append(',')
                 .Append(Bench.N(OffsetY())).Append(',').Append(Bench.Int(s.BlurCandidateCount)).Append(',').Append(Bench.Int(s.BlurGroupCount)).Append(',')
-                .Append(Bench.Int(s.BlurHoldCandidateCount)).Append(',').Append(Bench.N(s.FrameMs)).Append(',').Append(Bench.N(s.RecordMs)).Append(',')
+                .Append(Bench.N(s.FrameMs)).Append(',').Append(Bench.N(s.RecordMs)).Append(',')
                 .Append(Bench.N(s.SubmitMs)).Append(',').Append(Bench.N(s.FenceWaitMs)).Append(',').Append(Bench.N(s.PresentMs)).Append(',')
                 .Append(s.Presented ? '1' : '0').Append(',').Append(Bench.N(s.AnimMs)).Append(',').Append(Bench.Int(s.HotPhaseAllocBytes)).AppendLine();
 
@@ -504,7 +507,7 @@ public static partial class Diagnostics
 
             const int CascadeFrames = 56, Advances = 20, IdleFrames = 240;
             int startLine = Math.Min(1, lineCount - 1), endLine = Math.Min(lineCount - 1, startLine + Advances);
-            int frames = 0, blurAbsent = 0, handoffs = 0, springFrames = 0, lateOffset = 0, signFlips = 0, nonMonotone = 0;
+            int frames = 0, handoffs = 0, springFrames = 0, lateOffset = 0, signFlips = 0, nonMonotone = 0;
             int orderViolations = 0, allocFrames = 0, settled = 0, unsettled = 0, maxSpread = 0;
             long maxAlloc = 0;
             double maxSettleMs = 0, sumSettleMs = 0;
@@ -526,8 +529,7 @@ public static partial class Diagnostics
                 float offArm = OffsetY();
                 bool handoff = MathF.Abs(offArm - offPrev) > 0.5f;
                 if (handoff) handoffs++;
-                if (arm.LyricsScrollMode == (int)FluentGpu.Scroll.ScrollActivity.Driven) springFrames++;
-                if (!arm.LyricsUserScrollActive && arm.LyricsContentDirtyAtRecord && arm.BlurCandidateCount == 0) blurAbsent++;
+                if (Programmatic()) springFrames++;
                 Row("P1-cascade", li, 0, handoff ? "latch" : "no-move", in arm);
                 for (int i = 0; i < lineCount; i++)
                 {
@@ -544,7 +546,7 @@ public static partial class Diagnostics
                     w.WaitForWork(16);
                     frames++;
                     if (MathF.Abs(OffsetY() - offArm) > 0.5f) lateOffset++;                                   // (a)
-                    if (s.LyricsScrollMode == (int)FluentGpu.Scroll.ScrollActivity.Driven) springFrames++;
+                    if (Programmatic()) springFrames++;
                     for (int i = 0; i < lineCount; i++)
                     {
                         float c = view.ProbeCascadeComp(i), p = prev[i];
@@ -561,7 +563,6 @@ public static partial class Diagnostics
                         if (s.HotPhaseAllocBytes != 0) allocFrames++;
                         if (s.HotPhaseAllocBytes > maxAlloc) maxAlloc = s.HotPhaseAllocBytes;
                     }
-                    if (!s.LyricsUserScrollActive && s.LyricsContentDirtyAtRecord && s.BlurCandidateCount == 0) blurAbsent++;
                     Row("P1-cascade", li, f, settleMs >= 0 ? "settled" : "", in s);
                 }
 
@@ -591,7 +592,7 @@ public static partial class Diagnostics
                 w.WaitForWork(16);
                 idle++;
                 if (s.Presented) presented++;
-                if (s.Presented && s.LyricsScrollMode == 0 && !s.LyricsContentDirtyAtRecord && s.MainScrollMode == 0 && !s.MainContentDirtyAtRecord) staticPresented++;
+                if (s.Presented && !ly.Motion.Peek().IsMoving && !s.ScrollActive) staticPresented++;
                 Row("P3-idle", -1, f, "", in s);
             }
 
@@ -610,10 +611,10 @@ public static partial class Diagnostics
                 .AppendLine("  (d) top-first      : onset-order violations=" + orderViolations + " (expect 0); max adjacent onset spread=" + maxSpread + " frames >>> " + V(topFirst))
                 .AppendLine("  (e) steady alloc   : post-settle frames with HotPhaseAllocBytes != 0=" + allocFrames + "; max=" + maxAlloc + " B >>> " + V(allocClean))
                 .AppendLine("  >>> CASCADE " + (oneFrame && noOvershoot && settleOk && topFirst && allocClean ? "GREEN" : "RED"))
-                .AppendLine("  DoF-absent frames (contentDirty & !userScroll & zero blur candidates)=" + blurAbsent + " >>> BUG1 " + (blurAbsent == 0 ? "FIXED" : "PRESENT"))
-                .AppendLine("P3 skip-submit at idle: frames=" + idle + "; presented=" + presented + "; STATIC-scene-but-presented=" + staticPresented)
+                .AppendLine("P3 skip-submit at idle: frames=" + idle + "; presented=" + presented + "; no-scroll-but-presented=" + staticPresented)
                 .AppendLine("Not measured in 0.3 (no seam yet): P2 main-scroll sibling isolation (no main-viewport probe hook), "
-                    + "P4 voice-transition remount + wipe/glow integrity (no ProbeLineNode/ProbeGlowNode/LastFrameDiagnostics on Lyrics.ViewCore).");
+                    + "P4 voice-transition remount + wipe/glow integrity (no ProbeLineNode/ProbeGlowNode/LastFrameDiagnostics on Lyrics.ViewCore), "
+                    + "BUG1 DoF-absent-on-advance (the engine no longer reports a per-viewport content-dirty-at-record bit).");
             string report = sb.ToString();
             string dir = OutDir();
             WriteArtifact(dir, "wavee-lyrics-advance-probe.csv", csv.ToString());
@@ -752,13 +753,20 @@ public static partial class Diagnostics
     public readonly record struct ProbeOptions(bool PerfBench, bool StartupBench, string CrashProbe, bool LyricsAdvance,
         string ProbeOut, int PlaybackFrames, int LyricsFrames, int IdleSec, int NavHops, int OpenHops)
     {
+        /// <summary>The only values <see cref="CrashProbe"/> ever holds once <see cref="Parse"/> has run.</summary>
+        static readonly string[] KnownCrashModes = ["throw", "throw-ui", "failfast", "native", "hang", "boot"];
+
         /// <summary>A GUI arm that wants the parent console (every one of them is a CLI-launched GUI run).</summary>
         public bool WantsConsole => PerfBench || StartupBench || LyricsAdvance || CrashProbe.Length > 0;
 
         public static ProbeOptions Parse(string[] args)
         {
             int crash = Array.IndexOf(args, "--crash-probe");
-            string mode = crash < 0 ? "" : crash + 1 < args.Length && args[crash + 1] == "failfast" ? "failfast" : "throw";
+            // `--crash-probe` alone (no value, or the value is another flag/garbage) arms the WP-0 default: `throw`.
+            // A recognized value (`throw|failfast|native|hang|boot`, the WP-0 spike's five arms — B.0/G) passes through
+            // verbatim; anything else is silently normalized to `throw` rather than rejected, so a typo still arms a
+            // probe instead of silently doing nothing.
+            string mode = crash < 0 ? "" : CrashMode(args, crash);
             int outAt = Array.IndexOf(args, "--probe-out");
             string outDir = outAt >= 0 && outAt + 1 < args.Length && !args[outAt + 1].StartsWith("--", StringComparison.Ordinal) ? args[outAt + 1] : "";
             return new ProbeOptions(Array.IndexOf(args, "--perf-bench") >= 0, Array.IndexOf(args, "--startup-bench") >= 0, mode,
@@ -772,6 +780,14 @@ public static partial class Diagnostics
             int i = Array.IndexOf(args, flag);
             return i >= 0 && i + 1 < args.Length && int.TryParse(args[i + 1], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int v)
                 && v >= lo && v <= hi ? v : fallback;
+        }
+
+        /// <summary><paramref name="at"/> is the index of the `--crash-probe` flag itself.</summary>
+        static string CrashMode(string[] args, int at)
+        {
+            if (at + 1 >= args.Length) return "throw";
+            string v = args[at + 1];
+            return Array.IndexOf(KnownCrashModes, v) >= 0 ? v : "throw";
         }
     }
 

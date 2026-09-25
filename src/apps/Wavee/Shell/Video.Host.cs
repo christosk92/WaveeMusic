@@ -117,7 +117,10 @@ public static partial class Video
         public static void TogglePrimary(bool hasVideo)
             => Commit(UpgradeGate.PrimaryClick(Surface.Peek(), hasVideo, HostCapability.Peek()));
 
-        /// <summary>Open at a chosen home (the placement menu's rows).</summary>
+        /// <summary>Open at a chosen home (the placement menu's rows). Callers that act on a LIVE has-video answer
+        /// (the menu, the rail) must <see cref="FoldAvailability"/> first: <c>Available</c> is stamped only at a track
+        /// boundary or a primary click, so a session restored mid-track leaves it at <c>None</c> and an unfolded OpenAt
+        /// resolves to None — the video loads and plays with no surface to show it.</summary>
         public static void OpenAt(SurfacePlacement target) => Commit(PlacementCore.OpenAt(Surface.Peek(), target));
 
         /// <summary>Off — globally and stickily. Every user-initiated close lands here.</summary>
@@ -195,17 +198,9 @@ public static partial class Video
         /// <summary>The window's open size and its floor, in DIP.</summary>
         public const float DefaultWidthDip = 640f, DefaultHeightDip = 360f, MinWidthDip = 320f, MinHeightDip = 180f;
 
-        /// <summary>Move the LIVE pop-out window by a delta in PHYSICAL px. Installed by the owner (which holds the
-        /// handle) while this component is mounted; null when there is no owner.
-        /// <para><b>Why the app moves the window instead of the OS.</b> The documented way to drag a chromeless window
-        /// is <c>WM_NCLBUTTONDOWN</c>/<c>HTCAPTION</c>, and it is what Chromium, Electron and WinUI 3 use, because it
-        /// is the only route to Aero Snap. It also hands the UI thread to a modal loop that samples MOUSE-move deltas,
-        /// and the measurements say that does not work here: an 8-second drag rendered at 21 fps (490 keep-alive ticks,
-        /// 167 frames — <c>[window.move] end ms=7891 ticks=490 paints=167</c>), and on a precision touchpad short
-        /// presses produced 31 ms loops that never took. Driving the move from the engine's own pointer stream is
-        /// smooth on mouse, touchpad and touch alike — the same stream every scroll in the app already uses — and it
-        /// ends deterministically on release. The price is Aero Snap, deliberately paid.</para></summary>
-        public static Action<float, float>? DragBy;
+        /// <summary>The OS's own top resize strip (SM_CXPADDEDBORDER + SM_CYSIZEFRAME ≈ 8 px at 100 %): the caption band
+        /// starts below it so the window's top edge keeps answering HTTOP.</summary>
+        public const float ResizeStripDip = 8f;
 
         /// <summary>Builds the window's ROOT content. Installed by `Video.UI.cs` (stage 2) at composition. Null means
         /// no pop-out surface is compiled in, which is a real and HANDLED state: the owner reports the close
@@ -236,22 +231,7 @@ public static partial class Video
             {
                 Playback.Video.CanOpenDetachedWindow = () => ContentFactory is not null
                     && (hooks.CanOpenDetachedWindow?.Invoke() ?? false);
-                // The title band that moves the window lives in the window's OWN AppHost and cannot reach this handle,
-                // so the owner lends it one delegate. `handle` is a stable Ref, read at call time, so this survives
-                // every open/close without re-installing.
-                DragBy = (dxPx, dyPx) =>
-                {
-                    if (handle.Value is not { IsOpen: true } live) return;
-                    var b = live.BoundsPx;
-                    if (b.W <= 0f || b.H <= 0f) return;          // the backend cannot report it — do not guess an origin
-                    if (dxPx == 0f && dyPx == 0f) return;
-                    live.SetBounds(new RectF(b.X + dxPx, b.Y + dyPx, b.W, b.H));
-                };
-                return () =>
-                {
-                    Playback.Video.CanOpenDetachedWindow = null;
-                    DragBy = null;
-                };
+                return () => Playback.Video.CanOpenDetachedWindow = null;
             }, DepKey.Empty);
 
             // Reactive reconcile: it READS the resolved placement, so it re-runs whenever that changes and drives the

@@ -120,8 +120,11 @@ public class FetchMissPolicyTests : IDisposable
 
         // Before this fix `target` would now be Asked with Inflight cleared and Known still 0 — sealed, forever.
         Assert.False(t.Knows(target, Identity));
-        Assert.Equal(0u, t.Inflight[target]);
-        Assert.Equal(0u, t.Asked[target] & Identity);                // un-asked like `Unask` does for `unfilled`
+        // 2026-09-25 (fix 6): a QUEUED retry is something coming — asked AND in flight — never "un-asked". Un-asking it
+        // is what made the artist chart read "nothing coming" at the first miss (Something went wrong), and what let
+        // the page's next Ensure add the slot to the same bucket a second time.
+        Assert.NotEqual(0u, t.Inflight[target]);
+        Assert.Equal(Identity, t.Asked[target] & Identity);
         Assert.False(t.IsFailed(target, Identity));                  // not sealed yet — one miss, budget is two
         Assert.Equal(1, Fetch.Pending);                               // queued again, on its own, no second `Ensure`
         Assert.True(t.Knows(companion, Identity));                   // the row the answer DID name is unaffected
@@ -149,7 +152,8 @@ public class FetchMissPolicyTests : IDisposable
 
         AnswerNothing(provider.Seen[1].Ticket);                      // miss #2 → still Retry (1 < MaxMisses)
         Assert.False(t.IsFailed(target, Identity));
-        Assert.Equal(0u, t.Asked[target] & Identity);
+        Assert.Equal(Identity, t.Asked[target] & Identity);          // the queued retry stays asked (fix 6)
+        Assert.NotEqual(0u, t.Inflight[target]);
         Assert.Equal(1, Fetch.Pending);
 
         Entities.Now = 4;                                            // Backoff(1,0,0) = 2 → ready at 1 + 2 = 3

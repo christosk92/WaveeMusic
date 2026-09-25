@@ -153,21 +153,35 @@ public static partial class Video
         var state = State.Surface.Peek();
         var now = PlacementCore.Resolve(state);
 
-        MenuFlyoutItem Row(SurfacePlacement p, string labelKey, string icon, string? accelWhenAllowed, string? reasonKey)
+        // The TRUTH behind each row, read live at open time rather than off the stale `Available` snapshot: the same
+        // source the availability fold reads (`HostObserver.CurrentHasVideo`, not subscribed — a menu that is open
+        // does not need to re-render on a kind-99 land) and the live host fact. `Available`/`Resolve` above still
+        // drive the radio CHECK (the resolved placement does not change just because the menu opened), but disabled +
+        // reason now answer "why", not just "not now".
+        bool hasVideo = HostObserver.CurrentHasVideo(subscribe: false);
+        var hostCapable = State.HostCapability.Peek();
+
+        MenuFlyoutItem Row(SurfacePlacement p, string labelKey, string icon, string? accelWhenAllowed)
         {
-            bool allowed = PlacementCore.Allows(state.Available, p);
-            string? accel = allowed ? accelWhenAllowed : reasonKey is null ? null : Loc.Get(reasonKey);
-            return MenuFlyoutItem.RadioItem(Loc.Get(labelKey), now == p, () => State.OpenAt(p), icon, allowed) with { AcceleratorText = accel };
+            string? reasonKey = PlacementMenuRules.ReasonKey(hasVideo, hostCapable, p);
+            bool allowed = reasonKey is null;
+            string? accel = reasonKey is null ? accelWhenAllowed : Loc.Get(reasonKey);
+            // FOLD, THEN OPEN (the rail's ShowVideoAt shape). The row was enabled from the LIVE has-video answer above,
+            // but the state's stamped Available is None for a session restored mid-track (it is stamped only at a track
+            // boundary or a primary click) — committing OpenAt against that stale stamp resolved to None: the video
+            // loaded and played with no surface to show it (2026-09-22: audio, an endless join spinner, no window).
+            return MenuFlyoutItem.RadioItem(Loc.Get(labelKey), now == p,
+                () => { State.FoldAvailability(hasVideo); State.OpenAt(p); }, icon, allowed) with { AcceleratorText = accel };
         }
 
         var items = new List<MenuFlyoutItem>(7)
         {
-            Row(SurfacePlacement.Docked, Strings.Player.DockInRail, Icons.SplitView, null, Strings.Player.VideoNeedsWiderWindow),
-            Row(SurfacePlacement.Floating, Strings.Player.VideoMiniPlayer, Icons.BackToWindow, null, null),
-            Row(SurfacePlacement.Detached, Strings.Player.VideoInSeparateWindow, Icons.Movie, null, Strings.Player.VideoNoSecondWindow),
+            Row(SurfacePlacement.Docked, Strings.Player.DockInRail, Icons.SplitView, null),
+            Row(SurfacePlacement.Floating, Strings.Player.VideoMiniPlayer, Icons.BackToWindow, null),
+            Row(SurfacePlacement.Detached, Strings.Player.VideoInSeparateWindow, Icons.Movie, null),
         };
         if (includeFullscreen)
-            items.Add(Row(SurfacePlacement.Fullscreen, Strings.Player.VideoFullScreen, Icons.FullScreen, "F11", Strings.Player.VideoNoFullscreen));
+            items.Add(Row(SurfacePlacement.Fullscreen, Strings.Player.VideoFullScreen, Icons.FullScreen, "F11"));
         // Always-on-top is a property of the SEPARATE WINDOW: offered only while that is where the video lives.
         if (now == SurfacePlacement.Detached)
         {
@@ -465,7 +479,7 @@ public static partial class Video
 
     /// <summary>One presenter of the bound player. Props freeze at mount: the host bundle is constant per surface.
     /// Host-fullscreen is a live signal so Docked↔PiP↔FS never remounts the hole. Engine transport is always off.</summary>
-    sealed class PlayerStage(StageHost host, IReadSignal<bool> hostFullscreen, Signal<bool> chromeVisible) : Component
+    sealed class PlayerStage(StageHost host, IReadSignal<bool> hostFullscreen, Signal<bool> chromeVisible, PlayerChromeFeed feed) : Component
     {
         long _loggedGen = -1;
 
@@ -475,8 +489,6 @@ public static partial class Video
             var binding = Playback.Video.Player.Value;
             _ = hostFullscreen.Value;
             if (binding.Player is not { } player) return new BoxEl { Grow = 1f, MinHeight = 0f };
-            // The pop-out draws its own title band (PopOutContent.TitleBand), so the picture never arms a window move.
-            bool drag = StageInput.DragMovesWindow(host.Identity, hostFullscreen.Peek(), hasTitleBand: true);
             var cursor = StageInput.HidesCursorWindowed(host.Identity) ? CursorAutoHidePolicy.Always : CursorAutoHidePolicy.FullscreenOnly;
             if (_loggedGen != binding.Generation)
             {
@@ -506,14 +518,14 @@ public static partial class Video
                         SuppressTransport = true,
                         FullscreenRequested = host.FullscreenRequested,
                         HostFullscreen = hostFullscreen,
-                        DragMovesWindow = drag,
                         CursorAutoHide = cursor,
                         ChromeVisibleOut = chromeVisible,
+                        ChromeFeed = feed,
                     }) with
                     {
                         Key = "player:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     },
-                    OnMedia.Transport(chromeVisible),
+                    OnMedia.Transport(chromeVisible, feed),
                 ],
             };
         }
@@ -526,6 +538,12 @@ public static partial class Video
     /// the pop-out's tree has none — which is why its controls never appeared at all.</summary>
     static readonly Signal<bool> s_mainChrome = new(true);
     static readonly Signal<bool> s_popOutChrome = new(true);
+
+    /// <summary>The engine's activity/pointer/pressed/scrubbing feed for each window's transport — one per HWND, same
+    /// split as <see cref="s_mainChrome"/>/<see cref="s_popOutChrome"/> and for the same reason: `ChromeFeed` is an
+    /// `init` prop on `MediaPlayerElement`, so it must be a STABLE instance handed in at mount, never a per-render one.</summary>
+    static readonly PlayerChromeFeed s_mainFeed = new();
+    static readonly PlayerChromeFeed s_popOutFeed = new();
 
     static string GenKey(long generation) => "gen:" + generation.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
@@ -824,7 +842,7 @@ public static partial class Video
             var join = JoinNow.Value;
             if (!SurfaceMount.ShouldMountPlayerStage(binding.Player is not null)) return Poster(join);
             var stage = Embed.Comp(static () => new PlayerStage(
-                new StageHost(TransportOwner.Docked, s_toggleMainFullscreen), State.MainHostFullscreen, s_mainChrome))
+                new StageHost(TransportOwner.Docked, s_toggleMainFullscreen), State.MainHostFullscreen, s_mainChrome, s_mainFeed))
                 with { Key = "mainstage:" + GenKey(binding.Generation) };
             if (join != JoinVisual.Video)
                 return new BoxEl { Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = ColorF.Transparent, Children = [stage, Poster(join)] };
@@ -1009,37 +1027,40 @@ public static partial class Video
     /// (0.2.9 left a bare letterbox rect here — W14b, a deliberate divergence).</summary>
     sealed class PopOutContent : Component
     {
-        Point2 _grab;
-        float _scale = 1f;
-        bool _dragging;
-        readonly Action<Point2> _bandDown, _bandDrag;
-        readonly Action _bandRelease;
+        // ── the title band is an OS caption region ──────────────────────────────────────────────────────────────────
+        //
+        // The band answers WM_NCHITTEST with HTCAPTION (pushed via InputHooks.SetTitleBarRegions below), so
+        // DefWindowProc owns the press from down to up: the OS move loop, Aero Snap, monitor hops, touch and pen, and
+        // double-click-to-maximize all just work, and the loop ends within ~2 ms of the release. A hand-rolled drag
+        // (InputHooks.WindowBeginMove, PopOut.DragBy) cannot replace this — a press that starts as CLIENT pointer
+        // input can never be handed to the OS move loop under mouse-in-pointer (measured 2026-09-22: the loop entered
+        // ~500 ms after release, never moved the window, and did not end until the next click). The engine still
+        // synthesizes the pointer's real position over the region to this tree on a reserved pointer id, so the
+        // band's hover keeps arriving through OnPointerMoveWithin/OnPointerExit exactly as over client area; the app
+        // only ever learns that a move/size loop began (InputHooks.WindowMoveSizeBeganObserved) and ended
+        // (WindowMoveSizeEndedObserved), to hold the chrome open for the duration.
+        readonly Action<Point2> _onPointerMoveWithin;
+        readonly Action _onPointerExit;
+        readonly Action _onMoveBegan = static () => s_popOutFeed.WindowMoveStarted();
 
         public PopOutContent()
         {
-            // THE WINDOW MOVES WITH US, so the grab point is the invariant: hold the client DIP position the press
-            // landed on, and each sample asks for the delta that puts it back under the pointer. Because the window
-            // then moves, the NEXT sample's local position returns to the grab point on its own — the error never
-            // accumulates and a dropped sample self-corrects. The in-window PiP drag reconstructs its pointer the same
-            // way. No OS modal loop: see PopOut.DragBy for why (21 fps measured, and touchpad presses that never took).
-            _bandDown = p => { _grab = p; _dragging = true; };
-            _bandDrag = p =>
-            {
-                if (!_dragging) return;
-                float dx = (p.X - _grab.X) * _scale, dy = (p.Y - _grab.Y) * _scale;
-                if (dx == 0f && dy == 0f) return;
-                PopOut.DragBy?.Invoke(dx, dy);
-            };
-            // Every release edge ends it. An OnDrag node's OnClick IS its release edge (the PiP's resize bands rely on
-            // the same fact) and a capture loss arrives as OnDragCanceled, which a PointerUp alone would miss.
-            _bandRelease = () => _dragging = false;
+            _onPointerMoveWithin = static _ => s_popOutFeed.SetPointerOverControls(true);
+            _onPointerExit = static () => s_popOutFeed.SetPointerOverControls(false);
         }
 
         public override Element Render()
         {
             var vp = UseContextSignal(Viewport.Size);
             var hooks = UseContext(InputHooks.Current);
-            _scale = UseContext(Viewport.Scale);      // DIP -> physical px for the window move
+            // The OS owns the band's press end to end (it is a caption region, see below); the only thing the app
+            // learns is that the loop began — hold the chrome for its duration (the element releases the hold itself
+            // on WindowMoveSizeEndedObserved). Edge resizes raise it too, which is right: resizing shows the chrome.
+            UseEffect(() =>
+            {
+                hooks.WindowMoveSizeBeganObserved += _onMoveBegan;
+                return () => hooks.WindowMoveSizeBeganObserved -= _onMoveBegan;
+            }, DepKey.Empty);
             var binding = Playback.Video.Player.Value;
             var join = JoinNow.Value;
             bool hostFullscreen = State.DetachedFullscreen.Value;
@@ -1054,16 +1075,29 @@ public static partial class Video
                 OnMedia.FadeChrome(Context, bandRef.Value, band);
             }, band ? 1 : 0);
 
-            // NO OS caption region. A pushed TitleBarRegion answers WM_NCHITTEST with HTCAPTION, which means the app
-            // never sees the pointer in that band at all: no hover, no cursor, no visual — the window was draggable and
-            // said nothing about it, and reaching for the strip made the chrome vanish because the pointer had left the
-            // client area. The band below is ordinary client area instead, so it can carry the title, the move cursor
-            // and its own drag. The engine's top resize border (SM_CXPADDEDBORDER + SM_CYSIZEFRAME, ~8 px) still sits
-            // above it, and the corners stay HTTOPLEFT/HTTOPRIGHT, so resizing is unchanged.
+            // THE BAND IS A CAPTION REGION (WM_NCHITTEST → HTCAPTION). It is the only mechanism that works: DefWindowProc
+            // owns the press from down to up (the OS move loop, Aero Snap, monitor hops, touch and pen, double-click
+            // maximize), and the loop ends the instant the button comes up. A press that starts as client pointer input
+            // can never be handed to that loop under mouse-in-pointer (measured 2026-09-22: the loop entered ~500 ms
+            // after the release, never moved the window during the drag and did not end until the next click — the
+            // "still dragging while I am doing something else" bug). The engine still synthesizes the pointer's real
+            // position over the region to this tree, so the band's hover (OnPointerMoveWithin/Exit) and the chrome's
+            // auto-show keep working exactly as over client area. The region starts BELOW the OS resize strip so the top
+            // ~8 DIP keep answering HTTOP, and the corners stay HTTOPLEFT/HTTOPRIGHT. No region while fullscreen.
+            var regions = UseRef<TitleBarRegion[]>(null!);
+            regions.Value ??= new TitleBarRegion[1];
             UseLayoutEffect(() =>
             {
-                hooks.SetTitleBarRegions?.Invoke([], 0);
-                Log.Info(State.LogCategory, $"pop-out caption band w={vp.Peek().Width:0.#} hostFs={hostFullscreen} mode=client-strip");
+                int count = 0;
+                float w = vp.Peek().Width;
+                if (!hostFullscreen && w > 0f)
+                {
+                    regions.Value[0] = new TitleBarRegion(
+                        new RectF(0f, PopOut.ResizeStripDip, w, TitleBandHeightDip - PopOut.ResizeStripDip), TitleBarHit.Caption);
+                    count = 1;
+                }
+                hooks.SetTitleBarRegions?.Invoke(regions.Value, count);
+                Log.Info(State.LogCategory, $"pop-out caption band w={w:0.#} hostFs={hostFullscreen} regions={count} mode=caption-region");
                 return null;
             }, DepKey.From(hostFullscreen ? 1 : 0, (int)vp.Peek().Width, 0, (int)vp.Peek().Height));
 
@@ -1073,7 +1107,7 @@ public static partial class Video
                     Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, ZStack = true,
                     Children =
                     [
-                        Embed.Comp(static () => new PlayerStage(new StageHost(TransportOwner.PopOut, s_toggleDetachedFullscreen), State.DetachedFullscreen, s_popOutChrome))
+                        Embed.Comp(static () => new PlayerStage(new StageHost(TransportOwner.PopOut, s_toggleDetachedFullscreen), State.DetachedFullscreen, s_popOutChrome, s_popOutFeed))
                             with { Key = "stage:" + GenKey(Playback.Video.Player.Peek().Generation) },
                         join == JoinVisual.Video ? new BoxEl { HitTestVisible = false } : Poster(join),
                         TitleBand(band, bandRef),
@@ -1090,6 +1124,10 @@ public static partial class Video
             };
         }
 
+        /// <summary>44 DIP: the caption region's height, pushed to <see cref="InputHooks.SetTitleBarRegions"/> and the
+        /// band's own layout height (they must match, or the region and the visible band drift apart).</summary>
+        const float TitleBandHeightDip = 44f;
+
         /// <summary>The pop-out's title band: the only identity this chromeless window has, and the visible answer to
         /// "can I drag this?". Opacity is the TERMINAL, FadeChrome seeds the approach; the band is a sibling of the
         /// hole, never an ancestor of it.</summary>
@@ -1100,17 +1138,18 @@ public static partial class Video
             [
                 new BoxEl
                 {
-                    Shrink = 0f, Height = 44f, Direction = 0, AlignItems = FlexAlign.Center,
-                    Padding = new Edges4(12f + Spacing.S, 0f, 12f, 0f), Gap = Spacing.M,
+                    Shrink = 0f, Height = TitleBandHeightDip, Direction = 0, AlignItems = FlexAlign.Center,
+                    // Top inset is the OS's own resize strip (PopOut.ResizeStripDip): the band starts BELOW it, so
+                    // the top ~8 DIP of the window keeps answering HTTOP instead of the band stealing it for a drag.
+                    Padding = new Edges4(12f + Spacing.S, PopOut.ResizeStripDip, 12f, 0f), Gap = Spacing.M,
                     Gradient = Tok.ScrimTop,
                     Opacity = show ? 1f : 0f,
                     HitTestVisible = show,
+                    // The move cursor still shows over the band: the engine resolves it from the synthesized NC hover and
+                    // Win32 re-asserts it on WM_SETCURSOR over a caption region instead of letting DefWindowProc arrow it.
                     Cursor = show ? CursorId.SizeAll : (CursorId?)null,
-                    OnPointerDown = show ? _bandDown : null,
-                    OnDrag = show ? _bandDrag : null,
-                    OnClick = show ? _bandRelease : null,
-                    OnDragCanceled = show ? _bandRelease : null,
-                    OnPointerExit = show ? _bandRelease : null,
+                    OnPointerMoveWithin = _onPointerMoveWithin,
+                    OnPointerExit = _onPointerExit,
                     OnRealized = h => bandRef.Value = h,
                     Children =
                     [

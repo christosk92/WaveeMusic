@@ -67,6 +67,10 @@ public static partial class Shell
         // CONSTRUCTION. Per CLAUDE.md ("every fix references its issue") the fix needs a GitHub issue first and NONE
         // EXISTS TODAY — that is an action for Christos (plan §9.6 item 6); do not file one from here.
         ConnectDiagnostics,
+        // realtime-capture-implementation.md unit 6 (§5.5): the causal flight recorder's own Diagnostics page,
+        // routed exactly like the two rows above it (developer-only, no material) so it is deep-linkable and
+        // history-aware from day one rather than repeating the ConnectDiagnostics defect this table exists to close.
+        CaptureDiagnostics,
         // the fall-through `PageFor` paints when nothing above claims the key
         NotFound,
     }
@@ -173,6 +177,8 @@ public static partial class Shell
         new(RouteKind.Episode,             "episode:",             true,  Strings.Nav.Episode,          Icons.RadioTower,  false, true,  false),
 
         new(RouteKind.ConnectDiagnostics,  "connect-diagnostics",  false, Strings.Nav.ConnectDiagnostics, Icons.MusicNote, true,  false, false),
+        // realtime-capture-implementation.md unit 6: same developer-only, non-material shape as the two rows above.
+        new(RouteKind.CaptureDiagnostics,  "capture-diagnostics",  false, Strings.Nav.CaptureDiagnostics, Icons.Document, true,  false, false),
         new(RouteKind.NotFound,            "",                     false, Strings.Nav.PageNotFound,     Icons.MusicNote,   false, false, false),
     ];
 
@@ -527,14 +533,16 @@ public static partial class Shell
     // another app — so the composed key is checked against the route table before it can become a tab.
 
     /// <summary>The <c>wavee://</c> verbs. <see cref="Quit"/> (<c>wavee://quit</c>) closes the app even when closing
-    /// hides it to the notification area (tray plan §4.7); it never raises the window (<c>Tray.WakeFor</c>).</summary>
-    public enum DeepLinkKind : byte { None, Open, Play, Resume, Pause, Report, Quit }
+    /// hides it to the notification area (tray plan §4.7); it never raises the window (<c>Tray.WakeFor</c>).
+    /// <see cref="Diag"/> (<c>wavee://diag?cmd=…</c>, the evidence harness — evidence-diagnostics §B) is developer-only,
+    /// refused unless developer mode, and never raises the window either.</summary>
+    public enum DeepLinkKind : byte { None, Open, Play, Resume, Pause, Report, Quit, Diag }
 
     /// <summary>A parsed verb. Unknown or garbage input yields <see cref="DeepLinkKind.None"/>; the parser never
     /// throws. Exactly one of <see cref="Context"/> (a Spotify context uri) and <see cref="Link"/> (a pasted module
     /// url) is set on a <see cref="DeepLinkKind.Play"/>.</summary>
     public readonly record struct DeepLinkVerb(DeepLinkKind Kind, Route Route, string Context = "", string Link = "",
-        string Arg = "");
+        string Arg = "", DiagVerb Diag = default);
 
     /// <summary>Parse an activation payload into a verb, composing and GATING the route in one step: the six entity
     /// verbs (<c>route=album&amp;arg=spotify:album:…</c>) become <c>album:&lt;uri&gt;</c>, the composed key resolves
@@ -543,8 +551,14 @@ public static partial class Shell
     /// tab on the not-found page and wrote it into the persisted history log.</summary>
     public static DeepLinkVerb DeepLink(ReadOnlySpan<char> uriOrUrl, bool developerMode = false)
     {
-        if (!TryParseVerb(uriOrUrl, out string name, out string route, out string arg, out string ctx, out string link))
+        if (!TryParseVerb(uriOrUrl, out string name, out string route, out string arg, out string ctx, out string link, out string query))
             return default;
+
+        // `wavee://diag?cmd=bundle|pixel|scroll|vps|probe&…` — the evidence harness's verbs (EvidenceReport.TryParseDiag).
+        // Developer-only, like the developer routes: a link from outside must not drive the app's diagnostics.
+        if (name.Equals("diag", StringComparison.OrdinalIgnoreCase))
+            return developerMode && EvidenceReport.TryParseDiag(query, out DiagVerb diag)
+                ? new DeepLinkVerb(DeepLinkKind.Diag, default, Diag: diag) : default;
 
         if (name.Equals("open", StringComparison.OrdinalIgnoreCase))
         {
@@ -584,9 +598,9 @@ public static partial class Shell
         => route is "album" or "pl" or "artist" or "show" or "prerelease" or "module" or "episode";
 
     static bool TryParseVerb(ReadOnlySpan<char> raw, out string name, out string route, out string arg,
-        out string ctx, out string link)
+        out string ctx, out string link, out string query)
     {
-        name = route = arg = ctx = link = "";
+        name = route = arg = ctx = link = query = "";
         if (raw.IsWhiteSpace()) return false;
 
         // A bare `spotify:` entity uri, so the opt-in `spotify:` handler shares ONE activation path with `wavee://`.
@@ -604,6 +618,7 @@ public static partial class Shell
             name = slash < 0 ? path : path[..slash];
         }
         if (name.Length == 0) return false;
+        query = uri.Query;
         ReadQuery(uri.Query, out route, out arg, out ctx, out link);
         return true;
     }
@@ -916,6 +931,18 @@ public static partial class Shell
     /// <summary>How many pages the content host keeps alive. Back to a page shows it exactly as it was, including
     /// scroll and selection; the fourth oldest is evicted.</summary>
     public const int KeepAliveSlots = 3;
+
+    /// <summary>The page's scroll-restoration SCOPE. The engine keys a saved scroll offset by the <c>ScrollKey</c> alone
+    /// (it no longer namespaces by the enclosing keep-alive slot), so every CONTENT page's <c>ScrollKey</c> (album,
+    /// playlist, artist, show, episode, library, home, browse, search, recents, concerts, module pages) is composed under
+    /// the tab its page lives in: the same content open in two tabs keeps two offsets. Provided per keep-alive slot by
+    /// the content host (<c>PageBody</c>); "" outside a page. The rails, panels, the sidebar and dialogs are one per
+    /// window, and the tool pages (settings, what's new, diagnostics, customizers, feedback) have one logical instance,
+    /// so their keys stay bare.</summary>
+    public static readonly Context<string> PageScrollScope = new("");
+
+    /// <summary>The scroll scope of a page in tab <paramref name="tab"/> (a prefix composed onto its scroll keys).</summary>
+    public static string ScrollScopeOf(int tab) => "tab" + tab.ToString(CultureInfo.InvariantCulture) + "/";
 
     /// <summary>The masthead band's fade window — the page's REAL exit window (<see cref="Design.Nav.ExitDurationMs"/>),
     /// so a drill-in's two halves read as one gesture rather than an independent constant that can drift from it.</summary>

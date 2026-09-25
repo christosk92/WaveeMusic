@@ -1058,6 +1058,8 @@ public static partial class Spotify
         /// plan §5.2). Null — a single-entity call, a fixture, a store replay — simply skips that kind.</para></summary>
         public static void ExtendedMetadata(ReadOnlySpan<byte> response, Staging s, FetchBatch? asked = null)
         {
+            // FIRST, so any positive this answer carries (staged below, later in the batch) wins at commit.
+            if (asked is not null) TraitNegatives(response, s, asked);
             var r = new ProtoReader(response);
             while (r.Next())
             {
@@ -1104,6 +1106,64 @@ public static partial class Spotify
                 }
             }
         }
+
+        /// <summary>A 200 answer's SILENCE about an asked trait is the trait's "none" (RCA 2026-09-25, fix 1). For the four
+        /// track traits whose "nothing" is a value — 185 play count, 99 / 182 video, 6 descriptors — an asked entity the
+        /// kind's array left out, or named with a 2xx header and no data, is staged as a KNOWN NEGATIVE for its group
+        /// (like <see cref="Descriptors"/> has always done for an empty descriptor list): the row settles, the planner's
+        /// <c>ReviewMisses</c> finds nothing missed, and nothing is re-asked. Before this, each such row "missed" three
+        /// times — the retries hit the metadata cache and got the same bytes — and sealed Failed (230/324/105 Video
+        /// misses a day; the Top tracks chart's failure over slot 8682's absent play count).
+        /// <para>A TERMINAL entity status (404 / 403 / 410 / 451 — <see cref="ExtendedMetadataRules.TerminalEntry"/>) is a
+        /// negative too: it is how kind 99 answers a track with no video (every one of ten video-less tracks in the
+        /// 2026-09-25 capture came back 404), exactly the verdict the TrackV4 arm below already reads as an answer.</para>
+        /// <para>What is NOT a negative: a RETRYABLE entity status (5xx / 429 — the request was unlucky, the hole stays for the retry),
+        /// a kind the batch did not ask (read off the same route walk the provider sent: <c>Api.RoutesFor</c>), and a
+        /// derived-uri batch (kind 5). The negatives are staged BEFORE the fan-out, so a positive twin in the same answer
+        /// — kind 182 reporting a music video for a relinked alias kind 99 left out — is applied after and wins.</para>
+        /// Allocates (an api worker thread, per answer): the asked uris as text and one summary pass.</summary>
+        static void TraitNegatives(ReadOnlySpan<byte> response, Staging s, FetchBatch asked)
+        {
+            if (asked.Subject != FetchSubject.Entity || asked.Kind != EntityKind.Track || asked.Extension != 0 || asked.Count == 0)
+                return;
+            Span<FetchRoute> routes = stackalloc FetchRoute[FetchRoutes.MaxRoutes];
+            int n = Api.RoutesFor(asked.Subject, asked.Kind, asked.Wanted, routes, out _);
+            Span<int> kinds = stackalloc int[FetchRoutes.MaxRoutes];
+            int k = Api.MetadataKinds(routes[..n], 0, kinds);
+            int traits = 0;
+            for (int i = 0; i < k; i++) if (TraitGroup(kinds[i]) != 0) kinds[traits++] = kinds[i];
+            if (traits == 0) return;
+
+            var uris = new string[asked.Count];
+            for (int i = 0; i < uris.Length; i++) uris[i] = asked.Uri(i);
+            var summary = XmAnswerSummary.Read(response, uris, kinds[..traits]);
+            foreach (var row in summary.Rows)
+            {
+                // Omitted, a 2xx with no data, or a TERMINAL entity status — the server's own "no such trait for this
+                // entity" (the 2026-09-25 capture: kind 99 answers every video-less track 404, verify bundle
+                // xm-20260925-022444-load-missed.tsv). A retryable status (5xx/429) is this request being unlucky: not a negative.
+                bool terminal = row.Verdict == XmAnswerSummary.Verdict.Failed && ExtendedMetadataRules.TerminalEntry(row.Status);
+                if (!terminal && row.Verdict is not (XmAnswerSummary.Verdict.Omitted or XmAnswerSummary.Verdict.Empty)) continue;
+                int at = Array.IndexOf(uris, row.Uri);
+                if (at < 0) continue;
+                var id = new StagedId(asked.Ids[at]);
+                if (id.IsEmpty) continue;
+                uint group = TraitGroup(row.Kind);
+                // The descriptor chips live in a RUN: an empty one is the "this track has none" the kind-6 decoder writes.
+                if (group == (uint)TrackFields.Tags) s.Run(Relation.TrackTags).EndEvenIfEmpty(in id, 0);
+                s.Tracks.RowFor(id, Authority.Full, group);   // values stay default: 0 plays, no video, no chips
+                s.Tracks.Settle();
+            }
+        }
+
+        /// <summary>The track group a trait kind answers for, or 0 for a kind whose silence is not a negative.</summary>
+        static uint TraitGroup(int kind) => kind switch
+        {
+            FetchRoutes.PlayCount => (uint)TrackFields.PlayCount,
+            FetchRoutes.VideoAssociations or FetchRoutes.ConsumptionExperience => (uint)TrackFields.Video,
+            FetchRoutes.TrackDescriptor => (uint)TrackFields.Tags,
+            _ => 0u,
+        };
 
         /// <summary>The envelope's per-entity STATUS verdicts, pure so the decision can be pinned without a wire.</summary>
         public static class ExtendedMetadataRules
@@ -1409,17 +1469,19 @@ public static partial class Spotify
             s.Tracks.RowFor(id, Authority.Full, (uint)TrackFields.Tags);
         }
 
-        /// <summary>Kind 185 (`OnPlatformReputationTrait`) → <see cref="TrackFields.PlayCount"/>. Ported from
-        /// `PlayCountProjector.TryReadPlayCount`: field 3, varint, and a zero is not a play count — the surface shows
-        /// a DASH for a track nobody has ruled on and a number for one somebody has (ch 04 §7).</summary>
+        /// <summary>Kind 185 (`OnPlatformReputationTrait`) → <see cref="TrackFields.PlayCount"/>: field 3, varint.
+        /// <para>A ZERO IS AN ANSWER (RCA 2026-09-25, fix 1): the catalog ruled "no counted plays" (Spotify shows none
+        /// under 1,000), so the group settles known with 0 and every surface renders 0 as the dash it always did. Until
+        /// 2026-09-25 a zero staged nothing, the row read as missed, was re-asked twice and sealed Failed — and the artist
+        /// chart's gate, waiting on the group, failed the whole card (the Oscar Dunbar page, slot 8682). The omitted-entity
+        /// twin of this is <see cref="TraitNegatives"/>.</para></summary>
         public static void PlayCount(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {
             var id = Identity(s, entityUri);
             if (id.IsEmpty) return;
             long plays = new ProtoReader(proto).Varint(3);
-            if (plays <= 0) return;
             s.Tracks.RowFor(id, Authority.Full, (uint)TrackFields.PlayCount).PlayCount =
-                plays > uint.MaxValue ? uint.MaxValue : (uint)plays;
+                plays <= 0 ? 0u : plays > uint.MaxValue ? uint.MaxValue : (uint)plays;
         }
 
         /// <summary>Kind 183 → an album's ©/℗ block and its calendar release date (ch 05 §7's "About this release").

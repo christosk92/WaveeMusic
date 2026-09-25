@@ -1,0 +1,38 @@
+name = "wavee-crash"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ── D1 ──────────────────────────────────────────────────────────────────────
+# Create once: `wrangler d1 create wavee-crash`, then paste the printed
+# database_id below. Apply schema.sql with `wrangler d1 execute` (see README).
+[[d1_databases]]
+binding = "DB"
+database_name = "wavee-crash"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+# ── R2 ──────────────────────────────────────────────────────────────────────
+# Create once: `wrangler r2 bucket create wavee-crash`. Lifecycle rule (90-day
+# expiry on reports/, never on symbols/) is configured separately — see README.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "wavee-crash"
+
+# ── Rate limiting ────────────────────────────────────────────────────────────
+# 30 requests/min per limiter key (the key is the caller's IP, passed straight
+# into Cloudflare's own rate-limiting infrastructure — never written to our D1
+# rows, R2 objects or logs; see src/index.ts `rateLimitKey`).
+[[ratelimits]]
+binding = "RATE"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
+
+# ── Vars ──────────────────────────────────────────────────────────────────
+# INGEST_KEY: set as a secret, NOT a plaintext var — `wrangler secret put INGEST_KEY`.
+# The line below is a placeholder so `wrangler dev --local` has something to read;
+# it is overridden by the real secret on deploy. Never commit a real key here.
+[vars]
+INGEST_KEY = "dev-only-placeholder-set-a-real-secret-before-deploy"
+DASHBOARD_ORIGIN = "https://wavee-crash-dashboard.pages.dev"
+
+# Local dev overrides (optional): `wrangler dev --local --var DASHBOARD_ORIGIN:http://localhost:5173`

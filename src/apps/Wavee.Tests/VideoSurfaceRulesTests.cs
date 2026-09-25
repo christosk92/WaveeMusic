@@ -32,6 +32,41 @@ static class Vid
         => PlacementCore.WithLive(PlacementCore.OpenAt(Off, SurfacePlacement.Detached), SurfacePlacement.Detached);
 }
 
+// ── opening at a home must fold the playable's REAL availability first ───────────────────────────────────────────────
+
+public class VideoOpenAtAvailabilityTests
+{
+    // The placement menu reads availability LIVE (PlacementMenuRules) and offers "Play in a separate window", but the
+    // state's stamped Available is None for a session restored mid-track (it is stamped only at a track boundary or a
+    // primary click). Committing OpenAt against that stale stamp resolved to None: the video loaded and played with no
+    // surface to show it (2026-09-22). State.OpenAt folds first — this is the pure chain it runs.
+    [Fact]
+    public void OpenAt_from_a_stale_None_availability_resolves_once_the_playable_has_video()
+    {
+        var stale = PlacementState.Music with { Available = PlacementSet.None };
+        Assert.Equal(SurfacePlacement.None, PlacementCore.Resolve(PlacementCore.OpenAt(stale, SurfacePlacement.Detached)));
+
+        var folded = UpgradeGate.FoldAvailability(stale, hasVideo: true, hostCapable: Vid.All);
+        Assert.Equal(SurfacePlacement.Detached, PlacementCore.Resolve(PlacementCore.OpenAt(folded, SurfacePlacement.Detached)));
+    }
+
+    [Fact]
+    public void OpenAt_still_resolves_to_nothing_when_the_playable_has_no_video()
+    {
+        var stale = PlacementState.Music with { Available = PlacementSet.None };
+        var folded = UpgradeGate.FoldAvailability(stale, hasVideo: false, hostCapable: Vid.All);
+        Assert.Equal(SurfacePlacement.None, PlacementCore.Resolve(PlacementCore.OpenAt(folded, SurfacePlacement.Detached)));
+    }
+
+    [Fact]
+    public void OpenAt_respects_a_host_that_cannot_open_a_second_window()
+    {
+        var stale = PlacementState.Music with { Available = PlacementSet.None };
+        var folded = UpgradeGate.FoldAvailability(stale, hasVideo: true, hostCapable: PlacementSet.Docked | PlacementSet.Floating);
+        Assert.NotEqual(SurfacePlacement.Detached, PlacementCore.Resolve(PlacementCore.OpenAt(folded, SurfacePlacement.Detached)));
+    }
+}
+
 // ── the pop-out's own fullscreen mode ────────────────────────────────────────────────────────────────────────────────
 
 public class VideoDetachedFullscreenRuleTests
@@ -332,29 +367,6 @@ public class VideoConnectFactsTests
 
 public class VideoStageInputTests
 {
-    [Fact]
-    public void Only_the_pop_out_moves_its_window()
-    {
-        Assert.True(StageInput.DragMovesWindow(TransportOwner.PopOut, hostFullscreen: false, hasTitleBand: false));
-        Assert.False(StageInput.DragMovesWindow(TransportOwner.Docked, false, false));
-        Assert.False(StageInput.DragMovesWindow(TransportOwner.Fullscreen, false, false));
-        Assert.False(StageInput.DragMovesWindow(TransportOwner.GlobalBar, false, false));
-    }
-
-    [Fact]
-    public void A_fullscreen_pop_out_has_nowhere_to_go()
-        => Assert.False(StageInput.DragMovesWindow(TransportOwner.PopOut, hostFullscreen: true, hasTitleBand: false));
-
-    /// <summary>ONE drag path per window. With a visible title band the picture must not arm a move as well: two
-    /// independent arms both start the same OS modal loop, and a release between the two could leave the window
-    /// trailing the cursor with no button held.</summary>
-    [Fact]
-    public void A_title_band_takes_the_drag_away_from_the_picture()
-    {
-        Assert.False(StageInput.DragMovesWindow(TransportOwner.PopOut, hostFullscreen: false, hasTitleBand: true));
-        Assert.True(StageInput.DragMovesWindow(TransportOwner.PopOut, hostFullscreen: false, hasTitleBand: false));
-    }
-
     [Fact]
     public void Only_the_dedicated_window_hides_the_cursor_windowed()
     {

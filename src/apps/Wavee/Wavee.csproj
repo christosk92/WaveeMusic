@@ -17,6 +17,10 @@
          assets/AppIcon/appicon.ico next to the exe (Win32Platform.LoadAppIcon). Regenerate with
          assets/AppIcon/generate-appicon.ps1 from the WaveeMusic source artwork. -->
     <ApplicationIcon>assets\AppIcon\appicon.ico</ApplicationIcon>
+    <!-- comctl32 v6 (Microsoft.Windows.Common-Controls) for the engine-free recovery screen's TaskDialogIndirect
+         (Screens/Recovery.Win32.cs, crash-diagnostics plan §B.8/§I "WP-D"). Deliberately carries NO dpiAware/
+         dpiAwareness element — see app.manifest's own comment: the engine sets DPI awareness at runtime. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <!-- Build identity. Wavee.Version.props is the single source of the semver, the per-minor codename and the
@@ -38,18 +42,26 @@
     <!-- The Partner Center Store ID of the Wavee listing (Product management > View product identity). A -Channel store
          package routes "Update now" to ms-windows-store://pdp/?productid=<this>; the feed channels ignore it. -->
     <WaveeStoreId Condition="'$(WaveeStoreId)' == ''">9NJPVWTQPT9H</WaveeStoreId>
+    <!-- The opt-in crash & diagnostics pipeline's ingest endpoint + public key (crash & diagnostics plan §B.5), stamped
+         exactly like WaveeUpdateBaseUrl: build-time metadata, never a runtime switch. Empty on a plain `dotnet run` and
+         on every E2E package -> Crash.Uploader.Configured is false and nothing is ever sent. Only wavee-release.ps1's
+         `symbols` phase (via pack-wavee-msix.ps1 -CrashIngestUrl/-CrashIngestKey) sets these for a real release. -->
+    <WaveeCrashIngestUrl Condition="'$(WaveeCrashIngestUrl)' == ''"></WaveeCrashIngestUrl>
+    <WaveeCrashIngestKey Condition="'$(WaveeCrashIngestKey)' == ''"></WaveeCrashIngestKey>
     <!-- A local `dotnet run` is "0.2.0-dev"; the pack script stamps "<semver>+build.<N>.sha.<sha7>". -->
     <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(WaveeVersion)-dev</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
-    <AssemblyMetadata Include="Codename"       Value="$(WaveeCodename)" />
-    <AssemblyMetadata Include="Channel"        Value="$(WaveeChannel)" />
-    <AssemblyMetadata Include="PackageVersion" Value="$(WaveePackageVersion)" />
-    <AssemblyMetadata Include="Commit"         Value="$(WaveeCommit)" />
-    <AssemblyMetadata Include="BuildDate"      Value="$(WaveeBuildDate)" />
-    <AssemblyMetadata Include="FeedRelease"    Value="$(WaveeFeedRelease)" />
-    <AssemblyMetadata Include="UpdateBaseUrl"  Value="$(WaveeUpdateBaseUrl)" />
-    <AssemblyMetadata Include="StoreId"        Value="$(WaveeStoreId)" />
+    <AssemblyMetadata Include="Codename"        Value="$(WaveeCodename)" />
+    <AssemblyMetadata Include="Channel"         Value="$(WaveeChannel)" />
+    <AssemblyMetadata Include="PackageVersion"  Value="$(WaveePackageVersion)" />
+    <AssemblyMetadata Include="Commit"          Value="$(WaveeCommit)" />
+    <AssemblyMetadata Include="BuildDate"       Value="$(WaveeBuildDate)" />
+    <AssemblyMetadata Include="FeedRelease"     Value="$(WaveeFeedRelease)" />
+    <AssemblyMetadata Include="UpdateBaseUrl"   Value="$(WaveeUpdateBaseUrl)" />
+    <AssemblyMetadata Include="StoreId"         Value="$(WaveeStoreId)" />
+    <AssemblyMetadata Include="CrashIngestUrl"  Value="$(WaveeCrashIngestUrl)" />
+    <AssemblyMetadata Include="CrashIngestKey"  Value="$(WaveeCrashIngestKey)" />
   </ItemGroup>
 
   <!-- Memory posture (2026-07 heap audit): the engine's PixelBufferPool bounds decoded-pixel retention; these bound

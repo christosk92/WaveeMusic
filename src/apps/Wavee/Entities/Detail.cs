@@ -256,8 +256,27 @@ public static partial class Detail
              : titleSize >= 40f ? 52f
              : titleSize >= 28f ? 36f : 28f;
 
-        /// <summary>Description line cap: shorter beside the artwork, taller when the copy owns the column.</summary>
-        public static int DescriptionMaxLines(bool rowFlow) => rowFlow ? 3 : 4;
+        /// <summary>Row flow: two lines at the wide measure hold what three held in the column; stacked keeps four.</summary>
+        public static int DescriptionMaxLines(bool rowFlow) => rowFlow ? 2 : 4;
+
+        /// <summary>The description's widest reading measure in row flow (≈ 100 characters at 13 px). It spans under the
+        /// cover AND the column, so the cap is on reading comfort, not on the column.</summary>
+        public const float DescriptionWMax = 720f;
+        /// <summary>Space between the hero row (or stacked column) and the description beneath it.</summary>
+        public const float DescriptionGapRow = 12f;
+
+        /// <summary>The description's measure: row flow spans the padded hero width (capped); stacked keeps the content
+        /// width the identity column already uses.</summary>
+        public static float DescriptionWidthFor(float colW, bool rowFlow)
+            => rowFlow ? MathF.Min(DescriptionWMax, MathF.Max(ContentWMin, colW - 2f * HeroPadFor(colW, rowFlow)))
+                       : ContentWidthFor(colW, rowFlow);
+
+        /// <summary>The gap above the description: stacked keeps the identity rhythm it had inside the column.</summary>
+        public static float DescriptionGapFor(bool rowFlow) => rowFlow ? DescriptionGapRow : IdentityGap;
+
+        /// <summary>The description band's full height (gap + lines), 0 when there is none.</summary>
+        public static float DescriptionBandHeight(bool rowFlow, bool description)
+            => description ? DescriptionGapFor(rowFlow) + DescriptionMaxLines(rowFlow) * DescriptionLineHeight : 0f;
 
         /// <summary>The identity column's MinHeight: always 0, in both flows. Issue #78 once forced this to the
         /// artwork's edge in row flow so a short column's slack could be redistributed as growth of one of its own
@@ -382,9 +401,11 @@ public static partial class Detail
 
         /// <summary>The identity column's CHROME height (every block but the title) and a block count that STARTS AT ONE
         /// (the title), so the gap count agrees between <see cref="TitleHeightBudgetFor"/> and
-        /// <see cref="IdentityHeightFor"/>. Every hero block has its flag here — a new row needs a new flag (ch 03 §9).</summary>
+        /// <see cref="IdentityHeightFor"/>. Every hero block has its flag here — a new row needs a new flag (ch 03 §9).
+        /// The description is no longer one of them: it left the column for the band beneath it
+        /// (<see cref="DescriptionBandHeight"/>).</summary>
         public static (float Height, int Blocks) IdentityChrome(bool eyebrow, bool attribution, bool meta, bool pulse,
-                                                               bool description, bool rowFlow, bool chart = false)
+                                                               bool rowFlow, bool chart = false)
         {
             float h = 0f; int blocks = 1;
             if (eyebrow) { h += EyebrowRowHeight; blocks++; }
@@ -394,17 +415,16 @@ public static partial class Detail
             if (pulse) { h += PulseRowHeight; blocks++; }
             if (chart) { h += ChartRowHeight; blocks++; }
             h += ActionRowHeight; blocks++;
-            if (description) { h += DescriptionMaxLines(rowFlow) * DescriptionLineHeight; blocks++; }
             return (h, blocks);
         }
 
-        /// <summary>Row flow's title HEIGHT BUDGET: the cover edge less the other chrome and its gaps. The description is
-        /// EXCLUDED on purpose (a tail may run past the cover; it must not steer the title's size). Stacked ⇒ 0.</summary>
+        /// <summary>Row flow's title HEIGHT BUDGET: the cover edge less the other chrome and its gaps. The description
+        /// lives in the band under the hero now, never in this column, so it never steers the title's size. Stacked ⇒ 0.</summary>
         public static float TitleHeightBudgetFor(float colW, bool rowFlow,
             bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
         {
             if (!rowFlow) return 0f;
-            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, description: false, rowFlow: true, chart);
+            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow: true, chart);
             return MathF.Max(0f, ArtworkFor(colW, rowFlow) - chrome - (blocks - 1) * IdentityGap);
         }
 
@@ -462,11 +482,13 @@ public static partial class Detail
             return current;
         }
 
-        /// <summary>The identity column's height: chrome + this plan's block + one gap per block boundary.</summary>
+        /// <summary>The identity column's height: chrome + this plan's block + one gap per block boundary. The
+        /// description no longer contributes here — it is a sibling block under the whole hero row
+        /// (<see cref="DescriptionBandHeight"/>), not a row inside this column.</summary>
         public static float IdentityHeightFor(in TitleTypePlan title, bool rowFlow,
-            bool eyebrow, bool attribution, bool meta, bool description, bool pulse = false, bool chart = false)
+            bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
         {
-            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, description, rowFlow, chart);
+            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow, chart);
             return chrome + title.BlockHeight + (blocks > 1 ? (blocks - 1) * IdentityGap : 0f);
         }
 
@@ -476,10 +498,10 @@ public static partial class Detail
         /// <summary>Row flow spreads the slack a short column leaves under the cover evenly over every gap (even 2-DIP
         /// steps, ≤ <see cref="IdentityGapMax"/>); stacked keeps the resting gap.</summary>
         public static float IdentityGapFor(float colW, bool rowFlow, in TitleTypePlan title,
-            bool eyebrow, bool attribution, bool meta, bool description, bool pulse = false, bool chart = false)
+            bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
         {
             if (!rowFlow) return IdentityGap;
-            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, description, rowFlow, chart);
+            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow, chart);
             int gaps = Math.Max(1, blocks - 1);
             float slack = ArtworkFor(colW, rowFlow) - (chrome + title.BlockHeight + gaps * IdentityGap);
             if (slack <= 0f) return IdentityGap;
@@ -487,16 +509,16 @@ public static partial class Detail
         }
 
         /// <summary>The whole expanded band: padded artwork/identity (row flow = the taller of the two, stacked = both
-        /// over the gap) plus the toolbar row under it.</summary>
+        /// over the gap), the description band beneath it when there is one, plus the toolbar row under that.</summary>
         public static float HeroBandHeight(float colW, bool rowFlow, in TitleTypePlan title,
             bool eyebrow, bool attribution, bool meta, bool description, bool pulse = false, bool chart = false)
         {
             float w = colW > 0f ? colW : FallbackW;
             float pad = HeroPadFor(w, rowFlow);
             float art = ArtworkFor(w, rowFlow);
-            float identity = IdentityHeightFor(title, rowFlow, eyebrow, attribution, meta, description, pulse, chart);
+            float identity = IdentityHeightFor(title, rowFlow, eyebrow, attribution, meta, pulse, chart);
             float hero = rowFlow ? MathF.Max(art, identity) : art + HeroGapFor(w, rowFlow) + identity;
-            return pad + hero + HeroBottomPad
+            return pad + hero + DescriptionBandHeight(rowFlow, description) + HeroBottomPad
                  + ExpandedToolbarTopPad + ToolbarRowHeight + ExpandedToolbarBottomPad;
         }
 
@@ -924,6 +946,14 @@ public static partial class Detail
         /// <summary>A section becomes current at the upper quarter of the usable viewport below the band.</summary>
         public const float SpyViewportFraction = 0.25f;
         public const float EndProbe = SpyProbe;
+        /// <summary>The spy's "no pivot section is here" ANSWER — the page is above its first section (the hero, the
+        /// chart band), so no underline is drawn. Distinct from −1, which is "no answer, hold what you had" (D40).</summary>
+        public const int NoSection = -2;
+
+        /// <summary>Which pivot link draws the active underline for a spy answer <paramref name="active"/> over
+        /// <paramref name="shown"/> links (−1 = none). Pure; the pivot's render and its bound underline fills both read it,
+        /// so the two can never disagree.</summary>
+        public static int PivotCurrent(int active, int shown) => shown > 0 && active >= 0 ? Math.Min(active, shown - 1) : -1;
 
         /// <summary>A genuinely scrollable viewport at its real lower limit (a non-scrollable page is never "at end").</summary>
         public static bool IsAtScrollEnd(float offsetY, float viewportHeight, float contentHeight)
@@ -942,9 +972,11 @@ public static partial class Detail
             return band + usable * SpyViewportFraction + SpyProbe;
         }
 
-        /// <summary>Which pivot item is "here". 0 at the top; at the scroll end the last contiguous measured section;
-        /// a NaN top stops the scan; −1 = NO ANSWER (empty pivot, or not even the first section measured) — the caller
-        /// holds what it had (D40).</summary>
+        /// <summary>Which pivot item is "here": the last section whose top has crossed the activation line; at the scroll
+        /// end the last contiguous measured section; a NaN top stops the scan. <see cref="NoSection"/> when the FIRST
+        /// section has not crossed the line yet — the hero or the Top tracks band is what is on screen, and no pivot word
+        /// is lit (RCA 2026-09-25 E: this used to answer 0, lighting "Singles &amp; EPs" over Top tracks). −1 = NO ANSWER
+        /// (empty pivot, or not even the first section measured) — the caller holds what it had (D40).</summary>
         public static int ActiveSection(ReadOnlySpan<float> viewportRelativeTops, float bandBottom, float viewportHeight,
                                         bool atScrollEnd)
         {
@@ -960,7 +992,7 @@ public static partial class Detail
                 return lastMeasured;
             }
             float line = SpyLine(bandBottom, viewportHeight);
-            int active = 0;
+            int active = NoSection;
             for (int i = 0; i < viewportRelativeTops.Length; i++)
             {
                 float top = viewportRelativeTops[i];

@@ -915,9 +915,11 @@ public sealed class SidebarRowPlannerTests
     [Fact]
     public void SectionRowCaps_AreDeclaredAndOrdered()
     {
-        Assert.Equal(40, SidebarRowPlanner.RailTileCap);
         Assert.Equal(5000, SidebarRowPlanner.SectionRowCap);
         Assert.True(SidebarRowPlanner.DynamicSectionRowCap >= 10_000);
+        // The ONE rail cap that survives virtualization (Detail hero + full rail plan, Part 2): recents are a
+        // glance, not a list. RailTileCap/RailPinnedCap/RailEntityListCap are gone — the rail is virtualized.
+        Assert.Equal(4, SidebarRowPlanner.RailJumpBackInCap);
     }
 
     [Fact]
@@ -1333,18 +1335,21 @@ public sealed class SidebarRailPlannerTests
     // ── caps ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void PinnedCapsAtEight_EntityListCapsAtTwenty_TotalCapsAtForty()
+    public void Rail_tiles_every_pin_and_every_library_entry()
     {
+        // A rail with 20 pins and a 50-entry library: EVERY pin and EVERY entry tiles — no RailPinnedCap/
+        // RailEntityListCap/RailTileCap left to truncate either (the rail is virtualized, Detail hero + full rail
+        // plan, Part 2).
         var pinnedOnly = SidebarRowPlanner.BuildRail(Doc(Sec("p", SidebarSectionKind.Pinned)),
             new SidebarProjectionInput { Pins = Playlists(20, "pin") });
-        Assert.Equal(SidebarRowPlanner.RailPinnedCap, TileCount(pinnedOnly));
+        Assert.Equal(20, TileCount(pinnedOnly));
 
         var listOnly = SidebarRowPlanner.BuildRail(
             Doc(Sec("e", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default)),
             new SidebarProjectionInput { Library = Playlists(50) });
-        Assert.Equal(SidebarRowPlanner.RailEntityListCap, TileCount(listOnly));
+        Assert.Equal(50, TileCount(listOnly));
 
-        // 8 + 20 + 20 would be 48 tiles; the rail stops at 40.
+        // Pins + THREE EntityLists over the same 50-entry library: the total is the sum (20 + 50*3), never capped.
         var everything = SidebarRowPlanner.BuildRail(Doc(
             Sec("p", SidebarSectionKind.Pinned),
             Sec("e1", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default),
@@ -1352,11 +1357,26 @@ public sealed class SidebarRailPlannerTests
             Sec("e3", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default)),
             new SidebarProjectionInput { Pins = Playlists(20, "pin"), Library = Playlists(50) });
 
-        Assert.Equal(SidebarRowPlanner.RailTileCap, TileCount(everything));
-        // Every tile still points at a real entry — the cap must not leave orphaned entries behind.
+        Assert.Equal(20 + 50 * 3, TileCount(everything));
+        // Every tile still points at a real entry — a section's own MaxItems still tightens it, but nothing else does.
         foreach (var row in everything.Rows)
             if (row.Kind != SidebarRowKind.Divider && row.EntryIndex >= 0)
                 Assert.InRange(row.EntryIndex, 0, everything.Entries.Count - 1);
+    }
+
+    [Fact]
+    public void MaxItems_StillTightensARailSection_WithNoGlobalCapLeft()
+    {
+        var pinned = SidebarRowPlanner.BuildRail(
+            Doc(Sec("p", SidebarSectionKind.Pinned, SidebarDisplayOptions.Entities with { MaxItems = 3 })),
+            new SidebarProjectionInput { Pins = Playlists(20, "pin") });
+        Assert.Equal(3, TileCount(pinned));
+
+        var list = SidebarRowPlanner.BuildRail(
+            Doc(Sec("e", SidebarSectionKind.EntityList, SidebarDisplayOptions.Entities with { MaxItems = 5 },
+                query: SidebarEntityQuery.Default)),
+            new SidebarProjectionInput { Library = Playlists(50) });
+        Assert.Equal(5, TileCount(list));
     }
 
     [Fact]
@@ -1400,14 +1420,20 @@ public sealed class SidebarRailPlannerTests
     }
 
     [Fact]
-    public void PinnedFolder_CountsAgainstTheSameEightTileCap_AsAnyOtherPin()
+    public void PinnedFolder_tiles_like_any_other_pin()
     {
-        var pins = new List<SidebarLibraryEntry>(Playlists(7, "pin")) { Folder("nf", "New Folder", order: 7) };
+        // A 9th and a 10th pin (the 9th and 10th a folder each) still tile — there is no RailPinnedCap any more.
+        var pins = new List<SidebarLibraryEntry>(Playlists(8, "pin"))
+        {
+            Folder("nf9", "New Folder 9", order: 8),
+            Folder("nf10", "New Folder 10", order: 9),
+        };
         var plan = SidebarRowPlanner.BuildRail(Doc(Sec("p", SidebarSectionKind.Pinned)),
             new SidebarProjectionInput { Pins = pins });
 
-        Assert.Equal(SidebarRowPlanner.RailPinnedCap, TileCount(plan));
-        Assert.Equal(SidebarRowKind.FolderHeader, plan.Rows[^1].Kind);   // the 8th pin, a folder, still gets its tile
+        Assert.Equal(10, TileCount(plan));
+        Assert.Equal(SidebarRowKind.FolderHeader, plan.Rows[^1].Kind);    // the 10th pin, a folder, still gets its tile
+        Assert.Equal(SidebarRowKind.FolderHeader, plan.Rows[^2].Kind);    // so does the 9th
     }
 
     // ── per-kind contributions ───────────────────────────────────────────────────────────────────────────────────────
@@ -1673,6 +1699,129 @@ public sealed class SidebarRailPlannerTests
 
         var b = SidebarRowPlanner.BuildRail(doc, input, buffers);
         Assert.Equal(rowsA, b.Rows);
+    }
+
+    // ── the rail is virtualized: no cap, full library, same order as the pane (Detail hero + full rail plan, Part 2) ──
+
+    [Fact]
+    public void Rail_tree_tiles_every_top_level_entry()
+    {
+        var top = new List<SidebarLibraryEntry>(Playlists(200))
+        {
+            Folder("f", "Folder", order: 200),
+            Playlist("nested", "Nested", order: 201, depth: 1),
+        };
+
+        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("t", SidebarSectionKind.PlaylistTree)),
+            new SidebarProjectionInput { PlaylistTree = top });
+
+        // 200 top-level playlists + the folder tile = 201; the nested playlist stays folded (reachable only
+        // through the folder's flyout), never a tile of its own — there is no RailTileCap left to hide it behind.
+        Assert.Equal(201, TileCount(plan));
+        Assert.DoesNotContain(plan.Rows, r => r.Key == "pl:spotify:playlist:nested");
+    }
+
+    [Fact]
+    public void Rail_plan_order_matches_the_expanded_plan_for_V3()
+    {
+        // A true `LibraryV3Document.Build` comparison needs the mode's own live session state (the filter/sort/
+        // search chrome LibraryV3Session owns, plus a real ProjectionBinder) that this pure-value planner test does
+        // not construct headlessly. The narrower but exact invariant this pins instead: for a document `Build` and
+        // `BuildRail` BOTH plan (a real EntityList section, not a chrome-only fixture), the rail's entity order is
+        // byte-for-byte the pane's own order — never independently re-sorted or re-filtered. Library V3's rail rides
+        // the SAME `SidebarRowPlanner.BuildRail` this exercises, so the invariant is the one that actually matters.
+        var lib = Playlists(40);
+        var input = new SidebarProjectionInput { Library = lib };
+        var doc = Doc(Sec("e", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default));
+
+        var pane = SidebarRowPlanner.Build(doc, input);
+        var rail = SidebarRowPlanner.BuildRail(doc, input);
+
+        var paneIds = EntryIdsOf(pane);
+        var railIds = EntryIdsOf(rail);
+        Assert.NotEmpty(paneIds);
+        Assert.Equal(paneIds, railIds);
+    }
+
+    static List<string> EntryIdsOf(SidebarRowPlan plan)
+    {
+        var ids = new List<string>();
+        foreach (var row in plan.Rows)
+            if (row.Kind is SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader
+                && (uint)row.EntryIndex < (uint)plan.Entries.Count)
+                ids.Add(plan.Entries[row.EntryIndex].Id);
+        return ids;
+    }
+
+    [Fact]
+    public void Rail_extents_are_pitch_or_divider()
+    {
+        var rows = new[]
+        {
+            new SidebarRow(SidebarRowKind.EntityRow, "s", 0, 0, 0, "a"),
+            new SidebarRow(SidebarRowKind.Divider, "s", 0, -1, 0, "s"),
+            new SidebarRow(SidebarRowKind.FolderHeader, "s", 0, 1, 0, "b"),
+            new SidebarRow(SidebarRowKind.IconRow, "s", 0, -1, 0, "c"),
+        };
+
+        // No head/footer: item i IS row i, so — with no chrome to carry it — the first and last rows fold the
+        // rail's own top/bottom inset (`SidebarRailExtents.TopPad`/`BottomPad`) into their own extent.
+        Assert.Equal(SidebarRailExtents.Pitch + SidebarRailExtents.TopPad,
+            SidebarRailExtents.ExtentOf(rows, 0, hasHead: false, hasFooter: false));
+        Assert.Equal(SidebarRailExtents.DividerExtent, SidebarRailExtents.ExtentOf(rows, 1, hasHead: false, hasFooter: false));
+        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 2, hasHead: false, hasFooter: false));
+        Assert.Equal(SidebarRailExtents.Pitch + SidebarRailExtents.BottomPad,
+            SidebarRailExtents.ExtentOf(rows, 3, hasHead: false, hasFooter: false));
+        // Out of range answers the common (tile) case rather than throwing — the count signal lands one layout
+        // effect after the plan, so a transient over-read must not crash the layout.
+        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 99, hasHead: false, hasFooter: false));
+        Assert.NotEqual(SidebarRailExtents.Pitch, SidebarRailExtents.DividerExtent);
+
+        // With a head AND a footer, THEY carry the inset — item 0 is Head, item 5 is Footer (see
+        // `Rail_item_map_places_head_rows_footer_in_order`), and neither edge row gets padded.
+        Assert.Equal(SidebarRailExtents.HeadEstimate, SidebarRailExtents.ExtentOf(rows, 0, hasHead: true, hasFooter: true));
+        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 1, hasHead: true, hasFooter: true));
+        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 4, hasHead: true, hasFooter: true));
+        Assert.Equal(SidebarRailExtents.FooterEstimate, SidebarRailExtents.ExtentOf(rows, 5, hasHead: true, hasFooter: true));
+    }
+
+    [Fact]
+    public void Rail_item_map_places_head_rows_footer_in_order()
+    {
+        // No chrome: item i IS row i.
+        for (int i = 0; i < 4; i++)
+            Assert.Equal((SidebarRailItemKind.Row, i), SidebarRailItems.Map(i, hasHead: false, hasFooter: false, rowCount: 4));
+        Assert.Equal(4, SidebarRailItems.Count(false, false, 4));
+        Assert.Equal((SidebarRailItemKind.None, -1), SidebarRailItems.Map(4, false, false, 4));
+
+        // Head only: item 0 is Head, items 1..4 are rows 0..3.
+        Assert.Equal((SidebarRailItemKind.Head, -1), SidebarRailItems.Map(0, hasHead: true, hasFooter: false, rowCount: 4));
+        for (int i = 0; i < 4; i++)
+            Assert.Equal((SidebarRailItemKind.Row, i), SidebarRailItems.Map(i + 1, true, false, 4));
+        Assert.Equal(5, SidebarRailItems.Count(true, false, 4));
+        Assert.Equal((SidebarRailItemKind.None, -1), SidebarRailItems.Map(5, true, false, 4));
+
+        // Footer only: items 0..3 are rows, item 4 is Footer.
+        for (int i = 0; i < 4; i++)
+            Assert.Equal((SidebarRailItemKind.Row, i), SidebarRailItems.Map(i, false, true, 4));
+        Assert.Equal((SidebarRailItemKind.Footer, -1), SidebarRailItems.Map(4, false, true, 4));
+        Assert.Equal(5, SidebarRailItems.Count(false, true, 4));
+
+        // Both: Head, rows 0..3, Footer.
+        Assert.Equal((SidebarRailItemKind.Head, -1), SidebarRailItems.Map(0, true, true, 4));
+        for (int i = 0; i < 4; i++)
+            Assert.Equal((SidebarRailItemKind.Row, i), SidebarRailItems.Map(i + 1, true, true, 4));
+        Assert.Equal((SidebarRailItemKind.Footer, -1), SidebarRailItems.Map(5, true, true, 4));
+        Assert.Equal(6, SidebarRailItems.Count(true, true, 4));
+
+        // A zero-row plan with both chrome items still counts and maps correctly — an empty library still shows
+        // the mode's head/footer.
+        Assert.Equal(2, SidebarRailItems.Count(true, true, 0));
+        Assert.Equal((SidebarRailItemKind.Head, -1), SidebarRailItems.Map(0, true, true, 0));
+        Assert.Equal((SidebarRailItemKind.Footer, -1), SidebarRailItems.Map(1, true, true, 0));
+
+        // Negative indices are never valid.
+        Assert.Equal((SidebarRailItemKind.None, -1), SidebarRailItems.Map(-1, true, true, 4));
     }
 
     static string[] KeysOf(SidebarRowPlan plan)

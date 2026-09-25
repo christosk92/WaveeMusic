@@ -1,4 +1,4 @@
-// ── Shell/Lyrics.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────────
+﻿// ── Shell/Lyrics.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────────
 // the view, the row, the frame driver, ticker/stepper, the NPV peek — and the lyrics pane inside the stage (A12);
 // Lyrics.Stage.UI.cs is dropped
 //
@@ -40,7 +40,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Reconciler;
 using FluentGpu.Scene;
-using FluentGpu.Scroll;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Text;
 using FrameTime = Wavee.Design.FrameTime;
@@ -153,6 +153,7 @@ public static partial class Lyrics
         internal void ProbeStep(long nowMs) => OnFrame(forceVisual: true, probeNowMs: nowMs);
         internal void ProbeForceSnapped() => _scrollSnapped = true;
         internal NodeHandle ProbeViewport => _viewportNode;
+        internal ScrollHandle ProbeScroll => _scroll;
         internal int ProbeActiveLine => _activeLine.Peek();
         internal int ProbeLineCount => _doc?.Lines.Count ?? 0;
         internal long ProbeLineStartMs(int i) => _doc is { } d && (uint)i < (uint)d.Lines.Count ? d.Lines[i].StartMs : 0L;
@@ -212,7 +213,11 @@ public static partial class Lyrics
         readonly FloatSignal _resyncProgress = new(1f);
         long _resyncDeadlineMs;
         bool _scrollSnapped;
-        float? _followProgrammaticTargetY;   // the last POSTED resync destination (the kernel's chase target is not readable)
+        float? _followProgrammaticTargetY;   // the last POSTED resync destination (dedupes a re-post of the same target)
+        /// <summary>The lyrics viewport's ONE scroll handle (one per surface for the view's life; the host binds it to
+        /// whichever document's viewport is mounted). The follow moves it, and its <c>Motion</c> is the user-scroll edge.</summary>
+        readonly ScrollHandle _scroll = new();
+        bool _userScrollSeen;   // the last UserDriven value the edge watcher handed to OnScrollActivity
 
         // ── the halo cross-fade ──────────────────────────────────────────────────────────────────────────────────────
         FloatSignal[] _glowAlpha = [];
@@ -296,6 +301,15 @@ public static partial class Lyrics
         {
             bool open = _visible();
             UseEffect(() => { if (!open) ResetFollowState(Context.Scene); }, DepKey.From(open));
+            // The user-scroll EDGE: the handle's motion is republished every UI frame while it moves, so the watcher gates
+            // on its own last value and hands OnScrollActivity only the flips (detach on grab, arm the resync on release).
+            UseSignalEffect(() =>
+            {
+                bool user = _scroll.Motion.Value.UserDriven;
+                if (user == _userScrollSeen) return;
+                _userScrollSeen = user;
+                OnScrollActivity(user, FrameTime.NowMs);
+            });
 
             // ── preferences: ONE read per view under the lyrics epoch, republished to the rows ──────────────────────
             // Writing `Secondary`/`HaloScale` here is the 0.2.9 shape on purpose: this render does not READ either, and
@@ -869,18 +883,15 @@ public static partial class Lyrics
                     var glow = (uint)idx < (uint)_glowAlpha.Length ? _glowAlpha[idx] : null;
                     return Embed.Comp(() => new LineRow(this, idx, line, emphasis, glow)) with { Key = RowKey(idx) };
                 },
-                keyOf: RowKey,
-                // Realize the WHOLE document: every row must be measured before follow geometry is trusted.
-                overscan: Math.Min(lines.Count, Surface.OverscanCap)) with
+                keyOf: RowKey) with
             {
                 Grow = 1f,
                 MinHeight = 0f,
-                RealizeOverscanImmediately = true,
+                // Realize the WHOLE document: every row must be measured before follow geometry is trusted.
+                MeasureAll = lines.Count <= Surface.MeasureAllCap,
                 AutoEdgeFade = true,
                 SuppressScrollBar = true,
-                OnScrollGeometryChanged = (
-                    static g => g.UserScrollActive ? 1L : 0L,
-                    g => OnScrollActivity(g.UserScrollActive, FrameTime.NowMs)),
+                Handle = _scroll,
                 OnRealized = h => _viewportNode = h,
             };
         }
@@ -1295,11 +1306,12 @@ public static partial class Lyrics
                 return FollowArm.Unavailable;
             ref ScrollState sc = ref scene.ScrollRef(viewport);
             if (sc.ViewportH <= 0.5f || sc.ContentH <= 0.5f) return FollowArm.Unavailable;
+            var motion = _scroll.Motion.Peek();
 
             if (intent == FollowIntent.Normal)
             {
                 if (Follow_.Peek() != FollowMode.Following) return FollowArm.Unavailable;
-                if (sc.UserScrollActive) { OnScrollActivity(true, FrameTime.NowMs); return FollowArm.Unavailable; }
+                if (motion.UserDriven) { OnScrollActivity(true, FrameTime.NowMs); return FollowArm.Unavailable; }
             }
 
             // This target runs outside layout: feed the newest published viewport first.
@@ -1312,7 +1324,7 @@ public static partial class Lyrics
                 // FIRST LANDING for this document / seek: a hard jump with the cascade at rest (nothing was seen to
                 // travel from).
                 _scrollSnapped = true;
-                LatchViewport(viewport, target);
+                LatchViewport(target);
                 return FollowArm.AtTarget;
             }
             if (intent == FollowIntent.Resync) _scrollSnapped = true;
@@ -1320,34 +1332,32 @@ public static partial class Lyrics
             if (intent == FollowIntent.Normal)
             {
                 // The hand-off: ONE instant latch + the per-line compensating cascade.
-                float delta = target - sc.OffsetY;
+                float delta = target - (float)_scroll.Offset.Peek();
                 if (MathF.Abs(delta) <= Follow.LatchEpsDip) return FollowArm.AtTarget;
-                LatchViewport(viewport, target);
+                LatchViewport(target);
                 ArmCascade(scene, delta, active);
                 return FollowArm.AtTarget;
             }
 
-            // Resync: the kernel's Driven chase flies the viewport back, velocity-continuous on a re-target.
-            bool alreadyProgrammatic = sc.Activity == ScrollActivity.Driven
-                                       && (sc.ActivityFlags & ScrollActivityFlags.Programmatic) != 0;
+            // Resync: a Follow move flies the viewport back — the engine's velocity-continuous glide that yields to the
+            // user (a grab mid-flight wins; the next resync re-posts). Wakes a frame, never re-renders.
+            bool alreadyProgrammatic = motion.Kind == FluentGpu.Scroll.Motion.MotionKind.Programmatic && motion.IsMoving;
             if (!alreadyProgrammatic) _followProgrammaticTargetY = null;
             if (alreadyProgrammatic && _followProgrammaticTargetY is { } lastTarget && MathF.Abs(lastTarget - target) <= Follow.LatchEpsDip)
                 return FollowArm.Armed;
-            if (!alreadyProgrammatic && MathF.Abs(sc.OffsetY - target) <= Follow.LatchEpsDip)
+            if (!alreadyProgrammatic && MathF.Abs((float)_scroll.Offset.Peek() - target) <= Follow.LatchEpsDip)
                 return FollowArm.AtTarget;
             _followProgrammaticTargetY = target;
-            // ζ=1 half-life branch (zeta/omega 0): monotone, zero overshoot. Wakes a frame, never re-renders.
-            ScrollIntoView.ScrollTo(Context, viewport, target, halflifeMs: Follow.ResyncHalfLifeMs, zeta: 0f, omega: 0f,
-                settleVel: Follow.ResyncSettleVel);
+            _scroll.ScrollTo(target, ScrollMove.Follow);
             return FollowArm.Armed;
         }
 
         /// <summary>The INSTANT latch. Wakes a frame WITHOUT re-rendering — a re-render here rebuilds the virtual list and
         /// re-seeds every line's springs (the "all lines flash active" bug).</summary>
-        void LatchViewport(NodeHandle viewport, float target)
+        void LatchViewport(float target)
         {
             _followProgrammaticTargetY = null;
-            ScrollIntoView.ScrollTo(Context, viewport, target, animate: false);
+            _scroll.ScrollTo(target, ScrollMove.Immediate);
         }
 
         // ── 2.11 the interlude lane ─────────────────────────────────────────────────────────────────────────────────
@@ -1513,8 +1523,10 @@ public static partial class Lyrics
                 return;
             }
 
-            // A main-content scroll defers the GLOW only; the readable wipe and the core lane are never deferred.
-            bool deferHeavy = Context.PeekMainScrollBusy?.Invoke() == true;
+            // A user scroll defers the GLOW only; the readable wipe and the core lane are never deferred. The engine
+            // exposes user-driven motion per handle and window-wide (FrameStats.ScrollActive = AppHost.AnyUserScrollMoving,
+            // mirrored as Shell.ScrollActive) — there is no "main page viewport" identity, so any user scroll counts.
+            bool deferHeavy = Shell.ScrollActive;
             bool runGlow = !deferHeavy || activeChanged || voiceChanged || forceVisual;
 
             var scene = Context.Scene;
@@ -1599,7 +1611,7 @@ public static partial class Lyrics
                 bool glowDirty = !Wipe.SplitSettled(split, gw.Split)
                     && (MathF.Abs(split - gw.Split) > Wipe.SplitEps || MathF.Abs(softness - gw.Softness) > Wipe.SoftnessEps);
                 if (glowDirty) scene.SetGlyphWipe(glowNode, gw with { Split = split, Softness = softness });
-                // NEVER NEST: while the row's own DoF σ is up, the halo does not paint (a nested blur layer is pin-ineligible).
+                // NEVER NEST: while the row's own DoF σ is up, the halo does not paint (a nested blur is a second offscreen blur pass).
                 float sigma = Wipe.GlowSigma(DofDeclaredFor(voiceLine), GlowAlphaOf(voiceLine), Large, _dofScale);
                 ref var gp = ref scene.Paint(glowNode);
                 if (MathF.Abs(gp.BlurSigma - sigma) > 0.01f) { gp.BlurSigma = sigma; glowDirty = true; }
@@ -1652,10 +1664,7 @@ public static partial class Lyrics
                 var g = _glowNodes[line];
                 if (g.IsNull || !scene.IsLive(g)) return;
                 ref var gp = ref scene.Paint(g);
-                bool dirty = false;
-                if (gp.BlurSigma != 0f) { gp.BlurSigma = 0f; dirty = true; }
-                if (gp.BlurCachePolicy != BlurCachePolicy.Normal) { gp.BlurCachePolicy = BlurCachePolicy.Normal; dirty = true; }
-                if (dirty) scene.Mark(g, NodeFlags.PaintDirty);
+                if (gp.BlurSigma != 0f) { gp.BlurSigma = 0f; scene.Mark(g, NodeFlags.PaintDirty); }
             }
         }
     }
@@ -1869,11 +1878,10 @@ public static partial class Lyrics
             else
             {
                 // Line-level lyrics: the same persistent ZStack. σ on the ACTIVE row only — at dist ≥ 1 the parent already
-                // carries a DoF σ and a nested blur layer is pin-ineligible.
+                // carries a DoF σ and a nested blur is a second offscreen blur pass.
                 Element glow = new BoxEl
                 {
                     Blur = isActive ? Surface.LineSyncedHaloSigma(large) * owner.HaloScale.Value : 0f,
-                    BlurCachePolicy = BlurCachePolicy.HoldIfCached,
                     Opacity = _glowOpacity,
                     HitTestVisible = false,
                     Children = [LineText(near ? line.Text : "", ink.Bloom with { A = Surface.LineSyncedHaloTextAlpha }, null, null)],
@@ -1904,7 +1912,6 @@ public static partial class Lyrics
             {
                 Direction = 1,
                 Blur = blur,
-                BlurCachePolicy = BlurCachePolicy.HoldIfCached,
                 OnRealized = _onDof,
                 Children = secondaryText is null ? [textEl] : [textEl, SecondaryText(secondaryText)],
             };

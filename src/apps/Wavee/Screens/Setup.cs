@@ -251,6 +251,19 @@ public static partial class Setup
         /// <summary>A terms re-arm swaps only the header; the agreement is the same.</summary>
         public static string TermsHeaderKey(WizardEntry entry)
             => entry == WizardEntry.TermsRearm ? Strings.Setup.Terms.UpdatedTitle : Strings.Setup.Terms.Header;
+
+        /// <summary>The crash-reporting consent card (crash-diagnostics plan §D, §F) shows on the Terms page for a fresh
+        /// install and a terms re-arm — both HOST a Terms page. A re-auth jumps straight to Sign in (<see cref="StartPage"/>)
+        /// and never shows Terms at all, so it never shows the card either.</summary>
+        public static bool ConsentShown(WizardEntry entry) => entry is WizardEntry.FirstRun or WizardEntry.TermsRearm;
+
+        /// <summary>Terms accepted with the card shown marks consent asked — durable and immediate, the same instant the
+        /// terms-accepted write lands, so neither the wizard nor the first crash prompt asks twice. A no-op on a re-auth
+        /// entry (no card) or with no settings store.</summary>
+        public static void MarkConsentAsked(IAppSettings? settings, WizardEntry entry)
+        {
+            if (settings is not null && ConsentShown(entry)) settings.Set(Platform.Keys.CrashConsentAsked, true);
+        }
     }
 
     /// <summary>An account's id and the display name some source carries for it.</summary>

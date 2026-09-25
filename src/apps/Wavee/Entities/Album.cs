@@ -713,8 +713,9 @@ public readonly partial struct Album
     public readonly record struct ReleaseDate(ushort Year, byte Month, byte Day, byte Precision);
 
     /// <summary>"About this release" as DATA (0.2.9 <c>AlbumReleaseFacts</c>), in parts: the rule counts and measures, the
-    /// view formats once (<see cref="ReleaseFactsRules.SongsText"/> …). The shape is FIXED — Songs/Length/Released are
-    /// tiles, Label is a note, the notes are courtesy then copyright.</summary>
+    /// view formats once (<see cref="ReleaseFactsRules.ReleasedText"/>). The panel paints the release date on the
+    /// section heading and Label plus the notes (courtesy, then copyright) as lines. Songs and length stay on the
+    /// record for partial-release accounting; the hero meta line is what shows them.</summary>
     public sealed record ReleaseFacts(int SongsOut, int SongsTotal, long LengthMs, ReleaseDate? Released,
                                       bool ReleasesInFuture, string? Label, IReadOnlyList<string> Notes)
     {

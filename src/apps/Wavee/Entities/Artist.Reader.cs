@@ -81,6 +81,8 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Scroll.Effects;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 
 namespace Wavee;
@@ -356,23 +358,24 @@ public readonly partial struct Artist
 // `.spine{top:52px}`, `.block .side{top:64px}`). Three mechanisms carry it, all engine, none of them app-side geometry:
 //   · The BAND scrolls away because it is simply the first item of the list.
 //   · The SUB-RAIL pins because it is item 1 of the PERSISTENT PREFIX (`ListOptions.PersistentPrefixCount = Prefix`)
-//     carrying one `ScrollBinds` PinTop row (`.Sticky(0)`), and because everything after the prefix is guillotined at
+//     carrying one sticky scroll effect (`.Sticky(0)`), and because everything after the prefix is guillotined at
 //     its lower edge by ONE shared clip (`ScrollOptions.ItemClipTopInset` + a 24-DIP `ItemClipTopFadeBand`) — never a
 //     per-row clip. The persistent prefix exists ONLY on the BOUND realize path (the unbound recycler clamps it to 0,
 //     `Reconciler.cs:3176`), which is why the list is `ItemsView.CreateBound` and each slot is a small `ReaderItem`
 //     component over its index signal — the hero system's own shape (`Track.Table.VerticalList`, `TableVerticalItem`).
-//   · The BLOCK COVER rides down its own block and stops at its bottom edge, because the cover column carries a PinTop
+//   · The BLOCK COVER rides down its own block and stops at its bottom edge, because the cover column carries a sticky
 //     of `SubRailH + BlockPadTop` and its containing block — the block's `AlignItems.Start` row — is the clamp.
-// `ApplyPin` (engine `Animation/ScrollBindEval.cs:212`) is a containing-block-clamped `position:sticky` costing one
-// change-gated `LocalTransform` write per frame and no allocation, and `BakeScrollBinds` re-resolves the scroller on
-// every re-render, so a recycled slot's bind self-cleans.
+// A sticky scroll effect (engine `Scroll/Effects`, `ScrollEffect.Sticky`) is a containing-block-clamped
+// `position:sticky`, evaluated from the same device-snapped offset on the UI thread (hit-test) and the render thread
+// (pixels); the reconciler re-bakes a node's effects wholesale on every re-render, so a recycled slot self-cleans.
 //
-// THE ONE THING THAT DECIDES WHERE A STICKY NODE MAY LIVE: `ApplyPin` clamps the shift to `parentH − nodeH` where the
-// parent is the node's IMMEDIATE parent, and a component anchor is layout-TRANSPARENT — it MIRRORS its child's size
-// (`Reconciler.MirrorParticipation`). So a sticky root returned FROM a component sits in a parent of exactly its own
-// height, the limit is 0, and it never pins at all. That is why `ItemAt` hands slot 1 back as a RAW element (its parent
-// is then the scroller's content node, whose height is the whole list) while every other slot is a component, and why
-// the cover's bind sits on a plain column inside the block's own row rather than on anything a component returned.
+// THE ONE THING THAT DECIDES WHERE A STICKY NODE MAY LIVE: a sticky with no named scope clamps to its IMMEDIATE parent,
+// and a component anchor is layout-TRANSPARENT — it MIRRORS its child's size (`Reconciler.MirrorParticipation`). So a
+// scope-less sticky root returned FROM a component sits in a parent of exactly its own height and never pins, and only
+// a DIRECT child of the list's content is painted above the rows sliding under it (NodeFlags.StickyPinned). That is why
+// `ItemAt` hands slot 1 back as a RAW element (its parent is then the scroller's content node, whose height is the
+// whole list) while every other slot is a component, and why the cover's sticky sits on a plain column inside the
+// block's own row rather than on anything a component returned.
 //
 // SMOOTHNESS IS THE POINT ("no animations, no loading states, clicking feels bad"). Four mechanisms, each named where it
 // lives below:
@@ -392,16 +395,16 @@ public readonly partial struct Artist
 //      The region also re-diffs its content in place when the cell's VERSION moves (a title, a cover, a row count
 //      landing) — `Reconciler.ReconcileSkeletonRegion` diffs an unchanged branch rather than replacing it.
 //   3. THE SPINE IS A GLIDE, AND IT FOLLOWS. The ring/ink are BOUND props over `_current` (compositor-only, 167 ms brush
-//      fade), a dot click is `StartBringItemIntoView(Prefix + b, 0f, animate: true)` — the scroll kernel's Driven chase,
-//      not a jump — and the spine's own viewport chases `_current` with a MINIMAL bring-into-view (alignment NaN) from a
-//      layout effect, never from the geometry observer (that one runs mid-frame, inside `RunObservers`).
+//      fade), a dot click is `StartBringItemIntoView(Prefix + b, 0f, animate: true)` — the engine's programmatic
+//      glide, not a jump — and the spine's own viewport chases `_current` with a MINIMAL bring-into-view (alignment NaN)
+//      from a layout effect, never from the scroll-spy watch (that one runs inline in the reactive flush).
 //   4. THE BAND NEVER SKELETONS. It paints from `ArtistFields.Identity` the moment the navigator's row has it; an
 //      unnamed artist shows "…" in the title only. Nothing here reads a frame clock.
 //
 // ZERO ALLOCATION ON A SCROLL FRAME. Every delegate is allocated once in the constructor; each album's cell caches its
 // `Loadable`, its two builder thunks, its menu factory and the finished `SkelRegionEl`, so a realize is a dictionary
-// lookup returning a cached `Element`. The block trees themselves are built at realize (bounded by `Overscan = 2`) and
-// on a readiness edge — never per frame. On the bound path a SCROLL frame writes index signals: a slot that crosses a
+// lookup returning a cached `Element`. The block trees themselves are built at realize (bounded by the engine's
+// velocity-sized realize window) and on a readiness edge — never per frame. On the bound path a SCROLL frame writes index signals: a slot that crosses a
 // boundary re-renders (one `ReaderItem` / one `SpineDot`), everything else is a compositor write. The sorter and the
 // comparator are §1's.
 //
@@ -591,6 +594,9 @@ public readonly partial struct Artist
 
         // The mounted list. `_layout` and `_options` are rebuilt ONLY when the list remounts, because both freeze at mount.
         readonly ItemsViewController _ctl = new();
+        /// <summary>The reader list's scroll handle (every remount re-binds the same one): the scroll-spy watches it.</summary>
+        readonly ScrollHandle _listScroll = new();
+        string _scrollScope = "";
         /// <summary>The SPINE's own viewport (§3 of the rework: the spine is a second, narrow virtualized list that
         /// follows the first). It is keyed once and never remounts, so this handle is live for the reader's whole
         /// lifetime — which is what lets the follow effect glide it without ever touching the main list.</summary>
@@ -623,7 +629,7 @@ public readonly partial struct Artist
         readonly Action _demandBand, _demandBlocks, _settle, _seekAlbumKey, _playAll, _shuffleAll, _goArtist, _followSpine;
         readonly Action<int, int> _onVisibleRange;
         readonly Action<RectF> _onBounds;
-        readonly (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Action) _geometry;
+        readonly Action _watchSpy;
         readonly Prop<int> _total;
         Element? _subRail;
         Signal<int>? _railScope, _railSort;
@@ -677,7 +683,7 @@ public readonly partial struct Artist
             _onVisibleRange = OnVisibleRange;
             _onBounds = OnBounds;
             _onListMounted = OnListMounted;
-            _geometry = (ProjectSpy, UpdateSpy);
+            _watchSpy = WatchSpy;
             _total = Prop.Of(_totalOf);
             _layout = RepeatLayout.Extents(_extentOf, EstimatedBlockExtent);
             _options = OptionsFor("");
@@ -696,6 +702,7 @@ public readonly partial struct Artist
         {
             var p = _propsSig.Value;                                         // subscribe: a re-push re-renders
             _overlay = UseContext(Overlay.Service);
+            _scrollScope = UseContext(Shell.PageScrollScope);                          // the tab: composed onto the restore key
             uint epoch = Entities.ScopeEpoch.Value;
             // The BAND and the SPINE DOTS are painted values, not binds — but neither is built here any more: the band
             // is item 0 of the list and a dot is an item of the spine, and each of those components subscribes to the
@@ -713,9 +720,10 @@ public readonly partial struct Artist
             UseEffect(_demandBlocks);                                        // auto-tracked: re-runs as edges/scope land
             UseEffect(_settle);                                              // readiness + the measured-extent corrections
             // The spine FOLLOWS the reader: a layout effect, so the glide is posted after the frame's layout settles and
-            // the target row's band is real. Never from `UpdateSpy` — that runs mid-frame inside RunObservers, where a
-            // programmatic scroll would be posted against geometry the integrator is still holding.
+            // the target row's band is real. Never from `WatchSpy` — that runs inline in the reactive flush, where a
+            // programmatic scroll would be posted against geometry that frame has not laid out yet.
             UseLayoutEffect(_followSpine);
+            UseSignalEffect(_watchSpy);
             var shape = _shape.Value;
             // Hooks first, then the guard: props are SEEDED before the first render, so null is unreachable after mount —
             // but a conditional hook would be a real bug, and this is the shipped order (`EagerTrackRowHost`).
@@ -791,7 +799,7 @@ public readonly partial struct Artist
         ListOptions OptionsFor(string triple) => new()
         {
             SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None, Controller = _ctl,
-            Grow = 1f, Overscan = 2, KeyOf = _keyOf, CountSignal = _listCount, OnVisibleRange = _onVisibleRange,
+            Grow = 1f, KeyOf = _keyOf, CountSignal = _listCount, OnVisibleRange = _onVisibleRange,
             PersistentPrefixCount = Prefix,
             // Each (artist, scope, sort) triple remembers its OWN offset — so a RESHAPE under the same triple restores
             // where the reader was, and tapping a sort word lands where that sort last was — but only WITHIN one visit:
@@ -799,7 +807,7 @@ public readonly partial struct Artist
             // their header scrolled away and others at the top. `_visit` moves on every artist change.
             Scroll = new ScrollOptions
             {
-                ScrollKey = "lib:reader:" + triple + ":" + _visit.ToString(CultureInfo.InvariantCulture), AutoEdgeFade = false, OnScrollGeometryChanged = _geometry,
+                ScrollKey = _scrollScope + "lib:reader:" + triple + ":" + _visit.ToString(CultureInfo.InvariantCulture), AutoEdgeFade = false, Handle = _listScroll,
                 ItemClipTopInset = SubRailH, ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand,
             },
         };
@@ -1101,7 +1109,7 @@ public readonly partial struct Artist
         /// VIEWPORT's start, and <c>ItemsView.BringIntoView</c> (<c>ItemsView.cs:990-1027</c>) never consults
         /// <c>ScrollState.ItemClipTopInset</c> — so on a list with pinned prefix chrome the target lands exactly
         /// <see cref="SubRailH"/> DIP too high, with its head under the rail. The honest fix is an inset-aware
-        /// bring-into-view in the engine; an app-side <c>ScrollBy</c> chaser would fight the same kernel's Driven chase
+        /// bring-into-view in the engine; an app-side <c>ScrollBy</c> chaser would fight the same programmatic glide
         /// and is exactly the workaround this codebase refuses.</para></summary>
         void BringBlockToTop(int blockIndex)
             => _ctl.StartBringItemIntoView(Prefix + blockIndex, alignmentRatio: 0f, animate: true);
@@ -1117,20 +1125,17 @@ public readonly partial struct Artist
                 ? table.Slot(id) : Table.None;
         }
 
-        // ── scroll-spy (signals only: one coarse projection, one SetIfChanged — never a render) ───────────────────────
+        // ── scroll-spy (signals only: one probe per moved frame, one SetIfChanged — never a render) ──────────────────
 
-        long ProjectSpy(ScrollGeometry g)
+        /// <summary>Re-runs whenever the reader's scroll handle publishes a new offset or viewport extent.</summary>
+        void WatchSpy()
         {
+            _ = _listScroll.Offset.Value;
             // Sample just BELOW the pinned rail: the current block is the one whose top edge has cleared the chrome,
             // not whichever one happens to be hidden under it. A DIP line converted to the viewport fraction the
             // controller's probe takes, clamped so a degenerate viewport cannot produce a NaN ratio.
-            float h = g.ViewportH;
+            float h = (float)_listScroll.ViewportSignal.Value;
             _spyRatio = h > 1f ? Math.Clamp((SubRailH + Spacing.XS) / h, 0f, 1f) : 0.2f;
-            return _ctl.TryGetItemIndex(0f, _spyRatio, out int i) ? i : -1;
-        }
-
-        void UpdateSpy(ScrollGeometry _)
-        {
             if (_count <= 0 || !_ctl.TryGetItemIndex(0f, _spyRatio, out int i)) return;
             // Flat → block. The two chrome rows clamp to block 0, which is what the spine should highlight while the
             // reader is parked at its top.
@@ -1281,14 +1286,13 @@ public readonly partial struct Artist
         /// inside a rail word is a bind, and the release total rides a <see cref="Prop{T}"/>, so the facets answering
         /// re-fires one text bind rather than re-rendering the rail.
         /// <para>It is a plain Element and NOT a component, which is the one structural thing that makes the pin work.
-        /// <c>ApplyPin</c> (engine <c>Animation/ScrollBindEval.cs:212</c>) is a containing-block-clamped
-        /// <c>position:sticky</c>: the shift is clamped to <c>parentH − nodeH</c> where the parent is the node's
-        /// IMMEDIATE parent. A component anchor is layout-TRANSPARENT and mirrors its child's size
-        /// (<c>Reconciler.MirrorParticipation</c>), so a sticky root returned from a component sits in a parent of its
-        /// own height — limit 0, and it never pins at all. Returned raw, the sub-rail IS the bound slot's root and its
-        /// parent is the scroller's CONTENT node, whose height is the whole list.</para>
-        /// <para>Its card fill is load-bearing: a pinned rail paints ABOVE the blocks sliding under it
-        /// (<c>ScrollBind.FlagPaintAbove</c>), so the 48-DIP row's fill plus the 1-DIP divider is what stops a track row
+        /// A sticky scroll effect with no named scope is a containing-block-clamped <c>position:sticky</c> against the
+        /// node's IMMEDIATE parent. A component anchor is layout-TRANSPARENT and mirrors its child's size
+        /// (<c>Reconciler.MirrorParticipation</c>), so a scope-less sticky root returned from a component sits in a parent
+        /// of its own height and never pins. Returned raw, the sub-rail IS the bound slot's root and its parent is the
+        /// scroller's CONTENT node, whose height is the whole list.</para>
+        /// <para>Its card fill is load-bearing: a pinned direct child of the content paints ABOVE the blocks sliding under
+        /// it (<c>NodeFlags.StickyPinned</c>), so the 48-DIP row's fill plus the 1-DIP divider is what stops a track row
         /// showing through — the item clip below is the belt, this is the braces.</para></summary>
         Element Rail()
         {
@@ -1307,12 +1311,11 @@ public readonly partial struct Artist
             [
                 new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Fill = Tok.FillCardDefault,
+                    Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f, Fill = Tok.FillCardDefault,
                     Padding = new Edges4(Spacing.XL, SubRailPadTop, Spacing.XL, SubRailPadBottom),
                     Children =
                     [
-                        User.ScopeRail(p.Scope, _total, () => _narrowBand.Value),   // W6: "all · N" under the compact band
-                        new BoxEl { Grow = 1f, MinWidth = 0f },
+                        User.ScopeRail(p.Scope, _total, () => _narrowBand.Value, fill: true),   // W6: "all · N" under the compact band
                         User.ReaderSortRail(p.Sort),
                     ],
                 },
@@ -1358,7 +1361,7 @@ public readonly partial struct Artist
             [
                 ItemsView.CreateBound(_count, _dotAt, RepeatLayout.Stack(DotPitch), new ListOptions
                 {
-                    SelectionMode = ItemsSelectionMode.None, Controller = _spineCtl, Grow = 1f, Overscan = 4,
+                    SelectionMode = ItemsSelectionMode.None, Controller = _spineCtl, Grow = 1f,
                     CountSignal = _spineCount,
                     // No scrollbar and no scroll key: the spine is a READOUT of the reader's position, driven by
                     // `FollowSpine`, so a conscious bar would invite a second, conflicting intent and a restore key
@@ -1401,8 +1404,8 @@ public readonly partial struct Artist
         ///
         /// <para>The two chrome slots split here rather than inside <see cref="ReaderItem"/> because they want opposite
         /// things. The BAND has to re-render (a name, an avatar, a count landing), so it is a component. The SUB-RAIL
-        /// has to PIN, and a sticky node returned from a component can never pin — the component anchor is a
-        /// same-height transparent parent and <c>ApplyPin</c> clamps the shift to its containing block (see
+        /// has to PIN above the rows, and a scope-less sticky returned from a component can never pin — the component
+        /// anchor is a same-height transparent parent and the sticky clamps to its containing block (see
         /// <see cref="Rail"/>); it also never needs to re-render, because every word inside it is a bind over the
         /// page's own Signal instances. Reading the index with <c>Peek</c> is exact for the two of them: the persistent
         /// prefix creates slot 0 and slot 1 with a constant index signal and never recycles them
@@ -1805,17 +1808,17 @@ public readonly partial struct Artist
                                     Direction = 1, Gap = Spacing.S, Shrink = 0f, Width = cover,
                                     // STICKY COVER (prototype `.block .side{position:sticky; top:64px}`): the art and its
                                     // caption ride down the block while its tracks scroll past, and stop at the block's
-                                    // own bottom edge. `ApplyPin` clamps the shift to the containing block — here the row
-                                    // above, which is `AlignItems.Start` so this column keeps its content height and the
-                                    // clamp has real room. The inset is the pinned rail plus the block's top pad, so the
-                                    // cover comes to rest exactly where an unscrolled block draws it.
-                                    // The column carries no static `Transform`: a transform-owning bind and a static
-                                    // matrix on one node is a hard reconciler error, not a silent fight.
+                                    // own bottom edge. The sticky clamps to the containing block — here the row above
+                                    // (its immediate parent), which is `AlignItems.Start` so this column keeps its content
+                                    // height and the clamp has real room. The inset is the pinned rail plus the block's
+                                    // top pad, so the cover comes to rest exactly where an unscrolled block draws it.
+                                    // The column carries no static `Transform`: a transform-owning scroll effect and a
+                                    // static matrix on one node is a hard reconciler error, not a silent fight.
                                     // It is declared on BOTH faces because `Build` is one function, and the SHIMMER face
                                     // harmlessly loses it: `SkeletonDeriver`'s container arm rewrites a box with
-                                    // children as `ScrollBinds = []` (engine `Hooks/SkeletonDeriver.cs:59`), so the
+                                    // children as `ScrollEffects = []` (engine `Hooks/SkeletonDeriver.cs`), so the
                                     // skeleton cover simply does not stick. It cannot throw and it cannot mis-bake.
-                                    ScrollBinds = [new() { PinTop = SubRailH + ReaderShape.BlockPadTop }],
+                                    ScrollEffects = [new ScrollEffectSpec(ScrollEffect.Sticky(SubRailH + ReaderShape.BlockPadTop))],
                                     Children =
                                     [
                                         new BoxEl

@@ -23,6 +23,8 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using FluentGpu.Animation;
+using FluentGpu.Scroll.Effects;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -77,14 +79,16 @@ public readonly partial struct Concert
     // ══ 2. THE SHARED FRAME PIECES ════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A node that scrolls under the masthead: cut at the reserve's lower edge, feathered 24 DIP only while the cut
-    /// is engaged (§4 row 10: nothing is softened at rest).</summary>
-    static Element UnderBand(BoxEl node, bool engaged, Action<bool> onEdge)
-        => (node with { EdgeFade = engaged ? new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) : null })
-            .ClipBelow(BrowseMastheadMetrics.ClipInset, onEdge);
+    /// is engaged (§4 row 10: nothing is softened at rest) — the clip's own composite-time feather (EdgeFadeSpec.WhileStuck),
+    /// switched on the render turn that poses the cut. It used to be a re-render off the clip's engaged signal, which lands
+    /// two presents after the cut (RCA 2026-09-25 F(ii)).</summary>
+    static Element UnderBand(BoxEl node)
+        => (node with { EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true } })
+            .StickyClip(BrowseMastheadMetrics.ClipInset);
 
     /// <summary>The schedule/detail page frame (§1.2, §1.3): the 84 + 40 reserve as a SPACER, then the 32-gutter body cut
     /// under the band, one vertical viewport.</summary>
-    static ScrollEl SubPageScroll(string scrollKey, Element region, bool engaged, Action<bool> onEdge) => ScrollView(new BoxEl
+    static ScrollEl SubPageScroll(string scrollKey, Element region) => ScrollView(new BoxEl
     {
         Direction = 1,
         Children =
@@ -93,7 +97,7 @@ public readonly partial struct Concert
             UnderBand(new BoxEl
             {
                 Direction = 1, MinWidth = 0f, Padding = new Edges4(32f, 0f, 32f, Design.Dock.Reserve + 40f), Children = [region],
-            }, engaged, onEdge),
+            }),
         ],
     }) with { Grow = 1f, MinHeight = 0f, ScrollKey = scrollKey };
 
@@ -259,7 +263,7 @@ public readonly partial struct Concert
         readonly Signal<int> _locationTick = new(0);
         readonly Signal<float> _scroll = new(0f);
         // Seeded TRUE so a first page shorter than the viewport still fills once; dropped after every append (§0 #15).
-        readonly Signal<bool> _nearTail = new(true), _appendLoading = new(false), _headerUnder = new(false), _bodyUnder = new(false);
+        readonly Signal<bool> _nearTail = new(true), _appendLoading = new(false);
         readonly PlacePicker _picker = new();
         readonly HashSet<int> _countAsked = new();
 
@@ -282,9 +286,11 @@ public readonly partial struct Concert
         readonly Func<LazyGrid> _gridFactory;
         readonly Func<int> _gridCount;                           // the count memo's compute (UseComputed in Render)
         Memo<int>? _gridCountMemo;                               // set by the first Render, before any grid mounts
-        readonly Action _sync, _retry, _append, _openPicker;
-        readonly Action<bool> _onHeaderEdge, _onBodyEdge, _onLocation, _onAppended;
-        readonly (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Action) _scrollWatch;
+        readonly Action _sync, _retry, _append, _openPicker, _watchScroll;
+        readonly Action<bool> _onLocation, _onAppended;
+        /// <summary>The hub viewport's scroll handle: the near-tail watch and the LazyGrid's page offset read it.</summary>
+        readonly ScrollHandle _handle = new();
+        long _scrollKey = long.MinValue;
 
         public HubPage()
         {
@@ -296,8 +302,6 @@ public readonly partial struct Concert
             _append = Append;
             _openPicker = () => _picker.Toggle(_overlay, () => _whereAnchor);
             _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _retry);
-            _onHeaderEdge = v => _headerUnder.SetIfChanged(v);
-            _onBodyEdge = v => _bodyUnder.SetIfChanged(v);
             _onLocation = _ => { _settledScope = Entities.Current; _locationTick.Value = _locationTick.Peek() + 1; };
             _onAppended = ok => { _appendLoading.Value = false; if (ok) _nearTail.Value = false; };
             _bar = new BarInputs(_place, _inferred, _radius, _when, _selected, _concepts, _count,
@@ -313,11 +317,15 @@ public readonly partial struct Concert
                 rowExtra: ConcertLayout.GridRowExtra, overscanRows: 3);
             // The near-tail watch: the offset floored to 24 px × the content height floored to 48 px (an append's own
             // growth re-evaluates nearness); near = within 1.5 viewports of the end. The page scroll feeds the LazyGrid.
-            _scrollWatch = (static g => ((long)(g.OffsetY / 24f) << 20) ^ (long)(g.ContentH / 48f), g =>
+            _watchScroll = () =>
             {
-                _scroll.Value = g.OffsetY;
-                _nearTail.SetIfChanged(g.OffsetY + g.ViewportH >= g.ContentH - 1.5f * g.ViewportH);
-            });
+                float y = (float)_handle.Offset.Value, vh = (float)_handle.ViewportSignal.Value, ch = (float)_handle.ExtentSignal.Value;
+                long key = ((long)(y / 24f) << 20) ^ (long)(ch / 48f);
+                if (key == _scrollKey) return;
+                _scrollKey = key;
+                _scroll.Value = y;
+                _nearTail.SetIfChanged(y + vh >= ch - 1.5f * vh);
+            };
         }
 
         public override Element Render()
@@ -344,6 +352,7 @@ public readonly partial struct Concert
                 _conceptsVersion = uint.MaxValue;
             }
             UseEffect(_sync);
+            UseSignalEffect(_watchScroll);
             _gridCountMemo = UseComputed(_gridCount);
 
             int placeSlot = scope.SavedPlace;
@@ -368,16 +377,16 @@ public readonly partial struct Concert
                         Padding = BrowseMastheadMetrics.FamilyUnderBandPad(Design.Dock.Reserve + Spacing.PageWide),
                         Children =
                         [
-                            UnderBand(HeaderCard(), _headerUnder.Value, _onHeaderEdge),
+                            UnderBand(HeaderCard()),
                             Embed.Comp(_barFactory) with { Key = "concert-filter-bar" },
-                            UnderBand(new BoxEl { Direction = 1, MinWidth = 0f, Children = [region] }, _bodyUnder.Value, _onBodyEdge),
+                            UnderBand(new BoxEl { Direction = 1, MinWidth = 0f, Children = [region] }),
                         ],
                     },
                 ],
             };
             Element scroll = ScrollView(content) with
             {
-                Grow = 1f, MinHeight = 0f, ScrollKey = "concert-hub", OnScrollGeometryChanged = _scrollWatch,
+                Grow = 1f, MinHeight = 0f, ScrollKey = UseContext(Shell.PageScrollScope) + "concert-hub", Handle = _handle,
             };
             return Ctx.Provide(LazyScroll.Slot, (IReadSignal<float>?)_scroll, scroll);
         }
@@ -713,6 +722,7 @@ public readonly partial struct Concert
         public override Element Render()
         {
             _overlay = UseContext(Overlay.Service);
+            string scrollScope = UseContext(Shell.PageScrollScope);
             var place = _io.Place.Value;
             bool? inferred = _io.Inferred.Value;
             int radius = _io.Radius.Value;
@@ -735,7 +745,7 @@ public readonly partial struct Concert
             };
             Element scroller = ScrollView(new BoxEl { Direction = 0, Children = [row] }, horizontal: true) with
             {
-                Grow = 0f, Height = 44f, AutoEdgeFade = true, AutoEdgeFadeBand = 36f, SuppressScrollBar = true, ScrollKey = "concert-hub-filter",
+                Grow = 0f, Height = 44f, AutoEdgeFade = true, AutoEdgeFadeBand = 36f, SuppressScrollBar = true, ScrollKey = scrollScope + "concert-hub-filter",
             };
             return new BoxEl
             {
@@ -812,14 +822,13 @@ public readonly partial struct Concert
     {
         readonly Signal<string?> _month = new(null);
         readonly Signal<float> _scroll = new(0f);
-        readonly Signal<bool> _under = new(false);
         readonly BoardState _board = new();
         readonly PlacePicker _picker = new();
 
         Scope? _scope;
         EntityUri _subject;
         Artist _artist;
-        string _routeKey = "", _routeName = "";
+        string _routeKey = "", _routeName = "", _scrollScope = "";
         bool _pending, _failed, _wasWide, _wideInit, _locationAsked;
         Element? _body;
         IOverlayService? _overlay;
@@ -830,10 +839,11 @@ public readonly partial struct Concert
         readonly Func<float, Element> _build, _buildSeed;
         readonly Func<MonthBoard> _monthFactory;
         readonly Func<ShyMonthPill> _pillFactory;
-        readonly Action _demand, _retry, _openPicker, _openSpotlight;
-        readonly Action<bool> _onEdge;
+        readonly Action _demand, _retry, _openPicker, _openSpotlight, _watchScroll;
         readonly Action<NodeHandle> _captureAnchor, _captureViewport;
-        readonly (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Action) _scrollWatch;
+        /// <summary>The schedule viewport's scroll handle; <see cref="_scroll"/> is its offset on the 8-DIP write floor.</summary>
+        readonly ScrollHandle _handle = new();
+        int _scrollStep = int.MinValue;
         int _spotlightSlot;
 
         public SchedulePage()
@@ -846,7 +856,6 @@ public readonly partial struct Concert
             _retry = () => { if (_artist.IsValid) Entities.EnsureEdge(FetchEdge.ArtistConcerts, _artist.Slot); };
             _openPicker = () => _picker.Toggle(_overlay, () => _anchor);
             _openSpotlight = () => { if (_spotlightSlot > 0) GoToConcert(_spotlightSlot); };
-            _onEdge = v => _under.SetIfChanged(v);
             _captureAnchor = h => _anchor = h;
             _captureViewport = h => _board.Viewport = h;
             _build = w => Dashboard(w, seed: false);
@@ -854,7 +863,14 @@ public readonly partial struct Concert
             _shimmerFn = () => Responsive.Of(_buildSeed, fallback: 900f);
             _monthFactory = () => new MonthBoard(_board);
             _pillFactory = () => new ShyMonthPill(_board, _scroll);
-            _scrollWatch = (static g => (long)(g.OffsetY / 8f), g => _scroll.Value = g.OffsetY);
+            _watchScroll = () =>
+            {
+                float y = (float)_handle.Offset.Value;
+                int step = (int)(y / 8f);
+                if (step == _scrollStep) return;
+                _scrollStep = step;
+                _scroll.Value = y;
+            };
             // A saved place moves the near-you bits: the schedule is re-asked against it.
             _picker.Saved = () => { if (_artist.IsValid) Entities.RefreshEdge(FetchEdge.ArtistConcerts, _artist.Slot); };
         }
@@ -872,6 +888,7 @@ public readonly partial struct Concert
             _ = _month.Value;
             _overlay = UseContext(Overlay.Service);
             _routeKey = p.RouteKey;
+            _scrollScope = UseContext(Shell.PageScrollScope);
             _routeName = Entities.Strings.Resolve(p.Arg);
             if (!ReferenceEquals(_scope, scope) || !_subject.Equals(p.Subject))
             {
@@ -882,6 +899,7 @@ public readonly partial struct Concert
             }
             var a = _artist;
             UseEffect(_demand, DepKey.From(a.Slot, (int)epoch));
+            UseSignalEffect(_watchScroll);
 
             var readiness = a.IsValid ? e.ArtistConcerts.Readiness(a.Slot) : EdgeState.Failed;
             _pending = readiness == EdgeState.Unknown;
@@ -893,9 +911,9 @@ public readonly partial struct Concert
                     : Responsive.Of(_build, fallback: 900f);
 
             Element region = Region(_pendingFn, _failedFn, _contentFn, _shimmerFn, _failedPanelFn, "artist-schedule:" + p.RouteKey);
-            Element scroll = SubPageScroll("artist-schedule:" + p.RouteKey, region, _under.Value, _onEdge) with
+            Element scroll = SubPageScroll(_scrollScope + "artist-schedule:" + p.RouteKey, region) with
             {
-                OnScrollGeometryChanged = _scrollWatch, OnRealized = _captureViewport,
+                Handle = _handle, OnRealized = _captureViewport,
             };
             return new BoxEl
             {
@@ -1052,7 +1070,7 @@ public readonly partial struct Concert
             }, horizontal: true) with
             {
                 Height = 48f, Grow = 0f, AutoEdgeFade = true, AutoEdgeFadeBand = 36f, SuppressScrollBar = true,
-                ScrollKey = "artist-schedule-months:" + _routeKey,
+                ScrollKey = _scrollScope + "artist-schedule-months:" + _routeKey,
             };
             var group = groups[selected];
             string signature = group.Key + ":" + group.Runs.Count.ToString(CultureInfo.InvariantCulture) + ":"
@@ -1432,7 +1450,6 @@ public readonly partial struct Concert
             return Tile(TileOf(new Concert(slot)), () => GoToConcert(slot));
         };
 
-        readonly Signal<bool> _under = new(false);
         Scope? _scope;
         EntityUri _subject;
         Concert _concert;
@@ -1443,7 +1460,6 @@ public readonly partial struct Concert
         readonly Func<Element> _contentFn, _shimmerFn;
         readonly Func<float, Element> _build, _buildSeed;
         readonly Action _demand;
-        readonly Action<bool> _onEdge;
 
         public DetailPage()
         {
@@ -1454,7 +1470,6 @@ public readonly partial struct Concert
             _buildSeed = w => Compose(DetailView.Seed, Wide(w));
             _shimmerFn = () => Responsive.Of(_buildSeed, fallback: 1000f);
             _demand = () => { if (_concert.IsValid && !_concert.Knows(ConcertFields.All)) Entities.Ensure(_concert, ConcertFields.All); };
-            _onEdge = v => _under.SetIfChanged(v);
         }
 
         public override Element Render()
@@ -1488,7 +1503,7 @@ public readonly partial struct Concert
                         subtitle: Loc.Get(Strings.Concerts.Detail.NotAvailableSubtitle))
                     : Responsive.Of(_build, fallback: 1000f);
             Element region = Region(_pendingFn, _failedFn, _contentFn, _shimmerFn, s_never, "concert-detail:" + p.RouteKey);
-            return SubPageScroll("concert-detail:" + p.RouteKey, region, _under.Value, _onEdge);
+            return SubPageScroll(UseContext(Shell.PageScrollScope) + "concert-detail:" + p.RouteKey, region);
         }
 
         bool Wide(float width)

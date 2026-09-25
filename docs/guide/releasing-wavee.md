@@ -110,7 +110,7 @@ touches the working tree: instead of dating `CHANGELOG.md` in place it dates a *
 points the release tool at that, so `git status` stays clean and `<WaveeBuild>` is not bumped. It ends by printing the
 exact `git push` / `gh release` commands a real run would issue next.
 
-Drop `-SkipTests` when you want the full gate (Debug + Release build of `Wavee.slnx`, `Wavee.Tests`, Pester) inside the
+Drop `-SkipTests` when you want the full gate (Debug + Release build of `Wavee.slnx`, `Wavee.Tests` in both, Pester) inside the
 rehearsal; that is what a real run does by default.
 
 Review `artifacts\release\<semver>-dryrun\`:
@@ -157,6 +157,7 @@ That is the whole command. The run is a ledger of phases; each one records itsel
 | 1b | `tag` | commits those two files (`release: Wavee <semver> <codename> (build <quad>)`) and creates the annotated tag — **locally** |
 | 3 | `packArm64` | `pack-wavee-msix.ps1 -Arch arm64 … -NoSign`, then asserts the package's identity name / version / arch / publisher — and that `Wavee-<quad>-win-arm64-symbols.zip` (the PDB of exactly that exe, §5b) landed next to it |
 | 4 | `packX64` | the same for x64 (or `-X64Msix <path>` to adopt a prebuilt package; its symbols zip is adopted from next to it when present, with a warning otherwise) |
+| 3b | `symbols` | for each arch: `Wavee.ReleaseTool symbol-map --pdb <staging>\symbols\<quad>\win-<arch>\Wavee.pdb --exe <extracted from the staged .msix>` → `Wavee.symmap`, then `wrangler r2 object put wavee-crash/symbols/<quad>/win-<arch>.symmap`. This is what lets the crash-ingest Worker resolve a report's RVAs server-side (§5b); `-DryRun`/`-NoUpload` build the map but skip the upload with a `Warn` |
 | 5 | `sign` | **one** Azure Trusted Signing `signtool` call over every `.msix`, then verifies each |
 | 6 | `appinstaller` | one `.appinstaller` per architecture from the template; re-parses each to prove the substitution |
 | 7 | `stage` | flattens the assets into the staging folder and writes `MANIFEST.txt`; the symbols zips are version-release assets like the packages (never feed assets) |
@@ -171,7 +172,9 @@ channel needs its own package identity and is not built yet) · staging folder f
 continues it) · working tree clean · on `<Branch>` · `HEAD == origin/<Branch>` · the tag is free locally, on origin and
 as a release · `CHANGELOG.md` has a `## [<semver>] - <date|unreleased>` heading · `ops/release/wavee/<semver>/whatsnew.json`
 exists · the PlayPlay junction is present · Windows SDK tools · x64 cross toolchain · a Trusted Signing token ·
-`gh auth` · *(soft)* whether a `wavee-beta` feed exists and will be repointed too · **feed monotonic** (the new quad
+`gh auth` · `wrangler` CLI present (the `symbols` phase's R2 upload; SKIPs under `-DryRun`/`-NoUpload`) ·
+*(soft)* whether a `wavee-beta` feed exists and will be repointed too ·
+*(soft)* **crash ingest** — a `stable` release with no `-CrashIngestUrl` only warns (§5b) · **feed monotonic** (the new quad
 must be strictly greater than each feed's current root `Version`, on every architecture, and the semver must not go
 backwards — the gate itself is always hard, but an *unreachable* feed is downgraded to a warning under `-DryRun` /
 `-NoUpload`, where nothing can be published) · **issue refs** *(hard)* — every commit in `<prevTag>..HEAD` that
@@ -179,13 +182,17 @@ closes an issue (`Fixes #n` / `Closes #n` / …) must be cited by the CHANGELOG 
 group, and every `(#n)` the entry cites must be closed by a commit in range; disagreement fails with one line per
 mismatch (see `.claude/skills/github-triage/SKILL.md`) · **issue coverage** *(soft)* — warns when a CHANGELOG bullet
 cites no issue at all. Both SKIP on the first release of a `-TagPrefix` (there is no previous tag to range over) ·
-gates (`dotnet build Wavee.slnx` Debug **and** Release, `Wavee.Tests`, and the release tooling's Pester suite — the
-engine's VerticalSlice is the engine repo's gate).
+gates (`dotnet build Wavee.slnx` Debug **and** Release, `Wavee.Tests` in Debug **and** Release — the shipped build is
+Release, and a JIT miscompile such as .NET 10.0.8's dropped slot zeroing (`FreshSlot`) only shows under the optimising
+tier-1 PGO JIT, never in Debug — and the release tooling's Pester suite; the engine's VerticalSlice is the engine
+repo's gate).
 
 Useful switches: `-SkipTests` (skip that last gate) · `-PublicOnly` (build without PlayPlay) · `-SkipArch x64` /
 `-X64Msix <path>` · `-NoUpload` (real bump and tag, stop before pushing) · `-NoSign` (only with `-DryRun` / `-NoUpload`)
 · `-NoNotes` (requires `-Force`; a degraded release with a placeholder body) · `-InstallFromFeed` (phase 11 installs
-the host-arch package from the published feed) · `-Force` (relaxes the branch / HEAD / staging checks).
+the host-arch package from the published feed) · `-Force` (relaxes the branch / HEAD / staging checks) ·
+`-CrashIngestUrl <url> -CrashIngestKey <key>` (stamped into the build exactly like the update feed's base URL, and
+what the `symbols` phase uploads maps for; a `stable` release with neither set only `Warn`s — §5b).
 
 ---
 
@@ -246,6 +253,19 @@ Local: `<staging>\symbols\<quad>\win-<arch>\` (a ready-made WinDbg `.sympath`) a
 `<staging>\Wavee-<quad>-win-<arch>-symbols.zip`. Published: the zip is a **version-release** asset beside the `.msix`
 (phase 7 stages it, phase 9 uploads it, phase 11 verifies its size). The layout copy still purges `*.pdb`, so a
 package can never carry one.
+
+**Names, server-side, come from the symbol map at ingest — not from this zip.** The `symbols` phase (§4, between
+`packX64` and `sign`) reads the same `<staging>\symbols\<quad>\win-<arch>\Wavee.pdb` plus the `Wavee.exe` extracted
+from the staged `.msix`, calls `Wavee.ReleaseTool symbol-map` (DbgHelp `SymEnumSymbols` over every `SymTagFunction`
+symbol) to write a binary `Wavee.symmap` (magic `WSYM`, sorted `{rva,size,nameOffset}` records + a UTF-8 string
+table — the exact layout is the crash & diagnostics plan's §I contract), and uploads it with
+`wrangler r2 object put wavee-crash/symbols/<quad>/win-<arch>.symmap`. The Cloudflare Worker that ingests an opt-in
+crash report resolves every frame's RVA against that map (binary search, no JSON parse) and stores the resolved
+**names** — so a bundle shows up symbolicated on the crash dashboard with no manual step. It never carries **line
+numbers**: that still means the `cdb` runbook below, run by hand against the archived symbols zip, exactly as before.
+A `stable` release built with no `-CrashIngestUrl`/`-CrashIngestKey` still builds and uploads the `.symmap` (it costs
+nothing and a later Worker deploy can backfill from it); preflight only `Warn`s that no report from this build will
+ever reach the service to resolve.
 
 The report header names the zip to take — `commit=`, `quad=`, `arch=` — and the `module=<path> base=0x… size=0x…`
 line plus the `Frames (RVA)` section (one offset per line, innermost first, inner-exception frames included) are what

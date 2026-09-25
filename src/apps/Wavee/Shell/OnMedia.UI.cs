@@ -16,6 +16,7 @@ using System.Collections.Generic;
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
+using FluentGpu.Controls.Media;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
@@ -34,8 +35,11 @@ public static class OnMedia
     static readonly FloatSignal s_volume = new(1f);
 
     /// <summary>The on-media transport over a video hole. Ink, seek bar and time labels are Stage's / the player bar's.
-    /// Revealed and concealed by <paramref name="visible"/> — the surface's idle machine, never hover (file header).</summary>
-    public static Element Transport(IReadSignal<bool> visible) => Embed.Comp(() => new OverlayChrome { Visible = visible });
+    /// Revealed and concealed by <paramref name="visible"/> — the surface's idle machine, never hover (file header).
+    /// <paramref name="feed"/> is the SAME window's <c>PlayerChromeFeed</c> the video element reports activity to, so
+    /// the pointer sitting over a transport button counts as chrome activity too (a pointer parked on ⋯ must not let
+    /// the idle machine hide the very menu button it is over).</summary>
+    public static Element Transport(IReadSignal<bool> visible, PlayerChromeFeed feed) => Embed.Comp(() => new OverlayChrome { Visible = visible, Feed = feed });
 
     /// <summary>The on-media chrome fade, the engine transport's own idiom: asymmetric by token (reveal 150 ms
     /// decelerate, conceal 400 ms ease-out), reduced motion resolved as a VALUE by <c>EffectiveDurationMs</c> and never
@@ -77,7 +81,8 @@ public static class OnMedia
         for (int i = 0; i < cut; i++) items.Add(placement[i]);
         items.Add(MenuFlyoutItem.Separator);
         // Aspect carries the icon and the other two do not, matching the engine's transport exactly. Every cascade
-        // here is non-empty by construction (four aspect rows, Auto plus any rungs, the seven fixed rates), which is
+        // here is non-empty by construction (four aspect rows plus a separator and four numeric-ratio rows, Auto plus
+        // any rungs, the seven fixed rates), which is
         // the one real foot-gun: `OpenSub` accepts a non-null EMPTY list and opens a blank popup.
         items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.AspectMenu), AspectRows(), Icons.Movie));
         items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Player.QualityMenu), QualityRows()));
@@ -86,9 +91,15 @@ public static class OnMedia
         return items;
     }
 
+    /// <summary>The four modes, then the numeric ratios the engine's own (suppressed) transport offers — the only rows
+    /// that can show a visibly different frame for Wavee's overwhelmingly 16:9 surfaces (docked, pop-out and mini are
+    /// all within 3 DIP of 16:9, so Fit/Crop/Stretch barely differ there). <see cref="Video.AspectRatioRows"/> is the
+    /// pure "which row is checked" rule; the ratio itself is captured per row by the lambda below, built fresh every
+    /// time the menu opens.</summary>
     static IReadOnlyList<MenuFlyoutItem> AspectRows()
     {
         var mode = Video.Prefs.Aspect(Platform.Settings);
+        double ratio = Video.Prefs.CustomRatio(Platform.Settings);
         return
         [
             MenuFlyoutItem.RadioItem(Loc.Get(Strings.Player.AspectFit), mode == Video.AspectPreference.Fit,
@@ -99,8 +110,17 @@ public static class OnMedia
                 static () => Video.Prefs.SetAspect(Platform.Settings, Video.AspectPreference.Stretch, 0)),
             MenuFlyoutItem.RadioItem(Loc.Get(Strings.Player.AspectNative), mode == Video.AspectPreference.Native,
                 static () => Video.Prefs.SetAspect(Platform.Settings, Video.AspectPreference.Native, 0)),
+            MenuFlyoutItem.Separator,
+            RatioRow(Strings.Player.AspectRatio169, Video.AspectRatioRows.Standard[0], mode, ratio),
+            RatioRow(Strings.Player.AspectRatio43, Video.AspectRatioRows.Standard[1], mode, ratio),
+            RatioRow(Strings.Player.AspectRatio219, Video.AspectRatioRows.Standard[2], mode, ratio),
+            RatioRow(Strings.Player.AspectRatio239, Video.AspectRatioRows.Standard[3], mode, ratio),
         ];
     }
+
+    static MenuFlyoutItem RatioRow(string key, double r, Video.AspectPreference mode, double current)
+        => MenuFlyoutItem.RadioItem(Loc.Get(key), Video.AspectRatioRows.IsChecked(mode, current, r),
+            () => Video.Prefs.SetAspect(Platform.Settings, Video.AspectPreference.Custom, r));
 
     /// <summary>Auto plus the rungs THIS manifest actually offers. A fixed 720/1080/1440/2160 ladder lied twice: a rung
     /// no variant matches does not pin (<c>Playback.Video.SetPreferredHeight</c> finds nothing to select) yet still
@@ -140,6 +160,18 @@ public static class OnMedia
     sealed class OverlayChrome : Component
     {
         public required IReadSignal<bool> Visible { get; init; }
+        public required PlayerChromeFeed Feed { get; init; }
+
+        readonly Action<Point2> _onStripPointerMoveWithin;
+        readonly Action _onStripPointerExit;
+
+        public OverlayChrome()
+        {
+            // `Feed` is a required init prop: it is set before the first Render and these delegates only run from the
+            // mounted strip's handlers, so the read is never null despite what flow analysis can see in a ctor.
+            _onStripPointerMoveWithin = _ => Feed!.SetPointerOverControls(true);
+            _onStripPointerExit = () => Feed!.SetPointerOverControls(false);
+        }
 
         public override Element Render()
         {
@@ -227,6 +259,10 @@ public static class OnMedia
                         // Concealed, a click belongs to the picture (play/pause), not to an invisible strip.
                         HitTestVisible = show,
                         OnRealized = h => stripRef.Value = h,
+                        // Hovering the transport IS chrome activity: a pointer parked over ⋯/volume must not let the
+                        // idle machine hide the very control it is sitting on.
+                        OnPointerMoveWithin = _onStripPointerMoveWithin,
+                        OnPointerExit = _onStripPointerExit,
                         Children =
                         [
                             new BoxEl
@@ -239,7 +275,7 @@ public static class OnMedia
                                     ToolTip.Wrap(Glyph(Icons.Next, s_next, can), Loc.Get(Strings.Player.Next)),
                                 ],
                             },
-                            Shell.SeekBar(),
+                            Shell.SeekBar(Feed),
                             new BoxEl
                             {
                                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,

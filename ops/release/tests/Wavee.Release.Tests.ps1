@@ -643,6 +643,64 @@ Describe 'ConvertFrom-GhJson' {
 
 # ===================================================================================================================
 
+Describe 'Get-CrashIngestGate' {
+
+    It 'warns on a stable release with no ingest url' {
+        $g = Get-CrashIngestGate -Channel 'stable' -CrashIngestUrl ''
+        $g.Warn | Should Be $true
+        $g.Message.Length | Should BeGreaterThan 0
+    }
+
+    It 'is quiet on a stable release once an ingest url is stamped' {
+        $g = Get-CrashIngestGate -Channel 'stable' -CrashIngestUrl 'https://crash.wavee.app'
+        $g.Warn | Should Be $false
+        $g.Message | Should Be ''
+    }
+
+    It 'is quiet on every non-stable channel even with no ingest url' {
+        foreach ($c in @('beta', 'dev', 'store')) {
+            (Get-CrashIngestGate -Channel $c -CrashIngestUrl '').Warn | Should Be $false
+        }
+    }
+
+    It 'treats a whitespace-only url as empty' {
+        (Get-CrashIngestGate -Channel 'stable' -CrashIngestUrl '   ').Warn | Should Be $true
+    }
+}
+
+Describe 'Invoke-SymbolsUpload' {
+
+    $tmp = New-TmpDir 'symbols-upload'
+    $symmap = Join-Path $tmp 'Wavee.symmap'
+    [IO.File]::WriteAllBytes($symmap, [byte[]](1, 2, 3, 4))
+
+    It 'skips and reports the given reason without ever calling wrangler' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw 'wrangler must not be invoked when -Skip is set' }
+        $r = Invoke-SymbolsUpload -SymmapPath $symmap -Quad '0.3.0.41' -Arch 'x64' -Skip -SkipReason '-DryRun'
+        $r.Uploaded | Should Be $false
+        $r.Reason | Should Be '-DryRun'
+        $r.Key | Should Be 'symbols/0.3.0.41/win-x64.symmap'
+    }
+
+    It 'throws when the symmap does not exist and -Skip was not passed' {
+        $missing = Join-Path $tmp 'missing.symmap'
+        { Invoke-SymbolsUpload -SymmapPath $missing -Quad '0.3.0.41' -Arch 'x64' } | Should Throw
+    }
+
+    It 'uploads with the R2 key and wrangler arguments the crash Worker expects' {
+        Mock -ModuleName Wavee.Release Invoke-Native { [pscustomobject]@{ ExitCode = 0; Output = @() } }
+        $r = Invoke-SymbolsUpload -SymmapPath $symmap -Quad '0.3.0.41' -Arch 'arm64'
+        $r.Uploaded | Should Be $true
+        $r.Key | Should Be 'symbols/0.3.0.41/win-arm64.symmap'
+        Assert-MockCalled -ModuleName Wavee.Release Invoke-Native -Times 1 -ParameterFilter {
+            $FilePath -eq 'wrangler' -and
+            ($ArgumentList -join ' ') -eq "r2 object put wavee-crash/symbols/0.3.0.41/win-arm64.symmap --file $symmap --remote"
+        }
+    }
+}
+
+# ===================================================================================================================
+
 Describe 'the release scripts themselves' {
     # Both scripts run under Windows PowerShell 5.1, which decodes a BOM-less file as ANSI: a single non-ASCII
     # character inside a quoted string is a parse error that kills the whole release. Parse them the way the host
@@ -687,6 +745,24 @@ Describe 'the release scripts themselves' {
         $zip = 'Wavee-0.2.0.7-win-x64-symbols.zip'
         ($zip -match '^Wavee_(?<q>\d+\.\d+\.\d+\.\d+)_(?<a>arm64|x64)\.msix$') | Should Be $false
         ('Wavee_0.2.0.7_x64.msix' -match '^Wavee_(?<q>\d+\.\d+\.\d+\.\d+)_(?<a>arm64|x64)\.msix$') | Should Be $true
+    }
+
+    It 'runs the symbols phase after packing and before signing (crash & diagnostics plan §B.6)' {
+        $text = Get-Content (Join-Path $repoRoot 'ops\release\wavee-release.ps1') -Raw
+        $packIdx = $text.IndexOf('function Invoke-Pack ')
+        $symbolsIdx = $text.IndexOf('function Invoke-Symbols')
+        $signIdx = $text.IndexOf('function Invoke-Sign')
+        $packIdx | Should BeGreaterThan -1
+        $symbolsIdx | Should BeGreaterThan -1
+        $signIdx | Should BeGreaterThan -1
+        $symbolsIdx | Should BeGreaterThan $packIdx
+        $signIdx | Should BeGreaterThan $symbolsIdx
+    }
+
+    It 'wavee-release.ps1 wires -CrashIngestUrl/-CrashIngestKey through to pack-wavee-msix.ps1' {
+        $text = Get-Content (Join-Path $repoRoot 'ops\release\wavee-release.ps1') -Raw
+        $text | Should Match ([regex]::Escape("'-CrashIngestUrl', `$CrashIngestUrl"))
+        $text | Should Match ([regex]::Escape("'-CrashIngestKey', `$CrashIngestKey"))
     }
 }
 

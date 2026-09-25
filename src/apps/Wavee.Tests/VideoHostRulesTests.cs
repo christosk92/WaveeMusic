@@ -49,6 +49,29 @@ public class VideoSwitchPlanTests
     [Fact]
     public void Two_manifest_ids_that_differ_only_in_case_are_two_videos()
         => Assert.Equal(V.SwitchAction.Switch, V.Plan(new V.SwitchInput(true, false, "ABC", "abc", 0)));
+
+    // `PlanWithReason` must never disagree with `Plan` (the un-reasoned entry point delegates to it) and the two
+    // independent `Rebuild` causes — no player at all vs. a faulted one — must read apart in the `why=` a
+    // `switch.begin` line carries, even though they choose the identical action.
+    [Theory]
+    [InlineData(false, false, "", "A", 0, V.SwitchAction.Rebuild, V.SwitchReason.NoPlayer)]
+    [InlineData(false, false, "A", "A", 0, V.SwitchAction.Rebuild, V.SwitchReason.NoPlayer)]
+    [InlineData(false, true, "", "A", 0, V.SwitchAction.Rebuild, V.SwitchReason.NoPlayer)]     // no player wins over faulted
+    [InlineData(true, true, "A", "A", 0, V.SwitchAction.Rebuild, V.SwitchReason.Faulted)]
+    [InlineData(true, true, "A", "B", 0, V.SwitchAction.Rebuild, V.SwitchReason.Faulted)]
+    [InlineData(true, false, "A", "B", 0, V.SwitchAction.Switch, V.SwitchReason.KeyChanged)]
+    [InlineData(true, false, "A", "A", 1, V.SwitchAction.SeekOnly, V.SwitchReason.SeekOnly)]
+    [InlineData(true, false, "A", "A", 0, V.SwitchAction.None, V.SwitchReason.None)]
+    [InlineData(true, false, "A", "A", -1, V.SwitchAction.None, V.SwitchReason.None)]
+    public void The_reason_names_which_Rebuild_cause_fired_and_never_disagrees_with_Plan(bool hasPlayer, bool faulted,
+        string liveKey, string requestKey, long startAtMs, V.SwitchAction expectedAction, V.SwitchReason expectedReason)
+    {
+        var input = new V.SwitchInput(hasPlayer, faulted, liveKey, requestKey, startAtMs);
+        V.SwitchAction action = V.PlanWithReason(in input, out V.SwitchReason reason);
+        Assert.Equal(expectedAction, action);
+        Assert.Equal(expectedReason, reason);
+        Assert.Equal(V.Plan(in input), action);
+    }
 }
 
 // ── the open: where it lands, the phase, the seek call, the quality ceiling ───────────────────────────────────────────

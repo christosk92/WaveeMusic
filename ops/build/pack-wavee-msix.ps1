@@ -49,6 +49,11 @@ param(
   # and <base>wavee-v<semver>/whatsnew.json. Build-time metadata like -FeedRelease, never a runtime switch - the local
   # end-to-end harness packs against http://127.0.0.1:8099/ and the produced package genuinely polls loopback.
   [string]$UpdateBaseUrl = 'https://github.com/christosk92/WaveeMusic/releases/download/',
+  # The opt-in crash & diagnostics pipeline's ingest endpoint + public key (crash & diagnostics plan section B.5), stamped
+  # exactly like -UpdateBaseUrl: build-time metadata only. Empty by default, so a plain dev pack never uploads
+  # anything; ops/release/wavee-release.ps1 passes both for a real release once the Cloudflare Worker exists.
+  [string]$CrashIngestUrl = '',
+  [string]$CrashIngestKey = '',
   [switch]$PublicOnly,
   [string]$Configuration = 'Release',
   [string]$Publisher = 'CN=cproducts, O=cproducts, L=Utrecht, S=Utrecht, C=NL',
@@ -179,6 +184,8 @@ $pubArgs = @($csproj, '-c', $Configuration, '-r', $rid, '-o', $pubDir, '--nologo
              "/p:WaveeCodename=$Codename",
              "/p:WaveeFeedRelease=$FeedRelease",
              "/p:WaveeUpdateBaseUrl=$UpdateBaseUrl",
+             "/p:WaveeCrashIngestUrl=$CrashIngestUrl",
+             "/p:WaveeCrashIngestKey=$CrashIngestKey",
              # ALWAYS with symbols. A shipped build has StackTraceSupport=false, so a crash report carries nothing but
              # Wavee!<BaseAddress>+0x... offsets; without the PDB of the exact linked exe nothing can ever resolve them
              # (0.2.0.1 shipped that way and its NullReferenceException stayed a list of numbers). NativeDebugSymbols
@@ -461,6 +468,8 @@ Write-Host "    $outMsix  (${size} MB, $Arch, $Quad$(if ($useAot) { ', AOT' } el
 Write-Host "    identity $($id.Name)  informational $infoVersion  channel $Channel  feed $FeedRelease"
 Write-Host "    symbols: $symZip  (folder $symDir; keep it - a crash report from this package resolves against nothing else)"
 if ($UpdateBaseUrl -ne $defaultUpdateBaseUrl) { Write-Host "    base $UpdateBaseUrl" -ForegroundColor Yellow }
+if ($CrashIngestUrl) { Write-Host "    crash ingest: $CrashIngestUrl" }
+else { Write-Host "    crash ingest: (unstamped - Crash.Uploader.Configured will be false)" -ForegroundColor DarkGray }
 if (Test-Path $cerPath) {
   Write-Host "    cert: $cerPath"
   Write-Host "    On another machine (elevated once):"

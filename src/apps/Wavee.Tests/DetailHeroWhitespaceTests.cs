@@ -35,8 +35,10 @@ public class DetailHeroWhitespaceTests
 
     // ── a hero with no description reserves nothing for one ─────────────────────────────────────────────────────────
 
-    /// <summary>Dropping the description costs the identity EXACTLY the description block's own height — never more
-    /// (a leftover reserved band) and never less (a clipped row) — in both flows.</summary>
+    /// <summary>The description left the identity column for the band beneath the whole hero row (both flows): the
+    /// column's own height no longer changes with or without one — it costs the column EXACTLY zero — and the whole
+    /// cost lands on the band, as exactly <c>DescriptionBandHeight(rowFlow, true)</c>, never more (a leftover
+    /// reserved band) and never less (a clipped row).</summary>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -46,39 +48,34 @@ public class DetailHeroWhitespaceTests
         var plan = VerticalLayout.TitleTypeFor(w, rowFlow, "Random Access Memories",
             eyebrow: true, attribution: true, meta: true);
 
-        float withDescription = VerticalLayout.IdentityHeightFor(plan, rowFlow,
-            eyebrow: true, attribution: true, meta: true, description: true);
-        float withoutDescription = VerticalLayout.IdentityHeightFor(plan, rowFlow,
-            eyebrow: true, attribution: true, meta: true, description: false);
+        // The identity column: IdentityHeightFor no longer has a description term at all, so there is nothing to
+        // compare — the column's height is the same whether the page has a description or not.
+        float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, eyebrow: true, attribution: true, meta: true);
+        Assert.True(identity > 0f);
 
-        // The description's own lines, PLUS the one extra gap boundary its block adds between it and the actions
-        // row above — no more, no less.
-        float descriptionCost = VerticalLayout.DescriptionMaxLines(rowFlow) * VerticalLayout.DescriptionLineHeight
-                               + VerticalLayout.IdentityGap;
-        Assert.Equal(descriptionCost, withDescription - withoutDescription);
-
-        // No forced MinHeight steps in to backfill the gap the missing description leaves.
+        // No forced MinHeight steps in to backfill the space a missing description leaves.
         Assert.Equal(0f, VerticalLayout.IdentityMinHeightFor(w, rowFlow));
 
         // The band the skeleton/pre-measure fallback reserves (the PESSIMISTIC null-title plan) matches
         // HeroBandHeight's own published shape exactly (pad + max(art, identity) in row flow, or the identity's
-        // full weight in stacked) — never a fixed extra slice bolted on for "a description that might show up".
+        // full weight in stacked) plus exactly the description BAND — never a fixed extra slice bolted on for
+        // "a description that might show up".
         var pessimisticPlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null,
             eyebrow: true, attribution: true, meta: true);
-        float identityWith = VerticalLayout.IdentityHeightFor(pessimisticPlan, rowFlow,
-            eyebrow: true, attribution: true, meta: true, description: true);
-        float identityWithout = VerticalLayout.IdentityHeightFor(pessimisticPlan, rowFlow,
-            eyebrow: true, attribution: true, meta: true, description: false);
+        float identityP = VerticalLayout.IdentityHeightFor(pessimisticPlan, rowFlow,
+            eyebrow: true, attribution: true, meta: true);
         float art = VerticalLayout.ArtworkFor(w, rowFlow);
         float toolbar = VerticalLayout.ExpandedToolbarTopPad + VerticalLayout.ToolbarRowHeight + VerticalLayout.ExpandedToolbarBottomPad;
-        float expectedWith = VerticalLayout.HeroPadFor(w, rowFlow)
-            + (rowFlow ? MathF.Max(art, identityWith) : art + VerticalLayout.HeroGapFor(w, rowFlow) + identityWith)
-            + VerticalLayout.HeroBottomPad + toolbar;
-        float expectedWithout = VerticalLayout.HeroPadFor(w, rowFlow)
-            + (rowFlow ? MathF.Max(art, identityWithout) : art + VerticalLayout.HeroGapFor(w, rowFlow) + identityWithout)
-            + VerticalLayout.HeroBottomPad + toolbar;
+        float hero = rowFlow ? MathF.Max(art, identityP) : art + VerticalLayout.HeroGapFor(w, rowFlow) + identityP;
+        float expectedWithout = VerticalLayout.HeroPadFor(w, rowFlow) + hero + VerticalLayout.HeroBottomPad + toolbar;
+        float expectedWith = expectedWithout + VerticalLayout.DescriptionBandHeight(rowFlow, description: true);
         Assert.Equal(expectedWith, VerticalLayout.HeroBandHeight(w, rowFlow, true, true, true, description: true));
         Assert.Equal(expectedWithout, VerticalLayout.HeroBandHeight(w, rowFlow, true, true, true, description: false));
+
+        // Stated once, directly: the whole delta IS the named band height, nothing else.
+        Assert.Equal(VerticalLayout.DescriptionBandHeight(rowFlow, description: true),
+            VerticalLayout.HeroBandHeight(w, rowFlow, true, true, true, description: true)
+            - VerticalLayout.HeroBandHeight(w, rowFlow, true, true, true, description: false));
     }
 
     // ── a hero with no metadata line reserves nothing for one ───────────────────────────────────────────────────────
@@ -95,16 +92,16 @@ public class DetailHeroWhitespaceTests
             eyebrow: true, attribution: true, meta: false);
 
         float withMeta = VerticalLayout.IdentityHeightFor(planWithMeta, rowFlow,
-            eyebrow: true, attribution: true, meta: true, description: false);
+            eyebrow: true, attribution: true, meta: true);
         float withoutMeta = VerticalLayout.IdentityHeightFor(planNoMeta, rowFlow,
-            eyebrow: true, attribution: true, meta: false, description: false);
+            eyebrow: true, attribution: true, meta: false);
 
         // The title plan may itself change (row flow's height budget opens up without the meta row), so isolate
         // the metadata row's own cost through IdentityChrome, which holds the title constant.
         var (chromeWith, blocksWith) = VerticalLayout.IdentityChrome(eyebrow: true, attribution: true, meta: true,
-            pulse: false, description: false, rowFlow: rowFlow, chart: false);
+            pulse: false, rowFlow: rowFlow, chart: false);
         var (chromeWithout, blocksWithout) = VerticalLayout.IdentityChrome(eyebrow: true, attribution: true, meta: false,
-            pulse: false, description: false, rowFlow: rowFlow, chart: false);
+            pulse: false, rowFlow: rowFlow, chart: false);
         Assert.Equal(VerticalLayout.MetaRowHeight, chromeWith - chromeWithout);
         Assert.Equal(1, blocksWith - blocksWithout);
 
@@ -133,7 +130,7 @@ public class DetailHeroWhitespaceTests
             float art = VerticalLayout.ArtworkFor(bw, rowFlow);
             float gap = VerticalLayout.HeroGapFor(bw, rowFlow);
             float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow,
-                eyebrow: true, attribution: true, meta: true, description: false);
+                eyebrow: true, attribution: true, meta: true);
             float pad = VerticalLayout.HeroPadFor(bw, rowFlow);
 
             float expected = pad + (art + gap + identity) + VerticalLayout.HeroBottomPad
@@ -158,8 +155,6 @@ public class DetailHeroWhitespaceTests
 
         float bandWith = VerticalLayout.HeroBandHeight(w, rowFlow, plan, true, true, true, description: true);
         float bandWithout = VerticalLayout.HeroBandHeight(w, rowFlow, plan, true, true, true, description: false);
-        float descriptionCost = VerticalLayout.DescriptionMaxLines(rowFlow) * VerticalLayout.DescriptionLineHeight
-                               + VerticalLayout.IdentityGap;
-        Assert.Equal(descriptionCost, bandWith - bandWithout);
+        Assert.Equal(VerticalLayout.DescriptionBandHeight(rowFlow, description: true), bandWith - bandWithout);
     }
 }

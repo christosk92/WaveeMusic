@@ -17,6 +17,9 @@
       3  packArm64     pack-wavee-msix.ps1 -Arch arm64 -NoSign   (+ Wavee-<quad>-win-arm64-symbols.zip: the PDB of that exe)
       4  packX64       pack-wavee-msix.ps1 -Arch x64 -NoSign     (or -X64Msix <path> to adopt a prebuilt package; its
                        symbols zip is adopted from next to it when present)
+      3b symbols       Wavee.ReleaseTool symbol-map (Wavee.pdb + Wavee.exe from the staged msix) -> a .symmap per
+                       arch, `wrangler r2 object put` to wavee-crash/symbols/<quad>/win-<arch>.symmap; a stable
+                       release with no -CrashIngestUrl only warns (crash & diagnostics plan section B.6)
       5  sign          ONE Azure Trusted Signing signtool call over every .msix, then verify each
       6  appinstaller  one .appinstaller per architecture, pointing at this release's msix and at the rolling feed
       7  stage         flatten assets into <staging>, write MANIFEST.txt (sha256sum format); the symbols zips are
@@ -68,6 +71,12 @@ param(
     [switch]$NoNotes,
     [switch]$InstallFromFeed,
     [switch]$Force,
+    # The opt-in crash & diagnostics pipeline's ingest endpoint + public key (crash & diagnostics plan section B.5/B.6),
+    # stamped into the build exactly like the update feed's base URL and uploaded (via the `symbols` phase) so the
+    # Cloudflare Worker can resolve a report's RVAs. Empty by default: a stable release with no -CrashIngestUrl only
+    # warns (Get-CrashIngestGate) rather than failing - the crash service may simply not exist yet.
+    [string]$CrashIngestUrl = '',
+    [string]$CrashIngestKey = '',
     [string]$Repo = 'christosk92/WaveeMusic',
     [string]$FeedRelease = 'wavee-stable',
     [string]$TagPrefix = 'wavee-v',
@@ -591,6 +600,22 @@ if (-not (Test-PhaseDone 'preflight')) {
         Invoke-Gh @('repo', 'view', $Repo, '--json', 'nameWithOwner') | Out-Null
         $Repo
     }
+    Add-Check 'wrangler CLI' 'hard' {
+        # The `symbols` phase uploads each arch's .symmap to R2 with `wrangler r2 object put`; a missing/broken CLI
+        # is worth failing preflight over rather than discovering it after packing and signing everything.
+        if ($DryRun -or $NoUpload) { return 'SKIP: nothing will be uploaded' }
+        $v = Invoke-Native 'wrangler' @('--version') -AllowFailure
+        if ($v.ExitCode -ne 0) { throw "wrangler not found or failed (``wrangler --version`` exited $($v.ExitCode)); npm install -g wrangler" }
+        ($v.Output -join ' ').Trim()
+    }
+    Add-Check 'crash ingest' 'soft' {
+        # A stable release with no ingest endpoint stamped is not a hard failure - the crash service may simply not
+        # exist yet, or this may be a rehearsal - but it needs to be LOUD every single time, not a silent gap found a
+        # year later staring at a Partner Center Health graph with nothing behind it (crash & diagnostics plan section B.6).
+        $gate = Get-CrashIngestGate -Channel $Channel -CrashIngestUrl $CrashIngestUrl
+        if ($gate.Warn) { throw $gate.Message }
+        if ($CrashIngestUrl) { "stamping $CrashIngestUrl" } else { 'SKIP: not a stable release' }
+    }
     Add-Check 'beta feed present' 'soft' {
         if ($DryRun -or $NoUpload) { return 'SKIP: offline run' }
         if ($Channel -ne 'stable') { return 'SKIP: not a stable release' }
@@ -622,13 +647,16 @@ if (-not (Test-PhaseDone 'preflight')) {
         if ($SkipTests) { return 'SKIP: -SkipTests' }
         # The app repo's gates: Wavee.slnx in BOTH configurations (the engine's diag-gate arms differ per
         # configuration, and TreatWarningsAsErrors makes a Release-only warning a Release-only break), the app
-        # tests, and the release tooling's own Pester suite. The engine's VerticalSlice is the engine repo's gate.
+        # tests in BOTH configurations too (Release is what ships, and only the optimising tier-1 PGO JIT shows a
+        # miscompile like .NET 10.0.8's dropped slot zeroing - FreshSlot - so a Debug-only run passes it), and the
+        # release tooling's own Pester suite. The engine's VerticalSlice is the engine repo's gate.
         Invoke-Native 'dotnet' @('build', (Join-Path $root 'Wavee.slnx'), '-c', 'Debug', '--nologo', '-v', 'q') | Out-Null
         Invoke-Native 'dotnet' @('build', (Join-Path $root 'Wavee.slnx'), '-c', 'Release', '--nologo', '-v', 'q') | Out-Null
-        Invoke-Native 'dotnet' @('test', (Join-Path $root 'src\apps\Wavee.Tests\Wavee.Tests.csproj'), '--no-build', '--nologo', '-v', 'q') | Out-Null
+        Invoke-Native 'dotnet' @('test', (Join-Path $root 'src\apps\Wavee.Tests\Wavee.Tests.csproj'), '-c', 'Debug', '--no-build', '--nologo', '-v', 'q') | Out-Null
+        Invoke-Native 'dotnet' @('test', (Join-Path $root 'src\apps\Wavee.Tests\Wavee.Tests.csproj'), '-c', 'Release', '--no-build', '--nologo', '-v', 'q') | Out-Null
         $pester = Invoke-Pester -Path (Join-Path $root 'ops\release\tests') -PassThru -Quiet
         if ($pester.FailedCount -gt 0) { throw ('Pester: ' + $pester.FailedCount + ' failed') }
-        'build Debug+Release, Wavee.Tests, Pester ' + $pester.PassedCount + '/0'
+        'build Debug+Release, Wavee.Tests Debug+Release, Pester ' + $pester.PassedCount + '/0'
     }
 
     Assert-Checks
@@ -940,6 +968,8 @@ function Invoke-Pack {
             '-FeedRelease', $FeedRelease,
             '-Publisher', $Publisher,
             '-OutputDir', $stage,
+            '-CrashIngestUrl', $CrashIngestUrl,
+            '-CrashIngestKey', $CrashIngestKey,
             '-NoSign',
             '-Configuration', $Configuration)
         if ($PublicOnly) { $packArgs += '-PublicOnly' }
@@ -975,6 +1005,73 @@ foreach ($a in $arches) {
 
 if (-not (Test-Path (Join-Path $stage 'THIRD-PARTY-NOTICES.txt'))) {
     throw "pack-wavee-msix.ps1 did not copy THIRD-PARTY-NOTICES.txt into $stage"
+}
+
+# ===============================================================================================================
+# 3b  symbols  (crash & diagnostics plan section B.6): one .symmap per architecture, uploaded to R2 for the crash Worker
+# ===============================================================================================================
+
+function Invoke-Symbols {
+    Step 'Build and upload symbol maps'
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    foreach ($a in $arches) {
+        $rid = "win-$a"
+        $symDir = Join-Path $stage "symbols\$quad\$rid"
+        $pdb = Join-Path $symDir 'Wavee.pdb'
+        $symZip = Join-Path $stage (Get-SymbolsZipName $quad $a)
+        $msix = Join-Path $stage (Get-MsixName $quad $a)
+        $symmap = Join-Path $symDir 'Wavee.symmap'
+
+        if (-not (Test-Path $pdb)) {
+            # An adopted prebuilt package (-X64Msix) never ran pack-wavee-msix.ps1, so $symDir was never populated -
+            # only the zip it staged next to the package was. Expand it once; everything past this point is identical
+            # to the freshly-packed case.
+            if (-not (Test-Path $symZip)) { throw "symbols: no Wavee.pdb for $a ($symDir missing) and no $symZip to expand it from" }
+            Note "expanding $(Split-Path -Leaf $symZip) -> $symDir"
+            New-Item -ItemType Directory -Force -Path $symDir | Out-Null
+            [IO.Compression.ZipFile]::ExtractToDirectory($symZip, $symDir)
+        }
+        if (-not (Test-Path $pdb)) { throw "symbols: $symZip did not contain Wavee.pdb for $a" }
+        if (-not (Test-Path $msix)) { throw "symbols: $msix not found" }
+
+        # Wavee.exe never ships inside the symbols zip (the pack script purges *.pdb from the layout, but the exe
+        # itself only exists inside the signed-later .msix); pull it out of the staged package instead - an .msix
+        # is a plain zip (releasing-wavee.md section 5b).
+        $exeTmp = Join-Path $symDir 'Wavee.exe'
+        Remove-Item $exeTmp -Force -ErrorAction SilentlyContinue
+        $zip = [IO.Compression.ZipFile]::OpenRead($msix)
+        try {
+            $entry = $zip.Entries | Where-Object { $_.FullName -eq 'Wavee.exe' }
+            if (-not $entry) { throw "symbols: $msix carries no Wavee.exe at its root" }
+            $es = $entry.Open()
+            $fsOut = [IO.File]::Create($exeTmp)
+            try { $es.CopyTo($fsOut) } finally { $es.Dispose(); $fsOut.Dispose() }
+        }
+        finally { $zip.Dispose() }
+
+        Step "symbol-map $a"
+        $toolArgs = @('run', '--project', $releaseToolProject, '-c', 'Release', '--',
+            'symbol-map', '--pdb', $pdb, '--exe', $exeTmp, '--out', $symmap)
+        Invoke-Native 'dotnet' $toolArgs | Out-Null
+        Remove-Item $exeTmp -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path $symmap)) { throw "symbol-map did not write $symmap" }
+        Good "$(Split-Path -Leaf $symmap)  $([math]::Round((Get-Item $symmap).Length / 1KB, 1)) KB"
+
+        $skip = [bool]($DryRun -or $NoUpload)
+        $reason = if ($DryRun) { '-DryRun' } else { '-NoUpload' }
+        $upload = Invoke-SymbolsUpload -SymmapPath $symmap -Quad $quad -Arch $a -Skip:$skip -SkipReason $reason
+        if ($upload.Uploaded) { Good "uploaded -> wavee-crash/$($upload.Key)" }
+        else { Warn "symbols upload skipped ($($upload.Reason)): wavee-crash/$($upload.Key) was NOT written to R2" }
+    }
+}
+
+if (-not (Test-PhaseDone 'symbols')) {
+    Invoke-Symbols
+    Complete-Phase 'symbols'
+}
+else {
+    Note 'symbol maps already built'
 }
 
 # ===============================================================================================================

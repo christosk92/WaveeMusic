@@ -541,6 +541,9 @@ public static partial class Spotify
             s.ApEpoch, delayMs, Timeout.Infinite);
         Log.Info("spotify", "ap reconnecting in " + (delayMs / 1000) + "s (attempt " + s.ApAttempt + ", epoch " + s.ApEpoch
             + ", session " + s.Phase + ", dealer " + s.Dealer + ")");
+        // §3.3's Retry row: attemptNumber/delayMs beside the existing log line, tied to no specific prior capture
+        // event (the AP connection itself, not one request, failed) — its own root, same shape as an unprompted push.
+        if (Capture.Enabled) Capture.Point(CaptureKind.Retry, causeId: 0, a: "ap", n0: s.ApAttempt, n1: delayMs);
     }
 
     /// <summary>UI THREAD (<see cref="SessionEffects.DealerBackoff"/>): the dealer's own one-shot reconnect, on its own
@@ -553,6 +556,7 @@ public static partial class Spotify
             s.Epoch, delayMs, Timeout.Infinite);
         Log.Info("spotify", "dealer reconnecting in " + (delayMs / 1000) + "s (attempt " + s.DealerAttempt + ", epoch " + s.Epoch
             + ", ap " + s.Ap + ")");
+        if (Capture.Enabled) Capture.Point(CaptureKind.Retry, causeId: 0, a: "dealer", n0: s.DealerAttempt, n1: delayMs);
     }
 
     // ── 7. HTTP (the three mints and the clock probe) ────────────────────────────────────────────────────────────────
@@ -1828,6 +1832,22 @@ public static partial class Spotify
     static void Dispatch(ReadOnlySpan<byte> utf8, byte[] scratch, uint epoch)
     {
         var message = DealerFrame.Parse(utf8, scratch);
+        // §3.3's dealer-inbound row: every frame that reaches here, ping/pong included (Priority.Low for those —
+        // CaptureRules.PriorityOf keys off `a is null`, so the chatty keepalive frames are the first thing the
+        // header lane drops under budget pressure, never a special-cased code path per §1 item 10). causeId is
+        // always 0 here: an inbound frame is unprompted from THIS loop's point of view — the one case that is not
+        // (a put-state response arriving on the SAME call stack as its own PUT) is captured separately, as
+        // `ConnectStatePutResponse`, by `Spotify.Connect.cs`'s own `FlushOnce` — never here.
+        if (Capture.Enabled)
+        {
+            bool chatty = message.Kind is DealerFrameKind.Ping or DealerFrameKind.Pong;
+            string? label = chatty ? null : DealerCaptureLabel(in message);
+            // SECURITY (2026-09-23): never the raw frame bytes — a dealer frame is redacted the same way any other
+            // capture payload is (§4), PLUS its own `"headers": {...}` object (Spotify-Connection-Id today, but the
+            // shape could carry an Authorization/Cookie value tomorrow) is redacted by HEADER name, which a generic
+            // JSON secret-VALUE scan would not catch (see `RedactDealerFrameForCapture`).
+            Capture.Point(CaptureKind.DealerFrameIn, causeId: 0, a: label, payload: RedactDealerFrameForCapture(utf8));
+        }
         switch (message.Kind)
         {
             case DealerFrameKind.Ping:
@@ -1849,15 +1869,97 @@ public static partial class Spotify
         Connect.OnDealer(utf8);
     }
 
+    /// <summary>The capture record's `a` label for a non-chatty inbound frame: the `hm://` topic for a MESSAGE, the
+    /// `message_ident` for a REQUEST (a MESSAGE frame's `Uri` is empty for a REQUEST) — never null for either, which
+    /// is exactly what keeps a real push/command at <see cref="CapturePriority.Normal"/> (§6.3's `uri is null` rule)
+    /// while ping/pong stay <see cref="CapturePriority.Low"/>.</summary>
+    static string DealerCaptureLabel(in DealerMessage message)
+    {
+        if (!message.Uri.IsEmpty) return Encoding.UTF8.GetString(message.Uri);
+        if (!message.Ident.IsEmpty) return "req:" + Encoding.UTF8.GetString(message.Ident);
+        return "(unknown)";
+    }
+
+    /// <summary>SECURITY (2026-09-23): a dealer frame is JSON, so it goes through <see cref="Redactor.RedactJsonBody"/>
+    /// first — the same token/secret/credential VALUE-by-property-NAME rule every other capture payload gets (§4;
+    /// unit 2's writer runs this again as defense-in-depth, so redacting here twice is idempotent, never a double
+    /// mutation). A SECOND pass then treats every value inside a top-level <c>"headers": {...}</c> object as an HTTP
+    /// header VALUE, keyed by ITS OWN property name, through <see cref="Redactor.RedactHeaderValue"/> — a dealer
+    /// frame's <c>headers</c> map names real header fields (today only <c>Spotify-Connection-Id</c>/
+    /// <c>Transfer-Encoding</c>, per <see cref="DealerFrame.Parse"/>'s own reader, but the wire shape is the
+    /// server's to extend), and a JSON property named <c>"Authorization"</c> would not match `RedactJsonBody`'s
+    /// token/secret NAME list at all. A frame that is not well-formed JSON — should never happen, every dealer frame
+    /// IS JSON — is never captured raw: "cannot verify safety" here means an empty payload, not a guess.</summary>
+    static byte[] RedactDealerFrameForCapture(ReadOnlySpan<byte> utf8)
+    {
+        byte[] pass1 = new byte[utf8.Length + 64];
+        int n1 = Redactor.RedactJsonBody(utf8, pass1);
+        if (n1 < 0) return Array.Empty<byte>();
+        try { return RedactHeadersObject(pass1.AsSpan(0, n1)); }
+        catch (JsonException) { return Array.Empty<byte>(); }
+    }
+
+    /// <summary>One `Utf8JsonReader`/`Utf8JsonWriter` pass: every STRING value directly inside a top-level
+    /// <c>"headers"</c> object is redacted by its own property name as an HTTP header (<see cref="Redactor.RedactHeaderValue"/>);
+    /// everything else is copied through unchanged (a value <see cref="RedactDealerFrameForCapture"/>'s first pass
+    /// already redacted stays redacted — this pass never un-redacts anything, it only ever replaces MORE).</summary>
+    static byte[] RedactHeadersObject(ReadOnlySpan<byte> utf8)
+    {
+        var bufferWriter = new System.Buffers.ArrayBufferWriter<byte>(utf8.Length + 32);
+        using (var writer = new Utf8JsonWriter(bufferWriter))
+        {
+            var reader = new Utf8JsonReader(utf8);
+            int depth = 0, headersDepth = -1;
+            string? propName = null;
+            while (reader.Read())
+            {
+                switch (reader.TokenType)
+                {
+                    case JsonTokenType.StartObject: writer.WriteStartObject(); depth++; break;
+                    case JsonTokenType.EndObject:
+                        writer.WriteEndObject();
+                        if (depth == headersDepth) headersDepth = -1;
+                        depth--;
+                        break;
+                    case JsonTokenType.StartArray: writer.WriteStartArray(); break;
+                    case JsonTokenType.EndArray: writer.WriteEndArray(); break;
+                    case JsonTokenType.PropertyName:
+                        propName = reader.GetString();
+                        writer.WritePropertyName(propName ?? "");
+                        if (propName == "headers" && headersDepth < 0) headersDepth = depth + 1;
+                        break;
+                    case JsonTokenType.String:
+                    {
+                        string value = reader.GetString() ?? "";
+                        writer.WriteStringValue(depth == headersDepth ? Redactor.RedactHeaderValue(propName ?? "", value) ?? "" : value);
+                        break;
+                    }
+                    case JsonTokenType.Number: writer.WriteRawValue(reader.ValueSpan, skipInputValidation: true); break;
+                    case JsonTokenType.True: writer.WriteBooleanValue(true); break;
+                    case JsonTokenType.False: writer.WriteBooleanValue(false); break;
+                    case JsonTokenType.Null: writer.WriteNullValue(); break;
+                }
+            }
+        }
+        return bufferWriter.WrittenSpan.ToArray();
+    }
+
     static readonly byte[] DealerPing = "{\"type\":\"ping\"}"u8.ToArray();
     static readonly byte[] DealerPong = "{\"type\":\"pong\"}"u8.ToArray();
 
-    static void SendDealerText(ReadOnlySpan<byte> utf8)
+    /// <summary><paramref name="causeId"/> (0 = none) and <paramref name="captureLabel"/> are the §3.3 dealer-outbound
+    /// row's explicit propagation (§2.2: no thread-static, no `AsyncLocal` — a caller that knows why it is sending
+    /// threads the id in directly). `captureLabel` null (the ping/pong/keepalive default) keeps the frame
+    /// <see cref="CapturePriority.Low"/>; a non-null label (an ack) is <see cref="CapturePriority.Normal"/>.</summary>
+    static void SendDealerText(ReadOnlySpan<byte> utf8, long causeId = 0, string? captureLabel = null)
     {
         var ws = s_dealer;
         if (ws is null || ws.State != WebSocketState.Open) return;
         byte[] copy = utf8.ToArray();   // the async send outlives the span
         Wire.NoteSocket("dealer", Wire.DealerKind(utf8), copy.Length);
+        // SECURITY (2026-09-23): the same redaction as the inbound frame (`RedactDealerFrameForCapture`) — an
+        // outbound frame (a reply body, in particular) is capture-worthy JSON too, never captured raw.
+        if (Capture.Enabled) Capture.Point(CaptureKind.DealerFrameOut, causeId, a: captureLabel, payload: RedactDealerFrameForCapture(copy));
         lock (DealerSendGate)
         {
             try { ws.SendAsync(copy.AsMemory(), WebSocketMessageType.Text, true, CancellationToken.None).GetAwaiter().GetResult(); }
@@ -1868,12 +1970,14 @@ public static partial class Spotify
         }
     }
 
-    /// <summary>Ack a dealer REQUEST. Called by <c>Spotify.Connect</c> (owner F) after it has folded the command.</summary>
-    public static void Reply(ReadOnlySpan<byte> key, bool ok)
+    /// <summary>Ack a dealer REQUEST. Called by <c>Spotify.Connect</c> (owner F) after it has folded the command.
+    /// <paramref name="causeId"/> (added, §3.3): the `RemoteRequest` Begin's own id, so the ack frame's
+    /// `DealerFrameOut` capture record is a child of the command it answers, not its own orphan root.</summary>
+    public static void Reply(ReadOnlySpan<byte> key, bool ok, long causeId = 0)
     {
         Span<byte> buffer = stackalloc byte[256];
         int n = DealerFrame.WriteReply(buffer, key, ok);
-        if (n > 0) SendDealerText(buffer[..n]);
+        if (n > 0) SendDealerText(buffer[..n], causeId, captureLabel: "reply");
     }
 
     /// <summary>The 30 s keepalive plus the half-open watchdog plus the 10-minute server-clock re-sync. One named

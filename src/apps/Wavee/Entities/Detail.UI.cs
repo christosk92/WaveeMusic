@@ -76,6 +76,13 @@ public static partial class Detail
         /// <summary>Null + <see cref="MetaLoading"/> ⇒ a shimmer bar shaped "00 songs · 0 hr 00 min".</summary>
         public string? Meta { get; init; }
         public bool MetaLoading { get; init; }
+        /// <summary>Album release year drawn as its own control at the end of <see cref="Meta"/> (0 = the year stays
+        /// plain text inside the line). Clicking it opens the release-date tip.</summary>
+        public int ReleaseYear { get; init; }
+        /// <summary>The date that tip shows ("November 23, 2012"). Null ⇒ the tip shows <see cref="ReleaseYear"/>.</summary>
+        public string? ReleaseDateText { get; init; }
+        /// <summary>True while the release instant is still ahead: the tip's caption reads "Releases".</summary>
+        public bool ReleasesInFuture { get; init; }
         /// <summary>The subject's header (title, cover, owner/artists) has not answered yet. The two-column rail and the
         /// hero band shimmer AS A WHOLE on this flag and cross-dissolve once when it drops — never a real layout with
         /// empty cells. Each page derives it from its own row (<c>Knows(…Identity)</c>); Liked is never pending.</summary>
@@ -111,6 +118,9 @@ public static partial class Detail
                 && CardAccent == o.CardAccent
                 && string.Equals(Eyebrow, o.Eyebrow, StringComparison.Ordinal)
                 && string.Equals(Meta, o.Meta, StringComparison.Ordinal) && MetaLoading == o.MetaLoading
+                && ReleaseYear == o.ReleaseYear
+                && string.Equals(ReleaseDateText, o.ReleaseDateText, StringComparison.Ordinal)
+                && ReleasesInFuture == o.ReleasesInFuture
                 && HeaderPending == o.HeaderPending
                 && string.Equals(OwnerName, o.OwnerName, StringComparison.Ordinal)
                 && string.Equals(OwnerImageUrl, o.OwnerImageUrl, StringComparison.Ordinal)
@@ -156,6 +166,7 @@ public static partial class Detail
             bool metaLoading = !countKnown && state == EdgeState.Unknown;
             int trackCount = Album.PageRules.SongCount(countKnown ? a.TrackCount : 0, slots.Length);
             string? meta = metaLoading ? null : Text.AlbumMeta(trackCount, totalMs, durationsKnown, a.Year);
+            var release = ReleaseDateOf(a);
 
             // Billed artists. An album with no artist edge (the fake seed's al3) has no attribution row at all.
             List<Controls.Face>? faces = null;
@@ -189,6 +200,9 @@ public static partial class Detail
                     : "",
                 Meta = meta,
                 MetaLoading = metaLoading,
+                ReleaseYear = a.Year,
+                ReleaseDateText = release.Text,
+                ReleasesInFuture = release.InFuture,
                 Artists = faces,
                 UpcomingAtUnixSeconds = upcoming ? a.PreReleaseEnd : 0,
                 SaveTarget = saveTarget,
@@ -197,6 +211,29 @@ public static partial class Detail
                     ? DetailNotice.None
                     : NoticeRules.ForAlbum(MemoryMarshal.Cast<int, Track>(slots)),
             };
+        }
+
+        /// <summary>The release date the year control expands into. Year-only when the publishing columns have not
+        /// landed yet; the precise phrase once they have.</summary>
+        static (string? Text, bool InFuture) ReleaseDateOf(Album a)
+        {
+            if (a.Year <= 0 && !a.Knows(AlbumFields.Release)) return (null, false);
+            long now = Store.ToUnix(Entities.Now);
+            Album.ReleaseDate? parsed = null;
+            int at = 0;
+            if (a.Knows(AlbumFields.Release) && !a.ReleaseDateIsoId.IsEmpty)
+            {
+                string iso = Entities.Strings.Resolve(a.ReleaseDateIsoId);
+                parsed = Album.ReleaseFactsRules.ParseReleaseDate(iso, a.DatePrecision);
+                at = Album.Upcoming.ReleaseInstant(iso);
+            }
+            if (at == 0 && a.Knows(AlbumFields.Release)) at = a.ReleaseAt;
+            parsed ??= a.Year > 0 ? new Album.ReleaseDate(a.Year, 0, 0, 0) : null;
+            bool future = at != 0 && at > now;
+            if (parsed is not { } date) return (null, future);
+            string? text = Album.ReleaseFactsRules.ReleasedText(
+                new Album.ReleaseFacts(0, 0, 0, date, future, null, Array.Empty<string>()));
+            return (text, future);
         }
     }
 
@@ -1680,14 +1717,36 @@ public static partial class Detail
     /// <summary>The "N songs · 2 hr 59 min" caption — or, while the count is still loading, a shimmer bar of that
     /// caption's SHAPE in the same slot ("0 songs · 1 min" is a count the page does not have).</summary>
     static Element MetaRow(Identity id, float width, int maxLines)
+        => MetaLine(id, width, maxWidth: float.NaN, maxLines);
+
+    /// <summary>The meta caption. An album year is its own control at the end of the line: hover lights it, click
+    /// opens the release-date tip. Every other meta stays one run.</summary>
+    static Element MetaLine(Identity id, float width, float maxWidth, int maxLines)
     {
         if (!id.MetaLoading && id.Meta is { Length: > 0 } meta)
         {
+            if (YearLead(meta, id.ReleaseYear) is { } lead)
+            {
+                var row = new BoxEl
+                {
+                    Direction = 0, Wrap = true, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        Design.Type.TrackMeta(lead) with { MaxLines = 1, Wrap = TextWrap.NoWrap },
+                        YearChip(id),
+                    ],
+                };
+                if (!float.IsNaN(width)) row = row with { Width = width };
+                if (!float.IsNaN(maxWidth)) row = row with { MaxWidth = maxWidth };
+                return row;
+            }
             var line = Design.Type.TrackMeta(meta) with
             {
                 MaxLines = maxLines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
             };
-            return float.IsNaN(width) ? line : line with { Width = width };
+            if (!float.IsNaN(width)) line = line with { Width = width };
+            if (!float.IsNaN(maxWidth)) line = line with { MaxWidth = maxWidth };
+            return line;
         }
         return new SkelRegionEl(
             Pending: s_true, Failed: s_false, Content: s_metaShimmer, ShimmerSource: null, OnFailed: null,
@@ -1697,6 +1756,77 @@ public static partial class Detail
     static readonly Func<bool> s_true = static () => true;
     static readonly Func<bool> s_false = static () => false;
     static readonly Func<Element> s_metaShimmer = static () => Design.Type.TrackMeta(MetaShimmerText) with { MaxLines = 1 };
+
+    /// <summary>The meta line with its trailing year cut off, keeping the " · " separator, when
+    /// <paramref name="meta"/> ends in that year. Null when the year is not the line's last token.</summary>
+    static string? YearLead(string meta, int year)
+    {
+        if (year <= 0) return null;
+        string suffix = " · " + year.ToString(CultureInfo.CurrentCulture);
+        return meta.EndsWith(suffix, StringComparison.Ordinal) ? meta[..^suffix.Length] + " · " : null;
+    }
+
+    static Element YearChip(Identity id)
+        => Embed.Comp(() => new ReleaseYearHost
+        {
+            Year = id.ReleaseYear.ToString(CultureInfo.CurrentCulture),
+            When = id.ReleaseDateText is { Length: > 0 } when ? when : id.ReleaseYear.ToString(CultureInfo.CurrentCulture),
+            Caption = Loc.Get(id.ReleasesInFuture ? Strings.Detail.FactReleases : Strings.Detail.FactReleased),
+        }) with { Key = "release-year:" + id.ReleaseYear.ToString(CultureInfo.InvariantCulture) + ":" + (id.ReleaseDateText ?? "") };
+
+    /// <summary>The album year's hit target. Resting, it is the same 12/16 secondary run as the rest of the meta
+    /// line, underlined so it reads as a control. Hover fills a pill and lifts the year to primary. Click opens a
+    /// teaching tip — large date, "Released" under it, beak on the year.</summary>
+    sealed class ReleaseYearHost : Component
+    {
+        public string Year = "";
+        public string When = "";
+        public string Caption = "";
+
+        public override Element Render()
+        {
+            var overlay = UseContext(Overlay.Service);
+            var anchor = UseRef<NodeHandle>(default);
+            var tip = UseRef<OverlayHandle?>(null);
+
+            void Toggle()
+            {
+                if (overlay is null) return;
+                if (tip.Value is { IsOpen: true }) { tip.Value.Close(); return; }
+                var parts = new TemplateParts();
+                parts.Set<TextEl>(TeachingTip.PartTitle, t => t with { Size = 22f, Weight = 600 });
+                tip.Value = TeachingTip.Show(overlay, () => anchor.Value, t =>
+                {
+                    t.Title = When;
+                    t.Subtitle = Caption;
+                    t.IconGlyph = Icons.Calendar;
+                    t.PreferredPlacement = TeachingTip.PlacementMode.Bottom;
+                    t.IsLightDismissEnabled = true;
+                    t.Parts = parts;
+                });
+            }
+
+            return new BoxEl
+            {
+                OnRealized = n => anchor.Value = n,
+                OnClick = Toggle,
+                Cursor = CursorId.Hand,
+                Role = AutomationRole.Button,
+                Padding = new Edges4(3f, 0f, 3f, 0f),
+                Corners = CornerRadius4.All(4f),
+                HoverFill = Tok.FillSubtleSecondary,
+                PressedFill = Tok.FillSubtleTertiary,
+                Children =
+                [
+                    new TextEl(Year)
+                    {
+                        Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary,
+                        Underline = true,
+                    },
+                ],
+            };
+        }
+    }
 
     /// <summary>A rich-text anchor's route key → navigation.</summary>
     static readonly Action<string> s_navRoute = static key => Shell.GoTo(Shell.Parse(key));

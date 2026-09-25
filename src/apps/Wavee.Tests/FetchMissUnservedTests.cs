@@ -136,8 +136,10 @@ public class FetchMissUnservedTests : IDisposable
         Assert.Equal(Progress, t.Asked[named] & Progress);
         Assert.False(t.IsFailed(named, Progress));
 
-        // The omitted row: the SERVED groups are un-asked for a retry; Progress is untouched — still the plan's seal.
-        Assert.Equal(0u, t.Asked[omitted] & Paint);
+        // The omitted row: the SERVED groups are queued for a retry — still asked, now in flight (2026-09-25, fix 6: a
+        // queued retry is "coming", never "un-asked"); Progress is untouched — still the plan's seal.
+        Assert.Equal(Paint, t.Asked[omitted] & Paint);
+        Assert.NotEqual(0u, t.Inflight[omitted]);
         Assert.Equal(Progress, t.Asked[omitted] & Progress);
         Assert.False(t.IsFailed(omitted, Progress));
         Assert.Equal(1, Fetch.Pending);

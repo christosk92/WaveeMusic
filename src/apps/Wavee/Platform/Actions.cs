@@ -639,24 +639,43 @@ public static partial class Actions
         var target = Resolve(descriptor, services, in binding);
         if (!target.Available) return target.Reason;
 
-        if (!descriptor.RequiresConfirmation)
+        // The action root (realtime-capture-implementation.md §2.5 step 1): the ONE dispatch point every
+        // click/shortcut/palette invoke funnels through, so this is where a new causal chain is minted — the action's
+        // own stable key and the resolved target's uri, the "what and on what" a bug report needs first. Scoped to the
+        // synchronous Run() call via the §2.2 ambient UI-thread slot so everything Run causes (a queue splice, an
+        // outbound PUT) inherits this root without a parameter threaded through every seam in between.
+        // `target.Uri.Text` can allocate (EntityId.Text's own doc: "ONE allocation, at a cold call site") — guarded
+        // by `Capture.Enabled` FIRST so the off-path never pays for it (§2.4's zero-cost guarantee).
+        long root = Capture.Enabled ? Capture.NewRoot(CaptureKind.ActionInvoke, a: descriptor.Key, b: target.Uri.Text) : 0;
+        using (Capture.AmbientUiCause(root))
         {
-            descriptor.Run(services, binding, target);
+            if (!descriptor.RequiresConfirmation)
+            {
+                descriptor.Run(services, binding, target);
+                Capture.End(root);
+                return ActionUnavailable.None;
+            }
+
+            // Resolve() already refused a missing confirm seam, so this cannot silently skip the confirmation.
+            if (services.Confirm is not { } confirm) { Capture.End(root); return ActionUnavailable.HostUnavailable; }
+            var run = descriptor.Run;
+            var s = services;
+            var b = binding;
+            var t = target;
+            confirm(new ConfirmRequest(
+                descriptor.ConfirmTitleLocKey ?? descriptor.LabelLocKey,
+                descriptor.ConfirmBodyLocKey ?? descriptor.ConfirmTitleLocKey ?? descriptor.LabelLocKey,
+                descriptor.ConfirmPrimaryLocKey ?? descriptor.LabelLocKey,
+                () =>
+                {
+                    // Runs later, off the dialog's own OK click — a different synchronous dispatch, so the root is
+                    // re-scoped onto THIS call's ambient slot rather than relying on the outer `using` (which has
+                    // already exited by the time a user clicks the dialog).
+                    using (Capture.AmbientUiCause(root)) run(s, b, t);
+                    Capture.End(root);
+                }));
             return ActionUnavailable.None;
         }
-
-        // Resolve() already refused a missing confirm seam, so this cannot silently skip the confirmation.
-        if (services.Confirm is not { } confirm) return ActionUnavailable.HostUnavailable;
-        var run = descriptor.Run;
-        var s = services;
-        var b = binding;
-        var t = target;
-        confirm(new ConfirmRequest(
-            descriptor.ConfirmTitleLocKey ?? descriptor.LabelLocKey,
-            descriptor.ConfirmBodyLocKey ?? descriptor.ConfirmTitleLocKey ?? descriptor.LabelLocKey,
-            descriptor.ConfirmPrimaryLocKey ?? descriptor.LabelLocKey,
-            () => run(s, b, t)));
-        return ActionUnavailable.None;
     }
 
     // ── 4.5 the registry's bookkeeping core ─────────────────────────────────────────────────────────────────────────

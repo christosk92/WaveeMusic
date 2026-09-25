@@ -45,6 +45,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Reconciler;
 using FluentGpu.Scene;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -588,7 +589,7 @@ public static partial class HomeModules
     /// threaded in — never a uri lookup (ch 12 trap 10): it blanks the subtitle and drops that rung from the cell
     /// reserve, the same bool in both places.</summary>
     public static Element SectionGrid(IReadOnlyList<HomeCard> cards, string? sectionKey, float width,
-        Action<HomeCard> open, (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Action)? onScrollGeometryChanged = null,
+        Action<HomeCard> open, NearTailWatch? nearTail = null,
         string? highlightQuery = null, int titleLines = 1, bool charts = false)
     {
         // Subscribing reads, taken by WHICHEVER render calls this (the page's responsive box): a hydrated card row must
@@ -596,20 +597,19 @@ public static partial class HomeModules
         var scope = Entities.Current;
         uint epoch = scope.Playlists.Changed.Value + scope.Albums.Changed.Value * 3u + scope.Artists.Changed.Value * 5u
                      + scope.Shows.Changed.Value * 7u + scope.Tracks.Changed.Value * 11u + scope.Episodes.Changed.Value * 13u;
-        return Embed.Comp(new GridProps(cards, sectionKey, width, open, onScrollGeometryChanged, highlightQuery, titleLines, charts, epoch),
+        return Embed.Comp(new GridProps(cards, sectionKey, width, open, nearTail, highlightQuery, titleLines, charts, epoch),
                           static () => new SectionGridHost());
     }
 
     sealed record GridProps(IReadOnlyList<HomeCard> Cards, string? SectionKey, float Width, Action<HomeCard> Open,
-        (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Action)? Scroll, string? Query, int TitleLines,
-        bool Charts, uint Epoch)
+        NearTailWatch? NearTail, string? Query, int TitleLines, bool Charts, uint Epoch)
     {
         // Delegates are behaviour, not data (component-props-contract): the gate compares the card list by reference,
-        // the scalars by value, and only whether a scroll watch exists.
+        // the scalars by value, and only whether a near-tail watch exists.
         public bool Equals(GridProps? o) => o is not null && ReferenceEquals(Cards, o.Cards)
             && string.Equals(SectionKey, o.SectionKey, StringComparison.Ordinal) && Width == o.Width
             && string.Equals(Query, o.Query, StringComparison.Ordinal) && TitleLines == o.TitleLines && Charts == o.Charts
-            && Epoch == o.Epoch && Scroll.HasValue == o.Scroll.HasValue;
+            && Epoch == o.Epoch && (NearTail is null) == (o.NearTail is null);
 
         public override int GetHashCode() => HashCode.Combine(Cards.Count, Width, TitleLines, Charts, Epoch);
     }
@@ -617,11 +617,21 @@ public static partial class HomeModules
     sealed class SectionGridHost : Component
     {
         GridProps? _latest;
+        /// <summary>The grid viewport's scroll handle: the near-tail watch (when the host armed one) reads its geometry.</summary>
+        readonly ScrollHandle _scroll = new();
+        readonly Action _watchTail;
+
+        public SectionGridHost() => _watchTail = () =>
+        {
+            float y = (float)_scroll.Offset.Value, vh = (float)_scroll.ViewportSignal.Value, ch = (float)_scroll.ExtentSignal.Value;
+            _latest?.NearTail?.Observe(y, vh, ch);
+        };
 
         public override Element Render()
         {
             var p = UseProps<GridProps>();
             _latest = p;
+            UseSignalEffect(_watchTail);
             var overlay = UseContext(Overlay.Service);
             IOverlayService? host = Controls.IsNullOverlay(overlay) ? null : overlay;
             var (columns, _) = FillRowVirtualLayout.Fit(p.Width, HomeModuleLayout.ShelfCardMin, HomeModuleLayout.ShelfCardMax,
@@ -638,9 +648,8 @@ public static partial class HomeModules
                 RenderItem = i => (uint)i < (uint)cards.Count ? Cell(cards[i], i, tier, p, host) : new BoxEl(),
                 KeyOf = i => key + "" + ((uint)i < (uint)cards.Count && cards[i].Uri.Length > 0
                     ? cards[i].Uri : i.ToString(CultureInfo.InvariantCulture)),
-                Overscan = 2,
                 Grow = 1f, Shrink = 1f, MinHeight = 0f,
-                OnScrollGeometryChanged = p.Scroll,
+                Handle = _scroll,
             };
         }
 
@@ -1306,6 +1315,24 @@ public static class HomeFoldTile
 
 // ══ 7. THE APPEND PRELOADER (ch 10 §8, ch 12 W12) ════════════════════════════════════════════════════════════════════
 
+/// <summary>The near-tail watch a host hands <see cref="HomeModules.SectionGrid"/>: the grid feeds it its viewport's
+/// geometry (off the grid's scroll handle) and it writes the host's NearTail signal only when the coarse projection moves —
+/// the 24-px-floored offset × 48-px-floored content height (so an append's own growth re-evaluates nearness), both
+/// through <see cref="HomeNearTail"/>. UI thread only.</summary>
+public sealed class NearTailWatch(Signal<bool> nearTail)
+{
+    long _key = long.MinValue;
+
+    public void Observe(float offset, float viewport, float content)
+    {
+        long key = HomeNearTail.Project(offset, viewport, content);
+        if (key == _key) return;
+        _key = key;
+        bool near = HomeNearTail.IsNear(offset, viewport, content);
+        if (nearTail.Peek() != near) nearTail.Value = near;
+    }
+}
+
 /// <summary>A grid's tail: silent infinite scroll onto the host's existing "Show all" pipeline, through three gates —
 /// (C) the tail is NEAR (<see cref="NearTail"/>, published from the grid's own scroll geometry), (B) a 300-ms arm
 /// debounce re-checked when it fires, (A) never concurrently (<see cref="Loading"/>) — with a bounded 3-attempt collapse.
@@ -1323,20 +1350,6 @@ public sealed class HomeSectionAppendPreloader : Component
     public required IReadSignal<bool> NearTail;
     /// <summary>The host's append verb.</summary>
     public required Action Start;
-
-    /// <summary>The near-tail scroll-geometry watch: the 24-px-floored offset × 48-px-floored content-height projection
-    /// (so an append's own growth re-evaluates nearness) and the nearness write, both through
-    /// <see cref="HomeNearTail"/>. <paramref name="offset"/> is an optional second writer for a host that also publishes
-    /// the page scroll.</summary>
-    public static (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Action) NearTailWatch(
-        Signal<bool> nearTail, Signal<float>? offset = null)
-        => (static g => HomeNearTail.Project(g.OffsetY, g.ViewportH, g.ContentH),
-            g =>
-            {
-                if (offset is not null) offset.Value = g.OffsetY;
-                bool near = HomeNearTail.IsNear(g.OffsetY, g.ViewportH, g.ContentH);
-                if (nearTail.Peek() != near) nearTail.Value = near;
-            });
 
     int _attempts;
     TimerHandle _arm;

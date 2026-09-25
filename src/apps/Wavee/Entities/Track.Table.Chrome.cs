@@ -25,7 +25,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scroll;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -1064,8 +1064,8 @@ public readonly partial struct Track
                 UseTimeout(() =>
                 {
                     int i = OpenSectionIndex();
-                    if (i < 0) return;
-                    ScrollIntoView.BringInto(Context, _scrollNode, _sections[i].Node, margin: Spacing.S, alignmentRatio: 0f, animate: true);
+                    if (i < 0 || Context.Scene is not { } scene) return;
+                    scene.BringIntoView(_scrollNode, _sections[i].Node, align: 0f, ScrollMove.Glide, margin: Spacing.S);
                 }, RevealDelayMs, DepKey.From(OpenSectionIndex()));
 
                 Element Group(string title, Element[] children) => new BoxEl

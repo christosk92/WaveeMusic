@@ -70,7 +70,7 @@ All under `src/apps/Wavee.Tests/`.
 | `SidebarProjectionBinderTests.cs` | `SidebarProjectionBinderTests` (+ nested `StubSource : SidebarDataSourceBase`) | 44 | The binder's **pure** half: the rebuild trigger fold, the Entries driver, M1 contribution resolution. Copy `StubSource` for a new source's tests. |
 | `SidebarDataSourceTests.cs` | `SidebarDataSourceTests` (+ nested `StubSource`) | 25 | Opaque-config readers, the contribution-id scheme, registry/host resolution (missing/disabled/live), service-health translation, domain→entry mappers. |
 | `SidebarRowPlannerTests.cs` | `SidebarRowPlannerTests` | 33 | The pane render contract: the row **sequence** per section kind, degraded states, a 10 000-entry realization. |
-| `SidebarRailPlannerTests.cs` | `SidebarRailPlannerTests` | 17 | `ShowInRail` → tiles, the caps, heading collapse; the rail must not disagree with the expanded pane. |
+| `SidebarRailPlannerTests.cs` | `SidebarRailPlannerTests` | 20+ | `ShowInRail` → tiles (uncapped — the rail is virtualized; `RailJumpBackInCap` is the one surviving cap), heading collapse, pure rail extents (`SidebarRailExtents`); the rail must not disagree with the expanded pane's order. |
 | `RootlistTreeTests.cs` | **`RootlistTreeBuilderTests`** (class name ≠ file name) | 16 | Flat rootlist marker stream → the recursive `PlaylistNode` tree; nested shape; malformed markers. |
 | `RootlistFollowTests.cs` | `RootlistFollowTests` | 12 | Follow/unfollow writes over a recording transport (the backend half of adding/removing a sidebar playlist). |
 

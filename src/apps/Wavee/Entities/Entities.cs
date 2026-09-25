@@ -997,6 +997,16 @@ public abstract class Table : Publishable
     /// the per-kind persistence writes <c>row.Known &amp; PersistedFields</c> and nothing else. 4 B/row (the same
     /// arithmetic as the two marks before it: +40,004 B at FootprintGateTests' 10k rows).</summary>
     public Column<uint> Failed;
+    /// <summary>HOW MANY REQUESTS NAME THIS ROW RIGHT NOW: its seats in the planner's ROW buckets plus its entries in
+    /// row batches out on the wire (<c>Fetch</c> seats it in <c>Demand.Add</c> and unseats it when a batch that carried
+    /// it settles). <see cref="Inflight"/> is one stamp, so on its own it could not say "one of my two requests
+    /// settled": an EDGE answer that writes this row (the ArtistPopular overview) or the first of two row batches used to
+    /// clear it through <see cref="Applied"/> while the other request was still out, and a surface reading
+    /// <c>Asked &amp;&amp; Inflight == 0</c> called the row "nothing coming" (the artist chart's Failed flash,
+    /// 2026-09-25). Now <see cref="Applied"/> clears the stamp only when nothing is outstanding, and the settle that takes
+    /// the count to 0 clears it. At most one seat per bucket and <c>Fetch.MaxInFlight</c> batches, so a byte holds it.
+    /// Never persisted, zeroed with the row. 1 B/row (FootprintGateTests: +10,001 B at 10k rows).</summary>
+    public Column<byte> Outstanding;
 
     /// <summary>THE row's identity, packed (see the class summary and <see cref="EntityId"/>). Read it freely — kind,
     /// provider and the gid are field loads. WRITE it only through <see cref="Alloc(EntityId)"/> / <see cref="Bind"/> /
@@ -1066,6 +1076,7 @@ public abstract class Table : Publishable
         Known[slot] = 0;
         Authority[slot] = (byte)Wavee.Authority.None;
         Inflight[slot] = 0;
+        Outstanding[slot] = 0;
         Asked[slot] = 0;
         Stale[slot] = 0;
         Failed[slot] = 0;
@@ -1098,6 +1109,7 @@ public abstract class Table : Publishable
             Known[slot] = 0;
             Authority[slot] = (byte)Wavee.Authority.None;
             Inflight[slot] = 0;
+            Outstanding[slot] = 0;
             Asked[slot] = 0;
             Stale[slot] = 0;
             Failed[slot] = 0;
@@ -1131,6 +1143,7 @@ public abstract class Table : Publishable
         Known[slot] = 0;
         Authority[slot] = (byte)Wavee.Authority.None;
         Inflight[slot] = 0;
+        Outstanding[slot] = 0;
         Asked[slot] = 0;
         Stale[slot] = 0;
         Failed[slot] = 0;
@@ -1354,7 +1367,9 @@ public abstract class Table : Publishable
         => Accepts(incoming, (Wavee.Authority)groupAuthority.Span[slot], Settled(slot), group);
 
     /// <summary>Record that a group WAS written: mark its bits known, raise the group's authority, stamp freshness,
-    /// clear the in-flight marker, bump the row's version and mark the table dirty. The two-call shape
+    /// clear the in-flight marker — only when no request for the row is still outstanding (<see cref="Outstanding"/>:
+    /// a write landing through another door is not the end of the row's own request) — bump the row's version and
+    /// mark the table dirty. The two-call shape
     /// (<c>Accepts</c> … write … <c>Applied</c>) keeps the column writes in
     /// the kind's own file with no delegate and no boxing (P9).</summary>
     public void Applied(int slot, uint group, Authority incoming, ref Column<byte> groupAuthority)
@@ -1367,8 +1382,23 @@ public abstract class Table : Publishable
         if (incoming > (Wavee.Authority)Authority[slot]) Authority[slot] = (byte)incoming;
         Version[slot]++;
         FetchedAt[slot] = Entities.Now;
-        Inflight[slot] = 0;
+        if (Outstanding[slot] == 0) Inflight[slot] = 0;
         MarkDirty();
+    }
+
+    /// <summary>A request now names this row (a planner seat; <see cref="Outstanding"/>). UI thread, <c>Fetch</c> only.</summary>
+    public void Seat(int slot)
+    {
+        System.Diagnostics.Debug.Assert(Outstanding[slot] < byte.MaxValue, "a row is named by at most one seat per bucket plus MaxInFlight batches");
+        Outstanding[slot]++;
+    }
+
+    /// <summary>One request that named this row settled. True when it was the LAST one — the caller clears
+    /// <see cref="Inflight"/> then. UI thread, <c>Fetch</c> only.</summary>
+    public bool Unseat(int slot)
+    {
+        if (Outstanding[slot] > 0) Outstanding[slot]--;
+        return Outstanding[slot] == 0;
     }
 
     /// <summary>A write that is not a provider answer (a user edit, an optimistic flip): mark known, bump, dirty.</summary>
@@ -1439,6 +1469,7 @@ public abstract class Table : Publishable
         FetchedAt.EnsureCapacity(capacity);
         Touched.EnsureCapacity(capacity);
         Inflight.EnsureCapacity(capacity);
+        Outstanding.EnsureCapacity(capacity);
         Asked.EnsureCapacity(capacity);
         Stale.EnsureCapacity(capacity);
         Failed.EnsureCapacity(capacity);
@@ -1564,11 +1595,25 @@ public sealed partial class Scope
 /// engine's <see cref="StringTable"/>, and that table has exactly one writer — the UI thread (§5.6, C1). A decode runs
 /// on the socket's own thread (C10), so it cannot intern. It copies the bytes into the staging arena instead and the
 /// commit interns them, which is also precisely P14: UTF-8 straight to a <see cref="StringId"/> with no
-/// <c>Encoding.UTF8.GetString</c> temporary anywhere in between.</para></summary>
-public readonly record struct TextRef(int Offset, int Length)
+/// <c>Encoding.UTF8.GetString</c> temporary anywhere in between.</para>
+///
+/// <para><b><see cref="Generation"/> is WHICH filling of WHICH arena the slice belongs to</b> (<see cref="Staging.Utf8"/>).
+/// Every <see cref="Staging.Reset"/> — and so every Return — starts a new, process-wide generation, and a slice from any
+/// other one is refused instead of read: its offset names whatever the next owner wrote there (2026-09-25:
+/// "unnikhttps://i.scdn.co/image/…" persisted as a track's cover, see <see cref="FreshSlot"/>). The cluster buffer is
+/// not a <see cref="Staging"/> and stamps 0.</para></summary>
+public readonly record struct TextRef(int Offset, int Length, uint Generation)
 {
     public bool IsEmpty => Length == 0;
+
+    /// <summary>A sub-slice of this one — same arena, same generation — <paramref name="start"/> bytes in.</summary>
+    public TextRef Slice(int start, int length) => new(Offset + start, length, Generation);
 }
+
+/// <summary>A <see cref="Staging"/> used outside its lease: returned twice, returned from the pool, or read through a
+/// <see cref="TextRef"/> older than its last reset. A programming error, thrown in every configuration — the alternative
+/// is another row's text committed and persisted as this one's.</summary>
+public sealed class StagingLeaseException(string message) : InvalidOperationException(message);
 
 /// <summary>A STAGED IDENTITY: what a decoder knows about which row it is talking about, in the one form it is allowed
 /// to hold it. Either the packed <see cref="EntityId"/> — the six catalog kinds arrive as 16 raw gid bytes and
@@ -1665,13 +1710,12 @@ public sealed class StagedList<T> : StagedList where T : unmanaged
     T[] _a = new T[16];
 
     /// <summary>Append an empty row and return it BY REFERENCE, so the decoder fills fields in place rather than
-    /// building a value and copying it (P8).</summary>
+    /// building a value and copying it (P8). The row is zeroed by <see cref="FreshSlot.Of{T}"/> — see there for why
+    /// never by <c>row = default</c> through the returned reference.</summary>
     public ref T Add()
     {
         if (Count == _a.Length) Array.Resize(ref _a, _a.Length * 2);
-        ref T row = ref _a[Count++];
-        row = default;
-        return ref row;
+        return ref FreshSlot.Of(_a, Count++);
     }
 
     public ref T this[int i] => ref _a[i];
@@ -1679,6 +1723,11 @@ public sealed class StagedList<T> : StagedList where T : unmanaged
     public Span<T> Span => _a.AsSpan(0, Count);
     public override void Clear() => Count = 0;
 }
+
+// Every staged-row list here (StagedList<T>, the edge and concert-edge lists and their pending stacks, the palette's
+// gradings, the cluster buffer) appends through the engine's `FluentGpu.Foundation.FreshSlot.Of` and nothing else:
+// never `ref T row = ref a[i]; row = default;` — the .NET 10.0.8 JIT drops that zeroing once the caller's `row.Init(...)`
+// follows it, and the rows kept a previous lease's TextRefs (2026-09-25; StagingLeaseTests pins it in -c Release).
 
 /// <summary>What a worker thread hands the UI drain (C10): decoded rows and their text, in columns, with nothing
 /// interned and nothing written to a live table yet. The decode is the expensive part and it happens off the UI thread;
@@ -1709,18 +1758,76 @@ public sealed partial class Staging
     /// <summary>How authoritative this whole batch is (D16); a decoder may lower it per row.</summary>
     public Authority Authority = Wavee.Authority.Full;
 
-    /// <summary>Take a staging buffer. Pooled: a steady stream of wire answers reuses the same arenas (P8).</summary>
-    public static Staging Rent()
+    // THE LEASE (2026-09-25). One `Staging` has exactly one owner between `Rent` and `Return`: the renter, or whoever
+    // it HANDED it to (`Fetch.Answer`, `Store.WriteBehind`). The pool used to take any instance back, however often: one
+    // extra `Return` would have left the same arena in the stack twice and handed it to two renters on two api threads.
+    // `_leased` is set by `Rent` and cleared by exactly one `Return`, both under the pool lock; a second Return (or one of
+    // a pooled instance) is refused LOUDLY in every configuration: an always-on log line with the caller's stack, then the
+    // throw. `_generation` is the other half, and the one that caught the real 2026-09-25 corruption: every Reset starts
+    // a new filling of the arena, numbered process-wide, and a `TextRef` from any other filling is refused by `Utf8`
+    // rather than read as somebody else's bytes. (The corruption itself was rows keeping a previous lease's slices —
+    // `FreshSlot` — not a double return: none fired in the sessions that reproduced it.)
+    bool _leased;
+    uint _generation = NextGeneration();
+
+    /// <summary>Generations are numbered PROCESS-WIDE, so a slice of one staging is refused by every other staging too,
+    /// not only by its own arena after a reset.</summary>
+    static uint s_generations;
+
+    static uint NextGeneration()
     {
-        lock (s_pool) { if (s_pool.Count > 0) return s_pool.Pop(); }
-        return new Staging();
+        uint g;
+        do g = Interlocked.Increment(ref s_generations); while (g == 0);
+        return g;
     }
 
-    /// <summary>Give it back AFTER the commit has copied out of it. Never hold a <see cref="TextRef"/> past this.</summary>
+    /// <summary>A new arena, leased to its creator (<see cref="Rent"/> is the pooled way to get one; a fixture may make
+    /// its own and drop it, or give it to the pool with one <see cref="Return"/>).</summary>
+    public Staging() => _leased = true;
+
+    /// <summary>Take a staging buffer. Pooled: a steady stream of wire answers reuses the same arenas (P8). The caller
+    /// owns it until it — or whoever it hands it to — calls <see cref="Return"/>, exactly once.</summary>
+    public static Staging Rent()
+    {
+        Staging? s = null;
+        lock (s_pool)
+        {
+            if (s_pool.Count > 0) s = s_pool.Pop();
+            s ??= new Staging();
+            s._leased = true;
+        }
+        return s;
+    }
+
+    /// <summary>Give it back AFTER the commit has copied out of it. Never hold a <see cref="TextRef"/> past this: the
+    /// reset starts a new generation, and <see cref="Utf8"/> refuses the old one. Exactly once per <see cref="Rent"/> — a
+    /// second Return, or a Return of an instance that is sitting in the pool, throws (<see cref="StagingLeaseException"/>)
+    /// after an always-on <c>[staging] staging.lease</c> line naming the caller.</summary>
     public static void Return(Staging s)
     {
+        bool leased;
+        lock (s_pool)
+        {
+            leased = s._leased;
+            s._leased = false;
+        }
+        if (!leased) Refuse("a Return of a staging that is not leased (a second Return, or a pooled instance)");
         s.Reset();
         lock (s_pool) { if (s_pool.Count < 8) s_pool.Push(s); }
+    }
+
+    /// <summary>Does this instance have an owner right now? (<see cref="Rent"/> → true, <see cref="Return"/> → false.)</summary>
+    public bool Leased { get { lock (s_pool) return _leased; } }
+
+    /// <summary>Which filling of the arena a new <see cref="TextRef"/> belongs to (<see cref="Reset"/> moves it on).</summary>
+    public uint Generation => _generation;
+
+    [System.Diagnostics.CodeAnalysis.DoesNotReturn]
+    static void Refuse(string what)
+    {
+        string message = "staging.lease refused: " + what;
+        Log.Error("staging", message + " — caller stack:" + Environment.NewLine + Environment.StackTrace);
+        throw new StagingLeaseException(message);
     }
 
     /// <summary>Register a kind's list so <see cref="Reset"/> clears it. Kind files call this from their lazy property.</summary>
@@ -1731,6 +1838,7 @@ public sealed partial class Staging
         for (int i = 0; i < _lists.Count; i++) _lists[i].Clear();
         _textLength = 0;
         _creditLength = 0;
+        _generation = NextGeneration();
         Epoch = 0;
         Authority = Wavee.Authority.Full;
     }
@@ -1743,13 +1851,24 @@ public sealed partial class Staging
         if (_textLength + utf8.Length > _text.Length)
             Array.Resize(ref _text, Math.Max(_textLength + utf8.Length, _text.Length * 2));
         utf8.CopyTo(_text.AsSpan(_textLength));
-        var r = new TextRef(_textLength, utf8.Length);
+        var r = new TextRef(_textLength, utf8.Length, _generation);
         _textLength += utf8.Length;
         return r;
     }
 
-    /// <summary>The bytes behind a <see cref="TextRef"/>.</summary>
-    public ReadOnlySpan<byte> Utf8(TextRef r) => _text.AsSpan(r.Offset, r.Length);
+    /// <summary>The bytes behind a <see cref="TextRef"/> — of THIS filling of the arena. A slice staged before the last
+    /// <see cref="Reset"/> (a row held past its <see cref="Return"/>, a closure that outlived its batch) names whatever
+    /// the next owner wrote at that offset, so it is refused: an always-on line, then <see cref="StagingLeaseException"/>.</summary>
+    public ReadOnlySpan<byte> Utf8(TextRef r)
+    {
+        if (r.Generation != _generation && r.Length != 0) Refuse("a TextRef of generation " + r.Generation
+            + " read after the arena moved on to generation " + _generation + " (held past a Reset/Return)");
+        return _text.AsSpan(r.Offset, r.Length);
+    }
+
+    /// <summary>A slice of the arena as it is now, from an offset a staged row carried as plain numbers (a merch
+    /// edge's price rides the edge's <c>(At, U0)</c> pair).</summary>
+    public TextRef TextAt(int offset, int length) => new(offset, length, _generation);
 
     /// <summary>Where the arena is now. Paired with <see cref="RewindText"/> by a decoder that has to ABANDON a walk
     /// and start it again (the recents page, whose item count is not stated until the page has been read): without it

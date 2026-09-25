@@ -22,6 +22,10 @@
   <ItemGroup>
     <Compile Include="..\Wavee\Screens\ReleaseNotes.cs" />
     <Compile Include="..\Wavee\Screens\ReleaseNotes.Model.cs" />
+    <!-- The .symmap binary format (crash & diagnostics plan §I): written here by `symbol-map`, read by the crash
+         Worker (a TypeScript port of the same layout) and by the app itself. Linked by path for the same reason as
+         the two ReleaseNotes partials above — this tool has no ProjectReference to Wavee.csproj. -->
+    <Compile Include="..\Wavee\Platform\Crash.SymbolMap.cs" Link="Crash.SymbolMap.cs" />
   </ItemGroup>
 
 </Project>

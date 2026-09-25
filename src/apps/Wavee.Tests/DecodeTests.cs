@@ -835,7 +835,7 @@ public class DecodeTests
     }
 
     [Fact]
-    public void PlayCount_reads_field_three_and_a_zero_is_not_a_count()
+    public void PlayCount_reads_field_three_and_a_zero_is_a_known_negative()
     {
         TestScope.Fresh();
         var uri = Encoding.UTF8.GetBytes(UriOf(EntityKind.Track, 10));
@@ -846,11 +846,16 @@ public class DecodeTests
         Assert.True(TrackOf(10).Knows(TrackFields.PlayCount));
         Assert.Equal(147_606u, TrackOf(10).PlayCount);
 
+        // A 200 answer that SAYS zero is the catalog's verdict, not a hole: the group settles (known, 0 — every surface
+        // renders 0 as the dash it always did) and the planner never re-asks it. Before 2026-09-25 this staged nothing,
+        // so the row stayed "missed" forever — three sends and a seal, and the artist chart's gate (which waited on
+        // PlayCount) turned into "Something went wrong" (the Oscar Dunbar log, slot 8682).
         TestScope.Fresh();
         var zero = Staging.Rent();
         Spotify.Decode.PlayCount(Varint(3, 0), uri, zero);
         TestScope.CommitAndPublish(zero);
-        Assert.False(TrackOf(10).Knows(TrackFields.PlayCount));
+        Assert.True(TrackOf(10).Knows(TrackFields.PlayCount));
+        Assert.Equal(0u, TrackOf(10).PlayCount);
 
         // One varint field, hand-encoded: kind 185 has no .proto in the tree and is read by field number.
         static byte[] Varint(int field, ulong value)
@@ -2188,6 +2193,41 @@ public class DecodeTests
         Assert.Equal("audiobooks", Encoding.UTF8.GetString(s.Utf8(items[0].RawContentType)));
         Assert.Equal(RecentsContentType.Music, items[1].ContentType);
         Assert.True(items[1].RawContentType.IsEmpty);
+        Staging.Return(s);
+    }
+
+    [Fact]
+    public void A_recents_item_decoded_into_a_reused_buffer_keeps_nothing_from_the_previous_page()
+    {
+        // `RecentsPage` zeroes each slot of the caller's (pooled: Staging.RecentsScratch) buffer through a reference
+        // (`item = default`) before filling it — the shape the .NET 10.0.8 JIT miscompiles (FreshSlot). A thin item
+        // landing where a rich one was must not keep its item id, played-at or raw content type; loops past tier-up.
+        static Pl.Item Rich(string uri) => new()
+        {
+            Uri = uri,
+            Attributes = new Pl.ItemAttributes
+            {
+                Timestamp = 1_700_000_000_000,
+                ItemId = ByteString.CopyFrom(0xAB, 0xCD, 0xEF),
+                FormatAttributes = { new Pl.FormatListAttribute { Key = "content_type_audiobooks" } },
+            },
+        };
+        byte[] rich = new Pl.SelectedListContent { Contents = new Pl.ListItems { Items = { Rich(UriOf(EntityKind.Album, 1)), Rich(UriOf(EntityKind.Album, 2)) } } }.ToByteArray();
+        byte[] thin = new Pl.SelectedListContent { Contents = new Pl.ListItems { Items = { new Pl.Item { Uri = UriOf(EntityKind.Album, 3) }, new Pl.Item { Uri = UriOf(EntityKind.Album, 4) } } } }.ToByteArray();
+
+        var items = new Spotify.Decode.RecentsItem[4];
+        var s = Staging.Rent();
+        for (int round = 0; round < 3000; round++)
+        {
+            s.Reset();
+            Assert.Equal(2, Spotify.Decode.RecentsPage(rich, s, items));
+            Assert.False(items[1].ItemId.IsEmpty || items[1].PlayedAtMs == 0 || items[1].RawContentType.IsEmpty);   // the previous tenant
+            s.Reset();
+            Assert.Equal(2, Spotify.Decode.RecentsPage(thin, s, items));
+            for (int i = 0; i < 2; i++)
+                Assert.True(items[i].ItemId.IsEmpty && items[i].PlayedAtMs == 0 && items[i].RawContentType.IsEmpty && items[i].GroupId == -1,
+                    $"round {round} item {i}: id {items[i].ItemId} playedAt {items[i].PlayedAtMs} raw {items[i].RawContentType}");
+        }
         Staging.Return(s);
     }
 

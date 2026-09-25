@@ -1,26 +1,24 @@
 // ── Screens/Feedback.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────
 // the report dialog (Bug / Feature / Question / Idea / Crash), ReportComposer (off-thread compose + redaction),
-// Requests (the monotonic request signal) + Open, the zero-size report chrome (Feedback.Chrome: requests, the
-// post-crash prompt in both shapes, the --crash-probe timer), the crash-reports card (Feedback.CrashReportsCard)
+// Requests (the monotonic request signal) + Open, the zero-size report chrome (Feedback.Chrome: requests only — the
+// crash prompt and the --crash-probe timer moved to Screens/Crash.UI.cs, WP-E, crash-diagnostics-implementation.md)
 //
 // Role: UI
 // Owner: R
 // Wave: 6
 // Budget: 800 lines
-// Spec: ch 28 §9.5 (W24, W25, §1.4, §3.4, §6.4, §9.1 #10); ch 27 W19 "Crash reports card"
+// Spec: ch 28 §9.5 (W24, W25, §1.4, §3.4, §6.4, §9.1 #10); docs/plans/wavee/crash-diagnostics-implementation.md §E
+//       "Deletions" (the crash-prompt arm, the probe timer and the crash-reports card retired here)
 //
-// MOUNT ORDER (ch 28 §9.3.8, load-bearing): the overlay layer mounts Setup.WizardChrome() FIRST, Feedback.Chrome()
-// SECOND, ReleaseNotes.AfterUpdateChrome() THIRD — the crash prompt sets ReleaseNotes.CrashNoticeThisLaunch before the
-// after-update plate's effect reads it, so a launch that surfaced a crash defers the plate to the NEXT launch.
+// MOUNT ORDER: Feedback.Chrome() now carries only the manual report-dialog request signal; the crash prompt / hang
+// toast / probe timer live in Crash.Chrome() (Screens/Crash.UI.cs), mounted right after this one in the shell overlay
+// layer (Shell.Overlays.UI.cs) — see that file for the load-bearing ordering note against ReleaseNotes.AfterUpdateChrome.
 //
 // THE SEAMS THIS FILE LEAVES (every one null-safe; the honest absent state is named on each):
 //   · DiagnosticsText  — owner S: the "Copy diagnostics info" text (0.2.9 SettingsPage.DiagInfoText).
 //   · PastSessionLog   — owner S: a past session's raw log lines (WaveeLogSessions). Called OFF the UI thread.
-//   · ListCrashReports — owner S: CrashReportFiles.List over Platform.LogFolder.
-//   · CrashProbeMode   — owner S: `--crash-probe` → "throw" | "failfast" (null = no probe).
-// Read directly, no seam: CrashPromptPolicy.ThisLaunch (owner S latches it before the first frame; THIS chrome consumes
-// it), the log ring (Log.Snapshot), Platform.Version, and the account/device names (Platform.Scope, User.Me,
-// Playback.Devices).
+// Read directly, no seam: the log ring (Log.Snapshot), Platform.Version, and the account/device names (Platform.Scope,
+// User.Me, Playback.Devices).
 
 using FluentGpu;
 using FluentGpu.Controls;
@@ -43,20 +41,22 @@ public static partial class Feedback
     /// <c>wavee://open?route=report&amp;arg=bug|feature|crash|question|idea</c> deep link (an unknown arg is a Bug).</summary>
     public static void InstallUi()
         => Shell.ReportDialogOpener = static (overlay, arg) =>
-            OpenDialog(overlay, ReportChannels.TryParseKind(arg, out var kind) ? kind : ReportKind.Bug, null, default);
+            OpenDialog(overlay, ReportChannels.TryParseKind(arg, out var kind) ? kind : ReportKind.Bug, null);
 
     /// <summary>Zero-size chrome, mounted in the overlay layer SECOND (see the header).</summary>
     // MOUNT POINT (owner R contract)
     public static Element Chrome() => Embed.Comp(static () => new ChromeCore());
 
-    /// <summary>Settings › About's collapsed "Crash reports" expander.</summary>
-    // MOUNT POINT (owner R contract)
-    public static Element CrashReportsCard() => Embed.Comp(static () => new CrashReportsCardCore());
-
     /// <summary>Open the report dialog from anywhere — About's "Report a problem…" (Bug) / "Suggest a feature…"
-    /// (Feature), the Logs panel's "Report this session…" (Bug + <see cref="ReportPrefill.PastSessionId"/>), the crash
-    /// card's "Report…" (Crash + <see cref="ReportPrefill.CrashReportPath"/>). UI thread.</summary>
+    /// (Feature), the Logs panel's "Report this session…" (Bug + <see cref="ReportPrefill.PastSessionId"/>). UI thread.</summary>
     public static void Open(ReportKind kind, ReportPrefill? prefill = null) => Requests.Open(kind, prefill);
+
+    /// <summary>The crash form's manual door: the Reports list's "View" (WP-E, <c>Crash.ReportsList</c>) and the
+    /// in-app crash prompt's "Report on GitHub instead" (WP-E, <c>Crash.CrashPromptBody</c>) both land here rather
+    /// than a fixed <see cref="ReportKind.Crash"/> + a decision record — the crash & diagnostics pipeline (WP-A/B/C)
+    /// owns consent and upload now; this dialog is only ever the MANUAL "tell the developer by hand" door for a
+    /// specific bundle's <c>report.txt</c>. UI thread.</summary>
+    public static void OpenCrashReport(string reportTxtPath) => Requests.Open(ReportKind.Crash, new ReportPrefill(CrashReportPath: reportTxtPath));
 
     // ══ 2. THE SEAMS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -64,17 +64,9 @@ public static partial class Feedback
     /// the bundle carries no diagnostics section.</summary>
     public static Func<string>? DiagnosticsText;
 
-    /// <summary>A past session's raw log lines: the arg is a <see cref="ReportPrefill.PastSessionId"/>, or null for "the
-    /// newest past session" (a WER-dump / unclean-exit crash prompt has no report file to quote). Runs OFF the UI thread.
-    /// Null seam or null answer ⇒ this session's own ring.</summary>
+    /// <summary>A past session's raw log lines: the arg is a <see cref="ReportPrefill.PastSessionId"/>, or null for
+    /// "the newest past session". Runs OFF the UI thread. Null seam or null answer ⇒ this session's own ring.</summary>
     public static Func<string?, IReadOnlyList<string>?>? PastSessionLog;
-
-    /// <summary>The newest crash-report files (at most the arg), newest first, never throwing. Null ⇒ the empty row.</summary>
-    public static Func<int, IReadOnlyList<(string Path, DateTime Stamp)>>? ListCrashReports;
-
-    /// <summary><c>--crash-probe</c>: "throw" (a managed exception on the UI thread) or "failfast", two seconds after the
-    /// chrome mounts. Null ⇒ no probe.</summary>
-    public static Func<string?>? CrashProbeMode;
 
     // ══ 3. REQUESTS (the monotonic request signal) ═════════════════════════════════════════════════════════════════
 
@@ -83,20 +75,18 @@ public static partial class Feedback
     /// collapse, and no stale prefill can outlive its request.</summary>
     public static class Requests
     {
-        public sealed record Request(int Seq, ReportKind Kind, ReportPrefill? Prefill, CrashPromptDecision Crash);
+        public sealed record Request(int Seq, ReportKind Kind, ReportPrefill? Prefill);
 
         static int s_seq;
 
         /// <summary>The most recent request, or null before the first.</summary>
         public static readonly Signal<Request?> Requested = new(null);
 
-        public static void Open(ReportKind kind, ReportPrefill? prefill = null, CrashPromptDecision crash = default)
-            => Requested.Value = new Request(++s_seq, kind, prefill, crash);
+        public static void Open(ReportKind kind, ReportPrefill? prefill = null)
+            => Requested.Value = new Request(++s_seq, kind, prefill);
     }
 
     // ══ 4. THE CHROME ══════════════════════════════════════════════════════════════════════════════════════════════
-
-    const string CrashToastKey = "crash.pendingReport";
 
     sealed class ChromeCore : Component
     {
@@ -107,51 +97,14 @@ public static partial class Feedback
         public override Element Render()
         {
             var overlay = UseContext(Overlay.Service);
-            var post = UsePost();
 
             var req = Requests.Requested.Value;
             UseEffect(() =>
             {
                 if (req is null || req.Seq == s_lastOpenedSeq) return;
                 s_lastOpenedSeq = req.Seq;
-                OpenDialog(overlay, req.Kind, req.Prefill, req.Crash);
+                OpenDialog(overlay, req.Kind, req.Prefill);
             }, req?.Seq ?? -1);
-
-            // The post-crash prompt: CrashPromptPolicy.ThisLaunch is consumed (reset to default) the moment either arm
-            // fires — one shot per launch — but only once the wizard deferral has passed, so a deferred prompt is still
-            // armed when the marker epoch bumps.
-            int wizardEpoch = Setup.WizardMarkerEpoch.Value;   // re-evaluate the deferral on every wizard marker bump
-            UseEffect(() =>
-            {
-                var d = CrashPromptPolicy.ThisLaunch;
-                if (d.Mode == CrashPromptMode.None) return;
-                if (Setup.Gating.IsPending(Platform.Settings) || Setup.WizardOpen.Peek()) return;   // deferred — still armed
-                CrashPromptPolicy.ThisLaunch = default;     // one-shot: consumed now, whichever arm fires below
-                ReleaseNotes.CrashNoticeThisLaunch = true;  // the after-update plate waits for the next launch
-
-                if (d.Mode == CrashPromptMode.Toast)
-                {
-                    // The opt-out arm: STICKY (0 ms — it waits for the user), deduped so a second evaluation cannot stack.
-                    // Its action carries the whole decision, so a WER-dump toast still opens the crash form on that dump.
-                    Notify.Say(Loc.Get(Strings.Common.CrashLastRun), InfoBarSeverity.Warning,
-                        Loc.Get(Strings.Report.ReportOnGithub),
-                        () => Requests.Open(ReportKind.Crash, new ReportPrefill(CrashReportPath: d.ReportPath),
-                            d with { Mode = CrashPromptMode.Dialog }),
-                        CrashToastKey, durationMs: 0f);
-                    return;
-                }
-                OpenDialog(overlay, ReportKind.Crash, null, d);
-            }, wizardEpoch);
-
-            UseEffect(() =>
-            {
-                if (CrashProbeMode?.Invoke() is not { Length: > 0 } mode) return;
-                _ = Task.Delay(2000).ContinueWith(_ => post(() =>
-                {
-                    if (mode == "failfast") Environment.FailFast("--crash-probe");
-                    throw new InvalidOperationException("--crash-probe");
-                }), TaskScheduler.Default);
-            }, DepKey.Empty);
 
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Shrink = 0f };
         }
@@ -166,16 +119,17 @@ public static partial class Feedback
     /// <summary>New loc keys (batch-loc/WP-6.R-feedback.json): the save picker's filter names, English literals in 0.2.9.</summary>
     const string LocFilterText = "report.saveFilterText", LocFilterAll = "report.saveFilterAll";
 
-    /// <summary>A crash kind / crash prompt / crash-report prefill forces the fixed Crash form (<see cref="ReportForm.EffectiveKind"/>).
-    /// The dialog is the stock <c>ContentDialog</c> at its 548 maximum.</summary>
-    static void OpenDialog(IOverlayService? overlay, ReportKind kind, ReportPrefill? prefill, CrashPromptDecision crash)
+    /// <summary>A crash kind / crash-report prefill forces the fixed Crash form (<see cref="ReportForm.EffectiveKind"/>) —
+    /// the crash & diagnostics pipeline (WP-A/B/C, <c>Crash.UI.cs</c>) owns consent and upload; this is only ever the
+    /// manual "tell the developer by hand" door. The dialog is the stock <c>ContentDialog</c> at its 548 maximum.</summary>
+    static void OpenDialog(IOverlayService? overlay, ReportKind kind, ReportPrefill? prefill)
     {
         if (overlay is null) return;
-        ReportKind effective = ReportForm.EffectiveKind(kind, prefill?.CrashReportPath, crash.Mode != CrashPromptMode.None);
+        ReportKind effective = ReportForm.EffectiveKind(kind, prefill?.CrashReportPath, false);
         bool isCrash = effective == ReportKind.Crash;
 
         // Names the kind that ACTUALLY arrived at the one place that decides what the dialog shows.
-        Log.Info("report", $"report.open kind={kind} effective={effective} crash={crash.Mode} prefill={prefill is not null}");
+        Log.Info("report", $"report.open kind={kind} effective={effective} prefill={prefill is not null}");
 
         var session = new DialogSession();
         ContentDialog.Show(overlay, d =>
@@ -183,7 +137,7 @@ public static partial class Feedback
             d.Title = Loc.Get(Strings.Report.Title);
             d.DialogWidth = DialogWidth;
             // Keyed by the kind shown: every signal in the body is seeded once from an open-time constant.
-            d.Content = Embed.Comp(() => new DialogBody { InitialKind = effective, Prefill = prefill, Crash = crash, Session = session })
+            d.Content = Embed.Comp(() => new DialogBody { InitialKind = effective, Prefill = prefill, Session = session })
                 with { Key = "report-body:" + (int)effective };
             d.PrimaryText = Loc.Get(isCrash ? Strings.Report.ReportOnGithub : Strings.Report.OpenGithub);
             d.CloseText = Loc.Get(isCrash ? Strings.Report.NotNow : Strings.Auth.Cancel);
@@ -211,7 +165,6 @@ public static partial class Feedback
     {
         public required ReportKind InitialKind;
         public required ReportPrefill? Prefill;
-        public required CrashPromptDecision Crash;
         public required DialogSession Session;
 
         public override Element Render()
@@ -232,7 +185,7 @@ public static partial class Feedback
                     new SegmentedItem(Loc.Get(Strings.Report.KindQuestion)),
                     new SegmentedItem(Loc.Get(Strings.Report.KindIdea)),
                 ], kindIndex));
-            children.Add(Embed.Comp(() => new DialogCard { Kind = kind, Prefill = Prefill, Crash = Crash, Session = Session })
+            children.Add(Embed.Comp(() => new DialogCard { Kind = kind, Prefill = Prefill, Session = Session })
                 with { Key = "report-card:" + (int)kind });
 
             return new BoxEl { Direction = 1, Gap = Spacing.M, Width = FieldWidth, Children = children.ToArray() };
@@ -246,7 +199,6 @@ public static partial class Feedback
     {
         public required ReportKind Kind;
         public required ReportPrefill? Prefill;
-        public required CrashPromptDecision Crash;
         public required DialogSession Session;
 
         public override Element Render()
@@ -260,7 +212,6 @@ public static partial class Feedback
             var repro = UseSignal(0);                                    // "Every time"
             var area = UseSignal(ReportChannels.Areas.Length - 1);       // "Not sure"
             var includeLogs = UseSignal(ReportForm.IncludesLogsByDefault(Kind));
-            var dontAsk = UseSignal(Platform.Settings.Get(Platform.Keys.CrashPromptOptOut));   // a prior opt-out shows ticked
             var composed = UseSignal<ComposedReport?>(null);
             var post = UsePost();
             var hooks = UseContext(InputHooks.Current);
@@ -270,7 +221,7 @@ public static partial class Feedback
             UseEffect(() =>
             {
                 var cts = new CancellationTokenSource();
-                var input = ReportComposer.Gather(Kind, Prefill, Crash);
+                var input = ReportComposer.Gather(Kind, Prefill);
                 Task.Run(() =>
                 {
                     ComposedReport result;
@@ -354,10 +305,6 @@ public static partial class Feedback
                 ],
             });
             body.Add(new TextEl(Loc.Get(Strings.Report.PreviewNote)) { Size = 12f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxWidth = FieldWidth });
-
-            if (isCrash)
-                body.Add(CheckBox.Create(Loc.Get(Strings.Report.DontAskAgain), dontAsk,
-                    v => Platform.Settings.Set(Platform.Keys.CrashPromptOptOut, v)));   // written immediately, not on close
 
             return new BoxEl { Direction = 1, Gap = Spacing.M, Width = FieldWidth, Children = body.ToArray() };
         }
@@ -473,7 +420,7 @@ public static partial class Feedback
     // ══ 6. THE COMPOSER ════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The UI-thread half of a compose: everything that reads live app state.</summary>
-    sealed record ComposeInput(ReportKind Kind, ReportPrefill? Prefill, CrashPromptDecision Crash, RedactionRules Rules,
+    sealed record ComposeInput(ReportKind Kind, ReportPrefill? Prefill, RedactionRules Rules,
         ReportIdentity Identity, string DiagnosticsRaw);
 
     /// <summary>The fully-assembled, ALREADY-REDACTED material the dialog builds the bundle and URL from. <see cref="Rules"/>
@@ -487,12 +434,12 @@ public static partial class Feedback
     {
         /// <summary>UI thread: the rules (OS account + machine, and — when known — the signed-in account's id and display
         /// name plus every Connect device the roster holds), the identity, and the raw diagnostics text.</summary>
-        public static ComposeInput Gather(ReportKind kind, ReportPrefill? prefill, CrashPromptDecision crash)
+        public static ComposeInput Gather(ReportKind kind, ReportPrefill? prefill)
         {
             string diagnostics = "";
             try { diagnostics = DiagnosticsText?.Invoke() ?? ""; }
             catch (Exception ex) { Log.Warn("report", "diagnostics text failed", ex); }
-            return new ComposeInput(kind, prefill, crash, Rules(), Identity(), diagnostics);
+            return new ComposeInput(kind, prefill, Rules(), Identity(), diagnostics);
         }
 
         static RedactionRules Rules()
@@ -523,16 +470,17 @@ public static partial class Feedback
                 Environment.OSVersion.Version.Build);
         }
 
-        /// <summary>Pool thread. Log source, in priority order: (1) the prefill's or the prompt's crash-report file — its
-        /// tail IS the excerpt; (2) a specific past session, or the newest one for a WER-dump / unclean-exit prompt;
-        /// (3) this session's ring, last <see cref="ReportBundle.ManualLogLines"/> entries.</summary>
+        /// <summary>Pool thread. Log source, in priority order: (1) the prefill's crash-report file (the Reports
+        /// list's "View"/crash prompt's "Report on GitHub instead" always carry one; a bare <c>ReportKind.Crash</c>
+        /// with none is only the deep-link/probe corner) — its tail IS the excerpt; (2) a specific past session; (3)
+        /// this session's ring, last <see cref="ReportBundle.ManualLogLines"/> entries.</summary>
         public static ComposedReport Compose(ComposeInput input)
         {
             var rules = input.Rules;
             var id = input.Identity;
             string diagnostics = ReportRedactor.Redact(input.DiagnosticsRaw, rules);
 
-            string? reportPath = input.Prefill?.CrashReportPath is { Length: > 0 } p ? p : input.Crash.ReportPath;
+            string? reportPath = input.Prefill?.CrashReportPath;
             if (reportPath is { Length: > 0 } && TryReadFile(reportPath, out string fileText, out string crashTime))
             {
                 var (head, tail) = ReportBundle.SplitCrashReport(fileText);
@@ -544,17 +492,13 @@ public static partial class Feedback
             }
 
             string? pastId = input.Prefill?.PastSessionId;
-            bool wantsPast = pastId is not null || input.Crash.Source is CrashSource.WerDump or CrashSource.UncleanExit;
-            if (wantsPast && PastSessionLog?.Invoke(pastId) is { } raw)
+            if (pastId is not null && PastSessionLog?.Invoke(pastId) is { } raw)
             {
                 int cap = input.Kind == ReportKind.Crash ? ReportBundle.CrashLogLines : ReportBundle.ManualLogLines;
                 int take = Math.Min(raw.Count, cap), start = raw.Count - take;
                 string[] lines = new string[take];
                 for (int i = 0; i < take; i++) lines[i] = ReportRedactor.Redact(raw[start + i], rules);
-                string? head = input.Crash.Source == CrashSource.WerDump && input.Crash.DumpPath is { Length: > 0 } dump
-                    ? ReportRedactor.Redact("Windows Error Reporting dump: " + dump, rules)
-                    : null;
-                return new ComposedReport(id, diagnostics, lines, head, null, "previous session", "", "", rules);
+                return new ComposedReport(id, diagnostics, lines, null, null, "previous session", "", "", rules);
             }
 
             var snapshot = Log.Snapshot();
@@ -583,73 +527,5 @@ public static partial class Feedback
             }
             catch { return false; }
         }
-    }
-
-    // ══ 7. THE CRASH-REPORTS CARD (ch 27 W19) ══════════════════════════════════════════════════════════════════════
-
-    const int MaxListedReports = 10;
-
-    /// <summary>A collapsed SettingsExpander: one blank-label row of 12-DIP tertiary text when there are no reports,
-    /// otherwise up to ten rows labelled with the file's "g" stamp and carrying [ Report… ] [ Open ]. The listing is a
-    /// snapshot at mount — a report written this session lands after the tab remounts.</summary>
-    sealed class CrashReportsCardCore : Component
-    {
-        public override Element Render()
-        {
-            var reports = UseMemo<IReadOnlyList<(string Path, DateTime Stamp)>>(
-                static () => ListCrashReports?.Invoke(MaxListedReports) ?? Array.Empty<(string Path, DateTime Stamp)>(), DepKey.Empty);
-
-            Element[] items;
-            if (reports.Count == 0)
-            {
-                items =
-                [
-                    SettingsExpander.Item("", null, new TextEl(Loc.Get(Strings.Report.CrashReportsEmpty)) { Size = 12f, Color = Tok.TextTertiary })
-                        with { Key = "crash-reports:empty" },
-                ];
-            }
-            else
-            {
-                items = new Element[reports.Count];
-                for (int i = 0; i < reports.Count; i++)
-                {
-                    var (path, stamp) = reports[i];
-                    items[i] = SettingsExpander.Item(stamp.ToString("g"), null,
-                        HStack(Spacing.S,
-                            Button.Standard(Loc.Get(Strings.Report.ReportButton),
-                                () => Open(ReportKind.Crash, new ReportPrefill(CrashReportPath: path))),
-                            Button.Standard(Loc.Get(Strings.Report.OpenButton), () => RevealInExplorer(path))))
-                        with { Key = "crash-reports:" + path };
-                }
-            }
-
-            return SettingsExpander.Create(new SettingsExpander.Options
-            {
-                Header = Loc.Get(Strings.Report.CrashReports),
-                Description = Loc.Get(Strings.Report.CrashReportsSub),
-                HeaderIcon = Icons.StatusWarning,
-                InitiallyExpanded = false,
-                Items = items,
-            });
-        }
-    }
-
-    /// <summary>Explorer with the file SELECTED, falling back to its folder when the file is gone. Best-effort: a
-    /// missing Explorer or a denied path never throws into the UI thread.</summary>
-    static void RevealInExplorer(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                // /select, takes ONE argument, quoted as a whole — the comma is part of the switch.
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", "/select,\"" + path + "\"")
-                    { UseShellExecute = false })?.Dispose();
-                return;
-            }
-            if (Path.GetDirectoryName(path) is { Length: > 0 } dir)
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = dir, UseShellExecute = true })?.Dispose();
-        }
-        catch (Exception ex) { Log.Warn("report", "reveal crash report failed", ex); }
     }
 }

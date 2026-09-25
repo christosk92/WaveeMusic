@@ -214,7 +214,7 @@ public static partial class Modules
                         Direction = 1, MinWidth = 0f,
                         Padding = new Edges4(32f, 40f, 32f, Design.Dock.Reserve + 40f),
                         Children = [body],
-                    }) with { Grow = 1f, MinHeight = 0f, ScrollKey = "module-page:" + pageUri },
+                    }) with { Grow = 1f, MinHeight = 0f, ScrollKey = UseContext(Shell.PageScrollScope) + "module-page:" + pageUri },
                 ],
             };
         }

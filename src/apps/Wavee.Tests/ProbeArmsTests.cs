@@ -43,12 +43,21 @@ public class ProbeOptionsTests
 
     [Theory]
     [InlineData(new[] { "--crash-probe" }, "throw")]
-    [InlineData(new[] { "--crash-probe", "failfast" }, "failfast")]
     [InlineData(new[] { "--crash-probe", "throw" }, "throw")]
+    [InlineData(new[] { "--crash-probe", "throw-ui" }, "throw-ui")]
+    [InlineData(new[] { "--crash-probe", "failfast" }, "failfast")]
+    [InlineData(new[] { "--crash-probe", "native" }, "native")]
+    [InlineData(new[] { "--crash-probe", "hang" }, "hang")]
+    [InlineData(new[] { "--crash-probe", "boot" }, "boot")]
     [InlineData(new[] { "--crash-probe", "--fake" }, "throw")]
     [InlineData(new[] { "--crash-probe", "banana" }, "throw")]
-    public void Crash_probe_defaults_to_throw_and_knows_only_two_modes(string[] args, string expected)
+    [InlineData(new[] { "--fake", "--crash-probe" }, "throw")]
+    public void Crash_probe_knows_six_modes_and_defaults_unknown_values_to_throw(string[] args, string expected)
         => Assert.Equal(expected, Diagnostics.ProbeOptions.Parse(args).CrashProbe);
+
+    [Fact]
+    public void No_crash_probe_flag_means_crash_probe_is_empty_not_a_mode()
+        => Assert.Equal("", Diagnostics.ProbeOptions.Parse(["--fake"]).CrashProbe);
 
     [Fact]
     public void Probe_out_takes_its_value_but_never_swallows_the_next_flag()

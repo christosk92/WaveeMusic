@@ -1041,8 +1041,10 @@ public class FetchTests : IDisposable
         AnswerIdentity(provider.Seen[0].Ticket, t.Id[slots[0]]);                       // names the first row only
 
         Assert.Equal(0u, t.Inflight[slots[0]]);
-        Assert.Equal(0u, t.Inflight[slots[1]]);                                         // settled, not stranded
-        Assert.Equal(0u, t.Asked[slots[1]]);                                            // un-asked, not sealed: ledger 2a
+        // The omitted row's retry is QUEUED — asked and in flight, never "un-asked" (RCA 2026-09-25 fix 6: an un-asked row
+        // reads as "nothing coming" to a readiness gate, and lets the next Ensure seat it twice).
+        Assert.Equal(Fetch.Stamp(scope.Epoch), t.Inflight[slots[1]]);
+        Assert.Equal((uint)TrackFields.Identity, t.Asked[slots[1]]);
         Assert.False(t.IsFailed(slots[1], (uint)TrackFields.Identity));                 // one miss: the retry budget is two
         Assert.Equal(1, Fetch.Pending);                                                 // queued again, on its own
 

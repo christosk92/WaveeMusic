@@ -32,6 +32,7 @@ powershell -File ops\release\wavee-release.ps1
 | Notes | `CHANGELOG.md` + `ops/release/wavee/<semver>/whatsnew.json`, validated/rendered by `Wavee.ReleaseTool` |
 | Version-release assets | `Wavee_<quad>_arm64.msix`, `Wavee_<quad>_x64.msix`, `Wavee-<quad>-win-<arch>-symbols.zip` (one per arch: `Wavee.pdb` + `Wavee.map.xml` + `SYMBOLS.txt`), `whatsnew.json`, media, `THIRD-PARTY-NOTICES.txt`, `MANIFEST.txt` |
 | Update feed | rolling release **`wavee-stable`** → `Wavee.arm64.appinstaller`, `Wavee.x64.appinstaller`, `whatsnew-index.json` (`--clobber`, repointed last); every install has this URL baked in |
+| Crash symbol maps | phase `symbols` (between `packX64` and `sign`): `Wavee.ReleaseTool symbol-map` → `Wavee.symmap` per arch, `wrangler r2 object put wavee-crash/symbols/<quad>/win-<arch>.symmap` — what the crash-ingest Worker resolves report RVAs against. `-CrashIngestUrl`/`-CrashIngestKey` stamp the build; a `stable` release with neither set only `Warn`s (docs/guide/releasing-wavee.md §5b) |
 
 Verify:
 
@@ -87,6 +88,9 @@ zip): `docs/guide/releasing-wavee.md` §5b.
 - **`.gitignore` has `[Rr]elease/`**, so `!ops/release/` is what keeps the release tooling tracked.
 - **Testing the tooling never touches production**: `-FeedRelease wavee-stable-test -TagPrefix wavee-test-v -Branch release-test -Force -SkipTests`, or the fully local E2E harness (no GitHub at all).
 - **Packaged runs write into the package's LocalCache.** A real `%LOCALAPPDATA%\Wavee` (from an unpackaged `dotnet run`) captures a packaged app's writes; wipe it before testing a package — the startup line prints `logResolved=`.
+- **`wrangler` missing fails preflight, not the `symbols` phase.** The `symbols` phase's R2 upload needs the
+  `wrangler` CLI (`npm install -g wrangler`); preflight checks for it up front (SKIPs under `-DryRun`/`-NoUpload`) so
+  a broken upload is caught before packing and signing everything, not after.
 - **The `issue refs` gate is about consistency, not coverage.** A commit without any issue ref is fine (it lands
   in the release notes as "Other changes"); a CHANGELOG bullet without a ref is fine too (soft `issue coverage`
   warning only). What the hard gate refuses is *disagreement*: a `Fixes #n` commit the CHANGELOG `(#n)` doesn't

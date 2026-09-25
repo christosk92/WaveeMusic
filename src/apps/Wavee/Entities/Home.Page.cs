@@ -108,6 +108,7 @@ public readonly partial struct Home
         readonly HomeLandingLayout _landingLayout = new();
         readonly HomeFacetLayout _facetLayout = new();
         readonly object _washOwner = new();
+        string _scrollScope = "";   // the tab (Shell.PageScrollScope), composed onto the restore keys
 
         readonly Action _feedTick, _chartsTick, _chromeTick, _holdCap, _forceRelease, _mountDemand, _reactivate;
         readonly Action _openRecents, _openCharts, _retryFeed, _retryCharts;
@@ -196,6 +197,7 @@ public readonly partial struct Home
         {
             _home = UseLoadable(_homeInit ??= InitialHome());
             _charts = UseLoadable(_chartsInit ??= InitialCharts());
+            _scrollScope = UseContext(Shell.PageScrollScope);
             var overlay = UseContext(Overlay.Service);
             _overlay = Controls.IsNullOverlay(overlay) ? null : overlay;
             var shellSlot = UseContext(ShellMaterial.Slot);
@@ -469,7 +471,7 @@ public readonly partial struct Home
             Direction = 1, Gap = Spacing.XL, MinWidth = 0f,
             Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Design.Dock.Reserve + Spacing.XXL),
             Children = [HomeModules.GreetingBlock(null, hasHero: false, chips: null), state, HomeModules.Tail()],
-        }) with { Grow = 1f, ScrollKey = "home" };
+        }) with { Grow = 1f, ScrollKey = _scrollScope + "home" };
 
         Element VirtualHome(HomeFeedView feed)
         {
@@ -506,9 +508,9 @@ public readonly partial struct Home
                 }, fallback: HomeModuleLayout.FallbackWidth) with { Key = key };
             }
 
-            return Virtual.Measured(rows.Length, _landingLayout, RowAt, KeyAt, overscan: 1) with
+            return Virtual.Measured(rows.Length, _landingLayout, RowAt, KeyAt) with
             {
-                Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = "home",
+                Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = _scrollScope + "home",
             };
         }
 
@@ -558,10 +560,10 @@ public readonly partial struct Home
                 }, fallback: HomeModuleLayout.FallbackWidth) with { Key = key };
             }
 
-            return Virtual.Measured(count, _facetLayout, RowAt, KeyAt, overscan: 1) with
+            return Virtual.Measured(count, _facetLayout, RowAt, KeyAt) with
             {
                 // Per facet: the previous facet's offset belongs to a document that no longer exists.
-                Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = facetTag,
+                Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = _scrollScope + facetTag,
             };
         }
 
@@ -1247,7 +1249,7 @@ public readonly partial struct Home
         readonly FloatSignal _walkFrac = new(0f);
         readonly Signal<string> _filter = new("");
         readonly object _washOwner = new();
-        readonly (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Action) _scrollWatch;
+        readonly NearTailWatch _scrollWatch;
         readonly Action _sync, _demand, _loadMore, _publishMasthead;
         readonly Action<HomeCard> _open;
         readonly Func<HomeSectionView, Element> _gridBody;
@@ -1274,7 +1276,7 @@ public readonly partial struct Home
 
         public HomeSectionPageView()
         {
-            _scrollWatch = HomeSectionAppendPreloader.NearTailWatch(_nearTail);
+            _scrollWatch = new NearTailWatch(_nearTail);
             _sync = Sync;
             _demand = Demand;
             _loadMore = LoadMore;
@@ -1398,7 +1400,7 @@ public readonly partial struct Home
                                                              title: Loc.Get(Strings.Library.NoMatch), subtitle: "")],
                             };
                         return HomeModules.SectionGrid(shown, live.Uri, width, _open,
-                            onScrollGeometryChanged: isChart ? null : _scrollWatch,
+                            nearTail: isChart ? null : _scrollWatch,
                             highlightQuery: q.Length > 0 ? q : null,
                             titleLines: isChart ? ChartsTitleLines : 1,
                             charts: isChart);

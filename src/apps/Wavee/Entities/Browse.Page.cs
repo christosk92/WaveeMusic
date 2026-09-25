@@ -23,7 +23,7 @@
 // ── THE DIRECTORY (W15-W18) ──────────────────────────────────────────────────────────────────────────────────────────
 //
 // The masthead band paints NOTHING (live Mica), so the directory cuts ITSELF at the band's lower edge: an 100-DIP spacer
-// ABOVE a node clipped with `ClipBelow(84)`, whose 24-DIP top feather arms only on the clip's engage edge — content
+// ABOVE a node clipped with `StickyClip(84)`, whose 24-DIP top feather arms only on the clip's engage edge — content
 // dissolves into the band, is never guillotined by it, and never softens at rest. `SkelReveal.None`: the bands own the
 // entrance (Browse.UI.cs). The Charts band is its OWN component over the chart section rows, so a Featured outage never
 // blanks the rest of the directory and a categories outage never blanks the Charts band (two retries, W22).
@@ -41,6 +41,7 @@
 
 using System.Globalization;
 using FluentGpu.Animation;
+using FluentGpu.Scroll.Effects;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -93,12 +94,11 @@ public readonly partial struct Browse
         bool _demanded, _ready, _failed;
         long _dataKey = long.MinValue;
         Element? _body, _skeleton;
-        readonly Signal<bool> _underBand = new(false);
+
 
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
         readonly Action _demand, _retry;
-        readonly Action<bool> _onClip;
         readonly Func<int, Element> _chartsBandAt;
 
         public DirectoryPage()
@@ -113,8 +113,6 @@ public readonly partial struct Browse
             // Asked-and-unanswered is exactly a no-op for `Ensure` (P4's dedupe: `wanted & ~known & ~asked`), so a
             // failed directory's Retry button did nothing until it un-asks first (root cause of the failure card).
             _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _retry);
-            // Written only on the clip's engage / release EDGE, never per scroll frame.
-            _onClip = v => { if (_underBand.Peek() != v) _underBand.Value = v; };
             _chartsBandAt = static index => new BoxEl
             {
                 Direction = 1, MinWidth = 0f,
@@ -169,9 +167,10 @@ public readonly partial struct Browse
             {
                 Direction = 1, MinWidth = 0f, Gap = Spacing.L,
                 Padding = BrowseMastheadMetrics.FamilyUnderBandPad(Design.Dock.Reserve + Spacing.XXL),
-                EdgeFade = _underBand.Value ? new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) : null,
+                // Feathered exactly while the clip is engaged, on the render turn that poses it (RCA 2026-09-25 F(ii)).
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true },
                 Children = [region],
-            }.ClipBelow(BrowseMastheadMetrics.ClipInset, _onClip);
+            }.StickyClip(BrowseMastheadMetrics.ClipInset);
 
             return ScrollView(new BoxEl
             {
@@ -179,7 +178,7 @@ public readonly partial struct Browse
                 // The reserve is a SPACER above the clipped node, not padding inside it: the cut engages exactly when the
                 // content reaches the band.
                 Children = [new BoxEl { Height = BrowseMastheadMetrics.BodyTop, HitTestVisible = false }, directory],
-            }) with { Grow = 1f, MinWidth = 0f, ScrollKey = "browse" };
+            }) with { Grow = 1f, MinWidth = 0f, ScrollKey = UseContext(Shell.PageScrollScope) + "browse" };
         }
 
         void Demand()
@@ -317,9 +316,10 @@ public readonly partial struct Browse
 
         Element? _body;
         IOverlayService? _overlay;
+        string _scrollScope = "";                         // the tab (Shell.PageScrollScope), composed onto the restore keys
         readonly Signal<bool> _nearTail = new(true);     // seeded true: a first page shorter than the viewport fills once
         readonly AppendLoading _loading = new();
-        readonly (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Action) _tailWatch;
+        readonly NearTailWatch _tailWatch;
 
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _failedPanelFn;
@@ -328,7 +328,7 @@ public readonly partial struct Browse
 
         public CategoryPage()
         {
-            _tailWatch = HomeSectionAppendPreloader.NearTailWatch(_nearTail);
+            _tailWatch = new NearTailWatch(_nearTail);
             _pendingFn = () => !_known && !_failed;
             _failedFn = () => _failed;
             _contentFn = () => _body ?? new BoxEl();
@@ -349,6 +349,7 @@ public readonly partial struct Browse
         {
             var p = UseProps<CategoryProps>();
             _props = p;
+            _scrollScope = UseContext(Shell.PageScrollScope);
             uint epoch = Entities.ScopeEpoch.Value;              // FIRST: a scope switch re-points every table below
             var scope = Entities.Current;
             var e = scope.Edges;
@@ -511,7 +512,7 @@ public readonly partial struct Browse
                 Direction = 1, Gap = Spacing.L, MinWidth = 0f,
                 Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
                 Children = kids,
-            }) with { Grow = 1f, MinHeight = 0f, ScrollKey = "browse:" + _uri };
+            }) with { Grow = 1f, MinHeight = 0f, ScrollKey = _scrollScope + "browse:" + _uri };
         }
 
         /// <summary>The empty and error arms get the same scroll shell by hand (the region picks them before the mode
@@ -521,7 +522,7 @@ public readonly partial struct Browse
             Direction = 1, Gap = Spacing.L, MinWidth = 0f,
             Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
             Children = [content, ExploreAll(GoDirectory)],
-        }) with { Grow = 1f, MinHeight = 0f, ScrollKey = "browse:" + _uri };
+        }) with { Grow = 1f, MinHeight = 0f, ScrollKey = _scrollScope + "browse:" + _uri };
 
         /// <summary>One shelf band (0.2.9 <c>BrowsePage.Shelf</c>): a PagedShelf of the house shelf cell — play FAB, card
         /// menu, and a drag source for everything but tracks and episodes. A TITLED shelf's header drills into
@@ -616,8 +617,7 @@ public readonly partial struct Browse
             };
         }
 
-        (Func<ScrollGeometry, long> Project, Action<ScrollGeometry> Action)? WatchOf(bool armed)
-            => armed ? _tailWatch : null;
+        NearTailWatch? WatchOf(bool armed) => armed ? _tailWatch : null;
 
         IReadOnlyList<HomeCard> Merge(HomeSectionView? a, HomeSectionView? b)
         {

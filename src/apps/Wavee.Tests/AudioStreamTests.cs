@@ -349,9 +349,28 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         Assert.Equal(0, fetcher.InFlight);
 
         cdn.ThrowOnOpen = false;
-        Assert.Equal(Expected(plain, 0, 100_000), Read(body, 0, 100_000));              // the same body, the same ring, recovered
+        Assert.Equal(Expected(plain, 0, 100_000), ReadThroughStarves(body, 0, 100_000)); // the same body, the same ring, recovered
         WaitIdle(fetcher);
         Assert.Equal(1, cdn.PeakLive);                                                  // never more than one range in flight
+    }
+
+    /// <summary>Container bytes [offset, offset + count) read the way the product's own reader reads them
+    /// (<see cref="Audio.BodyStream"/>, D5): a <see cref="Audio.Body.Starved"/> is "call again", never the end; any other
+    /// non-positive answer fails. For a recovery, whose first range may only be planned once the refusal backoff the
+    /// last fault armed (250 ms) has run out — most of a short test bound, so ONE bounded wait would be a wall-clock
+    /// race, not a proof. <see cref="WaitUntil"/>'s 20 s is the hang guard.</summary>
+    static byte[] ReadThroughStarves(Audio.Body body, long offset, int count)
+    {
+        var dst = new byte[count];
+        int got = 0;
+        WaitUntil(() =>
+        {
+            int n = body.ReadAt(offset + got, dst.AsSpan(got), body.Epoch);
+            if (n > 0) got += n;
+            else Assert.Equal(Audio.Body.Starved, n);
+            return got == count;
+        }, $"{count} bytes at {offset} to be served");
+        return dst;
     }
 
     [Fact]
@@ -833,6 +852,12 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
     [Fact]
     public void Every_mirror_refusing_backs_off_instead_of_spinning()
     {
+        // "Backs off" is an invariant of the CDN's own request log, not a request count per second of wall clock (a count
+        // is the rate times however long the reader happened to wait — a late reader made it 11). The fake stamps every
+        // open with Environment.TickCount64, the clock the ring arms its backoff on, so each re-request of the refused fill
+        // must come at least Ring.RefusedBackoffMs after the previous one however the box is loaded. The retry is made
+        // certain, not likely: the second read starts once the ring's own backoff has run out (Ring.RetryAfter), so its
+        // first plan is a re-request.
         var (_, cipher) = Big.Value;
         var cdn = new FakeCdn(cipher) { Refuse = true };
         using var fetcher = new Audio.Fetcher();
@@ -841,9 +866,20 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
 
         Assert.Equal(Audio.Ring.Starved, body.ReadAt(0, new byte[4_096], body.Epoch));
         WaitIdle(fetcher);
+        long retryAfter = body.Ring.RetryAfter;
+        Assert.True(retryAfter > 0, "every mirror refused, so the ring armed its backoff");
+        WaitUntil(() => Environment.TickCount64 >= retryAfter, "the ring's refusal backoff to run out");
+        Assert.Equal(Audio.Ring.Starved, body.ReadAt(0, new byte[4_096], body.Epoch));
+        WaitIdle(fetcher);
 
-        Assert.InRange(fetcher.Requests, 1, 8);                         // ~4/s for a second, plus the tail
-        Assert.Equal(2 * fetcher.Requests, cdn.Count);                  // both mirrors, once each, per range
+        var opens = cdn.Opens;
+        Assert.Equal(2 * fetcher.Requests, opens.Length);               // both mirrors, once each, per range
+        var fills = opens.Where(o => o.Start == 0).ToArray();           // the reader's slot, mirror a then mirror b per range
+        Assert.True(fills.Length >= 4 && fills.Length % 2 == 0, $"{fills.Length} opens of the refused fill: the first request and at least one re-request, both mirrors each");
+        for (int i = 2; i < fills.Length; i += 2)
+            Assert.True(fills[i].Tick - fills[i - 2].Tick >= Audio.Ring.RefusedBackoffMs,
+                $"fill #{i / 2} re-requested {fills[i].Tick - fills[i - 2].Tick} ms after the previous one: a spin, not a {Audio.Ring.RefusedBackoffMs} ms backoff");
+        output.WriteLine($"{fetcher.Requests} ranges; {fills.Length / 2} of the refused fill, spaced {string.Join(", ", Enumerable.Range(1, fills.Length / 2 - 1).Select(k => fills[2 * k].Tick - fills[2 * k - 2].Tick))} ms");
     }
 
     [Fact]
@@ -950,24 +986,81 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
     {
         // G-102: at ~64 KB/s a 512 KiB range took the reader's whole bound before a byte of it was served. Landed a slot at
         // a time, a reader that asks for the next slot while it arrives waits a slot's time, never the range's.
+        // A STEPPED link, not a timed one: the sequential ranges hand out bytes only against credits, and the feeder grants
+        // exactly the slot the reader is blocked on (the ring publishes `Want` before it waits) and nothing ahead of it.
+        // So every read below returns while the rest of its range is still on the far side of the link — the landing is
+        // proven by construction, not by a delay-vs-bound ratio the scheduler can break. The default 8 s bound is only a
+        // hang guard; the tail probe the open queues (past `SteppedBelow`) flows freely — it is not the range under test.
         var (plain, cipher) = Big.Value;
-        var cdn = new FakeCdn(cipher) { ThrottleBytes = 4 * 1024, ThrottleDelayMs = 8 };   // a slot per ≥ 128 ms, a range per ≥ 1 s
+        var cdn = new FakeCdn(cipher) { SteppedBelow = 2L * Audio.Fetcher.MaxRangeBytes };
         using var fetcher = new Audio.Fetcher();
-        using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 800);
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        using var stop = new CancellationTokenSource();
+        Thread feeder = FeedTheSlotTheReaderWants(body, cdn, stop.Token);
         body.Start();
 
         const int span = 700_000;
-        byte[] got = Read(body, 0, span);
+        var got = new byte[span];
+        int at = 0;
+        long overServed = 0;                                             // link bytes past the slot a read was served from
+        try
+        {
+            while (at < span)
+            {
+                int n = body.ReadAt(at, got.AsSpan(at), body.Epoch);
+                Assert.True(n > 0, $"read at {at} answered {n}");
+                long slotEnd = Audio.Ring.AlignDown(Skip + at) + Audio.Ring.SlotBytes;
+                overServed = Math.Max(overServed, cdn.SteppedServed - slotEnd);
+                at += n;
+            }
+        }
+        finally
+        {
+            stop.Cancel();
+            feeder.Join();
+        }
 
         Assert.Equal(Expected(plain, 0, span), got);
+        (long Start, long End) first = cdn.Ranges.First(r => r.Start == 0);
+        Assert.True(first.End - first.Start > Audio.Ring.SlotBytes, $"the first range [{first.Start}, {first.End}) is one slot: nothing to prove");
+        Assert.True(overServed <= 0, $"a read waited for {overServed} bytes past its own slot: the range landed whole, not slot by slot");
         Assert.Equal(0, body.Ring.Starves);
         Assert.Equal(0L, body.StallMs);                                  // bytes flowed at the last read: no stall to report
-        output.WriteLine($"throttled read of {span} bytes: {body.Ring.Waits} waits, 0 starves, {fetcher.Requests} ranges");
+        output.WriteLine($"stepped read of {span} bytes: {body.Ring.Waits} waits, 0 starves, {fetcher.Requests} ranges, first range {first.End - first.Start} bytes");
+    }
+
+    /// <summary>The reader's side of a stepped link (<see cref="FakeCdn.SteppedBelow"/>): whenever the ring is blocked on a
+    /// slot not yet granted, grant exactly that slot. Stepped bytes cross the link in file order from 0 (the sequential
+    /// fill), so the granted edge is also the next slot to grant. A dedicated thread, not a pool task: the feeder must not
+    /// queue behind the very pool work it is feeding.</summary>
+    static Thread FeedTheSlotTheReaderWants(Audio.Body body, FakeCdn cdn, CancellationToken stop)
+    {
+        var feeder = new Thread(() =>
+        {
+            long granted = 0;
+            while (!stop.IsCancellationRequested)
+            {
+                long want = body.Ring.Want;
+                if (want >= 0 && Audio.Ring.AlignDown(want) >= granted)
+                {
+                    cdn.Step(Audio.Ring.SlotBytes);
+                    granted += Audio.Ring.SlotBytes;
+                }
+                else Thread.Sleep(1);
+            }
+        }) { IsBackground = true, Name = "stepped-link feeder" };
+        feeder.Start();
+        return feeder;
     }
 
     [Fact]
     public void A_starve_is_never_the_end_the_stall_is_counted_and_bytes_clear_it()
     {
+        // Structural at every step. The HELD link (cdn.Hold) is what starves the two reads: nothing can land while it is
+        // held, whatever the scheduler does. The stall clock is Environment.TickCount64 across two whole bounded waits (the
+        // ring's own deadline, ≥ 2 × 200 ms), which load can only lengthen. After the release the bytes are read once the
+        // fetcher has LANDED them (Outstanding back to 0): what clears the stall is bytes arriving — not one read racing
+        // the fetch thread inside its 200 ms bound (on a busy thread pool that race lost: the read starved a third time).
         var (plain, cipher) = Big.Value;
         var cdn = new FakeCdn(cipher);
         using var fetcher = new Audio.Fetcher();
@@ -981,10 +1074,11 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         Assert.True(body.StallMs >= 300, $"stall {body.StallMs} ms after two bounded 200 ms waits");
 
         cdn.Release();
+        WaitIdle(fetcher);                                                        // the held range has landed
+        Assert.True(body.StallMs > 0, "no read has run since the stall began: it is still counted");
         Assert.Equal(dst.Length, body.ReadAt(0, dst, body.Epoch));
         Assert.Equal(Expected(plain, 0, dst.Length), dst);
         Assert.Equal(0L, body.StallMs);
-        WaitIdle(fetcher);
     }
 
     [Theory]
@@ -1281,11 +1375,14 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
             var cdn = new FakeCdn(Big.Value.Cipher);
             using var fetcher = new Audio.Fetcher();
             Audio.OpenSeams seams = Seams(cdn, fetcher, new OpenCounters()) with { ExternalLength = (_, _) => 0 };
+            cdn.Hold();                                  // the open's own `Start` puts the first range on the wire at once:
+            // held, it cannot name the length before the "opens unnamed" assertion reads it.
             Audio.Opened opened = Audio.OpenBody(Audio.ExternalChoice(url, 60_000), seams, CancellationToken.None);
             using var stream = opened.Stream;
             Audio.Body body = opened.Body!;
             Assert.True(opened.Ok);
             Assert.False(body.LengthKnown);
+            cdn.Release();
             Read(body, 0, 4_096);
             WaitIdle(fetcher);
             Assert.True(body.LengthKnown);
@@ -1359,6 +1456,7 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         readonly Lock _gate = new();
         readonly List<(long Start, long End)> _ranges = [];
         readonly List<string> _urls = [];
+        readonly List<(long Start, long End, string Url, long Tick)> _opens = [];
         volatile TaskCompletionSource _open = Done();
         volatile TaskCompletionSource _read = Done();
         int _live, _peak, _cancels, _readCancels;
@@ -1375,9 +1473,17 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         public string? RefusePrefix { get; init; }
         /// <summary>A host that ignores `Range`: every reply is a 200 of the whole file from byte 0.</summary>
         public bool IgnoreRange { get; init; }
-        /// <summary>A slow link: each body read hands out at most this many bytes, after <see cref="ThrottleDelayMs"/>.</summary>
-        public int ThrottleBytes { get; init; }
-        public int ThrottleDelayMs { get; init; }
+        /// <summary>A STEPPED link for every reply whose range starts below this offset (0 = none): each body read hands
+        /// out at most <see cref="StepBytes"/>, and only against a credit <see cref="Step"/> granted — nothing crosses the
+        /// link on its own, so a test decides exactly which bytes have arrived.</summary>
+        public long SteppedBelow { get; init; }
+        public const int StepBytes = 4 * 1024;
+        /// <summary>Grant the stepped replies <paramref name="bytes"/> more (a multiple of <see cref="StepBytes"/>).</summary>
+        public void Step(int bytes) => _steps.Release(bytes / StepBytes);
+        /// <summary>Bytes the stepped replies have handed out so far.</summary>
+        public long SteppedServed => Interlocked.Read(ref _steppedServed);
+        readonly SemaphoreSlim _steps = new(0);
+        long _steppedServed;
         /// <summary>Every open THROWS (a broken source, not a wire fault) until cleared.</summary>
         public bool ThrowOnOpen { get; set; }
         /// <summary>A mirror whose url starts with this hands out <see cref="FaultAfterBytes"/> then throws
@@ -1386,6 +1492,8 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         public int FaultAfterBytes { get; init; }
 
         public (long Start, long End)[] Ranges { get { lock (_gate) return [.. _ranges]; } }
+        /// <summary>Every open in order, stamped with <c>Environment.TickCount64</c> — the clock the ring's backoff runs on.</summary>
+        public (long Start, long End, string Url, long Tick)[] Opens { get { lock (_gate) return [.. _opens]; } }
         public string[] Urls { get { lock (_gate) return [.. _urls]; } }
         public int Count { get { lock (_gate) return _ranges.Count; } }
         public int Live => Volatile.Read(ref _live);
@@ -1409,6 +1517,7 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
             {
                 _ranges.Add((start, end + 1));
                 _urls.Add(url);
+                _opens.Add((start, end + 1, url, Environment.TickCount64));
                 if (live > _peak) _peak = live;
             }
             Task gate = _open.Task;
@@ -1440,12 +1549,13 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
             if (Refuse || start >= cipher.Length) return null;
             if (RefusePrefix is { } prefix && url.StartsWith(prefix, StringComparison.Ordinal)) return null;
             int faultAt = FaultPrefix is { } flaky && url.StartsWith(flaky, StringComparison.Ordinal) ? FaultAfterBytes : -1;
+            bool stepped = start < SteppedBelow;
             return IgnoreRange
-                ? new Reply(cipher, 0, cipher.Length, this, faultAt)
-                : new Reply(cipher, start, Math.Min(end + 1, cipher.Length), this, faultAt);
+                ? new Reply(cipher, 0, cipher.Length, this, faultAt, stepped)
+                : new Reply(cipher, start, Math.Min(end + 1, cipher.Length), this, faultAt, stepped);
         }
 
-        sealed class Reply(byte[] data, long start, long stop, FakeCdn owner, int faultAt) : Audio.IRangeReply
+        sealed class Reply(byte[] data, long start, long stop, FakeCdn owner, int faultAt, bool stepped) : Audio.IRangeReply
         {
             long _at = start;
             readonly long _from = start;
@@ -1458,24 +1568,29 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
             public ValueTask<int> ReadAsync(Memory<byte> dst, CancellationToken ct)
             {
                 Task gate = owner._read.Task;
-                if (!gate.IsCompleted || owner.ThrottleBytes > 0) return SlowAsync(gate, dst, ct);
+                if (!gate.IsCompleted || stepped) return SlowAsync(gate, dst, ct);
                 return new ValueTask<int>(Copy(dst.Span));
             }
 
             async ValueTask<int> SlowAsync(Task gate, Memory<byte> dst, CancellationToken ct)
             {
-                try { await gate.WaitAsync(ct).ConfigureAwait(false); }
+                try
+                {
+                    await gate.WaitAsync(ct).ConfigureAwait(false);
+                    if (stepped) await owner._steps.WaitAsync(ct).ConfigureAwait(false);   // one StepBytes credit
+                }
                 catch (OperationCanceledException) { Interlocked.Increment(ref owner._readCancels); throw; }   // as
                 // the runtime's `HttpContent` stream does: a cancelled read THROWS, it does not answer 0.
-                if (owner.ThrottleBytes > 0) await Task.Delay(owner.ThrottleDelayMs, ct).ConfigureAwait(false);
-                return Copy(dst.Span);
+                int n = Copy(dst.Span);
+                if (stepped) Interlocked.Add(ref owner._steppedServed, n);
+                return n;
             }
 
             int Copy(Span<byte> dst)
             {
                 int n = (int)Math.Min(dst.Length, stop - _at);
                 if (n <= 0) return 0;
-                if (owner.ThrottleBytes > 0) n = Math.Min(n, owner.ThrottleBytes);
+                if (stepped) n = Math.Min(n, StepBytes);
                 if (faultAt >= 0)
                 {
                     if (_served >= faultAt) throw new IOException("fake: the mirror reset the stream");

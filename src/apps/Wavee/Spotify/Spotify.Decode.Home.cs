@@ -1012,7 +1012,7 @@ public static partial class Spotify
                 {
                     if (i < u.Length && u[i] != (byte)',') continue;
                     var (at, len) = Trimmed(u, start, i);
-                    if (len > 0) { s.CardSeeds.Add() = new TextRef(csv.Offset + at, len); count++; }
+                    if (len > 0) { s.CardSeeds.Add() = csv.Slice(at, len); count++; }
                     start = i + 1;
                 }
                 return count;
@@ -1035,7 +1035,7 @@ public static partial class Spotify
                     int close = IndexOfAscii(u, open, "</a>"u8);
                     if (close < 0) break;
                     var (at, len) = Trimmed(u, open + 1, close);
-                    if (len > 0) { s.CardSeeds.Add() = new TextRef(text.Offset + at, len); count++; }
+                    if (len > 0) { s.CardSeeds.Add() = text.Slice(at, len); count++; }
                     i = close + 4;
                 }
                 if (count > 0) return count;
@@ -1055,7 +1055,7 @@ public static partial class Spotify
                     if (k == end && len > 0) len = DropTrailingConjunction(u.Slice(at, len));
                     if (len > 0 && Encoding.UTF8.GetCharCount(u.Slice(at, len)) <= 64)
                     {
-                        s.CardSeeds.Add() = new TextRef(text.Offset + at, len);
+                        s.CardSeeds.Add() = text.Slice(at, len);
                         count++;
                     }
                     segStart = k + 1;

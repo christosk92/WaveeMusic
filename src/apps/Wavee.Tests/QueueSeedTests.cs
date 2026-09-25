@@ -201,4 +201,63 @@ public class QueueSeedTests
         Queue.SeedSource source = Queue.DecideSeed(state, hasCurrent: true, hasClusterTracks: false, hasContext: true);
         Assert.Equal(Queue.SeedSource.None, source);
     }
+
+    // ── the queue-fix bugs: session wavee-20260923.log sid=2137ef66, seq 109/475/604 ─────────────────────────────────
+    //
+    // Bug (b): SeedQueueFromCluster (Playback.Host.Remote.cs) used to hardcode `hasContext: false`, discarding
+    // `State.MirrorContext` — so a foreign session whose first fold carried no prev/next tracks landed
+    // SeedSource.CurrentOnly (an empty queue, only the card) instead of resolving the richer context. DecideSeed
+    // itself already answers Context correctly for this exact shape (Unknown, a real current row, no cluster rows,
+    // a context available) — this is the case the fix's `hasContext` now actually reaches.
+
+    [Fact]
+    public void A_foreign_fold_with_no_cluster_rows_but_a_mirrored_context_seeds_from_the_context()
+    {
+        Queue.SeedSource source = Queue.DecideSeed(EdgeState.Unknown,
+            hasCurrent: true, hasClusterTracks: false, hasContext: true);
+        Assert.Equal(Queue.SeedSource.Context, source);
+    }
+
+    // Bug (a): ShouldFollowMirror — a foreign mirror that already left Unknown never gets re-bucketed when the
+    // owner advances (MirrorRemote only ever touches Current/CurrentId), so "Next up" keeps starting from the row
+    // that used to be playing. This is the pure gate the fix (SeedQueueFromCluster's post-seed re-bucket) hangs off.
+
+    [Fact]
+    public void A_foreign_mirror_past_Unknown_with_the_row_found_elsewhere_should_follow()
+    {
+        bool should = Queue.ShouldFollowMirror(EdgeState.Complete, isForeign: true, foundIndex: 3, foundBucket: (byte)QueueBucket.NextUp);
+        Assert.True(should);
+    }
+
+    [Fact]
+    public void A_row_already_in_the_NowPlaying_bucket_is_a_no_op()
+    {
+        // The common case: an earlier follow (or a fresh Replace) already put the row where it belongs — re-running
+        // Follow would only cost a version bump for nothing.
+        bool should = Queue.ShouldFollowMirror(EdgeState.Complete, isForeign: true, foundIndex: 1, foundBucket: (byte)QueueBucket.NowPlaying);
+        Assert.False(should);
+    }
+
+    [Fact]
+    public void A_row_not_found_in_the_mirrored_list_has_nothing_to_follow()
+    {
+        bool should = Queue.ShouldFollowMirror(EdgeState.Complete, isForeign: true, foundIndex: -1, foundBucket: 0);
+        Assert.False(should);
+    }
+
+    [Fact]
+    public void A_local_session_is_never_re_followed_through_this_seam()
+    {
+        // A local cursor move already follows through the ordinary transport path (Advance/PutOnDeck); this seam is
+        // for a FOREIGN mirror only.
+        bool should = Queue.ShouldFollowMirror(EdgeState.Complete, isForeign: false, foundIndex: 3, foundBucket: (byte)QueueBucket.NextUp);
+        Assert.False(should);
+    }
+
+    [Fact]
+    public void An_Unknown_queue_is_DecideSeeds_job_not_this_ones()
+    {
+        bool should = Queue.ShouldFollowMirror(EdgeState.Unknown, isForeign: true, foundIndex: 3, foundBucket: (byte)QueueBucket.NextUp);
+        Assert.False(should);
+    }
 }

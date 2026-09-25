@@ -120,11 +120,13 @@ public static partial class Shell
                     Embed.Comp(() => new UpdateToastWatcher()),
                     Embed.Comp(() => new RuntimeToastWatcher()),
                     Setup.SignInDoor(),                               // opens the sign-in surface on request or on a fresh SignInRequired (B5)
-                    // Mount order is load-bearing (ch 28 §9.3.8): the crash prompt (Feedback.Chrome) sets
-                    // ReleaseNotes.CrashNoticeThisLaunch before the after-update plate (ReleaseNotes.AfterUpdateChrome)
-                    // reads it — so the wizard chrome, THEN the report chrome, THEN the after-update chrome.
+                    // Mount order is load-bearing (ch 28 §9.3.8; crash-diagnostics-implementation.md §D "Component
+                    // tree"): the crash prompt (Crash.Chrome) sets ReleaseNotes.CrashNoticeThisLaunch before the
+                    // after-update plate (ReleaseNotes.AfterUpdateChrome) reads it — so the wizard chrome, THEN the
+                    // report chrome, THEN the crash chrome, THEN the after-update chrome.
                     Setup.WizardChrome(),
                     Feedback.Chrome(),
+                    Crash.Chrome(),
                     ReleaseNotes.AfterUpdateChrome(),
                 ],
             };

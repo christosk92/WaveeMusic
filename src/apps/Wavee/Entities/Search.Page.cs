@@ -212,7 +212,7 @@ public readonly partial struct Search
                     ],
                 }) with
                 {
-                    Grow = 1f, MinWidth = 0f, MinHeight = 0f, ScrollKey = "search:" + facetId,
+                    Grow = 1f, MinWidth = 0f, MinHeight = 0f, ScrollKey = UseContext(Shell.PageScrollScope) + "search:" + facetId,
                 };
 
             return new BoxEl

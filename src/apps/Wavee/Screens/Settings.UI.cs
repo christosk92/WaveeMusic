@@ -341,6 +341,7 @@ public static partial class Settings
         "Folder" => Icons.Folder, "FolderOpen" => Icons.FolderOpen, "Tag" => Icons.Tag, "Delete" => Icons.Delete,
         "Attention" => Icons.Attention, "Download" => Icons.Download, "ChromeClose" => Icons.ChromeClose,
         "ChromeMinimize" => Icons.ChromeMinimize, "RevealPassword" => Icons.RevealPassword, "Contact" => Icons.Contact,
+        "Info" => Icons.Info, "StatusWarning" => Icons.StatusWarning, "Camera" => Icons.Camera, "Forward" => Icons.Forward,
         _ => UnmappedGlyph(name),
     };
 
@@ -384,6 +385,10 @@ public static partial class Settings
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Gpu.Title), SectionGlyph(Tab.General, "Graphics"),
             Loc.Get(Strings.Settings.Gpu.Subtitle)));
         kids.Add(Embed.Comp(static () => new GpuPickerCard()));
+
+        kids.Add(SectionHeader(Loc.Get(Strings.Crash.SettingsSection), SectionGlyph(Tab.General, "Privacy & diagnostics"),
+            Loc.Get(Strings.Crash.SettingsSectionSub)));
+        kids.Add(Embed.Comp(static () => new Crash.PrivacyRows()));
 
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Diag.Title), SectionGlyph(Tab.General, "Developer"),
             Loc.Get(Strings.Settings.Diag.Subtitle)));
@@ -475,7 +480,10 @@ public static partial class Settings
     }
 
     /// <summary>Developer: the app's ONE developer switch, the FPS overlay (present but greyed while developer mode is
-    /// off — never hidden), the dealer archive, and "Simulate an update" (composed away while developer mode is off).</summary>
+    /// off — never hidden), the realtime capture (docs/plans/wavee/realtime-capture-implementation.md — the persisted
+    /// key/subtitle string are `dealerArchive`/`dealerArchiveSub` verbatim, CLAUDE.md's "no legacy renumbering"; only
+    /// what it now switches on and its copy changed) plus its two doors (open the folder / open the in-app viewer), and
+    /// "Simulate an update" (composed away while developer mode is off).</summary>
     static void AddDeveloperRows(List<Element> kids)
     {
         bool dev = Platform.Settings.Get(Platform.Keys.DeveloperMode);
@@ -484,7 +492,16 @@ public static partial class Settings
         kids.Add(Row(Loc.Get(Strings.Settings.Diag.FpsOverlay), Loc.Get(Strings.Settings.Diag.FpsOverlaySub),
             Toggle(Platform.Keys.FpsOverlay, isEnabled: dev), RowGlyph(Tab.General, "fpsOverlay"), isEnabled: dev));
         kids.Add(Row(Loc.Get(Strings.Settings.Diag.DealerArchive), Loc.Get(Strings.Settings.Diag.DealerArchiveSub),
-            Toggle(Platform.Keys.DealerArchiveEnabled), RowGlyph(Tab.General, "dealerArchive")));
+            Toggle(Platform.Keys.DealerArchiveEnabled, afterWrite: static _ => RealtimeCaptureHost.OnSettingsChanged()),
+            RowGlyph(Tab.General, "dealerArchive")));
+        kids.Add(Row(Loc.Get(Strings.Settings.Diag.OpenCaptureFolder), Loc.Get(Strings.Settings.Diag.OpenCaptureFolderSub),
+            Button.Standard(Loc.Get(Strings.Settings.Diag.OpenCaptureFolderButton),
+                static () => Diagnostics.OpenFolder(Path.Combine(Platform.LogFolder, "capture"))),
+            RowGlyph(Tab.General, "openCaptureFolder")));
+        kids.Add(Row(Loc.Get(Strings.Settings.Diag.OpenCaptureViewer), Loc.Get(Strings.Settings.Diag.OpenCaptureViewerSub),
+            Button.Standard(Loc.Get(Strings.Settings.Diag.OpenCaptureViewerButton),
+                static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.CaptureDiagnostics))),
+            RowGlyph(Tab.General, "openCaptureViewer")));
         if (RowVisible(Tab.General, "simulateUpdate", dev))
             kids.Add(Row(Loc.Get(Strings.Settings.Diag.SimulateUpdate), Loc.Get(Strings.Settings.Diag.SimulateUpdateSub),
                 Button.Standard(Loc.Get(Strings.Settings.Diag.SimulateUpdateButton), static () => Update.Host.SimulateUpdate()),
@@ -743,8 +760,11 @@ public static partial class Settings
 
     static Element LogsTab()
     {
+        // crash-diagnostics-implementation.md §D/§F "E · In-app UI": the Reports list sits under the log viewer,
+        // taking only its own natural height (no Grow) so the viewer keeps the rest of the tab's vertical space.
+        Element reports = Embed.Comp(static () => new Crash.ReportsList());
         if (LogsPanelBody is { } body)
-            return new BoxEl { Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Children = [body()] };
+            return new BoxEl { Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Gap = Spacing.M, Children = [body(), reports] };
         return new BoxEl
         {
             Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,

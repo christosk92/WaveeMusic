@@ -145,7 +145,8 @@ public static partial class Sidebar
                                       SidebarPlanBuffers buffers)
         => SidebarRowPlanner.Build(layout, in input, buffers);
 
-    /// <summary>The 56-DIP rail's own plan — the same document, budgeted down to tiles.</summary>
+    /// <summary>The 56-DIP rail's own plan — the same document, projected down to tiles (uncapped; the rail is
+    /// virtualized, so it tiles every entry the pane would list).</summary>
     public static SidebarRowPlan PlanRail(SidebarCustomLayout layout, in SidebarProjectionInput input,
                                           SidebarPlanBuffers buffers)
         => SidebarRowPlanner.BuildRail(layout, in input, buffers);
@@ -809,6 +810,96 @@ public static class SidebarRowExtents
             SidebarEmptyBehavior.ActionCard => SidebarRowGeometry.HeightFor(section.Opts),
             _ => SidebarRowGeometry.EmptyHintHeight,
         };
+    }
+}
+
+/// <summary>What rail item <c>index</c> is, in the rail's ONE virtualized list — the head chrome, a plan row, or the
+/// footer chrome. <see cref="SidebarRailItems.None"/> is a transient out-of-range answer, never a thrown exception
+/// (the count signal lands one layout effect after the plan, same discipline as every other rail/pane read).</summary>
+public enum SidebarRailItemKind : byte { Head, Row, Footer, None }
+
+/// <summary>The rail's ONE scroller now carries head chrome, plan rows AND footer chrome as ONE list (the owner
+/// reported the split-frame version back: pinning head/footer OUTSIDE the scroller left the virtualized viewport
+/// between them showing ~2 tiles on a normal window — the OLD unvirtualized rail scrolled everything as one surface,
+/// and tiles need the whole height back). This is the ONE pure index map every rail consumer (the layout's extent
+/// function, the slot's content dispatch, the row-count signal) shares, so they cannot independently disagree about
+/// which index means what.</summary>
+public static class SidebarRailItems
+{
+    /// <summary>The full item count: the optional head item, every plan row, the optional footer item.</summary>
+    public static int Count(bool hasHead, bool hasFooter, int rowCount)
+        => (hasHead ? 1 : 0) + rowCount + (hasFooter ? 1 : 0);
+
+    /// <summary>Item <paramref name="index"/>'s kind, and — for a <see cref="SidebarRailItemKind.Row"/> — the index
+    /// into <c>RailPlan.Rows</c> it addresses (-1 for Head/Footer/None). Head is always item 0 when present; footer
+    /// is always the LAST item when present; everything between is rows, in plan order, unshifted.</summary>
+    public static (SidebarRailItemKind Kind, int RowIndex) Map(int index, bool hasHead, bool hasFooter, int rowCount)
+    {
+        if (index < 0) return (SidebarRailItemKind.None, -1);
+        int i = index;
+        if (hasHead)
+        {
+            if (i == 0) return (SidebarRailItemKind.Head, -1);
+            i--;
+        }
+        if (i < rowCount) return (SidebarRailItemKind.Row, i);
+        i -= rowCount;
+        if (hasFooter && i == 0) return (SidebarRailItemKind.Footer, -1);
+        return (SidebarRailItemKind.None, -1);
+    }
+}
+
+/// <summary>The 56-DIP rail's row geometry — PURE and directly testable (no owner, no component, no measurement),
+/// mirroring how <see cref="SidebarRowExtents"/> serves the pane's own variable-extent layout. Detail hero + full
+/// rail plan, Part 2: the rail is now a virtualized list over the SAME uncapped rail plan the pane's own list
+/// renders (`Shell/Sidebar.UI.Rail.cs`'s <c>Rail</c>), so its layout needs an extent function too.</summary>
+public static class SidebarRailExtents
+{
+    /// <summary>A tile ROW's extent: the rail's 40-DIP tile (`Rail.Box`) plus the 6-DIP gap the old, unvirtualized
+    /// column's `Gap` used to add after every child. The slot wraps its tile in a box of exactly this height, so the
+    /// layout's seed and its real measurement always agree — no post-realize correction pass for the common row.</summary>
+    public const float Pitch = 46f;
+
+    /// <summary>A rule ROW's extent: the rail's divider own height (1) plus its vertical margin (4 + 4). The divider
+    /// is drawn RAW (no wrapper), so this is also exactly what the slot measures.</summary>
+    public const float DividerExtent = 9f;
+
+    /// <summary>The head item's SEED: two tiles' worth plus a rule (the V3 nav band's rough shape) — MEASURED, not
+    /// exact, corrected on realize like every other analytic guess in this ladder.</summary>
+    public const float HeadEstimate = 2f * Pitch + DividerExtent;
+
+    /// <summary>The footer item's SEED (a rule + the mode's footer content + a rule + the layout-menu tile, rough
+    /// shape) — MEASURED, corrected on realize.</summary>
+    public const float FooterEstimate = 230f;
+
+    /// <summary>The rail's own top inset (the old unvirtualized column's <c>Padding(0,8,0,12)</c>'s top term) —
+    /// carried by whichever item lands FIRST in the ONE list: the head when the mode supplies one, else the first
+    /// plan row.</summary>
+    public const float TopPad = 8f;
+
+    /// <summary>The rail's own bottom inset — carried by whichever item lands LAST: the footer when the mode
+    /// supplies one (or the layout menu), else the last plan row.</summary>
+    public const float BottomPad = 12f;
+
+    /// <summary>The rail layout's analytic seed for item <paramref name="index"/> in the rail's ONE list (head, rows,
+    /// footer — <see cref="SidebarRailItems.Map"/>): <see cref="HeadEstimate"/>/<see cref="FooterEstimate"/> for the
+    /// chrome items; <see cref="Pitch"/>/<see cref="DividerExtent"/> for a plan row, plus <see cref="TopPad"/>/
+    /// <see cref="BottomPad"/> on the edge row when there is no head/footer to carry it instead — folded in here so
+    /// the seed and the row slot's own rendered height (`Rail.RailSlot`) always agree exactly, edge row included.
+    /// Out of range answers the common (tile) case rather than throwing.</summary>
+    public static float ExtentOf(IReadOnlyList<SidebarRow> rows, int index, bool hasHead, bool hasFooter)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        var (kind, rowIndex) = SidebarRailItems.Map(index, hasHead, hasFooter, rows.Count);
+        if (kind == SidebarRailItemKind.Head) return HeadEstimate;
+        if (kind == SidebarRailItemKind.Footer) return FooterEstimate;
+        if (kind != SidebarRailItemKind.Row) return Pitch;
+
+        float extent = (uint)rowIndex < (uint)rows.Count && rows[rowIndex].Kind == SidebarRowKind.Divider
+            ? DividerExtent : Pitch;
+        if (!hasHead && rowIndex == 0) extent += TopPad;
+        if (!hasFooter && rowIndex == rows.Count - 1) extent += BottomPad;
+        return extent;
     }
 }
 
@@ -1539,13 +1630,7 @@ public readonly record struct SidebarProjectionInput(
     // ── extension contributions ────────────────────────────────────────────────────────────────────────────────────
     // ONE shared pool holding every Extension section's rows back to back, and the sectionId -> window table over it.
     IReadOnlyList<SidebarLibraryEntry>? ExtensionEntries = null,
-    ISidebarSectionSlices? ExtensionSlices = null,
-    // ── rail options ────────────────────────────────────────────────────────────────────────────────────────────────
-    // How many PlaylistTree tiles the 56-DIP RAIL may draw. 0 = unbounded. The rail is still bounded by RailTileCap,
-    // but a tree is the only UNBOUNDED source in the rail: a 200-playlist rootlist would consume the global 40-tile
-    // budget and silently push every LATER section's tiles out of the rail entirely. A per-tree ceiling keeps document
-    // order from becoming a race for tiles.
-    int RailTreeCap = 0);
+    ISidebarSectionSlices? ExtensionSlices = null);
 
 /// <summary>Caller-owned row/entry storage. Hand the SAME instance to every <c>Build</c> for a given pane and a warm
 /// re-plan reuses its capacity (the 10k-library alloc bound). The returned plan's lists ALIAS these buffers, so a plan
@@ -1563,9 +1648,6 @@ public sealed class SidebarPlanBuffers
 
 public static class SidebarRowPlanner
 {
-    /// <summary>Rail tiles are capped (the rail stays scrollable) — beyond this a rail is noise.</summary>
-    public const int RailTileCap = 40;
-
     /// <summary>The guard on a HAND-AUTHORED item list (StaticLinks / CustomGroup / Pinned overrides). Unreachable in
     /// practice: the layout reducer already caps those at 500 items per section.</summary>
     public const int SectionRowCap = 5000;
@@ -1578,9 +1660,10 @@ public static class SidebarRowPlanner
     /// (still finite) ceiling instead.</para></summary>
     public const int DynamicSectionRowCap = 20_000;
 
-    public const int RailPinnedCap = 8;
+    /// <summary>Recents are a glance, not a list — the ONE intentional rail cap that survives virtualization
+    /// (Detail hero + full rail plan, Part 2). Every other rail section tiles in full, exactly as the pane lists it;
+    /// <see cref="DynamicSectionRowCap"/> is the one finite guard, shared with the pane.</summary>
     public const int RailJumpBackInCap = 4;
-    public const int RailEntityListCap = 20;
 
     const int SkeletonRows = 3;
 
@@ -1606,7 +1689,6 @@ public static class SidebarRowPlanner
         ArgumentNullException.ThrowIfNull(layout);
         var st = Begin(buffers);
         st.ExcludePinned = HasPinnedSection(layout);
-        int tiles = 0;
 
         var sections = layout.Sections;
         for (int i = 0; i < sections.Count; i++)
@@ -1624,7 +1706,7 @@ public static class SidebarRowPlanner
                 st.DividerDepth = 0;
                 continue;
             }
-            RailSection(s, in input, ref st, ref tiles);
+            RailSection(s, in input, ref st);
         }
 
         return new SidebarRowPlan(st.Rows, st.Entries, input.Revision);
@@ -2213,41 +2295,43 @@ public static class SidebarRowPlanner
 
     // ── rail plan ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    static void RailSection(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st, ref int tiles)
+    static void RailSection(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st)
     {
         switch (s.Kind)
         {
             case SidebarSectionKind.Pinned:
-                RailFrom(s, input.Pins, Cap(s, RailPinnedCap), skipHidden: true, ref st, ref tiles);
+                // Cap applies only the section's own MaxItems (SidebarDisplayOptions) — the rail is virtualized, so
+                // every pin tiles unless the user asked for fewer.
+                RailFrom(s, input.Pins, Cap(s, int.MaxValue), skipHidden: true, ref st);
                 break;
 
             case SidebarSectionKind.JumpBackIn:
                 RailFrom(s, s.Opts.Recents == SidebarRecentsSource.Played ? input.Played : input.Visited,
-                    Cap(s, RailJumpBackInCap), skipHidden: false, ref st, ref tiles);
+                    Cap(s, RailJumpBackInCap), skipHidden: false, ref st);
                 break;
 
             case SidebarSectionKind.CollectionShortcuts:
             case SidebarSectionKind.StaticLinks:
-                RailItems(s, in input, ref st, ref tiles);
+                RailItems(s, in input, ref st);
                 break;
 
             case SidebarSectionKind.PlaylistTree:
-                RailTree(s, in input, ref st, ref tiles);
+                RailTree(s, in input, ref st);
                 break;
 
             case SidebarSectionKind.EntityList:
-                RailEntityList(s, in input, ref st, ref tiles);
+                RailEntityList(s, in input, ref st);
                 break;
 
             case SidebarSectionKind.CustomGroup:
-                RailItems(s, in input, ref st, ref tiles);
+                RailItems(s, in input, ref st);
                 var kids = s.ChildList;
                 for (int i = 0; i < kids.Count; i++)
                 {
                     var k = kids[i];
                     if (k.Hidden || !k.Opts.ShowInRail || !SidebarSectionKinds.IsKnown(k.Kind)) continue;
                     if (k.Kind is SidebarSectionKind.Divider or SidebarSectionKind.Header) continue;
-                    RailSection(k, in input, ref st, ref tiles);   // children's tiles, flattened
+                    RailSection(k, in input, ref st);   // children's tiles, flattened
                 }
                 break;
 
@@ -2257,20 +2341,20 @@ public static class SidebarRowPlanner
                 if (items.Count == 0 || items[0].Hidden) break;
                 int idx = Resolve(in input, items[0].Key, ref st);
                 if (idx < 0) break;                                 // placeholder items contribute no tile
-                AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, idx, 0, items[0].Key), ref tiles);
+                AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, idx, 0, items[0].Key));
                 break;
             }
 
             case SidebarSectionKind.Concerts:
                 // One glyph tile navigating to the hub (a feed has no single cover).
-                AddTile(ref st, new SidebarRow(SidebarRowKind.IconRow, s.Id, 0, -1, 0, s.Id), ref tiles);
+                AddTile(ref st, new SidebarRow(SidebarRowKind.IconRow, s.Id, 0, -1, 0, s.Id));
                 break;
 
             case SidebarSectionKind.Extension:
                 // A contribution gets ONE glyph tile in the rail: a 56-DIP strip cannot express a third-party list,
                 // and an unresolved contribution must not be able to fill the rail with prompts either. Tapping it
                 // expands.
-                AddTile(ref st, new SidebarRow(SidebarRowKind.IconRow, s.Id, 0, -1, 0, s.Id), ref tiles);
+                AddTile(ref st, new SidebarRow(SidebarRowKind.IconRow, s.Id, 0, -1, 0, s.Id));
                 break;
 
             // NewReleases: ShowInRail is forced off for this kind — a releases feed has no meaningful single tile.
@@ -2281,7 +2365,7 @@ public static class SidebarRowPlanner
     }
 
     static void RailFrom(SidebarSectionSpec s, IReadOnlyList<SidebarLibraryEntry>? src, int cap, bool skipHidden,
-        ref PlanState st, ref int tiles)
+        ref PlanState st)
     {
         if (src is null) return;
         int n = 0;
@@ -2293,16 +2377,12 @@ public static class SidebarRowPlanner
             // A pinned/Jump-Back-In FOLDER needs the same FolderHeader tile RailTree draws (a glyph opening the
             // rail's flyout) — never EntityRow, whose art/click paths assume a non-folder entry.
             var kind = src[i].IsFolder ? SidebarRowKind.FolderHeader : SidebarRowKind.EntityRow;
-            if (!AddTile(ref st, new SidebarRow(kind, s.Id, 0, idx, 0, src[i].Id), ref tiles))
-            {
-                st.Entries.RemoveAt(idx);   // the cap swallowed the tile — do not leak an orphan entry
-                return;
-            }
+            AddTile(ref st, new SidebarRow(kind, s.Id, 0, idx, 0, src[i].Id));
             n++;
         }
     }
 
-    static void RailItems(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st, ref int tiles)
+    static void RailItems(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st)
     {
         var items = s.ItemList;
         for (int i = 0; i < items.Count; i++)
@@ -2313,8 +2393,7 @@ public static class SidebarRowPlanner
             if (item.Target == SidebarItemTarget.Route)
             {
                 if (IsRouteHiddenByPin(in input, in st, item.Key)) continue;
-                if (!AddTile(ref st, new SidebarRow(SidebarRowKind.IconRow, s.Id, 0, -1, 0, item.Key), ref tiles))
-                    return;
+                AddTile(ref st, new SidebarRow(SidebarRowKind.IconRow, s.Id, 0, -1, 0, item.Key));
                 continue;
             }
             if (item.Target == SidebarItemTarget.Track) continue;   // a track tile in a text-less rail is unreadable
@@ -2326,20 +2405,18 @@ public static class SidebarRowPlanner
                 st.Entries.RemoveAt(idx);
                 continue;
             }
-            if (!AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, idx, 0, item.Key), ref tiles))
-            {
-                st.Entries.RemoveAt(idx);
-                return;
-            }
+            AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, idx, 0, item.Key));
         }
     }
 
-    static void RailTree(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st, ref int tiles)
+    static void RailTree(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st)
     {
         var tree = input.PlaylistTree;
         if (tree is null || tree.Count == 0) return;
-        // The caller's per-tree ceiling (0 = unbounded). See SidebarProjectionInput.RailTreeCap.
-        int cap = input.RailTreeCap > 0 ? Math.Min(input.RailTreeCap, RailTileCap) : RailTileCap;
+        // Every top-level entry tiles: the rail is virtualized (Sidebar.UI.Rail.cs), so a 200-playlist rootlist no
+        // longer races later sections for a shared tile budget — DynamicSectionRowCap, the same finite guard a
+        // projected section gets everywhere else, is the only ceiling.
+        int cap = DynamicSectionRowCap;
         string? search = Search(input);
 
         // A grid (and a search result) has no folder chrome — same flatten-to-entities projection the expanded pane
@@ -2379,10 +2456,7 @@ public static class SidebarRowPlanner
             for (int i = 0; i < count; i++)
             {
                 var entry = st.Entries[start + i];
-                if (AddTile(ref st,
-                    new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, start + i, 0, entry.Id), ref tiles)) continue;
-                st.Entries.RemoveRange(start + i, count - i);
-                return;
+                AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, start + i, 0, entry.Id));
             }
             return;
         }
@@ -2414,22 +2488,20 @@ public static class SidebarRowPlanner
             int idx = st.Entries.Count;
             st.Entries.Add(e);
             var kind = e.Kind == SidebarEntryKind.Folder ? SidebarRowKind.FolderHeader : SidebarRowKind.EntityRow;
-            if (!AddTile(ref st, new SidebarRow(kind, s.Id, 0, idx, 0, e.Id), ref tiles))
-            {
-                st.Entries.RemoveAt(idx);
-                return;
-            }
+            AddTile(ref st, new SidebarRow(kind, s.Id, 0, idx, 0, e.Id));
             drawn++;
         }
     }
 
-    static void RailEntityList(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st, ref int tiles)
+    static void RailEntityList(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st)
     {
         var lib = input.Library;
         if (lib is null) return;
 
         var q = s.Query ?? SidebarEntityQuery.Default;
-        int cap = s.Opts.MaxItems > 0 ? Math.Min(s.Opts.MaxItems, RailEntityListCap) : RailEntityListCap;
+        // The rail is virtualized (Sidebar.UI.Rail.cs), so a library section tiles in full like the pane lists it;
+        // DynamicSectionRowCap stays the one finite guard, exactly as for the pane.
+        int cap = s.Opts.MaxItems > 0 ? s.Opts.MaxItems : DynamicSectionRowCap;
         int start = st.Entries.Count;
 
         for (int i = 0; i < lib.Count; i++)
@@ -2451,9 +2523,8 @@ public static class SidebarRowPlanner
         if (count > cap) { st.Entries.RemoveRange(start + cap, count - cap); count = cap; }
 
         for (int i = 0; i < count; i++)
-            if (!AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, start + i, 0,
-                    st.Entries[start + i].Id), ref tiles))
-                return;
+            AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, start + i, 0,
+                st.Entries[start + i].Id));
     }
 
     // ── shared plumbing ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -2523,13 +2594,9 @@ public static class SidebarRowPlanner
         st.Rows.Add(row);
     }
 
-    static bool AddTile(ref PlanState st, in SidebarRow row, ref int tiles)
-    {
-        if (tiles >= RailTileCap) return false;
-        Add(ref st, row);
-        tiles++;
-        return true;
-    }
+    // The rail is virtualized (Sidebar.UI.Rail.cs), so a tile can no longer be refused for want of room — every
+    // caller still routes through this name (rather than `Add` directly) so a future rail-only rule has one seam.
+    static void AddTile(ref PlanState st, in SidebarRow row) => Add(ref st, row);
 
     static SidebarRow Chrome(SidebarRowKind kind, SidebarSectionSpec s, byte depth)
         => new(kind, s.Id, depth, -1, 0, s.Id);

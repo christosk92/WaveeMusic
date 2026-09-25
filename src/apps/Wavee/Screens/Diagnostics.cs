@@ -350,54 +350,6 @@ public static partial class Diagnostics
         public static void NoteEcho(in EchoTrace t) { LastEcho = t; Version.Value = Version.Peek() + 1; }
     }
 
-    // ══ 5. CRASH REPORTS — the pure half (G-094) ════════════════════════════════════════════════════════════════════
-
-    public static class CrashFiles
-    {
-        public const string Prefix = "crash-report-", Suffix = ".txt", StampFormat = "yyyyMMdd-HHmmss";
-
-        /// <summary>A report's file name for a local instant — a millisecond stamp, so two crashes a second apart never
-        /// overwrite each other.</summary>
-        public static string NameFor(DateTimeOffset local) =>
-            Prefix + local.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture) + Suffix;
-
-        /// <summary>The <c>yyyyMMdd-HHmmss</c> stamp of a report name (an optional -fff tail is ignored); any other shape
-        /// fails rather than being guessed at.</summary>
-        public static bool TryStamp(string fileName, out DateTime stamp)
-        {
-            stamp = default;
-            if (!fileName.StartsWith(Prefix, StringComparison.Ordinal) || !fileName.EndsWith(Suffix, StringComparison.Ordinal)
-                || fileName.Length < Prefix.Length + Suffix.Length + StampFormat.Length) return false;
-            var span = fileName.AsSpan(Prefix.Length, fileName.Length - Prefix.Length - Suffix.Length);
-            if (span.Length != StampFormat.Length && (span.Length != StampFormat.Length + 4 || span[StampFormat.Length] != '-')) return false;
-            return DateTime.TryParseExact(span[..StampFormat.Length], StampFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out stamp);
-        }
-
-        /// <summary>Newest NAME first — the order the card lists and the pruner keeps (a copy or restore resets mtimes).</summary>
-        public static int NewestFirst(string a, string b) => string.CompareOrdinal(Path.GetFileName(b), Path.GetFileName(a));
-
-        /// <summary>Every <c>&lt;module&gt;!&lt;BaseAddress&gt;+0x&lt;hex&gt;</c> offset in a NativeAOT trace, innermost first,
-        /// duplicates kept. Any other frame shape contributes nothing; never throws.</summary>
-        public static List<long> ParseRvas(string? stackTrace)
-        {
-            const string Marker = "!<BaseAddress>+0x";
-            var found = new List<long>();
-            if (string.IsNullOrEmpty(stackTrace)) return found;
-            int at = 0;
-            while ((at = stackTrace.IndexOf(Marker, at, StringComparison.Ordinal)) >= 0)
-            {
-                int start = at + Marker.Length, end = start;
-                while (end < stackTrace.Length && char.IsAsciiHexDigit(stackTrace[end])) end++;
-                at = end;
-                int digits = end - start;
-                if (digits is 0 or > 15) continue;
-                if (long.TryParse(stackTrace.AsSpan(start, digits), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out long rva))
-                    found.Add(rva);
-            }
-            return found;
-        }
-    }
-
     // ══ 6. THE FRAME WATCH'S PURE HALF (G-197) + THE SIDEBAR PANE INVARIANT EDGE (G-183) ═══════════════════════════
 
     /// <summary>The whole-session frame counters behind the `session.frames` line.</summary>

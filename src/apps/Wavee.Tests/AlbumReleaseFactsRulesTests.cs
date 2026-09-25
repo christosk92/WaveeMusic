@@ -1,8 +1,8 @@
 // ── Wavee.Tests/AlbumReleaseFactsRulesTests.cs — "About this release" as data (ch 05 W11, §8 row 1) ────────────────
 //
-// Ported from 0.2.9 `Wavee.Tests/AlbumReleaseFactsRulesTests.cs` (17 facts): the composition is FIXED — Songs, Length
-// and Released are tiles that refine in place, Label is a note, the notes are courtesy then copyright, and `now` is
-// always the injected value. Only the call shape changed (`Album.ReleaseFactsRules.For` over track HANDLES, unix
+// Ported from 0.2.9 `Wavee.Tests/AlbumReleaseFactsRulesTests.cs` (17 facts): the composition is FIXED — Songs and
+// Length stay on the record, Released is the date the panel prints, Label is a note, the notes are courtesy then
+// copyright, and `now` is always the injected value. Only the call shape changed (`Album.ReleaseFactsRules.For` over track HANDLES, unix
 // seconds) — EXCEPT the loc drift ch 05 §6 names (05-album.md:994-1009): 0.2.9 pinned "2 of 3" built by concatenation
 // and a hard-coded English "47 min"; 0.3 carries PARTS and formats once through the loc runtime, so those facts assert
 // the parts and compare the text against the same `Strings.*` / `Track.Format` call the view makes — never an English
@@ -74,38 +74,6 @@ public class AlbumReleaseFactsRulesTests
         var facts = For([]);
         Assert.Null(Rules.SongsText(facts));
         Assert.False(facts.HasSongs);
-    }
-
-    // ── Songs caption (defect C: the Songs tile reads the singular on a 1-track album) ──────────────────────────────
-    //
-    // `SongsCaption` lives on `Album` in Entities/Album.Page.cs, not on `ReleaseFactsRules` itself — that class
-    // (Entities/Album.cs) isn't declared `partial`, so a second file cannot add a member to it.
-
-    [Fact]
-    public void SongsCaption_Singular_WhenExactlyOneTrack()
-    {
-        TestScope.Fresh();
-        var facts = For([Released(180_000)]);
-        Assert.Equal(1, facts.SongsTotal);
-        Assert.Equal(Loc.Get(Strings.Detail.FactSong), Wavee.Album.SongsCaption(facts));
-    }
-
-    [Fact]
-    public void SongsCaption_Plural_WhenMoreThanOneTrack()
-    {
-        TestScope.Fresh();
-        var facts = For([Released(180_000), Released(200_000)]);
-        Assert.Equal(2, facts.SongsTotal);
-        Assert.Equal(Loc.Get(Strings.Detail.FactSongs), Wavee.Album.SongsCaption(facts));
-    }
-
-    [Fact]
-    public void SongsCaption_Plural_WhenNoTracks()
-    {
-        TestScope.Fresh();
-        var facts = For([]);
-        Assert.Equal(0, facts.SongsTotal);
-        Assert.Equal(Loc.Get(Strings.Detail.FactSongs), Wavee.Album.SongsCaption(facts));
     }
 
     // ── Length ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -317,9 +285,8 @@ public class AlbumReleaseFactsRulesTests
     }
 
     // ── decode integration (G-231 follow-up): the reordered `tracksV2`-before-`artists` document, through the real
-    // facts pipeline — AlbumDecodeTests asserts the EDGES this document lands; this asserts what the "About this
-    // release" panel actually PAINTS off them: Songs "1" and a length from the one real track, never "3 Songs" with
-    // two billed artists reinterpreted as empty ghost tracks. ──────────────────────────────────────────────────────
+    // facts pipeline — AlbumDecodeTests asserts the EDGES this document lands; this asserts the facts the panel reads
+    // off them: one real track, never three ghost rows from two billed artists. ────────────────────────────────────
 
     const string OneTrackReorderedJson = """
         { "data": { "albumUnion": {
@@ -347,6 +314,5 @@ public class AlbumReleaseFactsRulesTests
         Assert.Equal(1, facts.SongsTotal);
         Assert.Equal("1", Rules.SongsText(facts));
         Assert.Equal(Track.Format.TotalTime(200_000), Rules.LengthText(facts));
-        Assert.Equal(Loc.Get(Strings.Detail.FactSong), Wavee.Album.SongsCaption(facts));
     }
 }

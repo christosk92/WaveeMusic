@@ -30,6 +30,7 @@ using System.Threading.Tasks;
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
+using FluentGpu.Controls.Media;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
@@ -78,8 +79,10 @@ public static partial class Shell
     }
 
     /// <summary>The transport's seek rail as a reusable surface — the immersive stage's identity block mounts the same
-    /// one (ch 21).</summary>
-    public static Element SeekBar() => Embed.Comp(static () => new BarSeekRail());
+    /// one (ch 21). <paramref name="feed"/> is the on-media transport's <c>PlayerChromeFeed</c> (null for the player-bar
+    /// instance, which has no idle machine to report to): a scrub is chrome activity, so the rail that drives it must be
+    /// able to say so.</summary>
+    public static Element SeekBar(PlayerChromeFeed? feed = null) => Embed.Comp(() => new BarSeekRail(feed));
 
     /// <summary>A transport time label. <paramref name="remaining"/> picks the right slot (−remaining ⇄ duration, or
     /// the live mark while live); <paramref name="ink"/> is the stage's theme-invariant on-media override (null = the
@@ -395,7 +398,7 @@ public static partial class Shell
             // The heart's SLOT is the tier's; an idle bar shows no face in it (and the face cannot be hit or focused).
             var saveIcon = faceIsEpisode ? ActionIcons.Resolve(ActionIcons.Save, liked) : ActionIcons.Resolve(ActionIcons.Heart, liked);
             var saveButton = BarButton(saveIcon.Glyph ?? Icons.Add, static () => BarToggleLike(), likeEnabled, liked,
-                box, glyph, onRealized: h => likeNode.Value = h) with { BlocksDragArm = true };
+                box, glyph, onRealized: h => likeNode.Value = h, platedWhenLatched: false) with { BlocksDragArm = true };
             Element saveFace = faceIsEpisode ? ToolTip.Wrap(saveButton,
                 Loc.Get(liked ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save)) : saveButton;
             var likeSlot = Slot("like", box, box, likeLit, saveFace);
@@ -423,7 +426,7 @@ public static partial class Shell
                 transportKids.Add(BarSeekStepButton(-10_000, box) with { Key = "seek-back-10" });
             if (ownsTransport)
                 transportKids.Add(BarPrimaryButton(
-                        facts.State == PlayerState.Error ? Icons.Play : pauseGlyph ? Icons.Pause : Icons.Play,
+                        facts.State == PlayerState.Error ? PlaySolid : pauseGlyph ? PauseSolid : PlaySolid,
                         facts.Primary, L.PrimaryBox, L.PrimaryGlyph)
                     with { Key = "primary", Animate = BarMoveMotion });
             if (ownsTransport && L.ShowPrevNext)
@@ -1050,14 +1053,19 @@ public static partial class Shell
 
     /// <summary>A transport TOGGLE / command glyph. The on-state is WinUI's AppBarToggleButton checked visual — an
     /// accent glyph over <c>FillSubtleSecondary</c>, cross-faded over 83 ms — and the resting off-state is completely
-    /// unpainted (a row of resting plates would re-plate the dock). Flat 32/16 at every tier.</summary>
+    /// unpainted (a row of resting plates would re-plate the dock). Flat 32/16 at every tier.
+    /// <para><paramref name="platedWhenLatched"/> false is the HEART: its saved state is already said twice — the glyph
+    /// swaps to the filled heart and takes the accent — so a checked plate behind it is a third, boxy signal next to the
+    /// title. It keeps the accent ink and stays unpainted, latched or not.</para></summary>
     static BoxEl BarButton(string glyphText, Action onClick, bool enabled, bool latched, float box, float glyphSize,
-        Action<NodeHandle>? onRealized = null, string? font = null, float boxHeight = float.NaN)
+        Action<NodeHandle>? onRealized = null, string? font = null, float boxHeight = float.NaN,
+        bool platedWhenLatched = true)
     {
         ColorF ink = !enabled ? Tok.TextDisabled : latched ? Tok.AccentDefault : Tok.TextSecondary;
         ColorF inkHover = !enabled ? Tok.TextDisabled : latched ? Tok.AccentDefault : Tok.TextPrimary;
-        ColorF plate = latched && enabled ? Tok.FillSubtleSecondary : ColorF.Transparent;
-        ColorF plateHover = latched && enabled ? Tok.FillSubtleTertiary : ColorF.Transparent;
+        bool plated = latched && enabled && platedWhenLatched;
+        ColorF plate = plated ? Tok.FillSubtleSecondary : ColorF.Transparent;
+        ColorF plateHover = plated ? Tok.FillSubtleTertiary : ColorF.Transparent;
         return new BoxEl
         {
             Width = box, Height = float.IsNaN(boxHeight) ? box : boxHeight,
@@ -1095,11 +1103,20 @@ public static partial class Shell
     static readonly LayoutTransition BarFaceMotion = new(
         TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut), SizeMode.Auto);
 
+    /// <summary>Segoe Fluent Icons' SOLID transport pair (PlaySolid / PauseSolid). The primary sits on a filled accent
+    /// disc, and the outline pair (<c>Icons.Play</c> / <c>Icons.Pause</c>) there reads as a thin dark wireframe on a
+    /// bright plate; on a filled plate the glyph has to be a filled shape too.</summary>
+    const string PlaySolid = "", PauseSolid = "";
+
     /// <summary>The primary play/pause: a filled Fluent/WinUI transport circle (same verb as Stage.Play). Disabled, the
-    /// plate falls back to a subtle rest and the glyph to disabled ink.</summary>
+    /// plate falls back to a subtle rest and the glyph to disabled ink. The glyph is drawn at 0.8× the tier's glyph size
+    /// — a solid shape carries more weight than the outline the size was tuned for — and the play triangle is nudged
+    /// right by a twelfth of its size, its optical centre (the pause bars are symmetric and stay put).</summary>
     static BoxEl BarPrimaryButton(string glyphText, PrimaryVerb verb, float box, float glyphSize)
     {
         bool enabled = verb != PrimaryVerb.None;
+        float solid = MathF.Round(glyphSize * 0.8f);
+        float nudge = glyphText == PlaySolid ? MathF.Round(solid / 12f) : 0f;
         return new BoxEl
         {
             Width = box, Height = box, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
@@ -1116,8 +1133,9 @@ public static partial class Shell
             [
                 new TextEl(glyphText)
                 {
-                    Size = glyphSize, FontFamily = FluentGpu.Dsl.Theme.IconFont,
+                    Size = solid, FontFamily = FluentGpu.Dsl.Theme.IconFont,
                     Color = enabled ? Tok.TextOnAccentPrimary : Tok.TextDisabled,
+                    Margin = new Edges4(nudge, 0f, 0f, 0f),
                 },
             ],
         };
@@ -1451,6 +1469,7 @@ public static partial class Shell
         const float HitHeight = 32f;         // WinUI SliderHorizontalHeight
         const float RingDiameter = 22f;      // Slider.DefaultStyle.ThumbRingDiameter
 
+        readonly PlayerChromeFeed? _chromeFeed;
         readonly Signal<bool> _scrubbing = new(false);
         readonly FloatSignal _scrubFrac = new(0f);
         readonly FloatSignal _displayFrac = new(0f);
@@ -1467,8 +1486,9 @@ public static partial class Shell
         readonly Action _onExit;
         readonly Action<RectF> _onBounds;
 
-        public BarSeekRail()
+        public BarSeekRail(PlayerChromeFeed? chromeFeed = null)
         {
+            _chromeFeed = chromeFeed;
             _fillBind = Prop.Of(() => Affine2D.Scale(MathF.Max(Math.Clamp(_displayFrac.Value, 0f, 1f), 1e-4f), 1f));
             _thumbBind = Prop.Of(() => Affine2D.Translation(SeekRail.ThumbX(_railPx.Value, _displayFrac.Value, RingDiameter), 0f));
             _recompute = Recompute;
@@ -1637,6 +1657,7 @@ public static partial class Shell
         {
             if (!EnabledNow()) return;
             _scrubbing.Value = true;
+            _chromeFeed?.SetScrubbing(true);
             _scrubFrac.Value = SeekRail.FractionAt(local.X, _railPx.Peek());   // jump to the press point
             Recompute();
         }
@@ -1660,12 +1681,14 @@ public static partial class Shell
             Playback.SeekTo((int)Math.Clamp(target, 0L, int.MaxValue));
             _committedAtMs = Math.Max(1L, Playback.FrameNowMs());
             _scrubbing.Value = false;
+            _chromeFeed?.SetScrubbing(false);
             Recompute();
         }
 
         void OnCancel()
         {
             _scrubbing.Value = false;
+            _chromeFeed?.SetScrubbing(false);
             _committedAtMs = 0L;
             Recompute();
         }

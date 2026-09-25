@@ -116,7 +116,7 @@ public readonly partial struct User
             if (!string.Equals(_routeKey, p.RouteKey, StringComparison.Ordinal))
             {
                 _routeKey = p.RouteKey;
-                _chipScrollKey = "contentfilter:" + p.RouteKey;
+                _chipScrollKey = UseContext(Shell.PageScrollScope) + "contentfilter:" + p.RouteKey;
             }
 
             UseEffect(_demandModel, DepKey.From(_me.Slot, (int)scopeEpoch));   // once per account per scope

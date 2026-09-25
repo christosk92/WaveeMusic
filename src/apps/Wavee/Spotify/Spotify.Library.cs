@@ -72,7 +72,7 @@ public static partial class Spotify
 
         static readonly Action s_flush = static () => { s_flushPosted = false; s_runtime?.Flush(); };
         static readonly Action s_syncNow = SyncNow;
-        static readonly Action s_pumpFetch = Fetch.Pump;
+        static readonly Action s_pumpFetch = static () => Fetch.Pump(PumpVia.External);   // the Online transition's pump (fetch.send via=External)
         static bool s_wasOnline;
         static readonly Action s_afterPublish = AfterPublish;
         static readonly Action s_flushPushes = FlushPushes;

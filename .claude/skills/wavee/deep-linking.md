@@ -15,6 +15,7 @@ Source: `src/apps/Wavee/App/DeepLink.cs`. Boot wiring: `src/apps/Wavee/Program.c
 | `wavee://play?link=<http(s)-url>` | `DeepLinkKind.Play` | `Link` — the playback-module intake (YouTube / Twitch / radio), same router as Play ▸ Link… |
 | `wavee://resume` | `DeepLinkKind.Resume` | (none) |
 | `wavee://pause` | `DeepLinkKind.Pause` | (none) |
+| `wavee://diag?cmd=<verb>` | `DeepLinkKind.Diag` | `Arg` = the verb (`bundle` / `pixel` / `scroll` / `vps` / `probe`) — developer-only; never wakes the window |
 | `spotify:` album / playlist / artist / show | `DeepLinkKind.Open` | translated to the shell's route names (`album` / `pl` / `artist` / `show`) |
 | `spotify:track:<id>` | `DeepLinkKind.Play` | `Context` = the track uri |
 

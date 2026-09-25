@@ -118,7 +118,16 @@ public static partial class Spotify
         const int Workers = 4;
         const int QueueDepth = 256;
 
-        static readonly BlockingCollection<Action> Work = new(QueueDepth);
+        static readonly BlockingCollection<(Action Work, long Cause)> Work = new(QueueDepth);
+
+        /// <summary>The capture cause of the api work item running on THIS worker (realtime-capture §2.2): captured from
+        /// the poster when the item is queued (<see cref="Run"/>), restored around the item here, and stamped onto every
+        /// request the item sends (<see cref="Wire.CauseIdOption"/>). A worker is one item at a time, so the slot is exact;
+        /// 0 = no cause (capture off, or work nobody clicked for).</summary>
+        [ThreadStatic] static long t_workerCause;
+
+        /// <summary>The cause a new request or api post inherits: the UI thread's ambient cause, or the running api item's.</summary>
+        static long CurrentCause() => Capture.AmbientUiCauseId != 0 ? Capture.AmbientUiCauseId : t_workerCause;
         static readonly SpotifyFetchProvider Transport = new();
         static int s_booted;
         static int s_dropped;
@@ -157,7 +166,7 @@ public static partial class Spotify
         public static bool Run(Action work)
         {
             if (Volatile.Read(ref s_booted) == 0) Boot();
-            if (Work.TryAdd(work)) return true;
+            if (Work.TryAdd((work, Capture.Enabled ? CurrentCause() : 0))) return true;
             Interlocked.Increment(ref s_dropped);
             Log.Warn("spotify", "api queue full (" + QueueDepth + ") — request refused");
             return false;
@@ -180,10 +189,12 @@ public static partial class Spotify
 
         static void WorkerLoop(int index)
         {
-            foreach (Action work in Work.GetConsumingEnumerable())
+            foreach ((Action work, long cause) in Work.GetConsumingEnumerable())
             {
+                t_workerCause = cause;
                 try { work(); }
                 catch (Exception ex) { Log.Error("spotify", "api worker " + index + " faulted", ex); }
+                finally { t_workerCause = 0; }
             }
         }
 
@@ -285,6 +296,14 @@ public static partial class Spotify
             }
         }
 
+        /// <summary>Carries the current capture cause onto the request, so Wire's HttpCall record joins its click's chain.</summary>
+        static void StampCause(HttpRequestMessage message)
+        {
+            if (!Capture.Enabled) return;
+            long cause = CurrentCause();
+            if (cause != 0) message.Options.Set(global::Wavee.Wire.CauseIdOption, cause);
+        }
+
         static Result SendOnce(Verb verb, string url, HeaderSet headers, RequestKind kind, byte[] body,
             string syncReason, CancellationToken ct, string? contentType, string? contentEncoding, string? ifNoneMatch,
             ClientIdentity? identity = null)
@@ -292,6 +311,7 @@ public static partial class Spotify
             try
             {
                 using var message = new HttpRequestMessage(MethodOf(verb), url);
+                StampCause(message);
                 Stamp(message, headers, kind, body, syncReason);
                 if (identity is { } client)
                 {
@@ -940,13 +960,79 @@ public static partial class Spotify
             byte[] body = BatchBody(uris, kinds, Market, Catalogue);
             if (body.Length == 0) return;
 
+            long sent = System.Diagnostics.Stopwatch.GetTimestamp();
             Result result = MetadataPost(body, CancellationToken.None);
             outcome.Note(in result, groups);
-            if (!result.Ok || result.Body.Length == 0) return;
+            if (!result.Ok)
+            {
+                LogXm(batch, kinds, uris, result, sent, null);
+                return;
+            }
+            // An EMPTY 200 body is an answer too: every asked entity was left out, and the trait kinds' silence settles
+            // their groups as known negatives (Decode.TraitNegatives, RCA 2026-09-25 fix 1) — decode it like any other.
             Decode.ExtendedMetadata(result.Bytes, s, batch);
+            LogXm(batch, kinds, uris, result, sent, XmAnswerSummary.Read(result.Bytes, uris, kinds));
 
             if (batch.Subject == FetchSubject.Entity && batch.Kind == EntityKind.User && kinds.IndexOf(FetchRoutes.UserProfile) >= 0)
                 ProfileFallback(uris, result.Body, s);
+        }
+
+        /// <summary>The always-on <c>fetch.xm</c> line (2026-09-25): ONE line per extended-metadata POST the planner sent —
+        /// <c>ticket= subject= kind= need= attempt= status= ms= bytes= uris= kinds=</c>, then per asked kind
+        /// <c>k&lt;n&gt;="ask= ret= empty= fail= omit= pos= zero="</c> (<see cref="XmAnswerSummary"/>) and the entities
+        /// behind the non-positive counts (<c>omitted= empty= zero= failed=</c>, first eight each). It is what tells a row
+        /// the body LEFT OUT from one it named with nothing in it — the question `fetch.miss` could not answer. Api
+        /// worker thread; built only when Info passes. <c>ms≈0</c> is the metadata cache answering.</summary>
+        static void LogXm(FetchBatch batch, ReadOnlySpan<int> kinds, string[] uris, in Result result, long sent, XmAnswerSummary? summary)
+        {
+            if (!Log.IsEnabled(WaveeLogLevel.Info)) return;
+            var fields = new List<WaveeLogField>(16)
+            {
+                WaveeLogField.Of("ticket", (long)batch.Ticket),
+                WaveeLogField.Of("subject", batch.Subject.ToString()),
+                WaveeLogField.Of("kind", batch.Kind.ToString()),
+                WaveeLogField.Of("need", "0x" + batch.Wanted.ToString("x", System.Globalization.CultureInfo.InvariantCulture)),
+                WaveeLogField.Of("attempt", batch.Attempt),
+                WaveeLogField.Of("status", result.Status),
+                WaveeLogField.Of("ms", (long)System.Diagnostics.Stopwatch.GetElapsedTime(sent).TotalMilliseconds),
+                WaveeLogField.Of("bytes", result.Body.Length),
+                WaveeLogField.Of("uris", uris.Length),
+            };
+            var kindText = new StringBuilder();
+            for (int k = 0; k < kinds.Length; k++)
+            {
+                if (k > 0) kindText.Append(',');
+                kindText.Append(kinds[k].ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            fields.Add(WaveeLogField.Of("kinds", kindText.ToString()));
+            if (summary is not null)
+            {
+                foreach (var t in summary.Tally)
+                    fields.Add(WaveeLogField.Of("k" + t.Kind.ToString(System.Globalization.CultureInfo.InvariantCulture), XmAnswerSummary.Format(in t)));
+                fields.Add(WaveeLogField.Of("omitted", summary.Named(XmAnswerSummary.Verdict.Omitted)));
+                fields.Add(WaveeLogField.Of("empty", summary.Named(XmAnswerSummary.Verdict.Empty)));
+                fields.Add(WaveeLogField.Of("zero", summary.Named(XmAnswerSummary.Verdict.Zero)));
+                fields.Add(WaveeLogField.Of("failed", summary.Named(XmAnswerSummary.Verdict.Failed)));
+            }
+            Log.Event(WaveeLogLevel.Info, "fetch", "fetch.xm", "", null, -1, null, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(fields));
+        }
+
+        /// <summary>THE EVIDENCE PROBE (<c>wavee://diag?cmd=xm</c>): POST <paramref name="kinds"/> for <paramref name="uris"/>
+        /// exactly as the planner's mixed-kind POST would (<see cref="BatchBody"/>, the metadata cache bypassed so the
+        /// answer is the server's own), and read the answer per (kind, uri) with the payloads kept. Decodes nothing into
+        /// any table. BLOCKS — an api worker thread only. Status 0 = transport failure.</summary>
+        public static (int Status, XmAnswerSummary? Summary) ProbeExtensions(string[] uris, int[] kinds)
+        {
+            byte[] body = BatchBody(uris, kinds, Market, Catalogue);
+            if (body.Length == 0) return (0, null);
+            var args = new RequestArgs { Body = body };
+            Span<char> buffer = stackalloc char[64];
+            Request request = Build(Current, RequestKind.ExtendedMetadata, args, buffer);
+            string url = BaseUrl(request.Host) + new string(request.Path);
+            Result result = SendAuthed(Verb.Post, url, request.Headers | HeaderSet.GzipBody, RequestKind.ExtendedMetadata, body, "",
+                CancellationToken.None);
+            if (!result.Ok || result.Body.Length == 0) return (result.Status, null);
+            return (result.Status, XmAnswerSummary.Read(result.Bytes, uris, kinds, keepPayloads: true));
         }
 
         /// <summary>The REST arm of profile resolution, one user at a time, for the users kind 15 did not answer. Only
@@ -2001,6 +2087,7 @@ public static partial class Spotify
             try
             {
                 using var message = new HttpRequestMessage(HttpMethod.Get, url);
+                StampCause(message);
                 HttpRequestHeaders h = message.Headers;
                 if (AccessToken() is { Length: > 0 } bearer) h.TryAddWithoutValidation("Authorization", "Bearer " + bearer);
                 h.TryAddWithoutValidation("App-Platform", "Android");

@@ -445,21 +445,14 @@ public readonly partial struct Album
 
     // ══ 2. ABOUT THIS RELEASE (ch 05 W11, W15; ch 03 item 56) ════════════════════════════════════════════════════════
 
-    /// <summary>The Songs tile's caption: singular <c>detail.factSong</c> ("Song") for exactly one track, else the
-    /// plural <c>detail.factSongs</c> ("Songs"). A 0-track album still draws the plural — the tile's own em dash
-    /// (<see cref="ReleaseFactsRules.SongsText"/>) reads as "no songs", never as "0 Song". Lives here rather than on
-    /// <see cref="ReleaseFactsRules"/> itself (Entities/Album.cs) because that class isn't declared <c>partial</c>.</summary>
-    public static string SongsCaption(ReleaseFacts facts)
-        => Loc.Get(facts.SongsTotal == 1 ? Strings.Detail.FactSong : Strings.Detail.FactSongs);
-
     static Element ReleasePanel(Album a, bool outerPadding)
         => Embed.Comp(new ReleaseProps(a.Slot, outerPadding), static () => new ReleasePanelHost());
 
     sealed record ReleaseProps(int AlbumSlot, bool OuterPadding);
 
-    /// <summary>ONE shape from its first paint: Songs · Length on row 1, Released alone on row 2, Label/℗/© as 11-px note
-    /// lines — never a fourth tile. The whole record is gated on the publishing group, so the panel appears once,
-    /// complete; later refinements only swap text inside tiles the rows already sized.</summary>
+    /// <summary>ONE shape from its first paint: the release date sits on the "About this release" line, and Label/℗/©
+    /// are 11-px note lines under it. Song count and length are not painted — the hero meta line already states both.
+    /// The whole record is gated on the publishing group, so the panel appears once, complete.</summary>
     sealed class ReleasePanelHost : Component
     {
         static readonly string[] s_noteKeys = ["note:0", "note:1", "note:2", "note:3"];
@@ -470,8 +463,8 @@ public readonly partial struct Album
         public ReleasePanelHost() => _stamp = Stamp;
 
         /// <summary>The facts this panel prints, as the rows they are read from (W2-A2): the album row (label, ℗/©,
-        /// the release date and its precision, the count), the tracklist edge and every member's version (the Length
-        /// tile sums durations; Songs counts the rows that are out) and the versions edge with every edition's own
+        /// the release date and its precision), the tracklist edge and every member's version (the facts record still
+        /// counts what is out) and the versions edge with every edition's own
         /// version (the Other-versions labels: title · year · kind). "Out" is a clock verdict and is re-read when any of
         /// these move, not on its own — a row crossing its release instant with nothing else publishing keeps its old
         /// count until the next publication, exactly as the countdown card owns the visible instant.</summary>
@@ -499,7 +492,7 @@ public readonly partial struct Album
             var p = UseProps<ReleaseProps>();
             _slot = p.AlbumSlot;
             // The gate (W2-A2): the four counters are subscribed inside the memo; this body — the facts record, the
-            // tiles, the notes, the versions flyout — runs only when the stamp moved.
+            // heading, the notes, the versions flyout — runs only when the stamp moved.
             _ = UseComputed(_stamp).Value;
             var a = new Album(p.AlbumSlot);
             if (!a.IsValid) return new BoxEl();
@@ -507,38 +500,36 @@ public readonly partial struct Album
             long now = Store.ToUnix(Entities.Now);
             var facts = a.Knows(AlbumFields.Publishing | AlbumFields.Release) ? ReleaseFactsRules.Of(a, now) : ReleaseFacts.Empty;
             var versions = a.VersionSlots;
-            if (!PageRules.HasReleasePanel(facts, versions.Length)) return new BoxEl();
+            // Songs and length never open the panel: the hero already prints both. A date, a label, the courtesy
+            // lines, or another edition do.
+            string? released = ReleaseFactsRules.ReleasedText(facts);
+            int noteCount = (facts.Label is not null ? 1 : 0) + facts.Notes.Count;
+            if (released is null && noteCount == 0 && versions.Length == 0) return new BoxEl();
 
             var children = new List<Element>(2);
-            if (!facts.IsEmpty)
+            if (released is not null || noteCount > 0)
             {
-                var body = new List<Element>(3)
+                var head = new List<Element>(2)
                 {
-                    Design.Type.Eyebrow(Loc.Get(Strings.Detail.AboutRelease)) with { Color = Tok.TextTertiary },
+                    Design.Type.Eyebrow(Loc.Get(Strings.Detail.AboutRelease)) with { Color = Tok.TextTertiary, Shrink = 0f },
                 };
-                if (facts.HasTiles)
+                if (released is not null)
                 {
-                    // A missing fact is an em dash, never a missing tile.
-                    body.Add(new BoxEl
+                    // On the heading's own line, so a date never takes a row of its own.
+                    head.Add(Design.Type.DenseMeta(ReleaseFactsRules.ReleasedCaption(facts) + " " + released) with
                     {
-                        Key = "release-facts", Direction = 1, Gap = Spacing.S,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Direction = 0, Gap = Spacing.S,
-                                Children =
-                                [
-                                    Tile("songs", ReleaseFactsRules.SongsText(facts), SongsCaption(facts), false),
-                                    Tile("length", ReleaseFactsRules.LengthText(facts), Loc.Get(Strings.Detail.FactLength), false),
-                                ],
-                            },
-                            Tile("released", ReleaseFactsRules.ReleasedText(facts), ReleaseFactsRules.ReleasedCaption(facts), true),
-                        ],
+                        Color = Tok.TextSecondary, MinWidth = 0f, Shrink = 1f,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                     });
                 }
-
-                int noteCount = (facts.Label is not null ? 1 : 0) + facts.Notes.Count;
+                var body = new List<Element>(2)
+                {
+                    new BoxEl
+                    {
+                        Key = "release-head", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+                        Children = head.ToArray(),
+                    },
+                };
                 if (noteCount > 0)
                 {
                     var notes = new Element[noteCount];
@@ -565,9 +556,6 @@ public readonly partial struct Album
                 Children = children.ToArray(),
             };
         }
-
-        static Element Tile(string key, string? value, string caption, bool wrap)
-            => Controls.StatTile(key, value ?? Track.Format.Dash, caption, wrapValue: wrap);
 
         static Element Note(string key, string text) => new BoxEl
         {

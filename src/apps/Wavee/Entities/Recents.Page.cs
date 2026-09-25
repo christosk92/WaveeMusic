@@ -30,8 +30,8 @@
 // (a root, no trail) keeps 0.2.9's hand-rolled SurfaceDisplay hero; it publishes nothing to `Shell.Mastheads` (a
 // publication the band never reads would be a second copy waiting to double-expose).
 //
-// ZERO ALLOCATION ON THE SCROLL PATH. The scroll-geometry observer (`ProjectSticky`/`UpdateSticky`) is arithmetic,
-// three change-gated signal writes and one pre-created posted delegate; per-row strings (when, uri, morph key, the
+// ZERO ALLOCATION ON THE SCROLL PATH. The sticky watch over the list's scroll handle (`WatchSticky`/`UpdateSticky`) is
+// arithmetic, three change-gated signal writes and one pre-created posted delegate; per-row strings (when, uri, morph key, the
 // joined subtitle) are cached on the Shape, and the count phrases per count on the page.
 
 using System.Globalization;
@@ -160,8 +160,10 @@ public readonly partial struct Recents
         internal readonly Func<BoundItemScope<RecentsFlatItem>, Element> SlotFactory;
         readonly Action _resolveAccentDay, _rollover, _refresh, _ensureEdge, _adopt, _activated, _deactivated, _openOverview, _retry;
         readonly Action<KeyEventArgs> _onKeyDown;
-        internal readonly Func<ScrollGeometry, long> ProjectStickyFunc;
-        internal readonly Action<ScrollGeometry> UpdateStickyAction;
+        /// <summary>The sticky band's watch over the list's scroll handle (<see cref="ScrollController"/>'s): mounted by
+        /// <see cref="ListSurface"/>, it re-runs on every published offset/extent and writes only on a projected change.</summary>
+        internal readonly Action WatchStickyAction;
+        long _stickyKey = long.MinValue;
         internal readonly Func<int, int> MapInToOutFunc, MapOutToInFunc, ContentTypeFunc;
         internal readonly Action<int, RecentsFlatItem> InvokeFlatAction;
         internal readonly Func<int, RecentsFlatItem, string> TextForFunc;
@@ -226,8 +228,7 @@ public readonly partial struct Recents
                 ZoomController.ZoomInTo(-1);
                 e.Handled = true;
             };
-            ProjectStickyFunc = ProjectSticky;
-            UpdateStickyAction = UpdateSticky;
+            WatchStickyAction = WatchSticky;
             MapInToOutFunc = i => RecentsLayout.MapInToOut(ShapeNow.Sections, ShapeNow.Calendar, i);
             MapOutToInFunc = i => RecentsLayout.MapOutToIn(ShapeNow.Sections, ShapeNow.Calendar, CalendarDay.Peek(), i);
             ContentTypeFunc = i => RecentsLayout.ContentTypeOf(ShapeNow.Sections, ShapeNow.Rows, i);
@@ -432,8 +433,7 @@ public readonly partial struct Recents
             ShapeSignal.Value = ShapeNow;
             ExpandedRow.Value = StringId.Empty;
             // Re-resolve the pinned band from the live offset: a re-cut mid-list never leaves a blank band (W24).
-            float offset = ScrollController.Offset.Peek(), viewport = ScrollController.ViewportLength.Peek();
-            UpdateSticky(new ScrollGeometry(0f, offset, viewport, viewport, 0f, 0f, 0f, 0f, 0));
+            UpdateSticky((float)ScrollController.Offset.Peek(), (float)ScrollController.ViewportLength.Peek());
             CalendarDay.Value = Today;
             ShapeEpoch.Value = ShapeEpoch.Peek() + 1;
         }
@@ -701,17 +701,25 @@ public readonly partial struct Recents
 
         // ── the sticky band (§0 #4-#5, W4, W24) ─────────────────────────────────────────────────────────────────────
 
-        long ProjectSticky(ScrollGeometry g)
+        void WatchSticky()
         {
+            var handle = ScrollController.Handle;
+            float offset = (float)handle.Offset.Value, viewport = (float)handle.ViewportSignal.Value;
+            _ = handle.ExtentSignal.Value;   // a measured-extent correction re-projects too
             var s = ShapeNow;
-            RecentsLayout.StickyMetrics(s.Sections, s.Layout, g.OffsetY, g.ViewportW, out int header, out float push);
-            return RecentsLayout.ProjectSticky(header, s.Layout.MeasuredVersion, push);
+            RecentsLayout.StickyMetrics(s.Sections, s.Layout, offset, viewport, out int header, out float push);
+            long key = RecentsLayout.ProjectSticky(header, s.Layout.MeasuredVersion, push);
+            if (key == _stickyKey) return;
+            _stickyKey = key;
+            UpdateSticky(offset, viewport);
         }
 
-        void UpdateSticky(ScrollGeometry g)
+        /// <summary>The grouped layout's offsets ignore the cross size, so the viewport's scroll-axis length stands in
+        /// for <c>StickyMetrics</c>' cross-size argument.</summary>
+        void UpdateSticky(float offsetY, float viewport)
         {
             var s = ShapeNow;
-            RecentsLayout.StickyMetrics(s.Sections, s.Layout, g.OffsetY, g.ViewportW, out int header, out float push);
+            RecentsLayout.StickyMetrics(s.Sections, s.Layout, offsetY, viewport, out int header, out float push);
             float quantized = RecentsLayout.QuantizePush(push);
             if (StickyHeader.Peek() != header) StickyHeader.Value = header;
             if (!StickyPush.Peek().Equals(quantized)) StickyPush.Value = quantized;
@@ -724,7 +732,7 @@ public readonly partial struct Recents
                 _accentArmed = true;
                 _post(_resolveAccentDay);
             }
-            ProbeStickyAlignment(s, g, header);
+            ProbeStickyAlignment(s, offsetY, header);
         }
 
         void ResolveAccentDay()
@@ -736,11 +744,11 @@ public readonly partial struct Recents
         /// <summary>DEBUG: a realized row whose day disagrees with its header, or a pinned day that disagrees with the first
         /// visible row, is a stop, not a screenshot (§9.1 #17).</summary>
         [System.Diagnostics.Conditional("DEBUG")]
-        static void ProbeStickyAlignment(Shape s, ScrollGeometry g, int stickyFlat)
+        static void ProbeStickyAlignment(Shape s, float offsetY, int stickyFlat)
         {
             var sections = s.Sections;
             if (sections.Items.Length == 0 || (uint)stickyFlat >= (uint)sections.Items.Length) return;
-            int at = s.Layout.IndexAt(g.OffsetY, 0f);
+            int at = s.Layout.IndexAt(offsetY, 0f);
             int visibleDay = -1;
             for (int i = Math.Max(0, at), last = Math.Min(sections.Items.Length, at + 6); i < last; i++)
             {
@@ -945,25 +953,23 @@ public readonly partial struct Recents
             var layout = page.ShapeNow.Layout;
             var items = UseMemo(() => BoundItems.Project(page.ShapeSignal, static s => s.Sections.Items.Length,
                 static (s, i) => s.Sections.Items[i], EmptyFlat), DepKey.Empty);
+            UseSignalEffect(page.WatchStickyAction);
             Element list = ItemsView.CreateBound(items, page.SlotFactory, RepeatLayout.Measured(layout), new ListOptions<RecentsFlatItem>
             {
                 // The rows are cards with their own chrome; a list selector would be a second, competing cue.
                 SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,
                 IsItemInvokedEnabled = true, OnInvokedTyped = page.InvokeFlatAction, ItemTextTyped = page.TextForFunc,
-                Controller = page.ListController, Overscan = 6, Grow = 1f,
+                Controller = page.ListController, Grow = 1f,
                 // One recycle pool per ARM, so a card slot never rebinds into the track-grid shape (§9.1 #13).
                 ContentType = page.ContentTypeFunc,
                 Scroll = new ScrollOptions
                 {
                     // Each pivot remembers its OWN offset (§9.1 #16).
-                    ScrollKey = "recents:" + (token ?? "all"), AutoEdgeFade = true,
-                    VerticalScrollController = page.ScrollController, SuppressScrollBar = true,
-                    OnScrollGeometryChanged = (page.ProjectStickyFunc, page.UpdateStickyAction),
+                    ScrollKey = UseContext(Shell.PageScrollScope) + "recents:" + (token ?? "all"), AutoEdgeFade = true,
+                    Handle = page.ScrollController.Handle, SuppressScrollBar = true,
                     // Rows scroll UNDER the pinned band: clipped at exactly 48 with a 24-DIP feather (W4).
                     ItemClipTopInset = RecentsLayout.DateHeaderHeight, ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand,
                 },
-                // The engine's cold-realize ramp: bounded to the realized window, never 1,708 authored delays.
-                Entrance = new EntranceOptions { StaggerColdRealize = true },
             });
             return new BoxEl
             {
@@ -1075,7 +1081,7 @@ public readonly partial struct Recents
             var labels = UseMemo(page.RailLabelsFunc, DepKey.From(epoch, measured));
             var ticks = UseMemo(page.RailTicksFunc, DepKey.From(epoch, measured));
             // The one diagnostic the parity walk cross-checks (item 39): the last label against the scroll maximum.
-            float max = page.ScrollController.MaximumOffset.Peek();
+            float max = (float)page.ScrollController.MaximumOffset.Peek();
             float lastOff = labels.Length > 0 ? labels[^1].ScrollOffset : 0f;
             int key = HashCode.Combine((int)slotH, (int)max, (int)lastOff, labels.Length);
             if (key != _logged)
@@ -1115,8 +1121,8 @@ public readonly partial struct Recents
                 new ListOptions
                 {
                     SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,
-                    Controller = page.CalendarController, Grow = 1f, Overscan = 1, KeyOf = page.MonthKeyFunc,
-                    Scroll = new ScrollOptions { ScrollKey = "recents-calendar:" + FormatCache.Int(shapeEpoch), AutoEdgeFade = true },
+                    Controller = page.CalendarController, Grow = 1f, KeyOf = page.MonthKeyFunc,
+                    Scroll = new ScrollOptions { ScrollKey = UseContext(Shell.PageScrollScope) + "recents-calendar:" + FormatCache.Int(shapeEpoch), AutoEdgeFade = true },
                 });
             return new BoxEl
             {

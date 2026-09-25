@@ -12,8 +12,8 @@
 //
 // Engine-free by construction: System + BCL only, no FluentGpu type, no loc lookup (the one place a label is needed,
 // ReportForm, takes the RESOLVED strings as a record). Everything here is pinned by Wavee.Tests/FeedbackTests.cs.
-// CrashPromptPolicy / CrashPromptDecision, CrashReportFiles, RunMarker and the crash-report writer are owner S's
-// (Platform/Platform.Settings.cs, Screens/Diagnostics*.cs); the report chrome consumes S's latch, nothing is re-declared.
+// The opt-in crash & diagnostics pipeline (Platform/Crash*.cs, Screens/Crash.UI.cs) owns consent and upload; this
+// file's ReportKind.Crash path is only ever the manual "tell the developer by hand" door for one bundle's report.txt.
 
 using System.Globalization;
 using System.Text;

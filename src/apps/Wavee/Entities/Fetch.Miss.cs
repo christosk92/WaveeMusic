@@ -10,9 +10,9 @@
 //
 // The fix is the same shape as everything else in this file: a pure decision (`FetchMissPolicy.Decide`, how many
 // times is enough) and a SHELL half that knows the marks. `Answer` calls `ReviewMisses` for every row of a batch
-// whose route answered but whose wanted groups are still not settled; a row under the retry budget has its `Asked`
-// bits cleared for exactly those groups — like `Unask` does for `unfilled` — and is queued straight into a backed-off
-// bucket via the same `Demand`/`Bucket` machinery `Failed`'s retryable arm already uses, so `Pump` sends it again
+// whose route answered but whose wanted groups are still not settled; a row under the retry budget KEEPS its `Asked`
+// bits and is stamped in flight (2026-09-25: a queued retry is something coming, never "un-asked") and is queued
+// straight into a backed-off bucket via the same `Demand`/`Bucket` machinery `Failed`'s retryable arm already uses, so `Pump` sends it again
 // without a second `Ensure`. A row that has used up its retries is sealed as today (`Asked` stays) but is also
 // marked `Table.Failed` for those groups — the row twin `Fetch.Failed`'s terminal arm already gives a transport
 // failure — so a surface can paint the failure glyph `MarkFailed`'s doc describes instead of a bare, silent 0:00.
@@ -109,6 +109,9 @@ public static partial class Fetch
     /// the attempt counter at 1 forever — the live 1→2→3→1 cycle this file's header names.</summary>
     static readonly Dictionary<(Table Table, int Slot), MissState> s_misses = new(16);
 
+    /// <summary>The slots one <see cref="ReviewMisses"/> pass has already judged — one miss per slot per answer.</summary>
+    static readonly HashSet<int> s_reviewed = new(64);
+
     /// <summary>The batch's rows' <see cref="Table.Version"/>, read BEFORE the commit — the "did anything land for
     /// this row" snapshot <see cref="ReviewMisses"/> compares against after. Rented, not allocated (P8/P9): the
     /// common case (no miss this answer) returns it unread and unchanged.</summary>
@@ -145,10 +148,15 @@ public static partial class Fetch
         _ = FetchRoutes.For(batch, routes, out uint unserved);
         if ((batch.Wanted & ~unserved & ~routedUnfilled) == 0) return;
 
+        s_reviewed.Clear();
         for (int i = 0; i < batch.Count; i++)
         {
             int slot = batch.Slots[i];
             if (slot <= Table.None || slot >= table.Count || table.Id[slot] != batch.Ids[i]) continue;   // recycled since the plan
+            // ONE ANSWER, ONE MISS PER SLOT (RCA 2026-09-25 D): a slot the batch carried twice is still one entity the body
+            // left out once. Before this the log's attempts 1, 2, 3 landed at one timestamp and sealed the row in a
+            // single settle. (`Demand.Add` no longer seats a slot twice; this holds whatever else ever does.)
+            if (!s_reviewed.Add(slot)) continue;
             uint miss = FetchMissPolicy.Missed(batch.Wanted, table.Settled(slot), routedUnfilled, unserved);
             if (miss == 0)
             {
@@ -172,7 +180,7 @@ public static partial class Fetch
                 table.Asked[slot] |= miss;
                 table.Failed[slot] |= miss;
                 table.MarkDirty();
-                LogReseal(table.Kind, slot, miss, prior.Attempts);
+                LogReseal(table.Kind, slot, miss, prior.Attempts, batch, i);
                 continue;
             }
 
@@ -182,20 +190,26 @@ public static partial class Fetch
             // like a fresh ask. Only the middle shape keeps a nonzero `before`.
             byte before = prior.Sealed ? (byte)0 : prior.Attempts;
             FetchMissPolicy.Verdict verdict = FetchMissPolicy.Decide(before);
-            LogMiss(table.Kind, slot, miss, before + 1);
+            LogMiss(table.Kind, slot, miss, before + 1, batch, i);
 
             if (verdict == FetchMissPolicy.Verdict.Retry)
             {
                 s_misses[key] = new MissState((byte)(before + 1), false, rowVersion);
-                // Clear the seal for exactly the missed groups — the same act `Unask` performs for `unfilled` — so
-                // the row reads as "not yet asked" (a shimmer) rather than "asked, nothing coming" (today's blank
-                // 0:00) while it waits out the backoff below.
-                table.Asked[slot] &= ~miss;
+                // A QUEUED RETRY IS SOMETHING COMING (RCA 2026-09-25, fix 6): the missed groups stay ASKED and the row
+                // is stamped IN FLIGHT while it waits out the backoff below — the exact marks a first ask carries between
+                // its plan and its send. Until 2026-09-25 this un-asked them ("a shimmer rather than a blank 0:00"), but
+                // "not asked" is also what a readiness gate reads as "nothing is coming" (the artist chart turned into
+                // "Something went wrong" at the FIRST miss), and it let every later `Ensure` of the same group seat the
+                // slot in the same bucket again (ticket 74: 22 rows for 8 tracks). `Answer`'s `Unask` clears the stamp
+                // when the retry settles, like any batch.
+                table.Inflight[slot] = Stamp(batch.Epoch);
                 Demand d = Bucket(table, batch.Subject, batch.Provider, miss, FetchEdge.None, 0, batch.Priority);
-                d.Add(slot, batch.Ids[i]);
+                d.Add(slot, batch.Ids[i], DemandDoor.Miss);
                 // The same clamp `Failed`'s retryable arm reuses (attempt, not status/Retry-After): a miss is not a
                 // 429, so `Backoff(attempt, 0, 0)` is `min(60, 2^attempt)` seconds — 1 s the first time, 2 s the next.
-                d.ReadyAt = Entities.Now + Backoff(before, 0, 0);
+                int backoff = Backoff(before, 0, 0);
+                d.ReadyAt = Entities.Now + backoff;
+                d.ReadyTicks = System.Diagnostics.Stopwatch.GetTimestamp() + backoff * System.Diagnostics.Stopwatch.Frequency;
             }
             else
             {
@@ -212,53 +226,47 @@ public static partial class Fetch
                 table.Asked[slot] |= miss;
                 table.Failed[slot] |= miss;
                 table.MarkDirty();
-                LogSeal(table.Kind, slot, miss, before + 1);
+                LogSeal(table.Kind, slot, miss, before + 1, batch, i);
             }
         }
     }
 
-    // `fetch.miss kind= slot= groups= attempt=` — one line per row per miss, the wire idiom `LogSend`/`LogAnswer`
-    // already use: built only when Info passes, so a filtered log costs one compare, and `attempt` counts from 1
-    // (the first miss is attempt 1) so it reads next to `fetch.send`'s own `attempt=` without a fencepost surprise.
-    static void LogMiss(EntityKind kind, int slot, uint groups, int attempt)
-    {
-        if (!Log.IsEnabled(WaveeLogLevel.Info)) return;
-        Log.Event(WaveeLogLevel.Info, "fetch", "fetch.miss", "", null, -1, null,
-            WaveeLogField.Of("kind", kind.ToString()),
-            WaveeLogField.Of("slot", slot),
-            WaveeLogField.Of("groups", Groups(groups)),
-            WaveeLogField.Of("attempt", attempt));
-    }
+    // `fetch.miss kind= slot= groups= attempt= uri= ticket=` — one line per row per miss, the wire idiom `LogSend`/
+    // `LogAnswer` already use: built only when Info passes, so a filtered log costs one compare, and `attempt` counts from
+    // 1 (the first miss is attempt 1) so it reads next to `fetch.send`'s own `attempt=` without a fencepost surprise.
+    // `uri=` (2026-09-25) names the entity the answer omitted — the slot number alone could not be joined to a track —
+    // and `ticket=` joins the line to the `fetch.send`/`fetch.answer`/`fetch.xm` lines of the request that missed it.
+    static void LogMiss(EntityKind kind, int slot, uint groups, int attempt, FetchBatch batch, int row)
+        => LogMissLine("fetch.miss", "attempt", kind, slot, groups, attempt, batch, row);
 
-    // `fetch.seal kind= slot= groups= attempt=` — the terminal transition the `fetch.miss` retries above lead to: the
-    // moment `Table.Failed` becomes durably set for `groups` and a bound surface can paint the failure glyph instead
-    // of shimmering. `attempt` is the miss that finally sealed it (always `FetchMissPolicy.MaxMisses + 1`). This line
-    // did not exist before 2026-09-20 — the only prior signal was `fetch.miss`'s own `attempt=3`, indistinguishable
+    // `fetch.seal kind= slot= groups= attempt= uri= ticket=` — the terminal transition the `fetch.miss` retries above lead
+    // to: the moment `Table.Failed` becomes durably set for `groups` and a bound surface can paint the failure glyph
+    // instead of shimmering. `attempt` is the miss that finally sealed it (always `FetchMissPolicy.MaxMisses + 1`). This
+    // line did not exist before 2026-09-20 — the only prior signal was `fetch.miss`'s own `attempt=3`, indistinguishable
     // at a glance from any other retry — so a log could not be grepped for "did this row ever actually seal".
-    static void LogSeal(EntityKind kind, int slot, uint groups, int attempt)
-    {
-        if (!Log.IsEnabled(WaveeLogLevel.Info)) return;
-        Log.Event(WaveeLogLevel.Info, "fetch", "fetch.seal", "", null, -1, null,
-            WaveeLogField.Of("kind", kind.ToString()),
-            WaveeLogField.Of("slot", slot),
-            WaveeLogField.Of("groups", Groups(groups)),
-            WaveeLogField.Of("attempt", attempt));
-    }
+    static void LogSeal(EntityKind kind, int slot, uint groups, int attempt, FetchBatch batch, int row)
+        => LogMissLine("fetch.seal", "attempt", kind, slot, groups, attempt, batch, row);
 
-    // `fetch.reseal kind= slot= groups= attempts=` — the line that proves this file's 2026-09-20 fix is doing its
-    // job: an already-SEALED row was asked about again while its `Table.Version` had not moved (an ordinary
-    // re-demand — a table tick, a remount, anything short of a real answer or an explicit Refresh), and the ledger
-    // refused to restart it. Before this fix, this exact situation found no `s_misses` entry (the seal removed it)
-    // and silently logged `fetch.miss attempt=1` instead — the live signature of the bug, a 1→2→3→1 cycle repeating
-    // across ~150 s and two page visits. Seeing `fetch.reseal` instead of a fresh `fetch.miss attempt=1` for the same
-    // (kind, slot, groups) is exactly how the fix is verified from the log the bug was found in.
-    static void LogReseal(EntityKind kind, int slot, uint groups, int attempts)
+    // `fetch.reseal kind= slot= groups= attempts= uri= ticket=` — the line that proves this file's 2026-09-20 fix is doing
+    // its job: an already-SEALED row was asked about again while its `Table.Version` had not moved (an ordinary re-demand
+    // — a table tick, a remount, anything short of a real answer or an explicit Refresh), and the ledger refused to
+    // restart it. Before this fix, this exact situation found no `s_misses` entry (the seal removed it) and silently
+    // logged `fetch.miss attempt=1` instead — the live signature of the bug, a 1→2→3→1 cycle repeating across ~150 s and
+    // two page visits. Seeing `fetch.reseal` instead of a fresh `fetch.miss attempt=1` for the same (kind, slot, groups)
+    // is exactly how the fix is verified from the log the bug was found in.
+    static void LogReseal(EntityKind kind, int slot, uint groups, int attempts, FetchBatch batch, int row)
+        => LogMissLine("fetch.reseal", "attempts", kind, slot, groups, attempts, batch, row);
+
+    static void LogMissLine(string eventId, string countName, EntityKind kind, int slot, uint groups, int count,
+                            FetchBatch batch, int row)
     {
         if (!Log.IsEnabled(WaveeLogLevel.Info)) return;
-        Log.Event(WaveeLogLevel.Info, "fetch", "fetch.reseal", "", null, -1, null,
+        Log.Event(WaveeLogLevel.Info, "fetch", eventId, "", null, -1, null,
             WaveeLogField.Of("kind", kind.ToString()),
             WaveeLogField.Of("slot", slot),
             WaveeLogField.Of("groups", Groups(groups)),
-            WaveeLogField.Of("attempts", attempts));
+            WaveeLogField.Of(countName, count),
+            WaveeLogField.Of("uri", batch.Uri(row)),
+            WaveeLogField.Of("ticket", (long)batch.Ticket));
     }
 }

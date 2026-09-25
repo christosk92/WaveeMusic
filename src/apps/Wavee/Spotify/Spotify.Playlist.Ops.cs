@@ -1,4 +1,4 @@
-// ── Spotify/Spotify.Playlist.Ops.cs ──────────────────────────────────────────────────────────────────────────────────
+﻿// ── Spotify/Spotify.Playlist.Ops.cs ──────────────────────────────────────────────────────────────────────────────────
 // the playlist4 op replayer, its decoder, the list-freshness rule and the dealer-push rule (wave D3)
 //
 // Role: CORE
@@ -1265,9 +1265,13 @@ public static class ListFreshness
 
     /// <summary>Must a ROLLING identity re-ask its header now? After any outcome that did not re-read the list in full:
     /// an "unchanged" (or a replay of row ops) says nothing about a header that turns over on the server's clock (§2).
-    /// A failed revalidation re-asks nothing — the next revalidation will.</summary>
-    public static bool ReaskHeader(bool rolling, Outcome outcome)
-        => rolling && outcome is Outcome.Unchanged or Outcome.Replayed;
+    /// A failed revalidation re-asks nothing — the next revalidation will.
+    /// <para>An identity whose format is not yet known this session re-asks too: Format and Daylist are never persisted
+    /// (PlaylistShape), so after a relaunch a daylist opened from disk reads as not rolling. Its unchanged revalidation
+    /// would otherwise never learn the edition, and the countdown would stay hidden until the home feed happened to
+    /// stage it.</para></summary>
+    public static bool ReaskHeader(bool rolling, bool formatKnown, Outcome outcome)
+        => (rolling || !formatKnown) && outcome is Outcome.Unchanged or Outcome.Replayed;
 }
 
 /// <summary>WHAT A DEALER PUSH FOR ONE LIST DOES (plan §3.3, L3). A push is an optimisation over the revision gate,
