@@ -111,6 +111,11 @@ public static partial class Shell
     /// colour. Note the asymmetry that is easy to lose: <c>browse-section:</c> CLAIMS, <c>browse:</c> does not.</param>
     /// <param name="KeyedByArg">The keep-alive slot (and the tab) depends on <see cref="Route.Arg"/> as well as the
     /// kind — two whatsnew versions are two slots.</param>
+    /// <param name="PlaceByArg">Whether <see cref="SameSlot"/> ("is this a new PLACE for history/tab bookkeeping")
+    /// discriminates on <see cref="Route.Arg"/>. Matches <paramref name="KeyedByArg"/> for every row except
+    /// <see cref="RouteKind.Home"/> (remediation §3.10): Home's keep-alive SLOT ignores Arg (a facet switch reuses
+    /// the mounted <c>HomeScreen</c>), but Arg is still a real destination (the facet), so its PLACE must track it —
+    /// the one row where "same keep-alive instance" and "same place" disagree.</param>
     public readonly record struct RouteRow(
         RouteKind Kind,
         string Key,
@@ -119,7 +124,8 @@ public static partial class Shell
         string Glyph,
         bool DeveloperOnly,
         bool ClaimsMaterial,
-        bool KeyedByArg)
+        bool KeyedByArg,
+        bool PlaceByArg = false)
     {
         /// <summary>Is there a page behind this kind at all? The deep-link intake, the history rows and the not-found
         /// page each ask this, and it can no longer disagree with <see cref="PageFor"/>.</summary>
@@ -130,9 +136,9 @@ public static partial class Shell
     // pins that alignment so a reorder cannot silently mislabel every destination.
     static readonly RouteRow[] s_routes =
     [
-        new(RouteKind.Home,                "home",                 false, Strings.Nav.Home,             Icons.Home,        false, true,  false),
+        new(RouteKind.Home,                "home",                 false, Strings.Nav.Home,             Icons.Home,        false, true,  false, PlaceByArg: true),
         new(RouteKind.Browse,              "browse",               false, Strings.Browse.HomeTitle,     Icons.Globe,       false, false, false),
-        new(RouteKind.Search,              "search",               false, Strings.Nav.Search,           Icons.Search,      false, false, true),
+        new(RouteKind.Search,              "search",               false, Strings.Nav.Search,           Icons.Search,      false, false, true, PlaceByArg: true),
         new(RouteKind.LibraryAlbums,       "albums",               false, Strings.Nav.Albums,           Icons.Album,       false, false, false),
         new(RouteKind.LibraryArtists,      "artists",              false, Strings.Nav.Artists,          Icons.Contact,     false, false, false),
         new(RouteKind.LibraryPodcasts,     "podcasts",             false, Strings.Nav.Podcasts,         Icons.RadioTower,  false, false, false),
@@ -148,9 +154,9 @@ public static partial class Shell
         new(RouteKind.Recents,             "recents",              false, Strings.Nav.Recents,          Icons.Headphones,  false, true,  false),
         new(RouteKind.Settings,            "settings",             false, Strings.Nav.Settings,         Icons.Settings,    false, false, false),
         new(RouteKind.PlaybackDiagnostics, "playback-diagnostics", false, Strings.Nav.PlaybackRuntime,  Icons.MusicNote,   true,  false, false),
-        new(RouteKind.WhatsNew,            "whatsnew",             false, Strings.WhatsNew.Title,       Icons.RefineSparkle, false, false, true),
-        new(RouteKind.SidebarCustomize,    "sidebar-customize",    false, Strings.Sidebar.Customizer.Title, Icons.Edit,    false, false, true),
-        new(RouteKind.HomeCustomize,       "home-customize",       false, Strings.Home.Customizer.Title, Icons.Edit,       false, false, true),
+        new(RouteKind.WhatsNew,            "whatsnew",             false, Strings.WhatsNew.Title,       Icons.RefineSparkle, false, false, true, PlaceByArg: true),
+        new(RouteKind.SidebarCustomize,    "sidebar-customize",    false, Strings.Sidebar.Customizer.Title, Icons.Edit,    false, false, true, PlaceByArg: true),
+        new(RouteKind.HomeCustomize,       "home-customize",       false, Strings.Home.Customizer.Title, Icons.Edit,       false, false, true, PlaceByArg: true),
 
         new(RouteKind.Album,               "album:",               true,  Strings.Nav.Album,            Icons.Album,       false, true,  false),
         new(RouteKind.Playlist,            "pl:",                  true,  Strings.Nav.Playlist,         Icons.MusicNote,   false, true,  false),
@@ -161,8 +167,8 @@ public static partial class Shell
         // An upcoming release renders the ordinary album page, so it wears the album's label and glyph.
         new(RouteKind.Prerelease,          "prerelease:",          true,  Strings.Nav.Album,            Icons.Album,       false, true,  false),
         // `disco:` had NO Dest arm in 0.2.9 — an artist's discography tab was labelled "Your Library". Its own label now.
-        new(RouteKind.Discography,         "disco:",               true,  Strings.Nav.Discography,      Icons.Album,       false, false, true),
-        new(RouteKind.Module,              "module:",              true,  Strings.ModulePage.Title,     Icons.Globe,       false, false, true),
+        new(RouteKind.Discography,         "disco:",               true,  Strings.Nav.Discography,      Icons.Album,       false, false, true, PlaceByArg: true),
+        new(RouteKind.Module,              "module:",              true,  Strings.ModulePage.Title,     Icons.Globe,       false, false, true, PlaceByArg: true),
         new(RouteKind.BrowseCategory,      "browse:",              true,  Strings.Browse.HomeTitle,     Icons.Globe,       false, false, false),
         new(RouteKind.HomeSection,         "home-section:",        true,  Strings.Nav.Home,             Icons.MusicNote,   false, true,  false),
         // The asymmetry: a browse SECTION carries a colour, a browse CATEGORY eases to the neutral ground.
@@ -325,7 +331,7 @@ public static partial class Shell
     /// <summary>Kinds whose <c>Arg</c> is a DISPLAY NAME rather than a slot discriminator. <c>search</c> is in both
     /// camps on purpose: the query is the label AND the keep-alive discriminator, exactly as 0.2.9 has it.</summary>
     static bool CarriesDisplayName(RouteKind k) => k is not (RouteKind.Discography or RouteKind.WhatsNew
-        or RouteKind.SidebarCustomize or RouteKind.HomeCustomize);
+        or RouteKind.SidebarCustomize or RouteKind.HomeCustomize or RouteKind.Home);   // Home's arg is a facet id
 
     // ── 1.2 the key codec: (name, arg) ⇄ Route ──────────────────────────────────────────────────────────────────────
     //
@@ -523,8 +529,15 @@ public static partial class Shell
     /// <summary>Two routes address the SAME keep-alive slot (kind + subject + the arg discriminator, never the tab:
     /// the same page in two tabs is two slots by <see cref="SlotKey"/>, but Go compares within one tab).</summary>
     public static bool SameSlot(in Route a, in Route b)
-        => a.Kind == b.Kind && a.Subject == b.Subject
-        && (!Row(a.Kind).KeyedByArg || a.Arg == b.Arg);
+    {
+        if (a.Kind != b.Kind || a.Subject != b.Subject) return false;
+        // PlaceByArg (remediation §3.10, F23): matches KeyedByArg for every row except Home, where the two questions
+        // ("is this a new place for history/tab bookkeeping" vs "does it get a new keep-alive instance") disagree —
+        // Home's KeyedByArg is false (SlotKey ignores Arg, a facet switch reuses the mounted HomeScreen) but its
+        // PlaceByArg is true (Arg IS a real destination, the facet — Go()/TabWorkspace.SetActiveRoute must see a
+        // facet switch as a new place or the tab's own stored route would never pick up the new facet).
+        return !Row(a.Kind).PlaceByArg || a.Arg == b.Arg;
+    }
 
     // ══ 3. DEEP LINKS ═══════════════════════════════════════════════════════════════════════════════════════════════
     //

@@ -690,6 +690,11 @@ public readonly record struct KindEdge(EntityKind Kind)
     public EntityRef Ref(int target) => new(Kind, target);
 }
 
+/// <summary>ONE PREVIEW TRACK'S RANK on a home baseline section (<c>Relation.SectionPreviewTracks</c>, D2 — the
+/// <c>feedBaselineLookup</c> answer): 0..4, server order. A byte and not a struct of more, because the rank is the
+/// only fact the edge itself carries — everything else (title, image) lives on the staged Track row.</summary>
+public readonly record struct PreviewEdge(byte Rank);
+
 /// <summary>Where a track sits in an album: disc and track number belong to the PAIR, not to the track (the same
 /// recording is track 3 here and track 11 on the deluxe edition).</summary>
 public readonly record struct AlbumTrackEdge(byte Disc, ushort Number);

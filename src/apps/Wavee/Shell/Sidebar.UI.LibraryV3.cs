@@ -87,6 +87,7 @@ public static partial class Sidebar
                 ShowLayoutMenu = false,
                 RailLayoutMenu = true,
                 RailHead = s.BuildRailHead,
+                RailHeadTiles = s.RailHeadTileCount,
                 RailFooter = s.BuildRailFooter,
                 IsReorderableSection = s.IsSectionReorderable,
                 TreeSortedNonCustom = s.TreeSortedNonCustom,
@@ -426,7 +427,18 @@ public static partial class Sidebar
         /// <summary>W3 — the nav band's tiles drawn for the rail. The band is chrome (never a document section), so the
         /// rail planner has nothing to draw them from: this reads the same five destinations + <c>TopBar</c> and reuses
         /// <see cref="SidebarNavBandModel"/>'s rules, so the two forms of one tile cannot disagree.</summary>
-        public Element? BuildRailHead()
+        public Element? BuildRailHead() => new BoxEl
+        {
+            Key = "v3-rail-head",
+            Direction = 1, Gap = SidebarRailExtents.TileGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Children = [.. RailHeadTiles()],
+        };
+
+        /// <summary>How many tiles <see cref="BuildRailHead"/> draws now — the rail layout's exact head seed
+        /// (<see cref="SidebarRailExtents.HeadExtentOf"/>). The SAME tile list, so the seed cannot disagree with the head.</summary>
+        public int RailHeadTileCount() => RailHeadTiles().Count;
+
+        List<Element> RailHeadTiles()
         {
             var items = TopBar;
             string route = Shell.NameOf(Shell.Current.Peek());
@@ -455,13 +467,7 @@ public static partial class Sidebar
                 };
                 if (tile is not null) kids.Add(tile);
             }
-
-            return new BoxEl
-            {
-                Key = "v3-rail-head",
-                Direction = 1, Gap = 6f, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children = [.. kids],
-            };
+            return kids;
         }
 
         Element RailRouteTile(SidebarItemSpec item, string route)
@@ -1452,7 +1458,12 @@ public static partial class Sidebar
         };
 
         /// <summary>A facet or option — the SAME padding selected or not, so selecting never reflows the label. Selection is
-        /// COLOUR only (accent fill + border + <c>Tok.OnAccent</c> 600), cross-faded over 167 ms.</summary>
+        /// COLOUR only (accent fill + border + <c>Tok.OnAccent</c> 600), cross-faded over 167 ms.
+        /// <para>Workstream B's documented exception: the fused-pill morph (a facet key shared with <see cref="FusedPill"/>,
+        /// the single-vs-double-click navigate/filter split, the RadioButton roving-focus set) is not a stock
+        /// <c>ToggleButton.Controlled</c> — it stays this hand-rolled radio pill, restyled to r4 (<see cref="Radii.ControlAll"/>)
+        /// instead of the old full-round capsule so it reads as the same button-ladder grammar as everything beside
+        /// it.</para></summary>
         static Element Pill(Dictionary<string, NodeHandle> nodes, V3ChipSlot slot, string label, float fontSize,
                             bool focusable, LayoutTransition animate, Action onClick, Action? onNavigate = null)
         {
@@ -1463,7 +1474,7 @@ public static partial class Sidebar
                 Animate = animate,
                 Direction = 0, Height = 28f, Shrink = 0f, AlignItems = FlexAlign.Center,
                 Padding = new Edges4(12f, 0f, 12f, 0f),
-                Corners = Radii.FullAll,
+                Corners = Radii.ControlAll,
                 Fill = slot.Selected ? Tok.AccentDefault : Tok.FillControlDefault,
                 HoverFill = slot.Selected ? Tok.AccentSecondary : Tok.FillControlSecondary,
                 PressedFill = slot.Selected ? Tok.AccentTertiary : Tok.FillControlTertiary,

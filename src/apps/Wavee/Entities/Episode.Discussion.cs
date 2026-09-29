@@ -94,11 +94,15 @@ internal static partial class PodcastReaderUI
     const float PillEmojiSize = 14, PillEmojiOverlap = -4, ReplyStackAvatar = 20, ReplyStackOverlap = -7;
 
     /// <summary>ONE reaction pill (podcast-episode-peek §3), replacing the bare outline heart and its number: a
-    /// rounded filled pill carrying the emoji people ACTUALLY used — up to three, most-used first, overlapping — and
-    /// the total after them, tinted with the accent when you are one of them, reading "React" with a single neutral
-    /// face when there are none, and opening the picker either way.
+    /// rounded filled STANDARD-radius plate carrying the emoji people ACTUALLY used — up to three, most-used first,
+    /// overlapping — and the total after them, tinted with the accent when you are one of them, reading "React" with
+    /// a single neutral face when there are none, and opening the picker either way.
     /// <para>Which emoji, in what order, what the label says and whether the pill reads as pressed is
-    /// <see cref="PodcastReactionRules.Pill"/>'s decision, not this builder's.</para></summary>
+    /// <see cref="PodcastReactionRules.Pill"/>'s decision, not this builder's.</para>
+    /// <para><c>// Workstream B</c>: restyled onto the standard button ladder's radius (<see cref="Radii.ControlAll"/>,
+    /// 4) — was a full capsule (<c>Radii.PillAll</c>); its two-tone accent-pressed fill is a page-specific state this
+    /// custom shape still owns (not a stock <c>ToggleButton</c>: the emoji cluster and the overlap margins have no
+    /// slot on one).</para></summary>
     static BoxEl ReactionPill(ReactionSession session, Action open)
     {
         var pill = PodcastReactionRules.Pill(session.Counts.Value, session.Current.Value, session.Total.Value);
@@ -112,7 +116,7 @@ internal static partial class PodcastReaderUI
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0,
-            Padding = new Edges4(Spacing.M, Spacing.XS, Spacing.M, Spacing.XS), Corners = Radii.PillAll,
+            Padding = new Edges4(Spacing.M, Spacing.XS, Spacing.M, Spacing.XS), Corners = Radii.ControlAll,
             Fill = pill.Pressed ? Tok.AccentDefault with { A = 0.22f } : Tok.FillSubtleSecondary,
             HoverFill = pill.Pressed ? Tok.AccentDefault with { A = 0.32f } : Tok.FillSubtleTertiary,
             PressedFill = pill.Pressed ? Tok.AccentDefault with { A = 0.16f } : Tok.FillSubtleSecondary,

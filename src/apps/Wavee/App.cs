@@ -186,6 +186,7 @@ public static class App
         Video.Install();                 // the video host: resolver tiers (chained after the module tier), demotion, engine log sink, attachments, placement preference (B7)
         Video.InstallMirror();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.VideoOverride/LocalVideo; after Install, which loads the roster
         Sidebar.Boot();                  // design, pane state, the layout document and pins; before its action seams and the UI (B6)
+        HomeUi.HomeLayout.Boot();        // home-layout.json v2 loaded once, before the first Home/Customize render (F29)
         Sidebar.InstallActionSeams();    // Actions.Services.IsPinned / SetPinned (J1)
         Spotify.Library.Install();       // library writes + sync on Online + the pin bridge; after Sidebar.Boot, before the pane mounts (B2)
         Log.Event(WaveeLogLevel.Info, "app", "boot.playback", "", null, Log.SinceStartMs);

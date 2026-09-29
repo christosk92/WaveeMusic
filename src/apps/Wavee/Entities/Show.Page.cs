@@ -1021,19 +1021,20 @@ public readonly partial struct Show
             var p = UseProps<SlotProps>();
             _m = p.Model;
             var f = _m.Facts?.Value ?? default;
-            // Reports 11c/11d: the APP accent (never the show tone) and a label that WRAPS — see Show.PrimaryPill.
+            // Reports 11c/11d: the APP accent (never the show tone) and a label that WRAPS — Workstream B's
+            // Controls.PrimaryButton(wrap: true), not a bespoke pill (was Show.PrimaryPill).
             Element pill = f.Primary switch
             {
-                ShowReaderRules.Primary.Follow => PrimaryPill(_follow, Loc.Get(Strings.Artist.Follow), Icons.Add),
-                ShowReaderRules.Primary.Resume => PrimaryPill(_resume,
-                    Loc.Get(Strings.Podcast.Resume) + " · " + Strings.Podcast.Left(Episode.DurationWords(f.ResumeLeft))),
-                ShowReaderRules.Primary.PlayFirst => PrimaryPill(_first, Strings.Podcast.Badge.Episode(FormatCache.Int(f.FirstNumber))),
-                _ => PrimaryPill(_latest, Loc.Get(Strings.Podcast.Latest)),
+                ShowReaderRules.Primary.Follow => Controls.PrimaryButton(Loc.Get(Strings.Artist.Follow), _follow, Tok.AccentDefault, Icons.Add, wrap: true),
+                ShowReaderRules.Primary.Resume => Controls.PrimaryButton(
+                    Loc.Get(Strings.Podcast.Resume) + " · " + Strings.Podcast.Left(Episode.DurationWords(f.ResumeLeft)), _resume, Tok.AccentDefault, wrap: true),
+                ShowReaderRules.Primary.PlayFirst => Controls.PrimaryButton(Strings.Podcast.Badge.Episode(FormatCache.Int(f.FirstNumber)), _first, Tok.AccentDefault, wrap: true),
+                _ => Controls.PrimaryButton(Loc.Get(Strings.Podcast.Latest), _latest, Tok.AccentDefault, wrap: true),
             };
             if (f.Primary != ShowReaderRules.Primary.Follow) return pill;
             Element ghost = f.Ghost == ShowReaderRules.Primary.PlayFirst
-                ? Controls.Pill(Strings.Podcast.Badge.Episode(FormatCache.Int(f.FirstNumber)), _first, ButtonAppearance.Standard, glyph: Icons.Play)
-                : Controls.Pill(Loc.Get(Strings.Podcast.Latest), _latest, ButtonAppearance.Standard, glyph: Icons.Play);
+                ? Button.Create(Strings.Podcast.Badge.Episode(FormatCache.Int(f.FirstNumber)), _first, ButtonAppearance.Standard, glyph: Icons.Play)
+                : Button.Create(Loc.Get(Strings.Podcast.Latest), _latest, ButtonAppearance.Standard, glyph: Icons.Play);
             return new BoxEl
             {
                 Direction = 0, Wrap = true, Gap = Detail.RailLayout.SatelliteGap, AlignItems = FlexAlign.Center, Children = [pill, ghost],

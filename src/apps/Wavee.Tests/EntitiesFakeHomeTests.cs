@@ -40,8 +40,10 @@ public class EntitiesFakeHomeTests
         Assert.Equal(8, shows.Cards);
         Assert.Equal(8, shows.CardSlots.Length);
 
-        // The bundled capture is 31 sections (ch 31 §2 W1); a stripped output without it still answers the shelf.
-        Assert.Equal(CaptureShipped ? 32 : 1, home.SectionCount);
+        // The bundled capture is 31 sections (ch 31 §2 W1) plus A6's 10 mockup-mirroring bands prepended ahead of it
+        // (Daylist, Made for you, New Music Friday, Releases, 4 clusters, Jump back in, Radio); a stripped output
+        // without the capture still answers the shelf plus the 10 mockup bands.
+        Assert.Equal(CaptureShipped ? 42 : 11, home.SectionCount);
     }
 
     [Fact]
@@ -51,7 +53,9 @@ public class EntitiesFakeHomeTests
         var daylist = Entities.Playlist(EntityUri.Parse("spotify:playlist:37i9dQZF1EP6YuccBxUcC1"));
 
         Assert.True(daylist.Knows(PlaylistFields.Daylist));
-        Assert.Equal((int)(Now0 + 4 * 3600 + 37 * 60), daylist.DaylistExpiresAt);
+        // A6 restated the window to the mockup canvas's own countdown (Main.dc.html "Next daylist in 01:35:05").
+        Assert.Equal((int)(Now0 + 1 * 3600 + 35 * 60 + 5), daylist.DaylistExpiresAt);
+        Assert.Equal("scream teen pop friday morning", Entities.Strings.Resolve(daylist.TitleId));
     }
 
     [Fact]
@@ -64,12 +68,25 @@ public class EntitiesFakeHomeTests
         Assert.Equal(0, audiobooks.SectionCount);
         Assert.Equal(HomeState.Empty, audiobooks.State(concluded: true));
 
+        // podcasts-chip: the pre-mockup "Shows to try" shelf plus A6's 4 rich Podcasts.dc.html bands prepended
+        // (Your shows, New episodes, Continue listening, Episodes you might like).
         var podcasts = Entities.HomeFeed("podcasts-chip".AsSpan());
-        Assert.Equal(1, podcasts.SectionCount);
+        Assert.Equal(5, podcasts.SectionCount);
         Assert.Equal(Entities.HomeFeed().ChipIds.Length, podcasts.ChipIds.Length);
 
+        // music-chip: every non-show "" section (home.SectionCount minus the 1 show shelf) plus A6's own
+        // "More like Avril Lavigne" cluster (Music.dc.html only) appended — the two cancel out to home.SectionCount.
         var music = Entities.HomeFeed("music-chip".AsSpan());
-        Assert.Equal(Entities.HomeFeed().SectionCount - 1, music.SectionCount);
+        Assert.Equal(Entities.HomeFeed().SectionCount, music.SectionCount);
+
+        // music-following-chip FAILS in the mockup dataset (06-facet-design.md; `FakeHomeFacetTiming.Failing`):
+        // deliberately never seeded, so it comes back unanswered rather than with content.
+        var musicFollowing = Entities.HomeFeed("music-following-chip".AsSpan());
+        Assert.False(musicFollowing.Knows(HomeFields.All));
+
+        // podcasts-following-chip narrows to the P1-P3(-P7) "Your shows" subset only.
+        var podcastsFollowing = Entities.HomeFeed("podcasts-following-chip".AsSpan());
+        Assert.Equal(1, podcastsFollowing.SectionCount);
     }
 
     [Fact]

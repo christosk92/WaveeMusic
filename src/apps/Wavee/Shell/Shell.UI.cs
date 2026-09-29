@@ -34,6 +34,7 @@ using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
+using Wavee.HomeUi;
 using static FluentGpu.Dsl.Ui;
 using FgMotion = FluentGpu.Dsl.Motion;
 
@@ -471,7 +472,10 @@ public static partial class Shell
                 DragPreviewLayer.Of(Drag.Preview),
                 Diagnostics.FpsOverlay()) with { Grow = 1f };
 
-            return Ctx.Provide(ShellMaterial.Slot, MaterialState, OverlayHost.Create(stack));
+            // HomeLayout (F29): one app-wide document signal, provided at the shell root beside the material cell so
+            // HomeScreen and CustomizeScreen both read it and a customize edit is visible on Home the same frame.
+            return Ctx.Provide(HomeLayout.Slot, HomeLayout.Instance,
+                Ctx.Provide(ShellMaterial.Slot, MaterialState, OverlayHost.Create(stack)));
         }
 
         Element ContentRegion(IReadSignal<Size2> vp) => ZStack(
@@ -848,6 +852,12 @@ public static partial class Shell
     static LayoutTransition? PageTransition(object oldToken, object newToken)
     {
         if (newToken is not Route next) return null;
+        // Home→Home, same tab (remediation §3.10/W0): SlotKey already ignores Arg, so this is a facet switch inside
+        // the SAME mounted HomeScreen, never a page swap — the facet content root's own keyed Exit/Enter (F13) plays
+        // the swap. A page transition here would double up on top of it (and, worse, replay a page entrance every
+        // time the facet pivot is clicked).
+        if (oldToken is Route prevHome && prevHome.Kind == RouteKind.Home && next.Kind == RouteKind.Home && prevHome.Tab == next.Tab)
+            return null;
         var motion = Motion.Peek();
         bool videoSafe = oldToken is Route prev ? NeedsVideoSafe(prev, next) : next.Kind == RouteKind.Module;
         if (videoSafe) return RecipeForVideoSafe(motion);

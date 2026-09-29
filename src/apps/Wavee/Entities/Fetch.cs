@@ -162,6 +162,14 @@ public sealed class FetchBatch
     /// touching a table (wave D3). Null where no revision is held or the list is not a settled whole. Parallel to
     /// <see cref="Ids"/>.</summary>
     public ListRow[]?[] Baselines = [];
+    /// <summary>For <see cref="FetchEdge.HomePreviews"/> only: each home row's baseline-section card uris to request,
+    /// deduped, at most 50 — the <c>feedBaselineLookup</c> body (<c>Fetch.FillPreviewMap</c>, UI thread, at send).
+    /// Null for every other batch. Parallel to <see cref="Ids"/>.</summary>
+    public string[]?[] PreviewUris = [];
+    /// <summary>For <see cref="FetchEdge.HomePreviews"/> only: every baseline section's (section uri, card uri) pair
+    /// for this home row, NOT deduped — what the answer is matched back against, section by section
+    /// (<c>Spotify.Decode.FeedBaselineLookup</c>'s <c>PreviewFold</c>). Parallel to <see cref="Ids"/>.</summary>
+    public HomePreviewLink[]?[] PreviewLinks = [];
     /// <summary>The extended-metadata kind this batch asks for, or 0 for "the kind's own routes" (a provider maps that
     /// through <see cref="FetchRoutes"/>). Non-zero for exactly one group today: <see cref="Fetch.AudioFilesKind"/> = 5,
     /// the FLAC ladder, whose request is a <c>spotify:audio:</c> uri in <see cref="Text"/> and whose ANSWER is keyed by
@@ -1071,6 +1079,8 @@ public static partial class Fetch
             batch.Slots = new int[send];
             batch.Revisions = new string?[send];
             batch.Baselines = new ListRow[send][];
+            batch.PreviewUris = new string[send][];
+            batch.PreviewLinks = new HomePreviewLink[send][];
         }
         Array.Copy(d.Ids, batch.Ids, send);
         Array.Copy(d.Slots, batch.Slots, send);
@@ -1086,6 +1096,7 @@ public static partial class Fetch
         if (IsAudioFiles(d.Subject, d.Kind, d.Wanted)) FillAudioUris(batch, (TrackTable)d.Table, send);
         if (d.Subject == FetchSubject.Edge) FillRevisions(batch, d.Edge, send);
         if (d.Subject == FetchSubject.Edge) FillBaselines(batch, d.Edge, send);   // reads Revisions: after it (wave D3)
+        if (d.Subject == FetchSubject.Edge && d.Edge == FetchEdge.HomePreviews) FillPreviewMap(batch, send);
         batch.Count = send;
         batch.Provider = d.Provider;
         batch.Kind = d.Kind;
@@ -1662,6 +1673,34 @@ public static partial class Fetch
         }
     }
 
+    /// <summary>D2's per-parent request shape for <see cref="FetchEdge.HomePreviews"/> (UI thread, inside
+    /// <see cref="Send"/>, C1 — the provider cannot read a table): each home row's baseline-section (section uri, card
+    /// uri) pairs, and the deduped card uris the request body actually sends.</summary>
+    static void FillPreviewMap(FetchBatch batch, int take)
+    {
+        for (int i = 0; i < take; i++)
+        {
+            int slot = batch.Slots[i];
+            var home = (uint)slot < (uint)Entities.Current.Homes.Count && Entities.Current.Homes.Id[slot] == batch.Ids[i]
+                ? new global::Wavee.Home(slot) : default;
+            HomePreviewLink[] links = home.IsValid ? home.BaselinePreviewLinks() : [];
+            batch.PreviewLinks[i] = links.Length == 0 ? null : links;
+            batch.PreviewUris[i] = links.Length == 0 ? null : DedupCardUris(links);
+        }
+    }
+
+    /// <summary>The distinct card uris of <paramref name="links"/>, first-seen order, capped at 50 — the wire request
+    /// (a card shared by two baseline sections is asked for once).</summary>
+    static string[] DedupCardUris(HomePreviewLink[] links)
+    {
+        const int Cap = 50;
+        var seen = new HashSet<string>(Math.Min(links.Length, Cap), StringComparer.Ordinal);
+        var uris = new List<string>(Math.Min(links.Length, Cap));
+        for (int i = 0; i < links.Length && uris.Count < Cap; i++)
+            if (seen.Add(links[i].CardUri)) uris.Add(links[i].CardUri);
+        return uris.ToArray();
+    }
+
     static void Recycle(FetchBatch batch)
     {
         batch.Count = 0;
@@ -1671,6 +1710,8 @@ public static partial class Fetch
         Array.Clear(batch.Text);                 // do not pin interned strings in a pooled buffer (the ids are values)
         Array.Clear(batch.Revisions);
         Array.Clear(batch.Baselines);             // a pooled batch pins no list
+        Array.Clear(batch.PreviewUris);
+        Array.Clear(batch.PreviewLinks);
         if (s_pool.Count < 8) s_pool.Push(batch);
     }
 }

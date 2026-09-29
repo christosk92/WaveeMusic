@@ -80,9 +80,13 @@ public static class ArtistHeroLayout
     public const float NarrowPhotoHeight = 176f;
 
     // The stacked identity band's WORST-CASE anatomy: verified caption + a 2-line title + a 2-line bio + meta (one row at
-    // Compact, three stacked rows at Narrow) + gaps + 12/20 padding + actions (one 36 row at Compact, two at Narrow).
-    public const float CompactExpandedIdentityHeight = 252f;
-    public const float NarrowExpandedIdentityHeight = 300f;
+    // Compact, three stacked rows at Narrow) + gaps + 12/20 padding + actions (one 32 row at Compact, two at Narrow).
+    // Workstream B (button standardisation): the action row's control lost 4 DIP — the old media pill/FollowButton's
+    // PillHeight (36) is replaced by the new grammar's ButtonHeight (32, Controls.Cta.cs) for PlayButton/Shuffle/
+    // FollowToggle/radio IconAction alike — so each 36 action row shrinks to 32. Compact stacks ONE action row
+    // (252 - 4 = 248); Narrow stacks TWO (300 - 2×4 = 292).
+    public const float CompactExpandedIdentityHeight = 248f;
+    public const float NarrowExpandedIdentityHeight = 292f;
     public const float CompactHeight = CompactPhotoHeight + CompactExpandedIdentityHeight;
     public const float NarrowHeight = NarrowPhotoHeight + NarrowExpandedIdentityHeight;
 
@@ -545,20 +549,22 @@ public readonly partial struct Artist
     }
 
     /// <summary>Play (the cover's accent) · Shuffle · Follow · Radio; at Narrow [Play, Follow] over [Shuffle, Radio]
-    /// (Hero.cs:200-234). Never skeleton content (ch 08 §9 #8).</summary>
+    /// (Hero.cs:200-234). Never skeleton content (ch 08 §9 #8).
+    /// <para>Workstream B grammar: [<see cref="Controls.PlayButton(ColorF,Action,string?,string?)"/>][Shuffle, a stock
+    /// Standard <c>Button.Create</c>][<see cref="Controls.FollowToggle"/>][radio, <see cref="Controls.IconAction"/>].</para></summary>
     static Element HeroActions(string name, string uri, ColorF accent, Action? play, Action? shuffle, Action? radio,
                                ArtistHeroTier tier)
     {
-        Element playButton = Controls.Play(accent, play ?? s_noop, Loc.Get(Strings.Artist.Play));
-        // Keyed on the uri: FollowButton carries its uri as a mount-frozen field.
+        Element playButton = Controls.PlayButton(accent, play ?? s_noop, Loc.Get(Strings.Artist.Play));
+        // Keyed on the uri: FollowToggle carries its uri as a mount-frozen field.
         Element follow = uri.Length == 0
-            ? Controls.FollowButton.SkeletonShape()
-            : Embed.Comp(() => new Controls.FollowButton { Uri = uri, Name = name })
+            ? Controls.FollowToggle.SkeletonShape()
+            : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name })
                 with { Key = "artist-follow:" + uri, SkeletonProxy = s_followShape };
-        Element shuffleButton = Controls.Named(
-            Controls.IconPill(Icons.Shuffle, shuffle, ButtonAppearance.Subtle), Loc.Get(Strings.Detail.Shuffle));
+        Element shuffleButton = Button.Create(Loc.Get(Strings.Detail.Shuffle), shuffle ?? s_noop,
+            ButtonAppearance.Standard, glyph: Icons.Shuffle);
         Element radioButton = Controls.Named(
-            Controls.IconPill(Icons.RadioTower, radio, ButtonAppearance.Subtle), Loc.Get(Strings.Artist.ArtistRadio));
+            Controls.IconAction(Icons.RadioTower, radio), Loc.Get(Strings.Artist.ArtistRadio));
 
         if (tier == ArtistHeroTier.Narrow)
             return new BoxEl
@@ -578,7 +584,7 @@ public readonly partial struct Artist
         }.Skeletonized(false);
     }
 
-    static readonly Func<Element> s_followShape = Controls.FollowButton.SkeletonShape;
+    static readonly Func<Element> s_followShape = static () => Controls.FollowToggle.SkeletonShape();
     static readonly Action s_noop = static () => { };
 
     /// <summary>A count in the current culture's grouping ("20,577,457").</summary>
@@ -773,7 +779,7 @@ public readonly partial struct Artist
         Element trailing = releaseAt > now
             ? Embed.Comp(() => new Controls.PreSaveButton { Uri = target, Name = title, Accent = accent })
                 with { Key = "pick-presave:" + target }
-            : Controls.Play(tint, play);
+            : Controls.PlayButton(tint, play);
         Element metaKind = Design.Type.TrackMeta(kind) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
         Element foot = new BoxEl
         {

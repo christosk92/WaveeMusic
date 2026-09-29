@@ -74,7 +74,98 @@
     "artist": "Artiest",
     "play": "Afspelen",
     "pause": "Pauzeren",
-    "album": "Album"
+    "album": "Album",
+    "facetAll": "Alles",
+    "following": "Gevolgd",
+    "seeAll": "Alles weergeven",
+    "seeAllN": "Alle {n} weergeven",
+    "listeningHistory": "Luistergeschiedenis",
+    "plays": "{n} keer beluisterd",
+    "save": "Bewaren",
+    "more": "Meer",
+    "couldntLoad": "Kon {what} niet laden",
+    "couldntLoadHome": "Kon Start niet laden",
+    "checkConnection": "Controleer je verbinding en probeer het opnieuw.",
+    "nextDaylistIn": "Volgende daylist over {t}",
+    "customizeBody": "Toon, verberg en herschik de secties van Start.",
+    "resetDefault": "Terugzetten naar standaard",
+    "recentsSub": "Ga verder waar je gebleven was",
+    "yourListeningHistory": "Je luistergeschiedenis",
+    "playsThisWeek": "{n} keer afgespeeld deze week",
+    "updatedDaily": "Dagelijks bijgewerkt",
+    "browseAll": "Alles bekijken",
+    "releasedThisWeek": "Deze week uitgebracht",
+    "daylistMeta": "Playlist · Spotify · {n} nummers",
+    "playingOn": "speelt af op {device}",
+    "daylist": {
+      "arrivesAt": "{when} komt om {time}"
+    },
+    "zone": {
+      "becauseYouLike": "Omdat je dit leuk vindt",
+      "moreForYou": "Meer voor jou",
+      "radioAndMixes": "Radio en mixen",
+      "browse": "Ontdekken",
+      "newEpisodes": "Nieuwe afleveringen",
+      "continueListening": "Verder luisteren",
+      "videosYouMightLike": "Video's die je misschien leuk vindt",
+      "episodesYouMightLike": "Afleveringen die je misschien leuk vindt",
+      "becauseYouListenTo": "Omdat je luistert naar",
+      "fromArtistsYouFollow": "Van artiesten die je volgt",
+      "yourShows": "Jouw shows",
+      "showsYouMightLike": "Shows die je misschien leuk vindt"
+    },
+    "zoneSub": {
+      "madeForYou": "Dagelijkse mixen en stemmingen, speciaal voor jou",
+      "newMusic": "Nieuwe playlists en releases van artiesten die je volgt",
+      "becauseYouLike": "Gegroepeerd op basis van de artiesten die je het meest speelt",
+      "jumpBackIn": "Dingen die je onlangs hebt geopend",
+      "radio": "Non-stop muziek op basis van de artiesten en nummers die je speelt",
+      "browse": "Officiële Spotify-playlists en de redactionele keuzes van deze week",
+      "newEpisodes": "Van de shows die je volgt"
+    },
+    "chartsCaption": {
+      "top50Country": "De 50 meest afgespeelde nummers op dit moment",
+      "top50Global": "De 50 meest afgespeelde nummers wereldwijd",
+      "viral50Country": "De nummers die nu trending zijn"
+    },
+    "layout": {
+      "daylist": "Daylist",
+      "newMusic": "Nieuwe muziek",
+      "releases": "Nieuwe releases",
+      "becauseYouLike": "Omdat je dit leuk vindt…"
+    },
+    "daypart": {
+      "early": "Vroege ochtend",
+      "morning": "Ochtend",
+      "afternoon": "Middag",
+      "evening": "Avond",
+      "night": "Nacht"
+    },
+    "when": {
+      "playingNow": "Speelt nu",
+      "minAgo": "{n} min geleden",
+      "hAgo": "{n} u geleden"
+    },
+    "release": {
+      "album": "Album",
+      "playlist": "Playlist",
+      "artist": "Artiest",
+      "song": "Nummer",
+      "episode": "Aflevering",
+      "podcast": "Podcast",
+      "audiobook": "Audioboek"
+    },
+    "empty": {
+      "audiobooksTitle": "Nog geen audioboeken",
+      "audiobooksBody": "Audioboeken die je bewaart, verschijnen hier.",
+      "audiobooksAction": "Audioboeken ontdekken",
+      "podcastsTitle": "Nog geen podcasts",
+      "podcastsBody": "Shows en afleveringen die je volgt, verschijnen hier.",
+      "podcastsAction": "Podcasts ontdekken",
+      "genericTitle": "Nog niets hier",
+      "genericBody": "Jouw aanbevelingen verschijnen hier binnenkort.",
+      "genericAction": "Ontdekken"
+    }
   },
   "podcast": {
     "episodes": "Afleveringen",
@@ -1057,5 +1148,13 @@
     "rejected": "Dat bestand kan niet worden afgespeeld. Wavee speelt .mp3-, .ogg-, .flac- en .mp4-bestanden af.",
     "notReady": "Lokaal afspelen is nog niet gereed — meld je eerst aan.",
     "dropHint": "Zet een bestand neer om het af te spelen"
+  },
+  "palette": {
+    "homeAll": "Start: Alles",
+    "homeMusic": "Start: Muziek",
+    "homePodcasts": "Start: Podcasts",
+    "homeAudiobooks": "Start: Audioboeken",
+    "homeFollowingOn": "Start: Volgen aan",
+    "homeFollowingOff": "Start: Volgen uit"
   }
 }

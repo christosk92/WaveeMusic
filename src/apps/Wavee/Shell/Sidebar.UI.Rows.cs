@@ -1331,34 +1331,16 @@ public static partial class Sidebar
             };
         }
 
+        /// <summary>Workstream B: the grammar table's "Filter/mode toggles" row — a stock <see cref="ToggleButton.Controlled"/>
+        /// at <see cref="ControlSize.Small"/> (24/r4, <see cref="SidebarRowGeometry.ChipHeight"/>), stock checked = accent,
+        /// replacing the hand-rolled pill.</summary>
         static Element Chip(PaneView owner, string sectionId, SidebarEntityQuery q, SidebarEntityKinds kind,
                             string labelKey)
         {
             bool on = q.Kinds == kind;
-            return new BoxEl
-            {
-                Key = labelKey,
-                Height = SidebarRowGeometry.ChipHeight, Shrink = 0f,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Padding = new Edges4(10f, 0f, 10f, 0f), Corners = Radii.PillAll,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand,
-                OnClick = () => owner.Dispatch(new SetQuery(sectionId, q with { Kinds = on ? SidebarEntityKinds.All : kind })),
-                Children =
-                [
-                    new TextEl(Loc.Get(labelKey))
-                    {
-                        Size = 12f, Weight = (ushort)(on ? 600 : 400),
-                        Color = on ? Tok.TextOnAccentPrimary : Tok.TextSecondary, MaxLines = 1,
-                    },
-                ],
-            }.Interactive(Interaction.Subtle) with
-            {
-                // AFTER Interactive (it rewrites Fill wholesale): the ON chip is the accent pill (ch 25 W1b), and it keeps
-                // the accent ramp through hover/press rather than flattening to the subtle veil.
-                Fill = on ? Tok.AccentDefault : Tok.FillSubtleSecondary,
-                HoverFill = on ? Tok.AccentSecondary : Tok.FillSubtleSecondary,
-                PressedFill = on ? Tok.AccentTertiary : Tok.FillSubtleTertiary,
-            };
+            return ToggleButton.Controlled(Loc.Get(labelKey), on,
+                _ => owner.Dispatch(new SetQuery(sectionId, q with { Kinds = on ? SidebarEntityKinds.All : kind })),
+                size: ControlSize.Small, parts: Controls.RootNoShrink) with { Key = labelKey };
         }
 
         /// <summary>The header's 24-DIP sort/view trigger. Keyed by section id: a recycled header slot remounts it.</summary>

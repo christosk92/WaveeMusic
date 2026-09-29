@@ -97,7 +97,8 @@ internal static partial class PodcastReaderUI
             return Skel.Region(resource.Loadable,
                 page => !page.Ok ? Failed(resource.Refresh) : page.Items.Length == 0 ? new BoxEl()
                     : PagedShelf.Create(page.Items, Card, cardHeight: Controls.ShelfHeight,
-                        title: Loc.Get(Strings.Podcast.Reader.Related), measured: false, keyOf: static (item, _) => item.Uri),
+                        title: Loc.Get(Strings.Podcast.Reader.Related), measured: false, keyOf: static (item, _) => item.Uri,
+                        lift: ShelfLift.None),   // the shared card hovers fill-only: no lift halo to reserve clearance for
                 onFailed: () => Failed(resource.Refresh));
         }
         static Element Card(Spotify.Podcasts.Recommendation item, int index, float width)

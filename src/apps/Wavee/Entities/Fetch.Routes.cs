@@ -83,6 +83,10 @@ public enum FetchEdge : byte
     HomeSections,
     /// <summary>A Home band's cards, paged (<c>Edges.SectionCards</c>, <c>homeSection</c>).</summary>
     HomeSectionCards,
+    /// <summary>A Home feed's baseline-section cards' preview tracks, one request per facet answer (D2,
+    /// <c>feedBaselineLookup</c>; <c>Edges.HomePreviews</c> the readiness marker, <c>Edges.SectionPreviewTracks</c>
+    /// the content).</summary>
+    HomePreviews,
     /// <summary>A Browse band's cards, paged (<c>Edges.SectionCards</c>, <c>browseSection</c>).</summary>
     BrowseSectionCards,
     /// <summary>One search facet's hits, paged (<c>Edges.SearchResult</c>).</summary>
@@ -127,6 +131,8 @@ public enum PathfinderOp : byte
     /// Api's persisted-query table today (REPORTED, G-040): until it is, the four groups it serves seal.</summary>
     FetchPlaylist,
     Home, HomeSection, BrowseAll, BrowsePage, BrowseSection,
+    /// <summary><c>feedBaselineLookup</c> (D2): the baseline sections' card uris in, their preview tracks out.</summary>
+    FeedBaselineLookup,
     /// <summary>The facet's own search operation; the facet is the subject uri's <c>NN</c>.</summary>
     Search, SearchGenres, SearchSuggestions,
     Concert, AlbumMerch, SimilarAlbums,
@@ -404,6 +410,7 @@ public static class FetchRoutes
         FetchEdge.TrackWaveform => FetchRoute.Metadata(ThreeBandWaveforms, 0),
         FetchEdge.HomeSections => FetchRoute.Pathfinder(PathfinderOp.Home, 0),
         FetchEdge.HomeSectionCards => FetchRoute.Pathfinder(PathfinderOp.HomeSection, 0),
+        FetchEdge.HomePreviews => FetchRoute.Pathfinder(PathfinderOp.FeedBaselineLookup, 0),
         FetchEdge.BrowseSectionCards => FetchRoute.Pathfinder(PathfinderOp.BrowseSection, 0),
         FetchEdge.SearchResults => FetchRoute.Pathfinder(PathfinderOp.Search, 0),
         FetchEdge.BrowseCategories => FetchRoute.Pathfinder(PathfinderOp.BrowseAll, 0),

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scroll &amp; motion</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+.board{
+  --bg:#1c1d22;
+  --text-primary:rgba(255,255,255,1);
+  --text-secondary:rgba(255,255,255,.786);
+  --text-tertiary:rgba(255,255,255,.5442);
+  --card-fill:rgba(255,255,255,.0512);
+  --skel:rgba(255,255,255,.09);
+  --divider:rgba(255,255,255,.0837);
+  --accent:#60cdff;
+  --redline:#ff5c8a;
+  --font-display:"Segoe UI Variable Display","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  color:var(--text-primary);
+  background:var(--bg);
+  position:relative;
+  overflow:hidden;
+  cursor:default;
+}
+.mica{position:absolute;inset:0;z-index:0;background:
+  radial-gradient(1100px 720px at 16% -4%, #2c3a52 0%, transparent 58%),
+  radial-gradient(900px 650px at 96% 6%, #3a2c34 0%, transparent 52%), #1c1d22;}
+.shell{position:relative;z-index:1;padding:32px 40px}
+.sheet-title{font-family:var(--font-display);font-size:28px;line-height:36px;font-weight:600;margin-bottom:4px}
+.sheet-sub{font-size:14px;line-height:20px;color:var(--text-secondary);margin-bottom:28px;max-width:1040px}
+.storyrow{display:flex;gap:24px;margin-bottom:36px}
+.frame{width:318px;flex:0 0 auto}
+.frame-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.frame-num{width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+.frame-t{font-size:14px;font-weight:600}
+.win{width:318px;height:420px;border:1px solid var(--divider);border-radius:8px;overflow:hidden;position:relative;background:rgba(255,255,255,.015);display:flex;flex-direction:column}
+.f-tb{height:18px;background:rgba(20,21,26,.7);border-bottom:1px solid rgba(255,255,255,.06);flex:0 0 auto}
+.f-body{display:flex;flex:1;min-height:0}
+.f-rail{width:16px;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:4px}
+.f-rail i{display:block;width:9px;height:9px;border-radius:3px;background:rgba(255,255,255,.12)}
+.f-rail i.on{background:rgba(96,205,255,.45)}
+.f-layer{flex:1;overflow:hidden;display:flex;flex-direction:column;background:rgba(255,255,255,.035);border-top-left-radius:6px;position:relative}
+.f-sel{height:20px;flex:0 0 auto;border-bottom:1px solid var(--divider);display:flex;align-items:center;padding:0 10px;gap:10px;background:rgba(28,29,34,.95)}
+.f-sel i{display:block;height:6px;width:26px;border-radius:2px;background:var(--skel)}
+.f-sel i.on{background:rgba(255,255,255,.5)}
+.f-pad{padding:8px 10px;display:flex;flex-direction:column;gap:8px}
+.f-hero{height:92px;border-radius:5px;background:var(--card-fill);border:1px solid rgba(0,0,0,.2);display:grid;grid-template-columns:1fr 104px;gap:8px;padding:5px 5px 5px 8px}
+.f-hero .img{border-radius:3px;background:linear-gradient(120deg,#5a6f96,#c7a45a 55%,#6f9bd6)}
+.f-lines{display:flex;flex-direction:column;gap:5px;justify-content:center}
+.f-lines i{display:block;height:5px;border-radius:2px;background:var(--skel)}
+.f-lines i.big{height:10px;background:rgba(255,255,255,.4)}
+.f-lines i.acc{height:8px;width:30px;background:var(--accent)}
+.f-hd{height:7px;width:70px;border-radius:2px;background:rgba(255,255,255,.4)}
+.f-chap{height:22px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:rgba(30,31,37,.97);border-bottom:1px solid var(--divider)}
+.f-chap b{display:block;height:7px;width:70px;border-radius:2px;background:rgba(255,255,255,.5)}
+.f-pips{display:flex;gap:3px;align-items:center}
+.f-pips i{display:block;width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.35)}
+.f-pips i.on{width:4px;height:4px;background:#fff}
+.f-rec{display:grid;grid-template-columns:repeat(2,1fr);gap:4px}
+.f-rec i{display:block;height:16px;border-radius:3px;background:var(--card-fill);border:1px solid rgba(0,0,0,.2)}
+.f-grid{display:flex;gap:6px;overflow:hidden}
+.f-sq{width:44px;height:44px;border-radius:3px;background:var(--skel);flex:0 0 auto}
+.f-sq.round{border-radius:50%}
+.f-lead{width:94px;height:44px;border-radius:3px;flex:0 0 auto;background:linear-gradient(120deg,#8a3a4c,#d9784a)}
+.f-wide{width:86px;height:48px;border-radius:3px;background:linear-gradient(120deg,#35408a,#7b3fb0);flex:0 0 auto}
+.ghost{opacity:.35}
+.rl{position:absolute;border:1px dashed var(--redline);pointer-events:none}
+.rl-label{font-size:12px;color:var(--redline)}
+.note{font-size:12px;color:var(--text-secondary);line-height:17px;margin-top:10px}
+.note b{color:var(--text-primary);font-weight:600}
+.spec-row{display:flex;gap:40px;margin-bottom:20px}
+.spec-col{flex:1}
+.spec-h{font-size:14px;font-weight:600;margin-bottom:8px}
+.spec-list{font-size:12px;color:var(--text-secondary);line-height:19px}
+.spec-list b{color:var(--text-primary);font-weight:600}
+code{background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;font-size:12px;font-family:Consolas,monospace}
+</style>
+</helmet>
+<div class="board" style="width:1440px;height:1360px;">
+  <div class="mica"></div>
+  <div class="shell">
+    <div class="sheet-title">Scroll &amp; motion</div>
+    <div class="sheet-sub">Home scrolls as a set of chapters, not one long poster. The daylist card and Recently played settle in once. After that, each chapter's header pins under the compact facet band until the next chapter pushes it away, and shelves turn in whole pages. Motion uses the stock WinUI durations (83 / 167 / 250 / 333 ms) and the Fast-Out-Slow-In curve <code>cubic-bezier(0,0,0,1)</code>. Nothing bounces, glows or lifts. The facet row and its switch motion have their own board (Facet switch). The title bar, icon rail and now-playing bar are fixed chrome and take no part in this choreography.</div>
+
+    <div class="storyrow">
+      <div class="frame">
+        <div class="frame-hd"><div class="frame-num">1</div><div class="frame-t">At rest: top of Home</div></div>
+        <div class="win">
+          <div class="f-tb"></div>
+          <div class="f-body">
+            <div class="f-rail"><i></i><i></i><i class="on"></i><i></i></div>
+            <div class="f-layer">
+              <div class="f-sel"><i class="on"></i><i></i><i></i></div>
+              <div class="f-pad">
+                <div class="f-hero"><div class="f-lines"><i style="width:50%"></i><i class="big" style="width:90%"></i><i style="width:60%"></i><i class="acc"></i><i style="width:70%;margin-top:6px"></i></div><div class="img"></div></div>
+                <div class="f-hd" style="margin-top:6px"></div>
+                <div class="f-rec"><i></i><i></i><i></i><i></i></div>
+                <div class="f-hd" style="margin-top:8px;width:56px"></div>
+                <div class="f-grid"><div class="f-lead"></div><div class="f-sq"></div><div class="f-sq"></div><div class="f-sq"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="note">The daylist card fades and rises 8px <b>once</b> (333ms). Recently played items follow, 30ms apart. Nothing lower on the page animates on load. The countdown starts ticking immediately.</div>
+      </div>
+
+      <div class="frame">
+        <div class="frame-hd"><div class="frame-num">2</div><div class="frame-t">Chapter header pinned</div></div>
+        <div class="win">
+          <div class="f-tb"></div>
+          <div class="f-body">
+            <div class="f-rail"><i></i><i></i><i class="on"></i><i></i></div>
+            <div class="f-layer">
+              <div class="f-sel"><i class="on"></i><i></i><i></i></div>
+              <div class="f-chap"><b></b><div class="f-pips"><i class="on"></i><i></i></div></div>
+              <div class="f-pad">
+                <div class="ghost" style="font-size:12px;color:var(--text-tertiary)">&uarr; daylist + recents scrolled away</div>
+                <div class="f-grid"><div class="f-lead"></div><div class="f-sq"></div><div class="f-sq"></div><div class="f-sq"></div></div>
+                <div class="f-lines"><i style="width:40%"></i><i style="width:65%"></i></div>
+                <div class="f-hd" style="margin-top:14px;width:100px"></div>
+                <div class="f-grid"><div class="f-wide"></div><div class="f-wide"></div><div class="f-wide"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="note">"Made for you" reaches the top of the layer and <b>pins at top:44</b>, just under the compact facet band, with its pager still in reach. It's opaque with a Mica-blurred backdrop, so cards slide under it cleanly.</div>
+      </div>
+
+      <div class="frame">
+        <div class="frame-hd"><div class="frame-num">3</div><div class="frame-t">Chapter hand-off</div></div>
+        <div class="win">
+          <div class="f-tb"></div>
+          <div class="f-body">
+            <div class="f-rail"><i></i><i></i><i class="on"></i><i></i></div>
+            <div class="f-layer">
+              <div class="f-sel"><i class="on"></i><i></i><i></i></div>
+              <div class="f-chap" style="transform:translateY(-8px);opacity:.9"><b style="width:56px"></b></div>
+              <div class="f-chap" style="margin-top:-8px"><b style="width:110px"></b><div class="f-pips"><i class="on"></i><i></i></div></div>
+              <div class="f-pad">
+                <div class="f-grid"><div class="f-wide"></div><div class="f-wide"></div><div class="f-wide"></div></div>
+                <div class="f-lines"><i style="width:50%"></i><i style="width:80%"></i></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="note">The next header ("It's New Music Friday!") pushes the pinned one up and out: native <code>position:sticky</code> inside each chapter, scroll-linked and with no timed animation. Only one chapter header is ever pinned.</div>
+      </div>
+
+      <div class="frame">
+        <div class="frame-hd"><div class="frame-num">4</div><div class="frame-t">Shelf page turn</div></div>
+        <div class="win">
+          <div class="f-tb"></div>
+          <div class="f-body">
+            <div class="f-rail"><i></i><i></i><i class="on"></i><i></i></div>
+            <div class="f-layer">
+              <div class="f-sel"><i class="on"></i><i></i><i></i></div>
+              <div class="f-pad" style="padding-top:18px">
+                <div style="display:flex;justify-content:space-between;align-items:center"><div class="f-hd" style="width:90px"></div><div class="f-pips"><i></i><i class="on"></i><i></i></div></div>
+                <div style="position:relative">
+                  <div class="f-grid"><div class="f-sq round"></div><div class="f-sq round"></div><div class="f-sq round"></div><div class="f-sq round"></div><div class="f-sq round"></div></div>
+                  <div class="rl" style="top:-4px;left:-4px;right:-4px;height:52px"></div>
+                </div>
+                <div class="rl-label">track moves by exactly one page, 1332px, 250ms</div>
+                <div class="f-grid ghost" style="margin-top:12px"><div class="f-lead" style="width:94px"></div><div class="f-sq round"></div><div class="f-sq round"></div></div>
+                <div class="rl-label">page 1: the wide lead = 2 cells, so page 2 starts on a card edge</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="note">Chevron or pip click: the track translates by <b>one viewport plus one gap</b>. Every template divides it evenly: 6 &times; 206, 3 &times; 428 and 8 &times; 150.5 all step 1332px, and a wide lead counts as two cells. No card is ever cut at rest.</div>
+      </div>
+    </div>
+
+    <div class="spec-row">
+      <div class="spec-col">
+        <div class="spec-h">Timing &amp; easing</div>
+        <div class="spec-list">
+          <b>Daylist card entrance</b>: 333ms, <code>cubic-bezier(0,0,0,1)</code>, opacity 0&rarr;1 plus 8px rise, first load only<br>
+          <b>Recently played stagger</b>: 250ms per item, 30ms step, 8 items<br>
+          <b>Pointer-over fill</b> (buttons, rows, item backplates): 83ms linear, fill only<br>
+          <b>Hover play button</b> on a cover: 167ms fade plus 4px rise<br>
+          <b>Lead / 16:9 image hover</b>: 2% zoom inside a fixed frame, 333ms<br>
+          <b>Shelf page turn</b>: 250ms, <code>cubic-bezier(0,0,0,1)</code>, transform only<br>
+          <b>Pressed</b>: a lower fill and dimmed text. Never scale or lift.
+        </div>
+      </div>
+      <div class="spec-col">
+        <div class="spec-h">Sticky stack</div>
+        <div class="spec-list">
+          <b>Title bar</b>: fixed Wavee chrome, 48px<br>
+          <b>Icon rail</b>: fixed chrome, 56px wide<br>
+          <b>Facet row</b> (All / Music / Podcasts / Audiobooks): not sticky; it scrolls away with the page. Past scrollTop 64 the <b>compact band</b> (Segmented control + Following) takes over: <code>sticky top:0</code>, 44px, z 45<br>
+          <b>Chapter headers</b> (Made for you, It's New Music Friday!, Because you like&hellip;, Jump back in, Radio &amp; mixes, Browse): <code>sticky top:44px</code>, 52px, z 20, opaque with a Mica blur, bleeding to the layer edges<br>
+          <b>Not sticky</b>: the daylist card and Recently played (the page's top matter)<br>
+          <b>Now-playing bar</b>: fixed chrome at the bottom
+        </div>
+      </div>
+      <div class="spec-col">
+        <div class="spec-h">Paging &amp; keyboard</div>
+        <div class="spec-list">
+          Viewport <code>overflow:hidden</code> with an 8px bleed so hover backplates aren't clipped. The track uses <code>translateX(-page &times; 1332px)</code>.<br>
+          Chevrons disable at the ends, and pips are buttons that jump straight to a page.<br>
+          <b>Keyboard</b>: Tab moves into a shelf, the arrow keys move between items, and moving past the last visible item turns the page. The focus rectangle is always the two-tone Windows one.<br>
+          <b>Not paged</b> by design: Recently played (fixed 4&times;2), Because you like&hellip; (grouped cards), Browse (a grid of tiles).
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1360}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

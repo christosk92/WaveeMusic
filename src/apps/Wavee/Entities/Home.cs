@@ -271,7 +271,12 @@ public sealed class SectionTable : Table
     public Column<uint> FactAccent;
     public Column<ushort> FactRating;
     public Column<byte> FactKind, FactFlags, FactSeedCount;
+    /// <summary>0 unknown, 1 NotStarted, 2 InProgress, 3 FullyPlayed (an episode's <c>playedState.state</c>). Resume
+    /// POSITION stays on <see cref="FactResumeMs"/> — this is only the server's own verdict on that position.</summary>
+    public Column<byte> FactPlayedState;
     public Column<StringId> FactSubtitle, FactFormat, FactAuthor, FactSignifier;
+    /// <summary>An episode's <c>videoPreviewThumbnail</c> — the 1280-wide rendition, null for every other kind.</summary>
+    public Column<StringId> FactVideoThumb;
     /// <summary>The seed slab.</summary>
     public Column<StringId> Seeds;
     public int FactTail, SeedTail;
@@ -388,10 +393,12 @@ public sealed class SectionTable : Table
             FactRating[at] = f.Rating;
             FactDurationMs[at] = f.DurationMs;
             FactResumeMs[at] = f.ResumeMs;
+            FactPlayedState[at] = f.PlayedState;
             Entities.RetainText(ref FactSubtitle[at], s.Intern(f.Subtitle));
             Entities.RetainText(ref FactFormat[at], s.Intern(f.Format));
             Entities.RetainText(ref FactAuthor[at], s.Intern(f.Author));
             Entities.RetainText(ref FactSignifier[at], s.Intern(f.Signifier));
+            Entities.RetainText(ref FactVideoThumb[at], s.Intern(f.VideoThumbUrl));
             int count = f.SeedStart >= 0 && f.SeedCount > 0 && f.SeedStart + f.SeedCount <= seeds.Length
                 ? Math.Min(f.SeedCount, byte.MaxValue) : 0;
             FactSeedAt[at] = seedAt;
@@ -413,6 +420,7 @@ public sealed class SectionTable : Table
             Entities.ReleaseText(ref FactFormat[i]);
             Entities.ReleaseText(ref FactAuthor[i]);
             Entities.ReleaseText(ref FactSignifier[i]);
+            Entities.ReleaseText(ref FactVideoThumb[i]);
             for (int k = 0; k < FactSeedCount[i]; k++) Entities.ReleaseText(ref Seeds[FactSeedAt[i] + k]);
             FactSeedCount[i] = 0;
             FactTarget[i] = None;
@@ -432,10 +440,12 @@ public sealed class SectionTable : Table
         FactKind.EnsureCapacity(capacity);
         FactFlags.EnsureCapacity(capacity);
         FactSeedCount.EnsureCapacity(capacity);
+        FactPlayedState.EnsureCapacity(capacity);
         FactSubtitle.EnsureCapacity(capacity);
         FactFormat.EnsureCapacity(capacity);
         FactAuthor.EnsureCapacity(capacity);
         FactSignifier.EnsureCapacity(capacity);
+        FactVideoThumb.EnsureCapacity(capacity);
     }
 }
 
@@ -459,6 +469,10 @@ public enum HomeCardFlags : byte
     /// <summary>A <c>spotify:show:</c> card the wire typed <c>Audiobook</c>: it routes like a show and renders a rating
     /// cluster (0.2.9 <c>HomeCardKind.Audiobook</c>).</summary>
     Audiobook = 1 << 1,
+    /// <summary><c>contentRating.label</c> / <c>contentRatingV2.labels</c> carries <c>EXPLICIT</c>.</summary>
+    Explicit = 1 << 2,
+    /// <summary><c>playability.playable == false</c> (ruled) or <c>restrictions.paywallContent == true</c>.</summary>
+    Unplayable = 1 << 3,
 }
 
 /// <summary>The synthetic-subject half of the scope (the partial <c>Entities.cs</c> left open for exactly this). They
@@ -492,6 +506,18 @@ public sealed partial class Edges
     /// which — the same defect <c>Edges.SearchResult</c> was fixed for. Without this edge a section knew how MANY cards
     /// it had (<see cref="SectionTable.Cards"/>) and not WHICH, so every band painted its count and no content.</para></summary>
     public readonly EdgeTable<KindEdge> SectionCards = new();
+
+    /// <summary>A home baseline section's preview tracks (D2, <c>feedBaselineLookup</c>): parent = the SECTION row,
+    /// like <see cref="SectionCards"/>. Up to five thin <see cref="Track"/> rows per section, rank order
+    /// (<see cref="PreviewEdge"/>). Filled by <c>Spotify.Decode.FeedBaselineLookup</c>; read through
+    /// <see cref="Wavee.Section.PreviewSlots"/>.</summary>
+    public readonly EdgeTable<PreviewEdge> SectionPreviewTracks = new();
+
+    /// <summary>WHOLE-FEED READINESS MARKER for D2's lookup (<see cref="FetchEdge.HomePreviews"/>): parent = the Home
+    /// row, no real children — it exists only so the edge door's ask/answer machinery (dedupe, failure, retry) has
+    /// somewhere to record "this facet's baseline previews were asked for" without a second bespoke ledger. The actual
+    /// content lands on <see cref="SectionPreviewTracks"/>, per section, from the same answer.</summary>
+    public readonly EdgeTable<NoEdge> HomePreviews = new();
 
     /// <summary>THE ACCOUNT'S TOP ARTISTS (<c>userTopContent</c>, affinity over four weeks): parent = the account's own
     /// row (<c>Scope.MeSlot</c>), and the ORDER IS THE RANK — the podium's 76/60/46 ramp reads the index. ch 11 §7 DATA
@@ -595,6 +621,14 @@ public readonly partial struct Section(int slot) : IEquatable<Section>
     public EdgeState CardState => Entities.Current.Edges.SectionCards.State(Slot);
     public uint CardVersion => Entities.Current.Edges.SectionCards.Version(Slot);
 
+    /// <summary>D2's preview tracks (<c>feedBaselineLookup</c>) — up to five thin <c>Track</c> slots, rank order. Same
+    /// span rule as <see cref="CardSlots"/>.</summary>
+    public ReadOnlySpan<int> PreviewSlots => Entities.Current.Edges.SectionPreviewTracks.Targets(Slot);
+    /// <inheritdoc cref="PreviewSlots"/>
+    public ReadOnlySpan<PreviewEdge> PreviewRanks => Entities.Current.Edges.SectionPreviewTracks.Payload(Slot);
+    public EdgeState PreviewState => Entities.Current.Edges.SectionPreviewTracks.State(Slot);
+    public uint PreviewVersion => Entities.Current.Edges.SectionPreviewTracks.Version(Slot);
+
     /// <summary>IS THIS SECTION WHOLE? Ch 10 §7's reveal gate — "a section reveals COMPLETE" — answered from three
     /// columns, so the page never counts and never probes: somebody has answered for the band, and the server has
     /// nothing left past our cursor. A section that revealed on "some cards arrived" is the pop-in the chapter
@@ -632,6 +666,16 @@ public readonly partial struct Home(int slot) : IEquatable<Home>
     public bool IsValid => Slot > Table.None && Slot < T.Count;
     public uint Version => T.Version[Slot];
     public bool Knows(HomeFields fields) => T.Knows(Slot, (uint)fields);
+
+    /// <summary>Unix seconds this row was last answered (0 = never) — <see cref="Wavee.HomeUi.FacetCache.Decide"/>'s
+    /// freshness clock (Home C1: HomeScreen's data loop).</summary>
+    public int FetchedAt => T.FetchedAt[Slot];
+    /// <summary>A fetch for this row is currently in flight.</summary>
+    public bool Inflight => T.Inflight[Slot] != 0;
+    /// <summary>The table-wide publication signal — subscribe from a render to react to ANY row of this table
+    /// changing (Home C1 reads this off the specific facet's <see cref="Slot"/> alongside <see cref="Version"/> and
+    /// <see cref="SectionVersion"/>, which are the actual per-row change keys).</summary>
+    public static Signal<uint> Changed => T.Changed;
 
     /// <summary>THE feed subject's identity, packed (<c>Entities.cs</c> §2). Always the TEXT form — <c>wavee:home</c>
     /// is not a gid — and it is how the row is found again after a facet switch.</summary>
@@ -779,12 +823,16 @@ public struct StagedCardFact
 {
     public StagedId Target;
     public TextRef Subtitle, Format, Author, Signifier;
+    /// <summary>An episode's <c>videoPreviewThumbnail</c>, the 1280-wide rendition.</summary>
+    public TextRef VideoThumbUrl;
     public uint Accent;
     public int DurationMs, ResumeMs;
     /// <summary>The average rating × 100 (0 = withheld).</summary>
     public ushort Rating;
     /// <summary><see cref="HomeCardFlags"/>.</summary>
     public byte Flags;
+    /// <summary>0 unknown, 1 NotStarted, 2 InProgress, 3 FullyPlayed — an episode's <c>playedState.state</c>.</summary>
+    public byte PlayedState;
     /// <summary>A range into <see cref="Staging.CardSeeds"/>.</summary>
     public int SeedStart, SeedCount;
 }
@@ -1169,11 +1217,65 @@ public readonly partial struct Home
     public static void EnsureFeed(Home h)
     {
         if (!h.IsValid) return;
+        // F15 (home-redesign-remediation.md §3.1): --fake's switch dim/bar/failure demo lives in the fake fetch
+        // host now, not a `Platform.Args.Fake` branch in HomeScreen. --fake seeds every facet's document
+        // synchronously at boot, so without this a switch would resolve in ~0 ms and the dim + indeterminate bar
+        // would never have a frame to show.
+        if (Platform.Args.Fake) { Entities.SimulateFacetFetch(h); return; }
         Entities.Ensure(h, HomeFields.All);
         var sections = E.HomeSection.Targets(h.Slot);
         s_demand.Clear();
         for (int i = 0; i < sections.Length; i++) s_demand.AddCards(new Section(sections[i]));
         s_demand.Flush();
+    }
+
+    /// <summary>Does this feed hold any <see cref="SectionKind.HomeBaseline"/> bands (D2, F32)? Gates the
+    /// <c>feedBaselineLookup</c> ask — a facet that answered with none (a thin or an all-podcasts facet) never sends
+    /// one.</summary>
+    public bool HasBaselineSections
+    {
+        get
+        {
+            var sections = SectionSlots;
+            for (int i = 0; i < sections.Length; i++)
+                if (new Section(sections[i]).Kind == SectionKind.HomeBaseline) return true;
+            return false;
+        }
+    }
+
+    /// <summary>Every baseline section's own uri paired with the uri of the card it wraps, in section order — the
+    /// UI-thread read <c>Fetch.FillPreviewMap</c> snapshots into the batch BEFORE the provider's thread ever runs
+    /// (the provider cannot touch a table, WP-5.M). A baseline band is, in practice, one card (D2 plan); a section
+    /// with no card or no uri of its own contributes nothing.</summary>
+    public HomePreviewLink[] BaselinePreviewLinks()
+    {
+        var sections = SectionSlots;
+        if (sections.Length == 0) return [];
+        List<HomePreviewLink>? links = null;
+        for (int i = 0; i < sections.Length; i++)
+        {
+            var section = new Section(sections[i]);
+            if (section.Kind != SectionKind.HomeBaseline) continue;
+            string sectionUri = section.Id.Text;
+            if (sectionUri.Length == 0) continue;
+            var targets = section.CardSlots;
+            var kinds = section.CardKinds;
+            if (targets.Length == 0 || kinds.Length == 0) continue;
+            string cardUri = new HomeCard(new EntityRef(kinds[0].Kind, targets[0]), sections[i]).Uri;
+            if (cardUri.Length == 0) continue;
+            (links ??= new List<HomePreviewLink>(8)).Add(new HomePreviewLink(sectionUri, cardUri));
+        }
+        return links?.ToArray() ?? [];
+    }
+
+    /// <summary>D2's ONE demand, called once a facet's <see cref="HomeFields.Sections"/> answer is known — the same
+    /// pattern <see cref="EnsureFeed"/> is for the document (HomeScreen's mount/version-change effect, never the model
+    /// memo). Idempotent: the edge door dedupes on <see cref="Edges.HomePreviews"/>'s own ask mark, so a repeat call
+    /// this scope is a no-op.</summary>
+    public static void EnsurePreviews(Home h)
+    {
+        if (!h.IsValid || !h.HasBaselineSections) return;
+        Entities.EnsureEdge(FetchEdge.HomePreviews, h.Slot);
     }
 
     /// <summary>A drill page's demand (ch 12 §7a): the band's identity, then its cards' rows. <paramref name="browse"/>
@@ -1263,24 +1365,22 @@ public readonly partial struct Home
 // ── 9. the composed feed model (Wave 5, WP-5.P contract §2; 0.2.9 `Wavee.Core/Library/HomeFeed.cs`) ───────────────────
 //
 // The 0.2.9 record graph (`HomeFeed` / `HomeGroup` / `HomeSection` / `HomeCard` + `HomeCardMeta`) is REPLACED by a
-// presentation view over the tables: the groups and the section ledger are records (so the ported rules and their tests
-// keep their shape), but a card is a HANDLE — an entity ref plus the section it was read from — whose every property is a
-// live column read. A card whose playlist row hydrates re-describes itself on the next render with no recompose.
-
-/// <summary>How a home group is laid out — 0.2.9's order verbatim. <c>HomeLayoutModules.KindName</c> persists the
-/// NAMES, never the ordinals.</summary>
-public enum HomeGroupKind : byte
-{
-    Hero, QuickGrid, Shelf, Featured,
-    MixBand, WeeklyPair, ChipCards, RadioDial, RatedShelf, QueueList, DiscoverFeed,
-    Recents,
-    Topic, SectionEntry,
-    PodcastShelf,
-}
+// presentation view over the tables: a card is a HANDLE — an entity ref plus the section it was read from — whose every
+// property is a live column read. A card whose playlist row hydrates re-describes itself on the next render with no
+// recompose. `HomeGroup`/`HomeGroupKind` (the Wave-5 Home UI's own module layout) went with the rest of that page
+// (docs/plans/wavee/home-rebuild-implementation.md §7); the new Home page groups cards into `Wavee.HomeUi.Zone`s
+// instead (`Home/Model.cs`, `Home/ZonePlanner.cs`). `HomeSectionView` below is the lossless section ledger Browse
+// still reads and outlives that page.
 
 /// <summary>What a home card points at — drives the route, the shape and the play verb. Audiobook and Podcast both carry
 /// a <c>spotify:show:</c> uri and render differently.</summary>
 public enum HomeCardKind : byte { Playlist, Album, Artist, Track, Liked, Episode, Audiobook, Podcast }
+
+/// <summary>One baseline section's own uri paired with the uri of the card it wraps (D2) — the
+/// <see cref="FetchEdge.HomePreviews"/> request's per-row shape, snapshotted on the UI thread
+/// (<see cref="Home.BaselinePreviewLinks"/>) so the provider's thread never has to read a table. Not deduped: two
+/// sections may wrap the same card, and the decoder still has to close both.</summary>
+public readonly record struct HomePreviewLink(string SectionUri, string CardUri);
 
 /// <summary>A card HANDLE: the section-edge target plus the section it was read from. Every property reads columns LIVE
 /// (<c>StringTable.Resolve</c> is allocation-free), with the section's card facts (§2b) first where the entity has no
@@ -1370,7 +1470,7 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
         {
             if (IsBlank || !Live) return null;
             int fact = Fact;
-            if (fact >= 0 && !S.Sections.FactSubtitle[fact].IsEmpty) return Resolve(S.Sections.FactSubtitle[fact]);
+            if (fact >= 0 && !S.Sections.FactSubtitle[fact].IsEmpty) return HomeCardText.PlainText(Resolve(S.Sections.FactSubtitle[fact]));
             int slot = Target.Slot;
             StringId id = Target.Kind switch
             {
@@ -1383,7 +1483,9 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
                 _ => StringId.Empty,
             };
             if (Target.Kind == EntityKind.Artist) return ArtistSubtitle;
-            return id.IsEmpty ? null : Resolve(id);
+            // Playlist descriptions carry Spotify's inline markup ("<a href=spotify:playlist:…>"): a caption shows
+            // the text only (HomeCardText.PlainText returns a markup-free string as-is, allocation-free).
+            return id.IsEmpty ? null : HomeCardText.PlainText(Resolve(id));
         }
     }
 
@@ -1522,6 +1624,66 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
 
     public string? Signifier => FactText(static (t, f) => t.FactSignifier[f]);
 
+    /// <summary>An episode's <c>videoPreviewThumbnail</c>, the 1280-wide rendition; null for every other kind and when
+    /// the episode shipped none.</summary>
+    public string? VideoThumbUrl => FactText(static (t, f) => t.FactVideoThumb[f]);
+
+    /// <summary>0 unknown, 1 NotStarted, 2 InProgress, 3 FullyPlayed — an episode's <c>playedState.state</c>, refreshed
+    /// by the episode lookup (§4.3) before a Play click; 0 for every card that never carried one.</summary>
+    public byte PlayedState => Fact is var f && f >= 0 ? S.Sections.FactPlayedState[f] : (byte)0;
+
+    /// <summary><c>contentRating</c> / <c>contentRatingV2</c> carried <c>EXPLICIT</c>.</summary>
+    public bool IsExplicit => (FlagsOf() & HomeCardFlags.Explicit) != 0;
+
+    /// <summary>False when the server ruled <c>playability.playable == false</c> or <c>restrictions.paywallContent</c>;
+    /// true otherwise, INCLUDING a card the server never ruled at all (an unruled card is never dimmed by omission —
+    /// the same rule <see cref="Track.Rules"/> applies).</summary>
+    public bool IsPlayable => (FlagsOf() & HomeCardFlags.Unplayable) == 0;
+
+    /// <summary>Unix ms the album/episode released, 0 = unknown. An album reads <c>Album.ReleaseAt</c> — the entity
+    /// column every album page already trusts — rather than re-deriving from the card's own <c>date</c> fact; an
+    /// episode reads <c>Episode.PublishedAt</c>, written from the same <c>releaseDate</c> the card carried.</summary>
+    public long ReleasedAtMs
+    {
+        get
+        {
+            if (IsBlank || !Live) return 0;
+            return Target.Kind switch
+            {
+                EntityKind.Album => S.Albums.Knows(Target.Slot, (uint)AlbumFields.Release) && S.Albums.ReleaseAt[Target.Slot] > 0
+                    ? S.Albums.ReleaseAt[Target.Slot] * 1000L : 0,
+                EntityKind.Episode => S.Episodes.PublishedAt[Target.Slot] > 0 ? S.Episodes.PublishedAt[Target.Slot] * 1000L : 0,
+                _ => 0,
+            };
+        }
+    }
+
+    /// <summary>An episode's parent show's name; null for every other kind or an episode whose show is not resident.</summary>
+    public string? ShowName
+    {
+        get
+        {
+            int slot = EpisodeShowSlot;
+            if (slot <= Table.None || slot >= S.Shows.Count) return null;
+            var title = S.Shows.Title[slot];
+            return title.IsEmpty ? null : Resolve(title);
+        }
+    }
+
+    /// <summary>An episode's parent show's uri; null for every other kind or an episode whose show is not resident.</summary>
+    public string? ShowUri
+    {
+        get
+        {
+            int slot = EpisodeShowSlot;
+            if (slot <= Table.None || slot >= S.Shows.Count) return null;
+            var id = S.Shows.Id[slot];
+            return id.IsEmpty ? null : id.Text;
+        }
+    }
+
+    int EpisodeShowSlot => !IsBlank && Live && Target.Kind == EntityKind.Episode ? S.Episodes.Show[Target.Slot] : Table.None;
+
     public string? GenericTitle => PlaylistText(static (t, slot) => t.GenericTitle[slot]);
 
     /// <summary>A daylist whose name is empty or still its generic pre-title: a shallow identity that must not be
@@ -1597,11 +1759,6 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
     }
 }
 
-/// <summary>A titled group of home cards laid out per <see cref="HomeGroupKind"/>. <see cref="Title"/> is the SERVER's
-/// label verbatim, or null (a split section's continuation, the quick grid).</summary>
-public sealed record HomeGroup(HomeGroupKind Kind, string? Title, IReadOnlyList<HomeCard> Cards,
-    string? Subtitle = null, string? Uri = null, int TotalCount = 0);
-
 /// <summary>One section of the lossless ledger (0.2.9 <c>HomeSection</c> + <c>HomeSectionPageResult</c>): its cards in
 /// response order, deduplicated only inside the section, and the raw accounting
 /// <c>RawItemCount == Cards.Count + UnsupportedCount + DuplicateCount</c>.</summary>
@@ -1667,284 +1824,3 @@ public sealed record HomeSectionView(int Slot, string? Uri, string? Title, strin
     static string? TextOrNull(StringId id) => id.IsEmpty ? null : Entities.Strings.Resolve(id);
 }
 
-/// <summary>A home facet chip (<c>home.homeChips[]</c>). <see cref="Id"/> is the opaque server token that goes back into
-/// the <c>facet</c> request variable; <see cref="SubChips"/> is the second level ("Following").</summary>
-public sealed record HomeChip(string Id, string Label, IReadOnlyList<HomeChip> SubChips);
-
-/// <summary>The composed Home document for one facet: greeting, typed groups, chips and the section ledger.</summary>
-public sealed record HomeFeedView(string Greeting, IReadOnlyList<HomeGroup> Groups,
-    IReadOnlyList<HomeChip>? Chips = null, IReadOnlyList<HomeSectionView>? Sections = null, string Facet = "")
-{
-    public static readonly HomeFeedView Empty = new("", Array.Empty<HomeGroup>());
-
-    /// <summary>0.2.9 <c>FakeData.HomeSeed</c> — the BLANK-shaped document the landing skeleton is derived from (ch 31
-    /// W2): fourteen groups at the counts each module SHOWS, in the composer's order, plus the 3-entry section ledger, and
-    /// no chips (ch 10 §11 audit row 2). The shimmer IS this tree, so it tracks the loaded layout.</summary>
-    public static HomeFeedView Seed { get; } = BuildSeed();
-
-    static HomeFeedView BuildSeed()
-    {
-        int next = 0;
-        HomeCard[] Blanks(int n, HomeCardKind kind)
-        {
-            var cards = new HomeCard[n];
-            for (int i = 0; i < n; i++) cards[i] = HomeCard.Blank(kind, next++);
-            return cards;
-        }
-        return new HomeFeedView("",
-        [
-            new(HomeGroupKind.Hero, " ", [HomeCard.Blank(HomeCardKind.Playlist, next++, "daylist")],
-                Uri: "wavee:skeleton:section:hero", TotalCount: 1),
-            new(HomeGroupKind.WeeklyPair, null,
-                [HomeCard.Blank(HomeCardKind.Playlist, next++, "discover-weekly"),
-                 HomeCard.Blank(HomeCardKind.Playlist, next++, "release-radar")]),
-            new(HomeGroupKind.QuickGrid, " ", Blanks(8, HomeCardKind.Playlist)),
-            new(HomeGroupKind.Recents, " ", Blanks(8, HomeCardKind.Album)),
-            new(HomeGroupKind.MixBand, " ", Blanks(6, HomeCardKind.Playlist)),
-            new(HomeGroupKind.ChipCards, " ", Blanks(6, HomeCardKind.Playlist)),
-            new(HomeGroupKind.RadioDial, " ", Blanks(12, HomeCardKind.Playlist)),
-            new(HomeGroupKind.QueueList, " ", Blanks(6, HomeCardKind.Episode)),
-            new(HomeGroupKind.RatedShelf, " ", Blanks(6, HomeCardKind.Audiobook)),
-            new(HomeGroupKind.Featured, " ", Blanks(4, HomeCardKind.Playlist)),
-            new(HomeGroupKind.PodcastShelf, " ", Blanks(6, HomeCardKind.Podcast),
-                Uri: "wavee:skeleton:section:podcasts", TotalCount: 6),
-            new(HomeGroupKind.Topic, " ", Blanks(7, HomeCardKind.Playlist), Uri: "wavee:skeleton:section:topic", TotalCount: 20),
-            new(HomeGroupKind.SectionEntry, " ", Blanks(7, HomeCardKind.Playlist), Uri: "wavee:skeleton:section:mixed", TotalCount: 20),
-            new(HomeGroupKind.DiscoverFeed, " ", Blanks(12, HomeCardKind.Playlist)),
-        ], Sections:
-        [
-            new(Table.None, "wavee:skeleton:section:topic", " ", " ", Blanks(7, HomeCardKind.Playlist), 20, 7),
-            new(Table.None, "wavee:skeleton:section:mixed", " ", null, Blanks(7, HomeCardKind.Playlist), 20, 7),
-            new(Table.None, "wavee:skeleton:section:podcasts", " ", null, Blanks(6, HomeCardKind.Podcast), 6, 6),
-        ]);
-    }
-}
-
-/// <summary>App-authored labels for modules that combine or supplement source sections (0.2.9 verbatim).</summary>
-public sealed record HomeModuleTitles(
-    string JumpBackIn = "Jump back in",
-    string Recents = "Recents",
-    string MadeForYou = "Made for you",
-    string TopMixes = "Your top mixes",
-    string Radio = "Radio",
-    string UpNext = "Up next",
-    string Audiobooks = "Audiobooks for you",
-    string EditorsPicks = "Editors' picks",
-    string BecauseYouListened = "Because you listened",
-    string Podcasts = "Podcasts")
-{
-    public static readonly HomeModuleTitles Default = new();
-}
-
-/// <summary>The one place Home's module names cross from the loc system into the composer. Rebuilt per read — Loc is
-/// live, and a snapshot would pin the startup language for the process.</summary>
-public static class HomeModuleCopy
-{
-    public static HomeModuleTitles Titles => new(
-        JumpBackIn: Loc.Get(Strings.Home.JumpBackIn),
-        Recents: Loc.Get(Strings.Home.Recents),
-        MadeForYou: Loc.Get(Strings.Home.MadeForYou),
-        TopMixes: Loc.Get(Strings.Home.TopMixes),
-        Radio: Loc.Get(Strings.Home.Radio),
-        UpNext: Loc.Get(Strings.Home.UpNext),
-        Audiobooks: Loc.Get(Strings.Home.AudiobooksForYou),
-        EditorsPicks: Loc.Get(Strings.Home.EditorsPicks),
-        BecauseYouListened: Loc.Get(Strings.Home.BecauseYouListened),
-        Podcasts: Loc.Get(Strings.Home.Podcasts));
-}
-
-// ── 10. the composer (0.2.9 `SpotifyHomeComposer.Compose`, ported over the tables) ───────────────────────────────────
-
-/// <summary>Projects one Home subject row into authored module previews plus the lossless section ledger. The typename
-/// verdict is the section's <see cref="SectionKind"/> column (read at decode); classification is per card, grouping and
-/// dedupe per section. NO synthetic library quick grid (ch 31 §0.10g: there is one "Jump back in", the server's).</summary>
-public static class HomeComposer
-{
-    public static HomeFeedView Compose(Home h, HomeModuleTitles titles)
-    {
-        if (!h.IsValid) return HomeFeedView.Empty;
-        var t = titles;
-        var groups = new List<HomeGroup>();
-        var ledger = new List<HomeSectionView>();
-        HomeGroup? spotlight = null;
-
-        var slots = h.SectionSlots;
-        for (int i = 0; i < slots.Length; i++)
-        {
-            var section = new Section(slots[i]);
-            if (!section.IsValid) continue;
-            var view = HomeSectionView.Of(section);
-            switch (section.Kind)
-            {
-                case SectionKind.HomeSpotlight:
-                    {
-                        ledger.Add(view);
-                        if (view.Cards.Count == 0)
-                        {
-                            if (HasIdentity(view)) groups.Add(Group(HomeGroupKind.SectionEntry, view, view.Cards, true));
-                            break;
-                        }
-                        var hero = Group(HomeGroupKind.Hero, view, view.Cards, true);
-                        if (spotlight is null) spotlight = hero;
-                        else groups.Add(hero);
-                        break;
-                    }
-                case SectionKind.HomeBaseline:
-                    // The eyebrow (the section's own title) is a LIVE read on each card (HomeCard.Eyebrow).
-                    ledger.Add(view);
-                    groups.Add(Group(view.Cards.Count > 0 ? HomeGroupKind.DiscoverFeed : HomeGroupKind.SectionEntry,
-                        view, view.Cards, true));
-                    break;
-                case SectionKind.HomeRecentlyPlayed:
-                    {
-                        // 0.2.9 `title ?? t.Recents`, on the ledger AND the group.
-                        var titled = view.Title is null ? view with { Title = t.Recents } : view;
-                        ledger.Add(titled);
-                        groups.Add(Group(titled.Cards.Count > 0 ? HomeGroupKind.Recents : HomeGroupKind.SectionEntry,
-                            titled, titled.Cards, true));
-                        break;
-                    }
-                default:
-                    // Generic, shorts and unknown future types enter the ledger and degrade to the card-driven classifier.
-                    ledger.Add(view);
-                    EmitSectionGroups(view, groups);
-                    break;
-            }
-        }
-
-        // Spotlight is the preferred Hero preview regardless of response position.
-        if (spotlight is not null) groups.Insert(0, spotlight);
-
-        return new HomeFeedView(Text(h.GreetingId), groups, Chips(h), ledger, Text(h.FacetId));
-    }
-
-    static readonly Dictionary<int, Memo> s_memo = new();
-    static Scope? s_memoScope;
-
-    sealed record Memo(uint Version, uint SectionVersion, ulong SectionsKey, HomeModuleTitles Titles, HomeFeedView View);
-
-    /// <summary>The composed document, memoized per Home row on (version, section-list version, every section's
-    /// Version + CardVersion, titles BY VALUE — Loc is live). <see cref="HomeFeedView.Empty"/> for a row that knows
-    /// nothing and holds no section. UI thread only (C1).</summary>
-    public static HomeFeedView For(Home h, HomeModuleTitles titles)
-    {
-        if (!h.IsValid) return HomeFeedView.Empty;
-        var scope = Entities.Current;
-        if (!ReferenceEquals(scope, s_memoScope)) { s_memoScope = scope; s_memo.Clear(); }
-        if ((scope.Homes.Known[h.Slot] & (uint)HomeFields.All) == 0 && h.SectionCount == 0) return HomeFeedView.Empty;
-
-        ulong key = 14695981039346656037UL;
-        foreach (int slot in h.SectionSlots)
-        {
-            var s = new Section(slot);
-            key = (key ^ (uint)slot) * 1099511628211UL;
-            if (!s.IsValid) continue;
-            key = (key ^ s.Version) * 1099511628211UL;
-            key = (key ^ s.CardVersion) * 1099511628211UL;
-        }
-        if (s_memo.TryGetValue(h.Slot, out var memo) && memo.Version == h.Version && memo.SectionVersion == h.SectionVersion
-            && memo.SectionsKey == key && memo.Titles == titles)
-            return memo.View;
-
-        var view = Compose(h, titles);
-        s_memo[h.Slot] = new Memo(h.Version, h.SectionVersion, key, titles, view);
-        return view;
-    }
-
-    static void EmitSectionGroups(HomeSectionView section, List<HomeGroup> groups)
-    {
-        var cards = section.Cards;
-        if (cards.Count == 0)
-        {
-            if (HasIdentity(section)) groups.Add(Group(HomeGroupKind.SectionEntry, section, cards, true));
-            return;
-        }
-
-        int editorial = 0;
-        for (int i = 0; i < cards.Count; i++) if (IsEditorialFormat(cards[i].Format)) editorial++;
-        if (editorial * 2 > cards.Count)
-        {
-            groups.Add(Group(HomeGroupKind.Topic, section, cards, true));
-            return;
-        }
-
-        var byKind = new Dictionary<HomeGroupKind, List<HomeCard>>();
-        for (int i = 0; i < cards.Count; i++)
-        {
-            var kind = ModuleFor(cards[i]);
-            if (!byKind.TryGetValue(kind, out var list)) byKind.Add(kind, list = []);
-            list.Add(cards[i]);
-        }
-
-        HomeGroupKind? dominant = null;
-        foreach (var pair in byKind)
-            if (pair.Value.Count * 2 > cards.Count) { dominant = pair.Key; break; }
-
-        bool moduleOwnsTitle = dominant is not null && section.Title is { Length: > 0 };
-        if (dominant is null || !moduleOwnsTitle)
-            groups.Add(Group(HomeGroupKind.SectionEntry, section, cards, true));
-
-        foreach (var pair in byKind)
-            groups.Add(Group(pair.Key, section, pair.Value, moduleOwnsTitle && dominant == pair.Key));
-    }
-
-    /// <summary>The editorial formats — a section more than half of which is these is a Topic.</summary>
-    public static bool IsEditorialFormat(string? format) =>
-        format is "editorial" or "format-shows-shuffle" or "artistsets" or "descripto";
-
-    static bool HasIdentity(HomeSectionView section) => section.Uri is { Length: > 0 } || section.Title is { Length: > 0 };
-
-    static HomeGroup Group(HomeGroupKind kind, HomeSectionView section, IReadOnlyList<HomeCard> cards, bool ownsTitle) =>
-        new(kind, ownsTitle ? section.Title : null, cards, ownsTitle ? section.Subtitle : null, section.Uri, section.TotalCount);
-
-    /// <summary>The module a card's CONTENT names (never its copy).</summary>
-    public static HomeGroupKind ModuleFor(in HomeCard card) => card.Kind switch
-    {
-        HomeCardKind.Episode => HomeGroupKind.QueueList,
-        HomeCardKind.Audiobook => HomeGroupKind.RatedShelf,
-        HomeCardKind.Podcast => HomeGroupKind.PodcastShelf,
-        HomeCardKind.Playlist => ModuleForFormat(card.Format),
-        _ => HomeGroupKind.QuickGrid,
-    };
-
-    /// <summary>The module a playlist format token routes to.</summary>
-    public static HomeGroupKind ModuleForFormat(string? format) => format switch
-    {
-        "daylist" => HomeGroupKind.Hero,
-        "daily-mix" => HomeGroupKind.MixBand,
-        "discover-weekly" or "release-radar" => HomeGroupKind.WeeklyPair,
-        "topic-mix" or "artist-mix-reader" => HomeGroupKind.ChipCards,
-        "inspiredby-mix" => HomeGroupKind.RadioDial,
-        "editorial" or "format-shows-shuffle" or "artistsets" or "descripto" => HomeGroupKind.Featured,
-        _ => HomeGroupKind.QuickGrid,
-    };
-
-    /// <summary>The chip strip as a tree: top-level chips in server order, each with its sub-chips. Null for no chips
-    /// (0.2.9 <c>MapChips</c>); a chip with a blank id or label is dropped.</summary>
-    static IReadOnlyList<HomeChip>? Chips(Home h)
-    {
-        var ids = h.ChipIds;
-        if (ids.Length == 0) return null;
-        var labels = h.ChipLabels;
-        var parents = h.ChipParents;
-        var chips = new List<HomeChip>(ids.Length);
-        for (int i = 0; i < ids.Length; i++)
-        {
-            if (parents[i] >= 0) continue;
-            string id = Text(ids[i]), label = Text(labels[i]);
-            if (id.Length == 0 || label.Length == 0) continue;
-            List<HomeChip>? subs = null;
-            for (int j = 0; j < ids.Length; j++)
-            {
-                if (parents[j] != i) continue;
-                string subId = Text(ids[j]), subLabel = Text(labels[j]);
-                if (subId.Length == 0 || subLabel.Length == 0) continue;
-                (subs ??= new List<HomeChip>(2)).Add(new HomeChip(subId, subLabel, Array.Empty<HomeChip>()));
-            }
-            chips.Add(new HomeChip(id, label, (IReadOnlyList<HomeChip>?)subs ?? Array.Empty<HomeChip>()));
-        }
-        return chips.Count > 0 ? chips : null;
-    }
-
-    static string Text(StringId id) => Entities.Strings.Resolve(id);
-}

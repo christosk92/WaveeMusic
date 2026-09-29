@@ -46,6 +46,15 @@ namespace Wavee;
 
 public static partial class Controls
 {
+    /// <summary>Holds a control at its natural width in a flex row — the sanctioned door (control-fidelity §6) for the
+    /// layout props a <see cref="ComponentEl"/> cannot carry directly (component-props-contract; a base-<see
+    /// cref="Element"/> prop set on a component embed is silently dropped by the reconciler). Pass to any control here
+    /// that exposes <c>PartRoot</c> (every control in this file does): <c>ToggleButton.Controlled(…, parts:
+    /// Controls.RootNoShrink)</c>. Replaces the old <c>NoShrink(Element)</c> host-box wrapper (F20) — that wrapper
+    /// existed only to carry <c>Shrink = 0</c> around an embed; the part modifier restyles the control's own root
+    /// instead of adding a node.</summary>
+    public static readonly TemplateParts RootNoShrink = new() { [ToggleButton.PartRoot] = b => b with { Shrink = 0f } };
+
     /// <summary>True when <paramref name="service"/> is no real overlay host: null, or the engine's context default (its
     /// internal no-op service, which app code cannot name). A surface with no host skips menus and flyouts.</summary>
     public static bool IsNullOverlay([System.Diagnostics.CodeAnalysis.NotNullWhen(false)] IOverlayService? service)
@@ -263,9 +272,98 @@ public static partial class Controls
     /// whose exact width is not known at template time. Pass <c>Radii.Full</c> for a layout-derived circular tile.
     /// <para>It NEVER mosaics: a fill cell has no known width, so a cover-less container collapses to its FIRST tile and
     /// shows one square. That is a deliberate difference from <see cref="Mosaic"/>, not a gap.</para></summary>
-    public static Element ArtworkFill(string? url, float corners, int decodePx = 256, string? blurHash = null)
-        => Ui.Image(url ?? "", ImageFit.Cover, 1f, decodePx, corners, placeholder: (ColorF?)null, blurHash)
+    public static Element ArtworkFill(string? url, float corners, int decodePx = 256, string? blurHash = null,
+                                      float aspect = 1f)
+        => Ui.Image(url ?? "", ImageFit.Cover, aspect, decodePx, corners, placeholder: (ColorF?)null, blurHash)
             with { Placeholder = Design.WatchedPlaceholder(url) };
+
+    /// <summary>A RESPONSIVE cover: an <see cref="Ui.AspectRatio"/> box (takes the width its layout offers, derives the
+    /// height from <paramref name="aspect"/> — CSS <c>aspect-ratio</c>) around ONE fluid <see cref="ImageEl"/> that
+    /// grows to fill it. The grid/shelf-cell shape (F5/F1): the cell's exact size is not known at template time, so
+    /// neither this nor its caller ever measures a width — the engine's own fit (<c>GridEl.MinColWidth</c>, flex
+    /// <c>Grow</c>) decides the cell and this just fills whatever it is handed.
+    /// <para>Placeholder is the same watched per-url tint every other art slot in the app uses
+    /// (<see cref="Design.WatchedPlaceholder"/>) — no <see cref="Shimmer"/> sibling: a responsive grid/shelf cell
+    /// recycles too fast (virtualized scroll) to justify the extra component + image-epoch subscription <see
+    /// cref="Artwork"/>'s fixed-size slots pay for their slower-turnover chrome.</para>
+    /// <para><paramref name="focusY"/> is the cover crop's vertical focal point (0 top … 1 bottom; 0.5 centres, the
+    /// engine default): a daylist header whose subject sits high in the frame keeps its subject in a wide slot.</para></summary>
+    public static Element Cover(string? url, float aspect, float corner, float decodePx, float focusY = 0.5f)
+    {
+        if (url is { Length: 0 }) url = null;
+        Element img = Ui.Image(url ?? "", ImageFit.Cover, aspect, decodePx, corner, placeholder: (ColorF?)null)
+            with { Placeholder = Design.WatchedPlaceholder(url), FocusY = focusY };
+        return Ui.AspectRatio(aspect, img);
+    }
+
+    /// <summary>A cover that FILLS its box (object-fit: cover), no aspect box — the box's own size decides the crop.
+    /// <para>The <see cref="Cover"/> twin for a slot whose SHAPE is the layout's, not the picture's: the daylist card's
+    /// art column is as tall as the card's text and as wide as the row leaves it, so any ratio this imposed would
+    /// fight the row. The image carries NO extent and NO aspect, so it measures nothing and a ZStack parent hands it
+    /// the whole box; the wrapper takes <c>Grow 1</c> on a column parent's main axis and <c>AlignSelf Stretch</c> on
+    /// its cross axis, with both minimums at 0 so a shrinking row can take it all the way down. Place it in a box that
+    /// is itself sized or stretched on both axes; in a content-sized parent it collapses to nothing, by design.</para>
+    /// <para>The decode is the square <paramref name="decodePx"/> hint (the box size is not known at request time),
+    /// cover-fit into whatever the box becomes. Same watched per-url placeholder and <paramref name="focusY"/>
+    /// focal point as <see cref="Cover"/>.</para></summary>
+    public static Element CoverFill(string? url, float corner, float decodePx, float focusY = 0.5f)
+    {
+        if (url is { Length: 0 }) url = null;
+        Element img = Ui.Image(url ?? "", ImageFit.Cover, float.NaN, decodePx, corner, placeholder: (ColorF?)null)
+            with { Placeholder = Design.WatchedPlaceholder(url), FocusY = focusY };
+        return new BoxEl
+        {
+            ZStack = true, Grow = 1f, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = 0f,
+            Children = [img],
+        };
+    }
+
+    /// <summary>A square PLATE with one centred glyph — the icon stand-in wherever a cover slot has no artwork (a
+    /// chart tile's category glyph beside real covers, the listening-history tile's headphones). Sized to the slot it
+    /// stands in for (48 beside a 48 <see cref="Artwork"/>), the same <see cref="Radii.Control"/> corner, and
+    /// <c>Shrink = 0</c> so a tight row never squashes it.</summary>
+    public static Element IconPlate(string glyph, float size, ColorF fill, ColorF ink, float glyphSize = 20f) => new BoxEl
+    {
+        Width = size, Height = size, Shrink = 0f,
+        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Corners = CornerRadius4.All(Radii.Control), Fill = fill,
+        Children = [Icon(glyph, glyphSize, ink)],
+    };
+
+    /// <summary>The stock <see cref="SettingsCard"/> restyled as a compact TILE: a 48 header-icon slot (an
+    /// <see cref="Artwork"/> or an <see cref="IconPlate"/> in <c>HeaderIconElement</c>) 12 DIP from the text, a tighter
+    /// (10, 8, 12, 8) padding and the card's own 68 floor. A PROPERTY, like <see cref="SettingsCard.DefaultStyle"/> it
+    /// derives from: every colour is a live token read, so a theme flip re-resolves it.
+    /// <para>The tile NEVER drops its icon: the stock card's narrow states (wrap under 476, no icon under 286 — WinUI's
+    /// settings-page rules) are switched off, because a tile has no content slot to wrap and its art IS the tile. A
+    /// 220-DIP grid column is under 286 at almost every 3- and 4-column width, which read as text-only Browse tiles
+    /// (the Settings About page opts out the same way).</para></summary>
+    public static SettingsCard.Style TileCardStyle => SettingsCard.DefaultStyle with
+    {
+        HeaderIconSize = 48f,
+        HeaderIconMarginRight = 12f,
+        Padding = new Edges4(10f, 8f, 12f, 8f),
+        MinHeight = SettingsCard.MinHeight,
+        WrapThreshold = 0f,
+        WrapNoIconThreshold = 0f,
+    };
+
+    /// <summary>The tile's text parts: header and description each ONE line, ellipsised — a tile row is a fixed-height
+    /// grid cell, and the stock card's wrapping text would grow the cell to its longest neighbour. Content-independent
+    /// (reads no signal), so one static instance serves every tile; the two parts are <see cref="TextEl"/>s, hence
+    /// <see cref="TemplateParts.Set{T}"/> rather than the box indexer.</summary>
+    public static readonly TemplateParts TileCardParts = BuildTileCardParts();
+
+    static TemplateParts BuildTileCardParts()
+    {
+        var parts = new TemplateParts();
+        parts.Set<TextEl>(SettingsCard.PartHeader, OneLine);
+        parts.Set<TextEl>(SettingsCard.PartDescription, OneLine);
+        return parts;
+
+        static TextEl OneLine(TextEl t)
+            => t with { Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+    }
 
     /// <summary>A 2×2 mosaic of FOUR covers at an EXPLICIT size — how a cover-less playlist renders. Each quadrant is
     /// url-keyed, so when the membership changes the changed tile re-decodes and the rest stay.
@@ -717,7 +815,9 @@ public static partial class Controls
         /// <summary>Display-only: names the item in the notification-centre activity entry.</summary>
         public string? Name { get; init; }
         public float Glyph { get; init; } = 16f;
-        public float Box { get; init; } = 40f;
+        /// <summary>Workstream B: the new grammar's box is 32 (<see cref="Controls.ButtonHeight"/>), not the old
+        /// 40-circle FAB — <see cref="Radii.ControlAll"/> below is the matching r4 plate, not a circle.</summary>
+        public float Box { get; init; } = ButtonHeight;
         /// <inheritdoc cref="SaveButton"/>
         public Func<ColorF>? Accent { get; init; }
 
@@ -731,7 +831,7 @@ public static partial class Controls
             return new BoxEl
             {
                 Width = Box, Height = Box, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Corners = CornerRadius4.All(Box / 2f),
+                Corners = Radii.ControlAll,
                 HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
                 Role = AutomationRole.Button,
                 OnClick = () => lib.ToggleSaved(Uri, Name),
@@ -745,8 +845,9 @@ public static partial class Controls
     /// only knows the album. Renders nothing until it resolves, nothing when no mutation source is connected, and
     /// nothing when the release has already dropped.
     ///
-    /// <para>TWO STATES, the release-masthead action grammar verbatim: the call to action is the accent-FILLED pill (the
-    /// Play slot), the engaged state is the bordered pill (the View slot) wearing the accent as INK.</para></summary>
+    /// <para>Workstream B: the resolve stays here (the one thing this wrapper owns — the album→prerelease hop), but the
+    /// AFFORDANCE itself is <see cref="FollowToggle"/> with <see cref="FollowVerb.PreSave"/> — the release-masthead no
+    /// longer wears its own bespoke two-state pill, it wears the same toggle every Follow surface does.</para></summary>
     public sealed class PreSaveButton : Component
     {
         /// <summary>Either scheme: the album uri a card holds, or the prerelease uri the write needs.</summary>
@@ -754,8 +855,6 @@ public static partial class Controls
         public string? Name { get; init; }
         /// <inheritdoc cref="SaveButton.Accent"/>
         public Func<ColorF>? Accent { get; init; }
-        /// <summary>Label size; the glyph tracks it.</summary>
-        public float TextSize { get; init; } = 12f;
 
         public override Element Render()
         {
@@ -768,44 +867,25 @@ public static partial class Controls
                 (string?)null, Uri).Loadable.Value.Value;
 
             string? target = direct ? Uri : resolved;
-            var lib = Library;
-            if (lib is null) return new BoxEl();                              // capability gate
+            if (Library is null) return new BoxEl();                          // capability gate
             if (target is not { Length: > 0 }) return new BoxEl();            // resolving, unresolvable, or already out
 
-            bool saved = lib.IsSaved(target);
-            ColorF fill = Accent?.Invoke() ?? Tok.AccentDefault;   // read inside Render → a late palette re-tints it
-
-            return new BoxEl
-            {
-                Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center,
-                Padding = new Edges4(12f, 5f, 12f, 5f), Corners = CornerRadius4.All(4f),
-                Fill = saved ? ColorF.Transparent : fill,
-                BorderWidth = saved ? 1f : 0f, BorderColor = saved ? fill : ColorF.Transparent,
-                // Engaged: an EXPLICIT hover fill, because auto-lighten has nothing to lighten over a transparent pill.
-                // Call to action: left at the default so the recorder auto-lightens the accent (the Play pill's
-                // behaviour).
-                HoverFill = saved ? Tok.FillSubtleSecondary : ColorF.Transparent,
-                Cursor = CursorId.Hand, Role = AutomationRole.Button,
-                OnClick = () => lib.ToggleSaved(target, Name),
-                Children =
-                [
-                    Icon(saved ? Icons.HeartFill : Icons.Heart, TextSize + 1f,
-                         saved ? fill : ColorContrast.PickContrast(fill)),
-                    new TextEl(Loc.Get(saved ? Strings.Detail.PreSaved : Strings.Detail.PreSave))
-                    {
-                        Size = TextSize, Weight = 600, MaxLines = 1,
-                        Color = saved ? fill : ColorContrast.PickContrast(fill),
-                    },
-                ],
-            };
+            // Keyed on the RESOLVED target: FollowToggle's uri freezes at mount, and the resolve above can still be
+            // in flight on the first render (target null → this whole branch skipped, so no premature mount happens
+            // on the direct-prerelease-uri path either — that arm never resolves, it just renders immediately).
+            string t = target;
+            return Embed.Comp(() => new FollowToggle { Uri = t, Name = Name, Verb = FollowVerb.PreSave, Accent = Accent })
+                with { Key = "presave-toggle:" + t };
         }
     }
 
     /// <summary>A Follow / Following PILL — for artists and playlists (the "save" verb for a profile). Accent border +
     /// ink when followed: "you follow this" is a STATE, and the border carries it (accent role 2).
-    /// <para>THE ONLY follow control. Geometry is the media capsule's (36 tall, fully rounded, the Standard hover/press
-    /// rung) because a Follow pill stands beside a Play capsule on every artist hero — they have to be the same object
-    /// at two jobs.</para></summary>
+    /// <para>Geometry is the media capsule's (36 tall, fully rounded, the Standard hover/press rung) because a Follow
+    /// pill stood beside a Play capsule on every artist hero — they had to be the same object at two jobs.</para>
+    /// <para><c>// DELETE in Wave 5 (buttons)</c> — replaced by <see cref="FollowToggle"/> below, the 32/r4 toggle
+    /// from `docs/plans/wavee/home-redesign-implementation.md` Workstream B. Migration groups B–D move their call
+    /// sites first; this class stays compiling until every caller has moved.</para></summary>
     public sealed class FollowButton : Component
     {
         public required string Uri { get; init; }
@@ -856,6 +936,56 @@ public static partial class Controls
                 Body(Loc.Get(Strings.Artist.Follow)) with { Weight = 600, Color = Tok.TextPrimary },
             ],
         };
+    }
+
+    /// <summary>Which pair of words a <see cref="FollowToggle"/> speaks — the "save" verb differs between an ordinary
+    /// entity (artist, playlist) and a release that has not dropped yet.</summary>
+    public enum FollowVerb : byte { Follow, PreSave }
+
+    /// <summary>THE Follow / Pre-save toggle (Workstream B) — a stock <c>ToggleButton</c> tinted by the PAGE accent,
+    /// replacing both <see cref="FollowButton"/> and the old <see cref="PreSaveButton"/> pill. 32/r4, heart glyph that
+    /// swaps <see cref="Icons.Heart"/>/<see cref="Icons.HeartFill"/> and pops on a USER click only (never on a
+    /// data-driven load — <see cref="ToggleButton.Controlled"/>'s own <c>userFlip</c> bookkeeping), a checked-label
+    /// swap ("Follow" → "Following"/"Pre-save" → "Pre-saved") and a root reflow to match. See the plan's state table
+    /// (`docs/plans/wavee/home-redesign-implementation.md` Workstream B) for the tint ramp; <see cref="ButtonRules.FollowStyle"/>
+    /// is where that table lives as code.</summary>
+    public sealed class FollowToggle : Component
+    {
+        public required string Uri { get; init; }
+        public string? Name { get; init; }
+        public FollowVerb Verb { get; init; } = FollowVerb.Follow;
+        /// <summary>An explicit accent override (the release-masthead's pre-save flow already resolved one before this
+        /// mounts). Null reads the PAGE accent off <see cref="Design.AccentCtx"/>, falling back to the semantic token
+        /// — the plan's "A = page accent, else Tok.AccentDefault".</summary>
+        public Func<ColorF>? Accent { get; init; }
+
+        public override Element Render()
+        {
+            // Hooks first and unconditionally, same discipline as SaveButton/PreSaveButton above.
+            var ctx = UseContext(Design.AccentCtx.Slot);
+            var lib = Library;
+            if (lib is null) return new BoxEl();                 // capability gate
+
+            bool on = lib.IsSaved(Uri);                          // subscribe → re-skin on any saved-set change
+            ColorF a = Accent?.Invoke() ?? (ctx is { } page ? page.Value.Fill : Tok.AccentDefault);
+            bool light = Tok.Theme == ThemeKind.Light;
+
+            return ToggleButton.Controlled(Label(Verb, false), on, _ => lib.ToggleSaved(Uri, Name),
+                glyph: Icons.Heart, checkedGlyph: Icons.HeartFill, checkedLabel: Label(Verb, true),
+                style: ButtonRules.FollowStyle(a, light), parts: RootNoShrink);
+        }
+
+        static string Label(FollowVerb verb, bool on) => Loc.Get(verb switch
+        {
+            FollowVerb.PreSave => on ? Strings.Detail.PreSaved : Strings.Detail.PreSave,
+            _ => on ? Strings.Artist.Following : Strings.Artist.Follow,
+        });
+
+        /// <summary>The skeleton SHAPE the deriver walks: the real toggle at rest (unchecked, the semantic accent),
+        /// off the live theme, so it shimmers as itself rather than a stretched default bar.</summary>
+        public static Element SkeletonShape(FollowVerb verb = FollowVerb.Follow) => ToggleButton.Controlled(
+            Label(verb, false), false, static _ => { }, glyph: Icons.Heart,
+            style: ButtonRules.FollowStyle(Tok.AccentDefault, Tok.Theme == ThemeKind.Light), parts: RootNoShrink);
     }
 
     /// <summary>The same follow toggle as a plateless TEXT ACTION, for the sticky context band — which has no plates in

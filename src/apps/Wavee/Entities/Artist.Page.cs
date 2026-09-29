@@ -1144,7 +1144,8 @@ public readonly partial struct Artist
                 // tooltips, playback overlays) just to discover a height it already knows. The probe was a major
                 // source of late mount/layout bursts during navigation and could make the page appear to flicker.
                 Children = [PagedShelf.Create(items, cardAt, cardHeight: Controls.ShelfHeight,
-                    header: Controls.AccentHeader(title, accent), measured: false, keyOf: s_shelfKey)],
+                    header: Controls.AccentHeader(title, accent), measured: false, keyOf: s_shelfKey,
+                    lift: ShelfLift.None)],   // the shared card hovers fill-only: no lift halo to reserve clearance for
             };
 
         static readonly Func<ShelfEntity, int, string> s_shelfKey = static (item, _) => item.Key;
@@ -1506,7 +1507,9 @@ public readonly partial struct Artist
             Children = [Title(value) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, Caption(label)],
         };
 
-        /// <summary>The external-link pills — 0.2.9's were boxes with NO click at all (parity 92). They open now.</summary>
+        /// <summary>The external links (Workstream B: the "social links" row is the grammar's LINK role — a stock
+        /// <c>HyperlinkButton</c>, not a bordered pill). 0.2.9's were boxes with NO click at all (parity 92); they
+        /// open now.</summary>
         static Element LinkPills(LinkEdge[] links)
         {
             var pills = new Element[links.Length];
@@ -1514,20 +1517,7 @@ public readonly partial struct Artist
             {
                 string name = Entities.Strings.Resolve(links[i].Name);
                 string url = Entities.Strings.Resolve(links[i].Url);
-                pills[i] = new BoxEl
-                {
-                    Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center,
-                    Padding = new Edges4(12f, 7f, 14f, 7f), Corners = Radii.FullAll,
-                    BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, HoverFill = Tok.FillSubtleSecondary,
-                    Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered,
-                    Cursor = CursorId.Hand,
-                    OnClick = () => OpenLink(url),
-                    Children =
-                    [
-                        Icon(Icons.Link, 13f, Tok.TextSecondary),
-                        Design.Type.DenseTitle(name) with { Color = Tok.TextPrimary },
-                    ],
-                };
+                pills[i] = HyperlinkButton.Create(name, () => OpenLink(url));
             }
             return new BoxEl { Direction = 0, Gap = Spacing.S, Wrap = true, Children = pills };
         }
@@ -1753,7 +1743,7 @@ public readonly partial struct Artist
                     Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f,
                     Children =
                     [
-                        Controls.Play(accent, () => Playback.PlayContext(album.Id), Loc.Get(Strings.Artist.Play)),
+                        Controls.PlayButton(accent, () => Playback.PlayContext(album.Id), Loc.Get(Strings.Artist.Play)),
                         Button.Create(Loc.Get(Strings.Artist.View), () => Track.GoToAlbum(album),
                             ButtonAppearance.Outline, ControlSize.Small),
                     ],

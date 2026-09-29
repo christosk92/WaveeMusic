@@ -37,7 +37,7 @@ public static partial class Shell
 
     public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library }
     public enum PalettePlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
-    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle }
+    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle, HomeFollowingOn, HomeFollowingOff }
 
     /// <summary>"New folder" lives here because the only other way to reach it is a right-click on a sidebar row — and
     /// a pane with no folders yet has no such row.</summary>
@@ -54,6 +54,9 @@ public static partial class Shell
         public string Glyph = "";
         public PaletteKind Kind;
         public RouteKind Destination;
+        /// <summary>Home C1: the facet arg a <see cref="PaletteKind.Navigate"/> row to <see cref="RouteKind.Home"/>
+        /// carries ("Home: Music/Podcasts/Audiobooks"). Empty for every other Navigate row (including "Home: All").</summary>
+        public StringId NavArg;
         public PalettePlaybackVerb PlaybackVerb;
         public PaletteSettingsVerb SettingsVerb;
         public PaletteLibraryVerb LibraryVerb;
@@ -69,7 +72,7 @@ public static partial class Shell
         public const int MaxResults = 8;
 
         /// <summary>Builtin rows; registry rows are appended after them.</summary>
-        public const int BuiltinCount = 19;
+        public const int BuiltinCount = 26;
 
         public const string CatalogId = "search.query";
 
@@ -97,6 +100,15 @@ public static partial class Shell
             SetRow("settings.npvNextStyle", Loc.Get(Strings.Player.PlayerStyleNext), Icons.Album, PaletteSettingsVerb.NpvNextStyle),
             LibRow("library.newPlaylist", Loc.Get(Strings.Detail.NewPlaylist), Icons.Add, PaletteLibraryVerb.NewPlaylist),
             LibRow("library.newFolder", Loc.Get(Strings.Sidebar.CreateFolder), Icons.Folder, PaletteLibraryVerb.NewFolder),
+            // Home C1 (facet history + deep link, plan "Palette commands"): the four facet chip ids are the ones the
+            // fake dataset and the live server both seed (Home/Facets.cs's FacetRoute is the same id space).
+            HomeFacetRow("home.all", Loc.Get(Strings.Palette.HomeAll), Icons.Home, ""),
+            HomeFacetRow("home.music", Loc.Get(Strings.Palette.HomeMusic), Icons.MusicNote, "music-chip"),
+            HomeFacetRow("home.podcasts", Loc.Get(Strings.Palette.HomePodcasts), Icons.RadioTower, "podcasts-chip"),
+            HomeFacetRow("home.audiobooks", Loc.Get(Strings.Palette.HomeAudiobooks), Icons.Microphone, "audiobooks-chip"),
+            SetRow("home.followingOn", Loc.Get(Strings.Palette.HomeFollowingOn), Icons.Friends, PaletteSettingsVerb.HomeFollowingOn),
+            SetRow("home.followingOff", Loc.Get(Strings.Palette.HomeFollowingOff), Icons.Friends, PaletteSettingsVerb.HomeFollowingOff),
+            NavRow("home.customize", Loc.Get(Strings.Home.Customizer.Title), Icons.Edit, RouteKind.HomeCustomize),
         ];
 
         /// <summary>A fresh index for one open: the builtins, then every registry action that accepts a target the
@@ -223,6 +235,12 @@ public static partial class Shell
         static PaletteEntry NavRow(string id, string label, string glyph, RouteKind route) => new()
             { Id = id, Label = label, LabelLower = label.ToLowerInvariant(), Glyph = glyph, Kind = PaletteKind.Navigate, Destination = route };
 
+        /// <summary>A Navigate row onto <see cref="RouteKind.Home"/> carrying a facet arg (Home C1) — same Kind as
+        /// <see cref="NavRow"/>, just with <see cref="PaletteEntry.NavArg"/> set.</summary>
+        static PaletteEntry HomeFacetRow(string id, string label, string glyph, string facetArg) => new()
+            { Id = id, Label = label, LabelLower = label.ToLowerInvariant(), Glyph = glyph, Kind = PaletteKind.Navigate,
+              Destination = RouteKind.Home, NavArg = facetArg.Length == 0 ? default : Entities.Strings.Intern(facetArg) };
+
         static PaletteEntry PlayRow(string id, string label, string glyph, PalettePlaybackVerb verb) => new()
             { Id = id, Label = label, LabelLower = label.ToLowerInvariant(), Glyph = glyph, Kind = PaletteKind.Playback, PlaybackVerb = verb };
 
@@ -263,7 +281,7 @@ public static partial class Shell
         switch (e.Kind)
         {
             case PaletteKind.Navigate:
-                GoTo(new Route(e.Destination));
+                GoTo(new Route(e.Destination, Arg: e.NavArg));
                 break;
             case PaletteKind.CatalogSearch:
                 GoTo(Parse("search", e.CatalogQuery ?? ""));
@@ -296,6 +314,10 @@ public static partial class Shell
                     case PaletteSettingsVerb.NpvNextStyle:
                         Rail.PlayerPrefs.NextStyle(Rail.NpvDiagnostics.SourcePalette);
                         break;
+                    case PaletteSettingsVerb.HomeFollowingOn:
+                    case PaletteSettingsVerb.HomeFollowingOff:
+                        InvokeHomeFollowing(on: e.SettingsVerb == PaletteSettingsVerb.HomeFollowingOn);
+                        break;
                 }
                 break;
             case PaletteKind.Library:
@@ -307,6 +329,29 @@ public static partial class Shell
                 Actions.Registry.Current?.Execute(Actions.Services, in binding);
                 break;
         }
+    }
+
+    /// <summary>"Home: Following on/off" (Home C1). Reads the ACTIVE tab's own current route — the palette always
+    /// acts on the tab it was opened over — and, only when it is currently on Home and that facet word carries a
+    /// Following sub-chip (Music/Podcasts), navigates to the sub-chip id (on) or the plain word id (off). A no-op
+    /// everywhere else (not on Home, or on All/Audiobooks, which have no sub-chip) — same "disabled word" shape
+    /// <c>FacetPivot.Enabled</c> already gives the pivot itself.</summary>
+    static void InvokeHomeFollowing(bool on)
+    {
+        var cur = Current.Peek();
+        if (cur.Kind != RouteKind.Home) return;
+        string arg = Entities.Strings.Resolve(cur.Arg);
+        // The fake dataset and the live server both use this <word>-chip / <word>-following-chip pairing
+        // (Home/Facets.cs's FacetPivot; Entities/Entities.Fake.Home.cs's SeedHomeFacets).
+        string? target = arg switch
+        {
+            "music-chip" => on ? "music-following-chip" : "music-chip",
+            "music-following-chip" => on ? "music-following-chip" : "music-chip",
+            "podcasts-chip" => on ? "podcasts-following-chip" : "podcasts-chip",
+            "podcasts-following-chip" => on ? "podcasts-following-chip" : "podcasts-chip",
+            _ => null,   // All / Audiobooks / anything else: no Following sub-chip
+        };
+        if (target is not null) GoTo(new Route(RouteKind.Home, Arg: Entities.Strings.Intern(target)));
     }
 
     // ══ 3. UI — the lane, the popup, the card ═══════════════════════════════════════════════════════════════════════

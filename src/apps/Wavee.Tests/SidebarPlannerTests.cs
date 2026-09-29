@@ -1767,22 +1767,39 @@ public sealed class SidebarRailPlannerTests
         // No head/footer: item i IS row i, so — with no chrome to carry it — the first and last rows fold the
         // rail's own top/bottom inset (`SidebarRailExtents.TopPad`/`BottomPad`) into their own extent.
         Assert.Equal(SidebarRailExtents.Pitch + SidebarRailExtents.TopPad,
-            SidebarRailExtents.ExtentOf(rows, 0, hasHead: false, hasFooter: false));
-        Assert.Equal(SidebarRailExtents.DividerExtent, SidebarRailExtents.ExtentOf(rows, 1, hasHead: false, hasFooter: false));
-        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 2, hasHead: false, hasFooter: false));
+            SidebarRailExtents.ExtentOf(rows, 0, hasHead: false, hasFooter: false, headTiles: 0));
+        Assert.Equal(SidebarRailExtents.DividerExtent, SidebarRailExtents.ExtentOf(rows, 1, hasHead: false, hasFooter: false, headTiles: 0));
+        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 2, hasHead: false, hasFooter: false, headTiles: 0));
         Assert.Equal(SidebarRailExtents.Pitch + SidebarRailExtents.BottomPad,
-            SidebarRailExtents.ExtentOf(rows, 3, hasHead: false, hasFooter: false));
+            SidebarRailExtents.ExtentOf(rows, 3, hasHead: false, hasFooter: false, headTiles: 0));
         // Out of range answers the common (tile) case rather than throwing — the count signal lands one layout
         // effect after the plan, so a transient over-read must not crash the layout.
-        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 99, hasHead: false, hasFooter: false));
+        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 99, hasHead: false, hasFooter: false, headTiles: 0));
         Assert.NotEqual(SidebarRailExtents.Pitch, SidebarRailExtents.DividerExtent);
 
         // With a head AND a footer, THEY carry the inset — item 0 is Head, item 5 is Footer (see
         // `Rail_item_map_places_head_rows_footer_in_order`), and neither edge row gets padded.
-        Assert.Equal(SidebarRailExtents.HeadEstimate, SidebarRailExtents.ExtentOf(rows, 0, hasHead: true, hasFooter: true));
-        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 1, hasHead: true, hasFooter: true));
-        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 4, hasHead: true, hasFooter: true));
-        Assert.Equal(SidebarRailExtents.FooterEstimate, SidebarRailExtents.ExtentOf(rows, 5, hasHead: true, hasFooter: true));
+        Assert.Equal(SidebarRailExtents.HeadExtentOf(6), SidebarRailExtents.ExtentOf(rows, 0, hasHead: true, hasFooter: true, headTiles: 6));
+        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 1, hasHead: true, hasFooter: true, headTiles: 6));
+        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 4, hasHead: true, hasFooter: true, headTiles: 6));
+        Assert.Equal(SidebarRailExtents.FooterEstimate, SidebarRailExtents.ExtentOf(rows, 5, hasHead: true, hasFooter: true, headTiles: 6));
+    }
+
+    /// <summary>2026-09-25, item J: the Library V3 rail "jumped" by 186 DIP on selecting an item. Every selection
+    /// republish reseeds the rail layout, and the head's seed was a two-tile guess (101 DIP) while the head really draws
+    /// five destinations + Home = six 40-DIP tiles, 6-DIP gaps, the 8-DIP top pad and the 9-DIP rule = 287 DIP; the
+    /// re-measure corrected the far-off-screen head by 186 DIP on every reseed. The seed is the head's exact extent now.</summary>
+    [Fact]
+    public void Rail_head_seed_is_the_heads_exact_extent()
+    {
+        Assert.Equal(40f, SidebarRailExtents.Tile);
+        Assert.Equal(287f, SidebarRailExtents.HeadExtentOf(6));                     // the owner's head: 5 destinations + Home
+        Assert.Equal(8f + 40f + 9f, SidebarRailExtents.HeadExtentOf(1));
+        Assert.Equal(8f + 9f, SidebarRailExtents.HeadExtentOf(0));
+        // One more tile adds exactly one tile row's pitch.
+        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.HeadExtentOf(7) - SidebarRailExtents.HeadExtentOf(6));
+        var rows = new[] { new SidebarRow(SidebarRowKind.EntityRow, "s", 0, 0, 0, "a") };
+        Assert.Equal(287f, SidebarRailExtents.ExtentOf(rows, 0, hasHead: true, hasFooter: false, headTiles: 6));
     }
 
     [Fact]

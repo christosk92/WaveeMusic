@@ -526,11 +526,12 @@ public static class SidebarRowGeometry
     /// compatible drag is live — a transient the measured layout corrects on its own).</summary>
     public const float PinDropZoneRestHeight = 56f;
 
-    /// <summary>The inline filter-chip strip an editable <c>EntityList</c> header carries: a 26-DIP pill row + its
+    /// <summary>The inline filter-chip strip an editable <c>EntityList</c> header carries: a 24-DIP toggle row
+    /// (Workstream B: <c>FluentGpu.Controls.ControlSize.Small</c>'s <c>MinHeight</c>, not the old 26 hand-rolled pill) + its
     /// 2-DIP bottom padding, joined to the header by a 4-DIP gap. It WRAPS at a narrow pane, so this is the one term
     /// of the ladder that is an honest approximation rather than an identity — the measured seam corrects it on
     /// realize.</summary>
-    public const float ChipHeight = 26f;
+    public const float ChipHeight = 24f;
     /// <inheritdoc cref="ChipHeight"/>
     public const float ChipStripHeight = ChipHeight + 2f;
     /// <inheritdoc cref="ChipStripHeight"/>
@@ -864,9 +865,21 @@ public static class SidebarRailExtents
     /// is drawn RAW (no wrapper), so this is also exactly what the slot measures.</summary>
     public const float DividerExtent = 9f;
 
-    /// <summary>The head item's SEED: two tiles' worth plus a rule (the V3 nav band's rough shape) — MEASURED, not
-    /// exact, corrected on realize like every other analytic guess in this ladder.</summary>
-    public const float HeadEstimate = 2f * Pitch + DividerExtent;
+    /// <summary>The rail tile's own box (`Rail.Box`) and the gap between two tiles in the head's column: a tile ROW's
+    /// <see cref="Pitch"/> is exactly one of each.</summary>
+    public const float TileGap = 6f;
+    public const float Tile = Pitch - TileGap;
+
+    /// <summary>The head item's EXACT extent for a head of <paramref name="tiles"/> tiles — what its slot renders
+    /// (`Rail.RailSlot`'s Head arm: the <see cref="TopPad"/>, the tile column with <see cref="TileGap"/> between tiles,
+    /// then the rule). The seed and the measurement agree, so a reseed (every wholesale republish) never corrects the head.
+    /// The V3 head of five destinations + Home is 287 DIP; the old two-tile guess (101) was re-corrected by 186 DIP on
+    /// every reseed — the rail's "jump on selection" (2026-09-25, item J).</summary>
+    public static float HeadExtentOf(int tiles)
+    {
+        if (tiles < 0) tiles = 0;
+        return TopPad + tiles * Tile + (tiles > 0 ? (tiles - 1) * TileGap : 0f) + DividerExtent;
+    }
 
     /// <summary>The footer item's SEED (a rule + the mode's footer content + a rule + the layout-menu tile, rough
     /// shape) — MEASURED, corrected on realize.</summary>
@@ -882,16 +895,16 @@ public static class SidebarRailExtents
     public const float BottomPad = 12f;
 
     /// <summary>The rail layout's analytic seed for item <paramref name="index"/> in the rail's ONE list (head, rows,
-    /// footer — <see cref="SidebarRailItems.Map"/>): <see cref="HeadEstimate"/>/<see cref="FooterEstimate"/> for the
-    /// chrome items; <see cref="Pitch"/>/<see cref="DividerExtent"/> for a plan row, plus <see cref="TopPad"/>/
+    /// footer — <see cref="SidebarRailItems.Map"/>): <see cref="HeadExtentOf"/> of <paramref name="headTiles"/> for the head
+    /// (exact), <see cref="FooterEstimate"/> for the footer; <see cref="Pitch"/>/<see cref="DividerExtent"/> for a plan row, plus <see cref="TopPad"/>/
     /// <see cref="BottomPad"/> on the edge row when there is no head/footer to carry it instead — folded in here so
     /// the seed and the row slot's own rendered height (`Rail.RailSlot`) always agree exactly, edge row included.
     /// Out of range answers the common (tile) case rather than throwing.</summary>
-    public static float ExtentOf(IReadOnlyList<SidebarRow> rows, int index, bool hasHead, bool hasFooter)
+    public static float ExtentOf(IReadOnlyList<SidebarRow> rows, int index, bool hasHead, bool hasFooter, int headTiles)
     {
         ArgumentNullException.ThrowIfNull(rows);
         var (kind, rowIndex) = SidebarRailItems.Map(index, hasHead, hasFooter, rows.Count);
-        if (kind == SidebarRailItemKind.Head) return HeadEstimate;
+        if (kind == SidebarRailItemKind.Head) return HeadExtentOf(headTiles);
         if (kind == SidebarRailItemKind.Footer) return FooterEstimate;
         if (kind != SidebarRailItemKind.Row) return Pitch;
 

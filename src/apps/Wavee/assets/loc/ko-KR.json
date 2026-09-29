@@ -74,7 +74,98 @@
     "artist": "아티스트",
     "play": "재생",
     "pause": "일시 정지",
-    "album": "앨범"
+    "album": "앨범",
+    "facetAll": "전체",
+    "following": "팔로잉",
+    "seeAll": "전체 보기",
+    "seeAllN": "전체 {n}개 보기",
+    "listeningHistory": "재생 기록",
+    "plays": "재생 {n}회",
+    "save": "저장",
+    "more": "더 보기",
+    "couldntLoad": "{what}을(를) 불러올 수 없어요",
+    "couldntLoadHome": "홈을 불러올 수 없어요",
+    "checkConnection": "연결을 확인하고 다시 시도하세요.",
+    "nextDaylistIn": "다음 데일리스트까지 {t}",
+    "customizeBody": "홈 섹션을 표시, 숨기기, 순서 변경하세요.",
+    "resetDefault": "기본값으로 재설정",
+    "recentsSub": "이어서 들어보세요",
+    "yourListeningHistory": "내 청취 기록",
+    "playsThisWeek": "이번 주 재생 {n}회",
+    "updatedDaily": "매일 업데이트",
+    "browseAll": "전체 보기",
+    "releasedThisWeek": "이번 주 발매",
+    "daylistMeta": "플레이리스트 · Spotify · 곡 {n}개",
+    "playingOn": "{device}에서 재생 중",
+    "daylist": {
+      "arrivesAt": "{when} {time}에 도착"
+    },
+    "zone": {
+      "becauseYouLike": "좋아하실 만한 음악",
+      "moreForYou": "회원님을 위한 추천",
+      "radioAndMixes": "라디오 및 믹스",
+      "browse": "둘러보기",
+      "newEpisodes": "새 에피소드",
+      "continueListening": "이어 듣기",
+      "videosYouMightLike": "좋아하실 만한 동영상",
+      "episodesYouMightLike": "좋아하실 만한 에피소드",
+      "becauseYouListenTo": "자주 듣는 음악을 바탕으로",
+      "fromArtistsYouFollow": "팔로우한 아티스트의 소식",
+      "yourShows": "내가 구독한 프로그램",
+      "showsYouMightLike": "좋아하실 만한 프로그램"
+    },
+    "zoneSub": {
+      "madeForYou": "회원님을 위해 고른 데일리 믹스와 무드",
+      "newMusic": "팔로우한 아티스트의 새 플레이리스트와 새 앨범",
+      "becauseYouLike": "가장 많이 재생한 아티스트를 바탕으로 묶었어요",
+      "jumpBackIn": "최근에 열어본 항목이에요",
+      "radio": "자주 듣는 아티스트와 곡을 바탕으로 한 논스톱 음악",
+      "browse": "Spotify 공식 플레이리스트와 이번 주 에디터 추천",
+      "newEpisodes": "팔로우한 프로그램의 새 소식이에요"
+    },
+    "chartsCaption": {
+      "top50Country": "지금 가장 많이 재생되는 50곡",
+      "top50Global": "전 세계에서 가장 많이 재생되는 50곡",
+      "viral50Country": "지금 화제가 되고 있는 곡들"
+    },
+    "layout": {
+      "daylist": "데일리스트",
+      "newMusic": "새로운 음악",
+      "releases": "새 앨범 및 싱글",
+      "becauseYouLike": "좋아하실 만한 음악…"
+    },
+    "daypart": {
+      "early": "새벽",
+      "morning": "아침",
+      "afternoon": "오후",
+      "evening": "저녁",
+      "night": "밤"
+    },
+    "when": {
+      "playingNow": "지금 재생 중",
+      "minAgo": "{n}분 전",
+      "hAgo": "{n}시간 전"
+    },
+    "release": {
+      "album": "앨범",
+      "playlist": "플레이리스트",
+      "artist": "아티스트",
+      "song": "노래",
+      "episode": "에피소드",
+      "podcast": "팟캐스트",
+      "audiobook": "오디오북"
+    },
+    "empty": {
+      "audiobooksTitle": "아직 오디오북이 없어요",
+      "audiobooksBody": "저장한 오디오북이 여기에 표시돼요.",
+      "audiobooksAction": "오디오북 둘러보기",
+      "podcastsTitle": "아직 팟캐스트가 없어요",
+      "podcastsBody": "팔로우한 프로그램과 에피소드가 여기에 표시돼요.",
+      "podcastsAction": "팟캐스트 둘러보기",
+      "genericTitle": "아직 아무것도 없어요",
+      "genericBody": "회원님을 위한 추천이 곧 여기에 표시돼요.",
+      "genericAction": "둘러보기"
+    }
   },
   "podcast": {
     "episodes": "에피소드",
@@ -1057,5 +1148,13 @@
     "rejected": "이 파일은 재생할 수 없습니다. Wavee는 .mp3, .ogg, .flac, .mp4 파일을 재생합니다.",
     "notReady": "로컬 재생이 아직 준비되지 않았습니다 — 먼저 로그인하세요.",
     "dropHint": "파일을 놓으면 재생됩니다"
+  },
+  "palette": {
+    "homeAll": "홈: 전체",
+    "homeMusic": "홈: 음악",
+    "homePodcasts": "홈: 팟캐스트",
+    "homeAudiobooks": "홈: 오디오북",
+    "homeFollowingOn": "홈: 팔로잉 켜기",
+    "homeFollowingOff": "홈: 팔로잉 끄기"
   }
 }

@@ -38,6 +38,52 @@ public class ControlsGeometryTests
         Assert.Equal(cardW + 72f, Controls.ShelfHeight(cardW));
     }
 
+    [Theory]
+    [InlineData(148f)]
+    [InlineData(165f)]
+    [InlineData(188f)]
+    public void The_square_shelf_height_is_the_general_form_at_aspect_one_with_no_extra_lines(float cardW)
+    {
+        // `ShelfHeight(w)` must stay `w + 72` now that it delegates: the inner cover (w − 16) + 88 of chrome.
+        Assert.Equal(cardW + 72f, Controls.ShelfHeight(cardW, 1f, 0));
+        Assert.Equal(Controls.ShelfHeight(cardW), Controls.ShelfHeight(cardW, 1f, 0));
+        Assert.Equal(cardW - 2f * Spacing.S, Controls.CoverHeight(cardW - 2f * Spacing.S, 1f));
+    }
+
+    [Fact]
+    public void A_wide_tile_stacks_its_rounded_cover_the_chrome_and_one_extra_line()
+    {
+        // 428 wide: the inner 412 at 16:9 is 231.75 → 232 (rounded to the pixel grid), + 88 chrome + 16 for the meta line.
+        Assert.Equal(232f, Controls.CoverHeight(428f - 2f * Spacing.S, Design.Size.WideTileAspect));
+        Assert.Equal(232f + 88f + 16f, Controls.ShelfHeight(428f, Design.Size.WideTileAspect, 1));
+        Assert.Equal(16f, Controls.ShelfHeight(428f, Design.Size.WideTileAspect, 2)
+                          - Controls.ShelfHeight(428f, Design.Size.WideTileAspect, 1));
+    }
+
+    [Theory]
+    [InlineData(148f)]
+    [InlineData(165f)]
+    [InlineData(188f)]
+    public void A_lead_cover_spanning_two_squares_is_exactly_as_tall_as_they_are(float squareW)
+    {
+        // A lead card spans two square cards plus the gap; its aspect is (leadInner / squareInner), so its cover height
+        // must land on the squares' cover height — the shelf's one row stays level.
+        float leadW = 2f * squareW + Spacing.M;
+        float squareInner = squareW - 2f * Spacing.S, leadInner = leadW - 2f * Spacing.S;
+        float aspect = leadInner / squareInner;
+        Assert.Equal(squareInner, Controls.CoverHeight(leadInner, aspect));
+        Assert.Equal(Controls.ShelfHeight(squareW), Controls.ShelfHeight(leadW, aspect, 0));
+    }
+
+    [Fact]
+    public void The_wide_tile_band_lives_in_the_token_layer()
+    {
+        Assert.Equal(330f, Design.Size.WideTileMin);
+        Assert.Equal(440f, Design.Size.WideTileMax);
+        Assert.Equal(16f / 9f, Design.Size.WideTileAspect);
+        Assert.True(Controls.WideDecodePx >= Design.Size.WideTileMax);   // a wide cover never upsamples its decode
+    }
+
     [Fact]
     public void A_whole_shelf_row_adds_its_header_and_its_gaps()
         => Assert.Equal(32f + Controls.ShelfHeight(160f) + 24f, Controls.ShelfExtent(160f));
@@ -352,6 +398,18 @@ public class ControlsCardEqualityTests
         Assert.NotEqual(a, Card(subtitle: null));
         Assert.NotEqual(a, Card(circular: true));
         Assert.NotEqual(a, Card(titleLines: 2));
+    }
+
+    [Fact]
+    public void The_cover_aspect_and_the_meta_line_are_data()
+    {
+        // A wide tile and its square twin are different cards; so are a card with and without its third line.
+        Assert.Equal(Card() with { CoverAspect = 16f / 9f }, Card() with { CoverAspect = 16f / 9f });
+        Assert.NotEqual(Card(), Card() with { CoverAspect = 16f / 9f });
+        Assert.Equal(Card() with { Meta = "Spotify · 200 songs" }, Card() with { Meta = "Spotify · 200 songs" });
+        Assert.NotEqual(Card(), Card() with { Meta = "Spotify · 200 songs" });
+        Assert.NotEqual(Card() with { Meta = "200 songs" }, Card() with { Meta = "Spotify · 200 songs" });
+        Assert.Equal((Card() with { Meta = "200 songs" }).GetHashCode(), (Card() with { Meta = "200 songs" }).GetHashCode());
     }
 
     [Fact]

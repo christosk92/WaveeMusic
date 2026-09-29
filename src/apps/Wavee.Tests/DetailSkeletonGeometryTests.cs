@@ -114,19 +114,21 @@ public class DetailSkeletonGeometryTests
     }
 
     /// <summary>The nominal height of the pre-podcast skeleton columns, by hand: 24 above, the rows, 14 between, 24 below —
-    /// the CTA line wrapping exactly as the engine's flex wrap wraps [Play 104][the FAB group].</summary>
+    /// the CTA line wrapping exactly as the engine's flex wrap wraps [PlayButton 120][the icon-action group].
+    /// <para>Workstream B geometry: <c>RailLayout.PillHeight</c> (the primary's height) and <c>FabSize</c>/<c>SatelliteSize</c>
+    /// are all 32 now (were 36/40/36); <c>Skeleton.PlayButtonWidth</c> is 120 (was <c>PlayPillWidth</c> 104).</para></summary>
     [Fact]
     public void RailHeight_OfThePrePodcastColumns_IsTheirRowSum()
     {
-        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA 4 + 40 (Play
-        // 104 + 12 + [heart · Share] 88 = 204 ≤ 256: one line). Five rows, four gaps.
+        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA 4 + 32 (PlayButton
+        // 120 + 12 + [heart · Share] 72 = 204 ≤ 256: one line, max(PillHeight 32, FabSize 32) = 32). Five rows, four gaps.
         var album = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
-        Assert.Equal(24f + 256f + 16f + 72f + 16f + 44f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
+        Assert.Equal(24f + 256f + 16f + 72f + 16f + 36f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
 
-        // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped (104 + 12 + 136 > 216):
-        // 4 + 36 + 12 + 40 · blurb 3 × 18. Six rows, five gaps.
+        // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped (120 + 12 + 112 > 216):
+        // 4 + 32 + 12 + 32 · blurb 3 × 18. Six rows, five gaps.
         var playlist = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 6);
-        Assert.Equal(24f + 216f + 24f + 72f + 16f + 92f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
+        Assert.Equal(24f + 216f + 24f + 72f + 16f + 80f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
     }
 
     const int PodcastDescMax = 3;
@@ -216,15 +218,16 @@ public class DetailSkeletonGeometryTests
         Assert.Equal(14f, RailLayout.Gap);
     }
 
-    /// <summary>Satellites wrap ONE BY ONE after the primary, 8 apart both ways, 36 each: at a 256 measure three fit beside
-    /// the 104 primary, the fourth opens a second line — and none at all leaves the primary alone.</summary>
+    /// <summary>Satellites wrap ONE BY ONE after the primary, 8 apart both ways, 32 each (Workstream B: was 36): at a 256
+    /// measure three fit beside the 120 primary (was 104), the fourth opens a second line — and none at all leaves the
+    /// primary alone.</summary>
     [Theory]
-    [InlineData(0, 4f + 36f)]
-    [InlineData(1, 4f + 36f)]
-    [InlineData(3, 4f + 36f)]                 // 104 + 3 × (8 + 36) = 236 ≤ 256
-    [InlineData(4, 4f + 36f + 8f + 36f)]      // 280 > 256: the fourth wraps
-    [InlineData(9, 4f + 36f + 8f + 36f)]      // line two holds six: 36 + 5 × 44 = 256
-    [InlineData(10, 4f + 36f + 8f + 36f + 8f + 36f)]
+    [InlineData(0, 4f + 32f)]
+    [InlineData(1, 4f + 32f)]
+    [InlineData(3, 4f + 32f)]                 // 120 + 3 × (8 + 32) = 240 ≤ 256
+    [InlineData(4, 4f + 32f + 8f + 32f)]      // 280 > 256: the fourth wraps
+    [InlineData(9, 4f + 32f + 8f + 32f)]      // line two holds five: 32 + 5 × 40 = 232 ≤ 256
+    [InlineData(10, 4f + 32f + 8f + 32f + 8f + 32f)]
     public void Satellites_WrapOneByOneAfterThePrimary(int count, float cta)
     {
         var plan = Reserved(DetailKind.Episode, new RailSlotSet(Attribution: true, Satellites: true, SatelliteCount: count));

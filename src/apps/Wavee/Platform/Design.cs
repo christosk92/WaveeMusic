@@ -97,6 +97,11 @@ public static partial class Design
         /// surfaces authored 148/188 by hand and a fourth invented 200; one name here is what stops a fifth.</summary>
         public const float ShelfCardMin = 148f, ShelfCardMax = 188f, GridGap = 12f;
 
+        /// <summary>The WIDE tile's card-width band and its cover ratio — a 16:9 header image over the same card plate
+        /// (<c>Controls.ShelfHeight(w, WideTileAspect, extraLines)</c> is its extent). One name, for the same reason
+        /// as <see cref="ShelfCardMin"/>.</summary>
+        public const float WideTileMin = 330f, WideTileMax = 440f, WideTileAspect = 16f / 9f;
+
         /// <summary>The edge-fade ladder (ch 00 §12.2 magic-number row 2). A scroll viewport feathers its clipped edge by
         /// exactly one of these: a chip rail 16, a card shelf 24, the right rail's own 36 (the engine default).</summary>
         public const float FadeChip = 16f, FadeShelf = 24f, FadeRail = 36f;
@@ -1165,7 +1170,9 @@ public static partial class Design
     /// <see cref="TrackMeta"/>'s secondary read is a restatement rather than a change.</para></summary>
     public static class Type
     {
-        const string DisplayFace = "Segoe UI Variable Display";
+        /// <summary>The display face every display-voice alias here sets — and <see cref="FacetTitleStyle"/>, the one
+        /// control style that speaks in it.</summary>
+        internal const string DisplayFace = "Segoe UI Variable Display";
 
         /// <summary>Track / album / playlist titles in lists. → <c>Ui.BodyStrong</c> (14 / 20 / 600).</summary>
         public static TextEl TrackTitle(string s) => Ui.BodyStrong(s);
@@ -1292,6 +1299,17 @@ public static partial class Design
             CharSpacing = -12f,
         };
 
+        /// <summary>The daylist card's TITLE — the Home page's one hero line ("cutesy korean r&amp;b sunday afternoon").
+        /// <see cref="SurfaceDisplay"/>'s cut (the 40 / 52 engine rung, the display face, −12/1000 em) at SEMIBOLD
+        /// 600: a record's name, not a place's, so it takes the heading weight where the place masthead stays light.
+        /// On the ramp and inside the 400/600 policy — no new divergence. The line budget (≤ 2) is the call site's.</summary>
+        public static TextEl HeroTitle(string s) => Ui.TitleLarge(s) with
+        {
+            FontFamily = DisplayFace,
+            Weight = 600,
+            CharSpacing = -12f,
+        };
+
         /// <summary>Wide artist identity display. 84 / 96 / <b>700</b> — one of the three sanctioned display-face
         /// divergences. The <c>MinSize</c> floor is the point: the engine shrinks the glyph run toward it before it wraps
         /// or ellipsises, so a long artist name steps DOWN inside one rung rather than breaking to a second line.</summary>
@@ -1387,6 +1405,42 @@ public static partial class Design
         }
     }
 
+    /// <summary>The Home FACET ROW as the page's title (All · Music · Podcasts · Audiobooks): the stock
+    /// <see cref="SelectorBar"/> restyled into the prototype's page-title pivot. The words are 28 / 36 in the display
+    /// face — <c>Ui.Title</c>'s engine rung, no tracking — SECONDARY at rest and PRIMARY 600 when selected, so the
+    /// selected facet reads as the heading and its siblings as the choices beside it. No pill: the selection is the
+    /// weight and the ink. Hover and press lay the subtle fill ladder (subtle-hover, then subtle-press) on an
+    /// 8-DIP-padded, 40-tall item, 24 apart, and the first item pulls −8 so its WORD — not its plate — sits on the
+    /// page's leading edge.
+    /// <para>A PROPERTY, like <see cref="Controls.TileCardStyle"/>: every colour is a live token read, so a theme flip
+    /// re-resolves it at the next render.</para></summary>
+    public static SelectorBarStyle FacetTitleStyle => new()
+    {
+        LabelSize = 28f,
+        LineHeight = 36f,
+        FontFamily = Type.DisplayFace,
+        CharSpacing = 0f,
+        RestWeight = 400,
+        SelectedWeight = 600,
+        RestColor = Tok.TextSecondary,
+        SelectedColor = Tok.TextPrimary,
+        HoverColor = Tok.TextPrimary,
+        PressedColor = Tok.TextSecondary,
+        HoverFill = Tok.FillSubtleSecondary,
+        PressedFill = Tok.FillSubtleTertiary,
+        ShowPill = false,
+        ItemPadding = new Edges4(8f, 2f, 8f, 2f),
+        ItemHeight = 40f,
+        ItemGap = 24f,
+        LeadingInset = -8f,
+    };
+
+    /// <summary><see cref="FacetTitleStyle"/> one rung down the ramp (20/28; items 8 apart, so with the plates' own 8-DIP
+    /// padding the WORDS stay 24 apart) for a facet row too narrow for
+    /// four 28-px words and the Following toggle (the prototype's compact form, 06 §2.1; the edge is Home's FacetForm). Same
+    /// 40-tall item, so the pinned band's height — every sticky inset under it — never changes with the form.</summary>
+    public static SelectorBarStyle FacetCompactStyle => FacetTitleStyle with { LabelSize = 20f, LineHeight = 28f, ItemGap = 8f };
+
     // ══ 9. MOTION ════════════════════════════════════════════════════════════════════════════════════════════════════
     //
     // Wavee's ONE motion vocabulary. Hover/press motion everywhere is Wavee's identity — a media app should feel alive
@@ -1437,6 +1491,8 @@ public static partial class Design
         public const float Fast = 167f;
         /// <summary>WinUI ControlNormalAnimationDuration — the workhorse: recolor, icon swap, material cross-fade.</summary>
         public const float Standard = 250f;
+        /// <summary>WinUI ControlSlowAnimationDuration — a slow, decelerating drift: the wide-cover hover zoom.</summary>
+        public const float Slow = 333f;
 
         /// <summary>List/shelf entrance stagger per item. Reached through <see cref="Entrance"/>, never multiplied by
         /// hand at a call site (that is what produced the uncapped, reduced-motion-blind entrances this rung

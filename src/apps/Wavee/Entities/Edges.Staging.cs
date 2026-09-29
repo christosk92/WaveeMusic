@@ -43,6 +43,12 @@ public enum Relation : byte
     PlaylistTracks,
     Liked, SavedAlbums, FollowedArtists, SavedShows, Rootlist,
     HomeSection, SectionCards, SearchResult,
+    /// <summary>A home baseline section's preview tracks (D2, <c>feedBaselineLookup</c>): parent = the SECTION row
+    /// (like <see cref="SectionCards"/>), targets = up to five thin <c>Track</c> rows staged at
+    /// <see cref="Authority.Seed"/>, payload = <see cref="PreviewEdge"/> (the rank). One request answers many
+    /// sections' worth of cards, so a run is closed per owning section rather than once per response entry
+    /// (Spotify.Decode.Home.cs's <c>PreviewFold</c>).</summary>
+    SectionPreviewTracks,
     /// <summary>The ylpin set (G-062): parent = the account's user row, and the targets are CROSS-KIND — a playlist,
     /// album, artist or show row, the Liked collection, or a rootlist folder — so each edge's kind rides its payload's
     /// flag byte (<see cref="PinKind"/>). Appended last: the members above keep their numbers.</summary>
@@ -362,6 +368,7 @@ public static partial class Entities
     static KindEdge[] s_edgeKind = new KindEdge[64];
     static StringId[] s_edgeText = new StringId[64];
     static FormatEdge[] s_edgeFormat = new FormatEdge[64];
+    static PreviewEdge[] s_edgePreview = new PreviewEdge[64];
 
     /// <summary>Land every staged run: resolve the parent, resolve the children, build the payload the relation's own
     /// family needs, and <c>Replace</c> or <c>ReplacePage</c>. One arm per PAYLOAD FAMILY and no more — everything else
@@ -555,6 +562,15 @@ public static partial class Entities
                              parent, n, s_edgeKind, in run);
                         break;
                     }
+                case Relation.SectionPreviewTracks:
+                    {
+                        // Every target is a Track staged at Authority.Seed by the fold (PreviewFold): the rank is the
+                        // run's own order, exactly as SectionCards' server order is its own rank.
+                        int n = Resolve(s, page, Current.Tracks);
+                        for (int j = 0; j < n; j++) s_edgePreview[j] = new PreviewEdge((byte)j);
+                        Land(Current.Edges.SectionPreviewTracks, parent, n, s_edgePreview, in run);
+                        break;
+                    }
                 case Relation.AlbumMerch:
                     {
                         // Merch is not an entity: one MerchTable row per edge. Union read: Text = name, Target's text =
@@ -667,7 +683,7 @@ public static partial class Entities
         Relation.Liked or Relation.SavedAlbums or Relation.FollowedArtists or Relation.SavedShows
             or Relation.Rootlist or Relation.Pins => Current.Users,
         Relation.HomeSection => Current.Homes,
-        Relation.SectionCards => Current.Sections,
+        Relation.SectionCards or Relation.SectionPreviewTracks => Current.Sections,
         Relation.SearchResult => Current.Searches,
         _ => null,
     };
@@ -731,5 +747,6 @@ public static partial class Entities
         s_edgeKind = new KindEdge[size];
         s_edgeText = new StringId[size];
         s_edgeFormat = new FormatEdge[size];
+        s_edgePreview = new PreviewEdge[size];
     }
 }

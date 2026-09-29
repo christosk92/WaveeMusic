@@ -96,7 +96,7 @@ public static partial class Video
             {
                 Key = "module-stage-cta",
                 Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Children = [ToolTip.Wrap(Controls.IconPill(Icons.Play, onPlay, ButtonAppearance.Accent, size: 64f), Loc.Get(Strings.Detail.Play))],
+                Children = [ToolTip.Wrap(Controls.PlayFab(onPlay, size: 64f), Loc.Get(Strings.Detail.Play))],
             }));
         }
         // Flow.Show, NOT a C# `if`: a KeepAlive-parked page cannot re-render, but the node-bound predicate still runs.

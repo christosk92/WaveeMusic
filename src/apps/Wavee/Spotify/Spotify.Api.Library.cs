@@ -197,6 +197,12 @@ public static partial class Spotify
                     // Similar albums are seeded by a TRACK the planner resolved on the UI thread (Fetch.FillRevisions).
                     if (route.Op == PathfinderOp.SimilarAlbums)
                         SimilarAlbumsEdge(parent, i < batch.Revisions.Length ? batch.Revisions[i] : null, s, ref outcome);
+                    // D2: the request is a whole FACET'S baseline card uris, not the parent uri itself — both the
+                    // uris and the (section, card) map the answer is resolved against are snapshotted on the UI
+                    // thread at send (Fetch.FillPreviewMap), because this thread cannot read a table.
+                    else if (route.Op == PathfinderOp.FeedBaselineLookup)
+                        HomePreviewsEdge(i < batch.PreviewUris.Length ? batch.PreviewUris[i] : null,
+                                          i < batch.PreviewLinks.Length ? batch.PreviewLinks[i] : null, s, ref outcome);
                     else AnswerQuery(route.Op, parent, offset, s, ref outcome);
                     continue;
                 }
@@ -212,6 +218,19 @@ public static partial class Spotify
                     default: AnswerRest(route.Rest, parent, s, ref outcome); break;
                 }
             }
+        }
+
+        /// <summary>D2 (F32): one <c>feedBaselineLookup</c> for a whole facet answer — <paramref name="uris"/> is the
+        /// deduped request (null/empty → no baseline sections, no request, no outcome to note: the edge door still
+        /// records the parent answered, via <see cref="EdgeTableBase.MarkUnanswered"/>, same as any route that had
+        /// nothing to send); <paramref name="map"/> is how the answer is resolved back to every SECTION a returned
+        /// card belongs to.</summary>
+        static void HomePreviewsEdge(string[]? uris, HomePreviewLink[]? map, Staging s, ref FetchOutcome outcome)
+        {
+            if (uris is not { Length: > 0 } || map is not { Length: > 0 }) return;
+            Result result = FeedBaselineLookupQuery(uris, CancellationToken.None);
+            if (result.Ok) Decode.FeedBaselineLookup(result.Bytes, map, s);
+            outcome.Note(in result);
         }
 
         /// <summary>What one list read hands its decoder: a <see cref="Body"/> to decode as a read (a full read, or a

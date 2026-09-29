@@ -1,126 +1,146 @@
 ---
 name: wavee-home-layout
-description: Use when changing Home layout preferences — visibility, module order, home-layout.json, HomeLandingProjection hide/reorder, HomeCustomizerPage, or HomePreferences.
+description: Use when changing Home — the page under src/apps/Wavee/Home/ (HomeScreen, the facet row, the zone planners/renderers, the daylist card, the customizer) — or its layout document (home-layout.json v2, LayoutFile.cs).
 ---
 
-# Home layout
+# Home
 
-Home's customizer is the **sidebar layout pattern** applied to a closed set of
-landing modules. Read this before adding a module, a command, or a persistence
-field.
+Home is a ground-up rebuild, now on its **seventh pass — the prototype's design
+on the shared controls** (`docs/plans/wavee/home-rebuild-implementation.md`, last
+section; the fifth pass set the stock-control foundation, the sixth and seventh
+extend the shared controls, never Home-private copies). Every earlier
+hand-rolled surface (a hand pivot, hand chapter bands with pips/parallax, a
+width-query forms framework, private card templates + hover recipes, a hand
+skeleton, a virtualized `ItemsView` of zones with custom lanes/extents) was
+rejected and replaced with the same stock pieces the app's other native pages
+(Artist, Album, Browse, Search, Show) already use: a plain `ScrollView` column of
+`PagedShelf`/`GridEl` sections built from `Controls.ShelfCard`/`MediaRow`/
+`ModuleHeader`/`SettingsCard`/`Ui.Card`. **Read the plan's fifth-, sixth- and
+seventh-pass sections before touching anything below** — the fifth has the zone →
+control table, the sticky-header mechanics and the deletion list; the seventh has
+the current page tree, the daylist wireframe and the root-cause table.
 
-Lineage (copy these, do not reinvent):
+## Where things live
 
-| Sidebar | Home |
+All under `src/apps/Wavee/Home/` (namespace `Wavee.HomeUi`):
+
+| File | What |
 |---|---|
-| `Wavee.Core/Sidebar/SidebarLayoutModel.cs` | `Wavee.Core/Home/HomeLayoutModel.cs` |
-| `SidebarLayoutCommands` + `SidebarLayoutReducer` | `HomeLayoutCommands` + `HomeLayoutReducer` |
-| `Features/Sidebar/Persistence/SidebarLayoutStore.cs` | `Features/Home/Persistence/HomeLayoutStore.cs` |
-| `SidebarPreferences` | `HomePreferences` |
-| `sidebar-customize` + `SidebarCustomizerPage` | `home-customize` + `HomeCustomizerPage` |
+| `HomeScreen.cs` | the page root, `Shell.RouteKind.Home`'s factory: `ZStack` over the shell tint, a `ScrollView` column (facet row, the sticky-clipped zone column), the data half (`Props`/`Prefetch`/`Compute`/`Verdict`/`Demand`/`SelectFacet`/`Seed`/`BuildWash`). **No greeting headline** — the facet row IS the page title; the greeting lives only in the daylist eyebrow. `Seed` (All) = Daylist + RecentGrid + a cover shelf with a lead. The facet dim host binds Opacity/HitTest only (no pointer handlers — see Hover) |
+| `Facets.cs` | the facet pivot's pure data (facet ids, ordering) |
+| `Facet.Rules.cs` | `FacetDimPlan` — the switch-motion opacity/duration table (dims via `Design.Motion.Fast`, the app's 167 ms rung, not a Home-local token) |
+| `Facet.UI.cs` | the facet row = the page title: `SelectorBar.Create(..., style: Design.FacetTitleStyle)` (engine E28 `SelectorBarStyle`: 28/36 display, no pill, subtle hover plate; `SelectorH` 40) + the follow toggle + the 3-px indeterminate progress bar + the failed-facet `InfoBar` |
+| `Model.cs` | `Zone`/`ZoneKind`/`ZoneCluster` — the pure presentation shape a page renders, built from the section reader over the entity tables |
+| `ZonePlanner.cs` | `SectionRoles` (per-section role classification: Recents, Daylist, Personal, Radio, Cluster, WideEditorial, Releases, Browse, Generic) + `ZonePlanner.Plan`/`PlanAll` (bands → ordered `Zone[]`); `RecentsCap` = 8 |
+| `Zones.Rules.cs` | pure per-zone rules `Zones.UI.cs` renders from: `ReleaseListRules` (type badge + trailing date column), `ShelfLead` (merges a zone's separately-carried lead card back into its item list) |
+| `Zones.UI.cs` | every zone body over stock controls — `ModuleHeader`/`PagedShelf` for cover shelves (verbatim `Browse.Page.cs`'s pager/pips idiom), `GridEl` of `Controls.MediaRow` for Recents/Release/Cluster/Episode rows, `GridEl` of `SettingsCard` for Browse/Charts tiles, `Controls.Vacancy` for empty/failed. Headers pass `open: null` (no chevron after the subtitle; See all / Listening history carry the drill); tools = See all · divider · ‹ pips ›; a 2-span lead is never circular (`CoverShape.IsCircular`). `ShelfChapter` and `RecentGrid` carry a `SkeletonProxy` = their own static tree builder (see Skeletons) |
+| `Daylist.UI.cs` / `DaylistSource.cs` | the daylist card and its data source. Text column has priority (`Grow 1, Basis 0, MinWidth 340`, `SpaceBetween`: eyebrow with the greeting, `Design.Type.HeroTitle` ≤ 2 lines, tags, meta, actions on one row); art is `Controls.CoverFill` at `Basis 540, Shrink 1, MinWidth 0`, stretched to card height, so it shrinks first; `DaylistForm.ShowArt(inner)` drops the art when it would be < 160. `DaylistClock` = stock `ProgressRing` + countdown text, five stock determinate `ProgressBar`s (done/current/future) + daypart labels. `DaylistCard` has a `SkeletonProxy` (same tree, blank text) |
+| `Time.cs` | `DaypartRules` (the five-segment daypart timeline the daylist card's `DaylistClock` renders + `FormatCountdown`/`Countdown`), `RecentsWeek`/`WeekSummary` (the history tile's 7-day strip, restored in the sixth pass), `WhenCaption` (Recently-played / episode-row "when" ladder), `DaylistNext` (the next-window arrival caption) |
+| `EpisodeCaption.cs` | episode-row caption formatting |
+| `PodcastPlanner.cs` | the Podcasts facet's own regroup (a different algorithm from `ZonePlanner`) — rendered by `Zones.UI.cs` now, no separate `Podcasts.UI.cs` |
+| `Items.Rules.cs` | small pure item-shaping rules `Zones.UI.cs` calls into |
+| `RecentsCells.cs` | the Recently-played grid's cell shape (kept as-is across the fifth pass) |
+| `Reveal.cs` | `ScreenLoad` (a facet's `Loadable<ScreenModel>` state) and `WashPick` (shell wash accent source order: daylist accent → first cover accent → fallback) — card open/play routing lives OFF this file now (below) |
+| `SectionScreen.Rules.cs` / `SectionScreen.UI.cs` | the "See all"/charts drill page for a Home or Browse section (`Shell.RouteKind.HomeSection`/`BrowseSection`); a bound `ItemsView` over `RepeatLayout.GridFit` (its own grid, unrelated to Home's own zone column) |
+| `Customize.UI.cs` | `CustomizeScreen` — the full-page customizer (`Shell.RouteKind.HomeCustomize`), a `Reorderable` list of `ZoneRow`s |
+| `LayoutFile.cs` | the v2 layout document (below) |
 
-Same rules: engine-free Core model, no polymorphic JSON, unknown kinds/fields
-round-trip via a wire carry, fail-soft corrupt files (preserve-don't-destroy,
-writes blocked until `DiscardCorrupt`), atomic tmp → `File.Replace` + one `.bak`.
+**Deleted in the fifth pass, not coming back**: `Forms.cs` (the width-query forms
+framework), `HomeTok.cs`/`HomeText.cs` (Home's private token/text vocabulary —
+use the app's own `Spacing`/`Radii`/`Design.Type`/`Design.Motion` instead, see
+`Platform/Design.cs`), `Cards.UI.cs` (private card templates — use
+`Entities/Browse.Cards.cs`'s `HomeCards`/`HomeCardNav`, the same ones Browse and
+Search ride), `Chapter.UI.cs` (hand chapter bands — `ModuleHeader` now), `Skeleton.UI.cs`
+(hand skeleton — `SkelRegionEl`/`Skel.Region` now), `Podcasts.UI.cs` (folded into
+`Zones.UI.cs`), `FacetPivot.UI.cs` (replaced by the ~80-line `Facet.UI.cs`),
+`Zones.Rules.cs`'s `ZoneRows`/`ZoneEnter` (the virtualized-list row-extent seed and
+entrance stagger — there is no more `ItemsView` of zones to seed), `Reveal.cs`'s
+`CardNav` (superseded by the app-wide `HomeCardNav`). (`Time.cs`'s `RecentsWeek`/
+`WeekSummary` were deleted here and restored in the sixth pass for the history tile.)
 
-Product contract: [docs/plans/wavee/calm-contract.md](../../../docs/plans/wavee/calm-contract.md).
+**Card open/play routing is NOT a Home-local concern any more.** Every Home card
+tap goes through the same `HomeCardNav`/`HomeCards` that Browse and Search use
+(`Entities/Home.Rules.cs` §12 for the CORE half — `RouteFor`/`SectionRoute`/
+`OneCardOpensCard` — and `Entities/Browse.Cards.cs` for the UI half —
+`Open`/`Play`/`DragOf`/`MenuOf`/`ShelfCell`/`PlainText`). Do not reintroduce a
+Home-private card-nav type.
 
-## Document
+`Entities/Home.cs` and `Home.Rules.cs` still hold what the page reads OFF THE
+TABLES: `HomeCard`/`HomeCardKind` (the entity handle), `HomeSectionView` (the
+lossless per-section ledger), `HomeCardText`/`HomeCardAccent`, the section
+paging/routing rules, `HomeBrowseCards`.
 
-`%LOCALAPPDATA%\Wavee\WaveeMusic\home-layout.json` — beside `sidebar-layout.json`
-(`HomeLayoutStore.DefaultPath` / `SidebarLayoutStore.DefaultPath`).
+## The layout document (home-layout.json v2)
 
-v1 schema (`HomeLayoutDocDto`, `HomeLayoutJsonCtx`):
+`LayoutFile.cs` is a document, reducer, wire and store — no reference to the old
+pre-rebuild `HomeLayoutDoc`/`HomeModuleSpec`/`HomeLayoutReducer`/`HomeLayoutStore`/
+`HomeLayoutWire`/`HomePreferences`, only the same folder and the same atomic-write
+mechanics (`%LOCALAPPDATA%\Wavee\WaveeMusic\home-layout.json`, `.tmp` →
+`File.Replace(...,.bak)`, source-generated `System.Text.Json`). A v1 file is an
+accepted break: read as a version mismatch and replaced by the v2 default, never
+migrated.
 
-```json
-{
-  "version": 1,
-  "updatedAtMs": 0,
-  "appVersion": "…",
-  "modules": [
-    { "kind": "hero", "hidden": true }
-  ],
-  "deckOrder": ["spotify:section:…"]
-}
-```
+- `LayoutZone` (`Daylist`, `Recents`, `MadeForYou`, `NewMusic`, `Releases`,
+  `BecauseYouLike`, `JumpBackIn`, `Radio`, `Browse`) is the persisted, reorderable
+  identity — append only, never rename. It is distinct from `ZoneKind`
+  (`Home/Model.cs`): several `LayoutZone`s can render as the same `ZoneKind`.
+- `LayoutDoc` (`Version`, `Zones: IReadOnlyList<LayoutEntry>`, `UpdatedAtMs`) is the
+  in-memory shape; `LayoutEntry(Kind, Visible)` is one row.
+- `LayoutCommands.{Toggle, Move, Reset}` build a `LayoutDoc → LayoutDoc` reducer
+  function; there is no polymorphic command hierarchy.
+- `LayoutStore` is the file half: `Load()`/`Commit(doc)`, fault-classified
+  (`LayoutReadFault`, `LayoutSaveFault`), fail-soft (corrupt/too-new/unreadable →
+  default in memory, file untouched, writes blocked).
+- `HomeLayout` is the one process-lifetime owner (`HomeLayout.Slot`, a
+  `Context<HomeLayout>` with no default — a screen mounted without a provider
+  fails loud): a `Signal<LayoutDoc>` plus `Dispatch(reduce)`, which reduces,
+  publishes, and commits off the UI thread. Both `HomeScreen` and `CustomizeScreen`
+  read the SAME instance via `UseRequiredContext(HomeLayout.Slot)`, so a customize
+  edit is visible on Home the same frame it commits — no second private copy, no
+  file I/O in `Render()`.
 
-- `modules` — fixed landing kinds in user order. `hidden: true` is omitted when
-  false (`WhenWritingNull`). Kind strings live in `HomeLayoutModules.KindName` /
-  `TryParseKind` (append only, never rename).
-- `deckOrder` — ordered dynamic section-deck ids. **v1 UI does not edit this.**
-  The field is on the schema so a later customizer can reorder the deck without
-  a migration.
-- Unknown members (`[JsonExtensionData]`) and unknown `kind` strings survive in
-  `HomeLayoutWireCarry`.
+## Sticky headers — the app's own no-background idiom
 
-v1 customizer covers the kinds `HomeLandingProjection.Project` already
-materializes (`HomeLayoutModules.DefaultOrder`):
+Home reuses the pattern already in `Browse.Page.cs`/`Artist.Page.cs`: a sticky
+header paints NOTHING; the content under it clips to the header's lower edge with
+`.StickyClip(inset)` plus a top `EdgeFadeSpec(EdgeMask.Top, band) { WhileStuck =
+true }`, so it dissolves into the header instead of being guillotined. The facet
+row pins at the page top (`.Sticky(0)`); each zone's `ModuleHeader` pins at
+`facetRowH` scoped to that zone (`ScrollScope = zone.Key`) so the next zone's
+header pushes the previous one out at its section end. No acrylic, no compact
+band, no parallax.
 
-`hero`, `weeklyPair`, `quickGrid`, `recents`, `mixBand`, `chipCards`,
-`radioDial`, `queueList`, `ratedShelf`, `podcastShelf`, `featured`,
-`discoverFeed`.
+## Skeletons
 
-Not in v1: `shelf` / `topic` / `sectionEntry` (source-section presentations),
-and chrome rows (chips, artists, timeline, sections deck, tail).
+The cold load is derived from the real tree (`SkelRegionEl` + `Seed`), but the
+engine `SkeletonDeriver` does not render components: any `Embed.Comp` inside a
+skeleton-derived tree without a `SkeletonProxy` collapses into ONE 160×10 bar
+(the seventh pass's "greeting + thin bars" cold load). Give every such component
+a `SkeletonProxy` that returns its real tree — the same static builder `Render`
+calls — so nested proxies (e.g. `PagedShelf`'s card proxy) are reached.
 
-## Reducer / preferences
+## Hover
 
-All mutation goes through `HomePreferences.Dispatch(command)` →
-`HomeLayoutReducer.Apply` → version bump → `HomeLayoutStore.Commit`.
+Never put pointer handlers (`OnPointerDown` etc.) on a page-wide wrapper: it
+becomes an interactive hover scope over the whole column, and every card→gap→card
+move flips it and re-walks hover over the column (the seventh pass's hover-lag
+root cause). Cards hover **fill-only**, app-wide via the shared `Controls.Art.cs`
+recipe: an 83 ms subtle backplate, no lift, no shadow; the 1.02 cover zoom only on
+non-square covers. Do not add a Home-private hover recipe.
 
-Commands (in-memory only):
+## How to add a zone
 
-- `SetHomeModuleHidden(kind, hidden)`
-- `MoveHomeModule(from, to)` — `to` is **after removal** (`Reorderable.OnReorder`)
-- `ResetHomeLayout`
+1. Add the `ZoneKind`/`LayoutZone` (append only) in `Home/Model.cs`/`LayoutFile.cs`.
+2. Teach `SectionRoles.Of` (`ZonePlanner.cs`) to classify the sections that produce
+   it, and `ZonePlanner.Plan`/`PlanAll` to place it.
+3. Render it in `Zones.UI.cs` over the stock control from the plan's zone → control
+   table (a `PagedShelf`, a `GridEl` of `MediaRow`/`SettingsCard`/`Ui.Card`, never a
+   hand-rolled cell) — add any small pure shaping rule it needs to `Zones.Rules.cs`.
+4. Add it to `LayoutZones.DefaultOrder`/`KindName`/`TryParse` (`LayoutFile.cs`) so
+   the customizer can toggle/reorder it; old documents pick a new kind up
+   automatically as visible (no migration).
+5. Add a label in the customizer (`Customize.UI.cs`).
 
-Caps: `HomeLayoutReducer.MaxModules` (24). Over-cap is a rejection, never a
-truncation. A kind this build does not treat as a fixed landing is
-`UnknownModule`.
-
-`HomePreferences` is constructed in `Services` and provided at the app root
-(`HomePreferences.Slot`). Load is fail-soft: missing file = default in memory;
-corrupt / too-new / unreadable = default in memory, file untouched, writes
-blocked.
-
-## Projection (hide + reorder BEFORE rows)
-
-`HomeLandingProjection.Project(feed, titles, layout)`:
-
-1. Materialize modules from the feed (unchanged).
-2. `ApplyLayout` clears hidden kinds so `Get(kind)` is null.
-3. Builds `HomeLanding.Rows` from `layout.VisibleFixedModules()` plus chrome
-   anchors (Chips first, Artists after MixBand, Timeline+Sections after
-   Podcasts, Tail last). Adjacent `queueList`+`ratedShelf` collapse to
-   `HomeRow.EpisodesAndBooks`; pulled-apart pairs use `HomeRow.Queue` /
-   `HomeRow.Books`.
-
-`HomePage` / `HomeFeedVirtualLayout` consume `landing.Rows` /
-`homeLayout.Rows`. Do **not** keep a parallel hardcoded `HomeFeedVirtualLayout.Rows`
-table — that is what used to fight the layout.
-
-A hidden Hero must not steal the greeting: `GreetingBlock` reads
-`landing.Get(Hero)`, not the raw feed.
-
-## Customizer + nav
-
-- Page: `HomeCustomizerPage` (`Create()` factory). v1 = visibility
-  `ToggleSwitch` + `Reorderable` drag order. Tokens only.
-- Route key: **`home-customize`**. Navigate with the existing Home nav
-  callback (`HistoryStore.NavCtx`). Do **not** add the `WaveeShell` /
-  `ContentHost` case from this skill — that is a shell-owner edit.
-- Entry: Home greeting/chips overflow (`HomeCustomizeAffordance`) — not a FAB.
-
-## How to add a module
-
-1. Add the `HomeGroupKind` (append only) and teach the composer to emit it.
-2. Append the kind to `HomeLayoutModules.DefaultOrder` and `KindName` /
-   `TryParseKind`.
-3. Map it in `HomeLandingProjection.RowOf` + `HomePage.FeedGroup` / `RenderRow`
-   / `HomeFeedVirtualLayout.Estimate`.
-4. Add a label in `HomeCustomizeLabels` (reuse `HomeModuleCopy` when the copy
-   already exists).
-5. Old documents pick the new kind up automatically: `HomeLayoutWire.Read`
-   appends missing default kinds as visible. No migration, no `FG_*` flag.
-
-Do not add a module by hardcoding another `HomeRow` into a static table.
+Do not hardcode a new zone into a static row table, do not invent a new width-query
+form or a Home-private card template — it goes through the planner and renders
+with the stock controls, like every other zone.

@@ -203,7 +203,9 @@ public class HomeDecodeTests
         Assert.Equal("Urban Zakapa", card.SeedAt(1));
         Assert.Equal("IVE, Urban Zakapa, 10CM and more", card.Subtitle);
         Assert.Equal(0xFF008585u, card.Accent);
-        Assert.Equal(HomeGroupKind.MixBand, HomeComposer.ModuleFor(card));
+        // HomeComposer.ModuleFor (the Wave-5 Home UI's card→module classifier) was deleted with that page
+        // (docs/plans/wavee/home-rebuild-implementation.md §7); the new Home page classifies sections, not cards
+        // (Wavee.HomeUi.SectionRoles.Of), so this format/seed decode fact no longer has a like-for-like module assert.
     }
 
     [Fact]
@@ -237,7 +239,9 @@ public class HomeDecodeTests
         var card = CardTitled(JumpBackInUri, "earthquake Radio");
         Assert.Equal("inspiredby-mix", card.Format);
         Assert.Equal(["JISOO", "ROSÉ", "BABYMONSTER"], card.Seeds!);
-        Assert.Equal(HomeGroupKind.RadioDial, HomeComposer.ModuleFor(card));
+        // HomeComposer.ModuleFor (the Wave-5 Home UI's card→module classifier) was deleted with that page
+        // (docs/plans/wavee/home-rebuild-implementation.md §7); the new Home page classifies sections, not cards
+        // (Wavee.HomeUi.SectionRoles.Of), so this format/seed decode fact no longer has a like-for-like module assert.
     }
 
     [Fact]
@@ -270,7 +274,26 @@ public class HomeDecodeTests
         Assert.Equal("daylist", card.Format);
         Assert.True(card.NeedsHydration);                               // its name is still the generic pre-title
         Assert.Equal(daylist.DaylistExpiresAt * 1000L, card.ExpiresAtMs);
-        Assert.Equal(HomeGroupKind.Hero, HomeComposer.ModuleFor(card));
+        // HomeComposer.ModuleFor (the Wave-5 Home UI's card→module classifier) was deleted with that page
+        // (docs/plans/wavee/home-rebuild-implementation.md §7); the new Home page classifies sections, not cards
+        // (Wavee.HomeUi.SectionRoles.Of), so this format/seed decode fact no longer has a like-for-like module assert.
+    }
+
+    [Fact]
+    public void NonDaylistPlaylist_KeepsHeaderImage()
+    {
+        // D1 (F31): `header_image_url_desktop` was parsed for every playlist card but written to the row only
+        // `if (daylist)`, so `HomeCard.HeaderImageUrl`/`Playlist.HeaderImageId` stayed empty for every other card —
+        // including the live fixture's own Discover Weekly card, carrying the same attribute (5). Moving the write
+        // out of the `if (daylist)` block is what lets the WideEditorial role and the Discover-Weekly lead fire on
+        // the live feed's own shape.
+        TestScope.Fresh();
+        LoadHome();
+
+        var dw = Entities.Playlist(EntityUri.Parse("spotify:playlist:37i9dQZEVXcKDbGa6CckPI".AsSpan()));
+        Assert.False(dw.Knows(PlaylistFields.Daylist));
+        Assert.Equal("https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/dw/desktop/en",
+            Entities.Strings.Resolve(dw.HeaderImageId));
     }
 
     [Fact]
@@ -328,6 +351,127 @@ public class HomeDecodeTests
         Assert.Equal(0, s.Homes.Count);
         Assert.Equal(0, s.Sections.Count);
         Staging.Return(s);
+    }
+
+    // ── the new card facts (A6: ReleasedAtMs, PlayedState, VideoThumbUrl, Explicit, Unplayable, Show) ────────────────────
+    // Small hand-written fixtures (not the personal captures) shaped exactly like `podcasts.json`'s episode cards and
+    // `home.json`'s album cards (§4.3): an episode with a video thumb, an in-progress resume and an explicit rating
+    // behind a paywall, and an album whose release date lands on the entity table the same way every album page reads it.
+
+    const string FactsSectionUri = "spotify:section:0JQ5DAFacts0000000000";
+
+    static void LoadFacts(string json, string subject = "wavee:home")
+    {
+        var s = Staging.Rent();
+        Spotify.Decode.HomeFeed(Encoding.UTF8.GetBytes(json), Encoding.UTF8.GetBytes(subject), s);
+        TestScope.CommitAndPublish(s);
+    }
+
+    static string FactsDocument(string cardJson) =>
+        "{\"data\":{\"home\":{\"sectionContainer\":{\"sections\":{\"items\":[{\"uri\":\""
+        + FactsSectionUri
+        + "\",\"data\":{\"__typename\":\"HomeGenericSectionData\",\"title\":\"Card facts\"},\"sectionItems\":{\"totalCount\":1,\"items\":[{\"content\":{\"data\":"
+        + cardJson
+        + "}}]}}]}}}}}";
+
+    const string EpisodeCardJson = """
+        {"__typename":"Episode","uri":"spotify:episode:facts0episode000000001","name":"Ep. 42: The Facts",
+         "duration":{"totalMilliseconds":2400000},
+         "releaseDate":{"isoString":"2026-09-20T00:00:00Z"},
+         "playedState":{"playPositionMilliseconds":60000,"state":"IN_PROGRESS"},
+         "mediaTypes":["VIDEO","AUDIO"],
+         "videoPreviewThumbnail":{"imagePreview":{"data":{"sources":[
+           {"imageFormat":"WEBP","maxWidth":1280,"maxHeight":720,"url":"https://img.example/1280.jpg"},
+           {"imageFormat":"WEBP","maxWidth":640,"maxHeight":360,"url":"https://img.example/640.jpg"}
+         ]}}},
+         "contentRating":{"label":"EXPLICIT"},
+         "playability":{"playable":true},
+         "restrictions":{"paywallContent":true},
+         "podcastV2":{"data":{"name":"The Fake Show","uri":"spotify:show:facts0show00000000001"}}}
+        """;
+
+    [Fact]
+    public void Episode_card_stages_release_played_state_video_thumb_explicit_and_show()
+    {
+        TestScope.Fresh();
+        LoadFacts(FactsDocument(EpisodeCardJson));
+
+        var card = CardTitled(FactsSectionUri, "Ep. 42: The Facts");
+        Assert.Equal(new DateTimeOffset(2026, 9, 20, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds(), card.ReleasedAtMs);
+        Assert.Equal(2, card.PlayedState);                    // IN_PROGRESS
+        Assert.Equal(60000, card.ResumeMs);
+        Assert.Equal("https://img.example/1280.jpg", card.VideoThumbUrl);
+        Assert.True(card.HasVideo);
+        Assert.True(card.IsExplicit);
+        // restrictions.paywallContent: true, even though playability.playable is true — paywall wins.
+        Assert.False(card.IsPlayable);
+        Assert.Equal("The Fake Show", card.ShowName);
+        Assert.Equal("spotify:show:facts0show00000000001", card.ShowUri);
+    }
+
+    [Fact]
+    public void Episode_card_not_started_and_fully_played_states_and_playable_default()
+    {
+        TestScope.Fresh();
+        LoadFacts(FactsDocument("""
+            {"__typename":"Episode","uri":"spotify:episode:facts0episode000000002","name":"Ep. 1: Fresh",
+             "playedState":{"playPositionMilliseconds":0,"state":"NOT_STARTED"},
+             "contentRating":{"label":"NONE"}}
+            """));
+        var fresh = CardTitled(FactsSectionUri, "Ep. 1: Fresh");
+        Assert.Equal(1, fresh.PlayedState);                   // NOT_STARTED
+        Assert.False(fresh.IsExplicit);
+        Assert.True(fresh.IsPlayable);                        // unruled → never dimmed by omission
+        Assert.False(fresh.HasVideo);
+        Assert.Null(fresh.VideoThumbUrl);
+
+        TestScope.Fresh();
+        LoadFacts(FactsDocument("""
+            {"__typename":"Episode","uri":"spotify:episode:facts0episode000000003","name":"Ep. 0: Done",
+             "playedState":{"playPositionMilliseconds":2400000,"state":"COMPLETED"}}
+            """));
+        Assert.Equal(3, CardTitled(FactsSectionUri, "Ep. 0: Done").PlayedState);   // COMPLETED reads as FullyPlayed
+    }
+
+    [Fact]
+    public void Album_card_ReleasedAtMs_reads_the_Album_entitys_own_ReleaseAt_column()
+    {
+        TestScope.Fresh();
+        LoadFacts(FactsDocument("""
+            {"__typename":"Album","uri":"spotify:album:facts0album0000000000001","name":"Fake LP",
+             "releaseDate":{"isoString":"2026-08-01T00:00:00Z"},
+             "artists":{"items":[{"profile":{"name":"Fake Artist"},"uri":"spotify:artist:facts0artist000000001"}]}}
+            """));
+
+        var album = Entities.Album(EntityUri.Parse("spotify:album:facts0album0000000000001".AsSpan()));
+        var card = CardTitled(FactsSectionUri, "Fake LP");
+        Assert.Equal(album.ReleaseAt * 1000L, card.ReleasedAtMs);
+        Assert.Equal(new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds(), card.ReleasedAtMs);
+    }
+
+    [Fact]
+    public void Show_card_contentRatingV2_labels_carry_Explicit()
+    {
+        TestScope.Fresh();
+        LoadFacts(FactsDocument("""
+            {"__typename":"Podcast","uri":"spotify:show:facts0show000000000002","name":"Spicy Takes",
+             "publisher":{"name":"Fake Publisher"},"contentRatingV2":{"labels":["EXPLICIT"]}}
+            """));
+        Assert.True(CardTitled(FactsSectionUri, "Spicy Takes").IsExplicit);
+    }
+
+    [Fact]
+    public void Non_episode_cards_carry_no_show_or_video_thumb()
+    {
+        TestScope.Fresh();
+        LoadFacts(FactsDocument("""
+            {"__typename":"Album","uri":"spotify:album:facts0album0000000000002","name":"No Show LP"}
+            """));
+        var card = CardTitled(FactsSectionUri, "No Show LP");
+        Assert.Null(card.ShowName);
+        Assert.Null(card.ShowUri);
+        Assert.Null(card.VideoThumbUrl);
+        Assert.Equal(0, card.ReleasedAtMs);
     }
 
     // ── the allocation gate (P1, P8) ──────────────────────────────────────────────────────────────────────────────────

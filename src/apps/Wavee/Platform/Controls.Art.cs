@@ -21,17 +21,21 @@
 //
 // ── WHAT MUST NOT BE SIMPLIFIED (ch 02 §9) ───────────────────────────────────────────────────────────────────────────
 //
-//  1. THE HOVER PLATE IS NOT A `HoverFill`. It is a separate, non-hit-testable SIBLING under the content, carrying the
-//     fill, the stroke AND the shadow, cross-faded 0 → 1. Collapsing it into a HoverFill on the card root loses the
-//     stroke and the halo — and a parent clip would then shave the halo, which is why there is NO `ClipToBounds` on a
-//     card root: the plate carries the shadow and every child self-clips.
-//  2. `HoverElevatePaint`. Without it a LATER sibling card overpaints the hovered card's lift halo. It is the design's
-//     z-index and it changes neither layout nor hit-testing.
+//  1. THE HOVER PLATE IS NOT A `HoverFill`. It is a separate, non-hit-testable SIBLING under the content carrying the
+//     subtle-hover FILL alone (no stroke, no shadow — the prototype's fill-only recipe), cross-faded 0 → 1 over the
+//     83 ms rung and deepened to subtle-press while the card is held. It stays a sibling rather than a HoverFill on the
+//     root because the root's own Fill/Border belong to the SELECTED skin (the grid card's accent border over the card
+//     fill), and a reveal child fades on its own authored rung whatever the root carries. Every child self-clips, so
+//     there is still NO `ClipToBounds` on a card root.
+//  2. NO LIFT, NO ELEVATION. A hovered card does not move, scale or cast a halo: the plate's fill IS the hover. That
+//     is what makes the hover read immediately (the old 250 ms lift tween plus a 1.04 cover zoom read as late), and it
+//     is why the card needs no paint-order z-index — nothing it draws on hover reaches past its own bounds.
 //  3. THE ZOOM CONTAINER MUST NOT PUSH ITS OWN ROUNDED CLIP. The renderer clamps image/gradient primitives to the
 //     TOPMOST rounded clip only; a clip here would ride the scale out past the card and show square slivers at the
-//     corners.
+//     corners. Only a NON-SQUARE cover zooms at all (`CardCover`): a square cover is still.
 //  4. CIRCULAR CARDS DO NOT CLIP THE OVERLAY LAYER — the FAB sits inside the cover's RECTANGLE but outside the avatar
-//     circle, so the clip is conditional on the shape.
+//     circle, so the clip is conditional on the shape. And only a SQUARE cover can be circular
+//     (`CoverShape.IsCircular`): a wide tile asked to be round would become a pill.
 //  5. `Grow = 1` on the shell is what makes a measured shelf stretch every card to the TALLEST card's height: uniform
 //     panels, exact, with no reserved worst case. A grid whose ROW is taller than its card (the discography grid folds
 //     its 20-DIP row gap into the row height) must therefore pin the card with `CardData.Height`, which also zeroes
@@ -79,26 +83,24 @@ public static partial class Controls
 
     // ══ 2. THE CARD PLATE ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>THE card motion contract. Lift, press, elevate — applied by every rectangular media card (and by Home's
-    /// authored skins) so the physics cannot drift between surfaces.
-    /// <para>A LIFT (a −4 DIP translate), not a scale: a scaled card resamples its own cover every frame of the hover.
-    /// The cover's own zoom is a SEPARATE, inner node (<see cref="CardCover"/>) precisely so the plate can lift while
-    /// the art scales. The press sinks it back 3 DIP and breathes it to 0.99 — acknowledgement, not a bounce.</para>
-    /// <para><c>HoverElevatePaint</c> is the design's z-index: a hovered card's halo must paint OVER its later
-    /// siblings, which changes neither layout nor hit-testing.</para></summary>
+    /// <summary>THE card motion contract: FILL-ONLY, NO LIFT — applied by every rectangular media card (and by the
+    /// authored skins that share its grammar) so the physics cannot drift between surfaces.
+    /// <para>The card ROOT does not move: no translate, no press sink, no scale, no paint-order elevation (file header,
+    /// rule 2). The hover is the plate's subtle fill fading in over 83 ms (<see cref="CardShell"/>) plus, on a
+    /// NON-SQUARE cover only, a slow 1.02 zoom (<see cref="CardCover"/>) — both on INNER nodes, so what is left of the
+    /// contract on the root is the hand cursor that says "the whole card is one target".</para>
+    /// <para>A caller that paints its OWN card surface through this (the artist pick panel) has no plate: its hover is
+    /// whatever its own fill does under the pointer.</para></summary>
     public static BoxEl CardPhysics(BoxEl card) => card with
     {
-        HoverElevatePaint = true,
-        WhileHover = new MotionTarget { OffsetY = -4f },
-        WhilePressed = new MotionTarget { Scale = 0.99f, OffsetY = -1f },
-        Transition = MotionTok.ControlNormal,
         Cursor = CursorId.Hand,
     };
 
     /// <summary>The card SHELL: a ZStack of [hover plate, content]. The plate is a separate, non-hit-testable sibling
-    /// UNDER the content carrying fill + stroke + shadow, cross-faded 0 → 1 — see rule 1 in the file header for why it
-    /// is not a <c>HoverFill</c>.
-    /// <para>NO <c>ClipToBounds</c> on the root: the plate carries the shadow, and every child self-clips.</para>
+    /// UNDER the content carrying the subtle-hover FILL alone — no stroke, no shadow — cross-faded 0 → 1 over the 83 ms
+    /// rung and deepened to the subtle-press fill while the card is held. See rule 1 in the file header for why it is
+    /// not a <c>HoverFill</c> on the root.
+    /// <para>NO <c>ClipToBounds</c> on the root: every child self-clips.</para>
     /// <para>The root IS a focus stop with a button role — 0.2.9's card body was neither, so a keyboard user could not
     /// reach a card at all (ch 02 §9.12, one of the defects this file FIXES rather than ports). Its NAME is its own
     /// title text, which the automation tree reads off the content.</para></summary>
@@ -117,33 +119,55 @@ public static partial class Controls
                     Grow = 1f, HitTestVisible = false,
                     Opacity = 0f, HoverOpacity = 1f,
                     HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
+                    PressDurationMs = MotionTok.ControlFaster.DurationMs, PressEasing = MotionTok.ControlFaster.Easing,
                     Corners = CornerRadius4.All(Radii.Card),
-                    Fill = Tok.FillCardDefault,
-                    BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-                    Shadow = Elevation.Card,
+                    // The press reaches this non-hit-testable child because it is a REVEAL (HoverOpacity): the
+                    // engine's press cascade drives a reveal's own press progress, and an explicit PressedFill opts it
+                    // into the recorder's cross-fade (an inherited press never auto-darkens a fill on its own).
+                    Fill = Tok.FillSubtleSecondary,
+                    PressedFill = Tok.FillSubtleTertiary,
                 },
                 content,
             ],
         });
 
-    /// <summary>The cover STACK inside a card: the art, the overlay layer, and the corner "…". The art's zoom lives
-    /// HERE, on its own node, so the plate can lift while the art scales — and this node pushes NO rounded clip of its
-    /// own (rule 3).
+    /// <summary>The cover STACK inside a card: the art, the overlay layer, and the corner "…". Any zoom the art takes
+    /// lives HERE, on its own node, never on the card root — and this node pushes NO rounded clip of its own (rule 3).
+    /// <para>ONLY A NON-SQUARE COVER ZOOMS (width ≠ height: the 16:9 wide tiles, a 2-span lead): 1.02 over the
+    /// <see cref="Design.Motion.Standard"/> rung with a decelerate ease — the prototype's slow drift into a wide
+    /// picture. A square cover stays still; its hover is the plate's fill alone (rule 2). Reduced motion collapses the
+    /// zoom to 1 (<see cref="Design.ScaleTier.Hover"/>).</para>
     /// <para><paramref name="circular"/> flips the clip OFF (rule 4): the FAB sits inside the cover's RECTANGLE but
-    /// outside the avatar circle, so clipping it would cut the affordance in half.</para></summary>
-    public static Element CardCover(Element art, float edge, bool circular, Element? overlay = null,
+    /// outside the avatar circle, so clipping it would cut the affordance in half. It is honoured only on a SQUARE slot
+    /// (<see cref="CoverShape.IsCircular"/>).</para>
+    /// <para><paramref name="width"/> × <paramref name="height"/>, not one edge: a wide tile (16:9 header art) is the
+    /// same stack over a non-square slot — <see cref="CoverHeight"/> derives the height the shelf hands in.</para></summary>
+    public static Element CardCover(Element art, float width, float height, bool circular, Element? overlay = null,
                                     Element? corner = null)
     {
         var kids = new List<Element>(3) { art };
         if (overlay is not null) kids.Add(overlay);
         if (corner is not null) kids.Add(corner);
+        bool wide = width != height;
         return new BoxEl
         {
-            ZStack = true, Width = edge, Height = edge, ClipToBounds = !circular,
-            HoverScale = Design.Reduced ? 1f : 1.04f,
-            HoverDurationMs = Design.Motion.Standard, HoverEasing = Easing.SmoothOut,
+            ZStack = true, Width = width, Height = height,
+            ClipToBounds = !CoverShape.IsCircular(circular, width / MathF.Max(1f, height)),
+            HoverScale = wide ? Design.Motion.ScaleSubtle.Hover : 1f,
+            HoverDurationMs = Design.Motion.Slow, HoverEasing = Easing.FluentDecelerate,
             Children = kids.ToArray(),
         };
+    }
+
+    /// <summary>A cover's SHAPE rule, pure so it can be pinned: a card asks for a circle (an artist, a radio station)
+    /// and gets one only when its cover is SQUARE. A wide tile (a 16:9 cover, a 2-span lead) that inherited a
+    /// <c>Circular</c> flag would round with half its WIDTH and render as a pill, so a non-square cover is never
+    /// circular — its radius, its clip and its centred labels all fall back to the rectangular card's.</summary>
+    public static class CoverShape
+    {
+        /// <summary>True only when <paramref name="circular"/> is asked for AND <paramref name="aspect"/> (width ÷
+        /// height) is 1 within a thousandth.</summary>
+        public static bool IsCircular(bool circular, float aspect) => circular && MathF.Abs(aspect - 1f) < 0.001f;
     }
 
     /// <summary>The top-right "…" on a card's artwork: the scrim-plated 30-circle, revealed on hover. It carries no
@@ -199,7 +223,7 @@ public static partial class Controls
     public static Element NowPlayingOverlay(string uri, Action? onPlay, float fab = 44f, bool centred = true,
                                             string? playName = null)
         => Embed.Comp(new OverlayProps(uri, onPlay, fab, centred, playName ?? Loc.Get(Strings.Detail.Play)),
-                      static () => new NowPlayingOverlayHost());
+                      static () => new NowPlayingOverlayHost()).Skeletonized(false);
 
     /// <summary>The overlay's re-pushed props. Equality is DATA-ONLY: <see cref="OnPlay"/> counts by PRESENCE, never by
     /// identity (the <c>Track.TableProfile</c> / <c>GridProps</c> idiom) — a parent rebuilds its closures on every render,
@@ -289,7 +313,9 @@ public static partial class Controls
         Element BuildPlayFab()
         {
             var p = _props.Value;
-            if (p is null) return new BoxEl();
+            // No handler, no FAB: a surface with nothing to play (the listening-history tile) must not grow a dead
+            // affordance. Presence is part of the props' equality, so a rebind that gains a handler rebuilds this.
+            if (p is null || p.OnPlay is null) return new BoxEl();
             var pb = NowPlaying;
             bool anything = pb is not null && pb.HasActiveContext.Value;
             bool owns = anything && pb!.RelatesTo(p.Uri) && pb!.Owns(p.Uri);
@@ -351,10 +377,20 @@ public static partial class Controls
         /// context (skipped under the null overlay, exactly as the cells did by hand). Counts by presence.</summary>
         public Func<ContextMenuModel?>? Menu { get; init; }
 
+        /// <summary>The cover's width ÷ height. 1 (the default) is the square every entity card has always had; a wide
+        /// tile (16:9 header art) states its ratio here and the shelf/grid hosts derive the cover height from it
+        /// (<see cref="CoverHeight"/>), so the label block never moves.</summary>
+        public float CoverAspect { get; init; } = 1f;
+
+        /// <summary>An optional THIRD line under the subtitle — tertiary, one line ("Spotify · 200 songs"). Null (the
+        /// default) renders nothing, so every existing card keeps its two-line label block.</summary>
+        public string? Meta { get; init; }
+
         public bool Equals(CardData? other)
             => other is not null && (ReferenceEquals(this, other)
                || (Uri == other.Uri && Title == other.Title && CoverUrl == other.CoverUrl
                    && Circular == other.Circular && ShowMenu == other.ShowMenu && TitleLines == other.TitleLines
+                   && CoverAspect.Equals(other.CoverAspect) && Meta == other.Meta
                    && (OnPlay is null) == (other.OnPlay is null)
                    && Drag?.Kind == other.Drag?.Kind && Equals(Drag?.Style, other.Drag?.Style)
                    // `float.Equals`, not `==`: NaN (the "unpinned" default) must equal NaN.
@@ -365,18 +401,36 @@ public static partial class Controls
         // The hash stays cheap and consistent with Equals: it walks no Element tree (presence stands in for the two
         // element slots) — equal records still hash equal, unequal ones merely may collide.
         public override int GetHashCode()
-            => HashCode.Combine(Uri, Title, CoverUrl, Circular, ShowMenu, TitleLines, Height,
+            => HashCode.Combine(Uri, Title, CoverUrl, Circular, ShowMenu, TitleLines, HashCode.Combine(Height, CoverAspect, Meta),
                                 (OnPlay is not null ? 1 : 0) | (Drag is not null ? 2 : 0) | (Subtitle is not null ? 4 : 0)
                                 | (CoverOverride is not null ? 8 : 0) | (Selected ? 16 : 0)
                                 | (SelectedAccent is not null ? 32 : 0) | (Menu is not null ? 64 : 0));
     }
 
-    /// <summary>THE virtualized shelf's cross extent: <c>cardW + 72</c> — 6 gutter + 20 plate padding + the square
-    /// cover + 8 gap + 20 title + 2 + 32 subtitle.
+    /// <summary>THE virtualized shelf's cross extent for a SQUARE-cover, two-line card: <c>cardW + 72</c> — 6 gutter +
+    /// 20 plate padding + the square cover + 8 gap + 20 title + 2 + 32 subtitle. The identity
+    /// <c>ShelfHeight(w) == w + 72</c> is pinned by test; it is the general form below at aspect 1 with no extra lines.
     /// <para>The RENDERER and the ESTIMATOR must both call this. An estimate that disagrees with the rendered height
     /// makes a measured virtual list re-pin its scroll anchor mid-scroll, which reads as the feed jumping under the
     /// cursor.</para></summary>
-    public static float ShelfHeight(float cardW) => cardW + 72f;
+    public static float ShelfHeight(float cardW) => ShelfHeight(cardW, 1f, 0);
+
+    /// <summary>The general shelf extent: the cover at <paramref name="coverAspect"/> (width ÷ height, over the card's
+    /// INNER width — the card less its 2 × <c>Spacing.S</c> plate padding) plus the fixed 88 of chrome (6 gutter + 20
+    /// plate padding + 8 gap + 20 title + 2 + 32 subtitle) plus 16 per <paramref name="extraLines"/> — one caption
+    /// line (12/16) each, whether a second subtitle line or the tertiary <see cref="CardData.Meta"/> line.</summary>
+    public static float ShelfHeight(float cardW, float coverAspect, int extraLines)
+        => CoverHeight(cardW - 2f * Spacing.S, coverAspect) + 88f + 16f * extraLines;
+
+    /// <summary>The cover height a card's inner width derives at <paramref name="aspect"/> (width ÷ height): exactly
+    /// the width when square, else rounded to whole DIP so a 16:9 tile's label block lands on the pixel grid.</summary>
+    public static float CoverHeight(float inner, float aspect)
+        => aspect != 1f ? MathF.Round(inner / aspect) : inner;
+
+    /// <summary>A NON-square (wide) shelf cover's decode target: 512 square, cover-fit into the 16:9 slot. Wider than
+    /// <see cref="ShelfDecodePx"/> because a wide tile spans 330-440 DIP; still ONE literal so every wide tile shares a
+    /// texture per url.</summary>
+    public const int WideDecodePx = 512;
 
     /// <summary>The GRID cell's extra height above its square cover: the label block's own overhead. Shared by Home,
     /// Browse and Search, for the same estimator reason <see cref="ShelfHeight"/> is.</summary>
@@ -438,15 +492,22 @@ public static partial class Controls
             if (p is null) return new BoxEl();
             var d = p.Data;
             float inner = p.CardW - 2f * Spacing.S;
+            // A square card keeps its 256 decode and its edge; a wide tile takes the derived height and the 512 decode.
+            bool square = d.CoverAspect == 1f;
+            // A circle only on a square cover: a wide lead asked to be round would take `inner / 2` and become a pill.
+            bool circular = CoverShape.IsCircular(d.Circular, d.CoverAspect);
+            float coverH = CoverHeight(inner, d.CoverAspect);
             Element art = d.CoverOverride
-                ?? Artwork(d.CoverUrl, inner, inner, d.Circular ? inner / 2f : Radii.Card, decodePx: ShelfDecodePx);
+                ?? Artwork(d.CoverUrl, inner, coverH, circular ? inner / 2f : Radii.Card,
+                           decodePx: square ? ShelfDecodePx : WideDecodePx);
             // The drag source keeps the adapter's DATA (Kind, Style) and swaps in the trampoline payload factory; it is
             // rebuilt only when this host renders, i.e. when the card's data actually changed.
             DragSource? drag = d.Drag is { } ds ? new DragSource(ds.Kind, _dragPayload) { Style = ds.Style } : null;
 
             return new BoxEl
             {
-                // The gutter reserves the lift's halo so a hovered card is not clipped by the shelf's own viewport.
+                // The 6-DIP gutter (4 over, 2 under) is part of `ShelfHeight`'s fixed chrome, so the estimator and the
+                // renderer agree; it no longer reserves a halo — the fill-only hover neither lifts nor casts one.
                 Padding = new Edges4(0f, Spacing.XS, 0f, 2f),
                 Width = p.CardW, Shrink = 0f,
                 Children =
@@ -457,7 +518,7 @@ public static partial class Controls
                         Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
                         Children =
                         [
-                            CardCover(art, inner, d.Circular,
+                            CardCover(art, inner, coverH, circular,
                                       // Presence is the adapter's (a card with no play affordance stays that way); the
                                       // handler itself is the trampoline.
                                       overlay: NowPlayingOverlay(d.Uri, d.OnPlay is null ? null : _onPlay, 44f, centred: true),
@@ -592,7 +653,9 @@ public static partial class Controls
             if (!hot && NowPlaying is { } pb && pb.HasActiveContext.Value) relates = pb.RelatesTo(d.Uri);
             bool chrome = CardChromeRules.Mounted(hot, relates);
 
-            Element art = d.CoverOverride ?? ArtworkFill(d.CoverUrl, d.Circular ? Radii.Full : Radii.Card);
+            // A circle only on a square cover (`CoverShape`): the radius, the clip and the labels all read this one bit.
+            bool circular = CoverShape.IsCircular(d.Circular, d.CoverAspect);
+            Element art = d.CoverOverride ?? ArtworkFill(d.CoverUrl, circular ? Radii.Full : Radii.Card, aspect: d.CoverAspect);
             Element[] cover = !chrome ? [art]
                 : d.ShowMenu ? [art, NowPlayingOverlay(d.Uri, d.OnPlay is null ? null : _onPlay, 44f, centred: true), MoreCorner()]
                 : [art, NowPlayingOverlay(d.Uri, d.OnPlay is null ? null : _onPlay, 44f, centred: true)];
@@ -608,7 +671,13 @@ public static partial class Controls
                 Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
                 Children =
                 [
-                    new BoxEl { ZStack = true, ClipToBounds = !d.Circular, Children = cover },
+                    // A square card leaves the box's aspect OFF (the fill image carries its own 1:1), byte-identical
+                    // to before; a wide tile sizes the whole cover stack — overlay and corner included — to its ratio.
+                    new BoxEl
+                    {
+                        ZStack = true, ClipToBounds = !circular, Children = cover,
+                        AspectRatio = d.CoverAspect == 1f ? float.NaN : d.CoverAspect,
+                    },
                     Labels(d, float.NaN),
                 ],
             }, _onClick, drag) with { OnHoverMove = _enter, OnPointerExit = _exit, OnFocusChanged = _focus, OnRealized = _realized };
@@ -627,31 +696,60 @@ public static partial class Controls
 
     // The label block. The title is capped at the caller's line budget and the subtitle at TWO with an explicit width,
     // and the highlight arm gets the SAME budget as the plain title — so a filter narrowing a grid does not reflow a
-    // card from two lines to one.
-    static Element Labels(CardData d, float inner) => new BoxEl
+    // card from two lines to one. A `Meta` adds ONE tertiary caption line under the subtitle (16 DIP — the extra line
+    // `ShelfHeight(w, aspect, extraLines)` budgets); without one the block is exactly what it always was.
+    static Element Labels(CardData d, float inner)
     {
-        Direction = 1, Gap = 2f, MinWidth = 0f,
-        AlignItems = d.Circular ? FlexAlign.Center : FlexAlign.Start,
-        Children = d.Subtitle is null
-            ? [Design.Type.CardTitle(d.Title) with
-                { Width = inner, MaxLines = d.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }]
-            : [Design.Type.CardTitle(d.Title) with
+        var kids = new List<Element>(3)
+        {
+            Design.Type.CardTitle(d.Title) with
                 { Width = inner, MaxLines = d.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-               d.Subtitle],
-    };
+        };
+        if (d.Subtitle is not null) kids.Add(d.Subtitle);
+        if (d.Meta is { Length: > 0 } meta)
+            kids.Add(Design.Type.TrackMeta(meta) with
+                { Color = Tok.TextTertiary, Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
+        return new BoxEl
+        {
+            Direction = 1, Gap = 2f, MinWidth = 0f,
+            AlignItems = CoverShape.IsCircular(d.Circular, d.CoverAspect) ? FlexAlign.Center : FlexAlign.Start,
+            Children = kids.ToArray(),
+        };
+    }
+
+    /// <summary>The visual a <see cref="MediaRow"/> wears. <see cref="Plain"/> is the bare row (a caller plates it
+    /// itself); <see cref="ListRow"/> the subtle hover ramp every list has always had (the default); <see cref="Tile"/>
+    /// a bordered card plate whose stroke turns accent while the row RELATES to playback (<see cref="RelatesNow"/>);
+    /// <see cref="Outline"/> a dashed, fill-less "go somewhere" frame (the listening-history tile).</summary>
+    public enum RowSkin : byte { Plain, ListRow, Tile, Outline }
+
+    /// <summary>Does <paramref name="uri"/> relate to what is playing RIGHT NOW — the coarse <c>HasActiveContext</c>
+    /// gate first (one app-wide bool, so an idle read never joins the hot identity fan-out), then the loose
+    /// <c>RelatesTo</c>. Read inside a render or a <c>Prop.Of</c> thunk so the caller re-skins on a playback edge; false
+    /// with no seam installed.</summary>
+    public static bool RelatesNow(string uri)
+        => NowPlaying is { } pb && pb.HasActiveContext.Value && pb.RelatesTo(uri);
 
     /// <summary>The horizontal MEDIA ROW — search results, recents, a rail list. FOUR heights, not one: 64 plain,
     /// 112 large (a "top result" hero), auto with a 64 floor when it carries an inline detail, and auto with a 72 floor
-    /// for the below-art arm.</summary>
+    /// for the below-art arm.
+    /// <para><paramref name="skin"/> picks the plate (<see cref="RowSkin"/>); the default is the list-row hover ramp
+    /// every existing caller gets, byte-identical to before.</para></summary>
     public static Element MediaRow(CardData d, float artEdge = 48f, Element? trailing = null, Element? eyebrow = null,
-                                   Element? meta = null, bool large = false, bool plated = true)
+                                   Element? meta = null, bool large = false, RowSkin skin = RowSkin.ListRow)
     {
         float edge = large ? 84f : artEdge;
         var text = new List<Element>(4);
         if (eyebrow is not null) text.Add(eyebrow);
         text.Add(large
             ? Design.Type.PageHero(d.Title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
-            : Design.Type.TrackTitle(d.Title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
+            : Design.Type.TrackTitle(d.Title) with
+            {
+                MaxLines = d.TitleLines,
+                Wrap = d.TitleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap,
+                Trim = TextTrim.CharacterEllipsis,
+                MinWidth = 0f,
+            });
         if (d.Subtitle is not null) text.Add(d.Subtitle);
         if (meta is not null) text.Add(meta);
 
@@ -687,7 +785,32 @@ public static partial class Controls
         };
         // A near-full-width row's press acknowledgement is its PressedFill alone — never a PressScale. Even a 2% swing
         // moves each edge several DIP in opposite directions on a ~1000-px row and visibly blurs the title mid-scale.
-        return plated ? row.Interactive(Interaction.ListRow) : row;
+        // None of the recipes below declares motion, so `Interactive` expands only the brush half.
+        switch (skin)
+        {
+            case RowSkin.Plain:
+                return row;
+            case RowSkin.Outline:
+                // The subtle ramp over a dashed hairline: a frame, not a plate — it says "go somewhere", not "an item".
+                return row.Interactive(Interaction.Subtle) with
+                {
+                    BorderWidth = 1f, BorderColor = Tok.StrokeControlSecondary,
+                    BorderDashOn = 3f, BorderDashOff = 3f,
+                };
+            case RowSkin.Tile:
+            {
+                // The card fills, with the stroke taken OUT of the recipe so this node can bind it: the border reads
+                // the playback relation live (a paint-only re-tint on a track edge, never a re-render of the row).
+                string uri = d.Uri;
+                return row.Interactive(Interaction.Tile with { Stroke = null }) with
+                {
+                    BorderWidth = 1f,
+                    BorderColor = Prop.Of(() => RelatesNow(uri) ? Tok.AccentDefault with { A = 0.5f } : Tok.StrokeCardDefault),
+                };
+            }
+            default:
+                return row.Interactive(Interaction.ListRow);
+        }
     }
 
     // ══ 5. THE COVER SHIMMER ═════════════════════════════════════════════════════════════════════════════════════════
@@ -772,39 +895,29 @@ public static partial class Controls
     /// <inheritdoc cref="ChipHeight"/>
     public const float ChipRailExtent = ChipRailHeight + Spacing.S;
 
-    /// <summary>One filter chip. <paramref name="available"/> false renders it SHOWN AND DISABLED rather than dropping
-    /// it: a curated filter set is library-scoped and routinely names concepts whose rows have not been enriched yet, so
-    /// dropping those hid the whole bar on a cold list. They become live as enrichment lands.</summary>
-    public static Element Chip(string label, bool selected, bool available, Action? onClick) => new BoxEl
-    {
-        Role = AutomationRole.Button, Focusable = available, Cursor = available ? CursorId.Hand : CursorId.Arrow,
-        IsEnabled = available,
-        FocusVisualMargin = Design.FocusInsetBordered,
-        // Shrink 0 is LOAD-BEARING on a non-wrapping row: without it flex compresses every pill to fit the viewport and
-        // the labels ellipsise instead of the rail overflowing, which is the opposite of what the scroller is for.
-        Height = ChipHeight, Shrink = 0f, AlignItems = FlexAlign.Center,
-        Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-        Corners = Radii.FullAll,
-        Fill = selected ? Tok.AccentDefault : Tok.FillControlDefault,
-        HoverFill = !available ? Tok.FillControlDefault : selected ? Tok.AccentSecondary : Tok.FillControlSecondary,
-        BorderWidth = 1f,
-        BorderColor = selected ? ColorF.Transparent : Tok.StrokeControlDefault,
-        HoverBorderColor = !available ? Tok.StrokeControlDefault : selected ? ColorF.Transparent : Tok.AccentDefault,
-        HoverScale = Design.Motion.ScaleSubtle.HoverIf(available),
-        HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
-        PressScale = Design.Motion.ScaleSubtle.PressIf(available),
-        OnClick = onClick,
-        Children =
-        [
-            (selected ? Design.Type.DenseTitle(label) : Design.Type.DenseMeta(label)) with
+    /// <summary>One filter chip — a <see cref="ToggleButton.Controlled"/> (Workstream B: the grammar table's "Filter /
+    /// mode toggles" row, stock checked = accent). <paramref name="available"/> false renders it SHOWN AND DISABLED
+    /// rather than dropping it: a curated filter set is library-scoped and routinely names concepts whose rows have not
+    /// been enriched yet, so dropping those hid the whole bar on a cold list. They become live as enrichment lands.
+    /// <para>The selected value is entirely CALLER-owned (the live filter state), so this is <c>Controlled</c>: a click
+    /// only invokes <paramref name="onClick"/> — the re-render that follows is what actually flips <paramref
+    /// name="selected"/>.</para></summary>
+    public static Element Chip(string label, bool selected, bool available, Action? onClick)
+        => ToggleButton.Controlled(label, selected, _ => onClick?.Invoke(),
+            style: AccentToggleStyle(Tok.AccentDefault) with
             {
-                MaxLines = 1,
-                // 0.2.9 left this without a Trim, so a long concept name overflowed its own capsule (ch 02 §9.13).
-                Trim = TextTrim.CharacterEllipsis,
-                Color = selected ? Tok.TextOnAccentPrimary : available ? Tok.TextPrimary : Tok.TextDisabled,
+                // The chip keeps its own capsule geometry — the 32/r4 ladder is for the labeled/icon button grammar,
+                // not this scrolling rail, which has always read as pills.
+                CornerRadius = Radii.Full,
+                MinHeight = ChipHeight,
+                Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
+                FontSize = 13f,                              // DenseTitle/DenseMeta's size (13/18) — the chip rail's own rung
+                FocusVisualMargin = Design.FocusInsetBordered,
             },
-        ],
-    };
+            isEnabled: available, parts: RootNoShrink);
+            // RootNoShrink (Shrink = 0 on the toggle's own root) is LOAD-BEARING on a non-wrapping row: without it
+            // flex compresses every pill to fit the viewport and the labels ellipsise instead of the rail
+            // overflowing, which is the opposite of what the scroller is for.
 
     /// <summary>The chip RAIL: ONE line that scrolls, never a wrapped block. A curated set runs to 15+ concepts, which
     /// wrapped into a second and third row and pushed the list down the page.

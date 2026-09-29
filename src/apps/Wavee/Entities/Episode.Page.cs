@@ -110,9 +110,9 @@ public readonly partial struct Episode
                 : Loc.Get(Strings.Podcast.Reader.Play);
             // W11d: the app accent, never the show/episode tone — Design.AccentCtx carries the entity's own
             // art-derived tone (the leak the video frame caught as a pink Resume pill on this exact pill). A media
-            // transport verb should not repaint with the cover; Detail.PlayPill's default (accent()==Tok.AccentDefault
+            // transport verb should not repaint with the cover; Detail.PlayButton's default (accent()==Tok.AccentDefault
             // here) is the one blue every other primary action already uses.
-            return Detail.PlayPill(() => Tok.AccentDefault,
+            return Detail.PlayButton(() => Tok.AccentDefault,
                 () => Invoke(e, () => StartAt(e, Playback.EpisodeStartKind.Resume)), label, playing ? Icons.Pause : Icons.Play);
         }
     }

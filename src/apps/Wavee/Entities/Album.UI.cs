@@ -1024,17 +1024,12 @@ public readonly partial struct Album
         return rows.Count == 0 ? null : new ContextMenuModel(rows);
     }
 
-    /// <summary>A 36-px subtle circle with a glyph and a tooltip name — the pane's and the reader's secondary verb. The
-    /// rest face is the recipe's (<c>Interactive</c> OWNS Fill: transparent at rest, subtle on hover — the same ghost
-    /// circle the detail rail's FAB is), and the Standard scale tier answers the press.</summary>
-    public static Element CommandCircle(string glyph, string name, Action tap) => Controls.Named(new BoxEl
-    {
-        Width = 36f, Height = 36f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Corners = Radii.Circle(36f),
-        HoverScale = Design.Motion.ScaleStandard.Hover, PressScale = Design.Motion.ScaleStandard.Press,
-        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = tap,
-        Children = [Icon(glyph, 16f, Tok.TextSecondary)],
-    }.Interactive(Interaction.Subtle), name);
+    /// <summary>The pane's and the reader's secondary verb: the standard 32/r4 <see cref="Controls.IconAction"/>, named
+    /// by its tooltip.
+    /// <para><c>// Workstream B</c>: was a 36-px subtle CIRCLE — the detail rail's round FAB shape. Every non-media icon
+    /// affordance is now this same square ladder, so a pane's Shuffle and the rail's satellites read as one grammar.</para></summary>
+    public static Element CommandCircle(string glyph, string name, Action tap)
+        => Controls.Named(Controls.IconAction(glyph, tap), name);
 
     /// <summary>Cover 128 (r 6, <c>Elevation.Card</c>) · eyebrow · the title LINK 24/30/600 (2 lines, accent on hover) ·
     /// the attribution (<c>Detail.ArtistLine(id.Artists)</c>, or a show's publisher line) · meta 12.5/16.
@@ -1089,17 +1084,17 @@ public readonly partial struct Album
         ],
     }.Interactive(Interaction.Subtle);
 
-    /// <summary>Play (the SYSTEM accent — the one stated exception) · shuffle · save · more (36 circles each) · spacer ·
-    /// "Open album ↗" (a 13-px accent text link with the OpenInNewWindow glyph — a hyperlink, not a capsule). Never a
-    /// second accent CTA (ch 15 §0.8). <paramref name="save"/> and <paramref name="more"/> are the caller's hosts (the
-    /// SaveButton is keyed per uri, the ⋯ needs the overlay), so this row stays a pure value.</summary>
+    /// <summary>Play (the SYSTEM accent — the one stated exception) · shuffle · save · more (32/r4 icon actions each) ·
+    /// spacer · "Open album ↗" (a 13-px accent text link with the OpenInNewWindow glyph — a hyperlink, not a capsule).
+    /// Never a second accent CTA (ch 15 §0.8). <paramref name="save"/> and <paramref name="more"/> are the caller's
+    /// hosts (the SaveButton is keyed per uri, the ⋯ needs the overlay), so this row stays a pure value.</summary>
     public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, Shrink = 0f,
         Padding = new Edges4(Spacing.XL, Spacing.M, Spacing.XL, Spacing.S),
         Children =
         [
-            Controls.Play(Tok.AccentDefault, play),
+            Controls.PlayButton(Tok.AccentDefault, play),
             CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle),
             save, more,
             new BoxEl { Grow = 1f },

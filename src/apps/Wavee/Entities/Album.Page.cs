@@ -1114,7 +1114,7 @@ public readonly partial struct Album
 
     static Element Plated(Controls.CardData data, string key)
     {
-        var row = Controls.MediaRow(data, plated: false);
+        var row = Controls.MediaRow(data, skin: Controls.RowSkin.Plain);
         return row is BoxEl box
             ? box with
             {
@@ -1258,8 +1258,9 @@ public readonly partial struct Album
                             : new BoxEl(),
                     ],
                 },
-                // The follow pill's uri freezes at mount: keyed on it.
-                Embed.Comp(() => new Controls.FollowButton { Uri = uri, Name = name }) with { Key = "follow:" + uri },
+                // The follow toggle's uri freezes at mount: keyed on it. Workstream B: Controls.FollowToggle
+                // (32/r4, page-accent tint) replaces the old FollowButton capsule.
+                Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name }) with { Key = "follow:" + uri },
             ],
         };
         return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = SectionPad, Children = [card] };

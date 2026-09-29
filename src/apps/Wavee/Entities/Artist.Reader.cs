@@ -452,9 +452,9 @@ public readonly partial struct Artist
 //      window, so a single 1200-DIP arm meant the prototype's compact band never rendered and the spine never hid:
 //      spine off under 720, cover 120 → 88 under 640 (`_narrow`, the arm the extents and the list mount key read), band
 //      compact under 640. One 24-DIP hysteresis band each, `SetIfChanged` from `OnBoundsChanged`.
-//  10. The COMPACT band (W6) keeps the Follow PILL. `Controls.FollowButton` has no icon-only/compact mode — it is a
-//      36-high pill or nothing — so the compact row drops the `↗` circle instead (the name is already that link) and
-//      lets the pill be the only labelled control beside the two circles.
+//  10. The COMPACT band (W6) keeps the Follow TOGGLE. `Controls.FollowToggle` has no icon-only/compact mode — it is a
+//      32-high labeled control or nothing (Workstream B) — so the compact row drops the `↗` circle instead (the name
+//      is already that link) and lets the toggle be the only labelled control beside the two circles.
 //  11. The SPINE is `ItemsView.CreateBound` with a `SpineDot` component per slot, not the plain `ItemsView.Create` over
 //      a cached-Element template the rework note asked for. A `Create` template is re-invoked only when the ItemsView
 //      component itself re-renders, and that component is mounted through a PROPLESS `Embed.Comp` — a parent re-render
@@ -1174,8 +1174,8 @@ public readonly partial struct Artist
         /// whole; an unnamed artist shows "…" in the title and nothing else (§5.7, W3).
         ///
         /// <para>UNDER 640 DIP it folds to W6's compact arm: a 56 avatar, the same name column, and THREE round controls
-        /// — an accent play FAB, the shuffle circle, and the Follow pill (deviation 10: `FollowButton` has no icon-only
-        /// mode, so it stays a pill and the `↗` circle goes instead; the name IS that link). The reason is arithmetic
+        /// — an accent play FAB, the shuffle circle, and the Follow toggle (deviation 10: `FollowToggle` has no icon-only
+        /// mode, so it stays a labeled control and the `↗` circle goes instead; the name IS that link). The reason is arithmetic
         /// rather than taste: at 480 DIP the wide arm's four non-shrinking controls plus the avatar and the gaps come to
         /// more than the whole band, and the name column — `Grow 1 / Basis 0 / MinWidth 0`, the one flexible child — was
         /// crushed to a single letter with the subline reading "l…".</para></summary>
@@ -1196,7 +1196,7 @@ public readonly partial struct Artist
                 {
                     Avatar(a, named, avatar),
                     NameColumn(a, named, shape, compact),
-                    Controls.Play(Tok.AccentDefault, _playAll, Loc.Get(Strings.Library.PlayAll)) with { Shrink = 0f },
+                    Controls.PlayButton(Tok.AccentDefault, _playAll, Loc.Get(Strings.Library.PlayAll)) with { Shrink = 0f },
                     Album.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), _shuffleAll),
                     Follow(uri, named ? a.Name : null),
                     Album.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), _goArtist),
@@ -1222,15 +1222,15 @@ public readonly partial struct Artist
             Children = [Controls.Artwork(named ? Controls.ArtUrl(a.ImageId) : null, edge, edge, edge / 2f, decodePx: 144)],
         };
 
-        /// <summary>The Follow pill in a `Shrink 0` slot: a `ComponentEl` has no layout knobs of its own (`Shrink` is a
-        /// `BoxEl` field), so the one box is what keeps the pill out of the name column's width.</summary>
-        /// <para>The slot is as wide as the LONGER face ("Following" ≈ 106 DIP in en-US) and right-aligns the pill, so
+        /// <summary>The Follow toggle in a `Shrink 0` slot: a `ComponentEl` has no layout knobs of its own (`Shrink` is
+        /// a `BoxEl` field), so the one box is what keeps the toggle out of the name column's width.</summary>
+        /// <para>The slot is as wide as the LONGER face ("Following" ≈ 106 DIP in en-US) and right-aligns the toggle, so
         /// Play all and shuffle do not shift ~9 DIP between a followed and an unfollowed artist on every navigator
         /// click. A MinWidth (<see cref="FollowSlotW"/>), not a Width: a locale whose label is longer still grows it.</para>
         static Element Follow(string uri, string? name) => new BoxEl
         {
             Shrink = 0f, MinWidth = FollowSlotW, Direction = 0, Justify = FlexJustify.End,
-            Children = [Embed.Comp(() => new Controls.FollowButton { Uri = uri, Name = name }) with { Key = "follow:" + uri }],
+            Children = [Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name }) with { Key = "follow:" + uri }],
         };
 
         /// <summary>The name LINK over the "in your library" subline — the band's only flexible child, which is why every

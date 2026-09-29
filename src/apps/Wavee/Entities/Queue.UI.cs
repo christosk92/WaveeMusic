@@ -370,12 +370,12 @@ public static partial class Queue
         readonly Action _closeSwipeOnScroll;
 
         // The chip accent: resolved per render through the shared ladder, written to a signal by an effect (never during
-        // render), read by three Prop thunks the pills bind once.
+        // render) — the mode toggles (Workstream B: ToggleButton.Controlled on Controls.AccentToggleStyle) read it
+        // directly each render.
         ColorF? _queueHold;
         ColorF _chipPending = Tok.AccentDefault;
         readonly Signal<ColorF> _chipAccent = new(Tok.AccentDefault);
         readonly Action _pushChip;
-        readonly Prop<ColorF> _chipFill, _chipHover, _chipPressed;
 
         public RailPanel() : base(RowExtent)
         {
@@ -385,9 +385,6 @@ public static partial class Queue
                 _ = _scroll.Offset.Value;   // re-runs on every offset the handle publishes
                 if (_swipe.AnyOpen) _swipe.Close();
             };
-            _chipFill = Prop.Of(() => _chipAccent.Value);
-            _chipHover = Prop.Of(() => _chipAccent.Value with { A = 0.88f });
-            _chipPressed = Prop.Of(() => _chipAccent.Value with { A = 0.78f });
         }
 
         /// <summary>The now-playing cover's graded chrome accent when the plane has it, the album's wire accent until then,
@@ -707,26 +704,24 @@ public static partial class Queue
             };
         }
 
-        /// <summary>A queue pill: accent-FILLED when on (the lifted cover role, never the raw grading), an alpha step on
-        /// hover/press, on-accent ink. The fills are bound to the chip accent signal, so a colour change is a brush
-        /// transition, not a re-render.</summary>
-        Element Pill(string glyph, string label, bool on, Action click, bool glyphIsText = false) => new BoxEl
+        /// <summary>A queue mode toggle: <see cref="ToggleButton.Controlled"/> on <see cref="Controls.AccentToggleStyle"/>
+        /// (Workstream B's "Filter/mode toggles" grammar row) — stock checked = the chip accent, solid, never the raw
+        /// grading. <paramref name="glyphIsText"/> is the autoplay "∞": a literal glyph, not an icon-font codepoint, so
+        /// its <c>PartGlyph</c> node is overridden off the icon font.</summary>
+        Element Pill(string glyph, string label, bool on, Action click, bool glyphIsText = false)
         {
-            Direction = 0, Height = 32f, Gap = 6f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Padding = new Edges4(12f, 0f, 12f, 0f), Corners = Radii.PillAll,
-            Fill = on ? _chipFill : (Prop<ColorF>)Tok.FillCardSecondary,
-            HoverFill = on ? _chipHover : (Prop<ColorF>)Tok.FillSubtleSecondary,
-            PressedFill = on ? _chipPressed : (Prop<ColorF>)Tok.FillSubtleTertiary,
-            BrushTransitionMs = Design.Reduced ? 0f : Design.Motion.Standard,
-            Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = click,
-            Children =
-            [
-                glyphIsText
-                    ? new TextEl(glyph) { Size = 14f, LineHeight = 20f, Weight = 600, Color = on ? Tok.TextOnAccentPrimary : Tok.TextSecondary }
-                    : new TextEl(glyph) { Size = 12f, FontFamily = Theme.IconFont, Color = on ? Tok.TextOnAccentPrimary : Tok.TextSecondary },
-                new TextEl(label) { Size = 12f, LineHeight = 16f, Weight = 600, Color = on ? Tok.TextOnAccentPrimary : Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            ],
-        };
+            // The common (non-text-glyph) case reuses the shared cached RootNoShrink instance (no per-render
+            // allocation); the text-glyph arm (autoplay's "∞") needs its own PartGlyph modifier too, so it builds a
+            // local TemplateParts carrying both.
+            TemplateParts parts = Controls.RootNoShrink;
+            if (glyphIsText)
+            {
+                parts = new TemplateParts { [ToggleButton.PartRoot] = b => b with { Shrink = 0f } };
+                parts.Set<TextEl>(ToggleButton.PartGlyph, t => t with { FontFamily = null, Weight = 600 });
+            }
+            return ToggleButton.Controlled(label, on, _ => click(), glyph: glyph,
+                style: Controls.AccentToggleStyle(_chipAccent.Value), parts: parts);
+        }
 
         static Element HeartLane(in RowText text, float height) => new BoxEl
         {

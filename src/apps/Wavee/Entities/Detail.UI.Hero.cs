@@ -413,13 +413,13 @@ public static partial class Detail
         Key = key, Direction = 1, Layout = Shove, Enter = late ? FadeUp : (EnterExit?)null, Children = [child],
     };
 
-    /// <summary>W27: Play 36 + the 32-DIP satellites — Shuffle (when the page offers it) · the heart (DROPPED, not
+    /// <summary>W27: Play 32 + the 32-DIP satellites — Shuffle (when the page offers it) · the heart (DROPPED, not
     /// disabled, when <c>Heart == None</c>) · Share · More.</summary>
     static Element HeroActions(VerticalSpec spec, Identity id, in Config cfg, FrameActions acts)
     {
         var actions = new List<Element>(5)
         {
-            PlayPill(spec.Accent, spec.PlayAll ?? DefaultPlay(id.Subject)) with { Key = "vhero-play" },
+            PlayButton(spec.Accent, spec.PlayAll ?? DefaultPlay(id.Subject)) with { Key = "vhero-play" },
         };
         if (acts.Shuffle is { } shuffle)
             actions.Add(Satellite(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle) with { Key = "vhero-shuffle" });
@@ -598,8 +598,8 @@ public static partial class Detail
         var kids = new Element[1 + Skeleton.SatelliteCount];
         kids[0] = new BoxEl
         {
-            Width = Skeleton.PlayPillWidth, Height = Controls.PillHeight,
-            Corners = CornerRadius4.All(Controls.PillHeight / 2f),
+            Width = Skeleton.PlayButtonWidth, Height = Controls.ButtonHeight,
+            Corners = Radii.ControlAll,
         };
         for (int i = 1; i < kids.Length; i++)
             kids[i] = new BoxEl
@@ -609,7 +609,7 @@ public static partial class Detail
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-            Margin = new Edges4(0f, Spacing.XS, 0f, 0f), Height = Controls.PillHeight,
+            Margin = new Edges4(0f, Spacing.XS, 0f, 0f), Height = Controls.ButtonHeight,
             Children = kids,
         };
     }

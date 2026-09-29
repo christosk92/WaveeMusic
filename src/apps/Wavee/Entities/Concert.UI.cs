@@ -333,36 +333,44 @@ public readonly partial struct Concert
         TransitionChannels.Position | TransitionChannels.Opacity, TransitionDynamics.Tween(220f, Easing.FluentAccelerate),
         Exit: new EnterExit(Dx: -56f, Opacity: 0f, Active: true));
 
-    /// <summary>A multi-select genre token: selected is the filled accent plate, the SAME width as unselected — no check
-    /// glyph, so the strip never walks under the cursor. The label is the key (a re-ordered list reuses nodes).</summary>
-    internal static BoxEl FilterToken(string label, bool selected, Action onClick) => new()
+    /// <summary>A multi-select genre token: the stock <see cref="ToggleButton.Controlled"/> (Workstream B's "filter /
+    /// mode toggles" row — 32/r4, checked = accent, WinUI's own state ramp) — no check glyph, so the strip never walks
+    /// under the cursor. The label is the key (a re-ordered list reuses nodes); <paramref name="onClick"/> ignores the
+    /// toggle's own next-state argument because the PAGE, not the control, owns the multi-select set.
+    /// <para><c>// Workstream B</c>: was a hand-rolled capsule (<c>Radii.FullAll</c>, custom hover/press fills); the
+    /// engine's own toggle ramp draws the identical selected/unselected states now.</para></summary>
+    /// <param name="animate">Overrides the token's own reflow motion (e.g. the "This weekend" chip's exit-into-the-
+    /// pill leg, <see cref="ChipExit"/>) — <c>Animate</c> rides the toggle's own root via <c>Parts[PartRoot]</c>
+    /// (F20/control-fidelity §6), never a caller-side <c>with { Animate = … }</c>: the return type here is the base
+    /// <see cref="Element"/>, and <c>Animate</c> is a <c>BoxEl</c>-only property.</param>
+    internal static Element FilterToken(string label, bool selected, Action onClick, LayoutTransition? animate = null)
+        // Key + Shrink + the width reflow ride the toggle's own root via Parts[PartRoot] (F20/control-fidelity §6) —
+        // no one-child host box.
+        => ToggleButton.Controlled(label, selected, _ => onClick(), parts: animate is null ? s_tokenParts : TokenParts(animate.Value))
+            with { Key = "filter-token:" + label };
+
+    /// <inheritdoc cref="FilterToken"/>
+    static readonly TemplateParts s_tokenParts = TokenParts(s_tokenReflow);
+
+    static TemplateParts TokenParts(LayoutTransition animate) => new()
     {
-        Key = "filter-token:" + label, Animate = s_tokenReflow,
-        Direction = 0, Height = 32f, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 6f,
-        Padding = new Edges4(14f, 5f, 14f, 5f), Corners = Radii.FullAll,
-        Fill = selected ? Tok.AccentDefault : Tok.FillControlDefault,
-        HoverFill = selected ? Tok.AccentSecondary : Tok.FillControlSecondary,
-        PressedFill = selected ? Tok.AccentTertiary : Tok.FillControlTertiary,
-        BorderWidth = 1f, BorderColor = selected ? Tok.AccentDefault : Tok.StrokeControlDefault,
-        BrushTransitionMs = Design.Motion.Fast,
-        Role = AutomationRole.ToggleButton, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
-        Children = [Body(label) with { Color = selected ? Tok.TextOnAccentPrimary : Tok.TextPrimary, MaxLines = 1 }],
+        [ToggleButton.PartRoot] = b => b with { Shrink = 0f, Animate = animate },
     };
 
-    /// <summary>"+N genres" / "Show less": an accent LABEL over a neutral dashed (5/4) border, a secondary chevron.</summary>
+    /// <summary>"+N genres" / "Show less": Workstream B's LINK grammar — a <see cref="HyperlinkButton"/>, not a plated
+    /// token; the chevron rides alongside it as a plain icon (a hyperlink has no icon slot).
+    /// <para><c>// Workstream B</c>: was a dashed-border pill (<c>Interaction.Subtle</c>); "+N genres" reads as
+    /// navigation, not a toggle, so it belongs on the link rung, not the button ladder.</para></summary>
     internal static Element MoreToken(string label, bool expanded, Action onClick) => new BoxEl
     {
         Key = "genre-more", Animate = s_tokenReflow,
         Direction = 0, Height = 32f, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 6f,
-        Padding = new Edges4(14f, 5f, 14f, 5f), Corners = Radii.FullAll,
-        BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault, BorderDashOn = 5f, BorderDashOff = 4f,
-        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
         Children =
         [
-            Body(label) with { Color = Tok.AccentTextPrimary, MaxLines = 1 },
+            HyperlinkButton.Create(label, onClick),
             Icon(expanded ? Icons.ChevronUp : Icons.ChevronDown, 10f, Tok.TextSecondary) with { Shrink = 0f },
         ],
-    }.Interactive(Interaction.Subtle);
+    };
 
     /// <summary>The where pill: MapPin 14, the label (BodyStrong), chevron 10; H 32, fully rounded, the control ramp.</summary>
     internal static BoxEl WherePill(string label, Action onClick) => new()

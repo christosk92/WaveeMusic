@@ -168,6 +168,183 @@ public static partial class Spotify
             HomeFeedFold.TopRun(s, in parent, tracks: true, trackStart, trackCount);
         }
 
+        // ── 4. baseline previews (D2, feedBaselineLookup, F32) ───────────────────────────────────────────────────────────
+
+        /// <summary><c>feedBaselineLookup</c>'s <c>data.lookup[]</c> → up to five thin <c>Track</c> rows per baseline
+        /// section, staged at <see cref="Authority.Seed"/> — the recently-played band's sparse-mention rung
+        /// (<c>:30</c> above): a card this run mentions thinly is usually a full row elsewhere in the same scope
+        /// already, and Seed never degrades one. <paramref name="map"/> is the (section uri, card uri) snapshot
+        /// <c>Fetch.FillPreviewMap</c> took on the UI thread before the request went out; it is how each answered
+        /// card uri is resolved back to every SECTION that carries it — a card can sit in more than one baseline
+        /// section across a facet, and the run closes <see cref="Relation.SectionPreviewTracks"/> once per owning
+        /// section from the SAME staged tracks. An <c>EpisodeOrChapterResponseWrapper</c> entry is skipped —
+        /// episodes carry no previews.</summary>
+        public static void FeedBaselineLookup(ReadOnlySpan<byte> json, HomePreviewLink[] map, Staging s)
+        {
+            if (map.Length == 0) return;
+            s.ClearCredit();
+
+            // The map is small (≤ 50) and reused for every returned card: its uris are resolved to comparable bytes
+            // ONCE, not once per answer entry.
+            var cardUtf8 = new byte[map.Length][];
+            var sectionIds = new StagedId[map.Length];
+            for (int i = 0; i < map.Length; i++)
+            {
+                cardUtf8[i] = Encoding.UTF8.GetBytes(map[i].CardUri);
+                sectionIds[i] = new StagedId(s.AddText(Encoding.UTF8.GetBytes(map[i].SectionUri)));
+            }
+
+            var r = new Utf8JsonReader(json);
+            if (!r.Read() || r.TokenType != JsonTokenType.StartObject) return;
+            for (int root = r.CurrentDepth; Next(ref r, root);)
+            {
+                if (!r.ValueTextEquals("data"u8)) { SkipValue(ref r); continue; }
+                for (int data = Fields(ref r); Next(ref r, data);)
+                {
+                    if (!r.ValueTextEquals("lookup"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
+                    for (int list = r.CurrentDepth; Element(ref r, list);)
+                        PreviewFold.Entry(ref r, s, cardUtf8, sectionIds);
+                }
+            }
+        }
+
+        /// <summary>The preview fold's private half — see <see cref="HomeFeedFold"/>'s summary for why this is a
+        /// nested class.</summary>
+        static class PreviewFold
+        {
+            /// <summary>The desktop client's own cap: five preview tracks per card (D2 plan).</summary>
+            const int MaxRows = 5;
+
+            /// <summary>One <c>data.lookup[]</c> entry (the reader on its object, from the array walk). Skips an
+            /// episode wrapper, stages up to <see cref="MaxRows"/> thin tracks, then closes
+            /// <see cref="Relation.SectionPreviewTracks"/> on every section <paramref name="sectionIds"/> names for a
+            /// matching card.</summary>
+            internal static void Entry(ref Utf8JsonReader r, Staging s, byte[][] cardUtf8, StagedId[] sectionIds)
+            {
+                if (WrapperIsEpisode(r)) { r.Skip(); return; }
+
+                StagedId cardUri = default;
+                Span<StagedId> tracks = stackalloc StagedId[MaxRows];
+                int trackCount = 0;
+                for (int d = r.CurrentDepth; Next(ref r, d);)
+                {
+                    if (r.ValueTextEquals("_uri"u8)) { r.Read(); if (cardUri.IsEmpty) cardUri = JsonId(ref r, s); }
+                    else if (r.ValueTextEquals("data"u8)) Data(ref r, s, tracks, ref trackCount);
+                    else SkipValue(ref r);
+                }
+                // The request was built from full `spotify:…:` uris (Home.BaselinePreviewLinks); a gid-form echo is
+                // not a shape this answer takes, and matching it against the map's text uris would be silently wrong.
+                if (cardUri.IsEmpty || trackCount == 0 || !cardUri.Packed.IsEmpty) return;
+
+                var cardBytes = s.Utf8(cardUri.Text);
+                for (int i = 0; i < cardUtf8.Length; i++)
+                {
+                    if (!cardBytes.SequenceEqual(cardUtf8[i])) continue;
+                    int mark = s.Edges.PendingMark;
+                    for (int t = 0; t < trackCount; t++) s.Edges.Push().Target = tracks[t];
+                    s.Edges.Close(Relation.SectionPreviewTracks, in sectionIds[i], mark);
+                }
+            }
+
+            static bool WrapperIsEpisode(Utf8JsonReader r)
+            {
+                for (int depth = r.CurrentDepth; Next(ref r, depth);)
+                {
+                    if (!r.ValueTextEquals("__typename"u8)) { SkipValue(ref r); continue; }
+                    r.Read();
+                    return Says(ref r, "EpisodeOrChapterResponseWrapper");
+                }
+                return false;
+            }
+
+            /// <summary><c>data: { __typename, previewItems: { items: [...] } }</c> — the reader on the PROPERTY
+            /// NAME <c>"data"</c>.</summary>
+            static void Data(ref Utf8JsonReader r, Staging s, scoped Span<StagedId> tracks, ref int trackCount)
+            {
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (!r.ValueTextEquals("previewItems"u8)) { SkipValue(ref r); continue; }
+                    for (int p = Fields(ref r); Next(ref r, p);)
+                    {
+                        if (!r.ValueTextEquals("items"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
+                        for (int list = r.CurrentDepth; Element(ref r, list) && trackCount < tracks.Length;)
+                        {
+                            var id = TrackOf(ref r, s);
+                            if (!id.IsEmpty) tracks[trackCount++] = id;
+                        }
+                    }
+                }
+            }
+
+            /// <summary>One <c>previewItems.items[]</c> element: <c>{ __typename: TrackResponseWrapper, data: {
+            /// __typename: Track, uri, name, albumOfTrack: { coverArt: { sources: [...] } } } }</c> — the reader on
+            /// the element's object. A thin <c>Track</c> row at <see cref="Authority.Seed"/>; no name or no uri
+            /// answers nothing (S4's rule, the same as every other mention in this file).</summary>
+            static StagedId TrackOf(ref Utf8JsonReader r, Staging s)
+            {
+                StagedId uri = default;
+                TextRef name = default, image = default;
+                for (int d = r.CurrentDepth; Next(ref r, d);)
+                {
+                    if (!r.ValueTextEquals("data"u8)) { SkipValue(ref r); continue; }
+                    for (int t = Fields(ref r); Next(ref r, t);)
+                    {
+                        if (r.ValueTextEquals("uri"u8)) { r.Read(); if (uri.IsEmpty) uri = JsonId(ref r, s); }
+                        else if (r.ValueTextEquals("name"u8)) { r.Read(); if (name.IsEmpty) name = s.AddJson(ref r); }
+                        else if (r.ValueTextEquals("albumOfTrack"u8)) image = AlbumCover(ref r, s);
+                        else SkipValue(ref r);
+                    }
+                }
+                if (uri.IsEmpty || name.IsEmpty) return default;
+                var n = default(Node);
+                n.Uri = uri;
+                n.Name = name;
+                n.Image = image;
+                return Stage(s, in n, Authority.Seed);
+            }
+
+            /// <summary><c>albumOfTrack: { coverArt: { sources: [...] } }</c> — the reader on the PROPERTY NAME
+            /// <c>"albumOfTrack"</c>.</summary>
+            static TextRef AlbumCover(ref Utf8JsonReader r, Staging s)
+            {
+                TextRef image = default;
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (!r.ValueTextEquals("coverArt"u8)) { SkipValue(ref r); continue; }
+                    for (int c = Fields(ref r); Next(ref r, c);)
+                    {
+                        if (r.ValueTextEquals("sources"u8) && EnterArray(ref r)) image = WidestUpTo300(ref r, s);
+                        else SkipValue(ref r);
+                    }
+                }
+                return image;
+            }
+
+            /// <summary>The widest rendition at or under 300 px — a home card's own preview thumb, smaller than the
+            /// detail-page hero <see cref="BrowseImagePick.HeroMinWidth"/> picks. Falls back to the first source
+            /// when every one of them is wider (never "no image" over "a slightly large one").</summary>
+            static TextRef WidestUpTo300(ref Utf8JsonReader r, Staging s)
+            {
+                TextRef best = default, first = default;
+                int bestWidth = -1;
+                for (int list = r.CurrentDepth; Element(ref r, list);)
+                {
+                    TextRef u = default;
+                    int width = 0;
+                    for (int d = r.CurrentDepth; Next(ref r, d);)
+                    {
+                        if (r.ValueTextEquals("url"u8)) { r.Read(); u = s.AddJson(ref r); }
+                        else if (r.ValueTextEquals("width"u8) || r.ValueTextEquals("maxWidth"u8)) { r.Read(); width = (int)Num(ref r); }
+                        else SkipValue(ref r);
+                    }
+                    if (u.IsEmpty) continue;
+                    if (first.IsEmpty) first = u;
+                    if (width <= 300 && width > bestWidth) { best = u; bestWidth = width; }
+                }
+                return best.IsEmpty ? first : best;
+            }
+        }
+
         /// <summary>The fold's private half. A nested class so its helper names cannot collide with the dozen other
         /// <c>Decode</c> partials; it reaches the reader idiom and the shared helpers through the enclosing class.</summary>
         static class HomeFeedFold
@@ -372,6 +549,13 @@ public static partial class Spotify
                 public ushort Rating;
                 public bool Video;
                 public StagedId ShowUri;
+                /// <summary>The 1280-wide rendition of an episode's <c>videoPreviewThumbnail</c>.</summary>
+                public TextRef VideoThumb;
+                /// <summary>0 unknown, 1 NotStarted, 2 InProgress, 3 FullyPlayed (<c>playedState.state</c>).</summary>
+                public byte PlayedState;
+                /// <summary><c>restrictions.paywallContent</c> — folded into the fact's Unplayable bit alongside
+                /// <c>c.Node.Ruled &amp;&amp; c.Node.Unavailable</c> (the shared <c>playability</c> vocabulary).</summary>
+                public bool Paywalled;
             }
 
             const byte TAlbum = 1, TPlaylist = 2, TArtist = 3, TEpisode = 4, TAudiobook = 5, TPodcast = 6;
@@ -440,10 +624,10 @@ public static partial class Spotify
                 if (c.Type == TPlaylist && s.Playlists.Count > 0 && staged.Kind(s) is EntityKind.Playlist or EntityKind.Collection)
                 {
                     ref var p = ref s.Playlists[s.Playlists.Count - 1];
+                    p.HeaderImage = c.HeaderImage;
                     if (daylist)
                     {
                         p.GenericTitle = c.Pretitle;
-                        p.HeaderImage = c.HeaderImage;
                         if (c.ExpiresMs > 0 || c.CreatedMs > 0)
                         {
                             p.Known |= (uint)PlaylistFields.Daylist;
@@ -467,6 +651,11 @@ public static partial class Spotify
                 f.Target = staged;
                 f.Accent = Accent(in c);
                 f.SeedStart = -1;
+                // Explicit/Unplayable are read off the shared vocabulary (`contentRating`/`contentRatingV2`,
+                // `playability`, `restrictions`) for every card kind, not just Episode/Album — a podcast or show card
+                // can carry them too (§4.3). `|=` below (HasVideo, Audiobook) never clobbers these.
+                if (c.Node.Explicit) f.Flags |= (byte)HomeCardFlags.Explicit;
+                if (c.Paywalled || (c.Node.Ruled && c.Node.Unavailable)) f.Flags |= (byte)HomeCardFlags.Unplayable;
                 switch (c.Type)
                 {
                     case TAlbum:
@@ -487,6 +676,8 @@ public static partial class Spotify
                         f.Subtitle = c.ShowName;
                         f.DurationMs = n.DurationMs;
                         f.ResumeMs = c.ResumeMs;
+                        f.PlayedState = c.PlayedState;
+                        f.VideoThumbUrl = c.VideoThumb;
                         if (c.Video) f.Flags |= (byte)HomeCardFlags.HasVideo;
                         break;
                     case TAudiobook:
@@ -547,8 +738,11 @@ public static partial class Spotify
                 }
                 else if (r.ValueTextEquals("audiobookDuration"u8)) c.BookMs = (int)OneNumber(ref r, "totalMilliseconds"u8);
                 else if (r.ValueTextEquals("duration"u8)) c.Node.DurationMs = (int)OneNumber(ref r, "totalMilliseconds"u8);
-                else if (r.ValueTextEquals("playedState"u8)) c.ResumeMs = (int)OneNumber(ref r, "playPositionMilliseconds"u8);
+                else if (r.ValueTextEquals("playedState"u8)) PlayedState(ref r, ref c);
                 else if (r.ValueTextEquals("mediaTypes"u8)) c.Video = HasVideo(ref r);
+                else if (r.ValueTextEquals("videoPreviewThumbnail"u8)) c.VideoThumb = VideoThumb(ref r, s);
+                else if (r.ValueTextEquals("contentRatingV2"u8)) { if (RatedV2(ref r)) c.Node.Explicit = true; }
+                else if (r.ValueTextEquals("restrictions"u8)) { if (Paywalled(ref r)) c.Paywalled = true; }
                 else if (r.ValueTextEquals("content"u8)) c.Node.TrackCount = (int)OneNumber(ref r, "totalCount"u8);
                 else if (r.ValueTextEquals("albumType"u8)) { r.Read(); c.Node.AlbumKind = AlbumKindOf(ref r); }
                 // The shared vocabulary for what a card has in common with every other node: the album's artist run and
@@ -557,6 +751,94 @@ public static partial class Spotify
                       || r.ValueTextEquals("contentRating"u8) || r.ValueTextEquals("playability"u8) || r.ValueTextEquals("sharingInfo"u8))
                     NodeProperty(ref r, s, ref c.Node, credit);
                 else SkipValue(ref r);
+            }
+
+            /// <summary><c>playedState: { playPositionMilliseconds, state }</c> — both fields of the one object
+            /// (0.2.9 read only the position; ResumeMs already carries the position, this adds the verdict).</summary>
+            static void PlayedState(ref Utf8JsonReader r, ref CardNode c)
+            {
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (r.ValueTextEquals("playPositionMilliseconds"u8)) { r.Read(); c.ResumeMs = (int)Num(ref r); }
+                    else if (r.ValueTextEquals("state"u8)) { r.Read(); c.PlayedState = PlayedStateOf(ref r); }
+                    else SkipValue(ref r);
+                }
+            }
+
+            static byte PlayedStateOf(ref Utf8JsonReader r)
+                => Says(ref r, "NOT_STARTED") ? (byte)1
+                 : Says(ref r, "IN_PROGRESS") ? (byte)2
+                 // Two spellings seen across endpoints for "done": the home payload's own `COMPLETED` and the
+                 // what's-new feed's `FULLY_PLAYED` (this file's `WhatsNew`, verbatim).
+                 : Says(ref r, "FULLY_PLAYED") || Says(ref r, "COMPLETED") ? (byte)3
+                 : (byte)0;
+
+            /// <summary><c>videoPreviewThumbnail: { imagePreview: { data: { sources: [...] } } }</c> — the WIDEST
+            /// rendition (every video preview lists 1280 then 640), not the hero pick <see cref="SourcesBest"/> makes
+            /// for a cover (that would stop at 640, the smallest ≥ <c>HeroMinWidth</c>).</summary>
+            static TextRef VideoThumb(ref Utf8JsonReader r, Staging s)
+            {
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (r.ValueTextEquals("imagePreview"u8) || r.ValueTextEquals("data"u8)) { var u = VideoThumb(ref r, s); if (!u.IsEmpty) return u; }
+                    else if (r.ValueTextEquals("sources"u8) && EnterArray(ref r)) return WidestSource(ref r, s);
+                    else SkipValue(ref r);
+                }
+                return default;
+            }
+
+            static TextRef WidestSource(ref Utf8JsonReader r, Staging s)
+            {
+                // Every element's url is written to the arena while its width is still unknown (the wire orders
+                // `imageFormat` before `url` before `maxWidth`) — the same trade-off `SourcesBest` makes; the
+                // rendition array is ≤ 3 long, so the unreturned strings are noise, not a leak (defect 1 tracks
+                // COMMITTED text, and none of these are).
+                TextRef url = default;
+                int best = -1;
+                for (int list = r.CurrentDepth; Element(ref r, list);)
+                {
+                    TextRef u = default;
+                    int width = 0;
+                    for (int d = r.CurrentDepth; Next(ref r, d);)
+                    {
+                        if (r.ValueTextEquals("url"u8)) { r.Read(); u = s.AddJson(ref r); }
+                        else if (r.ValueTextEquals("maxWidth"u8) || r.ValueTextEquals("width"u8)) { r.Read(); width = (int)Num(ref r); }
+                        else SkipValue(ref r);
+                    }
+                    if (!u.IsEmpty && width > best) { url = u; best = width; }
+                }
+                return url;
+            }
+
+            /// <summary><c>contentRatingV2: { labels: [...] }</c> — true when <c>EXPLICIT</c> is one of them (the show/
+            /// podcast spelling; <c>contentRating: { label }</c> is the episode/album singular the shared vocabulary
+            /// already reads via <see cref="NodeProperty"/>'s <c>Rated</c>).</summary>
+            static bool RatedV2(ref Utf8JsonReader r)
+            {
+                bool hit = false;
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (r.ValueTextEquals("labels"u8) && EnterArray(ref r))
+                    {
+                        for (int list = r.CurrentDepth; r.Read() && !End(ref r, list);)
+                            if (Says(ref r, "EXPLICIT")) hit = true;
+                    }
+                    else SkipValue(ref r);
+                }
+                return hit;
+            }
+
+            /// <summary><c>restrictions: { paywallContent }</c> — subscribers-only, folded into the fact's Unplayable
+            /// bit the same as a ruled-unplayable <c>playability</c> verdict.</summary>
+            static bool Paywalled(ref Utf8JsonReader r)
+            {
+                bool paywalled = false;
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (r.ValueTextEquals("paywallContent"u8)) { r.Read(); paywalled = Flag(ref r); }
+                    else SkipValue(ref r);
+                }
+                return paywalled;
             }
 
             static byte TypeOf(ref Utf8JsonReader r)

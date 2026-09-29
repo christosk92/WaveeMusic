@@ -303,6 +303,9 @@ public static partial class Sidebar
         public Func<Element?>? Head { get; init; }
         /// <summary>Chrome tiles prepended to the rail (V3 only — its nav band left the document).</summary>
         public Func<Element?>? RailHead { get; init; }
+        /// <summary>How many tiles <see cref="RailHead"/> draws right now — the head's EXACT layout seed
+        /// (<see cref="SidebarRailExtents.HeadExtentOf"/>). Required with a <see cref="RailHead"/>.</summary>
+        public Func<int>? RailHeadTiles { get; init; }
         /// <summary>The canvas seam: non-null state ⇒ the pane renders as the customize canvas.</summary>
         public Func<SidebarEditState?>? Edit { get; init; }
         public bool ShowLayoutMenu { get; init; } = true;
@@ -1583,12 +1586,17 @@ public static partial class Sidebar
             if (_rowLayout.CustomLayout is MeasuredStackVirtualLayout measured) measured.Reseed(Plan.Rows.Count);
         }
 
-        /// <summary>The rail's analytic seed: two fixed extents, no measurement — <see cref="SidebarRailExtents.ExtentOf"/>.</summary>
-        float RailExtentSeed(int index) => SidebarRailExtents.ExtentOf(RailPlan.Rows, index, HasRailHead, HasRailFooter);
+        /// <summary>The rail's analytic seed — <see cref="SidebarRailExtents.ExtentOf"/>, the head at its exact tile count.</summary>
+        float RailExtentSeed(int index) => SidebarRailExtents.ExtentOf(RailPlan.Rows, index, HasRailHead, HasRailFooter,
+            index == 0 && HasRailHead ? Config.RailHeadTiles?.Invoke() ?? 0 : 0);
 
+        /// <summary>Re-seed the rail's ONE list — head, rows AND footer (the list's item count, not the plan's row count:
+        /// seeding only the rows shrank the table and re-appended the chrome items as fresh estimates). The engine anchors
+        /// the reseed (<c>IAnchoredReseedLayout</c>), and the head seed is exact, so a wholesale republish moves nothing.</summary>
         void ReseedRailExtents()
         {
-            if (RailLayout.CustomLayout is MeasuredStackVirtualLayout measured) measured.Reseed(RailPlan.Rows.Count);
+            if (RailLayout.CustomLayout is MeasuredStackVirtualLayout measured)
+                measured.Reseed(SidebarRailItems.Count(HasRailHead, HasRailFooter, RailPlan.Rows.Count));
         }
 
         /// <summary>The row's LIVE laid-out height (bound-safe: one peek + one rect read), 44 on any degenerate answer.</summary>

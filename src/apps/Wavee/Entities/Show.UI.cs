@@ -497,7 +497,7 @@ public readonly partial struct Show
         Element pill = new BoxEl
         {
             Shrink = 0f,
-            Children = [Detail.PlayPill(tone, () => Episode.Invoke(e, () => model.PlayInShow(e)), Loc.Get(Strings.Podcast.Resume))],
+            Children = [Detail.PlayButton(tone, () => Episode.Invoke(e, () => model.PlayInShow(e)), Loc.Get(Strings.Podcast.Resume))],
         };
         Element body = narrow
             ? new BoxEl
@@ -783,44 +783,14 @@ public readonly partial struct Show
         AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
     };
 
-    // ══ 5c. THE RAIL'S PRIMARY PILL (reports 11c/11d) ════════════════════════════════════════════════════════════════
-
-    /// <summary>The rail's primary CTA. TWO divergences from <c>Detail.PlayPill</c>, both owner reports:
-    /// <list type="bullet">
-    /// <item>11c — it is the APP ACCENT, never the show's tone. The tone is the page's reading colour (the hero, the
-    /// rule, the badges); the one button that means "press this" stays the accent the whole app agrees on.</item>
-    /// <item>11d — the label WRAPS to two lines instead of clipping. The engine's button never wraps (a WinUI
-    /// ContentPresenter is <c>TextWrapping=NoWrap</c> and ellipsizes), and "Resume · 2 hr 43 min left" is longer than a
-    /// 280-DIP rail, so the pill is composed here on the stock CTA ramp: the same radius, the same 36 floor, the same
-    /// 18/6/18/7 padding, the same hover/press alpha ladder (<c>Controls.CtaPalette</c>'s 0.90 / 0.80) and the same
-    /// scale tier.</item>
-    /// </list></summary>
-    static Element PrimaryPill(Action onClick, string label, string? glyph = null)
-    {
-        Prop<ColorF> ink = Prop.Of(static () => ColorContrast.PickContrast(Tok.AccentDefault));
-        return new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            MinHeight = Controls.PillHeight, MinWidth = 0f, Shrink = 1f,
-            Padding = new Edges4(18f, 6f, 18f, 7f), Corners = Radii.FullAll,
-            Fill = Prop.Of(static () => Tok.AccentDefault),
-            HoverFill = Prop.Of(static () => Tok.AccentDefault with { A = 0.90f }),
-            PressedFill = Prop.Of(static () => Tok.AccentDefault with { A = 0.80f }),
-            BrushTransitionMs = Design.Motion.Faster,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
-            HoverScale = Design.Motion.ScaleStandard.Hover, PressScale = Design.Motion.ScaleStandard.Press,
-            Children =
-            [
-                Icon(glyph ?? Icons.Play, 14f) with { Color = ink },
-                // No Trim: an ellipsis is the clip the owner reported (24.png). Two lines, and nothing is cut.
-                new TextEl(label)
-                {
-                    Size = 14f, LineHeight = 19f, Weight = 600, Color = ink, MaxLines = 2, Wrap = TextWrap.Wrap,
-                    MinWidth = 0f, Shrink = 1f,
-                },
-            ],
-        };
-    }
+    // ══ 5c. THE RAIL'S PRIMARY BUTTON (reports 11c/11d) ══════════════════════════════════════════════════════════════
+    //
+    // Workstream B deleted the bespoke pill: both owner divergences from Detail.PlayButton are now plain arguments to
+    // Controls.PrimaryButton —
+    //   11c — the APP ACCENT, never the show's tone: callers pass Tok.AccentDefault explicitly instead of the page tone.
+    //   11d — the label WRAPS to two lines instead of clipping ("Resume · 2 hr 43 min left" outruns a 280-DIP rail):
+    //         Controls.PrimaryButton's `wrap: true` sets PartLabel's MaxLines to 2 on the SAME stock 32/r4 button every
+    //         other primary uses, rather than a hand-rolled ramp that had to shadow its palette/geometry by hand.
 
     readonly record struct FootStamp(bool CanLoadMore, bool Paging);
 
@@ -856,9 +826,10 @@ public readonly partial struct Show
         }
     }
 
-    /// <summary>The standard (never accent) pill. While a page is out the label reads "Loading…" and a tap is a no-op.</summary>
+    /// <summary>The standard (never accent) 32/r4 button. While a page is out the label reads "Loading…" and a tap is a
+    /// no-op. <c>// Workstream B</c>: was <c>Controls.Pill</c>'s capsule.</summary>
     static Element LoadMorePill(bool paging, Action page)
-        => Controls.Pill(Loc.Get(paging ? Strings.Podcast.LoadingMore : Strings.Podcast.LoadMore), paging ? s_noop : page,
+        => Button.Create(Loc.Get(paging ? Strings.Podcast.LoadingMore : Strings.Podcast.LoadMore), paging ? s_noop : page,
                          ButtonAppearance.Standard);
 
     // ══ 6. THE SEED, THE RAIL'S LINES ════════════════════════════════════════════════════════════════════════════════

@@ -71,20 +71,133 @@ public static partial class Controls
     /// height BY CONSTRUCTION — an icon button is a control, so it is control-height.</summary>
     public const float IconButtonSize = Design.Size.ControlH;
 
+    /// <summary>The NEW button-standardisation ladder's one height (docs/plans/wavee/home-redesign-implementation.md
+    /// Workstream B): every labeled/icon control in the grammar table — Primary, Secondary, icon-only, Follow/Pre-save,
+    /// filter toggles — is 32 tall. Media exceptions (FABs, poster play) stay round and off this ladder.</summary>
+    public const float ButtonHeight = 32f;
+
+    /// <summary>The primary CTA's floor width (<see cref="ButtonRules.PrimaryWidthNominal"/> — named here too so a
+    /// `with`-tweak call site never has to import <c>ButtonRules</c> just to read the number back).</summary>
+    public const float PrimaryMinWidth = ButtonRules.PrimaryWidthNominal;
+
     /// <summary>The media pill's height. One step above the 32-DIP control ladder so a labeled media primary reads as
-    /// the page's dominant action; also the height of the Follow pill it shares hero rows with.</summary>
+    /// the page's dominant action; also the height of the Follow pill it shares hero rows with.
+    /// <para><c>// DELETE in Wave 5 (buttons)</c> — the whole labeled-pill grammar (this constant, <see cref="Play"/>,
+    /// <see cref="Accent"/>, <see cref="Pill"/>, <see cref="IconPill"/>, <see cref="CtaPalette"/>) is replaced by
+    /// <see cref="PrimaryButton"/>/<see cref="PlayButton"/> below. Migration groups B–D move their call sites first;
+    /// this file's helpers stay compiling until every caller has moved.</para></summary>
     public const float PillHeight = 36f;
 
-    // ══ 2. THE LABELED MEDIA PILL ════════════════════════════════════════════════════════════════════════════════════
+    // ══ 1b. THE NEW 32/r4 GRAMMAR (Workstream B) ═════════════════════════════════════════════════════════════════════
+    //
+    // The replacement for the whole capsule ladder above: a styled STOCK `Button`/`IconButton`/`ToggleButton`, never a
+    // hand-rolled box, so every one of these inherits the control's own internals verbatim (focus ring, automation
+    // role, Space/Enter mechanics, the 83ms brush ramp) instead of re-deriving them. No `HoverScale`/`PressScale`/hand
+    // cursor anywhere in this section — that divergence stayed CONFINED to the old media pill above, on purpose; the
+    // grammar table's whole point is that these controls behave like ordinary WinUI controls, not like media chrome.
+    // All accent maths routes through `Button.ButtonPalette.ForAccent` (E1) — this file carries no copy of the tier
+    // arithmetic, only geometry.
+
+    /// <summary>The ONE primary call-to-action on a surface (Play/Resume) — a stock <c>Button</c> Accent-appearance,
+    /// tinted by <paramref name="accent"/> via <see cref="Button.ButtonPalette.ForAccent"/>, 32 tall/r4, 14 semibold
+    /// label, floored at <see cref="PrimaryMinWidth"/> so a short label ("Play") never reads as an icon button.
+    /// <paramref name="wrap"/> lets a narrow CTA row take a two-line label (`Show.PrimaryPill`'s wrap deviation)
+    /// instead of the default single trimmed line.</summary>
+    public static BoxEl PrimaryButton(string label, Action onClick, ColorF accent, string? glyph = null, bool wrap = false)
+    {
+        var parts = new TemplateParts();
+        parts.Set<TextEl>(Button.PartLabel, t => t with
+        {
+            Weight = 600,
+            MaxLines = wrap ? 2 : 1,
+            Wrap = wrap ? TextWrap.Wrap : TextWrap.NoWrap,
+        });
+        return Button.Create(label, onClick, ButtonAppearance.Accent, glyph: glyph,
+            style: Button.DefaultStyle(ButtonAppearance.Accent, palette: Button.ButtonPalette.ForAccent(accent)) with
+            {
+                MinHeight = ButtonHeight,
+            },
+            parts: parts) with { MinWidth = PrimaryMinWidth };
+    }
+
+    /// <summary>The PLAY primary — <see cref="PrimaryButton"/> pre-glyphed and pre-labeled. <paramref name="accent"/>
+    /// is either a resolved fill or a THUNK invoked every render, so a palette that lands after the page's cover
+    /// decodes (a daylist card, a hero whose accent extracts asynchronously) re-tints the fill instead of freezing the
+    /// mount-time default — reading it inside the caller's own <c>Render</c> is what subscribes; this overload does not
+    /// itself hold state (component props freeze at mount, so the LIVE seam is the caller's render, not a field here).</summary>
+    public static BoxEl PlayButton(ColorF accent, Action onClick, string? label = null, string? glyph = null)
+        => PrimaryButton(label ?? Loc.Get(Strings.Detail.Play), onClick, accent, glyph ?? Icons.Play);
+
+    /// <inheritdoc cref="PlayButton(ColorF, Action, string?, string?)"/>
+    public static BoxEl PlayButton(Func<ColorF> accent, Action onClick, string? label = null, string? glyph = null)
+        => PlayButton(accent(), onClick, label, glyph);
+
+    /// <summary>An icon-only accent affordance on the new 32/r4 ladder (the compact reader band's tinted actions) —
+    /// row 3's geometry (<see cref="IconButtonSize"/>/<see cref="Radii.Control"/>) wearing <paramref name="accent"/>'s
+    /// <see cref="Button.ButtonPalette.ForAccent"/> ramp instead of the neutral icon-button ramp.</summary>
+    public static BoxEl AccentIconButton(ColorF accent, string glyph, Action onClick)
+    {
+        var s = Button.DefaultStyle(ButtonAppearance.Accent, palette: Button.ButtonPalette.ForAccent(accent));
+        return IconButton.Create(glyph, onClick, style: IconButton.DefaultStyle with
+        {
+            Size = IconButtonSize,
+            CornerRadius = Radii.Control,
+            Foreground = s.Foreground,
+            HoverForeground = s.HoverForeground,
+            PressedForeground = s.PressedForeground,
+            DisabledForeground = s.DisabledForeground,
+            Fill = s.Background,
+            HoverFill = s.HoverBackground,
+            PressedFill = s.PressedBackground,
+            DisabledFill = s.DisabledBackground,
+        });
+    }
+
+    /// <summary>The ONE on-media scrim button ramp (Workstream B) — a <see cref="Button.ButtonPalette"/> for a labeled
+    /// or icon-only stock control sitting directly on artwork (a video poster's transport row, a cover-corner action
+    /// that wants LABEL text instead of <see cref="CoverActionFab"/>'s bare glyph). Shares the ONE on-media scrim ramp
+    /// (<see cref="Design.OnMedia"/>) every other on-photo affordance already uses, so three controls on the same
+    /// artwork read as one darkness instead of three.</summary>
+    public static Button.ButtonPalette OnMediaPalette => new(
+        Background: new StateBrush(Design.OnMedia.ScrimRest, Design.OnMedia.ScrimHover, Design.OnMedia.ScrimPressed, Design.OnMedia.ScrimRest),
+        Foreground: new StateBrush(Design.OnMedia.Ink, Design.OnMedia.Ink,
+                                   Design.OnMedia.Ink with { A = OnFillSecondaryAlpha(Design.OnMedia.Ink) }, Design.OnMedia.Ink with { A = 0.4f }),
+        Border: Button.BorderRamp.Flat(GradientSpec.Solid(Design.OnMedia.Stroke)),
+        Sizing: BackgroundSizing.InnerBorderEdge);
+
+    /// <summary>A filter/mode <see cref="ToggleButton.Style"/> whose CHECKED state is <paramref name="fill"/> (the
+    /// grammar table's "stock checked = accent" row) instead of the live <see cref="Tok.AccentDefault"/> — the OFF arm
+    /// is <see cref="ToggleButton.DefaultStyle"/> verbatim, same convention as <see cref="ButtonRules.FollowStyle"/>.
+    /// Solid, not translucent: a filter chip's "on" reads as the SAME accent-filled capsule WinUI's own ToggleButton
+    /// draws, just re-tinted — unlike <see cref="ButtonRules.FollowTint"/>'s deliberately translucent Follow ramp.</summary>
+    public static ToggleButton.Style AccentToggleStyle(ColorF fill)
+    {
+        ColorF ink = ColorContrast.PickContrast(fill);
+        return ToggleButton.DefaultStyle with
+        {
+            OnBackground = fill,
+            OnHover = fill with { A = 0.90f },
+            OnPressed = fill with { A = 0.80f },
+            OnBorder = Tok.AccentControlElevationBorder,
+            OnHoverBorder = Tok.AccentControlElevationBorder,
+            OnPressedBorder = GradientSpec.Solid(ColorF.Transparent),
+            OnForeground = ink,
+            OnPressedForeground = ink with { A = OnFillSecondaryAlpha(ink) },
+        };
+    }
+
+    // ══ 2. THE LABELED MEDIA PILL (// DELETE in Wave 5 (buttons) — see the note on PillHeight above) ═════════════════
 
     /// <summary>The primary PLAY call to action on an artwork-derived <paramref name="accent"/>. <paramref name="label"/>
     /// defaults to the shared detail-surface word; surfaces with their own wording pass it (an artist page, a home hero,
-    /// a podcast's "Resume").</summary>
+    /// a podcast's "Resume").
+    /// <para><c>// DELETE in Wave 5 (buttons)</c> — replaced by <see cref="PlayButton(ColorF, Action, string?, string?)"/>.</para></summary>
     public static BoxEl Play(ColorF accent, Action onClick, string? label = null)
         => Accent(label ?? Loc.Get(Strings.Detail.Play), accent, onClick);
 
     /// <summary>A labeled primary CTA on an arbitrary (usually artwork-derived) fill. <paramref name="ink"/> overrides
-    /// the contrast-picked on-fill ink for a surface that has already resolved it.</summary>
+    /// the contrast-picked on-fill ink for a surface that has already resolved it.
+    /// <para><c>// DELETE in Wave 5 (buttons)</c> — replaced by <see cref="PrimaryButton"/>.</para></summary>
     public static BoxEl Accent(string label, ColorF accent, Action onClick, string? glyph = null, ColorF? ink = null,
                                float minHeight = PillHeight)
         => Pill(label, onClick, palette: CtaPalette(accent, ink), glyph: glyph ?? Icons.Play, minHeight: minHeight);
@@ -100,7 +213,8 @@ public static partial class Controls
     /// <para><b>Style and palette are NOT independent parameters</b> on the engine's button factory — a supplied style
     /// WINS and the palette argument is dropped. So the palette must ride INSIDE the style: the default style folds it
     /// in, and the pill geometry is a <c>with</c> on top. Everything not listed stays on the stock ladder (1-px border,
-    /// 14 px, centre alignment, the −3 focus margin, the 83 ms brush).</para></summary>
+    /// 14 px, centre alignment, the −3 focus margin, the 83 ms brush).</para>
+    /// <para><c>// DELETE in Wave 5 (buttons)</c> — see the note on <see cref="PillHeight"/> above.</para></summary>
     public static BoxEl Pill(string label, Action onClick, ButtonAppearance appearance = ButtonAppearance.Accent,
                              Button.ButtonPalette? palette = null, string? glyph = null, float minHeight = PillHeight)
         => Button.Create(label, onClick, appearance, glyph: glyph,
@@ -130,7 +244,10 @@ public static partial class Controls
     ///
     /// <para><paramref name="requestsContext"/> is the overflow "…" case: it re-enters the engine's context funnel to
     /// find the surface's ATTACHED menu instead of carrying a handler of its own. The two are mutually exclusive in the
-    /// reconciler, so the handler is DROPPED when it is set.</para></summary>
+    /// reconciler, so the handler is DROPPED when it is set.</para>
+    /// <para><c>// DELETE in Wave 5 (buttons)</c> — the icon arm's replacement is the standard <see cref="IconAction"/>
+    /// (row 3) or <see cref="AccentIconButton"/> above; nothing replaces the 36-capsule icon ARM itself, because the
+    /// new grammar has no CTA cluster that needs one.</para></summary>
     public static BoxEl IconPill(string glyph, Action? onClick, ButtonAppearance appearance = ButtonAppearance.Standard,
                                  Button.ButtonPalette? palette = null, float size = PillHeight,
                                  bool requestsContext = false)
@@ -323,7 +440,9 @@ public static partial class Controls
     ///
     /// <para><paramref name="border"/> overrides the elevation-border gradient (a photo-local white ramp passes its
     /// own). <c>BackgroundSizing.OuterBorderEdge</c> is the accent-button-style setter: the fill runs UNDER the 1-px
-    /// border rather than inside it.</para></summary>
+    /// border rather than inside it.</para>
+    /// <para><c>// DELETE in Wave 5 (buttons)</c> — replaced by <see cref="Button.ButtonPalette.ForAccent"/> (E1),
+    /// called directly from <see cref="PrimaryButton"/>/<see cref="AccentIconButton"/>.</para></summary>
     public static Button.ButtonPalette CtaPalette(ColorF fill, ColorF? ink = null, GradientSpec? border = null)
     {
         ColorF fg = ink ?? ColorContrast.PickContrast(fill);

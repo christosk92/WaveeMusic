@@ -625,6 +625,97 @@
     "play": "Play",
     "pause": "Pause",
     "album": "Album",
+    "facetAll": "All",
+    "following": "Following",
+    "seeAll": "See all",
+    "seeAllN": "See all {n}",
+    "listeningHistory": "Listening history",
+    "plays": "{n} plays",
+    "save": "Save",
+    "more": "More",
+    "couldntLoad": "Couldn''t load {what}",
+    "couldntLoadHome": "Couldn't load Home",
+    "checkConnection": "Check your connection and try again.",
+    "nextDaylistIn": "Next daylist in {t}",
+    "customizeBody": "Show, hide and reorder Home's sections.",
+    "resetDefault": "Reset to default",
+    "recentsSub": "Pick up where you left off",
+    "yourListeningHistory": "Your listening history",
+    "playsThisWeek": "{n} plays this week",
+    "updatedDaily": "Updated daily",
+    "browseAll": "Browse all",
+    "releasedThisWeek": "Released this week",
+    "daylistMeta": "Playlist · Spotify · {n} songs",
+    "playingOn": "playing on {device}",
+    "daylist": {
+      "arrivesAt": "{when} arrives at {time}"
+    },
+    "zone": {
+      "becauseYouLike": "Because you like",
+      "moreForYou": "More for you",
+      "radioAndMixes": "Radio and mixes",
+      "browse": "Browse",
+      "newEpisodes": "New episodes",
+      "continueListening": "Continue listening",
+      "videosYouMightLike": "Videos you might like",
+      "episodesYouMightLike": "Episodes you might like",
+      "becauseYouListenTo": "Because you listen to",
+      "fromArtistsYouFollow": "From artists you follow",
+      "yourShows": "Your shows",
+      "showsYouMightLike": "Shows you might like"
+    },
+    "zoneSub": {
+      "madeForYou": "Daily Mixes and moods picked for you",
+      "newMusic": "Fresh playlists and releases from artists you follow",
+      "becauseYouLike": "Grouped from the artists you play most",
+      "jumpBackIn": "Things you've opened lately",
+      "radio": "Non-stop music based on the artists and songs you play",
+      "browse": "Official Spotify playlists and this week's editorial picks",
+      "newEpisodes": "From the shows you follow"
+    },
+    "chartsCaption": {
+      "top50Country": "The 50 most-played tracks right now",
+      "top50Global": "The 50 most-played tracks worldwide",
+      "viral50Country": "The tracks trending right now"
+    },
+    "layout": {
+      "daylist": "Daylist",
+      "newMusic": "New music",
+      "releases": "New releases",
+      "becauseYouLike": "Because you like…"
+    },
+    "daypart": {
+      "early": "Early morning",
+      "morning": "Morning",
+      "afternoon": "Afternoon",
+      "evening": "Evening",
+      "night": "Night"
+    },
+    "when": {
+      "playingNow": "Playing now",
+      "minAgo": "{n} min ago",
+      "hAgo": "{n} h ago"
+    },
+    "release": {
+      "album": "Album",
+      "playlist": "Playlist",
+      "artist": "Artist",
+      "song": "Song",
+      "episode": "Episode",
+      "podcast": "Podcast",
+      "audiobook": "Audiobook"
+    },
+    "empty": {
+      "audiobooksTitle": "No audiobooks yet",
+      "audiobooksBody": "Audiobooks you save will show up here.",
+      "audiobooksAction": "Browse audiobooks",
+      "podcastsTitle": "No podcasts yet",
+      "podcastsBody": "Shows and episodes you follow will show up here.",
+      "podcastsAction": "Browse podcasts",
+      "genericTitle": "Nothing here yet",
+      "genericBody": "Your recommendations will show up here soon.",
+      "genericAction": "Browse"
+    },
     "customize": "Customize home",
     "customizer": {
       "title": "Customize home",
@@ -2590,7 +2681,13 @@
     "enter": "Enter",
     "placeholder": "Search commands — type > for commands only",
     "searchFor": "Search for “{q}”",
-    "shortcuts": "Keyboard shortcuts"
+    "shortcuts": "Keyboard shortcuts",
+    "homeAll": "Home: All",
+    "homeMusic": "Home: Music",
+    "homePodcasts": "Home: Podcasts",
+    "homeAudiobooks": "Home: Audiobooks",
+    "homeFollowingOn": "Home: Following on",
+    "homeFollowingOff": "Home: Following off"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",

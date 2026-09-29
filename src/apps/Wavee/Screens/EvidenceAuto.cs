@@ -45,6 +45,27 @@ public static class ClampCaptureRules
         && (offset < coverStart - 0.5 || Math.Min(offset + viewport, extent) > coverEnd + 0.5);
 }
 
+/// <summary>When the auto JUMP bundle fires (2026-09-25, item J — the Library V3 rail jumping on selection) — pure
+/// (<c>JumpCaptureRulesTests</c>). The engine's always-on detector counts every unrequested jump of a viewport at rest
+/// (<c>ScrollProbe.Jumps</c>, and writes its own <c>[scroll.jump]</c> line); the first new jump captures one bundle, never
+/// two within <see cref="MinIntervalMs"/>, at most <see cref="MaxPerSession"/> a session.</summary>
+public static class JumpCaptureRules
+{
+    public const double MinIntervalMs = 5000;
+    public const int MaxPerSession = 12;
+
+    /// <summary>One frame's step over the monotonic jump counter: capture when it moved since the last frame, the
+    /// session cap is not reached and the last capture is old enough. <paramref name="seen"/> starts at −1 (the first
+    /// frame only takes the baseline — jumps from before the watch started are not this session's evidence).</summary>
+    public static bool Step(ref long seen, long jumps, double msSinceLastCapture, int captures)
+    {
+        long before = seen;
+        seen = jumps;
+        if (before < 0 || jumps <= before) return false;
+        return captures < MaxPerSession && msSinceLastCapture >= MinIntervalMs;
+    }
+}
+
 public static partial class Diagnostics
 {
     /// <summary>The shell half of <see cref="ClampCaptureRules"/>: the frame relay's per-frame check. UI THREAD.</summary>
@@ -56,11 +77,17 @@ public static partial class Diagnostics
         static long s_seenClampedPoses = -1;
         static readonly List<ViewportInfo> s_vps = new(16);
 
+        static long s_seenJumps = -1;
+        static long s_lastJumpCaptureTicks;
+        static int s_jumpCaptures;
+
         /// <summary>Called from the frame watch (<c>Diagnostics.Host</c>) once per rendered frame.</summary>
         public static void OnFrame(in FrameStats stats)
         {
             var host = Probe.Host;
-            if (host is null || s_captures >= ClampCaptureRules.MaxPerSession) return;
+            if (host is null) return;
+            OnFrameJump(host);
+            if (s_captures >= ClampCaptureRules.MaxPerSession) return;
             // Two clamp signals: the render poser's clamped POSES (the burst summary's `clamps=`, always-on counter) and
             // the composite's tile-level coverage clamps (a band past the realized rows). Either starts a capture.
             long poses = FluentGpu.Scroll.Diag.ScrollProbe.ClampedPoses;
@@ -73,6 +100,28 @@ public static partial class Diagnostics
             s_lastCaptureTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             s_captures++;
             Capture(host, clamps);
+        }
+
+        /// <summary>Item J: one bundle on a new unrequested scroll jump (the engine's detector, <c>ScrollProbe.Jumps</c>).
+        /// Allocates nothing on a frame that does not capture.</summary>
+        static void OnFrameJump(AppHost host)
+        {
+            double since = s_lastJumpCaptureTicks == 0 ? double.MaxValue
+                : System.Diagnostics.Stopwatch.GetElapsedTime(s_lastJumpCaptureTicks).TotalMilliseconds;
+            if (!JumpCaptureRules.Step(ref s_seenJumps, FluentGpu.Scroll.Diag.ScrollProbe.Jumps, since, s_jumpCaptures)) return;
+            s_lastJumpCaptureTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            s_jumpCaptures++;
+            var inv = CultureInfo.InvariantCulture;
+            var j = FluentGpu.Scroll.Diag.ScrollProbe.LastJump;
+            s_vps.Clear();
+            host.CopyViewports(s_vps);
+            string key = "-";
+            foreach (var v in s_vps) if (v.NodeIndex == j.Vp) { key = v.ScrollKey ?? "-"; break; }
+            Log.Info("evidence", "[evidence] auto jump vp=" + key + " node=" + j.Vp.ToString(inv)
+                + " from=" + j.From.ToString("0.#", inv) + " to=" + j.To.ToString("0.#", inv)
+                + " cause=" + FluentGpu.Scroll.Diag.ScrollJumpRules.CauseName(j.Cause)
+                + " atMs=" + (j.Qpc * 1000.0 / System.Diagnostics.Stopwatch.Frequency).ToString("0.0", inv));
+            Evidence.RequestBundle("jump-auto");
         }
 
         static void Capture(AppHost host, int clamps)

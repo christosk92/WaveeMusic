@@ -642,7 +642,7 @@ public static partial class Rail
         body.Add(new BoxEl
         {
             Direction = 0,
-            Children = [Embed.Comp(() => new Controls.FollowButton { Uri = artistUri, Name = name }) with { Key = "follow:" + artistUri }],
+            Children = [Embed.Comp(() => new Controls.FollowToggle { Uri = artistUri, Name = name }) with { Key = "follow:" + artistUri }],
         });
 
         return Section(Loc.Get(Strings.Detail.AboutTheArtist), new BoxEl

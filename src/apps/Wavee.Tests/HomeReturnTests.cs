@@ -141,12 +141,16 @@ public class HomeRemountResolvesWithoutANewAskTests : IDisposable
         // (PlaylistFields.Row) the first time. That ask is not what this fact is about; settle it before measuring.
         Home.EnsureFeed(home);
 
-        var landed = HomeComposer.For(home, HomeModuleTitles.Default);
-        Assert.True(landed.Groups.Count > 0);
-        Home.Feeds.MarkRevealed(landed.Facet);
+        // HomeComposer (the Wave-5 Home UI's presentation projection) is gone with the rest of that page
+        // (docs/plans/wavee/home-rebuild-implementation.md §7); the fact under test — a landed section survives a
+        // remount with no new ask — is read straight off the surviving ledger, `HomeSectionView.Of`.
+        var landed = HomeSectionView.Of(section);
+        Assert.True(landed.Cards.Count > 0);
+        const string facet = "";   // the unfiltered feed — this fixture attaches no facet id to the Home row.
+        Home.Feeds.MarkRevealed(facet);
 
         // A returning page's warm-start seed must see it.
-        Assert.True(HomeFeedReadiness.ShouldPaintOnMount(landed.Groups.Count, Home.Feeds.HasRevealed(landed.Facet)));
+        Assert.True(HomeFeedReadiness.ShouldPaintOnMount(landed.Cards.Count, Home.Feeds.HasRevealed(facet)));
 
         uint homeAskedBefore = Entities.Current.Homes.Asked[home.Slot];
         uint homeInflightBefore = Entities.Current.Homes.Inflight[home.Slot];
@@ -165,9 +169,10 @@ public class HomeRemountResolvesWithoutANewAskTests : IDisposable
         Assert.Equal(cardAskedBefore, Entities.Current.Playlists.Asked[cardSlot]);
         Assert.Equal(cardInflightBefore, Entities.Current.Playlists.Inflight[cardSlot]);
 
-        // And the composer hands back the SAME landed sections — memoized, not recomposed from a re-fetch.
-        var resolved = HomeComposer.For(home, HomeModuleTitles.Default);
+        // And the ledger hands back the SAME landed section — memoized by (slot, Version, CardVersion), not
+        // recomposed from a re-fetch.
+        var resolved = HomeSectionView.Of(section);
         Assert.Same(landed, resolved);
-        Assert.Equal(landed.Groups.Count, resolved.Groups.Count);
+        Assert.Equal(landed.Cards.Count, resolved.Cards.Count);
     }
 }

@@ -402,10 +402,10 @@ public class DetailVerticalLayoutTests
     [Fact]
     public void TitlePlan_W6_SolvesAgainstItsOwnMeasureAndBudget()
     {
-        // 520 row flow: art 197, title measure 251, height budget 197 − 92 − 5·4 = 85, cap ≈ 42.7.
+        // 520 row flow: art 197, title measure 251, height budget 197 − 88 − 5·4 = 89 (ActionRowHeight 36, Workstream B), cap ≈ 42.7.
         Assert.Equal(197f, VerticalLayout.ArtworkFor(520f, rowFlow: true));
         Assert.Equal(251f, VerticalLayout.TitleWidthFor(520f, rowFlow: true));
-        Assert.Equal(85f, VerticalLayout.TitleHeightBudgetFor(520f, rowFlow: true, eyebrow: true, attribution: true, meta: true));
+        Assert.Equal(89f, VerticalLayout.TitleHeightBudgetFor(520f, rowFlow: true, eyebrow: true, attribution: true, meta: true));
         Assert.Equal(384f, VerticalLayout.BucketW(380f));   // W7: banker's rounding of 47.5 → 48
     }
 

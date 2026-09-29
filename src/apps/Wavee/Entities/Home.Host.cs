@@ -1,23 +1,17 @@
 // ── Entities/Home.Host.cs ──────────────────────────────────────────────────────────────────────────────────────────
-// home-layout.json off the UI thread, the preferences that own it, THE install method for Home / Search / Browse /
-// Recents, and the feed host (what's new + gander → the notification centre; userTopContent → the podium; the daylist
-// rollover note). There is no other SHELL file for Home
+// THE install method for Home / Search / Browse / Recents, and the feed host (what's new + gander → the notification
+// centre; userTopContent → the podium; the daylist rollover note). There is no other SHELL file for Home.
+//
+// The Wave-5 layout persistence this file used to own — `HomeLayoutStore` (home-layout.json off the UI thread) and
+// `HomePreferences` (the customizer's document owner) — went with the rest of the superseded Home UI
+// (docs/plans/wavee/home-rebuild-implementation.md §7): their one caller was `Home.Customizer.cs`/`HomeCustomizerPage`,
+// deleted alongside them. The new Home page persists its layout through `Wavee.HomeUi.LayoutFile` instead.
 //
 // Role: SHELL
 // Owner: P
 // Wave: 5
-// Budget: 400 lines (ch 12's store) — UNVERIFIED past it: the install method and the feed host (contract §2.5, §7)
-//   landed here too, reported
-// Spec: ch 10 §9's settled seven-file Home table (ch 12's 400: the store, its faults, the .bak recovery); ch 10 §7 (the
-//   chrome feeds), ch 11 §7 DATA GAPS (top content), ch 19 §7 (the merge); WP-5.P contract §2.5 and §7; gaps G-088,
-//   G-089, G-045 (the P halves); 0.2.9 `Features/Home/Persistence/HomeLayoutStore.cs`, `Features/Home/HomePreferences.cs`,
-//   `SpotifyLive/SpotifyWhatsNewService.cs`, `SpotifyLive/SpotifyUserTopService.cs`
-//
-// THE STORE IS 0.2.9's, VERBATIM IN BEHAVIOUR: load / validate / fault-classify, an atomic write through a .tmp and a
-// File.Replace that rotates ONE .bak, a sequence number so only the newest snapshot is written, and a load fault that
-// BLOCKS every write until the user sets the file aside (preserve-don't-destroy, the sidebar's locked decision 8). Its
-// folder is 0.2.9's own — `WaveeMusic\home-layout.json` under `Platform.LocalFolder`, beside history.json and
-// sidebar-layout.json (D8) — and `PathUnder` is the pure half, so a test never creates the real profile folder.
+// Spec: ch 10 §7 (the chrome feeds), ch 11 §7 DATA GAPS (top content), ch 19 §7 (the merge); WP-5.P contract §7; gaps
+//   G-088, G-089, G-045 (the P halves); 0.2.9 `SpotifyLive/SpotifyWhatsNewService.cs`, `SpotifyLive/SpotifyUserTopService.cs`
 //
 // THE FEED HOST WATCHES WITHOUT A COMPONENT (the `Spotify.Library` precedent): a private `ReactiveRuntime` whose effects
 // read the session phase, the scope generation, the update observation and the Home / playlist tables, and only POST
@@ -25,334 +19,15 @@
 // for); every table write and every signal write lands on the UI thread.
 //
 // NOTHING HERE DECIDES WHAT A ROW IS: the folds are `Spotify.Decode.WhatsNew / Notifications / UserTop` (CORE, tested),
-// the merge is `Notify.Rebuild`, the update row is `Update.FeedRow`, the reducer is `HomeLayoutReducer`.
+// the merge is `Notify.Rebuild`, the update row is `Update.FeedRow`.
 
-using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using System.Text.Json;
+using FluentGpu.Dsl;
 using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Power;
 
 namespace Wavee;
-
-// ══ 1. THE LAYOUT STORE (0.2.9 Persistence/HomeLayoutStore.cs) ═══════════════════════════════════════════════════════
-
-/// <summary>How a <see cref="HomeLayoutStore.Load"/> ended. Anything but <see cref="None"/> means: load the default IN
-/// MEMORY, leave the file untouched, and suppress every write until the user discards it.</summary>
-public enum HomeLayoutLoadFault : byte { None = 0, Corrupt = 1, TooNew = 2, Unreadable = 3 }
-
-public readonly record struct HomeLayoutLoad(HomeLayoutDocDto? Doc, HomeLayoutLoadFault Fault, string? Detail);
-
-public enum HomeLayoutSaveFault : byte { None = 0, DocumentTooLarge = 1, IoFailure = 2 }
-
-/// <summary>home-layout.json: load / validate / fault-classify + an atomic write with one .bak.</summary>
-public sealed class HomeLayoutStore
-{
-    public const int CurrentVersion = 1;
-    public const int MaxDocumentBytes = 256 * 1024;
-
-    readonly string _path;
-    readonly object _writeGate = new();
-    long _seq;
-    volatile bool _writesBlocked;
-    volatile HomeLayoutSaveFault _saveFault;
-    Task? _pending;
-
-    public HomeLayoutStore(string path) => _path = path;
-
-    public static HomeLayoutStore ForApp() => new(DefaultPath());
-
-    /// <summary><c>…\WaveeMusic\home-layout.json</c> under <see cref="Platform.LocalFolder"/> — BESIDE sidebar-layout.json
-    /// (D8). Reading <c>LocalFolder</c> creates the profile folder, which is why a test uses <see cref="PathUnder"/>.</summary>
-    public static string DefaultPath() => PathUnder(Platform.LocalFolder);
-
-    /// <summary>The document's path under a profile root — the pure half of <see cref="DefaultPath"/>.</summary>
-    public static string PathUnder(string profileRoot) => Path.Combine(profileRoot, "WaveeMusic", "home-layout.json");
-
-    public string FilePath => _path;
-    public string BakPath => _path + ".bak";
-    public string TmpPath => _path + ".tmp";
-    public string CorruptPath => _path + ".corrupt";
-    public bool WritesBlocked => _writesBlocked;
-    public HomeLayoutSaveFault SaveFault => _saveFault;
-
-    public HomeLayoutLoad Load()
-    {
-        if (!File.Exists(_path)) return new HomeLayoutLoad(null, HomeLayoutLoadFault.None, null);
-
-        switch (TryRead(_path, out var doc, out string? primaryDetail))
-        {
-            case ReadOutcome.Ok:
-                return new HomeLayoutLoad(doc, HomeLayoutLoadFault.None, null);
-
-            case ReadOutcome.TooNew:
-                _writesBlocked = true;
-                LogLoadFailed("too_new");
-                return new HomeLayoutLoad(null, HomeLayoutLoadFault.TooNew, primaryDetail);
-
-            case ReadOutcome.Unreadable:
-                _writesBlocked = true;
-                LogLoadFailed("unreadable");
-                return new HomeLayoutLoad(null, HomeLayoutLoadFault.Unreadable, primaryDetail);
-        }
-
-        // Malformed / null / version <= 0 → the rotated backup, under the SAME validation. A good backup is a full
-        // recovery: writes stay enabled and the next commit rewrites the primary.
-        if (File.Exists(BakPath) && TryRead(BakPath, out var bak, out _) == ReadOutcome.Ok)
-        {
-            Log.Warn("home", "home.layout.recovered recovery=backup: the Home layout was recovered from its backup.");
-            return new HomeLayoutLoad(bak, HomeLayoutLoadFault.None, "recovered from .bak");
-        }
-
-        _writesBlocked = true;
-        LogLoadFailed("corrupt");
-        return new HomeLayoutLoad(null, HomeLayoutLoadFault.Corrupt, primaryDetail);
-    }
-
-    enum ReadOutcome : byte { Ok, Malformed, TooNew, Unreadable }
-
-    static ReadOutcome TryRead(string path, out HomeLayoutDocDto? doc, out string? detail)
-    {
-        doc = null; detail = null;
-        byte[] bytes;
-        try { bytes = File.ReadAllBytes(path); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            detail = "The Home layout could not be read (" + ex.GetType().Name + ").";
-            return ReadOutcome.Unreadable;
-        }
-
-        HomeLayoutDocDto? parsed;
-        try { parsed = JsonSerializer.Deserialize(bytes, HomeLayoutJsonCtx.Default.HomeLayoutDocDto); }
-        catch (Exception ex)
-        {
-            detail = "The Home layout contains invalid data (" + ex.GetType().Name + ").";
-            return ReadOutcome.Malformed;
-        }
-
-        if (parsed is null) { detail = "The Home layout contains no document."; return ReadOutcome.Malformed; }
-        if (parsed.Version > CurrentVersion)
-        {
-            detail = $"Layout version {parsed.Version} is newer than supported version {CurrentVersion}.";
-            return ReadOutcome.TooNew;
-        }
-        if (parsed.Version <= 0)
-        {
-            detail = $"The Home layout has an invalid version ({parsed.Version}).";
-            return ReadOutcome.Malformed;
-        }
-
-        doc = parsed;
-        return ReadOutcome.Ok;
-    }
-
-    static void LogLoadFailed(string fault)
-        => Log.Warn("home", "home.layout.load_failed fault=" + fault + ": the Home layout could not be loaded; the saved file was preserved.");
-
-    /// <summary>Stamp the snapshot and write it on the pool. A newer commit supersedes an older one that has not written
-    /// yet (the sequence number); nothing is written while a load fault blocks writes.</summary>
-    public void Commit(HomeLayoutDocDto snapshot)
-    {
-        if (snapshot is null || _writesBlocked) return;
-
-        snapshot.Version = CurrentVersion;
-        snapshot.UpdatedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        snapshot.AppVersion ??= AppVersion();
-
-        long mine = Interlocked.Increment(ref _seq);
-        var task = Task.Run(() => WriteOnPool(snapshot, mine));
-        lock (_writeGate) _pending = task;
-    }
-
-    void WriteOnPool(HomeLayoutDocDto snapshot, long mine)
-    {
-        if (Interlocked.Read(ref _seq) != mine) return;
-        var watch = Stopwatch.StartNew();
-        lock (_writeGate)
-        {
-            if (Interlocked.Read(ref _seq) != mine) return;
-            if (_writesBlocked) return;
-            try
-            {
-                string? dir = Path.GetDirectoryName(_path);
-                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-
-                var bytes = JsonSerializer.SerializeToUtf8Bytes(snapshot, HomeLayoutJsonCtx.Default.HomeLayoutDocDto);
-                if (bytes.Length > MaxDocumentBytes)
-                {
-                    _saveFault = HomeLayoutSaveFault.DocumentTooLarge;
-                    Log.Warn("home", "home.layout.save_failed fault=document_too_large bytes=" + bytes.Length.ToString(CultureInfo.InvariantCulture));
-                    return;
-                }
-
-                using (var fs = new FileStream(TmpPath, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    fs.Write(bytes);
-                    fs.Flush(flushToDisk: true);
-                }
-
-                if (File.Exists(_path))
-                {
-                    try { File.Replace(TmpPath, _path, BakPath, ignoreMetadataErrors: true); }
-                    catch (Exception)
-                    {
-                        try { File.Copy(_path, BakPath, overwrite: true); } catch (Exception) { }
-                        File.Move(TmpPath, _path, overwrite: true);
-                    }
-                }
-                else
-                {
-                    File.Move(TmpPath, _path, overwrite: true);
-                }
-
-                _saveFault = HomeLayoutSaveFault.None;
-            }
-            catch (Exception ex)
-            {
-                _saveFault = HomeLayoutSaveFault.IoFailure;
-                Log.Warn("home", "home.layout.save_failed fault=io_failure exception_type=" + ex.GetType().Name
-                    + " elapsed_ms=" + watch.ElapsedMilliseconds.ToString(CultureInfo.InvariantCulture));
-                try { if (File.Exists(TmpPath)) File.Delete(TmpPath); } catch (Exception) { }
-            }
-        }
-    }
-
-    /// <summary>Block until the newest pending write finished, or the timeout. True when nothing is pending.</summary>
-    public bool WaitForWrites(int timeoutMs = 5000)
-    {
-        Task? t;
-        lock (_writeGate) t = _pending;
-        if (t is null) return true;
-        try { return t.Wait(timeoutMs); }
-        catch (Exception) { return false; }
-    }
-
-    /// <summary>Set the unreadable file aside (.corrupt), drop the backup and the temp, and UNBLOCK writes — only when the
-    /// moves succeeded. A failed move keeps writes blocked and reports an IO fault.</summary>
-    public void DiscardCorrupt()
-    {
-        lock (_writeGate)
-        {
-            try
-            {
-                if (File.Exists(_path)) File.Move(_path, CorruptPath, overwrite: true);
-                if (File.Exists(BakPath)) File.Delete(BakPath);
-                if (File.Exists(TmpPath)) File.Delete(TmpPath);
-                _writesBlocked = false;
-                _saveFault = HomeLayoutSaveFault.None;
-            }
-            catch (Exception ex)
-            {
-                _saveFault = HomeLayoutSaveFault.IoFailure;
-                Log.Warn("home", "home.layout.discard_failed exception_type=" + ex.GetType().Name
-                    + ": the unreadable Home layout could not be set aside.");
-            }
-        }
-    }
-
-    static string? s_appVersion;
-
-    static string AppVersion()
-    {
-        if (s_appVersion is not null) return s_appVersion;
-        try { s_appVersion = typeof(HomeLayoutStore).Assembly.GetName().Version?.ToString() ?? ""; }
-        catch (Exception) { s_appVersion = ""; }
-        return s_appVersion;
-    }
-}
-
-// ══ 2. THE PREFERENCES (0.2.9 HomePreferences.cs) ═══════════════════════════════════════════════════════════════════
-
-/// <summary>The single owner of the Home layout document. Load is fail-soft: a corrupt file is never overwritten until
-/// the first successful save after <see cref="DiscardCorrupt"/>. UI thread.</summary>
-public sealed class HomePreferences
-{
-    static HomePreferences? s_current;
-
-    /// <summary>THE app instance, over <see cref="HomeLayoutStore.DefaultPath"/>, created on first read. 0.2.9 provided it
-    /// through a context slot; 0.3's pages (the landing, the customizer) read this.</summary>
-    public static HomePreferences Current => s_current ??= new HomePreferences(HomeLayoutStore.ForApp());
-
-    readonly HomeLayoutStore _store;
-    readonly Signal<int> _layoutVersion = new(0);
-
-    HomeLayoutDoc _layout;
-    HomeLayoutWireCarry _carry = HomeLayoutWireCarry.Empty;
-    bool _loaded;
-
-    public HomePreferences(HomeLayoutStore store)
-    {
-        _store = store;
-        _layout = HomeLayoutDoc.Default;
-        LoadDocument();
-    }
-
-    public HomeLayoutDoc Layout => _layout;
-    /// <summary>Bumps on every accepted change — the landing and the customizer subscribe to it.</summary>
-    public IReadSignal<int> LayoutVersion => _layoutVersion;
-    public HomeLayoutLoadFault Fault { get; private set; }
-    public string? FaultDetail { get; private set; }
-    public bool WritesBlocked => _store.WritesBlocked;
-    public string FilePath => _store.FilePath;
-
-    /// <summary>THE mutation entry point: reduce; when it changed, publish and autosave. Returns why it did not.</summary>
-    public HomeLayoutRejectReason Dispatch(HomeLayoutCommand command)
-    {
-        var result = HomeLayoutReducer.Apply(_layout, command);
-        if (!result.Changed) return result.Reason;
-
-        _layout = result.Layout;
-        _layoutVersion.Value = _layoutVersion.Peek() + 1;
-        Commit();
-        return HomeLayoutRejectReason.None;
-    }
-
-    /// <summary>"Start fresh": set the file aside, load the default, publish, save.</summary>
-    public void DiscardCorrupt()
-    {
-        _store.DiscardCorrupt();
-        _layout = HomeLayoutDoc.Default;
-        _carry = HomeLayoutWireCarry.Empty;
-        Fault = HomeLayoutLoadFault.None;
-        FaultDetail = null;
-        _layoutVersion.Value = _layoutVersion.Peek() + 1;
-        _loaded = true;
-        Commit();
-    }
-
-    public bool WaitForWrites(int timeoutMs = 5000) => _store.WaitForWrites(timeoutMs);
-
-    void LoadDocument()
-    {
-        var load = _store.Load();
-        Fault = load.Fault;
-        FaultDetail = load.Detail;
-        if (load.Doc is { } dto)
-        {
-            var read = HomeLayoutWire.Read(dto);
-            _layout = read.Layout;
-            _carry = read.Carry;
-            _carry.CaptureDoc(dto);
-        }
-        else
-        {
-            _layout = HomeLayoutDoc.Default;
-            _carry = HomeLayoutWireCarry.Empty;
-        }
-        _loaded = true;
-    }
-
-    void Commit()
-    {
-        if (!_loaded) return;
-        var snapshot = HomeLayoutWire.Write(_layout, _carry);
-        _carry.ReattachDoc(snapshot);
-        _store.Commit(snapshot);
-    }
-}
-
-// ══ 3. THE INSTALL METHOD AND THE FEED HOST ══════════════════════════════════════════════════════════════════════════
 
 public readonly partial struct Home
 {
@@ -363,10 +38,13 @@ public readonly partial struct Home
     /// three watches (<see cref="Feeds"/>: the feeds once per online session, the update row merge, the daylist note).</summary>
     public static void InstallPages()
     {
-        Shell.SetPage(Shell.RouteKind.Home, LandingPageFor);
-        Shell.SetPage(Shell.RouteKind.HomeSection, SectionPageFor);
-        Shell.SetPage(Shell.RouteKind.BrowseSection, SectionPageFor);
-        Shell.SetPage(Shell.RouteKind.HomeCustomize, CustomizerPageFor);
+        // Home C1 go-live: the new Wavee.HomeUi screens replace HomeLandingView/HomeSectionPageView/HomeCustomizerPage
+        // (the old LandingPageFor/SectionPageFor/CustomizerPageFor factories, deleted with the rest of the Wave-5 Home
+        // UI). The three factories below already forward to the new screens — only their names are 0.3's own.
+        Shell.SetPage(Shell.RouteKind.Home, Wavee.HomeUi.HomeScreen.PageFor);
+        Shell.SetPage(Shell.RouteKind.HomeSection, HomeSectionPageFor);
+        Shell.SetPage(Shell.RouteKind.BrowseSection, BrowseSectionPageFor);
+        Shell.SetPage(Shell.RouteKind.HomeCustomize, CustomizePageFor);
         Shell.SetPage(Shell.RouteKind.Search, Search.PageFor);
         Shell.SetPage(Shell.RouteKind.Browse, Browse.DirectoryPageFor);
         Shell.SetPage(Shell.RouteKind.BrowseCategory, Browse.CategoryPageFor);
@@ -375,6 +53,15 @@ public readonly partial struct Home
         Notify.RefreshFeeds = Feeds.Refresh;
         Feeds.Install();
     }
+
+    // ── Home C1's own three page factories (the new Wavee.HomeUi screens) ──────────────────────────────────────────
+
+    static Element HomeSectionPageFor(in Shell.Route route) => Wavee.HomeUi.SectionScreen.For(SectionRouteUri(route), SectionRouteTitle(route), browse: false);
+    static Element BrowseSectionPageFor(in Shell.Route route) => Wavee.HomeUi.SectionScreen.For(SectionRouteUri(route), SectionRouteTitle(route), browse: true);
+    static Element CustomizePageFor(in Shell.Route route) => Wavee.HomeUi.CustomizeScreen.For();
+
+    static string SectionRouteUri(in Shell.Route route) => route.Subject.IsValid ? route.Subject.Id.ToString() : "";
+    static string? SectionRouteTitle(in Shell.Route route) => route.Arg.IsEmpty ? null : Entities.Strings.Resolve(route.Arg);
 
     /// <summary>The feed host (G-088 / G-089 / G-045, the P halves). UI thread unless a member says otherwise.</summary>
     public static class Feeds

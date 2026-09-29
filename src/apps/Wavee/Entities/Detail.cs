@@ -304,7 +304,7 @@ public static partial class Detail
         public const float EditableTitlePencilW = 20f, EditableTitlePencilGap = 8f;
         /// <summary>The editable title run's own width — the wrap width less the pencil slot, floored at 0 (#92).</summary>
         public static float EditableTitleMeasure(float wrapWidth) => MathF.Max(0f, wrapWidth - EditableTitlePencilW - EditableTitlePencilGap);
-        public const float ActionRowHeight = 40f;          // Play pill 36 + the row's 4-DIP top margin
+        public const float ActionRowHeight = 36f;          // Play button 32 + the row's 4-DIP top margin
         public const float DescriptionLineHeight = 18f;    // the 13px expandable blurb
         public const float IdentityGap = 4f;
         /// <summary>The BOX reserved for the list command bar (a 32 pill row padded 5 top and bottom).</summary>
@@ -1125,8 +1125,9 @@ public static partial class Detail
         /// <summary>The accent-rule placeholder: 20 × 2 at radius 1, 2-DIP top margin.</summary>
         public const float RuleWidth = Controls.AccentRuleWidth, RuleHeight = Controls.AccentRuleHeight,
                            RuleGap = Controls.AccentRuleGap, RuleRadius = 1f;
-        /// <summary>The action row: a 104-wide Play capsule, then four 32-DIP satellites.</summary>
-        public const float PlayPillWidth = 104f;
+        /// <summary>The action row: a 120-wide Play button (<see cref="Controls.PrimaryMinWidth"/>), then four 32-DIP
+        /// satellites. Renamed from <c>PlayPillWidth</c> (Workstream B migration group C).</summary>
+        public const float PlayButtonWidth = 120f;
         public const int SatelliteCount = 4;
         /// <summary>The toolbar band's three leading pills (the search pill is the command bar's SearchPreferred 240).</summary>
         public const float ToolbarPillA = 72f, ToolbarPillB = 88f, ToolbarPillC = 64f;
@@ -1219,11 +1220,15 @@ public static partial class Detail
         public const float Gap = 14f, PadTop = 24f, PadBottom = 24f;
         /// <summary>The CTA cluster sits 4 DIP lower than the gap alone would put it.</summary>
         public const float CtaTopMargin = 4f;
-        /// <summary>The fixed group: [primary] 12 [heart · Share · ⋯], the group 8 apart, 40-DIP FABs; the two units wrap.</summary>
-        public const float CtaGap = 12f, FabGap = 8f, FabSize = 40f;
-        /// <summary>A page's Satellites (W1's "36 FABs"): [primary][each satellite] in ONE wrap, 8 apart both ways.</summary>
-        public const float SatelliteSize = 36f, SatelliteGap = 8f;
-        public const float PillHeight = Controls.PillHeight;
+        /// <summary>The fixed group: [primary] 12 [heart · Share · ⋯], the group 8 apart, standard 32/r4 icon buttons
+        /// (Workstream B: was 40-DIP round FABs); the two units wrap.</summary>
+        public const float CtaGap = 12f, FabGap = 8f, FabSize = 32f;
+        /// <summary>A page's Satellites (W1's "36 FABs", now the standard 32 ladder): [primary][each satellite] in ONE
+        /// wrap, 8 apart both ways.</summary>
+        public const float SatelliteSize = 32f, SatelliteGap = 8f;
+        /// <summary>The CTA primary's height — Workstream B's 32/r4 <see cref="Controls.PrimaryButton"/>, not the old
+        /// 36-DIP capsule (<see cref="Controls.PillHeight"/>, kept compiling until Wave 5 deletes it).</summary>
+        public const float PillHeight = Controls.ButtonHeight;
         public const float EyebrowHeight = VerticalLayout.EyebrowRowHeight;
         /// <summary>The lead row: the owner block's 24 avatar, or an episode's show link (a 24 swatch + 13/600 name).</summary>
         public const float LeadHeight = Skeleton.OwnerAvatar;
@@ -1318,10 +1323,10 @@ public static partial class Detail
             {
                 if (fabs == 0) return CtaTopMargin + PillHeight;
                 float group = fabs * FabSize + (fabs - 1) * FabGap;
-                bool oneLine = Skeleton.PlayPillWidth + CtaGap + group <= coverEdge + WrapSlack;
+                bool oneLine = Skeleton.PlayButtonWidth + CtaGap + group <= coverEdge + WrapSlack;
                 return CtaTopMargin + (oneLine ? MathF.Max(PillHeight, FabSize) : PillHeight + CtaGap + FabSize);
             }
-            float used = Skeleton.PlayPillWidth, line = PillHeight, closed = 0f;
+            float used = Skeleton.PlayButtonWidth, line = PillHeight, closed = 0f;
             for (int i = 0; i < fabs; i++)
             {
                 if (used + SatelliteGap + SatelliteSize <= coverEdge + WrapSlack)

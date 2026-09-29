@@ -1251,6 +1251,10 @@ public static partial class Spotify
             /// identity, as 0.2.9's <c>CoverColorFiller</c> sent it.</summary>
             public static readonly Query DynamicColors = new("getDynamicColorsByUris",
                 "f0f112945d6d745bd8ff790317bbf8d310036da75df33130490e9d6dc96c59d9", false);
+            /// <summary>D2 (F32): a home feed's baseline-section cards' preview tracks — <c>{uris:[…]}</c> in,
+            /// <c>data.lookup[]</c> out (Spotify.Decode.Home.cs's <c>PreviewFold</c>).</summary>
+            public static readonly Query FeedBaselineLookup = new("feedBaselineLookup",
+                "a950fb7c4ecdcaf2aad2f3ca9ee9c3aa4b9c43c97e1d07d05148c4d355bea7fc", false);
 
             public static readonly Query SearchTopResults = new("searchTopResultsList",
                 "337d8b1b4f911fb12c60996623391703c2807550baccb51d95f5eabc8c8bdacd", true);
@@ -1322,6 +1326,15 @@ public static partial class Spotify
                 W = new Utf8JsonWriter(_buffer);
                 W.WriteStartObject();
                 W.WriteStartObject("variables");
+            }
+
+            /// <summary>A string-array variable, verbatim and in order (D2's <c>{uris:[…]}</c>, the same shape
+            /// <see cref="DynamicColorsBody"/> hand-wrote before this existed).</summary>
+            public readonly void WriteStrings(string name, ReadOnlySpan<string> values)
+            {
+                W.WriteStartArray(name);
+                foreach (string v in values) W.WriteStringValue(v);
+                W.WriteEndArray();
             }
 
             /// <summary>Close the body and hand back the bytes.</summary>
@@ -1431,6 +1444,25 @@ public static partial class Spotify
         {
             Result result = HomeQuery(facet, timeZone, ct);
             if (result.Ok) Decode.HomeFeed(result.Bytes, Encoding.UTF8.GetBytes(facet.Length == 0 ? Wavee.Home.FeedUri : Wavee.Home.FacetPrefix + facet), into);
+            return result.Status;
+        }
+
+        /// <summary>D2 (F32): <c>feedBaselineLookup</c> — the baseline sections' card uris in, their preview tracks
+        /// out. <paramref name="uris"/> is the deduped request the UI thread built at send
+        /// (<c>Fetch.FillPreviewMap</c>); <paramref name="map"/> is how the answer's <c>_uri</c>s are matched back to
+        /// every SECTION that carries them (<c>Decode.FeedBaselineLookup</c>'s <c>PreviewFold</c>) — a card shared by
+        /// two sections closes both from the one answer.</summary>
+        public static Result FeedBaselineLookupQuery(ReadOnlySpan<string> uris, CancellationToken ct)
+        {
+            var vars = new Vars(Queries.FeedBaselineLookup);
+            vars.WriteStrings("uris", uris);
+            return Pathfinder(Queries.FeedBaselineLookup, vars.Finish(), ct);
+        }
+
+        public static int FeedBaselineLookup(string[] uris, HomePreviewLink[] map, Staging into, CancellationToken ct)
+        {
+            Result result = FeedBaselineLookupQuery(uris, ct);
+            if (result.Ok) Decode.FeedBaselineLookup(result.Bytes, map, into);
             return result.Status;
         }
 

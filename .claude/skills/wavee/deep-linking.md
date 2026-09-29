@@ -24,7 +24,14 @@ parser never throws. Percent-encoding is decoded. A raw command line that *conta
 
 `route` / `arg` compose the shell's opaque nav keys:
 
-- pages: `home` `search` `library` `recents` `settings` — `arg` unused
+- pages: `search` `library` `recents` `settings` — `arg` unused
+- `home` — `arg` is a facet chip id (`""` All, `music-chip`, `podcasts-chip`, `audiobooks-chip`, or a Following
+  sub-chip id like `music-following-chip`). An unknown/missing id falls back to All
+  (`Wavee.HomeUi.FacetRoute.FacetOf`). The facet lives on `Shell.RouteArg(tab)`, a per-tab read signal
+  `HomeScreen` (`Home/Screen.UI.cs`) subscribes to — Home's keep-alive slot key ignores `Arg` on purpose (a facet
+  switch reuses the mounted `HomeScreen`, never remounts it), so the arg is never a frozen route prop. A facet
+  switch pushes a real history entry (`Shell.GoTo(new Route(RouteKind.Home, arg: …))`), so Back/Forward walk
+  facets like any other page.
 - entities: `album` `pl` `artist` `show` `prerelease` — `arg` is the Spotify URI; the consumer builds `{route}:{arg}`
   (e.g. `album:spotify:album:…`). `route` may also already be the full key (`album:spotify:album:…`) with no `arg`.
 

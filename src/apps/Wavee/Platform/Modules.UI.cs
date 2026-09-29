@@ -534,7 +534,9 @@ public static partial class Modules
             if (play && playing) { kids.Add(PlayingChip()); continue; }
             if (InvokeFor(moduleId, chip.Kind, chip.Id, chip.PlayableId, chip.Url) is not { } invoke) continue;
             string? glyph = play ? Icons.Play : string.Equals(chip.Kind, PageAction.KindOpenUrl, StringComparison.Ordinal) ? Icons.OpenInNewWindow : null;
-            kids.Add(Controls.Pill(chip.Label, invoke, chip.Primary ? ButtonAppearance.Accent : ButtonAppearance.Standard, glyph: glyph)
+            kids.Add((chip.Primary
+                ? Controls.PrimaryButton(chip.Label, invoke, Tok.AccentDefault, glyph)
+                : Button.Create(chip.Label, invoke, glyph: glyph))
                 with { Key = "chip:" + chip.Id + ":" + chip.Kind });
         }
         if (kids.Count == 0) return null;
@@ -543,9 +545,9 @@ public static partial class Modules
 
     static BoxEl PlayingChip() => new()
     {
-        Key = "chip:playing", Height = Controls.PillHeight, Shrink = 0f, Direction = 0, Gap = Spacing.S,
+        Key = "chip:playing", Height = Controls.ButtonHeight, Shrink = 0f, Direction = 0, Gap = Spacing.S,
         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Padding = new Edges4(18f, 0f, 18f, 0f),
-        Corners = Radii.FullAll, Fill = Tok.FillSubtleSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+        Corners = Radii.ControlAll, Fill = Tok.FillSubtleSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
         Role = AutomationRole.Text,
         Children =
         [

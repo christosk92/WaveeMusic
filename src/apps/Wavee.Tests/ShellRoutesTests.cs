@@ -315,6 +315,27 @@ public class ShellRouteCodecTests
     }
 
     [Fact]
+    public void Home_facet_round_trips_through_the_route_arg_and_discriminates_same_slot_but_not_the_keep_alive_key()
+    {
+        // Home C1 (facet history + deep link, plan "Owner decisions"): Home's KeyedByArg row column is FALSE —
+        // SlotKey must ignore the facet so a switch reuses the mounted HomeScreen — but SameSlot (which Go()/
+        // TabWorkspace.SetActiveRoute use to decide "is this a new place") is special-cased to discriminate on Arg
+        // for Home specifically, or a facet switch would silently no-op through Go()'s early return.
+        var all = Shell.Parse("home", "");
+        var music = Shell.Parse("home", "music-chip");
+        Assert.Equal(Shell.RouteKind.Home, all.Kind);
+        Assert.Equal(Shell.RouteKind.Home, music.Kind);
+        Assert.False(Shell.SameSlot(all, music));                     // different facet = a real place to Go() to
+        Assert.Equal(Shell.SlotKey(all with { Tab = 1 }), Shell.SlotKey(music with { Tab = 1 }));  // same keep-alive slot
+
+        // The deep-link composition round-trip: wavee://open?route=home&arg=music-chip.
+        var verb = Shell.DeepLink("wavee://open?route=home&arg=music-chip");
+        Assert.Equal(Shell.DeepLinkKind.Open, verb.Kind);
+        Assert.Equal(Shell.RouteKind.Home, verb.Route.Kind);
+        Assert.Equal("music-chip", Entities.Strings.Resolve(verb.Route.Arg));
+    }
+
+    [Fact]
     public void The_slot_key_carries_the_tab_and_the_arg_discriminator_but_never_the_direction()
     {
         var a = Shell.Parse("whatsnew", "0.2.9") with { Tab = 1 };

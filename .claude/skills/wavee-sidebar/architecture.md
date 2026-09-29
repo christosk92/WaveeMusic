@@ -226,6 +226,13 @@ serve it with no band-specific code. That also removed the documented **selectio
 plus a plan row for `"home"` were two registrations under one route key, which forced the band to opt out of the
 pane's route-keyed selection transaction. With one row, the problem ceases to exist.
 
+**The head's layout seed is EXACT** (2026-09-25, item J): V3 also supplies `RailHeadTiles` (the tile count of the same
+list `BuildRailHead` draws), and the rail seeds item 0 at `SidebarRailExtents.HeadExtentOf(tiles)` (top pad + tiles +
+gaps + rule — 287 DIP for five destinations + Home). Every wholesale republish reseeds the rail layout; with the old
+two-tile guess (101 DIP) each reseed was re-corrected by 186 DIP — the rail's "jump on selection". The engine now also
+anchors any reseed (`IAnchoredReseedLayout`), and `ReseedRailExtents` reseeds the rail's whole item count (head, rows,
+footer), not the plan's row count.
+
 **`RailHead` is back (W3), and it is the one deliberate exception.** Library V3's own nav band left the document
 entirely — it renders as fixed CHROME above the header (`Modes/LibraryV3/LibraryV3NavBand.cs`, mounted through
 `Head`, never scrolls, never filters/searches with the list) — so it has no section left for `BuildRail` to draw a

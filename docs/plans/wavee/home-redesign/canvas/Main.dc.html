@@ -1,0 +1,1299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home — dark</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+.board{
+  --bg:#1c1d22;
+  --text-primary:rgba(255,255,255,1);
+  --text-secondary:rgba(255,255,255,.786);
+  --text-tertiary:rgba(255,255,255,.5442);
+  --text-disabled:rgba(255,255,255,.3628);
+  --card-fill:rgba(255,255,255,.0512);
+  --card-stroke:rgba(0,0,0,.18);
+  --ctl-fill:rgba(255,255,255,.0605);
+  --ctl-fill-hover:rgba(255,255,255,.0837);
+  --ctl-fill-press:rgba(255,255,255,.0326);
+  --ctl-stroke:rgba(255,255,255,.07);
+  --ctl-stroke-top:rgba(255,255,255,.093);
+  --subtle-hover:rgba(255,255,255,.0605);
+  --subtle-press:rgba(255,255,255,.0419);
+  --control-stroke:rgba(255,255,255,.0837);
+  --hover-fill:rgba(255,255,255,.0605);
+  --divider:rgba(255,255,255,.0837);
+  --accent:#60cdff;
+  --accent-hover:rgba(96,205,255,.9);
+  --accent-press:rgba(96,205,255,.8);
+  --on-accent:#000;
+  --accent-text:#99ebff;
+  --focus-outer:#fff;
+  --focus-inner:rgba(0,0,0,.7);
+  --chap-bg:rgba(30,31,37,.94);
+  --pb-track:rgba(255,255,255,.2);
+  --font-display:"Segoe UI Variable Display","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  color:var(--text-primary);
+  background:var(--bg);
+  position:relative;
+  overflow:visible;
+  cursor:default;
+}
+@keyframes enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.enter{animation:enter 333ms cubic-bezier(0,0,0,1) both}
+.recents .ritem{animation:enter 250ms cubic-bezier(0,0,0,1) both}
+.recents .ritem:nth-child(2){animation-delay:30ms}
+.recents .ritem:nth-child(3){animation-delay:60ms}
+.recents .ritem:nth-child(4){animation-delay:90ms}
+.recents .ritem:nth-child(5){animation-delay:120ms}
+.recents .ritem:nth-child(6){animation-delay:150ms}
+.recents .ritem:nth-child(7){animation-delay:180ms}
+.recents .ritem:nth-child(8){animation-delay:210ms}
+
+.mica{
+  position:absolute; inset:0; z-index:0;
+  background:
+    radial-gradient(1100px 720px at 16% -8%, #2c3a52 0%, transparent 58%),
+    radial-gradient(900px 650px at 96% 4%, #3a2c34 0%, transparent 52%),
+    radial-gradient(800px 800px at 30% 65%, #22303c 0%, transparent 46%),
+    #1c1d22;
+}
+.mica::after{
+  content:"";
+  position:absolute; inset:0;
+  background-image:radial-gradient(rgba(255,255,255,.35) 1px, transparent 1.4px);
+  background-size:3px 3px;
+  opacity:.03;
+  mix-blend-mode:overlay;
+}
+.shell{position:relative;z-index:1;height:100%}
+
+/* focus: the Windows two-tone focus rectangle, keyboard only */
+button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--focus-outer);outline-offset:1px;box-shadow:0 0 0 1px var(--focus-inner)}
+button{font-family:inherit;cursor:default}
+
+/* ===================== merged title bar (real Wavee shell) ===================== */
+.titlebar{
+  position:absolute; top:0; left:0; width:1440px; height:48px;
+  display:flex; align-items:center; gap:4px;
+  padding:0 16px 0 10px;
+  background:rgba(20,21,26,.55);
+  border-bottom:1px solid rgba(255,255,255,.06);
+  z-index:60;
+}
+.tb-icon-btn{width:32px;height:32px;border-radius:4px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--text-secondary)}
+.tb-icon-btn:hover{background:var(--hover-fill);color:var(--text-primary)}
+.tb-icon-btn.dim{opacity:.35}
+.tb-icon-btn.dim:hover{background:transparent;color:var(--text-secondary)}
+.tb-hometab{display:flex;align-items:center;gap:8px;height:32px;padding:0 12px 0 10px;border-radius:4px;position:relative;margin-left:2px}
+.tb-hometab span{font-size:14px;font-weight:600;color:var(--text-primary)}
+.tb-hometab::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:var(--accent);border-radius:2px}
+.tb-search{flex:0 0 auto;width:420px;height:32px;margin:0 auto;border-radius:4px;background:rgba(255,255,255,.05);border:1px solid var(--control-stroke);display:flex;align-items:center;padding:0 10px 0 14px;gap:8px}
+.tb-search input{border:none;background:transparent;outline:none;color:var(--text-primary);font-size:13px;flex:1;font-family:inherit}
+.tb-search input::placeholder{color:var(--text-tertiary)}
+.tb-search svg{color:var(--text-tertiary);flex:0 0 auto}
+.tb-right{display:flex;align-items:center;gap:6px;margin-left:auto}
+.tb-avatar{width:28px;height:28px;border-radius:100px;background:linear-gradient(135deg,#caa06a,#8a5c3a);flex:0 0 auto}
+.tb-caption{display:flex;align-items:center;margin-left:4px}
+.tb-cap-btn{width:44px;height:48px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:var(--text-secondary);opacity:.75}
+.tb-cap-btn:hover{background:rgba(255,255,255,.06);opacity:1}
+.tb-cap-btn.close:hover{background:#c42b1c;color:#fff;opacity:1}
+
+/* ===================== narrow icon rail ===================== */
+.rail{
+  position:absolute; top:48px; left:0; width:56px; height:calc(100% - 48px - 80px);
+  display:flex; flex-direction:column; align-items:center;
+  padding:14px 0 10px;
+  z-index:30;
+}
+.rail-icons{display:flex;flex-direction:column;align-items:center;gap:4px}
+.rail-btn{width:40px;height:40px;border-radius:8px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--text-secondary)}
+.rail-btn:hover{background:var(--hover-fill);color:var(--text-primary)}
+.rail-btn.active{background:rgba(96,205,255,.16);color:var(--accent)}
+.rail-gap{height:10px}
+.rail-div{width:28px;height:1px;background:rgba(255,255,255,.08);margin:10px 0}
+.rail-pins{display:flex;flex-direction:column;align-items:center;gap:8px;overflow:hidden}
+.rail-pin{width:40px;height:40px;border-radius:8px;overflow:hidden;background:var(--card-fill);flex:0 0 auto}
+.rail-pin.circle{border-radius:100px}
+.rail-pin img{width:100%;height:100%;object-fit:cover;display:block}
+.rail-pin:hover{outline:1px solid rgba(255,255,255,.25)}
+
+/* ===================== content surface (raised layer on Mica) ===================== */
+.contentsurf{
+  position:absolute; top:48px; left:56px; width:1384px; height:calc(100% - 48px - 80px);
+  background:rgba(255,255,255,.035);
+  border-top:1px solid rgba(255,255,255,.06);
+  border-left:1px solid rgba(255,255,255,.06);
+  border-top-left-radius:8px;
+  overflow:hidden;
+}
+.scrollbar-hint{position:absolute;top:8px;right:3px;bottom:8px;width:4px;border-radius:2px;background:rgba(255,255,255,.10);z-index:50}
+.scrollbar-hint::after{content:"";position:absolute;top:0;left:0;width:4px;height:110px;border-radius:2px;background:rgba(255,255,255,.28)}
+
+.contentcol{padding:24px 32px 0 32px;display:flex;flex-direction:column;gap:40px;width:1380px}
+
+/* ===================== full-width now-playing bar ===================== */
+.nowplaying{
+  position:absolute; bottom:0; left:0; width:1440px; height:80px;
+  background:rgba(16,17,21,.64);
+  border-top:1px solid rgba(255,255,255,.07);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 18px;
+  z-index:60;
+}
+.np-track{display:flex; align-items:center; gap:12px; width:300px}
+.np-art{width:52px;height:52px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,.06);flex:0 0 auto}
+.np-art img{width:100%;height:100%;object-fit:cover}
+.np-meta .device{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--accent);margin-bottom:2px}
+.np-meta .t1{font-size:14px;font-weight:600;color:var(--text-primary)}
+.np-meta .t2{font-size:12px;color:var(--text-tertiary)}
+.np-heart{color:var(--text-tertiary);flex:0 0 auto;background:none;border:none}
+.np-controls{display:flex;flex-direction:column;align-items:center;gap:6px;width:520px}
+.np-btns{display:flex;align-items:center;gap:20px}
+.np-playbtn{width:40px;height:40px;border-radius:100px;background:var(--accent);border:none;display:flex;align-items:center;justify-content:center;color:#0b1420}
+.np-scrubrow{display:flex;align-items:center;gap:8px;width:100%}
+.np-time{font-size:12px;color:var(--text-tertiary);width:32px}
+.np-time.r{text-align:right}
+.np-scrub{flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.14);position:relative}
+.np-scrub .fill{position:absolute;left:0;top:0;bottom:0;width:9%;background:var(--accent);border-radius:2px}
+.np-right{width:300px;display:flex;justify-content:flex-end;align-items:center;gap:16px;color:var(--text-tertiary)}
+.np-right .sel{width:26px;height:26px;border-radius:4px;background:rgba(96,205,255,.16);color:var(--accent);display:flex;align-items:center;justify-content:center}
+
+/* ===================== WinUI controls ===================== */
+.btn{height:32px;padding:0 12px;border-radius:4px;display:inline-flex;align-items:center;gap:8px;font-size:14px;line-height:20px;color:var(--text-primary);background:var(--ctl-fill);border:1px solid var(--ctl-stroke);border-top-color:var(--ctl-stroke-top)}
+.btn:hover{background:var(--ctl-fill-hover)}
+.btn:active{background:var(--ctl-fill-press);color:var(--text-secondary);border-top-color:var(--ctl-stroke)}
+.btn.accent{background:var(--accent);color:var(--on-accent);font-weight:600;border-color:rgba(255,255,255,.08);border-bottom-color:rgba(0,0,0,.14);min-width:120px;justify-content:center}
+.btn.accent:hover{background:var(--accent-hover)}
+.btn.accent:active{background:var(--accent-press);color:rgba(0,0,0,.5)}
+.ibtn{width:32px;height:32px;border-radius:4px;border:none;background:transparent;color:var(--text-primary);display:inline-flex;align-items:center;justify-content:center}
+.ibtn:hover{background:var(--subtle-hover)}
+.ibtn:active{background:var(--subtle-press);color:var(--text-secondary)}
+.linkbtn{height:28px;padding:0 8px;border-radius:4px;border:none;background:transparent;color:var(--accent-text);font-size:14px;display:inline-flex;align-items:center}
+.linkbtn:hover{background:var(--subtle-hover)}
+.linkbtn:active{background:var(--subtle-press);color:rgba(153,235,255,.8)}
+
+/* ===================== chapter headers + PipsPager ===================== */
+.zone-hd{display:flex;align-items:baseline;gap:12px;height:28px;margin-bottom:12px}
+.chap{position:sticky;top:44px;z-index:20;display:flex;align-items:center;justify-content:space-between;height:52px;margin:0 -32px 8px;padding:0 32px;background:var(--chap-bg);backdrop-filter:blur(16px) saturate(130%)}
+.chap-l{display:flex;align-items:baseline;gap:12px}
+.chap-title,.zone-title{font-family:var(--font-display);font-size:20px;line-height:28px;font-weight:600;margin:0}
+.chap-sub{font-size:14px;line-height:20px;color:var(--text-secondary)}
+.chap-r{display:flex;align-items:center;gap:8px}
+.pager{display:flex;align-items:center;gap:2px}
+.pg-btn{width:28px;height:28px;border-radius:4px;border:none;background:transparent;color:var(--text-secondary);display:flex;align-items:center;justify-content:center}
+.pg-btn:hover{background:var(--subtle-hover);color:var(--text-primary)}
+.pg-btn:active{background:var(--subtle-press)}
+.pg-btn.off{color:var(--text-disabled);pointer-events:none}
+.pips{display:flex;align-items:center;gap:0;padding:0 2px}
+.pip{width:16px;height:28px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;padding:0}
+.pip::after{content:"";width:4px;height:4px;border-radius:50%;background:var(--text-tertiary);transition:width 83ms linear,height 83ms linear}
+.pip:hover::after{width:6px;height:6px;background:var(--text-secondary)}
+.pip.on::after{width:6px;height:6px;background:var(--text-primary)}
+.vdiv{width:1px;height:16px;background:var(--divider);margin:0 4px}
+.viewport{overflow:hidden;width:1332px;margin:-8px;padding:8px}
+.track{display:flex;gap:16px;transition:transform 250ms cubic-bezier(0,0,0,1)}
+
+/* ===================== daylist hero: a card on the layer ===================== */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) 540px;gap:32px;height:320px;padding:12px 12px 12px 32px;background:var(--card-fill);border:1px solid var(--card-stroke);border-radius:8px}
+.hero-text{display:flex;flex-direction:column;justify-content:space-between;padding:20px 0 12px;min-width:0}
+.eyebrow{font-size:14px;line-height:20px;color:var(--text-secondary)}
+.hero-title{font-family:var(--font-display);font-size:40px;line-height:52px;font-weight:600;margin:4px 0 0;letter-spacing:0}
+.hero-tags{font-size:14px;line-height:20px;color:var(--text-tertiary);margin-top:6px}
+.tag{color:var(--text-secondary);text-decoration:none}
+.tag:hover{color:var(--text-primary);text-decoration:underline}
+.hero-meta{font-size:12px;line-height:16px;color:var(--text-tertiary);margin-top:4px}
+.hero-actions{display:flex;align-items:center;gap:8px;margin-top:20px}
+.hero-art{position:relative;border-radius:4px;overflow:hidden;background:var(--card-fill)}
+.hero-art img{width:100%;height:100%;object-fit:cover;object-position:50% 40%;display:block}
+.dp-top{display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px}
+.dp-count{font-weight:600;font-variant-numeric:tabular-nums}
+.dp-next{color:var(--text-secondary)}
+.dp-bar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-top:10px}
+.dp-seg{height:4px;border-radius:2px;background:rgba(255,255,255,.12);position:relative;overflow:hidden}
+.dp-seg.done{background:rgba(255,255,255,.3)}
+.dp-fill{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:2px}
+.dp-labels{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-top:6px}
+.dp-label{font-size:12px;line-height:16px;color:var(--text-tertiary);white-space:nowrap}
+.dp-label.now{color:var(--text-primary);font-weight:600}
+
+/* ===================== Recently played: horizontal item template ===================== */
+.recents{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 12px}
+.ritem{position:relative;display:flex;align-items:center;gap:12px;height:64px;padding:0 8px;border-radius:4px;background:var(--card-fill);border:1px solid var(--card-stroke);min-width:0}
+.ritem:hover{background:var(--ctl-fill-hover)}
+.ritem:active{background:var(--ctl-fill-press)}
+.ritem .art{width:48px;height:48px;border-radius:4px;overflow:hidden;flex:0 0 auto;background:var(--card-fill)}
+.ritem .art.round{border-radius:50%}
+.ritem .art img{width:100%;height:100%;object-fit:cover;display:block}
+.ritem .txt{min-width:0;flex:1}
+.t-title{font-size:14px;line-height:20px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t-cap{font-size:12px;line-height:16px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t-cap .ago{color:var(--text-tertiary)}
+.ritem .ibtn{opacity:0;flex:0 0 auto}
+.ritem:hover .ibtn,.ritem:focus-within .ibtn{opacity:1}
+.ritem.playing{border-color:rgba(96,205,255,.5)}
+/* Recently played → the Recents page: a header HyperlinkButton + the grid's last cell as a navigation item */
+.rp-hd{justify-content:space-between;align-items:center}
+a.linkbtn{text-decoration:none}
+.rp-l{display:flex;align-items:baseline;gap:12px}
+.ritem.hist{color:inherit;text-decoration:none;background:transparent;border:1px dashed rgba(255,255,255,.14)}
+.ritem.hist:hover{background:var(--subtle-hover);border-style:solid;border-color:var(--ctl-stroke)}
+.ritem.hist:active{background:var(--subtle-press)}
+.hist-plate{width:48px;height:48px;border-radius:4px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:rgba(96,205,255,.12);color:var(--accent-text)}
+.hist-week{display:flex;align-items:flex-end;gap:2px;height:16px;margin-top:2px;font-size:12px;line-height:16px;color:var(--text-secondary);white-space:nowrap}
+.hist-week i{display:block;width:3px;border-radius:1px;background:rgba(255,255,255,.28)}
+.hist-week i.today{background:var(--accent)}
+.hist-week span{margin-left:6px;align-self:center}
+.hist-chev{color:var(--text-tertiary);flex:0 0 auto;margin-right:4px}
+.ritem.hist:hover .hist-chev{color:var(--text-primary)}
+.eq{display:inline-flex;align-items:flex-end;gap:2px;height:10px;margin-right:6px;vertical-align:-1px}
+.eq i{display:block;width:2px;background:var(--accent);border-radius:1px}
+
+/* ===================== GridView media item (image and text below) ===================== */
+.gitem{position:relative;flex:0 0 auto;display:flex;flex-direction:column;color:inherit;text-decoration:none}
+.gitem::before{content:"";position:absolute;inset:-6px;border-radius:8px;background:transparent;transition:background 83ms linear;z-index:0}
+.gitem:hover::before{background:var(--subtle-hover)}
+.gitem:active::before{background:var(--subtle-press)}
+.gitem > *{position:relative;z-index:1}
+.cover{position:relative;aspect-ratio:1/1;border-radius:4px;overflow:hidden;background:var(--card-fill)}
+.cover.round{border-radius:50%}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+.gplay{position:absolute;left:8px;bottom:8px;width:40px;height:40px;border-radius:50%;border:none;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;opacity:0;transform:translateY(4px);transition:opacity 167ms linear,transform 167ms cubic-bezier(0,0,0,1);box-shadow:0 2px 4px rgba(0,0,0,.26)}
+.gplay:hover{background:var(--accent-hover)}
+.gitem:hover .gplay,.gitem:focus-within .gplay{opacity:1;transform:none}
+.cover.round .gplay{left:50%;margin-left:-20px}
+.g-title{margin-top:8px;font-size:14px;line-height:20px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-cap{font-size:12px;line-height:16px;color:var(--text-secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:32px}
+.g-cap.one{-webkit-line-clamp:1;height:16px}
+.g-meta{font-size:12px;line-height:16px;color:var(--text-tertiary)}
+.w206{width:206px}
+.w150{width:150.5px}
+.w428{width:428px}
+.w317{width:317px}
+/* wide lead item: spans exactly two cells of its GridView, so paging stays card-aligned */
+.leadimg{position:relative;border-radius:4px;overflow:hidden;background:var(--card-fill)}
+.w428 .leadimg{height:206px}
+.w317 .leadimg{height:150.5px}
+.leadimg img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 333ms cubic-bezier(0,0,0,1)}
+.gitem:hover .leadimg img{transform:scale(1.02)}
+.lead-meta{color:var(--text-tertiary)}
+.wide{aspect-ratio:16/9;border-radius:4px;overflow:hidden;position:relative;background:var(--card-fill)}
+.wide img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 333ms cubic-bezier(0,0,0,1)}
+.gitem:hover .wide img{transform:scale(1.02)}
+
+/* ===================== list rows (releases, clusters) ===================== */
+.sub-hd{display:flex;align-items:baseline;gap:12px;margin:24px 0 8px}
+.sub-title{font-size:14px;line-height:20px;font-weight:600}
+.sub-cap{font-size:12px;line-height:16px;color:var(--text-tertiary)}
+.list2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 24px}
+.lrow{display:flex;align-items:center;gap:12px;height:64px;padding:0 8px;border-radius:4px;min-width:0}
+.lrow:hover{background:var(--subtle-hover)}
+.lrow:active{background:var(--subtle-press)}
+.lrow .art{width:48px;height:48px;border-radius:4px;overflow:hidden;flex:0 0 auto;background:var(--card-fill)}
+.lrow .art img{width:100%;height:100%;object-fit:cover;display:block}
+.lrow .txt{flex:1;min-width:0}
+.lrow .when{font-size:12px;color:var(--text-tertiary);width:88px;flex:0 0 auto}
+.lrow .ibtn{opacity:0}
+.lrow:hover .ibtn,.lrow:focus-within .ibtn{opacity:1}
+.badge{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;background:rgba(255,255,255,.0837);font-size:12px;line-height:16px;color:var(--text-secondary);margin-right:6px}
+.badge.new{background:rgba(96,205,255,.16);color:var(--accent-text)}
+
+.groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.gcard{background:var(--card-fill);border:1px solid var(--card-stroke);border-radius:8px;padding:12px 8px 8px}
+.gcard-hd{display:flex;align-items:center;justify-content:space-between;padding:0 8px 8px 8px;margin-bottom:4px;border-bottom:1px solid var(--divider)}
+.gcard-hd .over{font-size:12px;line-height:16px;color:var(--text-tertiary)}
+.gcard-hd .who{font-size:14px;line-height:20px;font-weight:600}
+.gcard .lrow{height:56px}
+.gcard .lrow .art{width:40px;height:40px}
+
+/* ===================== browse tiles (SettingsCard-like) ===================== */
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 12px}
+.tile{cursor:default;display:flex;align-items:center;gap:12px;height:68px;padding:0 12px 0 10px;border-radius:4px;background:var(--card-fill);border:1px solid var(--card-stroke);min-width:0;color:inherit;text-decoration:none}
+.tile:hover{background:var(--ctl-fill-hover)}
+.tile:active{background:var(--ctl-fill-press)}
+.tile .art{width:48px;height:48px;border-radius:4px;overflow:hidden;flex:0 0 auto}
+.tile .art img{width:100%;height:100%;object-fit:cover;display:block}
+.tile .txt{flex:1;min-width:0}
+.tile .chev{color:var(--text-tertiary);flex:0 0 auto}
+.tile .glyph{width:48px;height:48px;border-radius:4px;flex:0 0 auto;background:rgba(255,255,255,.0605);display:flex;align-items:center;justify-content:center;color:var(--text-secondary)}
+.tiles3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.footer-pad{height:32px}
+
+/* ===================== facet control: the page-title pivot (rest) ===================== */
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.facet-row{position:relative;display:flex;align-items:center;height:40px;margin-bottom:-20px}
+.facet-tabs{display:flex;align-items:center;gap:24px}
+.facet-word{height:40px;padding:0 8px;border:none;border-radius:4px;background:transparent;font-family:var(--font-display);font-size:28px;line-height:36px;font-weight:400;letter-spacing:0;color:var(--text-secondary);display:inline-flex;align-items:center;white-space:nowrap;transition:color 83ms linear,background-color 83ms linear}
+.facet-word:first-child{margin-left:-8px}
+.facet-word:hover{background:var(--subtle-hover);color:var(--text-primary)}
+.facet-word:active{background:var(--subtle-press);color:var(--text-secondary)}
+.facet-word.sel{font-weight:600;color:var(--text-primary)}
+.facet-trail{margin-left:auto;display:flex;align-items:center}
+.facet-toggle{height:32px;padding:0 12px 0 10px;gap:8px;border:none;border-radius:4px;background:transparent;color:var(--text-secondary);font-size:14px;line-height:20px;display:inline-flex;align-items:center;animation:fadein 167ms linear both;transition:background-color 83ms linear,color 83ms linear}
+.facet-toggle:hover{background:var(--subtle-hover);color:var(--text-primary)}
+.facet-toggle:active{background:var(--subtle-press);color:var(--text-secondary)}
+.facet-toggle.on{background:var(--subtle-hover);color:var(--text-primary)}
+.facet-toggle.on:hover{background:var(--ctl-fill-hover)}
+.facet-toggle .g-on{display:none;color:var(--accent-text)}
+.facet-toggle.on .g-on{display:block}
+.facet-toggle.on .g-off{display:none}
+.facet-toggle.sm{height:28px;padding:0 10px 0 8px}
+.facet-toggle.sm svg{width:14px;height:14px}
+
+/* indeterminate ProgressBar: 3px, the WinUI two-indicator sweep on a 1px track, 2s loop */
+.facet-bar{position:absolute;left:0;right:0;top:40px;height:3px;overflow:hidden;pointer-events:none;animation:fadein 83ms linear both}
+.facet-bar::before{content:"";position:absolute;left:0;right:0;top:1px;height:1px;background:var(--pb-track)}
+.facet-bar i{position:absolute;top:0;height:3px;border-radius:1.5px;background:var(--accent)}
+.facet-bar i.a{width:40%;left:-40%;animation:pb-a 2s cubic-bezier(.4,0,.6,1) infinite}
+.facet-bar i.b{width:60%;left:-60%;animation:pb-b 2s cubic-bezier(.4,0,.6,1) infinite}
+@keyframes pb-a{0%{left:-40%}60%{left:100%}100%{left:100%}}
+@keyframes pb-b{0%{left:-60%}40%{left:-60%}100%{left:100%}}
+
+/* compact sticky band: appears once the rest row scrolls away (scrollTop > 64, 8px hysteresis) */
+.facet-band{position:absolute;top:0;left:0;right:0;height:44px;padding:0 36px 0 32px;display:none;align-items:center;z-index:45;background:rgba(28,29,34,.92);backdrop-filter:blur(16px) saturate(130%);border-bottom:1px solid var(--divider)}
+.contentsurf.scrolled .facet-band{display:flex;animation:band-in 167ms cubic-bezier(0,0,0,1) both}
+@keyframes band-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.facet-band.busy{border-bottom-color:transparent}
+.facet-band .facet-bar{top:auto;bottom:-2px}
+.facet-band .facet-trail{margin-left:auto}
+.contentsurf.scrolled .contentcol{margin-top:-616px}
+.seg{display:inline-flex;align-items:center;height:32px;border-radius:4px;background:rgba(0,0,0,.10);border:1px solid var(--control-stroke)}
+.seg-item{height:30px;padding:0 12px;border:1px solid transparent;border-radius:4px;background:transparent;font-size:14px;line-height:20px;color:var(--text-secondary);transition:background-color 83ms linear,color 83ms linear}
+.seg-item:hover{background:var(--subtle-hover);color:var(--text-primary)}
+.seg-item:active{background:var(--subtle-press)}
+.seg-item.sel{background:var(--ctl-fill);border-color:var(--ctl-stroke);border-top-color:var(--ctl-stroke-top);border-bottom-color:rgba(0,0,0,.18);color:var(--text-primary);font-weight:600}
+
+/* the switch: keep the old page, dim it, no hit-testing; swap on arrival (83ms out, 250ms in, 30ms zone stagger) */
+.facet-page{transition:opacity 167ms linear}
+.facet-page.busy{opacity:.6;pointer-events:none}
+.facet-page.out{opacity:0;transition-duration:83ms;pointer-events:none}
+.view{display:flex;flex-direction:column;gap:40px}
+.view.zin > *{animation:enter 250ms cubic-bezier(0,0,0,1) both}
+.view.zin > *:nth-child(2){animation-delay:30ms}
+.view.zin > *:nth-child(3){animation-delay:60ms}
+.view.zin > *:nth-child(4){animation-delay:90ms}
+.view.zin > *:nth-child(5){animation-delay:120ms}
+.view.zin > *:nth-child(n+6){animation-delay:150ms}
+
+/* InfoBar, Error severity: sits in the bar's slot on failure, the old page stays */
+.infobar{display:flex;align-items:center;gap:12px;height:48px;padding:0 4px 0 16px;border-radius:8px;border:1px solid rgba(0,0,0,.1);background:#442726;margin-bottom:-32px;animation:bar-in 167ms cubic-bezier(0,0,0,1) both}
+@keyframes bar-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.ib-icon{width:16px;height:16px;border-radius:50%;background:#ff99a4;color:#000;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.ib-text{flex:1;min-width:0;font-size:14px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib-text b{font-weight:600;margin-right:8px}
+
+/* Audiobooks starter (an empty facet keeps its title and gets a starter, never a blank page) */
+.starter{width:480px;margin:140px auto 0;display:flex;flex-direction:column;align-items:center;text-align:center}
+.starter-glyph{color:var(--text-tertiary);margin-bottom:16px}
+.starter-h{font-family:var(--font-display);font-size:20px;line-height:28px;font-weight:600;margin:0}
+.starter-p{font-size:14px;line-height:20px;color:var(--text-secondary);margin:8px 0 20px}
+
+/* ===================== podcasts: episodes, shows, videos ===================== */
+.g-title.two{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;height:40px}
+.xbadge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:1px solid var(--text-secondary);border-radius:4px;font-size:12px;line-height:14px;font-weight:400;color:var(--text-secondary);margin-right:6px;vertical-align:-3px}
+.vid-glyph{display:inline-block;vertical-align:-2px;margin-right:4px;color:var(--text-tertiary)}
+.ep-lead-grid{display:grid;grid-template-columns:428px minmax(0,1fr);gap:16px;align-items:start}
+.ep-list{display:flex;flex-direction:column;gap:4px}
+.ep-row{position:relative;display:flex;align-items:center;gap:12px;height:76px;padding:0 8px;border-radius:4px;min-width:0;color:inherit;transition:background-color 83ms linear}
+.ep-row:hover{background:var(--subtle-hover)}
+.ep-row:active{background:var(--subtle-press)}
+.ep-art{position:relative;width:56px;height:56px;border-radius:4px;overflow:hidden;flex:0 0 auto;background:var(--card-fill)}
+.ep-art img{width:100%;height:100%;object-fit:cover;display:block}
+.ep-play{position:absolute;left:12px;top:12px;width:32px;height:32px;border-radius:50%;border:none;padding:0;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 83ms linear;box-shadow:0 2px 4px rgba(0,0,0,.26)}
+.ep-play:hover{background:var(--accent-hover)}
+.ep-row:hover .ep-play,.ep-row:focus-within .ep-play,.ritem.ep:hover .ep-play,.ritem.ep:focus-within .ep-play{opacity:1}
+.ep-txt{flex:1;min-width:0}
+.ep-title{font-size:14px;line-height:20px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ep-title.one{-webkit-line-clamp:1}
+.ep-cap{font-size:12px;line-height:16px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.ep-row .ibtn{opacity:0;flex:0 0 auto}
+.ep-row:hover .ibtn,.ep-row:focus-within .ibtn{opacity:1}
+.progress-hair{position:relative;height:2px;border-radius:1px;background:var(--control-stroke);margin-top:6px;overflow:hidden}
+.progress-hair i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:1px}
+.ritem.ep{height:76px}
+.cont3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.vtiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.shows8{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:16px}
+.eplist2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px}
+.gcard{display:flex;flex-direction:column}
+.gcard-ft{display:flex;align-items:center;gap:4px;margin-top:auto;padding:8px 0 0 8px;border-top:1px solid var(--divider)}
+.gcard-ft .th{width:28px;height:28px;border-radius:4px;overflow:hidden;flex:0 0 auto;background:var(--card-fill)}
+.gcard-ft .th img{width:100%;height:100%;object-fit:cover;display:block}
+.gcard-ft .linkbtn{margin-left:auto}
+</style>
+</helmet>
+<div class="board" style="width:1440px;height:3560px;">
+  <div class="mica"></div>
+  <div class="shell">
+
+    <!-- merged title bar -->
+    <div class="titlebar">
+      <button class="tb-icon-btn" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><line x1="2" y1="4" x2="14" y2="4" stroke="currentColor"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor"/><line x1="2" y1="12" x2="14" y2="12" stroke="currentColor"/></svg></button>
+      <button class="tb-icon-btn" aria-label="Back"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor"/></svg></button>
+      <button class="tb-icon-btn dim" aria-label="Forward"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor"/></svg></button>
+      <div class="tb-hometab"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l6-5 6 5v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8z" stroke="currentColor"/></svg><span>Home</span></div>
+      <div class="tb-search">
+        <input type="text" placeholder="Search songs, artists, albums&hellip;" readonly>
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor"/><line x1="11" y1="11" x2="14" y2="14" stroke="currentColor"/></svg>
+      </div>
+      <div class="tb-right">
+        <div class="tb-avatar"></div>
+        <button class="tb-icon-btn" aria-label="Toggle theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.2" stroke="currentColor"/><line x1="8" y1="1" x2="8" y2="2.6" stroke="currentColor"/><line x1="8" y1="13.4" x2="8" y2="15" stroke="currentColor"/><line x1="1" y1="8" x2="2.6" y2="8" stroke="currentColor"/><line x1="13.4" y1="8" x2="15" y2="8" stroke="currentColor"/></svg></button>
+        <div class="tb-caption">
+          <button class="tb-cap-btn" aria-label="Minimize"><svg width="10" height="10" viewBox="0 0 10 10"><rect y="4.5" width="10" height="1" fill="currentColor"/></svg></button>
+          <button class="tb-cap-btn" aria-label="Maximize"><svg width="10" height="10" viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="currentColor"/></svg></button>
+          <button class="tb-cap-btn close" aria-label="Close"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- narrow icon rail -->
+    <div class="rail">
+      <div class="rail-icons">
+        <button class="rail-btn" aria-label="Liked songs"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 13.5s-5.5-3.3-5.5-7A3 3 0 0 1 8 4.5 3 3 0 0 1 13.5 6.5c0 3.7-5.5 7-5.5 7z" stroke="currentColor"/></svg></button>
+        <button class="rail-btn" aria-label="Library"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor"/><circle cx="8" cy="8" r="1.6" stroke="currentColor"/></svg></button>
+        <button class="rail-btn" aria-label="Artists"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.6" stroke="currentColor"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor"/></svg></button>
+        <button class="rail-btn" aria-label="Radio"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="10" r="1.4" stroke="currentColor"/><path d="M5 7.5a4.2 4.2 0 0 1 6 0M3 5.5a7 7 0 0 1 10 0" stroke="currentColor"/></svg></button>
+        <button class="rail-btn" aria-label="Podcasts"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="6" y="2" width="4" height="7" rx="2" stroke="currentColor"/><path d="M4 8a4 4 0 0 0 8 0M8 12v2" stroke="currentColor"/></svg></button>
+        <div class="rail-gap"></div>
+        <button class="rail-btn active" aria-label="Home"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M2 8l6-5 6 5v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8z" stroke="currentColor"/></svg></button>
+      </div>
+      <div class="rail-div"></div>
+      <div class="rail-pins">
+        <div class="rail-pin"><img src="/_blob/8865677dea57acc8d63d3bde41f96e14" alt="scream teen pop friday morning"></div>
+        <div class="rail-pin circle"><img src="/_blob/f8db5803074355194707322a04fa4535" alt="Kris Kross Amsterdam"></div>
+        <div class="rail-pin"><img src="/_blob/68e52232467e64319de1e7a9edfce6df" alt="Daily Mix 2"></div>
+        <div class="rail-pin"><img src="/_blob/2df09a40f07936ab2e7fe1284ce7c77b" alt="rosie"></div>
+        <div class="rail-pin"><img src="/_blob/5928ab11e5c76e978673acbfe48bbbb5" alt="90's Nederlandstalig"></div>
+      </div>
+    </div>
+
+    <!-- raised content surface -->
+    <div class="contentsurf {{surfCls}}">
+      <div class="scrollbar-hint"></div>
+
+      <!-- compact sticky band: replaces the rest row once it scrolls away. This full-page board is drawn at the top;
+           set the "scroll" tweak to "scrolled" to see the band with the page scrolled 616px ("Made for you" stuck under it). -->
+      <div class="facet-band {{bandCls}}">
+        <div class="seg" role="tablist" aria-label="Content type">
+          <button class="seg-item {{fx.all.cls}}" role="tab" aria-selected="{{fx.all.aria}}" tabindex="{{fx.all.tab}}" onClick="{{fx.all.pick}}">All</button>
+          <button class="seg-item {{fx.music.cls}}" role="tab" aria-selected="{{fx.music.aria}}" tabindex="{{fx.music.tab}}" onClick="{{fx.music.pick}}">Music</button>
+          <button class="seg-item {{fx.podcasts.cls}}" role="tab" aria-selected="{{fx.podcasts.aria}}" tabindex="{{fx.podcasts.tab}}" onClick="{{fx.podcasts.pick}}">Podcasts</button>
+          <button class="seg-item {{fx.audiobooks.cls}}" role="tab" aria-selected="{{fx.audiobooks.aria}}" tabindex="{{fx.audiobooks.tab}}" onClick="{{fx.audiobooks.pick}}">Audiobooks</button>
+        </div>
+        <div class="facet-trail">
+          <sc-if value="{{hasToggle}}" hint-placeholder-val="{{ false }}">
+            <button class="facet-toggle sm {{followCls}}" aria-pressed="{{followAria}}" aria-description="{{followDesc}}" onClick="{{toggleFollow}}"><svg class="g-off" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="5" r="2.6" stroke="currentColor"/><path d="M1.5 14c0-2.8 2.2-5 5-5 1.2 0 2.3.4 3.1 1.1" stroke="currentColor" stroke-linecap="round"/><path d="M9.8 12.3l1.7 1.7 3.2-3.4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="g-on" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="5" r="3" fill="currentColor"/><path d="M1 14.5c0-3 2.5-5.5 5.5-5.5 1.3 0 2.5.4 3.4 1.2L8.2 14.5z" fill="currentColor"/><path d="M9.8 12.3l1.7 1.7 3.2-3.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Following</button>
+          </sc-if>
+        </div>
+        <sc-if value="{{busy}}" hint-placeholder-val="{{ false }}">
+          <div class="facet-bar" role="progressbar" aria-label="{{busyLabel}}"><i class="a"></i><i class="b"></i></div>
+        </sc-if>
+      </div>
+
+      <div class="contentcol">
+
+        <!-- ⓪ Facet control: a page-title pivot (Title 28/36, selected Semibold). Click a word: the old page stays,
+             dims to .6 with no hit-testing, a 3px indeterminate ProgressBar pins under the row, and ~1.2s later the
+             new page swaps in (83ms out, 250ms in, 30ms zone stagger). No skeleton, no shimmer. -->
+        <div class="facet-row">
+          <div class="facet-tabs" role="tablist" aria-label="Content type">
+            <button class="facet-word {{fx.all.cls}}" role="tab" aria-selected="{{fx.all.aria}}" tabindex="{{fx.all.tab}}" onClick="{{fx.all.pick}}">All</button>
+            <button class="facet-word {{fx.music.cls}}" role="tab" aria-selected="{{fx.music.aria}}" tabindex="{{fx.music.tab}}" onClick="{{fx.music.pick}}">Music</button>
+            <button class="facet-word {{fx.podcasts.cls}}" role="tab" aria-selected="{{fx.podcasts.aria}}" tabindex="{{fx.podcasts.tab}}" onClick="{{fx.podcasts.pick}}">Podcasts</button>
+            <button class="facet-word {{fx.audiobooks.cls}}" role="tab" aria-selected="{{fx.audiobooks.aria}}" tabindex="{{fx.audiobooks.tab}}" onClick="{{fx.audiobooks.pick}}">Audiobooks</button>
+          </div>
+          <div class="facet-trail">
+            <sc-if value="{{hasToggle}}" hint-placeholder-val="{{ false }}">
+              <button class="facet-toggle {{followCls}}" aria-pressed="{{followAria}}" aria-description="{{followDesc}}" onClick="{{toggleFollow}}"><svg class="g-off" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="5" r="2.6" stroke="currentColor"/><path d="M1.5 14c0-2.8 2.2-5 5-5 1.2 0 2.3.4 3.1 1.1" stroke="currentColor" stroke-linecap="round"/><path d="M9.8 12.3l1.7 1.7 3.2-3.4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="g-on" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="5" r="3" fill="currentColor"/><path d="M1 14.5c0-3 2.5-5.5 5.5-5.5 1.3 0 2.5.4 3.4 1.2L8.2 14.5z" fill="currentColor"/><path d="M9.8 12.3l1.7 1.7 3.2-3.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Following</button>
+            </sc-if>
+          </div>
+          <sc-if value="{{busy}}" hint-placeholder-val="{{ false }}">
+            <div class="facet-bar" role="progressbar" aria-label="{{busyLabel}}"><i class="a"></i><i class="b"></i></div>
+          </sc-if>
+        </div>
+
+        <!-- failure: the bar hides, the pivot reverts, the old page returns to full opacity, and an InfoBar takes the bar's slot -->
+        <sc-if value="{{failShown}}" hint-placeholder-val="{{ false }}">
+          <div class="infobar" role="alert">
+            <div class="ib-icon" aria-hidden="true"><svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+            <div class="ib-text"><b>Couldn't load {{failLabel}}</b>Check your connection and try again.</div>
+            <button class="btn" onClick="{{retry}}">Retry</button>
+            <button class="ibtn" aria-label="Close" onClick="{{dismiss}}"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.2"/></svg></button>
+          </div>
+        </sc-if>
+
+        <div class="facet-page {{pageCls}}" aria-busy="{{busyAria}}">
+          <sc-if value="{{view.all}}" hint-placeholder-val="{{ true }}">
+          <div class="view {{zinCls}}">
+        <!-- ① Daylist: the play-now card. Text on the layer, header image inset. -->
+        <section class="hero enter" aria-label="Your daylist">
+          <div class="hero-text">
+            <div>
+              <div class="eyebrow">Good morning, Chris &middot; your daylist</div>
+              <h1 class="hero-title">scream teen pop friday morning</h1>
+              <div class="hero-tags"><a class="tag" href="#">scream</a> &middot; <a class="tag" href="#">teen pop</a> &middot; <a class="tag" href="#">belter</a> &middot; <a class="tag" href="#">garage band</a> &middot; <a class="tag" href="#">international</a> &middot; <a class="tag" href="#">hollywood</a></div>
+              <div class="hero-meta">Playlist &middot; Spotify &middot; 50 songs</div>
+              <div class="hero-actions">
+                <button class="btn accent"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg>Play</button>
+                <button class="btn"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h2.5L11 12h3M2 12h2.5L11 4h3M12 2l2 2-2 2M12 10l2 2-2 2" stroke="currentColor"/></svg>Shuffle</button>
+                <button class="ibtn" onClick="{{toggleLike}}" aria-label="Save to your library" aria-pressed="{{likedAria}}"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 13.5s-5.5-3.3-5.5-7A3 3 0 0 1 8 4.5 3 3 0 0 1 13.5 6.5c0 3.7-5.5 7-5.5 7z" fill="{{heartFill}}" stroke="currentColor"/></svg></button>
+                <button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button>
+              </div>
+            </div>
+            <div class="daypart" aria-label="Daylist schedule">
+              <div class="dp-top">
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/><circle cx="8" cy="8" r="6" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-dasharray="37.7" stroke-dashoffset="{{ringOffset}}" transform="rotate(-90 8 8)"/></svg>
+                <span>Next daylist in <span class="dp-count">{{countdownText}}</span></span>
+                <span class="dp-next">&middot; friday afternoon arrives at 13:04</span>
+              </div>
+              <div class="dp-bar">
+                <div class="dp-seg done"></div>
+                <div class="dp-seg"><div class="dp-fill" style="width:{{daypartFill}}"></div></div>
+                <div class="dp-seg"></div>
+                <div class="dp-seg"></div>
+                <div class="dp-seg"></div>
+              </div>
+              <div class="dp-labels">
+                <div class="dp-label">Early morning</div>
+                <div class="dp-label now">Morning</div>
+                <div class="dp-label">Afternoon</div>
+                <div class="dp-label">Evening</div>
+                <div class="dp-label">Night</div>
+              </div>
+            </div>
+          </div>
+          <div class="hero-art"><img src="/_blob/75bac3575db10bfca208d673d469b697" alt="Daylist artwork"></div>
+        </section>
+
+        <!-- ② Recently played: horizontal item template, 4 × 2 -->
+        <section aria-label="Recently played">
+          <div class="zone-hd rp-hd"><div class="rp-l"><h2 class="zone-title">Recently played</h2><span class="chap-sub">Pick up where you left off</span></div><a class="linkbtn" href="#" aria-label="Open your listening history">Listening history<svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="margin-left:6px"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a></div>
+          <div class="recents">
+            <div class="ritem playing" tabindex="0"><div class="art round"><img src="/_blob/f8db5803074355194707322a04fa4535" alt=""></div><div class="txt"><div class="t-title">Kris Kross Amsterdam</div><div class="t-cap"><span class="eq"><i style="height:6px"></i><i style="height:10px"></i><i style="height:4px"></i></span>Artist <span class="ago">&middot; playing on iPhone</span></div></div><button class="ibtn" aria-label="Play Kris Kross Amsterdam"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <div class="ritem" tabindex="0"><div class="art"><img src="/_blob/b018baef69565cff5b98caf65fd236d6" alt=""></div><div class="txt"><div class="t-title">Liked Songs</div><div class="t-cap">1,284 songs <span class="ago">&middot; 2 h ago</span></div></div><button class="ibtn" aria-label="Play Liked Songs"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <div class="ritem" tabindex="0"><div class="art round"><img src="/_blob/773db06a563cbfaedaa9835d30731bba" alt=""></div><div class="txt"><div class="t-title">Rich Brian</div><div class="t-cap">Artist <span class="ago">&middot; 5 h ago</span></div></div><button class="ibtn" aria-label="Play Rich Brian"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <div class="ritem" tabindex="0"><div class="art"><img src="/_blob/190b6a9a394655db31cd4f0e07bdaebc" alt=""></div><div class="txt"><div class="t-title">WLUWD</div><div class="t-cap">Album &middot; Tristam <span class="ago">&middot; yesterday</span></div></div><button class="ibtn" aria-label="Play WLUWD"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <div class="ritem" tabindex="0"><div class="art round"><img src="/_blob/56a4260e5303bd69f3861fb5563064e3" alt=""></div><div class="txt"><div class="t-title">Arash</div><div class="t-cap">Artist <span class="ago">&middot; Wednesday</span></div></div><button class="ibtn" aria-label="Play Arash"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <div class="ritem" tabindex="0"><div class="art"><img src="/_blob/a130fa8b8790b06429b26d99ad4a8566" alt=""></div><div class="txt"><div class="t-title">Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)</div><div class="t-cap">Album &middot; Arcane, League of Legends <span class="ago">&middot; Tuesday</span></div></div><button class="ibtn" aria-label="Play Arcane League of Legends: Season 2"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <div class="ritem" tabindex="0"><div class="art"><img src="/_blob/5928ab11e5c76e978673acbfe48bbbb5" alt=""></div><div class="txt"><div class="t-title">90's Nederlandstalig</div><div class="t-cap">Playlist &middot; 70 songs <span class="ago">&middot; Monday</span></div></div><button class="ibtn" aria-label="Play 90's Nederlandstalig"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <a class="ritem hist" href="#" aria-label="Open your listening history, 142 plays this week">
+              <div class="hist-plate" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3.5 10a6.5 6.5 0 1 0 1.9-4.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3 3.5v3h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 6.5V10l2.5 1.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+              <div class="txt"><div class="t-title">Your listening history</div><div class="hist-week" aria-hidden="true"><i style="height:5px"></i><i style="height:9px"></i><i style="height:4px"></i><i style="height:12px"></i><i style="height:7px"></i><i style="height:10px"></i><i class="today" style="height:6px"></i><span>142 plays this week</span></div></div>
+              <svg class="hist-chev" width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg>
+            </a>
+          </div>
+        </section>
+
+        <!-- ③ Made for you: GridView, 6 big covers per page -->
+        <section aria-label="Made for you">
+          <div class="chap">
+            <div class="chap-l"><h2 class="chap-title">Made for you</h2><span class="chap-sub">Daily Mixes refreshed this morning &middot; moods for a Friday morning</span></div>
+            <div class="chap-r">
+              <button class="linkbtn">See all</button>
+              <div class="vdiv"></div>
+              <div class="pager" aria-label="Made for you pages">
+                <button class="pg-btn {{mfy.prevCls}}" onClick="{{mfy.prev}}" aria-label="Previous page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+                <div class="pips"><button class="pip {{mfy.pip0}}" onClick="{{mfy.go0}}" aria-label="Page 1"></button><button class="pip {{mfy.pip1}}" onClick="{{mfy.go1}}" aria-label="Page 2"></button></div>
+                <button class="pg-btn {{mfy.nextCls}}" onClick="{{mfy.next}}" aria-label="Next page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="viewport">
+            <div class="track" style="transform:{{mfy.t}}">
+              <div class="gitem lead w428" tabindex="0"><div class="leadimg"><img src="/_blob/6a62ea4fe1d08b24c21806b9608f8039" alt=""><button class="gplay" aria-label="Play Discover Weekly"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Discover Weekly</div><div class="g-cap">Your shortcut to hidden gems, deep cuts, and future faves, updated every Monday. <span class="lead-meta">&middot; 30 songs &middot; new on Monday</span></div></div>
+              <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/a07cd19b29119d4cf769168fb93c38c3" alt=""><button class="gplay" aria-label="Play Daily Mix 1"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 1</div><div class="g-cap">IVE, Red Velvet, IU and more</div></div>
+              <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/14bd77dab5671ffa19ee4acd77871041" alt=""><button class="gplay" aria-label="Play Daily Mix 3"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 3</div><div class="g-cap">Dynamicduo, LEE MU JIN, Jung Seung Hwan and more</div></div>
+              <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/e984abebe15206ec10f38a746a4adcac" alt=""><button class="gplay" aria-label="Play Daily Mix 4"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 4</div><div class="g-cap">Henry Moodie, vaultboy, elijah woods and more</div></div>
+              <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/495007ffe5961c456c383f7c71b36805" alt=""><button class="gplay" aria-label="Play Daily Mix 5"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 5</div><div class="g-cap">Michalis Hatzigiannis, Giorgos Sabanis, Antonis Remos and more</div></div>
+              <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/c459c4b7bc461c4c61285431867207b6" alt=""><button class="gplay" aria-label="Play Daily Mix 6"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 6</div><div class="g-cap">YOON MIRAE, 10CM, Isaac Hong and more</div></div>
+              <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/25f780d73e0c76d75b6d9fe7b58044b4" alt=""><button class="gplay" aria-label="Play Chill Sad Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Chill Sad Mix</div><div class="g-cap">Chill Sad music for you.</div></div>
+              <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/b256d1d882c3946ec9070e3cf4881827" alt=""><button class="gplay" aria-label="Play Comforting Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Comforting Mix</div><div class="g-cap">Comforting music for you.</div></div>
+              <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/a119a9df0c3db1172a1dd635e27e002f" alt=""><button class="gplay" aria-label="Play Chill Happy Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Chill Happy Mix</div><div class="g-cap">Chill Happy music for you.</div></div>
+              <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/42aa8c89aaac66298cddce257652980d" alt=""><button class="gplay" aria-label="Play Happy Walking Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Happy Walking Mix</div><div class="g-cap">Happy Walking music for you.</div></div>
+              <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/57607fa8d8ec8799ca1e4fb5605ef834" alt=""><button class="gplay" aria-label="Play Feel Good Happy Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Feel Good Happy Mix</div><div class="g-cap">Feel Good Happy music for you.</div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ④ New this Friday: header images as 16:9 image-and-text cards + followed-artist releases list -->
+        <section aria-label="It's New Music Friday">
+          <div class="chap">
+            <div class="chap-l"><h2 class="chap-title">It's New Music Friday!</h2><span class="chap-sub">Fresh playlists and releases from artists you follow</span></div>
+            <div class="chap-r">
+              <button class="linkbtn">See all</button>
+              <div class="vdiv"></div>
+              <div class="pager" aria-label="New Music Friday pages">
+                <button class="pg-btn {{nmf.prevCls}}" onClick="{{nmf.prev}}" aria-label="Previous page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+                <div class="pips"><button class="pip {{nmf.pip0}}" onClick="{{nmf.go0}}" aria-label="Page 1"></button><button class="pip {{nmf.pip1}}" onClick="{{nmf.go1}}" aria-label="Page 2"></button></div>
+                <button class="pg-btn {{nmf.nextCls}}" onClick="{{nmf.next}}" aria-label="Next page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="viewport">
+            <div class="track" style="transform:{{nmf.t}}">
+              <div class="gitem w428" tabindex="0"><div class="wide"><img src="/_blob/74b6270ebdf46178fdadd6e47bbe21b2" alt=""><button class="gplay" aria-label="Play Release Radar"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Release Radar</div><div class="g-cap one">Catch all the latest music from artists you follow, plus new singles picked for you.</div><div class="g-meta">Made for you &middot; 200 songs</div></div>
+              <div class="gitem w428" tabindex="0"><div class="wide"><img src="/_blob/fa77fc60fa865545b154d5a320742cfc" alt=""><button class="gplay" aria-label="Play Fresh Pop"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Fresh Pop</div><div class="g-cap one">De nieuwste pop songs. Cover: Sugababes</div><div class="g-meta">Spotify &middot; 97 songs</div></div>
+              <div class="gitem w428" tabindex="0"><div class="wide"><img src="/_blob/2479d52ab3a32d7f9faf58a795aca1b2" alt=""><button class="gplay" aria-label="Play All New K-Pop"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">All New K-Pop (국내 최신 가요)</div><div class="g-cap one">Enjoy the freshest K-Pop new releases (Cover: aespa)</div><div class="g-meta">Spotify &middot; 114 songs</div></div>
+              <div class="gitem w428" tabindex="0"><div class="wide"><img src="/_blob/7bd7b95cc077bc6086558effcd48ee23" alt=""><button class="gplay" aria-label="Play New Dance Pop"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">New Dance Pop</div><div class="g-cap one">The hottest new pop with all the drops. Cover: AD&Eacute;LA</div><div class="g-meta">Spotify &middot; 100 songs</div></div>
+              <div class="gitem w428" tabindex="0"><div class="wide"><img src="/_blob/8677c278bc4d9b25b69f6e61bb7f97d6" alt=""><button class="gplay" aria-label="Play the new alt"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">the new alt</div><div class="g-cap one">No rules. No boundaries. The best new alternative tracks. Cover: CHVRCHES</div><div class="g-meta">Spotify &middot; 160 songs</div></div>
+              <div class="gitem w428" tabindex="0"><div class="wide"><img src="/_blob/3441103a9808c3c19d7097e0b60bb0a2" alt=""><button class="gplay" aria-label="Play Indie Update"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Indie Update</div><div class="g-cap one">Wekelijkse update met de beste Indie releases. Cover: Ciska Ciska</div><div class="g-meta">Spotify &middot; 100 songs</div></div>
+            </div>
+          </div>
+
+          <div class="sub-hd"><div class="sub-title">From artists you follow</div><div class="sub-cap">Released this week</div></div>
+          <div class="list2" role="list">
+            <div class="lrow" role="listitem" tabindex="0"><div class="art"><img src="/_blob/1fe0cf50e76f0ab21cf74b7bd075ab03" alt=""></div><div class="txt"><div class="t-title">vaultboy</div><div class="t-cap"><span class="badge new">New</span>Single</div></div><div class="when">Today</div><button class="ibtn" aria-label="Play vaultboy's new single"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <div class="lrow" role="listitem" tabindex="0"><div class="art"><img src="/_blob/23b745729c804987f5ea095bec8a68a2" alt=""></div><div class="txt"><div class="t-title">Troye Sivan</div><div class="t-cap"><span class="badge new">New</span>Single</div></div><div class="when">Today</div><button class="ibtn" aria-label="Play Troye Sivan's new single"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <div class="lrow" role="listitem" tabindex="0"><div class="art"><img src="/_blob/601ff5ca07f74930d36206aedeb97e2b" alt=""></div><div class="txt"><div class="t-title">Charlie Puth</div><div class="t-cap"><span class="badge">EP</span>5 songs</div></div><div class="when">Wednesday</div><button class="ibtn" aria-label="Play Charlie Puth's new EP"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <div class="lrow" role="listitem" tabindex="0"><div class="art"><img src="/_blob/773db06a563cbfaedaa9835d30731bba" alt=""></div><div class="txt"><div class="t-title">Rich Brian</div><div class="t-cap"><span class="badge">Single</span>2 songs</div></div><div class="when">Yesterday</div><button class="ibtn" aria-label="Play Rich Brian's new single"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+            <div class="lrow" role="listitem" tabindex="0"><div class="art"><img src="/_blob/2f61acb9619910c69614f9cc54b0f7f2" alt=""></div><div class="txt"><div class="t-title">ROS&Eacute;</div><div class="t-cap"><span class="badge">Album</span>Pre-save &middot; out 3 October</div></div><div class="when">Upcoming</div><button class="ibtn" aria-label="Pre-save ROS&Eacute;'s album"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.3"/></svg></button></div>
+            <div class="lrow" role="listitem" tabindex="0"><div class="art"><img src="/_blob/0faebb64d813c1f14b480d26a8ede022" alt=""></div><div class="txt"><div class="t-title">Henry Moodie</div><div class="t-cap"><span class="badge">Single</span>1 song</div></div><div class="when">Monday</div><button class="ibtn" aria-label="Play Henry Moodie's new single"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div>
+          </div>
+        </section>
+
+        <!-- ⑤ Because you like…: clustered baseline, one card per artist with a short list -->
+        <section aria-label="Because you like">
+          <div class="chap">
+            <div class="chap-l"><h2 class="chap-title">Because you like&hellip;</h2><span class="chap-sub">Grouped from the artists you play most</span></div>
+            <div class="chap-r"><button class="linkbtn">See all</button></div>
+          </div>
+          <div class="groups">
+            <div class="gcard">
+              <div class="gcard-hd"><div><div class="over">More like</div><div class="who">Troye Sivan</div></div><button class="ibtn" aria-label="More like Troye Sivan"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/23b745729c804987f5ea095bec8a68a2" alt=""></div><div class="txt"><div class="t-title">Troye Sivan Radio</div><div class="t-cap">With Conan Gray, Hailee Steinfeld, Addison Rae and more</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/12c09bc49a595f3510c5847bde32971e" alt=""></div><div class="txt"><div class="t-title">Pop 터지는 팝콘 한 입</div><div class="t-cap">유저별 맞춤으로 팝 음악들을 추천해 드립니다.</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/04d7c19f295f507d5700046ef28ec63e" alt=""></div><div class="txt"><div class="t-title">emails i can&rsquo;t send fwd:</div><div class="t-cap">Album &middot; Sabrina Carpenter</div></div></div>
+            </div>
+            <div class="gcard">
+              <div class="gcard-hd"><div><div class="over">More like</div><div class="who">ROS&Eacute;</div></div><button class="ibtn" aria-label="More like ROS&Eacute;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/2f61acb9619910c69614f9cc54b0f7f2" alt=""></div><div class="txt"><div class="t-title">ROS&Eacute; Radio</div><div class="t-cap">With JISOO, KATSEYE, MEOVV and more</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/999b25cc3823313b2f0b8e52879eab33" alt=""></div><div class="txt"><div class="t-title">romanticizing life</div><div class="t-cap">it&rsquo;s the little things</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/2df09a40f07936ab2e7fe1284ce7c77b" alt=""></div><div class="txt"><div class="t-title">rosie</div><div class="t-cap">Album &middot; ROS&Eacute;</div></div></div>
+            </div>
+            <div class="gcard">
+              <div class="gcard-hd"><div><div class="over">For fans of</div><div class="who">Henry Moodie</div></div><button class="ibtn" aria-label="For fans of Henry Moodie"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/2bdfa6f5061aa31d0feda6d04e3c744e" alt=""></div><div class="txt"><div class="t-title">sad hour</div><div class="t-cap">heartbreak feels good in a place like sad hour</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/0faebb64d813c1f14b480d26a8ede022" alt=""></div><div class="txt"><div class="t-title">This Is Henry Moodie</div><div class="t-cap">The essential tracks, all in one playlist.</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/e984abebe15206ec10f38a746a4adcac" alt=""></div><div class="txt"><div class="t-title">Daily Mix 4</div><div class="t-cap">Henry Moodie, vaultboy, elijah woods and more</div></div></div>
+            </div>
+            <div class="gcard">
+              <div class="gcard-hd"><div><div class="over">For fans of</div><div class="who">Savage Garden</div></div><button class="ibtn" aria-label="For fans of Savage Garden"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/fc2f09f5140ab455d7020781e4667fd5" alt=""></div><div class="txt"><div class="t-title">Guilty Pleasures</div><div class="t-cap">You say guilty, we say non stop bangers!</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/02da76e0945c00d0b005fd8b1dca131f" alt=""></div><div class="txt"><div class="t-title">This Is Savage Garden</div><div class="t-cap">The essential tracks, all in one playlist.</div></div></div>
+            </div>
+            <div class="gcard">
+              <div class="gcard-hd"><div><div class="over">For fans of</div><div class="who">Acda en de Munnik</div></div><button class="ibtn" aria-label="For fans of Acda en de Munnik"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/fd4bd4659c18394ae36218744700ecb2" alt=""></div><div class="txt"><div class="t-title">90's Allerbeste</div><div class="t-cap">Allerbeste songs van de 90's! Cover: No Doubt</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/b458ed923d75d99033b1efdc9ae497ed" alt=""></div><div class="txt"><div class="t-title">Hollandse Meezingers</div><div class="t-cap">Nederpop en Volkspop meezingers.</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/2c801387a57d5b8acae20e282c71f254" alt=""></div><div class="txt"><div class="t-title">10's Nederlandstalig</div><div class="t-cap">More like 90's Nederlandstalig</div></div></div>
+            </div>
+            <div class="gcard">
+              <div class="gcard-hd"><div><div class="over">More like</div><div class="who">Jung Seung Hwan</div></div><button class="ibtn" aria-label="More like Jung Seung Hwan"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/5f905522da50220a7766234703d34b2c" alt=""></div><div class="txt"><div class="t-title">This Is Jung Seung Hwan</div><div class="t-cap">The essential tracks, all in one playlist.</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/d74f09733addcb94b1965e4a05121847" alt=""></div><div class="txt"><div class="t-title">Best of Korean OSTs (OST 명곡 베스트)</div><div class="t-cap">Relive your favourite K-Drama moments with these classic soundtracks.</div></div></div>
+              <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/ae8bb310317740a7e8f9b948c169d44a" alt=""></div><div class="txt"><div class="t-title">바니와 오빠들 (Crushology 101)</div><div class="t-cap">Playlist &middot; 31 songs</div></div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ⑥ Jump back in: 8-column GridView, round art only for artists -->
+        <section aria-label="Jump back in">
+          <div class="chap">
+            <div class="chap-l"><h2 class="chap-title">Jump back in</h2><span class="chap-sub">Things you've opened lately</span></div>
+            <div class="chap-r">
+              <button class="linkbtn">See all</button>
+              <div class="vdiv"></div>
+              <div class="pager" aria-label="Jump back in pages">
+                <button class="pg-btn {{jbi.prevCls}}" onClick="{{jbi.prev}}" aria-label="Previous page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+                <div class="pips"><button class="pip {{jbi.pip0}}" onClick="{{jbi.go0}}" aria-label="Page 1"></button><button class="pip {{jbi.pip1}}" onClick="{{jbi.go1}}" aria-label="Page 2"></button></div>
+                <button class="pg-btn {{jbi.nextCls}}" onClick="{{jbi.next}}" aria-label="Next page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="viewport">
+            <div class="track" style="transform:{{jbi.t}}">
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/a130fa8b8790b06429b26d99ad4a8566" alt=""><button class="gplay" aria-label="Play Arcane"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Arcane League of Legends: Season 2</div><div class="g-cap one">Album &middot; Arcane</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/dc4ba8f2a016d15e64a0c8f5d4853248" alt=""><button class="gplay" aria-label="Play Chill Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Chill Mix</div><div class="g-cap one">The Kid LAROI and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/2df09a40f07936ab2e7fe1284ce7c77b" alt=""><button class="gplay" aria-label="Play rosie"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">rosie</div><div class="g-cap one">Album &middot; ROS&Eacute;</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/696f5610168bbd60376cf0a3e4d4599d" alt=""><button class="gplay" aria-label="Play Millennium K-Pop"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Millennium K-Pop</div><div class="g-cap one">Playlist &middot; 100 songs</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/7e1ff237b8c842cf270090f54264c8b5" alt=""><button class="gplay" aria-label="Play Sleep Music for Deep Sleeping"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Sleep Music for Deep Sleeping</div><div class="g-cap one">Soothing Oasis &middot; 432 songs</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/c34360449b3e4c60688046e104eb62e1" alt=""><button class="gplay" aria-label="Play Phil Collins"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Phil Collins</div><div class="g-cap one">Artist</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/7c980da4f42d56732f71c80d38b736bb" alt=""><button class="gplay" aria-label="Play Imagine Dragons"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Imagine Dragons</div><div class="g-cap one">Artist</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/56a4260e5303bd69f3861fb5563064e3" alt=""><button class="gplay" aria-label="Play Arash"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Arash</div><div class="g-cap one">Artist</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/ebbb585ab765d1f2347d5ed5c2634c2a" alt=""><button class="gplay" aria-label="Play Q-top 1500"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Q-top 1500 | editie 2025 | Qmusic</div><div class="g-cap one">QmusicNL &middot; 1,494 songs</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/68e52232467e64319de1e7a9edfce6df" alt=""><button class="gplay" aria-label="Play Daily Mix 2"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 2</div><div class="g-cap one">Lady Gaga, Maroon 5, Taylor Swift and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/92d9439e4ab0e053e00f1c7e5fe62d02" alt=""><button class="gplay" aria-label="Play 2020s Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">2020s Mix</div><div class="g-cap one">Nicky Youre and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/e4e3cdd3f85a841e3a66cb76366da627" alt=""><button class="gplay" aria-label="Play 2010s Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">2010s Mix</div><div class="g-cap one">Imagine Dragons and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/d8c89c4362a87b2a6995a113e594ebd0" alt=""><button class="gplay" aria-label="Play Avond Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Avond Radio</div><div class="g-cap one">Radio</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/f402aaf88bcd7aa34cd918bc5d6f16b5" alt=""><button class="gplay" aria-label="Play That Summer"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">That Summer</div><div class="g-cap one">Single</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/d93a5c8890b17baf1afe9189180bf14a" alt=""><button class="gplay" aria-label="Play Acda en de Munnik"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Acda en de Munnik</div><div class="g-cap one">Artist</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/773db06a563cbfaedaa9835d30731bba" alt=""><button class="gplay" aria-label="Play Rich Brian"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Rich Brian</div><div class="g-cap one">Artist</div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ⑦ Radio & mixes: same 8-column template, 3 pages -->
+        <section aria-label="Radio and mixes for you">
+          <div class="chap">
+            <div class="chap-l"><h2 class="chap-title">Radio &amp; mixes</h2><span class="chap-sub">Non-stop music based on the artists and songs you play</span></div>
+            <div class="chap-r">
+              <button class="linkbtn">See all</button>
+              <div class="vdiv"></div>
+              <div class="pager" aria-label="Radio and mixes pages">
+                <button class="pg-btn {{rad.prevCls}}" onClick="{{rad.prev}}" aria-label="Previous page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+                <div class="pips"><button class="pip {{rad.pip0}}" onClick="{{rad.go0}}" aria-label="Page 1"></button><button class="pip {{rad.pip1}}" onClick="{{rad.go1}}" aria-label="Page 2"></button><button class="pip {{rad.pip2}}" onClick="{{rad.go2}}" aria-label="Page 3"></button></div>
+                <button class="pg-btn {{rad.nextCls}}" onClick="{{rad.next}}" aria-label="Next page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <div class="viewport">
+            <div class="track" style="transform:{{rad.t}}">
+              <div class="gitem lead w317" tabindex="0"><div class="leadimg"><img src="/_blob/8f89137e9880b3e7e8a4fbf97d6b1975" alt=""><button class="gplay" aria-label="Play Savage Garden Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Savage Garden Radio</div><div class="g-cap">With All-4-One, *NSYNC, 98&ordm; and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/f4531b5a04c66b80804f175696dd6ed8" alt=""><button class="gplay" aria-label="Play One Day Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">One Day (feat. Helena) - Radio Edit Radio</div><div class="g-cap">With Arash, Havana, Dan Balan and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/c0f6659ab9bf58803ff91135b82bb8d3" alt=""><button class="gplay" aria-label="Play Physical Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Physical Radio</div><div class="g-cap">With Dua Lipa, Britney Spears, Ariana Grande and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/9125845ccf48914e7bad7b806ec73210" alt=""><button class="gplay" aria-label="Play vaultboy Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">vaultboy Radio</div><div class="g-cap">With Jake Cornell, Suriel Hess, Zach Hood and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/7e1cbeb34c60b3afdea891310954bec9" alt=""><button class="gplay" aria-label="Play Rex Orange County Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Rex Orange County Radio</div><div class="g-cap">With Bruno Major, wave to earth, Reality Club and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/8f034650d422783585c29db63996150d" alt=""><button class="gplay" aria-label="Play LE SSERAFIM Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">LE SSERAFIM Radio</div><div class="g-cap">With ILLIT, NewJeans, KATSEYE and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/8c29590b1dee33e9b26da7a07e0f93c5" alt=""><button class="gplay" aria-label="Play Damiano David Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Damiano David Radio</div><div class="g-cap">With Daniel Seavey, Teddy Swims, Jude York and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/b25f3a3b22780bcf97b0348f62438ed8" alt=""><button class="gplay" aria-label="Play Vluchtstrook Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Vluchtstrook Radio</div><div class="g-cap">With Kris Kross Amsterdam, Antoon, Roxy Dekker and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/204ad561c7f2ba8393a841e293146803" alt=""><button class="gplay" aria-label="Play loml Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">loml Radio</div><div class="g-cap">With Sarah Kang, Anthony Lazaro, HOHYUN and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/ee10b0f255a77dff65fa14eb2382c8c7" alt=""><button class="gplay" aria-label="Play Dua Lipa Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Dua Lipa Radio</div><div class="g-cap">With Sabrina Carpenter, Harry Styles, Camila Cabello and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/6e95bb53451530f2777cc055170e381c" alt=""><button class="gplay" aria-label="Play Coldplay Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Coldplay Radio</div><div class="g-cap">With OneRepublic, Harry Styles, Adele and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/eba44cd9c9173fc44ee70675575f476f" alt=""><button class="gplay" aria-label="Play Teddy Swims Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Teddy Swims Radio</div><div class="g-cap">With Shaboozey, Lewis Capaldi, Myles Smith and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/63120498b5bec01b414e725039bc380d" alt=""><button class="gplay" aria-label="Play Sade Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Sade Radio</div><div class="g-cap">With berlioz, Thee Sacred Souls, Chris Isaak and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/1b6ca3fbbc508c67e60ef791829b5359" alt=""><button class="gplay" aria-label="Play Dire Straits Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Dire Straits Radio</div><div class="g-cap">With The Rolling Stones, R.E.M., Pink Floyd and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover round"><img src="/_blob/c30d84b1bb60336f29a9cc3c95c70453" alt=""><button class="gplay" aria-label="Play Fleetwood Mac Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Fleetwood Mac Radio</div><div class="g-cap">With Elton John, Eagles, Billy Joel and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/c3cf76b20a81618f1b1fe09383c68d0d" alt=""><button class="gplay" aria-label="Play Phil Collins Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Phil Collins Mix</div><div class="g-cap">Cyndi Lauper and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/f7d4b892a97a5ca4ffdffa7fe7a81ecc" alt=""><button class="gplay" aria-label="Play Pop Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Pop Mix</div><div class="g-cap">Troye Sivan and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/86f3bc5288fdb2e2b8b318bff075bd7a" alt=""><button class="gplay" aria-label="Play K-Pop Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">K-Pop Mix</div><div class="g-cap">dori and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/49b6999b8a579f693784dc312de8f520" alt=""><button class="gplay" aria-label="Play Soft Pop Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Soft Pop Mix</div><div class="g-cap">Ariana Grande and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/39e97e9ba6c80c2823f05eb278a12882" alt=""><button class="gplay" aria-label="Play Love Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Love Mix</div><div class="g-cap">Peder Elias and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/601ff5ca07f74930d36206aedeb97e2b" alt=""><button class="gplay" aria-label="Play Charlie Puth Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Charlie Puth Mix</div><div class="g-cap">One Direction and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/9831681e3e3489c49b2b562dd4cb8e44" alt=""><button class="gplay" aria-label="Play Roy Kim Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Roy Kim Mix</div><div class="g-cap">Tophyun and more</div></div>
+              <div class="gitem w150" tabindex="0"><div class="cover"><img src="/_blob/c5d2d873ba0bfa1ecdc15f05c05dcf7c" alt=""><button class="gplay" aria-label="Play 80s Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">80s Mix</div><div class="g-cap">George Benson and more</div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ⑧ Browse: SettingsCard-style navigation tiles + charts -->
+        <section aria-label="Browse">
+          <div class="chap">
+            <div class="chap-l"><h2 class="chap-title">Browse</h2><span class="chap-sub">Offici&euml;le Spotify playlists and this week's editorial picks</span></div>
+            <div class="chap-r"><button class="linkbtn">Browse all</button></div>
+          </div>
+          <div class="tiles">
+            <a class="tile" href="#"><div class="art"><img src="/_blob/0b7c6c2456204bec32748fd022f8727f" alt=""></div><div class="txt"><div class="t-title">Beste van NL</div><div class="t-cap">De beste Nederlandse liedjes &middot; 100 songs</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/3ac8554f69949fae8339749907cd2d35" alt=""></div><div class="txt"><div class="t-title">Helemaal NL</div><div class="t-cap">Fijn voor thuis of op werk &middot; 50 songs</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/aeeffbb68ed661cfa364e6e6b563f38c" alt=""></div><div class="txt"><div class="t-title">'t Koffiehuis</div><div class="t-cap">Koffie met gemoedelijke muziek op de achtergrond</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/f739d8871f6c561e86bfa58563e2929a" alt=""></div><div class="txt"><div class="t-title">Hot Hits NL</div><div class="t-cap">De 50 grootste hits in NL</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/d7688aeee0119f4afe299693f7cc78c1" alt=""></div><div class="txt"><div class="t-title">Herfst 2026</div><div class="t-cap">Zo klinkt de herfst van 2026 &middot; 100 songs</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/a9b69d5f02e4105df0f9c65b455821d6" alt=""></div><div class="txt"><div class="t-title">Liever Hollands</div><div class="t-cap">De nieuwste Hollands &amp; Volkspop &middot; 105 songs</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/fe6f938fbb721df34f9bef9cff06b67d" alt=""></div><div class="txt"><div class="t-title">Happy Tunes</div><div class="t-cap">Non-stop een goed gevoel! &middot; 125 songs</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/6868d022283b553e7f687a4fe782ab8e" alt=""></div><div class="txt"><div class="t-title">Werkdag FM</div><div class="t-cap">Ideale muziek voor de werkdag &middot; 250 songs</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/2c5ef1fa2205ce6d7388e2b33fa39078" alt=""></div><div class="txt"><div class="t-title">New Music Friday NL</div><div class="t-cap">Nieuw: Taylor Swift, Yade Lauren, Mula &amp; Lijpe, Racoon&hellip;</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/22088dcda92bbaec0b25e9a0dbc7f643" alt=""></div><div class="txt"><div class="t-title">Fresh Hits</div><div class="t-cap">Altijd frisse hits! &middot; 50 songs</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/6d7740f3d89054862a9cdba56db512db" alt=""></div><div class="txt"><div class="t-title">All New Pop</div><div class="t-cap">All this week's best new pop releases &middot; 150 songs</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="art"><img src="/_blob/211fabac948472347704dca165a7e8c4" alt=""></div><div class="txt"><div class="t-title">Tips van onze muziekredactie</div><div class="t-cap">De beste NL releases van september &middot; 52 songs</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+          </div>
+          <div class="sub-hd"><div class="sub-title">Charts</div><div class="sub-cap">Updated daily</div></div>
+          <div class="tiles3">
+            <a class="tile" href="#"><div class="glyph"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 16V9M8 16V5M12 16v-9M16 16V3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="txt"><div class="t-title">Top 50 &middot; Netherlands</div><div class="t-cap">The most played tracks in the Netherlands today</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="glyph"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.3"/><path d="M3 10h14M10 3c2.2 2 2.2 12 0 14M10 3c-2.2 2-2.2 12 0 14" stroke="currentColor" stroke-width="1.3"/></svg></div><div class="txt"><div class="t-title">Top 50 &middot; Global</div><div class="t-cap">The most played tracks in the world today</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+            <a class="tile" href="#"><div class="glyph"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 15l5-5 3 3 6-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 6h4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="txt"><div class="t-title">Viral 50 &middot; Netherlands</div><div class="t-cap">What's spreading fastest today</div></div><svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></a>
+          </div>
+        </section>
+
+          </div>
+          </sc-if>
+
+          <!-- Music facet (music-chip): its own server page, no hero and no Recents. The Music board carries the full set. -->
+          <sc-if value="{{view.music}}" hint-placeholder-val="{{ false }}">
+          <div class="view {{zinCls}}">
+          <!-- M1 · Made For Chris: 6-col GridView, Discover Weekly as the two-cell lead (DJ is not supported and is dropped) -->
+          <section aria-label="Made For Chris">
+            <div class="chap">
+              <div class="chap-l"><h2 class="chap-title">Made For Chris</h2><span class="chap-sub">Your daily mixes, refreshed today.</span></div>
+              <div class="chap-r">
+                <button class="linkbtn">See all</button>
+                <div class="vdiv"></div>
+                <div class="pager" aria-label="Made For Chris pages">
+                  <button class="pg-btn {{m1.prevCls}}" onClick="{{m1.prev}}" aria-label="Previous page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+                  <div class="pips"><button class="pip {{m1.pip0}}" onClick="{{m1.go0}}" aria-label="Page 1"></button><button class="pip {{m1.pip1}}" onClick="{{m1.go1}}" aria-label="Page 2"></button></div>
+                  <button class="pg-btn {{m1.nextCls}}" onClick="{{m1.next}}" aria-label="Next page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <div class="viewport">
+              <div class="track" style="transform:{{m1.t}}">
+                <div class="gitem w428" tabindex="0"><div class="leadimg"><img src="/_blob/6a62ea4fe1d08b24c21806b9608f8039" alt=""><button class="gplay" aria-label="Play Discover Weekly"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Discover Weekly</div><div class="g-cap">Your shortcut to hidden gems, deep cuts, and future faves, updated every Monday. <span class="lead-meta">&middot; 30 songs &middot; new on Monday</span></div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/a07cd19b29119d4cf769168fb93c38c3" alt=""><button class="gplay" aria-label="Play Daily Mix 1"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 1</div><div class="g-cap">IVE, Red Velvet, IU and more</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/68e52232467e64319de1e7a9edfce6df" alt=""><button class="gplay" aria-label="Play Daily Mix 2"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 2</div><div class="g-cap">Lady Gaga, Maroon 5, Taylor Swift and more</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/14bd77dab5671ffa19ee4acd77871041" alt=""><button class="gplay" aria-label="Play Daily Mix 3"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 3</div><div class="g-cap">Dynamicduo, LEE MU JIN, Jung Seung Hwan and more</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/e984abebe15206ec10f38a746a4adcac" alt=""><button class="gplay" aria-label="Play Daily Mix 4"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 4</div><div class="g-cap">Henry Moodie, vaultboy, elijah woods and more</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/495007ffe5961c456c383f7c71b36805" alt=""><button class="gplay" aria-label="Play Daily Mix 5"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 5</div><div class="g-cap">Michalis Hatzigiannis, Giorgos Sabanis, Antonis Remos and more</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/c459c4b7bc461c4c61285431867207b6" alt=""><button class="gplay" aria-label="Play Daily Mix 6"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Daily Mix 6</div><div class="g-cap">YOON MIRAE, 10CM, Isaac Hong and more</div></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- M2 · Soundtrack your Friday afternoon: 6-col squares, 2 pages (the daylist is a plain square here, never a second hero) -->
+          <section aria-label="Soundtrack your Friday afternoon">
+            <div class="chap">
+              <div class="chap-l"><h2 class="chap-title">Soundtrack your Friday afternoon</h2></div>
+              <div class="chap-r">
+                <button class="linkbtn">See all</button>
+                <div class="vdiv"></div>
+                <div class="pager" aria-label="Soundtrack your Friday afternoon pages">
+                  <button class="pg-btn {{m2.prevCls}}" onClick="{{m2.prev}}" aria-label="Previous page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+                  <div class="pips"><button class="pip {{m2.pip0}}" onClick="{{m2.go0}}" aria-label="Page 1"></button><button class="pip {{m2.pip1}}" onClick="{{m2.go1}}" aria-label="Page 2"></button></div>
+                  <button class="pg-btn {{m2.nextCls}}" onClick="{{m2.next}}" aria-label="Next page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <div class="viewport">
+              <div class="track" style="transform:{{m2.t}}">
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/8865677dea57acc8d63d3bde41f96e14" alt=""><button class="gplay" aria-label="Play scream teen pop friday morning"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">scream teen pop friday morning</div><div class="g-cap">Here's some scream, teen pop, belter, garage band, international, hollywood</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/c914bfe613975aad9d0922c8908eeccb" alt=""><button class="gplay" aria-label="Play Fun Road Trip Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Fun Road Trip Mix</div><div class="g-cap">Fun Road Trip music for you.</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/00b305e1c68fc8c7777b0ccf2b339111" alt=""><button class="gplay" aria-label="Play Hopeless Romantic Soft Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Hopeless Romantic Soft Mix</div><div class="g-cap">Hopeless Romantic Soft music for you.</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/3fc68465b7bcae6a2f62a593184b14c0" alt=""><button class="gplay" aria-label="Play Workout Pop Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Workout Pop Mix</div><div class="g-cap">Workout Pop music for you.</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/f4e4c19f4fedb315d2d7f50b88b6ff9b" alt=""><button class="gplay" aria-label="Play Chill Moody Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Chill Moody Mix</div><div class="g-cap">Chill Moody music for you.</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/9f5e3b8141690d58a217e4c145f06151" alt=""><button class="gplay" aria-label="Play Breakup Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Breakup Mix</div><div class="g-cap">Breakup music for you.</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/6bb9d1acff1a7067114d12d6e3cb9e38" alt=""><button class="gplay" aria-label="Play Soft Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Soft Mix</div><div class="g-cap">Soft music for you.</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/92569e1f4b461577630993bb257e7125" alt=""><button class="gplay" aria-label="Play Hopeless Romantic Love Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Hopeless Romantic Love Mix</div><div class="g-cap">Hopeless Romantic Love music for you.</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/5b6464cfd29a0e5b743c6b17b2061fad" alt=""><button class="gplay" aria-label="Play Wedding Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Wedding Mix</div><div class="g-cap">Wedding music for you.</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/42aa8c89aaac66298cddce257652980d" alt=""><button class="gplay" aria-label="Play Happy Walking Mix"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Happy Walking Mix</div><div class="g-cap">Happy Walking music for you.</div></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- M3 · More like Avril Lavigne: 6-col mixed; stations and artists round, playlists and albums square -->
+          <section aria-label="More like Avril Lavigne">
+            <div class="chap">
+              <div class="chap-l"><h2 class="chap-title">More like Avril Lavigne</h2></div>
+              <div class="chap-r">
+                <button class="linkbtn">See all</button>
+                <div class="vdiv"></div>
+                <div class="pager" aria-label="More like Avril Lavigne pages">
+                  <button class="pg-btn {{m3.prevCls}}" onClick="{{m3.prev}}" aria-label="Previous page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+                  <div class="pips"><button class="pip {{m3.pip0}}" onClick="{{m3.go0}}" aria-label="Page 1"></button><button class="pip {{m3.pip1}}" onClick="{{m3.go1}}" aria-label="Page 2"></button></div>
+                  <button class="pg-btn {{m3.nextCls}}" onClick="{{m3.next}}" aria-label="Next page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <div class="viewport">
+              <div class="track" style="transform:{{m3.t}}">
+                <div class="gitem w206" tabindex="0"><div class="cover round"><img src="/_blob/c8265bdbdaedd602d50bc27a1a7da939" alt=""><button class="gplay" aria-label="Play Avril Lavigne Radio"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Avril Lavigne Radio</div><div class="g-cap">With Britney Spears, blink-182, Michelle Branch and more</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/7f0e418f32fa98cff4bd27b7aa0674b9" alt=""><button class="gplay" aria-label="Play 00s Pop Rock"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">00s Pop Rock</div><div class="g-cap">The essential pop rock songs from the 2000s. Cover: Avril Lavigne</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/122cffb489ce819fec27d976c225a38c" alt=""><button class="gplay" aria-label="Play Songs We Rocked Out To"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Songs We Rocked Out To</div><div class="g-cap">Walk down memory lane with the biggest rock anthems.</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/f25dc351a9e6115a298e502f5a0bc3a5" alt=""><button class="gplay" aria-label="Play All Out 2000s"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">All Out 2000s</div><div class="g-cap">The biggest songs of the 2000s. Cover: Britney Spears</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/f613c00a5c1a4c1cb373a5bca5dfdb74" alt=""><button class="gplay" aria-label="Play Breakaway"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Breakaway</div><div class="g-cap">Album &middot; Kelly Clarkson</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/2b5a6f05f7d480102e89b69a7fcc0185" alt=""><button class="gplay" aria-label="Play The Kids In The Crowd"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">The Kids In The Crowd - Music From The Documentary Soundtrack</div><div class="g-cap">Album &middot; Simple Plan</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover"><img src="/_blob/efe5fa85676ae6108ea7dec8073392aa" alt=""><button class="gplay" aria-label="Play No Pads, No Helmets...Just Balls"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">No Pads, No Helmets...Just Balls (15th Anniversary Tour Edition)</div><div class="g-cap">Album &middot; Simple Plan</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover round"><img src="/_blob/d96eeb327dc25b542c49d2e896a7a0d6" alt=""><button class="gplay" aria-label="Play Kelly Clarkson"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Kelly Clarkson</div><div class="g-cap">Artist</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover round"><img src="/_blob/b90e99d6ca783ca806f6e36d15f570ba" alt=""><button class="gplay" aria-label="Play P!nk"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">P!nk</div><div class="g-cap">Artist</div></div>
+                <div class="gitem w206" tabindex="0"><div class="cover round"><img src="/_blob/77fff9e025ded26d6543eba7ae86d5e7" alt=""><button class="gplay" aria-label="Play Simple Plan"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Simple Plan</div><div class="g-cap">Artist</div></div>
+              </div>
+            </div>
+          </section>
+          </div>
+          </sc-if>
+
+          <!-- Podcasts facet (podcasts-chip); with Following on (podcasts-following-chip) only P1–P3 come back -->
+          <sc-if value="{{view.podcasts}}" hint-placeholder-val="{{ false }}">
+          <div class="view {{zinCls}}">
+          <!-- P1 · New episodes: lead + list -->
+          <section aria-label="New episodes">
+            <div class="chap">
+              <div class="chap-l"><h2 class="chap-title">New episodes</h2><span class="chap-sub">From shows you follow</span></div>
+              <div class="chap-r"><button class="linkbtn">See all</button></div>
+            </div>
+            <div class="ep-lead-grid">
+              <div class="gitem" tabindex="0"><div class="wide"><img src="/_blob/a9a70195c7bbfde999b4515646ae6105" alt=""><button class="gplay" aria-label="Play The Fund Structure That Could Replace the ETF"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title two">The Fund Structure That Could Replace the ETF</div><div class="g-cap one">The Brave Technologist &middot; Wednesday &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>27 min</div></div>
+              <div class="ep-list" role="list">
+                <div class="ep-row" role="listitem" tabindex="0"><div class="ep-art"><img src="/_blob/79546d6dcd02a9c58b99ef5f6de08cd9" alt=""><button class="ep-play" aria-label="Play Hot Take: A Great Movie Trilogy Must Have ONE FLOP"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title">Hot Take: A Great Movie Trilogy Must Have ONE FLOP | Hey Tablo Ep.39</div><div class="ep-cap">Hey Tablo &middot; Tuesday &middot; 48 min</div></div><button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button></div>
+                <div class="ep-row" role="listitem" tabindex="0"><div class="ep-art"><img src="/_blob/ab83f06742302ef90a22dd04ddbd6e04" alt=""><button class="ep-play" aria-label="Play The Doomsday Cult Inside OpenAI"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title">The Doomsday Cult Inside OpenAI</div><div class="ep-cap">Patrick Boyle On Finance &middot; Sunday &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>31 min</div></div><button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button></div>
+                <div class="ep-row" role="listitem" tabindex="0"><div class="ep-art"><img src="/_blob/b4b99da6d858f872f58f3aa5a7ed0f81" alt=""><button class="ep-play" aria-label="Play Essentials: How to Assess and Improve All Aspects of Your Fitness"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title">Essentials: How to Assess &amp; Improve All Aspects of Your Fitness | Dr. Andy Galpin</div><div class="ep-cap">Huberman Lab &middot; 17 Sep &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>35 min</div></div><button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button></div>
+                <div class="ep-row" role="listitem" tabindex="0"><div class="ep-art"><img src="/_blob/ea3b217a42a7f89b9b19c62d39bd20cb" alt=""><button class="ep-play" aria-label="Play John Park is like Tukutz but way SMARTER"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title">John Park is like Tukutz but way SMARTER | Hey Tablo Ep. 38</div><div class="ep-cap">Hey Tablo &middot; 15 Sep &middot; 1 h 1 min</div></div><button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- P2 · Continue listening: row items, the in-progress one carries a hairline -->
+          <section aria-label="Continue listening">
+            <div class="chap">
+              <div class="chap-l"><h2 class="chap-title">Continue listening</h2></div>
+              <div class="chap-r"></div>
+            </div>
+            <div class="cont3">
+              <div class="ritem ep" tabindex="0"><div class="ep-art"><img src="/_blob/cd6874df512f4e835d61cbdfe8e65991" alt=""><button class="ep-play" aria-label="Resume Scott Bessent Is at War With Prices"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title one">Scott Bessent Is at War With Prices &mdash; and Prices Are Winning!</div><div class="ep-cap">Patrick Boyle On Finance &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>44 min left</div><div class="progress-hair" role="progressbar" aria-label="Played 8 seconds of 44 minutes" aria-valuenow="0.3" aria-valuemin="0" aria-valuemax="100"><i style="width:2px"></i></div></div></div>
+              <div class="ritem ep" tabindex="0"><div class="ep-art"><img src="/_blob/1d601f574c73c7b73cd11af133cdb04b" alt=""><button class="ep-play" aria-label="Play The Ancient Medicine of Uncontacted Amazon Tribes"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title one">The Ancient Medicine of Uncontacted Amazon Tribes | Paul Rosolie</div><div class="ep-cap">The Checkup with Doctor Mike &middot; 2 Sep &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>3 h 9 min</div></div></div>
+              <div class="ritem ep" tabindex="0"><div class="ep-art"><img src="/_blob/dd6f4d50026d7791729014358ca79a12" alt=""><button class="ep-play" aria-label="Play Hey, Whatever Happened to NFTs?"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title one">Hey, Whatever Happened to NFTs?</div><div class="ep-cap">ColdFusion &middot; 20 Apr &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>17 min</div></div></div>
+            </div>
+          </section>
+
+          <!-- P3 · Your shows: 8-up squares, verbatim -->
+          <section aria-label="Your shows">
+            <div class="chap">
+              <div class="chap-l"><h2 class="chap-title">Your shows</h2></div>
+              <div class="chap-r"><button class="linkbtn">See all</button></div>
+            </div>
+            <div class="shows8">
+              <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/1c673aa60052976f15e089b6926936c9" alt=""><button class="gplay" aria-label="Play Patrick Boyle On Finance"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Patrick Boyle On Finance</div><div class="g-cap one">Patrick Boyle</div></div>
+              <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/14361f4422ef80c7f745281ca0b4ff9f" alt=""><button class="gplay" aria-label="Play The Brave Technologist"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">The Brave Technologist</div><div class="g-cap one">Brave</div></div>
+              <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/0f2663c12dd5771de3dd6d31d5b61e73" alt=""><button class="gplay" aria-label="Play SOLVED with Mark Manson"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">SOLVED with Mark Manson</div><div class="g-cap one"><span class="xbadge" aria-label="Explicit">E</span>Mark Manson</div></div>
+              <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/2dd694e226c1fbd250e5288106684a9a" alt=""><button class="gplay" aria-label="Play The Pog State"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">The Pog State</div><div class="g-cap one">Riot Games Korea</div></div>
+              <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/f3830544ebf79f5ad19ee814198f55be" alt=""><button class="gplay" aria-label="Play Huberman Lab"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Huberman Lab</div><div class="g-cap one"><span class="xbadge" aria-label="Explicit">E</span>Scicomm Media</div></div>
+              <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/a22d50c9633876847b988bd6e3560e9d" alt=""><button class="gplay" aria-label="Play ColdFusion"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">ColdFusion</div><div class="g-cap one">ColdFusion</div></div>
+              <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/bbcddbe8039232740901f38d45e0f0f1" alt=""><button class="gplay" aria-label="Play Hey Tablo"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Hey Tablo</div><div class="g-cap one"><span class="xbadge" aria-label="Explicit">E</span>Team Epikase</div></div>
+              <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/50b0892e37993e9b2056e0a0a005fa4d" alt=""><button class="gplay" aria-label="Play The Checkup with Doctor Mike"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">The Checkup with Doctor Mike</div><div class="g-cap one"><span class="xbadge" aria-label="Explicit">E</span>DM Operations Inc.</div></div>
+            </div>
+          </section>
+            <sc-if value="{{view.podcastsMore}}" hint-placeholder-val="{{ false }}">
+            <div class="view">
+            <!-- P4 · Videos you might like: 4-up 16:9 tiles -->
+            <section aria-label="Videos you might like">
+              <div class="chap">
+                <div class="chap-l"><h2 class="chap-title">Videos you might like</h2></div>
+                <div class="chap-r"></div>
+              </div>
+              <div class="vtiles">
+                <div class="gitem" tabindex="0"><div class="wide"><img src="/_blob/0bf87f8d115801b51b7ff1a6e61394a1" alt=""><button class="gplay" aria-label="Play How Long Can The Stock Market Ignore Reality?"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title two">How Long Can The Stock Market Ignore Reality?</div><div class="g-cap one">How Money Works &middot; 30 Jul &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>15 min</div></div>
+                <div class="gitem" tabindex="0"><div class="wide"><img src="/_blob/ad4505b3f49cb71bba54891954f9feb1" alt=""><button class="gplay" aria-label="Play Intelligence Scoop: Is Russia Preparing to Attack Europe?"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title two">Intelligence Scoop: Is Russia Preparing to Attack Europe?</div><div class="g-cap one">The Rest Is Classified &middot; Wednesday &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>53 min</div></div>
+                <div class="gitem" tabindex="0"><div class="wide"><img src="/_blob/ab599967632b3cce9e0b1a9d2225c65b" alt=""><button class="gplay" aria-label="Play The Bipartisan Who Split America"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title two">The Bipartisan Who Split America</div><div class="g-cap one">Destiny &middot; Wednesday &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>53 min</div></div>
+                <div class="gitem" tabindex="0"><div class="wide"><img src="/_blob/16517a9ce62e2bc6acfd945b62e32e6f" alt=""><button class="gplay" aria-label="Play What Chinese rule will actually look like"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title two">What Chinese rule will actually look like | Dr. Dave Kang</div><div class="g-cap one">Money &amp; Macro Talks &middot; 10 Sep &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>47 min</div></div>
+              </div>
+            </section>
+
+            <!-- P5 · Episodes you might like: 2-column list rows -->
+            <section aria-label="Episodes you might like">
+              <div class="chap">
+                <div class="chap-l"><h2 class="chap-title">Episodes you might like</h2></div>
+                <div class="chap-r"><button class="linkbtn">See all</button></div>
+              </div>
+              <div class="eplist2" role="list">
+                <div class="ep-row" role="listitem" tabindex="0"><div class="ep-art"><img src="/_blob/5129485e15153647b69d1cfe5389bc1d" alt=""><button class="ep-play" aria-label="Play How to Overcome Anxiety, Solved"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title">How to Overcome Anxiety, Solved</div><div class="ep-cap"><span class="xbadge" aria-label="Explicit">E</span>SOLVED with Mark Manson &middot; 6 May &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>2 h 10 min</div></div><button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button></div>
+                <div class="ep-row" role="listitem" tabindex="0"><div class="ep-art"><img src="/_blob/ab3eef2f430471e737811425624bb95a" alt=""><button class="ep-play" aria-label="Play How To Organize Your Life Like The Top 1%"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title">How To Organize Your Life Like The Top 1%</div><div class="ep-cap">Chamath Palihapitiya &middot; 10 Sep &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>8 min</div></div><button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button></div>
+                <div class="ep-row" role="listitem" tabindex="0"><div class="ep-art"><img src="/_blob/4ab097cc5cae5992450eef727eab7aa8" alt=""><button class="ep-play" aria-label="Play How to Change Your Life, Solved"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title">How to Change Your Life, Solved</div><div class="ep-cap"><span class="xbadge" aria-label="Explicit">E</span>SOLVED with Mark Manson &middot; 3 Jun &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>4 h 58 min</div></div><button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button></div>
+                <div class="ep-row" role="listitem" tabindex="0"><div class="ep-art"><img src="/_blob/ccc501198bdbbebe526665b80bee642a" alt=""><button class="ep-play" aria-label="Play How to Improve Motivation and Overcome Procrastination"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title">How to Improve Motivation &amp; Overcome Procrastination | Dr. Masud Husain</div><div class="ep-cap">Huberman Lab &middot; 24 Aug &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>2 h 20 min</div></div><button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button></div>
+                <div class="ep-row" role="listitem" tabindex="0"><div class="ep-art"><img src="/_blob/f8cb5d3d9481ec145aa6bb2e8ff44839" alt=""><button class="ep-play" aria-label="Play The Shocking Lessons He Teaches His Harvard Students"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title">The Shocking Lessons He Teaches His Harvard Students | Arthur Brooks</div><div class="ep-cap">The Checkup with Doctor Mike &middot; 25 Jan &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>1 h 59 min</div></div><button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button></div>
+                <div class="ep-row" role="listitem" tabindex="0"><div class="ep-art"><img src="/_blob/df66a4e1d0810029039593622f58df98" alt=""><button class="ep-play" aria-label="Play Young people say their lives feel fake"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="ep-txt"><div class="ep-title">Young people say their lives feel fake. Here's why | Arthur Brooks</div><div class="ep-cap">The Big Think Interview &middot; 7 Aug &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>1 h 53 min</div></div><button class="ibtn" aria-label="More options"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg></button></div>
+              </div>
+            </section>
+
+            <!-- P6 · Because you listen to…: grouped list cards, card 1 carries a show strip -->
+            <section aria-label="Because you listen to">
+              <div class="chap">
+                <div class="chap-l"><h2 class="chap-title">Because you listen to&hellip;</h2></div>
+                <div class="chap-r"></div>
+              </div>
+              <div class="groups">
+                <div class="gcard">
+                  <div class="gcard-hd"><div><div class="over">Popular with listeners of</div><div class="who">Patrick Boyle On Finance</div></div><button class="ibtn" aria-label="Popular with listeners of Patrick Boyle On Finance"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/d21fdcd382b832283101cb17b0fc5700" alt=""></div><div class="txt"><div class="t-title">The OpenAI IPO &hellip; It's Worse Than You Think</div><div class="t-cap">MonkeyExplains &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>15 min</div></div></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/77281f74d9949cd57f8640de66928aaa" alt=""></div><div class="txt"><div class="t-title">Stock Picking in Difficult Times with George Noble | The Real Eisman Playbook Ep 76</div><div class="t-cap">The Real Eisman Playbook &middot; 54 min</div></div></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/9c4b973902c0354e4b0b940ccf9aab3b" alt=""></div><div class="txt"><div class="t-title">Why China Built the World's Largest Air Battery</div><div class="t-cap">Undecided with Matt Ferrell &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>17 min</div></div></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/2a8dd5c847eb368e31a967e213c4f2e3" alt=""></div><div class="txt"><div class="t-title">The Worlds Most Complicated Video Game Has A Wealth Inequality Problem</div><div class="t-cap">Micro &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>24 min</div></div></div>
+                  <div class="gcard-ft">
+                    <div class="th"><img src="/_blob/9f5c83abac15bc7704f6066cab995eae" alt="Unhedged"></div>
+                    <div class="th"><img src="/_blob/77203b856428ccba5e52161c709f658f" alt="The Economics Show"></div>
+                    <div class="th"><img src="/_blob/0fb61c8b053e6f1a1487c11a063d276e" alt="How Money Works"></div>
+                    <div class="th"><img src="/_blob/55f61159dbfde13b825338395fda55ea" alt="The Real Eisman Playbook"></div>
+                    <div class="th"><img src="/_blob/a453b7e32ef03f57bb5aaf254b966d1a" alt="The Plain Bagel"></div>
+                    <div class="th"><img src="/_blob/46234fb4a7fd213176225ec29ee8cdfe" alt="Money &amp; Macro"></div>
+                    <button class="linkbtn">See all 10</button>
+                  </div>
+                </div>
+                <div class="gcard">
+                  <div class="gcard-hd"><div><div class="over">Popular with listeners of</div><div class="who">ColdFusion</div></div><button class="ibtn" aria-label="Popular with listeners of ColdFusion"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/b9aa0f4b7e0bbe85b481fd2fc39ea1c8" alt=""></div><div class="txt"><div class="t-title">Why The Nepal Flood Was Way Scarier Than You Think</div><div class="t-cap">RealLifeLore &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>27 min</div></div></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/485a07b6287417ed6c17203aaae9b693" alt=""></div><div class="txt"><div class="t-title">The most expensive 33 hours in WordPress history...</div><div class="t-cap">Fireship &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>5 min</div></div></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/a118a7520299d056b8eeeac74823f2b9" alt=""></div><div class="txt"><div class="t-title">Dornier Do X The Largest, Heaviest, and Worst Flying Boat</div><div class="t-cap">Megaprojects &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>19 min</div></div></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/dff52f82e7b10893242f617e97328721" alt=""></div><div class="txt"><div class="t-title">Why California's Most Famous Ghost Town Still Exists?</div><div class="t-cap">Places &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>28 min</div></div></div>
+                </div>
+                <div class="gcard">
+                  <div class="gcard-hd"><div><div class="over">More like</div><div class="who">Why Germany Stopped Working</div></div><button class="ibtn" aria-label="More like Why Germany Stopped Working"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/c1d6d51ac25cb5240d5105bfdc049134" alt=""></div><div class="txt"><div class="t-title">Imperial Collapse Expert: The Real Reason Empires Fall - And Why America Is Next</div><div class="t-cap">Decoding Geopolitics Podcast with Dominik Presl &middot; <svg class="vid-glyph" width="12" height="12" viewBox="0 0 12 12" fill="none" role="img" aria-label="Video"><rect x=".5" y="2" width="11" height="8" rx="1.5" stroke="currentColor"/><path d="M5 4.6v2.8L7.4 6z" fill="currentColor"/></svg>39 min</div></div></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/26930b43a1452730cf8c190607aed17a" alt=""></div><div class="txt"><div class="t-title">Houthi blitz threatens Suez Canal as Saudi Arabia turns to UK for help</div><div class="t-cap">Iran: The Latest &middot; 33 min</div></div></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/c36855548519f6d0f0d1a12436688999" alt=""></div><div class="txt"><div class="t-title">Should markets discount the AI apocalypse?</div><div class="t-cap">Unhedged &middot; 21 min</div></div></div>
+                  <div class="lrow" tabindex="0"><div class="art"><img src="/_blob/a6dd0b51e9ac32aebd9fc27cb19b312c" alt=""></div><div class="txt"><div class="t-title">Putin 'knocking on doors of NATO' with near-miss strike on train of European officials</div><div class="t-cap">Ukraine: The Latest &middot; 50 min</div></div></div>
+                  <div class="gcard-ft"><button class="linkbtn">See all 9</button></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- P7 · Shows you might like: 8-up squares (shows already placed are skipped) -->
+            <section aria-label="Shows you might like">
+              <div class="chap">
+                <div class="chap-l"><h2 class="chap-title">Shows you might like</h2></div>
+                <div class="chap-r"><button class="linkbtn">See all</button></div>
+              </div>
+              <div class="shows8">
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/1e040602881d30211c6907858d940f37" alt=""><button class="gplay" aria-label="Play Fin vs History"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Fin vs History</div><div class="g-cap one">Fin Taylor &amp; Horatio Gould</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/29ad85c25837a5e4ac6a5818dd1257c1" alt=""><button class="gplay" aria-label="Play The Rest Is Classified"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">The Rest Is Classified</div><div class="g-cap one">Goalhanger</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/c8d3e7dc57a5c74b0fb129ba245d1ac8" alt=""><button class="gplay" aria-label="Play Mentour Pilot"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Mentour Pilot</div><div class="g-cap one">Mentour Pilot</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/0245bdb892a74d208e10dbda5e22b007" alt=""><button class="gplay" aria-label="Play The Rest Is Politics: US"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">The Rest Is Politics: US</div><div class="g-cap one">Goalhanger</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/594c6a5f6797cf821078ab4429ffb11e" alt=""><button class="gplay" aria-label="Play From First Principles"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">From First Principles</div><div class="g-cap one">Krishna Choudhary and Lester Nare</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/5bd5467eb326c03f7799f55e96957b26" alt=""><button class="gplay" aria-label="Play Destiny VoD Archive"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Destiny VoD Archive</div><div class="g-cap one">Destiny</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/3f2d50691677bf551f8fccebb3f56010" alt=""><button class="gplay" aria-label="Play The Philip DeFranco Show"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">The Philip DeFranco Show</div><div class="g-cap one">philip defranco</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/d37d22edb2c26f7d1a384ccdef233ffe" alt=""><button class="gplay" aria-label="Play Modern Wisdom"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Modern Wisdom</div><div class="g-cap one"><span class="xbadge" aria-label="Explicit">E</span>Chris Williamson</div></div>
+              </div>
+            </section>
+
+            <!-- P8 · Popular with listeners of SOLVED with Mark Manson: a shows-only key stays a shelf -->
+            <section aria-label="Popular with listeners of SOLVED with Mark Manson">
+              <div class="chap">
+                <div class="chap-l"><h2 class="chap-title">Popular with listeners of SOLVED with Mark Manson</h2></div>
+                <div class="chap-r"><button class="linkbtn">See all</button></div>
+              </div>
+              <div class="shows8">
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/24f67242649c066ea4a7a6372d6176b5" alt=""><button class="gplay" aria-label="Play Therapy in a Nutshell"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Therapy in a Nutshell</div><div class="g-cap one">Therapy in a Nutshell - Emma McAdam</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/b4abb67787682febe9318fcc5945b672" alt=""><button class="gplay" aria-label="Play The Psychology of Money with Morgan Housel"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">The Psychology of Money with Morgan Housel</div><div class="g-cap one">Morgan Housel</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/981b972b6b414a744b51f19816574628" alt=""><button class="gplay" aria-label="Play Philosophies for Life"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Philosophies for Life</div><div class="g-cap one">Philosophies for Life</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/9a5f1867df6483716b35cf816d3828a5" alt=""><button class="gplay" aria-label="Play Help Me Be Me"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Help Me Be Me</div><div class="g-cap one"><span class="xbadge" aria-label="Explicit">E</span>Cloud10</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/235961e7462671dbdece14600d1db1f1" alt=""><button class="gplay" aria-label="Play How to Be a Better Human"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">How to Be a Better Human</div><div class="g-cap one"><span class="xbadge" aria-label="Explicit">E</span>TED</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/e407fe841ec60a77641ba3983d5e5c4c" alt=""><button class="gplay" aria-label="Play The Psychology Podcast"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">The Psychology Podcast</div><div class="g-cap one"><span class="xbadge" aria-label="Explicit">E</span>Scott Barry Kaufman</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/a3363aefeb9267b6ad5f40d8b266cf6d" alt=""><button class="gplay" aria-label="Play A Bit of Optimism"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">A Bit of Optimism</div><div class="g-cap one"><span class="xbadge" aria-label="Explicit">E</span>The Optimism Company from Simon Sinek</div></div>
+                <div class="gitem" tabindex="0"><div class="cover"><img src="/_blob/2df5b98cf25e5184423f6a7119988612" alt=""><button class="gplay" aria-label="Play Ideas To Thrive"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg></button></div><div class="g-title">Ideas To Thrive</div><div class="g-cap one">Ideas To Thrive</div></div>
+              </div>
+            </section>
+            </div>
+            </sc-if>
+          </div>
+          </sc-if>
+
+          <!-- Audiobooks facet (audiobooks-chip): no capture, no activity, so the starter; never a blank page -->
+          <sc-if value="{{view.audiobooks}}" hint-placeholder-val="{{ false }}">
+          <div class="view {{zinCls}}">
+            <section class="starter" aria-label="Audiobooks">
+              <svg class="starter-glyph" width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M8 8.5A3.5 3.5 0 0 1 11.5 5H32v25H11.5A3.5 3.5 0 0 0 8 33.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 33.5A3.5 3.5 0 0 0 11.5 37H32v-7" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M14 12h12M14 17h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <h2 class="starter-h">No audiobooks yet</h2>
+              <p class="starter-p">Audiobooks you save or start show up here, along with picks based on them.</p>
+              <button class="btn">Browse audiobooks</button>
+            </section>
+          </div>
+          </sc-if>
+        </div>
+
+        <div class="footer-pad"></div>
+      </div>
+    </div>
+
+    <!-- now playing -->
+    <div class="nowplaying">
+      <div class="np-track">
+        <div class="np-art"><img src="/_blob/dc4ba8f2a016d15e64a0c8f5d4853248" alt="She Looks So Perfect"></div>
+        <div class="np-meta">
+          <div class="device"><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><rect x="5" y="1" width="6" height="14" rx="1.5" stroke="currentColor"/></svg>Playing on iPhone</div>
+          <div class="t1">She Looks So Perfect</div>
+          <div class="t2">5 Seconds of Summer</div>
+        </div>
+        <button class="np-heart" aria-label="Like"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5s-5.5-3.3-5.5-7A3 3 0 0 1 8 4.5 3 3 0 0 1 13.5 6.5c0 3.7-5.5 7-5.5 7z" stroke="currentColor"/></svg></button>
+      </div>
+      <div class="np-controls">
+        <div class="np-btns">
+          <svg width="16" height="16" viewBox="0 0 16 16" style="color:var(--text-secondary)"><path d="M13 3L5 8l8 5V3z" fill="currentColor"/><rect x="3" y="3" width="1.5" height="10" fill="currentColor"/></svg>
+          <button class="np-playbtn" aria-label="Pause"><svg width="14" height="14" viewBox="0 0 16 16"><rect x="3" y="2" width="3.5" height="12" fill="currentColor"/><rect x="9.5" y="2" width="3.5" height="12" fill="currentColor"/></svg></button>
+          <svg width="16" height="16" viewBox="0 0 16 16" style="color:var(--text-secondary)"><path d="M3 3l8 5-8 5V3z" fill="currentColor"/><rect x="11.5" y="3" width="1.5" height="10" fill="currentColor"/></svg>
+        </div>
+        <div class="np-scrubrow">
+          <span class="np-time">0:19</span>
+          <div class="np-scrub"><div class="fill"></div></div>
+          <span class="np-time r">3:22</span>
+        </div>
+      </div>
+      <div class="np-right">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4h2.5L11 12h3M2 12h2.5L11 4h3M12 2l2 2-2 2M12 10l2 2-2 2" stroke="currentColor"/></svg>
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 5h8l-2-2M13 11H5l2 2" stroke="currentColor"/></svg>
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 6h3l4-3v10l-4-3H2V6z" stroke="currentColor"/></svg>
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 12l3-8 3 6 2-4 4 6" stroke="currentColor"/></svg>
+        <div class="sel"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="9" height="7" rx="1" stroke="currentColor"/><path d="M13 5l2-1v8l-2-1" stroke="currentColor"/></svg></div>
+        <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="13" cy="8" r="1.3" fill="currentColor"/></svg>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":3560},"scroll":{"editor":"enum","options":["top","scrolled"],"default":"top"}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // Illustrative: the daylist window runs 07:04-13:04; it is now 11:28:55, so the next
+    // daylist ("friday afternoon", 13:04) arrives in 01:35:05 and ticks down live.
+    this.state = {
+      mfy: 0, nmf: 0, jbi: 0, rad: 0, m1: 0, m2: 0, m3: 0, remaining: 5705, liked: false,
+      // Facets: "shown" is the published page, "target" the optimistic selection while a fetch is in flight.
+      shown: 'all', shownFollow: false, target: 'all', follow: { music: false, podcasts: false },
+      busy: false, phase: '', entered: false, failShown: false, failLabel: ''
+    };
+    // Every pager steps exactly one viewport (1316px) plus one gap (16px), so a page
+    // always starts on a card edge: 6 x 206, 3 x 428 and 8 x 150.5 all give 1332px.
+    this.pages = { mfy: 2, nmf: 2, jbi: 2, rad: 3, m1: 2, m2: 2, m3: 2 };
+    this.step = 1332;
+    this.handlers = {};
+    var self = this;
+    Object.keys(this.pages).forEach(function (key) {
+      var h = {
+        prev: function () { self.go(key, self.state[key] - 1); },
+        next: function () { self.go(key, self.state[key] + 1); }
+      };
+      for (var i = 0; i < self.pages[key]; i++) {
+        (function (idx) { h['go' + idx] = function () { self.go(key, idx); }; })(i);
+      }
+      self.handlers[key] = h;
+    });
+    this.toggleLike = function () { self.setState({ liked: !self.state.liked }); };
+    this.facetKeys = ['all', 'music', 'podcasts', 'audiobooks'];
+    this.labels = { all: 'All', music: 'Music', podcasts: 'Podcasts', audiobooks: 'Audiobooks' };
+    this.picks = {};
+    this.facetKeys.forEach(function (f) { self.picks[f] = function () { self.pick(f); }; });
+    this.toggleFollow = function () { self.flipFollow(); };
+    this.retry = function () { self.flipFollow(); };
+    this.dismiss = function () { self.setState({ failShown: false }); };
+  }
+  componentDidMount() {
+    this._daylistTimer = setInterval(() => {
+      this.setState({ remaining: Math.max(0, this.state.remaining - 1) });
+    }, 1000);
+  }
+  componentWillUnmount() {
+    if (this._daylistTimer) clearInterval(this._daylistTimer);
+    this.clearSwitch();
+  }
+  clearSwitch() {
+    if (this._sw1) clearTimeout(this._sw1);
+    if (this._sw2) clearTimeout(this._sw2);
+    this._sw1 = null;
+    this._sw2 = null;
+  }
+  // Selection never follows focus and re-selecting the current word does nothing.
+  pick(f) {
+    if (f === this.state.target) return;
+    this.runSwitch(f, this.state.follow, false);
+  }
+  // Following is a facet switch too (the sub-chip id becomes the facet). No Music "Following"
+  // capture exists, so turning it on in this prototype plays the failure path.
+  flipFollow() {
+    var t = this.state.target;
+    if ((t !== 'music' && t !== 'podcasts') || this.state.busy) return;
+    var next = { music: this.state.follow.music, podcasts: this.state.follow.podcasts };
+    next[t] = !next[t];
+    this.runSwitch(t, next, t === 'music' && next.music);
+  }
+  runSwitch(target, follow, fails) {
+    var self = this;
+    var before = this.state.follow;
+    this.clearSwitch();
+    // t=0: the target word is selected at once; the old page stays, dims to .6 and ignores input; the bar appears.
+    this.setState({ target: target, follow: follow, busy: true, phase: '', failShown: false });
+    this._sw1 = setTimeout(function () {
+      self._sw1 = null;
+      if (fails) {
+        // Failure: revert the pivot and the toggle, restore the old page, show the InfoBar.
+        self.setState({ busy: false, target: self.state.shown, follow: before, failShown: true, failLabel: 'Following for ' + self.labels[target] });
+        return;
+      }
+      // Data lands: the bar goes, the old page fades out over 83ms, then the new page enters.
+      self.setState({ busy: false, phase: 'out' });
+      self._sw2 = setTimeout(function () {
+        self._sw2 = null;
+        self.setState({ shown: target, shownFollow: !!follow[target], phase: '', entered: true });
+      }, 83);
+    }, 1200);
+  }
+  go(key, idx) {
+    var max = this.pages[key] - 1;
+    if (idx < 0) idx = 0;
+    if (idx > max) idx = max;
+    var patch = {};
+    patch[key] = idx;
+    this.setState(patch);
+  }
+  pager(key) {
+    var cur = this.state[key];
+    var n = this.pages[key];
+    var h = this.handlers[key];
+    var out = {
+      t: 'translateX(-' + (cur * this.step) + 'px)',
+      prev: h.prev,
+      next: h.next,
+      prevCls: cur === 0 ? 'off' : '',
+      nextCls: cur === n - 1 ? 'off' : ''
+    };
+    for (var i = 0; i < n; i++) {
+      out['pip' + i] = cur === i ? 'on' : '';
+      out['go' + i] = h['go' + i];
+    }
+    return out;
+  }
+  renderVals() {
+    var windowLen = 21600; // 07:04-13:04 daylist window, seconds
+    var remaining = this.state.remaining;
+    var frac = Math.min(1, Math.max(0, windowLen - remaining) / windowLen);
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var h = Math.floor(remaining / 3600);
+    var m = Math.floor((remaining % 3600) / 60);
+    var s = remaining % 60;
+    var st = this.state;
+    var self = this;
+    var fx = {};
+    this.facetKeys.forEach(function (f) {
+      var on = st.target === f;
+      fx[f] = { cls: on ? 'sel' : '', aria: on ? 'true' : 'false', tab: on ? '0' : '-1', pick: self.picks[f] };
+    });
+    var hasToggle = st.target === 'music' || st.target === 'podcasts';
+    var followOn = hasToggle && !!st.follow[st.target];
+    var props = this.props || {};
+    var scrolled = props.scroll === 'scrolled';
+    var key = st.shown;
+    return {
+      mfy: this.pager('mfy'),
+      nmf: this.pager('nmf'),
+      jbi: this.pager('jbi'),
+      rad: this.pager('rad'),
+      m1: this.pager('m1'),
+      m2: this.pager('m2'),
+      m3: this.pager('m3'),
+      countdownText: pad(h) + ':' + pad(m) + ':' + pad(s),
+      daypartFill: (frac * 100).toFixed(1) + '%',
+      ringOffset: (37.7 * (1 - frac)).toFixed(1),
+      toggleLike: this.toggleLike,
+      heartFill: this.state.liked ? 'currentColor' : 'none',
+      likedAria: this.state.liked ? 'true' : 'false',
+      fx: fx,
+      hasToggle: hasToggle,
+      followCls: followOn ? 'on' : '',
+      followAria: followOn ? 'true' : 'false',
+      followDesc: st.target === 'music' ? 'Only from artists you follow' : 'Only from shows you follow',
+      toggleFollow: this.toggleFollow,
+      busy: st.busy,
+      busyAria: st.busy ? 'true' : 'false',
+      busyLabel: 'Loading ' + this.labels[st.target],
+      pageCls: st.phase === 'out' ? 'out' : (st.busy ? 'busy' : ''),
+      bandCls: st.busy ? 'busy' : '',
+      surfCls: scrolled ? 'scrolled' : '',
+      zinCls: st.entered ? 'zin' : '',
+      view: {
+        all: key === 'all',
+        music: key === 'music',
+        podcasts: key === 'podcasts',
+        podcastsMore: key === 'podcasts' && !st.shownFollow,
+        audiobooks: key === 'audiobooks'
+      },
+      failShown: st.failShown,
+      failLabel: st.failLabel,
+      retry: this.retry,
+      dismiss: this.dismiss
+    };
+  }
+}
+</script>
+</body>
+</html>

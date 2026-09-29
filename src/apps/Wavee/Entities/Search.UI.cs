@@ -348,9 +348,9 @@ public readonly partial struct Search
         return hit.Kind switch
         {
             EntityKind.Artist or EntityKind.Playlist or EntityKind.Show
-                => Embed.Comp(() => new Controls.FollowButton { Uri = uri, Name = name }) with { Key = "follow:" + uri },
+                => Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name }) with { Key = "follow:" + uri },
             EntityKind.Track or EntityKind.Album
-                => Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = name, Glyph = 16f, Box = compact ? 32f : 40f }) with { Key = "save:" + uri },
+                => Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = name, Glyph = 16f }) with { Key = "save:" + uri },
             _ => null,
         };
     }
@@ -438,9 +438,9 @@ public readonly partial struct Search
         var menu = MenuOf(hit);
 
         var actions = new List<Element>(4);
-        if (CanPlay(hit.Kind)) actions.Add(Controls.Play(accent, () => PlayHit(h)) with { Shrink = 0f });
+        if (CanPlay(hit.Kind)) actions.Add(Controls.PlayButton(accent, () => PlayHit(h)) with { Shrink = 0f });
         if (CanOpen(hit.Kind) && !isTrack)
-            actions.Add(Controls.Pill(Loc.Get(Strings.Search.OpenPage), open, ButtonAppearance.Standard) with { Shrink = 0f });
+            actions.Add(Button.Create(Loc.Get(Strings.Search.OpenPage), open) with { Shrink = 0f });
         if (TrailingOf(hit, uri, title, compact: false) is { } trailing) actions.Add(trailing);
         if (menu is not null) actions.Add(Controls.Named(Controls.MoreButton(null, requestsContext: true) with { BlocksDragArm = true }, Loc.Get(Strings.Common.More)));
 
@@ -552,6 +552,7 @@ public readonly partial struct Search
             minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax, gap: Spacing.M,
             snap: ShelfSnap.Page, cardWidthAgnostic: true, edgeFade: HomeModuleLayout.ShelfEdgeFade,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
+            lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
             keyOf: static (item, _) => KeyOf(item.Ref)));
     }
 

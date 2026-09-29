@@ -1031,26 +1031,19 @@ public readonly partial struct User
             };
         }
 
-        Element Pill() => new BoxEl
+        /// <summary>The scrim "Change cover" affordance over the art — a stock <see cref="Button"/> Standard on
+        /// <see cref="Controls.OnMediaPalette"/> (Workstream B), 32/r4, not the old 30-capsule hand-rolled pill.</summary>
+        Element Pill() => Button.Create(Loc.Get(Strings.Detail.LikedCover.Pill), _toggle, glyph: Icons.Brush,
+            style: Button.DefaultStyle(ButtonAppearance.Standard, palette: Controls.OnMediaPalette) with
+            {
+                MinHeight = Controls.ButtonHeight,
+            }) with
         {
-            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, 0f, 10f, 10f),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Shrink = 0f,
-            Height = 30f, Padding = new Edges4(10f, 0f, 12f, 0f), Corners = Radii.FullAll,
-            Fill = Design.OnMedia.ScrimRest, HoverFill = Design.OnMedia.ScrimHover, PressedFill = Design.OnMedia.ScrimPressed,
-            BorderWidth = 1f, BorderColor = Design.OnMedia.Stroke,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-            OnClick = _toggle, OnKeyDown = _key, OnRealized = _anchorSink,
+            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, 0f, 10f, 10f), Shrink = 0f,
+            OnKeyDown = _key, OnRealized = _anchorSink,
             // FOCUS is part of the reveal: a keyboard user must never land on an invisible control (item 28).
             OnFocusChanged = _focus,
             Opacity = _pillOpacity, Transition = MotionTok.ControlNormal,
-            Children =
-            [
-                Icon(Icons.Brush, 14f, Design.OnMedia.Ink),
-                new TextEl(Loc.Get(Strings.Detail.LikedCover.Pill))
-                {
-                    Size = 12f, LineHeight = 16f, Weight = 600, Color = Design.OnMedia.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                },
-            ],
         };
     }
 

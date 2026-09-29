@@ -762,7 +762,7 @@ public readonly partial struct Concert
                 ?
                 [
                     RestDatePill(_openWhen) with { OnRealized = _captureWhen },
-                    FilterToken(Loc.Get(Strings.Concerts.Filter.ThisWeekend), false, _thisWeekend) with { Key = "when-chip", Animate = ChipExit },
+                    FilterToken(Loc.Get(Strings.Concerts.Filter.ThisWeekend), false, _thisWeekend, animate: ChipExit) with { Key = "when-chip" },
                 ]
                 : [FusedPill("when-pill", SegmentedPillStyle.Accent, when.Name, ConcertHub.WhenLabel(when.Range, CultureInfo.CurrentCulture), _openWhen) with { OnRealized = _captureWhen }];
             return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Children = kids };
