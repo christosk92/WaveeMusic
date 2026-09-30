@@ -503,15 +503,287 @@ public class PlaybackStepTests
     }
 
     [Fact]
-    public void A_transfer_to_ourselves_is_refused_rather_than_sent()
+    public void An_outbound_transfer_to_ourselves_is_refused_and_pulling_playback_here_is_TakeOver()
     {
+        // Self-to-self is a 400 and the route from another device to us was never captured, so the OUTBOUND transfer
+        // refuses it (and says so); the picker's "pull playback home" is `TakeOver`, which never sends a transfer.
         var s = PlayingQueueOf(3);
         var fx = new Playback.Effects();
 
         Playback.Step(ref s, Playback.Input.Transfer(s.Us), ref fx);
 
         Assert.False(fx.Transfer);
+        Assert.Equal(Playback.Refusal.SelfTransfer, fx.Refused);
         Assert.Equal(Playback.Phase.Playing, s.Phase);
+    }
+
+    // ── take over: pull playback HERE (a local claim, never a transfer) ─────────────────────────────────────────────
+
+    /// <summary>A phone that owns playback and is 90 s into a 244.96 s row, mirrored at frame time 1 000.</summary>
+    static Playback.State PhoneOwns(out EntityId track, out EntityId context, bool playing = true)
+    {
+        TestScope.Fresh();
+        var s = Playback.State.Initial;
+        s.Us = Playback.DeviceHash("wavee-device");
+        var fx = new Playback.Effects();
+        ulong phone = Playback.DeviceHash("phone");
+        track = EntityId.ForGid(EntityKind.Track, (UInt128)0xC105E5UL);
+        context = EntityId.ForGid(EntityKind.Playlist, (UInt128)0xA1BEUL);
+        var frame = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, phone, 1_000);
+        var remote = new Playback.RemoteState(true, track, playing, !playing, false,
+            90_000, 1_000, 244_960, false, RepeatMode.Off, -1, NoPrev: false, NoNext: false, NoSeek: false,
+            Context: context);
+        Playback.Step(ref s, Playback.Input.Cluster(in frame, in remote, nowMs: 1_000), ref fx);
+        Assert.Equal(Playback.Owner.Foreign, s.Owner);
+        return s;
+    }
+
+    static Playback.Snapshot PutOf(in Playback.State s, long frameNowMs)
+    {
+        var identity = new Playback.DeviceIdentity("wavee-device", "Wavee", "cid", "Win32", "1.2.3", "3.2.6");
+        return Playback.Snapshot.Of(in s, in identity, Playback.PublishReason.PlayerStateChanged, 1, 1, frameNowMs);
+    }
+
+    [Fact]
+    public void TakeOver_from_a_foreign_owner_claims_locally_and_loads_the_mirrored_row_at_its_projected_position()
+    {
+        var s = PhoneOwns(out EntityId track, out EntityId context);
+        var fx = new Playback.Effects();
+
+        Playback.Step(ref s, Playback.Input.TakeOver(nowMs: 6_000), ref fx);
+
+        Assert.Equal(Playback.Owner.Us, s.Owner);
+        Assert.Equal(Playback.ClaimPhase.Protected, s.Own.Claim);        // waiting for the server's verdict
+        Assert.True(fx.Load);
+        Assert.Equal(track, fx.LoadId);                                  // the mirrored row...
+        Assert.Equal(95_000, fx.LoadFromMs);                             // ...90 s + the 5 s the mirror has run since
+        Assert.False(fx.LoadPaused);
+        Assert.Equal(context, s.Context);                                // the owner's context, adopted
+        Assert.True(fx.TakeoverSeed);                                    // the queue comes from the owner's cluster
+        Assert.False(fx.Transfer);                                       // NO outbound transfer: the claim is the request
+        Assert.True(fx.PublishState);
+        Assert.True(fx.PublishActive);
+        Assert.Equal(6_000L, s.StartedPlayingAtMs);                      // stamped BEFORE the first is_active put...
+        Playback.Snapshot put = PutOf(in s, 6_000);
+        Assert.True(put.IsActive);
+        Assert.NotEqual(0L, put.StartedPlayingAtMs);                     // ...so that put never says started_playing_at = 0
+    }
+
+    [Fact]
+    public void TakeOver_keeps_a_paused_mirror_paused()
+    {
+        var s = PhoneOwns(out _, out _, playing: false);
+        var fx = new Playback.Effects();
+
+        Playback.Step(ref s, Playback.Input.TakeOver(nowMs: 6_000), ref fx);
+
+        Assert.True(fx.Load);
+        Assert.True(fx.LoadPaused);
+        Assert.Equal(90_000, fx.LoadFromMs);                             // a paused mirror does not run on
+    }
+
+    [Fact]
+    public void TakeOver_with_nobody_playing_claims_the_departed_row_the_same_way()
+    {
+        var s = PhoneOwns(out EntityId track, out _);
+        var fx = new Playback.Effects();
+        var gone = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, 0, 2_000);
+        Playback.Step(ref s, Playback.Input.Cluster(in gone, default, nowMs: 2_000), ref fx);
+        Assert.Equal(Playback.Owner.Nobody, s.Owner);
+        fx.Clear();
+
+        Playback.Step(ref s, Playback.Input.TakeOver(nowMs: 6_000), ref fx);
+
+        Assert.Equal(Playback.Owner.Us, s.Owner);
+        Assert.True(fx.Load);
+        Assert.Equal(track, fx.LoadId);
+        Assert.True(fx.TakeoverSeed);
+        Assert.False(fx.Transfer);
+        Assert.Equal(6_000L, s.StartedPlayingAtMs);
+    }
+
+    [Fact]
+    public void TakeOver_while_we_already_own_playback_does_nothing()
+    {
+        var s = PlayingQueueOf(3);
+        var fx = new Playback.Effects();
+
+        Playback.Step(ref s, Playback.Input.TakeOver(nowMs: 6_000), ref fx);
+
+        Assert.False(fx.Any);
+        Assert.Equal(Playback.Phase.Playing, s.Phase);
+    }
+
+    [Fact]
+    public void A_rejected_takeover_stops_the_host_and_is_observable()
+    {
+        var s = PhoneOwns(out _, out _);
+        var fx = new Playback.Effects();
+        ulong phone = Playback.DeviceHash("phone");
+        Playback.Step(ref s, Playback.Input.TakeOver(nowMs: 6_000), ref fx);
+        Playback.Step(ref s, Playback.Input.PutSent(7, isActive: true), ref fx);
+        fx.Clear();
+
+        // The claim's own response still names the phone: the server kept it there.
+        var verdict = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.PutResponse, 7, phone, 9_000);
+        Playback.Step(ref s, Playback.Input.Cluster(in verdict, default, nowMs: 6_100), ref fx);
+
+        Assert.Equal(Playback.Owner.Foreign, s.Owner);
+        Assert.Equal(phone, s.Own.Device);
+        Assert.True(fx.Stop);                                            // the host that had just been started stops
+        Assert.True(fx.ClaimRejected);                                   // the host's log line + the UI's toast
+        Assert.Equal(0L, s.StartedPlayingAtMs);                          // and the stamp does not outlive the claim
+    }
+
+    [Fact]
+    public void An_expired_unanswered_claim_that_saw_another_owner_is_rejected_too()
+    {
+        var s = PhoneOwns(out _, out _);
+        var fx = new Playback.Effects();
+        ulong phone = Playback.DeviceHash("phone");
+        Playback.Step(ref s, Playback.Input.TakeOver(nowMs: 6_000), ref fx);
+        fx.Clear();
+        var push = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, phone, 6_500);
+        Playback.Step(ref s, Playback.Input.Cluster(in push, default, nowMs: 6_500), ref fx);   // P2: remembered
+        Assert.Equal(Playback.Owner.Us, s.Owner);
+
+        Playback.Step(ref s, Playback.Input.Tick(6_000 + Playback.Ownership.ClaimProtectMs), ref fx);
+
+        Assert.Equal(Playback.Owner.Foreign, s.Owner);
+        Assert.True(fx.ClaimRejected);
+        Assert.True(fx.Stop);
+    }
+
+    [Fact]
+    public void An_inbound_transfer_claim_stamps_started_playing_at_and_a_release_resets_it()
+    {
+        var s = PlayingQueueOf(3);
+        s.Own = Playback.OwnerState.Initial;
+        var fx = new Playback.Effects();
+        var cmd = new Spotify.Decode.RemoteCommand(Spotify.Decode.RemoteCmd.Transfer, Ok: true, MessageId: 4,
+            SeekToMs: 0, BoolArg: false, Track: default, SenderHash: 9, SessionHash: 0, DedupeKey: 1);
+
+        Playback.Step(ref s, Playback.Input.Controller(in cmd, nowMs: 3_000), ref fx);
+
+        Assert.Equal(Playback.Owner.Us, s.Owner);
+        Assert.Equal(3_000L, s.StartedPlayingAtMs);                      // the wire reads THIS field, not the ownership's
+        Assert.NotEqual(0L, PutOf(in s, 3_000).StartedPlayingAtMs);
+
+        fx.Clear();
+        Playback.Step(ref s, Playback.Input.Release(Playback.ReleaseCause.TransferAway), ref fx);
+
+        Assert.Equal(0L, s.StartedPlayingAtMs);                          // a later inbound claim must not advertise this stamp
+    }
+
+    [Fact]
+    public void An_inbound_resume_from_nobody_stamps_started_playing_at()
+    {
+        var s = PlayingQueueOf(3);
+        s.Own = Playback.OwnerState.Initial;
+        s.Phase = Playback.Phase.Paused;
+        var fx = new Playback.Effects();
+        var cmd = new Spotify.Decode.RemoteCommand(Spotify.Decode.RemoteCmd.Resume, Ok: true, MessageId: 4,
+            SeekToMs: 0, BoolArg: false, Track: default, SenderHash: 9, SessionHash: 0, DedupeKey: 1);
+
+        Playback.Step(ref s, Playback.Input.Controller(in cmd, nowMs: 4_000), ref fx);
+
+        Assert.Equal(Playback.Owner.Us, s.Owner);
+        Assert.Equal(4_000L, s.StartedPlayingAtMs);
+    }
+
+    [Fact]
+    public void A_refused_transfer_leaves_the_deck_parked_where_it_was_and_reports_it()
+    {
+        var s = PlayingQueueOf(3);
+        s.PosMs = 10_000;
+        s.PosQpc = 1_000;
+        var fx = new Playback.Effects();
+        ulong phone = Playback.DeviceHash("phone");
+
+        Playback.Step(ref s, Playback.Input.Transfer(phone, rosterSlot: 2, nowMs: 6_000), ref fx);
+        Assert.Equal(15_000, s.PosMs);                                   // frozen at the moment it let go
+        uint transferEpoch = s.TransferEpoch;
+        fx.Clear();
+
+        Playback.Step(ref s, Playback.Input.TransferDone(transferEpoch, ok: false), ref fx);
+
+        Assert.True(fx.TransferFailed);
+        Assert.True(s.HasCurrent);                                       // the row is still on the deck...
+        Assert.True(s.Parked);                                           // ...parked: one Play press claims it back
+        Assert.Equal(15_000, s.PosMs);
+    }
+
+    // ── mute: routed like volume ────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Mute_with_a_local_sink_mutes_the_sink_and_leaves_the_volume_alone()
+    {
+        var s = PlayingQueueOf(3);
+        var fx = new Playback.Effects();
+
+        Playback.Step(ref s, Playback.Input.Mute(true, hasSink: true), ref fx);
+
+        Assert.True(fx.Mute);
+        Assert.True(fx.MuteOn);
+        Assert.Equal(1f, s.Volume);
+        Assert.False(fx.SendRemote);
+    }
+
+    [Fact]
+    public void Mute_while_a_phone_owns_playback_forwards_volume_zero_and_never_touches_our_sink()
+    {
+        var s = PhoneOwns(out _, out _);
+        s.MirrorVolume = 0.5f;
+        var fx = new Playback.Effects();
+
+        Playback.Step(ref s, Playback.Input.Mute(true, hasSink: true), ref fx);
+
+        Assert.False(fx.Mute);                                           // our sink is not the audible one
+        Assert.True(fx.SendRemote);
+        Assert.True(fx.RemoteIsVolume);
+        Assert.Equal(0L, fx.RemoteArg);
+        Assert.Equal(0f, s.SliderVolume);
+
+        fx.Clear();
+        Playback.Step(ref s, Playback.Input.Mute(false, hasSink: true), ref fx);
+
+        Assert.True(fx.SendRemote);
+        Assert.Equal((long)Playback.Input.WireVolume(0.5f), fx.RemoteArg);   // back to where the phone was
+    }
+
+    [Fact]
+    public void Mute_without_a_sink_is_volume_zero_and_unmute_restores_the_level()
+    {
+        var s = PlayingQueueOf(3);
+        s.Volume = 0.4f;
+        var fx = new Playback.Effects();
+
+        Playback.Step(ref s, Playback.Input.Mute(true, hasSink: false), ref fx);
+        Assert.Equal(0f, s.Volume);
+        Assert.False(fx.Mute);
+
+        Playback.Step(ref s, Playback.Input.Mute(false, hasSink: false), ref fx);
+        Assert.True(Math.Abs(0.4f - s.Volume) < 0.001f);
+    }
+
+    // ── refusals leave a trace ──────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_skip_the_context_disallows_and_a_verb_with_no_owner_device_are_reported_as_refused()
+    {
+        var s = PlayingQueueOf(3);
+        s.NoNext = true;
+        var fx = new Playback.Effects();
+        Playback.Step(ref s, Playback.Input.Next(), ref fx);
+        Assert.Equal(Playback.Refusal.NoNext, fx.Refused);
+        Assert.False(fx.Load);
+
+        s = PhoneOwns(out _, out _);
+        s.Own.Device = 0;
+        fx.Clear();
+        Playback.Step(ref s, Playback.Input.Pause(), ref fx);
+        Assert.Equal(Playback.Refusal.NoRemoteDevice, fx.Refused);
+        Assert.False(fx.SendRemote);
     }
 
     // ── the mirror, the restrictions, the position ──────────────────────────────────────────────────────────────────

@@ -178,7 +178,8 @@ public static class OnMedia
             bool show = Visible.Value;
             bool playing = Playback.IsPlaying.Value;
             bool can = !Playback.Current.Value.IsNone;
-            bool muted = Playback.Audio.Muted.Value || Playback.Volume.Value <= 0.001f;
+            var tf = Shell.TransportFacts();                           // the same skip fact set the bar and the stage read
+            bool muted = Playback.Muted.Value;
             UseSignalEffect(static () => s_volume.SetIfChanged(Playback.Volume.Value));
             var overlay = UseContext(Overlay.Service);
             var moreAnchor = UseRef<NodeHandle>(default);
@@ -270,9 +271,9 @@ public static class OnMedia
                                 Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.S,
                                 Children =
                                 [
-                                    ToolTip.Wrap(Glyph(Icons.Previous, s_prev, can), Loc.Get(Strings.Player.Previous)),
+                                    ToolTip.Wrap(Glyph(Icons.Previous, s_prev, tf.PrevEnabled), Loc.Get(Strings.Player.Previous)),
                                     Play(playing, can),
-                                    ToolTip.Wrap(Glyph(Icons.Next, s_next, can), Loc.Get(Strings.Player.Next)),
+                                    ToolTip.Wrap(Glyph(Icons.Next, s_next, tf.NextEnabled), Loc.Get(Strings.Player.Next)),
                                 ],
                             },
                             Shell.SeekBar(Feed),
@@ -283,8 +284,11 @@ public static class OnMedia
                                 [
                                     Shell.TimeText(remaining: false, ink: Tok.OnMediaSecondary),
                                     new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false },
-                                    ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, ToggleVolume, true, h => volAnchor.Value = h),
+                                    // The glyph MUTES, like every other mute glyph; the slider keeps its own affordance beside it.
+                                    ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, static () => Playback.ToggleMute(), true),
                                         Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute)),
+                                    ToolTip.Wrap(Glyph(Icons.ChevronUp, ToggleVolume, true, h => volAnchor.Value = h),
+                                        Loc.Get(Strings.Player.Volume)),
                                     ToolTip.Wrap(Glyph(Icons.More, ToggleMore, true, h => moreAnchor.Value = h),
                                         Loc.Get(Strings.Common.More)),
                                     Shell.TimeText(remaining: true, ink: Tok.OnMediaSecondary),

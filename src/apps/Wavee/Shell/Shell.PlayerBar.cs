@@ -99,9 +99,6 @@ public static partial class Shell
         /// <summary>The overflow can hold every <see cref="OverflowCommand"/> at once.</summary>
         public const int MaxOverflow = 9;
 
-        /// <summary>At or under this linear volume the glyph reads as muted.</summary>
-        public const float MuteThreshold = 0.001f;
-
         /// <summary>The play-next drop's batch cap (G-211, ch 19 #87): a dropped playlist/album inserts at most this
         /// many tracks before the front of the queue; the rest are silently NOT the drop's problem — the toast says
         /// "Added the first N" rather than pretending the whole thing landed.</summary>
@@ -112,9 +109,6 @@ public static partial class Shell
 
         /// <summary>Did the cap actually cut anything, i.e. does the toast say "the first N" rather than just "N"?</summary>
         public static bool DropWasTruncated(int totalTracks) => totalTracks > MaxPlayNextDrop;
-
-        /// <summary>The software mute's restore level when there is no output device to mute (the fake path).</summary>
-        public const float SoftwareUnmuteLevel = 0.7f;
 
         /// <summary>How long the bar keeps showing the OUTGOING identity while the incoming one resolves. A skip
         /// between two rows the client already holds resolves in 100-250 ms, so the whole gap fits inside this and the
@@ -348,11 +342,6 @@ public static partial class Shell
 
         public static string RepeatGlyph(RepeatMode mode) => mode == RepeatMode.Track ? Icons.RepeatOne : Icons.RepeatAll;
 
-        public static bool ShowsMuteGlyph(bool muted, float volume) => muted || volume <= MuteThreshold;
-
-        /// <summary>The software 0 ⇄ 0.7 toggle, for a build with no output device to mute.</summary>
-        public static float SoftwareMuteTarget(float volume) => volume > MuteThreshold ? 0f : SoftwareUnmuteLevel;
-
         /// <summary>The inline volume rail's thumb bubble: <c>"72%"</c>, no space, clamped 0..100.</summary>
         public static string VolumePercent(float volume)
             => Math.Clamp((int)MathF.Round(volume * 100f), 0, 100).ToString(CultureInfo.InvariantCulture) + "%";
@@ -394,13 +383,6 @@ public static partial class Shell
             if (string.IsNullOrEmpty(deviceId)) return -1;
             for (int i = 0; i < rows.Length; i++)
                 if (string.Equals(rows[i].Id, deviceId, StringComparison.OrdinalIgnoreCase)) return i;
-            return -1;
-        }
-
-        /// <summary>This PC's own row — where "pull playback home" transfers to — or -1.</summary>
-        public static int ThisDeviceSlot(ReadOnlySpan<Playback.Devices.Row> rows)
-        {
-            for (int i = 0; i < rows.Length; i++) if (rows[i].Kind == DeviceKind.ThisDevice) return i;
             return -1;
         }
 

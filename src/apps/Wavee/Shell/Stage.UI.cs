@@ -231,7 +231,13 @@ public static partial class Stage
         return Ink.Accent(url);
     }
 
-    static bool RemoteActive() => Playback.OwnerSignal.Value == Playback.Owner.Foreign;
+    /// <summary>Is playback on another Connect device? The same verdict the player bar's Devices button and the device
+    /// picker read (<see cref="Shell.DevicePicker.IsRemote"/>); subscribes to the owner, the active slot and the roster.</summary>
+    static bool RemoteActive()
+    {
+        _ = Playback.Devices.Changed.Value;
+        return Shell.DevicePicker.IsRemote(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows);
+    }
 
     // ══ 3. THE SURFACE HOST ═══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -466,20 +472,19 @@ public static partial class Stage
             var track = CurrentTrack();
             bool playing = Playback.IsPlaying.Value;
             bool loading = Playback.PhaseSignal.Value == Playback.Phase.Loading;
-            bool error = Playback.Error.Value != Playback.Fault.None;
             var lib = Controls.Library;
             string uri = track.IsValid ? track.Uri.Text : "";
             string title = track.IsValid ? track.Title : "";
             bool saved = lib is not null && uri.Length > 0 && lib.IsSaved(uri);
-            bool can = Transport.CanTransport(track.IsValid, error);
+            var tf = Shell.TransportFacts();                       // the ONE skip/transport fact set, shared with the bar and the video overlay
             bool primary = Transport.PrimaryEnabled(track.IsValid, loading);
             var accent = CurrentAccent(track);
             Action? like = lib is { } seam && uri.Length > 0 ? () => seam.ToggleSaved(uri, title) : null;
             string shown = Transport.UsesTitle(title, uri) ? title : Loc.Get(Strings.Player.NothingPlaying);
 
             BoxEl body = L.Wide
-                ? WideColumn(L, track, shown, playing, can, primary, saved, like, accent)
-                : CompactHeader(L, track, shown, playing, can, primary, saved, like, accent);
+                ? WideColumn(L, track, shown, playing, tf, primary, saved, like, accent)
+                : CompactHeader(L, track, shown, playing, tf, primary, saved, like, accent);
 
             // The menu goes on a SHELL plus a childless full-bleed SHIELD beneath the content: the shield always wins the
             // hit over the shell and its hover/press cascade reaches nothing; the shell keeps the context bit as an
@@ -500,7 +505,7 @@ public static partial class Stage
     const ushort TitleWeight = 650;
     const string DisplayFace = "Segoe UI Variable Display";
 
-    static BoxEl WideColumn(in Layout L, Track track, string title, bool playing, bool can, bool primary, bool saved, Action? like, ColorF accent)
+    static BoxEl WideColumn(in Layout L, Track track, string title, bool playing, Shell.PlayerBarFacts tf, bool primary, bool saved, Action? like, ColorF accent)
     {
         int rung = 0;   // the entrance cascade; the COVER is deliberately not on it
         var kids = new List<Element>(6)
@@ -514,7 +519,7 @@ public static partial class Stage
             // Every wrapper is a COLUMN on purpose: a row's single child takes its intrinsic width (the stub-seek report).
             new BoxEl { Key = "stage:identity-row", Direction = 1, Animate = Design.Entrance.Row(rung++), Children = [IdentityRow(title, saved, like, accent, wide: true)] },
             new BoxEl { Key = "stage:seek", Direction = 1, Animate = Design.Entrance.Row(rung++), Margin = new Edges4(0f, StackGap, 0f, 0f), Children = [SeekBlock()] },
-            new BoxEl { Key = "stage:transport", Direction = 1, Animate = Design.Entrance.Row(rung++), Margin = new Edges4(0f, Spacing.S, 0f, 0f), Children = [TransportRow(L, playing, can, primary, accent)] },
+            new BoxEl { Key = "stage:transport", Direction = 1, Animate = Design.Entrance.Row(rung++), Margin = new Edges4(0f, Spacing.S, 0f, 0f), Children = [TransportRow(L, playing, tf, primary, accent)] },
         };
         if (L.ShowVolume)
             kids.Add(new BoxEl { Key = "stage:volume", Direction = 1, Animate = Design.Entrance.Row(rung++), Margin = new Edges4(0f, StackGap, 0f, 0f), Children = [Embed.Comp(static () => new VolumeRow())] });
@@ -531,7 +536,7 @@ public static partial class Stage
     }
 
     /// <summary>Compact: art 64 · identity · prev · play · next · "…", with the seek block beneath — it NEVER folds.</summary>
-    static BoxEl CompactHeader(in Layout L, Track track, string title, bool playing, bool can, bool primary, bool saved, Action? like, ColorF accent)
+    static BoxEl CompactHeader(in Layout L, Track track, string title, bool playing, Shell.PlayerBarFacts tf, bool primary, bool saved, Action? like, ColorF accent)
     {
         var row = new List<Element>(6)
         {
@@ -541,9 +546,9 @@ public static partial class Stage
                 Children = [Controls.Artwork(track.IsValid ? Controls.ArtUrl(track.ImageId) : null, L.ArtSize, L.ArtSize, Radii.Control, decodePx: 192)],
             },
             IdentityRow(title, saved, like, accent, wide: false) with { Key = "stage:identity-row" },
-            Glyph(Icons.Previous, static () => Playback.Previous(), L.StepBox, 15f, can) with { Key = "stage:prev" },
+            Glyph(Icons.Previous, static () => Playback.Previous(), L.StepBox, 15f, tf.PrevEnabled) with { Key = "stage:prev" },
             Play(playing, primary, L.PlayBox, 17f) with { Key = "stage:play" },
-            Glyph(Icons.Next, static () => Playback.Next(), L.StepBox, 15f, can) with { Key = "stage:next" },
+            Glyph(Icons.Next, static () => Playback.Next(), L.StepBox, 15f, tf.NextEnabled) with { Key = "stage:next" },
         };
         var folded = L;                                                    // the compact fold set is constant for the shape
         if (L.ShowOverflow) row.Add(Embed.Comp(() => new OverflowButton(folded)) with { Key = "stage:overflow" });
@@ -679,25 +684,23 @@ public static partial class Stage
     }
 
     /// <summary>32 · 40 · 56 · 40 · 32, centred; the satellites leave with the compact fold.</summary>
-    static Element TransportRow(in Layout L, bool playing, bool can, bool primary, ColorF accent)
+    static Element TransportRow(in Layout L, bool playing, Shell.PlayerBarFacts tf, bool primary, ColorF accent)
     {
         var kids = new List<Element>(5);
         if (L.ShowSatellites)
-            kids.Add(ToolTip.Wrap(Satellite(Icons.Shuffle, Shell.ToggleShuffle, can, Playback.Shuffle.Value, accent, L.SatelliteBox),
+            kids.Add(ToolTip.Wrap(Satellite(Icons.Shuffle, Shell.ToggleShuffle, tf.CanTransport, Playback.Shuffle.Value, accent, L.SatelliteBox),
                 Loc.Get(Strings.Player.Shuffle)) with { Key = "tp:shuffle" });
-        kids.Add(ToolTip.Wrap(Glyph(Icons.Previous, static () => Playback.Previous(), L.StepBox, 17f, can), Loc.Get(Strings.Player.Previous)) with { Key = "tp:prev" });
+        kids.Add(ToolTip.Wrap(Glyph(Icons.Previous, static () => Playback.Previous(), L.StepBox, 17f, tf.PrevEnabled), Loc.Get(Strings.Player.Previous)) with { Key = "tp:prev" });
         kids.Add(Play(playing, primary, L.PlayBox, 22f) with { Key = "tp:play" });
-        kids.Add(ToolTip.Wrap(Glyph(Icons.Next, static () => Playback.Next(), L.StepBox, 17f, can), Loc.Get(Strings.Player.Next)) with { Key = "tp:next" });
+        kids.Add(ToolTip.Wrap(Glyph(Icons.Next, static () => Playback.Next(), L.StepBox, 17f, tf.NextEnabled), Loc.Get(Strings.Player.Next)) with { Key = "tp:next" });
         if (L.ShowSatellites)
         {
             var repeat = Playback.Repeat.Value;
-            kids.Add(ToolTip.Wrap(Satellite(repeat == RepeatMode.Track ? Icons.RepeatOne : Icons.RepeatAll, Shell.CycleRepeat, can, repeat != RepeatMode.Off, accent, L.SatelliteBox),
+            kids.Add(ToolTip.Wrap(Satellite(repeat == RepeatMode.Track ? Icons.RepeatOne : Icons.RepeatAll, Shell.CycleRepeat, tf.CanTransport, repeat != RepeatMode.Off, accent, L.SatelliteBox),
                 Loc.Get(Strings.Player.Repeat)) with { Key = "tp:repeat" });
         }
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = TransportGap, Children = kids.ToArray() };
     }
-
-    static bool Muted() => Playback.Audio.Muted.Value || Playback.Volume.Value <= 0.001f;
 
     static readonly FormatCache<int> s_percent = FormatCache.Create<int>();
 
@@ -742,8 +745,8 @@ public static partial class Stage
     {
         public override Element Render()
         {
-            bool muted = Muted();
-            return ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, Shell.ToggleMute, Controls.IconButtonSize, 15f),
+            bool muted = Playback.Muted.Value;
+            return ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, static () => Playback.ToggleMute(), Controls.IconButtonSize, 15f),
                 Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute));
         }
     }
@@ -758,9 +761,9 @@ public static partial class Stage
             var handle = UseRef<OverlayHandle?>(null);
             var overlay = UseContext(Overlay.Service);
             _ = Playback.Devices.Changed.Value;
-            int slot = Playback.ActiveDeviceSlot.Value;
             var rows = Playback.Devices.Rows;
-            bool remote = RemoteActive() && (uint)slot < (uint)rows.Length;
+            int slot = Shell.DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
+            bool remote = slot >= 0;
             string name;
             string glyph;
             if (remote)
@@ -817,42 +820,12 @@ public static partial class Stage
         _ => Icons.Speakers,
     };
 
-    /// <summary>The two-section picker's rows (`Shell.DevicePickerRows`) as menu items, built at OPEN time.</summary>
+    /// <summary>The two-section picker's items, built at OPEN time from the SAME builder the player bar's Devices flyout uses
+    /// (<see cref="Shell.DevicePickerMenuItems"/>): same roster and owner, same rows, same click intents.</summary>
     static List<MenuFlyoutItem> DeviceItems()
-    {
-        var connect = Playback.Devices.Rows;
-        int active = Playback.ActiveDeviceSlot.Peek();
-        bool remote = Playback.OwnerSignal.Peek() == Playback.Owner.Foreign;
-        string? activeId = (uint)active < (uint)connect.Length ? connect[active].Id : null;
-        // The verification row: the player's own echo, never a loopback of the setting (user's exact ask).
-        var observed = Playback.Audio.PlayingOpened;
-        var asked = (Spotify.Audio.Quality)Math.Clamp(Platform.Settings.Get(Platform.Keys.PlaybackQuality),
-            Platform.Network.QualityMin, Platform.Network.QualityMax);
-        var rows = Shell.DevicePickerRows(Playback.Audio.Devices.Peek(), Playback.Audio.SelectedOutputId.Peek(),
-            Playback.Audio.Supported.Peek(), !remote, connect, activeId, observed, asked);
-        var items = new List<MenuFlyoutItem>(rows.Count);
-        foreach (var r in rows)
-        {
-            string id = r.DeviceId;
-            items.Add(r.Kind switch
-            {
-                Shell.DevicePickerRowKind.Separator => MenuFlyoutItem.Separator,
-                Shell.DevicePickerRowKind.LocalDefault => MenuFlyoutItem.RadioItem(r.Label, r.IsChecked,
-                    r.Enabled ? static () => Playback.Audio.Select(null) : null, Icons.Speakers, r.Enabled) with { AcceleratorText = r.Accelerator },
-                Shell.DevicePickerRowKind.LocalDevice => MenuFlyoutItem.RadioItem(r.Label, r.IsChecked,
-                    r.Enabled ? () => Playback.Audio.Select(id) : null, LocalGlyph(r.LocalKind), r.Enabled) with { AcceleratorText = r.Accelerator },
-                Shell.DevicePickerRowKind.ConnectDevice => MenuFlyoutItem.RadioItem(r.Label, r.IsChecked, () =>
-                {
-                    var roster = Playback.Devices.Rows;
-                    for (int i = 0; i < roster.Length; i++)
-                        if (string.Equals(roster[i].Id, id, StringComparison.OrdinalIgnoreCase)) { Playback.TransferTo(i); return; }
-                }, Icons.Devices),
-                // Header, Empty and Quality: a disabled command row (section headers, hints, and the quality echo alike).
-                _ => new MenuFlyoutItem(r.Label, default, false, null),
-            });
-        }
-        return items;
-    }
+        => Shell.DevicePickerMenuItems(Playback.OwnerSignal.Peek(), Playback.ActiveDeviceSlot.Peek(), Playback.Devices.Rows,
+            Playback.Audio.Devices.Peek(), Playback.Audio.SelectedOutputId.Peek(), Playback.Audio.Supported.Peek(),
+            Playback.Audio.PlayingOpened, Shell.PickerAskedQuality());
 
     /// <summary>The compact header's "…": the FOLDED controls, live, built at open time. Nothing folded ⇒ it opens nothing.</summary>
     sealed class OverflowButton(Layout layout) : Component
@@ -878,8 +851,8 @@ public static partial class Stage
                 }
                 if (!layout.Shows(Control.Volume))
                 {
-                    bool muted = Playback.Audio.Muted.Peek() || Playback.Volume.Peek() <= 0.001f;
-                    items.Add(new MenuFlyoutItem(Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute), muted ? Icons.Volume : Icons.Mute, true, Shell.ToggleMute));
+                    bool muted = Playback.Muted.Peek();
+                    items.Add(new MenuFlyoutItem(Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute), muted ? Icons.Volume : Icons.Mute, true, static () => Playback.ToggleMute()));
                 }
                 if (!layout.Shows(Control.OutputDevice))
                 {

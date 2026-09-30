@@ -965,6 +965,9 @@ public static partial class Playback
         public float Volume;
         /// <summary>The foreign owner's volume as the cluster stated it, 0..1; -1 = none stated.</summary>
         public float MirrorVolume;
+        /// <summary>The level a mute took the volume away from (the owner's while Foreign, ours otherwise); 0 = none
+        /// remembered. Only the VOLUME-0 mute uses it — a real sink mute keeps the volume where it was.</summary>
+        public float MuteRestoreVolume;
         public bool Shuffle;
         public RepeatMode Repeat;
         /// <summary>Restrictions as the cluster stated them. The bar greys its buttons off
@@ -1135,6 +1138,11 @@ public static partial class Playback
         SetRepeat,
         /// <summary>Move playback to another device (<c>LongArg</c> = its hash, <c>IntArg</c> = its roster slot).</summary>
         Transfer,
+        /// <summary>Pull playback HERE: claim it locally (no outbound transfer) and load the mirrored row at its projected
+        /// position. The put-state verdict, not this input, says whether the owner let go.</summary>
+        TakeOver,
+        /// <summary>Mute (<c>IntArg</c> bit 0) or unmute; bit 1 = a local output exists to mute (see <see cref="Input.Mute"/>).</summary>
+        SetMute,
         /// <summary>A cluster — a dealer push or a put-state response. Carries <see cref="Input.Frame"/> +
         /// <see cref="Input.Remote"/>.</summary>
         Cluster,
@@ -1277,6 +1285,15 @@ public static partial class Playback
         public static Input Repeat(RepeatMode mode) => new(InputKind.SetRepeat, intArg: (int)mode);
         public static Input Transfer(ulong device, int rosterSlot = -1, long nowMs = 0)
             => new(InputKind.Transfer, intArg: rosterSlot, longArg: (long)device, nowMs: nowMs);
+        /// <summary>Pull playback to this device. Unlike <see cref="Transfer"/> it names no device: the claim IS the request.</summary>
+        public static Input TakeOver(long nowMs = 0) => new(InputKind.TakeOver, nowMs: nowMs);
+        /// <summary>Mute or unmute whoever is audible: the local sink (<paramref name="hasSink"/>), else volume 0 with the
+        /// previous level remembered — the wire carries no mute flag, so a foreign owner is muted the same way.</summary>
+        public static Input Mute(bool muted, bool hasSink) => new(InputKind.SetMute, intArg: (muted ? MuteBit : 0) | (hasSink ? SinkBit : 0));
+        /// <summary>The bit of a SetMute's <c>IntArg</c> that asks for mute (clear = unmute).</summary>
+        public const int MuteBit = 1;
+        /// <summary>The bit of a SetMute's <c>IntArg</c> that says a local output exists to mute.</summary>
+        public const int SinkBit = 2;
         public static Input Cluster(in ClusterFrame frame, in RemoteState remote, long nowMs = 0)
             => new(InputKind.Cluster, frame: frame, remote: remote, nowMs: nowMs);
         /// <summary>A controller's verb. (Named <c>Controller</c> and not <c>Remote</c> because
@@ -1341,6 +1358,24 @@ public static partial class Playback
     }
 
     // ── 8. the effects (C3) ─────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>A user-click intent the reducer declined (<see cref="Effects.Refused"/>): no behaviour changes, but a
+    /// click that does nothing leaves one always-on log line so "nothing happened" is explainable from the log.</summary>
+    public enum Refusal : byte
+    {
+        None = 0,
+        /// <summary>A verb for the owner, but no owner device is known to send it to.</summary>
+        NoRemoteDevice,
+        /// <summary>Next, refused: the context disallows the skip.</summary>
+        NoNext,
+        /// <summary>Previous, refused: the context disallows the skip.</summary>
+        NoPrev,
+        /// <summary>An outbound transfer to this very device (the service answers 400): pulling playback here is
+        /// <see cref="InputKind.TakeOver"/>, never a transfer.</summary>
+        SelfTransfer,
+        /// <summary>An outbound transfer that named no device.</summary>
+        NoTransferTarget,
+    }
 
     /// <summary>Fixed effect SLOTS — one per effect KIND, never a list. The last write inside a drain wins and the
     /// host's <c>Execute</c> reads them once, which is the whole of C3: ten <see cref="InputKind.Next"/> clicks
@@ -1482,6 +1517,21 @@ public static partial class Playback
         /// — see <c>Playback.Host.Remote.cs</c>.</summary>
         public bool TakeoverSeed;
 
+        /// <summary>A claim of ours was REJECTED — the server's verdict (or its expiry) named another device. The host
+        /// logs <c>connect.claim.rejected</c> and raises <c>Playback.ClaimRejectedCount</c>.</summary>
+        public bool ClaimRejected;
+        /// <summary>A transfer we sent was refused: nothing moved, and the deck is parked where it was. The host logs it
+        /// and raises <c>Playback.TransferFailedCount</c>.</summary>
+        public bool TransferFailed;
+
+        // ── mute ──
+        /// <summary>Mute (<see cref="MuteOn"/>) or unmute the LOCAL output sink.</summary>
+        public bool Mute;
+        public bool MuteOn;
+
+        /// <summary>The last user intent this Step declined, for the host to log. <see cref="Refusal.None"/> = none.</summary>
+        public Refusal Refused;
+
         /// <summary>Back to empty. ONE assignment, so a new slot can never be forgotten here.</summary>
         public void Clear() => this = default;
 
@@ -1489,7 +1539,7 @@ public static partial class Playback
         public readonly bool Any => Load || Start || Stop || PauseHost || ResumeHost || Seek || Volume
             || PrepareNext || PublishState || SendRemote || Transfer || Fetch || Smtc || SmtcTimeline || Snapshot
             || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage
-            || VideoDemoted || SkippedUnavailable || TakeoverSeed;
+            || VideoDemoted || SkippedUnavailable || TakeoverSeed || ClaimRejected || TransferFailed || Mute || Refused != Refusal.None;
     }
 
     // ── 9. Step — the reducer ───────────────────────────────────────────────────────────────────────────────────────
@@ -1519,6 +1569,8 @@ public static partial class Playback
             case InputKind.SetShuffle: DoShuffle(ref s, in i, ref fx); break;
             case InputKind.SetRepeat: DoRepeat(ref s, in i, ref fx); break;
             case InputKind.Transfer: DoTransfer(ref s, in i, ref fx); break;
+            case InputKind.TakeOver: DoTakeOver(ref s, in i, ref fx); break;
+            case InputKind.SetMute: DoMute(ref s, in i, ref fx); break;
             case InputKind.Cluster: DoCluster(ref s, in i, ref fx); break;
             case InputKind.RemoteCommand: DoRemote(ref s, in i, ref fx); break;
             case InputKind.AudioSignal: DoAudio(ref s, in i, ref fx); break;
@@ -1629,7 +1681,11 @@ public static partial class Playback
     {
         if (!s.RoutesLocal) { Forward(ref s, forward ? RemoteCmd.SkipNext : RemoteCmd.SkipPrev, ref fx, 0, false); return; }
         bool natural = why == PlayReason.TrackDone;
-        if (!natural && (forward ? s.NoNext : s.NoPrev)) return;   // the context disallows the SKIP (the cluster said so)
+        if (!natural && (forward ? s.NoNext : s.NoPrev))            // the context disallows the SKIP (the cluster said so)
+        {
+            fx.Refused = forward ? Refusal.NoNext : Refusal.NoPrev;
+            return;
+        }
 
         // Repeat-one re-plays the same row rather than moving: the one place the cursor stands still under a transport
         // verb. A natural end reloads the row (its session has ended); a click restarts the live one. An explicit
@@ -1780,6 +1836,7 @@ public static partial class Playback
             return;
         }
         Owner resumeUserOwnerBefore = s.Own.Kind;
+        StampForClaim(ref s, i.NowMs);
         OwnerFx resumeUserClaimFx = Ownership.Claim(ref s.Own, ClaimCause.UserResume, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, acknowledged: true);
         Capture.Decision(CaptureKind.OwnershipTransition, Capture.AmbientUiCauseId, resumeUserClaimFx,
             resumeUserOwnerBefore, s.Own.Kind, reason: nameof(ClaimCause.UserResume));
@@ -2054,6 +2111,7 @@ public static partial class Playback
         // response to our own PUT) — causeId 0, per §2.2.
         Capture.Decision(CaptureKind.OwnershipTransition, causeId: 0L, owner, before, s.Own.Kind,
             reason: Capture.Enabled ? i.Frame.Origin.ToString() : null);
+        if ((owner & OwnerFx.ClaimRejected) != 0) fx.ClaimRejected = true;
         bool dropped = (owner & OwnerFx.DropFrame) != 0;
         bool stop = (owner & OwnerFx.StopHost) != 0;
         bool changed = s.Own.Kind != before;
@@ -2095,6 +2153,8 @@ public static partial class Playback
         s.NextId = default;
         s.NextArmed = false;
         s.LoadEpoch = s.Epoch;                            // every in-flight load for the old epoch is now superseded
+        s.StartedPlayingAtMs = 0;                         // the next claim stamps its own — a stale one loses the newest-starter rule
+        s.HasBeenPlayingForMs = 0;
         fx.Load = false;
         fx.PrepareNext = false;
         fx.Prefetch = false;
@@ -2213,6 +2273,7 @@ public static partial class Playback
                 // Step, before any cluster confirms it. The host resolves what it asks for (`RemoteLoadArrived`) and
                 // folds the real Play with the inbound cause.
                 ClaimCause loadCause = c.Kind == RemoteCmd.Transfer ? ClaimCause.InboundTransfer : ClaimCause.InboundPlay;
+                s.StartedPlayingAtMs = i.NowMs;          // the wire reads THIS: a claim with no stamp would put started_playing_at = 0
                 OwnerFx loadClaimFx = Ownership.Claim(ref s.Own,
                     loadCause, ++s.PublishSeq, i.NowMs, i.NowMs, acknowledged: true);
                 Capture.Decision(CaptureKind.OwnershipTransition, 0L, loadClaimFx, ownerBeforeRemote, s.Own.Kind, Capture.Enabled ? loadCause.ToString() : null);
@@ -2221,6 +2282,7 @@ public static partial class Playback
                 break;
 
             case RemoteCmd.Resume:
+                StampForClaim(ref s, i.NowMs);
                 OwnerFx resumeRemoteClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundResume, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
                 Capture.Decision(CaptureKind.OwnershipTransition, 0L, resumeRemoteClaimFx,
                     ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundResume));
@@ -2232,6 +2294,7 @@ public static partial class Playback
                 break;
 
             case RemoteCmd.SkipNext:
+                StampForClaim(ref s, i.NowMs);
                 OwnerFx skipNextClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundSkip, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
                 Capture.Decision(CaptureKind.OwnershipTransition, 0L, skipNextClaimFx,
                     ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundSkip));
@@ -2239,6 +2302,7 @@ public static partial class Playback
                 break;
 
             case RemoteCmd.SkipPrev:
+                StampForClaim(ref s, i.NowMs);
                 OwnerFx skipPrevClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundSkip, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
                 Capture.Decision(CaptureKind.OwnershipTransition, 0L, skipPrevClaimFx,
                     ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundSkip));
@@ -2284,6 +2348,7 @@ public static partial class Playback
             // A controller that queues onto us has addressed us: the claim is ours, and the write is the host's
             // (`Queue.Enqueue`, G-074) — whose version bump re-arms the next row on the following drain.
             case RemoteCmd.AddToQueue:
+                StampForClaim(ref s, i.NowMs);
                 OwnerFx addQueueClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundQueueStart, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
                 Capture.Decision(CaptureKind.OwnershipTransition, 0L, addQueueClaimFx,
                     ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundQueueStart));
@@ -2297,6 +2362,7 @@ public static partial class Playback
             // queue. set_options never reaches here: the glue folds it to the shuffle / repeat verbs above.
             case RemoteCmd.SetQueue:
             case RemoteCmd.UpdateContext:
+                StampForClaim(ref s, i.NowMs);
                 OwnerFx setQueueClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundQueueStart, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
                 Capture.Decision(CaptureKind.OwnershipTransition, 0L, setQueueClaimFx,
                     ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundQueueStart));
@@ -2312,8 +2378,13 @@ public static partial class Playback
     static void DoTransfer(ref State s, in Input i, ref Effects fx)
     {
         ulong target = (ulong)i.LongArg;
-        if (target == 0 || target == s.Us) return;       // self-to-self is a 400; the caller must not ask
+        // Self-to-self is a 400 and the route from another device to us was never captured: the OUTBOUND transfer
+        // refuses it, and pulling playback here is `TakeOver` (a local claim), never this.
+        if (target == 0) { fx.Refused = Refusal.NoTransferTarget; return; }
+        if (target == s.Us) { fx.Refused = Refusal.SelfTransfer; return; }
         Owner transferOwnerBefore = s.Own.Kind;
+        s.PosMs = s.Position(i.NowMs);                   // freeze the extrapolation: a refused transfer parks the deck HERE
+        s.PosQpc = i.NowMs;
         OwnerFx transferReleaseFx = Ownership.Release(ref s.Own, ReleaseCause.TransferAway);
         Capture.Decision(CaptureKind.OwnershipTransition, Capture.AmbientUiCauseId, transferReleaseFx,
             transferOwnerBefore, s.Own.Kind, nameof(ReleaseCause.TransferAway));
@@ -2334,9 +2405,93 @@ public static partial class Playback
     {
         if (i.Epoch != s.TransferEpoch) return;          // a transfer we already superseded
         if (i.IntArg != 0) return;                       // accepted: the cluster will name the new owner
-        // Rejected: nothing moved, and we released. Say so rather than sitting in a half state.
+        // Rejected: nothing moved, but the deck was already released and parked (waiting for the target to confirm is
+        // what made 0.2.9 play here while the bar said "Playing on iPhone"). Keep the row and its position on the deck —
+        // one Play press claims it back — and SAY so, rather than leaving a silent empty bar.
         Bump(ref s);
+        fx.TransferFailed = true;
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+    }
+
+    /// <summary>The start stamp a claim carries (what the newest-starter rule compares across devices): kept while we
+    /// already own playback, otherwise now. Written to <see cref="State.StartedPlayingAtMs"/> — the ONE field the wire
+    /// reads — BEFORE the claim's first is_active put, so that put never says started_playing_at = 0.</summary>
+    static void StampForClaim(ref State s, long nowMs)
+    {
+        if (s.Own.Kind != Owner.Us || s.StartedPlayingAtMs <= 0) s.StartedPlayingAtMs = nowMs;
+    }
+
+    /// <summary>Pull playback HERE. A LOCAL claim plus a load of the mirrored row at its projected position: no outbound
+    /// transfer (self-to-self is a 400). The phone stops only when the server adopts the claim and pushes the new
+    /// cluster — the put-state verdict (<see cref="Ownership.Fold"/> P1/P3, <see cref="Ownership.Tick"/>) says which.
+    /// Forced down the takeover path whatever the cursor or the parked flag say: the mirrored deck is Playing or
+    /// Paused (never Parked) and the ongoing seed may already have given it a cursor.</summary>
+    static void DoTakeOver(ref State s, in Input i, ref Effects fx)
+    {
+        if (s.Own.Kind == Owner.Us || !s.HasCurrent) return;    // already here, or nothing to bring
+        bool paused = s.Own.Kind == Owner.Foreign && s.Phase == Phase.Paused;
+        int fromMs = s.Position(i.NowMs);                       // the mirror extrapolated to now
+        if (!s.MirrorContext.IsEmpty)
+        {
+            if (!s.MirrorContext.Equals(s.Context)) ResetRefill(ref s);
+            s.Context = s.MirrorContext;
+        }
+
+        s.StartedPlayingAtMs = i.NowMs;                         // BEFORE the claim: its first put carries it
+        s.HasBeenPlayingForMs = 0;
+        Owner ownerBefore = s.Own.Kind;
+        OwnerFx claimFx = Ownership.Claim(ref s.Own, ClaimCause.NobodyTransferToSelf, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, acknowledged: true);
+        Capture.Decision(CaptureKind.OwnershipTransition, Capture.AmbientUiCauseId, claimFx,
+            ownerBefore, s.Own.Kind, reason: nameof(ClaimCause.NobodyTransferToSelf));
+
+        EntityRef row = s.Current;
+        EntityId id = s.CurrentId;
+        QueueCursor cursor = s.Cursor;
+        ResumeStart verdict = ResumeStart.For(fromMs, s.DurationMs);
+        if (verdict.Kind == ResumeStart.VerdictKind.StartNext)
+        {
+            EntityRef next = NaturalNext(in s, out QueueCursor nextCursor);
+            if (!next.IsNone) { row = next; id = next.Id; cursor = nextCursor; }
+            fromMs = 0;
+        }
+        else fromMs = verdict.Ms;
+
+        PutOnDeck(ref s, in i, row, id, cursor, KindOfRow(row, s.VideoWanted), fromMs, paused);
+        s.StartReason = PlayReason.PlayButton;
+        EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused);
+        if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
+        fx.TakeoverSeed = true;
+        fx.Snapshot = true;
+    }
+
+    /// <summary>At or below this a volume reads as muted (the bar's glyph threshold, <c>PlayerBarRules.MuteThreshold</c>).</summary>
+    public const float MuteFloor = 0.001f;
+    /// <summary>The level an unmute returns to when no earlier level was remembered.</summary>
+    public const float UnmuteDefault = 0.7f;
+
+    /// <summary>Mute whoever is audible, routed like <see cref="DoVolume"/>: a real local sink is muted as a sink (the
+    /// volume stays where it was); a foreign owner — the wire has no mute flag — and a sinkless local session are muted
+    /// as volume 0, and unmuted back to the level they left (<see cref="State.MuteRestoreVolume"/>).</summary>
+    static void DoMute(ref State s, in Input i, ref Effects fx)
+    {
+        bool muted = (i.IntArg & Input.MuteBit) != 0;
+        bool foreign = !s.RoutesLocal;
+        if (!foreign && (i.IntArg & Input.SinkBit) != 0)
+        {
+            fx.Mute = true;
+            fx.MuteOn = muted;
+            return;
+        }
+        float current = foreign ? (s.MirrorVolume >= 0f ? s.MirrorVolume : 0f) : s.Volume;
+        float target;
+        if (muted)
+        {
+            if (current > MuteFloor) s.MuteRestoreVolume = current;
+            target = 0f;
+        }
+        else target = s.MuteRestoreVolume > MuteFloor ? s.MuteRestoreVolume : UnmuteDefault;
+        var set = new Input(InputKind.SetVolume, intArg: Input.WireVolume(target), nowMs: i.NowMs);
+        DoVolume(ref s, in set, ref fx);
     }
 
     /// <summary>The put-state round trip's FAILURE half and its send bookkeeping. The SUCCESS half is a cluster of
@@ -2376,6 +2531,8 @@ public static partial class Playback
             releaseOwnerBefore, s.Own.Kind, reason: Capture.Enabled ? cause.ToString() : null);
         if (cause == ReleaseCause.Logout) { SignOut(ref s, in i, ref fx, wasUs); return; }
         if (owner == OwnerFx.None) return;
+        s.StartedPlayingAtMs = 0;                        // released: the next claim is a new start
+        s.HasBeenPlayingForMs = 0;
         if ((owner & OwnerFx.StopHost) != 0)
         {
             s.StreamFormat = StringId.Empty;
@@ -2491,6 +2648,7 @@ public static partial class Playback
         if (owner != OwnerFx.None)
             Capture.Decision(CaptureKind.OwnershipTransition, causeId: 0L, owner, tickOwnerBefore, s.Own.Kind,
                 reason: "ClaimExpiry");
+        if ((owner & OwnerFx.ClaimRejected) != 0) fx.ClaimRejected = true;
         if ((owner & OwnerFx.StopHost) == 0) return;
         Bump(ref s);
         LoseHost(ref s, in i, ref fx, StopReason.LostOwnership, PlayReason.Remote);
@@ -2542,7 +2700,8 @@ public static partial class Playback
     /// verdict, never a raw cluster id (memory rule <c>connect-ownership-single-authority</c>).</summary>
     static void Forward(ref State s, RemoteCmd cmd, ref Effects fx, long arg, bool flag)
     {
-        if (s.Own.Kind != Owner.Foreign || s.Own.Device == 0) return;
+        if (s.Own.Kind != Owner.Foreign) return;
+        if (s.Own.Device == 0) { fx.Refused = Refusal.NoRemoteDevice; return; }
         Bump(ref s);
         fx.SendRemote = true;
         fx.RemoteDevice = s.Own.Device;

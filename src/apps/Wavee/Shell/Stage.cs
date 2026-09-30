@@ -406,11 +406,11 @@ public static partial class Stage
 
     // ── 5. what the transport may do (StageIdentity.cs:89-90) ───────────────────────────────────────────────────────
 
-    /// <summary>The stage transport's two enablement predicates — DIFFERENT on purpose: an error kills prev/next and
-    /// the satellites but leaves the play disc live, and loading kills only the disc.</summary>
+    /// <summary>The stage transport's own predicates. Previous/Next and the satellites are NOT here: they read the shared
+    /// <see cref="Shell.SkipRule"/> / <see cref="Shell.PlayerBarFacts"/> fact set, the same one the bar and the video
+    /// overlay read. The play disc's own rule stays: loading kills only the disc.</summary>
     public static class Transport
     {
-        public static bool CanTransport(bool hasTrack, bool hasError) => hasTrack && !hasError;
         public static bool PrimaryEnabled(bool hasTrack, bool loading) => hasTrack && !loading;
 
         /// <summary>The quality badge names the PLAYING stream or nothing: no published format, or another Connect device

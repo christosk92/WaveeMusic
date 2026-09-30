@@ -60,13 +60,15 @@ public static partial class Shell
     /// <summary>Off → Context → Track → Off.</summary>
     public static void CycleRepeat() => Playback.SetRepeat(PlayerBarRules.NextRepeat(Playback.Repeat.Peek()));
 
-    /// <summary>Mute the Windows session when there is a local output to mute; otherwise the software 0 ⇄ 0.7 toggle
-    /// (the fake path, a Connect viewer).</summary>
-    public static void ToggleMute()
-    {
-        if (Playback.Audio.Supported.Peek()) { Playback.Audio.SetMuted(!Playback.Audio.Muted.Peek()); return; }
-        Playback.SetVolume(PlayerBarRules.SoftwareMuteTarget(Playback.Volume.Peek()));
-    }
+    /// <summary>THE transport fact set every surface (the bar, the stage, the video overlay) reads for Previous / Next and
+    /// the shuffle / repeat satellites: one fold (<see cref="SkipRule"/>), so no surface arms a button the reducer refuses.
+    /// <paramref name="track"/> = false reads with Peek (menu rows built at open time).</summary>
+    internal static PlayerBarFacts TransportFacts(bool track = true)
+        => track
+            ? SkipRule.Facts(!Playback.CurrentId.Value.IsEmpty, Playback.Error.Value, Playback.PhaseSignal.Value,
+                Playback.Buffering.Value, Playback.Recovery.Value, Playback.PrevAllowedByContext.Value, Playback.NextAllowedByContext.Value)
+            : SkipRule.Facts(!Playback.CurrentId.Peek().IsEmpty, Playback.Error.Peek(), Playback.PhaseSignal.Peek(),
+                Playback.Buffering.Peek(), Playback.Recovery.Peek(), Playback.PrevAllowedByContext.Peek(), Playback.NextAllowedByContext.Peek());
 
     /// <summary>The errored primary: re-issue the current playable from where it stopped. 0.3 has no retry token (the
     /// 0.2.9 bridge's <c>InvokePlaybackErrorAction</c>); a fresh <c>PlayNow</c> of the same row, context and cursor is
@@ -215,7 +217,7 @@ public static partial class Shell
             var phase = Playback.PhaseSignal.Value;
             bool buffering = Playback.Buffering.Value;
             var recovery = Playback.Recovery.Value;
-            var facts = PlayerBarRules.Fold(hasCurrent, Playback.Error.Value, phase, buffering, recovery,
+            var facts = SkipRule.Facts(hasCurrent, Playback.Error.Value, phase, buffering, recovery,
                 Playback.PrevAllowedByContext.Value, Playback.NextAllowedByContext.Value);
             bool active = facts.Active;
             bool playing = Playback.IsPlaying.Value;
@@ -1194,8 +1196,7 @@ public static partial class Shell
         /// <summary>One overflow row, from LIVE peeks at open time.</summary>
         static MenuFlyoutItem OverflowItem(OverflowCommand command)
         {
-            var facts = PlayerBarRules.Fold(!Playback.CurrentId.Peek().IsEmpty, Playback.Error.Peek(), Playback.PhaseSignal.Peek(),
-                Playback.Buffering.Peek(), Playback.Recovery.Peek(), Playback.PrevAllowedByContext.Peek(), Playback.NextAllowedByContext.Peek());
+            var facts = TransportFacts(track: false);
             bool railOpen = Ui.RailOpen.Peek();
             var mode = Ui.Mode.Peek();
             switch (command)
@@ -1229,9 +1230,9 @@ public static partial class Shell
                 }
                 default:
                 {
-                    bool muted = PlayerBarRules.ShowsMuteGlyph(Playback.Audio.Muted.Peek(), Playback.Volume.Peek());
+                    bool muted = Playback.Muted.Peek();
                     return new MenuFlyoutItem(Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute),
-                        muted ? Icons.Volume : Icons.Mute, true, static () => ToggleMute());
+                        muted ? Icons.Volume : Icons.Mute, true, static () => Playback.ToggleMute());
                 }
             }
         }
@@ -1249,7 +1250,7 @@ public static partial class Shell
 
         public override Element Render()
         {
-            bool muted = UseComputed(static () => PlayerBarRules.ShowsMuteGlyph(Playback.Audio.Muted.Value, Playback.Volume.Value)).Value;
+            bool muted = Playback.Muted.Value;
             var overlay = UseContext(Overlay.Service);
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
@@ -1257,7 +1258,7 @@ public static partial class Shell
 
             void Click()
             {
-                if (!popupForm) { ToggleMute(); return; }
+                if (!popupForm) { Playback.ToggleMute(); return; }
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
                 handle.Value = overlay.Open(
                     () => anchor.Value,
@@ -1349,18 +1350,11 @@ public static partial class Shell
             bool supported = Playback.Audio.Supported.Value;
             float windowH = UseContextSignal(Viewport.Size).Value.Height;
 
-            var connect = Playback.Devices.Rows;
-            int remote = DeviceRoster.RemoteSlot(owner, activeSlot, connect);
-            string? activeId = (uint)activeSlot < (uint)connect.Length ? connect[activeSlot].Id : null;
             // The verification row: the player's own echo, never a loopback of the setting (user's exact ask).
             var observed = Playback.Audio.PlayingOpened;
-            var asked = (Spotify.Audio.Quality)Math.Clamp(Platform.Settings.Get(Platform.Keys.PlaybackQuality),
-                Platform.Network.QualityMin, Platform.Network.QualityMax);
-            var rows = DevicePickerRows(local, selected, supported, weAreActiveOutput: remote < 0, connect, activeId,
-                observed, asked);
-
-            var items = new MenuFlyoutItem[rows.Count];
-            for (int i = 0; i < rows.Count; i++) items[i] = MapDeviceRow(rows[i]);
+            var asked = PickerAskedQuality();
+            var items = DevicePickerMenuItems(owner, activeSlot, Playback.Devices.Rows, local, selected, supported, observed, asked)
+                .ToArray();
 
             // G-210: a dozen Connect devices must scroll well before the window edge, not just the engine's own fixed
             // 468-DIP cap — a short/undocked window is smaller than that.
@@ -1377,43 +1371,68 @@ public static partial class Shell
             };
         }
 
-        static MenuFlyoutItem MapDeviceRow(DevicePickerRow row)
+    }
+
+    /// <summary>The Spotify quality setting the picker's verification row compares the player's echo against.</summary>
+    internal static Spotify.Audio.Quality PickerAskedQuality()
+        => (Spotify.Audio.Quality)Math.Clamp(Platform.Settings.Get(Platform.Keys.PlaybackQuality),
+            Platform.Network.QualityMin, Platform.Network.QualityMax);
+
+    /// <summary>THE device picker's menu items: the bar's Devices flyout and the stage's "Playing on" flyout both call this
+    /// (over <see cref="DevicePicker.Items"/>), so the two surfaces cannot disagree about a row or what it does. Local
+    /// (this-computer) rows are plain commands, not radios: choosing one persists the output for the next session and
+    /// pulls playback here, but the engine does not yet re-route a live session to it, so no row claims to be "the
+    /// endpoint in use".</summary>
+    internal static List<MenuFlyoutItem> DevicePickerMenuItems(
+        Playback.Owner owner, int activeSlot, ReadOnlySpan<Playback.Devices.Row> connect,
+        ReadOnlySpan<Playback.Audio.LocalAudioDevice> local, string? selectedLocalId, bool localSupported,
+        Playback.Audio.Opened observed, Spotify.Audio.Quality asked)
+    {
+        var picker = DevicePicker.Items(owner, activeSlot, connect, local, selectedLocalId, localSupported, observed, asked);
+        var items = new List<MenuFlyoutItem>(picker.Count);
+        foreach (var item in picker)
         {
-            string id = row.DeviceId;
-            return row.Kind switch
+            var row = item.Row;
+            var intent = item.Intent;
+            items.Add(row.Kind switch
             {
                 DevicePickerRowKind.Separator => MenuFlyoutItem.Separator,
                 // A disabled command row stands in as the section header (MenuFlyout has no header kind; neither does WinUI).
                 // Quality rides the same disabled-row shape: it is informational, never a radio.
                 DevicePickerRowKind.Header or DevicePickerRowKind.Empty or DevicePickerRowKind.Quality
                     => new MenuFlyoutItem(row.Label, default, false),
-                DevicePickerRowKind.LocalDefault => MenuFlyoutItem.RadioItem(row.Label, row.IsChecked,
-                        row.Enabled ? static () => BarSelectLocalOutput(null) : null, Icons.ThisPc, row.Enabled)
+                DevicePickerRowKind.LocalDefault => new MenuFlyoutItem(row.Label, Icons.ThisPc, row.Enabled,
+                        row.Enabled ? () => RunDeviceIntent(intent) : null)
                     with { AcceleratorText = row.Accelerator },
-                DevicePickerRowKind.LocalDevice => MenuFlyoutItem.RadioItem(row.Label, row.IsChecked,
-                        row.Enabled ? () => BarSelectLocalOutput(id) : null, DeviceRoster.LocalGlyph(row.LocalKind), row.Enabled)
+                DevicePickerRowKind.LocalDevice => new MenuFlyoutItem(row.Label, DeviceRoster.LocalGlyph(row.LocalKind), row.Enabled,
+                        row.Enabled ? () => RunDeviceIntent(intent) : null)
                     with { AcceleratorText = row.Accelerator },
                 DevicePickerRowKind.ConnectDevice => MenuFlyoutItem.RadioItem(row.Label, row.IsChecked,
-                    () => BarTransferToDevice(id), DeviceRoster.ConnectGlyph(row.ConnectKind)),
+                    () => RunDeviceIntent(intent), DeviceRoster.ConnectGlyph(row.ConnectKind)),
                 _ => new MenuFlyoutItem(row.Label, default, false),
-            };
+            });
         }
+        return items;
     }
 
-    /// <summary>Route first, THEN pull playback home — so the first local audio lands on the just-chosen endpoint.</summary>
-    static void BarSelectLocalOutput(string? deviceId)
+    /// <summary>Execute a picker click. A this-computer row: persist the output (<c>Audio.Select</c>, persist-only), then,
+    /// if the intent says we are not the owner, <see cref="Playback.TakeOver"/> (a local claim; never a transfer to our own
+    /// hash, which the reducer refuses). A Connect row: transfer to that device, its roster slot resolved at CLICK time.</summary>
+    internal static void RunDeviceIntent(DeviceIntent intent)
     {
-        Playback.Audio.Select(deviceId);
-        var rows = Playback.Devices.Rows;
-        if (DeviceRoster.RemoteSlot(Playback.OwnerSignal.Peek(), Playback.ActiveDeviceSlot.Peek(), rows) < 0) return;
-        int home = DeviceRoster.ThisDeviceSlot(rows);
-        if (home >= 0) Playback.TransferTo(home);
-    }
-
-    static void BarTransferToDevice(string deviceId)
-    {
-        int slot = DeviceRoster.SlotOfId(Playback.Devices.Rows, deviceId);
-        if (slot >= 0) Playback.TransferTo(slot);
+        switch (intent.Kind)
+        {
+            case DeviceIntentKind.SelectLocal:
+                Playback.Audio.Select(intent.LocalId.Length == 0 ? null : intent.LocalId);
+                if (intent.TakeOver) Playback.TakeOver();
+                break;
+            case DeviceIntentKind.TransferTo:
+            {
+                int slot = DeviceRoster.SlotOfId(Playback.Devices.Rows, intent.ConnectId);
+                if (slot >= 0) Playback.TransferTo(slot);
+                break;
+            }
+        }
     }
 
     /// <summary>"🖳 Playing on &lt;device&gt;" — 13 DIP, accent @ 88 % → full accent on hover, above the title. A second

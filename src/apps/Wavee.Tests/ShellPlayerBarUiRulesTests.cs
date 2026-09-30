@@ -585,21 +585,6 @@ public class PlayerBarSmallRulesTests
         Assert.Equal(FluentGpu.Controls.Icons.RepeatAll, Shell.PlayerBarRules.RepeatGlyph(RepeatMode.Context));
     }
 
-    [Fact]
-    public void The_mute_glyph_follows_the_session_mute_or_a_zero_volume()
-    {
-        Assert.True(Shell.PlayerBarRules.ShowsMuteGlyph(true, 0.8f));
-        Assert.True(Shell.PlayerBarRules.ShowsMuteGlyph(false, 0.001f));
-        Assert.False(Shell.PlayerBarRules.ShowsMuteGlyph(false, 0.01f));
-    }
-
-    [Fact]
-    public void The_software_mute_toggles_zero_and_seven_tenths()
-    {
-        Assert.Equal(0f, Shell.PlayerBarRules.SoftwareMuteTarget(0.5f));
-        Assert.Equal(0.7f, Shell.PlayerBarRules.SoftwareMuteTarget(0f));
-    }
-
     [Theory]
     [InlineData(0.72f, "72%")]
     [InlineData(0f, "0%")]
@@ -642,12 +627,11 @@ public class PlayerBarDeviceRosterTests
     }
 
     [Fact]
-    public void Roster_lookups_find_by_id_and_find_home()
+    public void Roster_lookup_finds_by_id()
     {
         Playback.Devices.Row[] rows = [Row("tv", DeviceKind.Tv), Row("PC", DeviceKind.ThisDevice)];
         Assert.Equal(0, Shell.DeviceRoster.SlotOfId(rows, "TV"));
         Assert.Equal(-1, Shell.DeviceRoster.SlotOfId(rows, ""));
-        Assert.Equal(1, Shell.DeviceRoster.ThisDeviceSlot(rows));
     }
 
     [Fact]

@@ -53,23 +53,20 @@ public class StageBandTests
 public class StageTransportTests
 {
     [Fact]
-    public void An_error_kills_the_transport_but_not_the_play_disc()
+    public void An_error_leaves_the_play_disc_live()
     {
-        Assert.False(T.CanTransport(hasTrack: true, hasError: true));
         Assert.True(T.PrimaryEnabled(hasTrack: true, loading: false));
     }
 
     [Fact]
     public void Loading_kills_only_the_play_disc()
     {
-        Assert.True(T.CanTransport(hasTrack: true, hasError: false));
         Assert.False(T.PrimaryEnabled(hasTrack: true, loading: true));
     }
 
     [Fact]
-    public void Nothing_playing_disables_both()
+    public void Nothing_playing_disables_the_play_disc()
     {
-        Assert.False(T.CanTransport(false, false));
         Assert.False(T.PrimaryEnabled(false, false));
     }
 

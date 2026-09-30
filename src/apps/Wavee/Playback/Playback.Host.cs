@@ -135,6 +135,9 @@ public static partial class Playback
     /// <summary>0..1, LINEAR — the SLIDER's value (<see cref="State.SliderVolume"/>): the foreign owner's volume while
     /// one owns playback, ours otherwise. The cubic taper is the audio host's.</summary>
     public static readonly Signal<float> Volume = new(1f);
+    /// <summary>Is whoever is audible muted — the foreign owner at volume 0 while one owns playback, else our sink muted
+    /// or our volume at 0? The ONE fact every mute glyph reads (<see cref="ToggleMute"/> flips it).</summary>
+    public static readonly Signal<bool> Muted = new(false);
     public static readonly Signal<bool> Shuffle = new(false);
     public static readonly Signal<RepeatMode> Repeat = new(RepeatMode.Off);
     /// <summary>The FOLDED enablement — restrictions, phase, error and (while live) the DVR window, decided once.</summary>
@@ -172,6 +175,13 @@ public static partial class Playback
     public static readonly Signal<EntityId> LastSkippedUnavailable = new(default);
     /// <inheritdoc cref="LastSkippedUnavailable"/>
     public static readonly Signal<uint> SkippedUnavailableCount = new(0u);
+    /// <summary>Bumps every time a claim of ours is REJECTED — the server's verdict (or its expiry) left another device
+    /// the owner (<see cref="Effects.ClaimRejected"/>, logged <c>connect.claim.rejected</c>). The shell's "Couldn't take
+    /// over playback" toast watches it; a counter so a second rejection fires a second toast.</summary>
+    public static readonly Signal<uint> ClaimRejectedCount = new(0u);
+    /// <summary>Bumps every time a transfer we sent is refused (<see cref="Effects.TransferFailed"/>): nothing moved, the
+    /// deck is parked where it was. The shell's toast watches it.</summary>
+    public static readonly Signal<uint> TransferFailedCount = new(0u);
 
     /// <summary>Per-effect in-flight bits (D21). A button that should feel instant IGNORES these (Next / Prev / Seek);
     /// a button that must not double-fire reads one and renders disabled + spinner (Transfer). The decision is a
@@ -541,6 +551,10 @@ public static partial class Playback
         StepOne(Input.QueueChanged(now));
     }
 
+    /// <summary>The local sink's mute as the last <see cref="Effects.Mute"/> set it (the host's copy; <see cref="Audio.Muted"/>
+    /// lands a UI hop later).</summary>
+    static bool s_sinkMuted;
+
     static Scope? s_followScope;
     static int s_followIndex = -1;
     static uint s_followVersion;
@@ -603,6 +617,23 @@ public static partial class Playback
             LastSkippedUnavailable.Value = s_fx.SkippedId;
             SkippedUnavailableCount.Value = SkippedUnavailableCount.Peek() + 1;
             Log.Info("playback", $"auto-skip: dead row {s_fx.SkippedId} stepped past (run {s_state.AutoSkips}/{AutoSkip.MaxConsecutive})");
+        }
+        if (s_fx.ClaimRejected)
+        {
+            Log.Warn("playback", "connect.claim.rejected: another device kept playback (owner=" + s_state.Owner + " device=" + Platform.Redact(Devices.IdOf(s_state.Own.Device)) + ")");
+            ClaimRejectedCount.Value = ClaimRejectedCount.Peek() + 1;
+        }
+        if (s_fx.TransferFailed)
+        {
+            Log.Warn("playback", "transfer failed: the target refused it; the deck stays parked at the last position");
+            TransferFailedCount.Value = TransferFailedCount.Peek() + 1;
+        }
+        if (s_fx.Refused != Refusal.None) Log.Info("playback", "intent refused: " + s_fx.Refused);
+        if (s_fx.Mute)
+        {
+            s_sinkMuted = s_fx.MuteOn;
+            Audio.SetMuted(s_fx.MuteOn);
+            Video.SetMuted(s_fx.MuteOn);
         }
         if (s_fx.PublishState) Announce(s_fx.PublishWhy);
         if (s_fx.SendRemote) SendRemote();
@@ -879,7 +910,13 @@ public static partial class Playback
     static void SendTransfer()
     {
         string target = Devices.IdOf(s_fx.TransferTo);
-        if (target.Length == 0) { Log.Warn("playback", "transfer dropped: the target is not in the roster"); return; }
+        if (target.Length == 0)
+        {
+            // The deck already let go: answer as a refusal so the user is told, not left with an empty bar.
+            Log.Warn("playback", "transfer dropped: the target is not in the roster");
+            Post(Input.TransferDone(s_fx.TransferEpoch, ok: false));
+            return;
+        }
         string from = Devices.IdOf(s_state.ActiveDevice);
         if (from.Length == 0) from = Platform.DeviceId;
         uint epoch = s_fx.TransferEpoch;
@@ -910,6 +947,7 @@ public static partial class Playback
         PositionMs.Value = s_state.Position(now);
         DurationMs.Value = s_state.DurationMs;
         Volume.Value = s_state.SliderVolume;
+        Muted.Value = s_state.Own.Kind == Owner.Foreign ? s_state.SliderVolume <= MuteFloor : s_sinkMuted || s_state.Volume <= MuteFloor;
         Shuffle.Value = s_state.Shuffle;
         Repeat.Value = s_state.Repeat;
         CanSeek.Value = s_state.CanSeek;
@@ -1070,6 +1108,11 @@ public static partial class Playback
     public static void SeekTo(int ms) => Post(Input.Seek(ms, FrameNowMs()));
     public static void GoLive() => Post(Input.GoLive(FrameNowMs()));
     public static void SetVolume(float linear01) => Post(Input.Volume(linear01));
+    /// <summary>Mute or unmute whoever is audible: the local sink, or — while another device owns playback, where the wire
+    /// has no mute flag — that device's volume (0, remembering the level to come back to). Routed like <see cref="SetVolume"/>.</summary>
+    public static void SetMuted(bool muted) => Post(Input.Mute(muted, Audio.Supported.Peek()));
+    /// <summary>Flip <see cref="Muted"/>.</summary>
+    public static void ToggleMute() => SetMuted(!Muted.Peek());
     public static void SetShuffle(bool on) => Post(Input.Shuffle(on));
     public static void SetRepeat(RepeatMode mode) => Post(Input.Repeat(mode));
     public static void Stop(StopReason why = StopReason.None) => Post(Input.Stop(why));
@@ -1117,8 +1160,22 @@ public static partial class Playback
     public static void TransferTo(int rosterSlot)
     {
         var rows = Devices.Rows;
-        if ((uint)rosterSlot >= (uint)rows.Length) return;
+        if ((uint)rosterSlot >= (uint)rows.Length)
+        {
+            Log.Info("playback", "intent refused: transfer to roster slot " + rosterSlot + " (the roster has " + rows.Length + " rows)");
+            return;
+        }
         Post(Input.Transfer(rows[rosterSlot].Hash, rosterSlot, FrameNowMs()));
+    }
+
+    /// <summary>Pull playback to THIS device ("System default", "pull playback home"): a local claim that loads what the
+    /// owner is playing at its projected position and puts is_active — no outbound transfer, so it needs no roster slot
+    /// and never names ourselves. The owner stops only when the server adopts the claim; if it does not,
+    /// <see cref="ClaimRejectedCount"/> bumps. A no-op while we already own playback or nothing is on the deck.</summary>
+    public static void TakeOver()
+    {
+        Log.Info("playback", "take over requested owner=" + s_state.Owner);
+        Post(Input.TakeOver(FrameNowMs()));
     }
 
     // ── 12. the reports owner H's hosts post back ───────────────────────────────────────────────────────────────────
@@ -1179,6 +1236,7 @@ public static partial class Playback
         s_identity = default;
         s_hellos = 0;
         s_hostKind = PlayableKind.Audio;
+        s_sinkMuted = false;
         s_draining = false;
         s_redrain = false;
         s_queueVersion = 0;

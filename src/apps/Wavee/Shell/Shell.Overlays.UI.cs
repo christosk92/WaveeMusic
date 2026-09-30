@@ -119,6 +119,7 @@ public static partial class Shell
                     new BoxEl { MaxWidth = Setup.RuntimeRules.BannerMaxWidth, Children = [Embed.Comp(() => new RuntimeBannerChrome())] },
                     Embed.Comp(() => new UpdateToastWatcher()),
                     Embed.Comp(() => new RuntimeToastWatcher()),
+                    Embed.Comp(() => new PlaybackFailureToastWatcher()),
                     Setup.SignInDoor(),                               // opens the sign-in surface on request or on a fresh SignInRequired (B5)
                     // Mount order is load-bearing (ch 28 §9.3.8; crash-diagnostics-implementation.md §D "Component
                     // tree"): the crash prompt (Crash.Chrome) sets ReleaseNotes.CrashNoticeThisLaunch before the
@@ -214,6 +215,34 @@ public static partial class Shell
                         Platform.Settings.Get(Platform.Keys.PlaybackRuntimeSetupDismissed), false, false)) return;
                 Notify.Say(Loc.Get(Strings.Playback.Runtime.Missing), InfoBarSeverity.Warning,
                     Loc.Get(Strings.Playback.Runtime.SetUp), Setup.Runtime.RequestOpen);
+            });
+            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+        }
+    }
+
+    /// <summary>"Couldn't take over playback" / "Couldn't transfer playback": one toast per BUMP of the model's two failure
+    /// counters (<see cref="Playback.ClaimRejectedCount"/>, <see cref="Playback.TransferFailedCount"/>). The decision — did a
+    /// counter move, and which story wins — is <see cref="PlaybackFailureToasts.Between"/>; this only reads and says it.
+    /// The baseline is taken at mount, so a remount never replays an old failure.</summary>
+    sealed class PlaybackFailureToastWatcher : Component
+    {
+        public override Element Render()
+        {
+            var seen = UseRef((Claim: Playback.ClaimRejectedCount.Peek(), Transfer: Playback.TransferFailedCount.Peek()));
+            UseEffect(() =>
+            {
+                uint claim = Playback.ClaimRejectedCount.Value, transfer = Playback.TransferFailedCount.Value;
+                var failure = PlaybackFailureToasts.Between(seen.Value.Claim, claim, seen.Value.Transfer, transfer);
+                seen.Value = (claim, transfer);
+                switch (failure)
+                {
+                    case PlaybackFailure.ClaimRejected:
+                        Notify.Say(Loc.Get(Strings.Player.TakeOverFailed), InfoBarSeverity.Warning, dedupeKey: "playback.claim.rejected");
+                        break;
+                    case PlaybackFailure.TransferFailed:
+                        Notify.Say(Loc.Get(Strings.Player.TransferFailed), InfoBarSeverity.Warning, dedupeKey: "playback.transfer.failed");
+                        break;
+                }
             });
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
