@@ -53,7 +53,7 @@ public static partial class Shell
 
     /// <summary>THE play/pause intent — the bar's primary, the Space key, the palette and the deck faces all land here,
     /// so there is one play button's worth of behaviour in the app.</summary>
-    public static void TogglePlayPause() => Playback.TogglePlay();
+    public static void TogglePlayPause(string cause) => Playback.TogglePlay(cause);
 
     public static void ToggleShuffle() => Playback.SetShuffle(!Playback.Shuffle.Peek());
 
@@ -617,7 +617,7 @@ public static partial class Shell
                         case PlayerKeyIntent.SeekForward: BarSeekBy(10_000); break;
                         case PlayerKeyIntent.VolumeDown: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() - .05f, 0f, 1f)); break;
                         case PlayerKeyIntent.VolumeUp: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() + .05f, 0f, 1f)); break;
-                        case PlayerKeyIntent.Toggle: if (!e.IsRepeat) TogglePlayPause(); break;
+                        case PlayerKeyIntent.Toggle: if (!e.IsRepeat) TogglePlayPause("playerbar.space"); break;
                     }
                 },
                 Children =
@@ -1128,7 +1128,7 @@ public static partial class Shell
             HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
             IsEnabled = enabled, Cursor = enabled ? CursorId.Hand : null,
-            OnClick = verb == PrimaryVerb.Retry ? static () => RetryPlayback() : static () => TogglePlayPause(),
+            OnClick = verb == PrimaryVerb.Retry ? static () => RetryPlayback() : static () => TogglePlayPause("playerbar.button"),
             Children =
             [
                 new TextEl(glyphText)

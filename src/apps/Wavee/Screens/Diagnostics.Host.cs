@@ -133,8 +133,10 @@ public static partial class Diagnostics
             long now = Clock.ElapsedMilliseconds;
             if (now - s_lastImageWarnMs < 1000) return;
             s_lastImageWarnMs = now;
+            // The source makes a failure actionable (which image, which host/format) — an id alone can't be traced back.
+            string src = FluentApp.EngineImages?.SourceOf(new ImageHandle(id)) ?? "-";
             Log.Warn("image", "image decode failed id=" + id.ToString(CultureInfo.InvariantCulture)
-                + " failure=" + failure + " attempts=" + attempts.ToString(CultureInfo.InvariantCulture));
+                + " failure=" + failure + " attempts=" + attempts.ToString(CultureInfo.InvariantCulture) + " src=" + src);
         }
 
         /// <summary>`Shell.RouteNoted`: a repeat of the current name AND argument is ignored; album A → album B restarts the
@@ -435,6 +437,9 @@ public static partial class Diagnostics
                         + " freshLongWaits=" + (Last.RenderFreshLongWaits - First.RenderFreshLongWaits)
                         + " motionLongWaits=" + (Last.RenderMotionLongWaits - First.RenderMotionLongWaits)
                         + " skippedTicks=" + (Last.RenderSkippedTicks - First.RenderSkippedTicks)
+                        // Paced turns that presented nothing because the previous present missed its vblank and still
+                        // owned this one (the engine's SlotCatchUp) — each is one vblank, never a run of late presents.
+                        + " catchUps=" + (Last.RenderCatchUpSkips - First.RenderCatchUpSkips)
                         // OS-attested (DXGI frame statistics via the engine's PresentStatisticsLedger): what reached the
                         // glass, what DWM dropped, and vblanks that repeated the previous image.
                         + " displayed=" + (Last.PresentsDisplayed - First.PresentsDisplayed)

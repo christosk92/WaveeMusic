@@ -1186,6 +1186,22 @@ public static partial class Diagnostics
             var row = Playback.Current.Peek();
             return row.Kind == EntityKind.Track ? Lyrics.Store.IdOf(new Track(row.Slot)) : "";
         }
+
+        /// <summary>The localized reference line ("Reference: Spotify" / "Reference: consensus of kugou, qq, netease" /
+        /// "No reference") for a report summary; "" when the summary names no reference (a disk hit, a no-match
+        /// search). The parse is <see cref="LyricsReport.ReferenceOf"/>; the dialog and the in-lyrics debug panel share
+        /// this.</summary>
+        public static string ReferenceLabel(string? summary)
+        {
+            var r = LyricsReport.ReferenceOf(summary);
+            return r.Kind switch
+            {
+                LyricsReport.ReferenceKind.Source => Strings.Diagnostics.Inspector.ReferenceSource(LyricsReport.SourceName(r.Sources[0])),
+                LyricsReport.ReferenceKind.Consensus => Strings.Diagnostics.Inspector.ReferenceConsensus(LyricsReport.JoinSources(r.Sources)),
+                LyricsReport.ReferenceKind.None => Loc.Get(Strings.Diagnostics.Inspector.ReferenceNone),
+                _ => "",
+            };
+        }
     }
 
     /// <summary>The header glyph. Its own component so ONLY it subscribes the settings epoch: a developer-mode flip
@@ -1375,6 +1391,8 @@ public static partial class Diagnostics
             }
 
             kids.Add(Design.Type.DenseTitle(report.Summary) with { Color = Tok.AccentTextPrimary, Wrap = TextWrap.Wrap });
+            if (LyricsInspector.ReferenceLabel(report.Summary) is { Length: > 0 } reference)
+                kids.Add(new TextEl(reference) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
             kids.Add(new TextEl(Strings.Diagnostics.Inspector.TitleLine(
                     string.IsNullOrWhiteSpace(report.Title) ? Loc.Get(Strings.Diagnostics.Inspector.NoTitle) : report.Title,
                     string.IsNullOrWhiteSpace(report.Artist) ? Loc.Get(Strings.Lyrics.Debug.NoArtist) : report.Artist))
@@ -1402,8 +1420,12 @@ public static partial class Diagnostics
             int rawCount = LyricsReport.RawCount(insp, t.SourceId);
             var parsed = LyricsReport.CandidateFor(insp, t.SourceId);
             string id = t.SourceId;
+            // v2: the stage-0 match and the rerank facts, each its own WRAPPED line — a 492-DIP card has no room for
+            // columns, and a reason is never truncated.
+            string match = LyricsReport.MatchText(t, parsed?.Basis);
+            string rerank = LyricsReport.RerankText(LyricsReport.FactsOf(t));
 
-            var rows = new List<Element>(6)
+            var rows = new List<Element>(8)
             {
                 Row(8f,
                     new BoxEl { Width = 8f, Height = 8f, Corners = Radii.Circle(8f), Fill = dot, AlignSelf = FlexAlign.Center, Shrink = 0f },
@@ -1412,6 +1434,10 @@ public static partial class Diagnostics
                 new TextEl(LyricsReport.Verdict(t, winnerScore))
                     { Size = 12f, LineHeight = 16f, Wrap = TextWrap.Wrap, Color = t.Winner ? Good : Tok.TextSecondary },
             };
+            if (match.Length > 0)
+                rows.Add(Design.Type.MicroMeta(Strings.Diagnostics.Inspector.MatchLine(match)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
+            if (rerank.Length > 0)
+                rows.Add(Design.Type.MicroMeta(Strings.Diagnostics.Inspector.RerankLine(rerank)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
             if (t.Detail.Length > 0) rows.Add(Caption(t.Detail));
             if (parsed is not null)
             {

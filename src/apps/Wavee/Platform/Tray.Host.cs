@@ -412,7 +412,7 @@ public static partial class Tray
                 case TrayAction.HideWindow: HideWindow(); break;
                 case TrayAction.ShowMenu: ShowMenuAt(x, y, in w, anyHide); break;
                 case TrayAction.Refresh: Refresh(force: true); SyncPresence(); break;
-                case TrayAction.TogglePlay: Playback.TogglePlay(); break;
+                case TrayAction.TogglePlay: Playback.TogglePlay("tray"); break;
                 case TrayAction.Next: Playback.Next(); break;
                 case TrayAction.Previous: Playback.Previous(); break;
                 case TrayAction.ToggleLike: ToggleCurrentSaved?.Invoke(); break;

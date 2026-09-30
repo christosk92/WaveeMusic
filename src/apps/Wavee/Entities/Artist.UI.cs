@@ -450,10 +450,20 @@ public readonly partial struct Artist
             // A cover-keyed leaf: a late grading swaps the gradient without rebuilding the banner (ch 08 §4 row 3).
             // headerAccent (row.HeaderAccent) is the raw payload rung: the caller passes it as an optional param so
             // this stays source-compatible until Artist.Page.cs's two HeroBanner call sites are wired to pass it.
+            // The veil stretches WITH the photo on a top overpan (the same top-anchored StretchFromTop): a fixed veil
+            // over a growing photo left an unveiled band above the hero's top edge.
             Element veil = play is null
                 ? new BoxEl()
-                : Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
-                                          payloadAccent: headerAccent);
+                : new BoxEl
+                {
+                    Width = w, Height = height, ZStack = true, HitTestVisible = false,
+                    TransformOriginX = 0.5f, TransformOriginY = 0f,
+                    Children =
+                    [
+                        Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
+                                               payloadAccent: headerAccent),
+                    ],
+                }.StretchFromTop();
             expanded = new BoxEl
             {
                 Width = w, Height = height, ZStack = true,
@@ -463,11 +473,12 @@ public readonly partial struct Artist
         }
 
         // Pinned at the viewport top and COLLAPSING into the compact band: over the collapse distance the presented height
-        // shrinks from the banner height to the band, and the clipping root cuts the expanded presentation (paint and
-        // input) at that edge. Leading-anchored — the presentation carries its own slide-away (collapseEffects).
+        // shrinks from the banner height to the band, and the Leading collapse cuts the expanded presentation (paint and
+        // input) at that edge by itself — the presentation carries its own slide-away (collapseEffects). No ClipToBounds:
+        // a box clip here would also cut the photo's overscroll stretch above the root's top (a dark band over the photo).
         return new BoxEl
         {
-            Direction = 1, Height = height, ClipToBounds = true, ZStack = true,
+            Direction = 1, Height = height, ZStack = true,
             Children = band is null ? [expanded] : [expanded, band],
         }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
     }
@@ -677,11 +688,23 @@ public readonly partial struct Artist
 
     const float PickPhotoHeight = 150f;    // the rail arm's photograph band; the column supplies the width
     const float PickPhotoColumnW = 300f;   // the band arm: photography as a right column, stretched to the panel
+    const float PickPhotoAspect = 1.6f;
+    const int PickPhotoDecodeW = 640;
+    /// <summary>The photo ImageEl's decode HEIGHT, derived EXACTLY as the reconciler derives it for a width-less aspect
+    /// image (<c>Reconciler.ImageDecodeTarget</c>: <c>round(decodePx / aspect)</c>) — so <see cref="PickPhoto"/>'s
+    /// <c>UseImage</c> observes the very cache handle the mounted image pins (key = (src, 640, 400)), never a second
+    /// decode.</summary>
+    static readonly int PickPhotoDecodeH = (int)MathF.Round(PickPhotoDecodeW / PickPhotoAspect);
 
     /// <summary>The artist-authored pinned item as ONE tone panel: accent wash, the artist speaking, an optional wide
     /// photograph (the pick's own campaign art, else the artist's header — never a blurred cover stand-in), then the
     /// record as a footer row with Play, or Pre-save while it is not out. ONE record per panel (ch 08 §9 #9). The caller
-    /// keys it on the rail/band arm (props freeze at mount).</summary>
+    /// keys it on the rail/band arm (props freeze at mount).
+    /// <para>The photograph is EARNED, never reserved: <see cref="PickPhoto"/> requests the art while the band is
+    /// collapsed to nothing, and the band only mounts once the image is Ready — growing open (height on the rail arm,
+    /// width on the band arm) and fading in. While pending the card is just header + comment + footer, and on a real
+    /// failure it stays that way: no flat placeholder block ever stands in for a photo that may never come (the grey
+    /// slab a stuck decode used to leave behind).</para></summary>
     internal static Element PickCard(Artist a, Func<ColorF> accent, bool horizontal)
     {
         ColorF tint = accent();
@@ -753,26 +776,15 @@ public readonly partial struct Artist
                 },
             ],
         };
+        // Props freeze at mount: the photo embed is keyed on the url it waits for (the arm is already the card's key).
         Element? photo = background is { Length: > 0 } bgUrl
-            ? new BoxEl
-            {
-                Height = horizontal ? float.NaN : PickPhotoHeight,
-                Width = horizontal ? PickPhotoColumnW : float.NaN,
-                Shrink = 0f, AlignSelf = horizontal ? FlexAlign.Stretch : FlexAlign.Auto,
-                ZStack = true, ClipToBounds = true,
-                Children =
-                [
-                    // ch 08 BUG F: WATCHED, not the raw `Design.ArtworkPlaceholder` ColorF (Controls.ArtworkFill's own
-                    // pattern) — bgUrl is a real, tintable cover, so the frozen placeholder never re-tinted this tile
-                    // once the grading landed after it had already started decoding.
-                    Ui.Image(bgUrl, ImageFit.Cover, aspect: 1.6f, decodePx: 640, corners: 0f,
-                             placeholder: (ColorF?)null) with
-                    {
-                        Placeholder = Design.WatchedPlaceholder(bgUrl),
-                        AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                    },
-                ],
-            }
+            ? Embed.Comp(() => new PickPhoto { Url = bgUrl, Band = horizontal }) with
+              {
+                  Key = "pick-photo:" + bgUrl,
+                  // The skeleton deriver can't see into a component: hand it the band's real shape (an image block), or a
+                  // loading page shows one default bar where the photo will be.
+                  SkeletonProxy = () => PickPhoto.Shape(bgUrl, horizontal),
+              }
             : null;
 
         // Props freeze at mount: the pre-save embed is keyed on the uri it would pre-save.
@@ -825,6 +837,98 @@ public readonly partial struct Artist
             Draggable = Drag.Source(() => new DragPayload(Drag.KindOfUri(target), target, target, title, ArtUrl: cover)),
             Children = [wash, content],
         });
+    }
+
+    /// <summary>The pick's photograph band, mounted only once its image is Ready (see <see cref="PickCard"/>).
+    ///
+    /// <para>REQUEST WHILE HIDDEN: <c>UseImage</c> is <c>ImageCache.Request</c> + a read of that ONE handle's status
+    /// signal (RenderContext.UseImage) — the decode starts with no node mounted, and this component re-renders only on
+    /// that handle's own edges (never the global image epoch, never another card). Its (src, decode) key is the
+    /// ImageEl's own (<see cref="PickPhotoDecodeH"/>), so when the band mounts the image pins the SAME Ready entry and
+    /// paints on its first frame.</para>
+    ///
+    /// <para>LATCHED like <see cref="Controls.CoverShimmer"/>: Ready (shown) or a real failure (collapsed for good) stops
+    /// the hook call, so a settled card unsubscribes and never re-renders again. A Canceled leftover is NOT a verdict —
+    /// the next edge re-requests it. Nothing here polls or loops: the frame clock only runs for the one finite reveal.
+    /// The image hook consumes no hook cell, so the conditional call is safe.</para>
+    ///
+    /// <para>The root is an always-present, zero-extent wrapper (a component root's Key is inert — the keyed band is its
+    /// CHILD); the band's clip box grows open through real layout (Reflow + mount opt-in, the drawer idiom) while the
+    /// photo fades in inside it. Ready already at mount (a warm cache) snaps in with no motion: a page visit never
+    /// replays the entrance.</para></summary>
+    sealed class PickPhoto : Component
+    {
+        public required string Url { get; init; }
+        /// <summary>The band arm (photo as a right column) — else the rail arm (photo as a band under the comment).</summary>
+        public bool Band { get; init; }
+
+        static readonly LayoutTransition s_growRail = new(TransitionChannels.Size, MotionTok.ControlNormal.ToDynamics(),
+            Enter: new EnterExit(Active: true), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height,
+            SuppressDescendantTransitions: true);
+        static readonly LayoutTransition s_growBand = new(TransitionChannels.Size, MotionTok.ControlNormal.ToDynamics(),
+            Enter: new EnterExit(Active: true), Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Width,
+            SuppressDescendantTransitions: true);
+        static readonly LayoutTransition s_fadeIn = new(TransitionChannels.Opacity, MotionTok.ControlNormal.ToDynamics(),
+            Enter: new EnterExit(Opacity: 0f, Active: true));
+
+        bool _shown, _failed, _rendered, _instant;
+
+        /// <summary>The photo band itself (150 tall under the comment, or a 300-wide right column): the ONE builder the
+        /// revealed band and the skeleton proxy share.</summary>
+        internal static BoxEl Shape(string url, bool band) => new()
+        {
+            Key = "pick-photo-band",
+            Height = band ? float.NaN : PickPhotoHeight,
+            Width = band ? PickPhotoColumnW : float.NaN,
+            Shrink = 0f, AlignSelf = band ? FlexAlign.Stretch : FlexAlign.Auto,
+            ZStack = true, ClipToBounds = true,
+            Children =
+            [
+                // ch 08 BUG F: WATCHED, not the raw `Design.ArtworkPlaceholder` ColorF (Controls.ArtworkFill's own
+                // pattern). The entry is Ready when this mounts, so the placeholder only covers an eviction race.
+                Ui.Image(url, ImageFit.Cover, aspect: PickPhotoAspect, decodePx: PickPhotoDecodeW, corners: 0f,
+                         placeholder: (ColorF?)null) with
+                {
+                    Placeholder = Design.WatchedPlaceholder(url),
+                    AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                },
+            ],
+        };
+
+        public override Element Render()
+        {
+            if (!_shown && !_failed)
+            {
+                var image = UseImage(Url, PickPhotoDecodeW, PickPhotoDecodeH);
+                if (image.State == ImageState.Ready) { _shown = true; _instant = !_rendered; }
+                else if (image.State == ImageState.Failed && image.Failure != ImageFailureKind.Canceled) _failed = true;
+            }
+            _rendered = true;
+
+            var root = new BoxEl
+            {
+                Direction = (byte)(Band ? 0 : 1), Shrink = 0f, MinWidth = 0f,
+                AlignSelf = Band ? FlexAlign.Stretch : FlexAlign.Auto,
+            };
+            if (!_shown) return root;   // zero extent: no band, no placeholder, nothing reserved
+
+            Element picture = Shape(Url, Band) with { Animate = _instant ? null : s_fadeIn };
+            return root with
+            {
+                Children =
+                [
+                    new BoxEl
+                    {
+                        // The CLIP box eases its size only (a position terminal here would move the window itself); the
+                        // band inside it fades under the stationary window. Reduced motion snaps the size, keeps the fade.
+                        Key = "pick-photo", Direction = (byte)(Band ? 0 : 1), MinWidth = 0f, Shrink = 0f, ClipToBounds = true,
+                        AlignSelf = Band ? FlexAlign.Stretch : FlexAlign.Auto,
+                        Animate = _instant || Design.Reduced ? null : Band ? s_growBand : s_growRail,
+                        Children = [picture],
+                    },
+                ],
+            };
+        }
     }
 
     // ── 4.3 the gallery lightbox (ArtistGalleryLightbox.cs, W21) ────────────────────────────────────────────────────

@@ -554,7 +554,7 @@ public readonly partial struct Browse
                 cardHeight: HomeModuleLayout.ShelfCardHeight,
                 header: header,
                 minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
-                gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade,
+                gap: HomeModuleLayout.ShelfGap, edgeFade: HomeModuleLayout.ShelfEdgeFade,
                 prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
                 lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
                 keyOf: static (item, i) => "browse-shelf-card:" + item.Card.Uri)

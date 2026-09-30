@@ -26,8 +26,10 @@
 //                         track resolves offline before a single request goes out. Negative markers are TTL-bounded.
 //   `Lyrics.Diag`         the per-track explainability store the inspector reads: per-source traces, raw payloads,
 //                         every candidate's PARSED document. Bounded (§7 gap 7's caps) and published on EVERY search.
-//   `Lyrics.Sources.*`    the three clean-by-default sources: AMLL (identity, word-synced), Spotify-native (the
-//                         reranker's REFERENCE and a line candidate) and LRCLIB (metadata search).
+//   `Lyrics.Sources.*`    every source, all ON (there is no switch): AMLL (identity, word-synced), Spotify-native (the
+//                         reranker's REFERENCE and a line candidate) and LRCLIB (metadata search) here; the four grey
+//                         sources (kugou, qq, netease, musixmatch) in their own `Lyrics.Grey.*.cs` partials, over the
+//                         shared `SourceGuard` / `GreyLadder` of `Lyrics.Grey.cs` and the `HttpFetch.Grey` client.
 //   `Lyrics.ResolveRequest` track id → the search `Request`, parked on `Lyrics.Requests` until the publication that
 //                         commits the row's identity (G-252) — never polled.
 //
@@ -40,10 +42,10 @@
 // observes its OWN token through `WaitAsync`.
 //
 // WHAT IS DELIBERATELY NOT HERE (named, per the wave's report):
-//   • The GREY CJK/Musixmatch sources (KRC/YRC/QRC/richsync network fetchers + the DES payload decrypt, 866 lines of
-//     0.2.9). They are OFF BY DEFAULT in 0.2.9 too (`Options.EnableGreyProviders == false`), and their FORMAT
-//     PARSERS are already ported verbatim into `Lyrics.cs` §15 and pinned by the fixture tests — so re-adding the
-//     fetchers later is additive against a frozen `ISource` seam and needs no core change.
+//   • The GREY CJK/Musixmatch fetchers themselves. They are ON BY DEFAULT, as 0.2.9's live host had them (its
+//     `LiveSessionHost` enabled all four), and live in `Lyrics.Grey.*.cs` against the `ISource` seam below; the
+//     KRC/QRC decrypt is `Lyrics.Crypto.cs` and their FORMAT PARSERS are `Lyrics.cs` §15. This file only owns what
+//     they share with everyone: the `IHttpPost` seam, the grey HTTP client and the aggregator's budgets.
 //   • The inspector DIALOG. A14: the STORE stays here (`Lyrics.Diag`), the dialog is
 //     `Diagnostics.LyricsInspector.Open(overlay, trackId)` in `Screens/Diagnostics.UI.cs` (Wave 6, owner S), and
 //     `Rail.UI.cs` keeps only the dev-mode-gated glyph that calls it.
@@ -67,14 +69,16 @@ public static partial class Lyrics
 {
     // ── 1. the aggregator's configuration and seams ─────────────────────────────────────────────────────────────────
 
-    /// <summary>Which sources run by default and the per-source budget. The grey CJK/Musixmatch sources are OFF by
-    /// default; only AMLL + Spotify-native + LRCLIB are clean-by-default.</summary>
+    /// <summary>The aggregator's budgets. Every registered source runs — there is no per-source switch. The grey
+    /// sources walk a keyword ladder (search → lyric → sometimes a download), so a source gets 12 s and the whole
+    /// pass 15 s; the UI never waits for that, only for the first-hit grace window.</summary>
+    /// <param name="PerSourceTimeoutMs">One source's whole fetch, search ladder included.</param>
+    /// <param name="TotalTimeoutMs">The background pass's budget, measured from the fan-out's start.</param>
     /// <param name="FirstHitGraceMs">How long the UI waits AFTER the first usable candidate before it takes what it
     /// has. Slower sources keep running in the background and can publish a richer replacement.</param>
     public sealed record Options(
-        bool EnableGreyProviders = false,
-        int PerSourceTimeoutMs = 6000,
-        int TotalTimeoutMs = 9000,
+        int PerSourceTimeoutMs = 12000,
+        int TotalTimeoutMs = 15000,
         int FirstHitGraceMs = 2000)
     {
         public static Options Default { get; } = new();
@@ -89,6 +93,11 @@ public static partial class Lyrics
         bool Enabled { get; }
         double Prior { get; }
         Task<Candidate?> FetchAsync(Request req, CancellationToken ct);
+
+        /// <summary>Drop whatever this source remembers about ONE track (its per-track negative cache). The
+        /// inspector's re-fetch calls it on every source — otherwise a remembered miss answers the re-fetch before a
+        /// single request goes out. A source with no per-track memory keeps this no-op.</summary>
+        void Forget(string trackId) { }
     }
 
     /// <summary>A tiny GET seam so the public sources are unit-testable with a fake (no network in tests).</summary>
@@ -109,11 +118,24 @@ public static partial class Lyrics
         Task<HttpResult> GetAsync(string url, IReadOnlyDictionary<string, string>? headers, CancellationToken ct);
     }
 
-    /// <summary>The real fetch, over one pooled third-party client. Returns null on any non-success or transport error
-    /// so a source miss is a clean null, never a throw that aborts the fan-out.</summary>
-    public sealed class HttpFetch : IHttpWithStatus
+    /// <summary>The POST form, for the grey sources whose search / lyric endpoints only take a body (qq's
+    /// <c>musicu.fcg</c> JSON, its <c>lyric_download.fcg</c> form). Same result contract as
+    /// <see cref="IHttpWithStatus.GetAsync"/>.</summary>
+    public interface IHttpPost : IHttpWithStatus
     {
-        /// <summary>One pooled handler for every third-party lyrics host. Named so a connection dump attributes it.</summary>
+        Task<HttpResult> PostAsync(string url, HttpContent body, IReadOnlyDictionary<string, string>? headers, CancellationToken ct);
+    }
+
+    /// <summary>The real fetch, over a pooled third-party client. Never throws but for cancellation: a transport error
+    /// is <c>HttpResult(0, null)</c>, so a source miss is a clean null, never a throw that aborts the fan-out.
+    ///
+    /// <para>TWO CLIENTS. The default one (AMLL, LRCLIB) drops the body of a non-2xx answer. <see cref="Grey"/> is a
+    /// second, separately attributed client for the grey sources: it KEEPS non-2xx bodies (Musixmatch explains a 401
+    /// in the body's <c>hint</c> — renew vs captcha — and the difference decides retry vs breaker), sends the browser
+    /// User-Agent, and never keeps cookies (netease's hand-set <c>Cookie</c> header must not merge with a jar).</para></summary>
+    public sealed class HttpFetch : IHttpPost
+    {
+        /// <summary>One pooled handler for the clean third-party lyrics hosts. Named so a connection dump attributes it.</summary>
         static readonly HttpClient Client = new(Wire.Handler("lyrics", new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
@@ -122,10 +144,35 @@ public static partial class Lyrics
         }))
         { Timeout = TimeSpan.FromSeconds(20) };
 
+        /// <summary>The grey sources' own handler: attributed as <c>lyrics-grey</c> in the wire log (storm detection
+        /// and capture included — a keyword ladder can reach the storm threshold while tracks are skipped), no cookie
+        /// jar.</summary>
+        static readonly HttpClient GreyClient = new(Wire.Handler("lyrics-grey", new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            AutomaticDecompression = System.Net.DecompressionMethods.All,
+            MaxConnectionsPerServer = 4,
+            UseCookies = false,
+        }))
+        { Timeout = TimeSpan.FromSeconds(20) };
+
+        /// <summary>The grey sources' fetch: browser User-Agent (set ONCE here — a <c>headers["User-Agent"]</c> would
+        /// append a second value), non-2xx bodies kept.</summary>
+        public static HttpFetch Grey { get; } = new(GreyClient, GreyLadder.BrowserUserAgent, keepErrorBodies: true);
+
+        readonly HttpClient _client;
         readonly string _userAgent;
+        readonly bool _keepErrorBodies;
 
         public HttpFetch(string userAgent = "Wavee/1.0 (https://github.com/christosk92/Wavee)")
-            => _userAgent = userAgent;
+            : this(Client, userAgent, keepErrorBodies: false) { }
+
+        HttpFetch(HttpClient client, string userAgent, bool keepErrorBodies)
+        {
+            _client = client;
+            _userAgent = userAgent;
+            _keepErrorBodies = keepErrorBodies;
+        }
 
         public async Task<string?> GetStringAsync(string url, IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
         {
@@ -133,17 +180,37 @@ public static partial class Lyrics
             return result.IsSuccess ? result.Body : null;
         }
 
-        public async Task<HttpResult> GetAsync(string url, IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
+        public Task<HttpResult> GetAsync(string url, IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
+            => SendAsync(HttpMethod.Get, url, null, headers, ct);
+
+        public Task<HttpResult> PostAsync(string url, HttpContent body, IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
+            => SendAsync(HttpMethod.Post, url, body, headers, ct);
+
+        /// <summary>The one send path GET and POST share. The request owns (and disposes) <paramref name="body"/>.</summary>
+        async Task<HttpResult> SendAsync(HttpMethod method, string url, HttpContent? body,
+            IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
         {
             try
             {
-                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                using var req = new HttpRequestMessage(method, url);
+                if (body is not null) req.Content = body;
                 req.Headers.TryAddWithoutValidation("User-Agent", _userAgent);
                 if (headers is not null)
-                    foreach (var (k, v) in headers) req.Headers.TryAddWithoutValidation(k, v);
-                using var resp = await Client.SendAsync(req, ct).ConfigureAwait(false);
-                var body = resp.IsSuccessStatusCode ? await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false) : null;
-                return new HttpResult((int)resp.StatusCode, body);
+                    foreach (var (k, v) in headers)
+                    {
+                        // A content header (Content-Type on a hand-built body) belongs on the content, not the request,
+                        // and REPLACES the content's own default rather than adding a second value.
+                        if (!req.Headers.TryAddWithoutValidation(k, v) && req.Content is not null)
+                        {
+                            req.Content.Headers.Remove(k);
+                            req.Content.Headers.TryAddWithoutValidation(k, v);
+                        }
+                    }
+                using var resp = await _client.SendAsync(req, ct).ConfigureAwait(false);
+                var text = resp.IsSuccessStatusCode || _keepErrorBodies
+                    ? await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false)
+                    : null;
+                return new HttpResult((int)resp.StatusCode, text);
             }
             catch (OperationCanceledException) { throw; }
             catch { return new HttpResult(0, null); }
@@ -160,7 +227,11 @@ public static partial class Lyrics
     /// <para>The reranker's score BREAKDOWN rides along because a bare 0.885-vs-0.740 says who won but not why, and
     /// "why" is always the actual question: a word-synced candidate losing to a line-synced one is a completely
     /// different problem depending on whether it lost on text agreement or on the sync tier being worth too
-    /// little.</para></summary>
+    /// little.</para>
+    /// <para>The stage-0 metadata match rides along too: <see cref="Band"/>/<see cref="Confidence"/> say how well the
+    /// search hit a source fetched matched the request (identity/ISRC sources carry Perfect/1), <see cref="Match"/> is
+    /// its breadcrumb (<c>MetadataMatch.Describe</c>), and <see cref="Recall"/>/<see cref="Support"/> are the
+    /// reranker's reference-recall and consensus-peer counts.</para></summary>
     public sealed record SourceTrace(
         string SourceId,
         Outcome Outcome,
@@ -174,7 +245,13 @@ public static partial class Lyrics
         double Text = 0d,
         double Coverage = 0d,
         double Timing = 0d,
-        double SyncScore = 0d);
+        double SyncScore = 0d,
+        MatchBand Band = MatchBand.None,
+        double Confidence = 0d,
+        string Match = "",
+        double Recall = 0d,
+        int Support = 0,
+        string TieBreak = "");
 
     /// <summary>The full explainable record of ONE fetch: the request metadata the sources searched with, the
     /// per-source traces, and a one-line summary.</summary>
@@ -413,8 +490,9 @@ public static partial class Lyrics
     public enum CacheOutcome { Miss, Hit, KnownMissing }
 
     /// <summary>One disk lookup's answer. <see cref="SavedAtUnixMs"/> is when the entry was persisted (0 on a
-    /// miss).</summary>
-    public readonly record struct CacheEntry(CacheOutcome Outcome, Doc? Document, long SavedAtUnixMs)
+    /// miss). <see cref="Provisional"/>: the document was persisted as an UNVERIFIED winner (nothing corroborated it as
+    /// the right song), so a hit is served but re-searched in the background like a low-richness one.</summary>
+    public readonly record struct CacheEntry(CacheOutcome Outcome, Doc? Document, long SavedAtUnixMs, bool Provisional = false)
     {
         public static CacheEntry Missing => default;   // Outcome == Miss
     }
@@ -442,8 +520,9 @@ public static partial class Lyrics
         public const long DefaultMaxBytes = 50L << 20;
 
         /// <summary>How long "this track has no lyrics anywhere" is trusted. Long enough that a repeat play of an
-        /// instrumental is free, short enough that a newly published lyric is picked up within days.</summary>
-        public static TimeSpan DefaultNegativeTtl => TimeSpan.FromDays(3);
+        /// instrumental is free — with seven sources (four of them keyword ladders) a track-wide miss is an expensive
+        /// answer to re-derive — and short enough that a newly published lyric is picked up within a week.</summary>
+        public static TimeSpan DefaultNegativeTtl => TimeSpan.FromDays(7);
 
         const double SweepTargetFraction = 0.8;   // trim to 80 % so a sweep is not re-armed on the next write
         const int StemLength = 64;                // SHA-256 as lowercase hex
@@ -518,17 +597,18 @@ public static partial class Lyrics
             // A document with no lines is unusable — the view would render an empty lyric instead of searching. Treat
             // it exactly like a corrupt file so the next play re-fetches.
             if (env.Doc.Lines is not { Count: > 0 }) { Discard(path, trackId, "no lines"); return CacheEntry.Missing; }
-            return new(CacheOutcome.Hit, env.Doc, env.At);
+            return new(CacheOutcome.Hit, env.Doc, env.At, env.Provisional);
         }
 
         // ── write ───────────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Persist a winning document. Fire-and-forget: serialization and I/O both run off the caller's
-        /// thread and every failure is swallowed (logged once).</summary>
-        public void Save(string trackId, Doc document)
+        /// thread and every failure is swallowed (logged once). <paramref name="provisional"/> marks an UNVERIFIED
+        /// winner: served on a later hit, but re-searched in the background (see <see cref="CacheEntry.Provisional"/>).</summary>
+        public void Save(string trackId, Doc document, bool provisional = false)
         {
             if (string.IsNullOrEmpty(trackId) || document is null) return;
-            _ = Task.Run(() => SaveAsync(trackId, document));
+            _ = Task.Run(() => SaveAsync(trackId, document, provisional));
         }
 
         /// <summary>Persist the "no lyrics anywhere" marker (TTL-bounded).</summary>
@@ -539,7 +619,7 @@ public static partial class Lyrics
         }
 
         /// <summary>The awaitable core of both writes (the deterministic seam tests use). Never throws.</summary>
-        public async Task SaveAsync(string trackId, Doc? document, CancellationToken ct = default)
+        public async Task SaveAsync(string trackId, Doc? document, bool provisional = false, CancellationToken ct = default)
         {
             if (string.IsNullOrEmpty(trackId)) return;
             ArmSweep();
@@ -548,7 +628,8 @@ public static partial class Lyrics
             try
             {
                 System.IO.Directory.CreateDirectory(_dir);
-                var env = new CacheEnvelope(SchemaVersion, _nowUnixMs(), trackId, document);
+                var env = new CacheEnvelope(SchemaVersion, _nowUnixMs(), trackId, document,
+                    Provisional: document is not null && provisional);
                 var bytes = JsonSerializer.SerializeToUtf8Bytes(env, CacheJson.Default.CacheEnvelope);
                 await File.WriteAllBytesAsync(tmp, bytes, ct).ConfigureAwait(false);
                 File.Move(tmp, path, overwrite: true);   // write-then-rename: a crash cannot leave a torn document
@@ -672,12 +753,17 @@ public static partial class Lyrics
     }
 
     /// <summary>The persisted envelope. Short keys: a word-synced document is tens of KB of syllables and one is
-    /// written per played track. <c>doc</c> is absent on a negative marker.</summary>
+    /// written per played track. <c>doc</c> is absent on a negative marker. <c>prov</c> (an UNVERIFIED winner) is
+    /// written only when true, and an envelope without it — every entry an older build wrote — reads as false, so the
+    /// field is backward compatible without a schema bump.</summary>
     internal sealed record CacheEnvelope(
         [property: JsonPropertyName("v")] int V,
         [property: JsonPropertyName("at")] long At,
         [property: JsonPropertyName("id")] string? Id,
-        [property: JsonPropertyName("doc")] Doc? Doc);
+        [property: JsonPropertyName("doc")] Doc? Doc,
+        [property: JsonPropertyName("prov")]
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        bool Provisional = false);
 
     /// <summary>AOT-safe SOURCE-GENERATED JSON — no reflection-based serialization anywhere in this app.</summary>
     [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
@@ -685,11 +771,11 @@ public static partial class Lyrics
     [JsonSerializable(typeof(CacheEnvelope))]
     internal sealed partial class CacheJson : JsonSerializerContext { }
 
-    // ── 4. the three clean-by-default sources ───────────────────────────────────────────────────────────────────────
+    // ── 4. the clean sources (the grey four are `Lyrics.Grey.*.cs` partials of `Sources`) ────────────────────────────
 
-    /// <summary>The sources that ship enabled. Each is a thin adapter: fetch, hand the body to a CORE parser, wrap the
-    /// result as a <see cref="Candidate"/>. None of them decides anything.</summary>
-    public static class Sources
+    /// <summary>Every source. Each is a thin adapter: fetch, hand the body to a CORE parser, wrap the result as a
+    /// <see cref="Candidate"/>. None of them decides anything. Partial: each grey source adds its own file.</summary>
+    public static partial class Sources
     {
         /// <summary>The community word-by-word (SYLLABLE) TTML library, indexed directly by Spotify track id. The
         /// cleanest word-synced source and the highest provider prior: a direct IDENTITY match, so when present it is
@@ -739,6 +825,12 @@ public static partial class Lyrics
                 var doc = Text.ParseTtml(ttml!, req.TrackId, Id);
                 if (doc.Lines.Count == 0) { _misses.TryAdd(req.TrackId, 0); return null; }
                 return new Candidate(Id, Prior, MatchBasis.Identity, doc);
+            }
+
+            /// <summary>The re-fetch forgets the remembered 404 — the file may have been added to the library since.</summary>
+            public void Forget(string trackId)
+            {
+                if (!string.IsNullOrEmpty(trackId)) _misses.TryRemove(trackId, out _);
             }
         }
 
@@ -811,14 +903,19 @@ public static partial class Lyrics
         }
 
         /// <summary>A clean, free, no-auth synced-lyrics database. Primary lookup is the exact get (artist + track +
-        /// album + duration); on a miss it falls back to search and picks the closest result BY DURATION. Synced
-        /// payloads are LRC; plain payloads become unsynced. Matched by METADATA, so the reranker validates it against
-        /// the Spotify-native reference before trusting it.</summary>
+        /// album + duration); on a miss it falls back to search and picks among the results with the stage-0
+        /// <see cref="MetadataMatch"/> (title cascade, artist, album, duration Gaussian and the version-marker gate — a
+        /// live cut or a remix never wins on duration alone), floor <see cref="MatchBand.Medium"/>. Synced payloads are
+        /// LRC; plain payloads become unsynced. Matched by METADATA, so the candidate carries its match
+        /// Confidence/Band and the reranker validates it against the reference before trusting it.</summary>
         public sealed class LrcLib : ISource
         {
             /// <summary>How far a search result's duration may be from the track's before it is rejected outright —
-            /// the wrong-song guardrail on a metadata match.</summary>
-            public const long MaxDurationDeltaMs = 5000;
+            /// the wrong-song guardrail on a metadata match (= <see cref="MetadataMatch.DurationGateMs"/>).</summary>
+            public const long MaxDurationDeltaMs = MetadataMatch.DurationGateMs;
+
+            /// <summary>lrclib reports durations in (usually whole) seconds.</summary>
+            const int DurationGrainMs = 1000;
 
             readonly IHttp _http;
             public LrcLib(IHttp http) => _http = http;
@@ -826,6 +923,9 @@ public static partial class Lyrics
             public string Id => "lrclib";
             public bool Enabled => true;
             public double Prior => 0.45;
+
+            /// <summary>One parsed answer plus the metadata verdict it was picked on.</summary>
+            readonly record struct Picked(Doc Doc, MatchScore Score, string Note);
 
             public async Task<Candidate?> FetchAsync(Request req, CancellationToken ct)
             {
@@ -838,31 +938,38 @@ public static partial class Lyrics
                 string? body = await _http.GetStringAsync(get, null, ct).ConfigureAwait(false);
                 Probe.CaptureRaw(Id, Probe.Redact(get), "json", body);
 
-                Doc? doc = body is not null ? FromObject(body, req) : null;
-                Probe.Note(Id, doc is not null ? "exact /api/get hit" : "exact /api/get miss → /api/search");
-                doc ??= await SearchAsync(req, ct).ConfigureAwait(false);
-                if (doc is null || doc.Lines.Count == 0) return null;
-                return new Candidate(Id, Prior, MatchBasis.MetadataSearch, doc);
+                Picked? picked = body is not null ? FromObject(body, req) : null;
+                Probe.Note(Id, picked is not null ? "exact /api/get hit" : "exact /api/get miss → /api/search");
+                picked ??= await SearchAsync(req, ct).ConfigureAwait(false);
+                if (picked is not { } p || p.Doc.Lines.Count == 0) return null;
+                Log.Info(Diag.Category, $"source=lrclib track={req.TrackId} band={p.Score.Band} "
+                    + $"conf={p.Score.Confidence.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)} match=\"{p.Note}\"");
+                return new Candidate(Id, Prior, MatchBasis.MetadataSearch, p.Doc)
+                {
+                    Confidence = p.Score.Confidence,
+                    Band = p.Score.Band,
+                    MatchNote = p.Note,
+                };
             }
 
             // The query-variant ladder: full "title/artist" → feat-stripped "title/artist" → "title" only. Returns the
-            // first variant that yields a usable doc (each keeps the duration-closest pick + the reject guardrail).
-            async Task<Doc?> SearchAsync(Request req, CancellationToken ct)
+            // first variant whose results hold a hit at or above the Medium band.
+            async Task<Picked?> SearchAsync(Request req, CancellationToken ct)
             {
                 foreach (var (title, artist) in Query.TitleArtistVariants(req))
                 {
-                    var doc = await SearchOnce(title, artist, req, ct).ConfigureAwait(false);
-                    if (doc is { Lines.Count: > 0 })
+                    var picked = await SearchOnce(title, artist, req, ct).ConfigureAwait(false);
+                    if (picked is { } p && p.Doc.Lines.Count > 0)
                     {
                         Probe.Note(Id, $"/api/search hit on '{title}'" + (artist.Length > 0 ? $" / '{artist}'" : " (title-only)"));
-                        return doc;
+                        return p;
                     }
                     ct.ThrowIfCancellationRequested();
                 }
                 return null;
             }
 
-            async Task<Doc?> SearchOnce(string title, string artist, Request req, CancellationToken ct)
+            async Task<Picked?> SearchOnce(string title, string artist, Request req, CancellationToken ct)
             {
                 string search = "https://lrclib.net/api/search?track_name=" + Uri.EscapeDataString(title)
                     + (artist.Length > 0 ? "&artist_name=" + Uri.EscapeDataString(artist) : "");
@@ -873,7 +980,9 @@ public static partial class Lyrics
                 {
                     using var d = JsonDocument.Parse(json);
                     if (d.RootElement.ValueKind != JsonValueKind.Array) return null;
-                    string? bestSynced = null, bestPlain = null; long bestDelta = long.MaxValue; int n = 0;
+                    var hits = new List<Hit>();
+                    var payloads = new List<(string? Synced, string? Plain)>();
+                    int n = 0;
                     foreach (var el in d.RootElement.EnumerateArray())
                     {
                         n++;
@@ -881,34 +990,69 @@ public static partial class Lyrics
                         string? sl = Str(el, "syncedLyrics");
                         string? pl = Str(el, "plainLyrics");
                         if (string.IsNullOrWhiteSpace(sl) && string.IsNullOrWhiteSpace(pl)) continue;
-                        long dur = el.TryGetProperty("duration", out var du) && du.TryGetDouble(out var ds) ? (long)(ds * 1000) : 0;
-                        long delta = req.DurationMs > 0 && dur > 0 ? Math.Abs(dur - req.DurationMs) : 0;
-                        if (delta < bestDelta) { bestDelta = delta; bestSynced = sl; bestPlain = pl; }
+                        hits.Add(HitOf(el, "r" + n.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                        payloads.Add((sl, pl));
                     }
-                    Probe.Note(Id, $"/api/search '{title}' → {n} results" + (bestDelta != long.MaxValue ? $" (best Δ{bestDelta}ms)" : ""));
-                    if (req.DurationMs > 0 && bestDelta > MaxDurationDeltaMs)
-                    { Probe.Note(Id, "closest result's duration > 5s off — rejected"); return null; }
-                    if (!string.IsNullOrWhiteSpace(bestSynced)) return Text.ParseLrc(bestSynced!, req.TrackId, Id);
-                    if (!string.IsNullOrWhiteSpace(bestPlain)) return Unsynced(bestPlain!, req.TrackId);
-                    return null;
+                    int pick = MetadataMatch.Pick(req, hits, MatchBand.Medium, out var score);
+                    Probe.Note(Id, $"/api/search '{title}' → {n} results, {hits.Count} with lyrics"
+                        + (hits.Count > 0
+                            ? $" (best {score.Band}, conf {score.Confidence.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)})"
+                            : ""));
+                    if (pick < 0)
+                    {
+                        if (hits.Count > 0) Probe.Note(Id, "no result reached the Medium match band — rejected (" + score.Reason + ")");
+                        return null;
+                    }
+                    var hit = hits[pick];
+                    string note = MetadataMatch.Describe(in hit, in score);
+                    Probe.Note(Id, "picked " + note);
+                    var (bestSynced, bestPlain) = payloads[pick];
+                    Doc? doc = !string.IsNullOrWhiteSpace(bestSynced) ? Text.ParseLrc(bestSynced!, req.TrackId, Id)
+                        : !string.IsNullOrWhiteSpace(bestPlain) ? Unsynced(bestPlain!, req.TrackId)
+                        : null;
+                    return doc is null ? null : new Picked(doc, score, note);
                 }
                 catch { return null; }
             }
 
-            Doc? FromObject(string json, Request req)
+            /// <summary>The exact <c>/api/get</c> answer. lrclib already matched it on all four fields, but it is scored
+            /// the same way as a search pick so the candidate carries an honest band — and one that falls below Medium
+            /// (a version-marker or duration gate) is dropped in favour of the search.</summary>
+            Picked? FromObject(string json, Request req)
             {
                 try
                 {
                     using var d = JsonDocument.Parse(json);
                     var el = d.RootElement;
+                    if (el.ValueKind != JsonValueKind.Object) return null;
                     if (el.TryGetProperty("instrumental", out var inst) && inst.ValueKind == JsonValueKind.True) return null;
+                    var hit = HitOf(el, "get");
+                    var score = MetadataMatch.Score(req, in hit);
+                    string note = MetadataMatch.Describe(in hit, in score);
+                    if (score.Band < MatchBand.Medium)
+                    {
+                        Probe.Note(Id, "exact /api/get answer below the Medium match band — ignored (" + note + ")");
+                        return null;
+                    }
+                    Doc? doc = null;
                     string? synced = Str(el, "syncedLyrics");
-                    if (!string.IsNullOrWhiteSpace(synced)) return Text.ParseLrc(synced!, req.TrackId, Id);
                     string? plain = Str(el, "plainLyrics");
-                    if (!string.IsNullOrWhiteSpace(plain)) return Unsynced(plain!, req.TrackId);
-                    return null;
+                    if (!string.IsNullOrWhiteSpace(synced)) doc = Text.ParseLrc(synced!, req.TrackId, Id);
+                    else if (!string.IsNullOrWhiteSpace(plain)) doc = Unsynced(plain!, req.TrackId);
+                    return doc is null ? null : new Picked(doc, score, note);
                 }
                 catch { return null; }
+            }
+
+            /// <summary>One lrclib record as a source-neutral <see cref="Hit"/> (its numeric id when present).</summary>
+            static Hit HitOf(JsonElement el, string fallbackId)
+            {
+                string id = el.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.Number
+                    ? idEl.GetRawText() : fallbackId;
+                string? artist = Str(el, "artistName");
+                IReadOnlyList<string> artists = string.IsNullOrWhiteSpace(artist) ? [] : [artist!];
+                long dur = el.TryGetProperty("duration", out var du) && du.TryGetDouble(out var ds) ? (long)(ds * 1000) : 0;
+                return new Hit(id, Str(el, "trackName") ?? Str(el, "name") ?? "", artists, Str(el, "albumName"), dur, DurationGrainMs);
             }
 
             static string? Str(JsonElement el, string name)
@@ -930,7 +1074,8 @@ public static partial class Lyrics
     // ── 5. the aggregator ───────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Fans out to every enabled source in parallel, cleans each at ONE chokepoint, picks the Spotify-native
-    /// candidate as the reranker's reference, and returns the single best document. NOT first-hit: a later word-synced
+    /// candidate as the reranker's reference (or, when Spotify has none, the consensus reference the candidates agree
+    /// on), and returns the single best document. NOT first-hit: a later word-synced
     /// candidate can still beat an earlier line-synced one, and lands as an UPGRADE. A per-source miss, timeout or
     /// throw degrades to null for that source and never fails the aggregate.</summary>
     public sealed class Aggregator
@@ -963,6 +1108,10 @@ public static partial class Lyrics
         // a read-through hit and updated by every write we issue, so a save can never DOWNGRADE a better persisted
         // document.
         readonly Dictionary<string, long> _diskGrade = new(StringComparer.Ordinal);
+        // The tracks whose persisted document is PROVISIONAL (an unverified winner). A verified document replaces a
+        // provisional one whatever its grade — verified-before-unverified is the reranker's own stage-two order — and a
+        // provisional document never replaces a verified one.
+        readonly HashSet<string> _diskProvisional = new(StringComparer.Ordinal);
         readonly List<string> _lru = [];
         readonly Lock _gate = new();
 
@@ -990,10 +1139,41 @@ public static partial class Lyrics
 
         static readonly Dictionary<string, Probed> EmptyProbed = new(StringComparer.Ordinal);
 
-        // An exact-recording word-synced lyric (matched by identity or ISRC) is the best result possible — nothing a
-        // slower source could return beats it, so the moment one arrives we stop waiting.
-        static bool IsGold(Candidate? c)
-            => c is { Sync: SyncKind.Syllable, Basis: MatchBasis.Identity or MatchBasis.Isrc };
+        /// <summary>The sources that can answer by IDENTITY (the exact recording): AMLL and Spotify by track id, and
+        /// Musixmatch by ISRC when the request carries one. While one of them is still running, a first pass never
+        /// locks in — whatever won so far may be out-ranked by a trusted document the moment it lands.</summary>
+        bool MayAnswerTrusted(ISource s, Request req)
+            => s.Id == _referenceSourceId || s.Id is "amll" or "spotify"
+               || (s.Id == "musixmatch" && !string.IsNullOrEmpty(req.Isrc));
+
+        bool AnyPendingTrusted(List<(ISource Source, Task<Probed> Task)> pending, Request req)
+        {
+            for (int i = 0; i < pending.Count; i++) if (MayAnswerTrusted(pending[i].Source, req)) return true;
+            return false;
+        }
+
+        /// <summary>GOLD: an exact-recording word-synced lyric the reranker could not be talked out of, so the fan-out
+        /// may stop waiting. Two conditions, both load-bearing:
+        /// <list type="bullet">
+        /// <item>the REFERENCE has arrived, or is no longer coming (correction 4 — without it a trusted document is
+        /// never checked against what Spotify says the song is);</item>
+        /// <item><see cref="Reranker.GoldAllowed"/> passes — the decoy gates AND text agreement with the reference
+        /// (correction 17). An ISRC match is a claim about the RECORDING, not about the payload: a Musixmatch decoy
+        /// arrives ISRC-matched, and on basis alone it would cut every other source short.</item>
+        /// </list></summary>
+        bool GoldReady(Dictionary<string, Probed> collected, List<(ISource Source, Task<Probed> Task)> pending, Request req)
+        {
+            bool referenceIn = collected.TryGetValue(_referenceSourceId, out var refProbed);
+            if (!referenceIn && HasPending(pending, _referenceSourceId)) return false;
+            Doc? reference = refProbed.Cand?.Document;
+            foreach (var pr in collected.Values)
+            {
+                if (pr.Cand is not { Sync: SyncKind.Syllable, Basis: MatchBasis.Identity or MatchBasis.Isrc } c) continue;
+                double text = reference is null ? 0d : Reranker.TextAgreement(c.Document, reference);
+                if (Reranker.GoldAllowed(in c, reference, text, req.DurationMs)) return true;
+            }
+            return false;
+        }
 
         void TouchLru(string id) { _lru.Remove(id); _lru.Add(id); }
 
@@ -1005,6 +1185,7 @@ public static partial class Lyrics
                 _lru.RemoveAt(0);
                 _cache.Remove(oldest);
                 _diskGrade.Remove(oldest);
+                _diskProvisional.Remove(oldest);
             }
         }
 
@@ -1067,8 +1248,7 @@ public static partial class Lyrics
                     // A cached document NEVER passes through the reranker, so the word-timing gate would miss it
                     // entirely — including every entry an older build persisted before the gate existed. Without this
                     // repair a track whose broken karaoke was cached once keeps serving it forever.
-                    bool unsingable = loaded.Sync == SyncKind.Syllable
-                        && Timing.HasImplausibleWordTiming(loaded, out _, out _);
+                    bool unsingable = Timing.HasUnusableWordTiming(loaded);
                     var fromDisk = unsingable ? Timing.StripWordTiming(loaded) : loaded;
                     // Same self-heal for junk lines. The header rule is metadata-driven and a disk hit deliberately
                     // never resolves the track, so it is skipped here — the other two families are metadata-free and
@@ -1081,7 +1261,7 @@ public static partial class Lyrics
                     // "downgrade" is the correction, and the guard exists to stop exactly the write we want here.
                     if (unsingable || junk > 0)
                     {
-                        disk.Save(trackId, fromDisk);
+                        disk.Save(trackId, fromDisk, entry.Provisional);
                         string why = unsingable && junk > 0 ? $"unsingable word timing + {junk} non-lyric line(s)"
                             : unsingable ? "unsingable word timing (stripped to line sync)"
                             : $"{junk} non-lyric line(s)";
@@ -1091,15 +1271,19 @@ public static partial class Lyrics
                     {
                         _cache[trackId] = fromDisk; TouchLru(trackId);
                         _diskGrade[trackId] = Grade(fromDisk);   // what the file now holds — no save may go below it
+                        if (entry.Provisional) _diskProvisional.Add(trackId); else _diskProvisional.Remove(trackId);
                         EvictLru();
                     }
-                    PublishDiskReport(trackId, fromDisk, entry.SavedAtUnixMs);
+                    PublishDiskReport(trackId, fromDisk, entry.SavedAtUnixMs, entry.Provisional);
                     // A POSITIVE entry has no TTL by design, so without this a low-richness document cached in an
                     // earlier session would be PERMANENT: the read-through short-circuits resolve + fan-out + upgrade
                     // forever and the track could never reach syllable lyrics. Serve the cached document immediately
                     // (the offline promise is untouched) and, when it is not already at the top of the ladder, run the
-                    // ordinary resolve + fan-out + upgrade in the BACKGROUND.
-                    if (Authority.Richness(fromDisk) < 3) _ = UpgradeDiskHitAsync(trackId, fromDisk);
+                    // ordinary resolve + fan-out + upgrade in the BACKGROUND. A PROVISIONAL entry (an unverified winner)
+                    // counts as below the top whatever its sync: nothing corroborated it as the right song, so a replay
+                    // re-asks (the grey sources' persisted misses keep that from re-querying what already missed).
+                    if (Authority.Richness(fromDisk) < 3 || entry.Provisional)
+                        _ = UpgradeDiskHitAsync(trackId, fromDisk, initialVerified: !entry.Provisional);
                     return fromDisk;
                 }
                 if (entry.Outcome == CacheOutcome.KnownMissing)
@@ -1139,7 +1323,6 @@ public static partial class Lyrics
             var pending = new List<(ISource Source, Task<Probed> Task)>(started);
             Task? grace = null;
             bool graceFromUnsynced = false;
-            bool goldCollected = false;
             while (pending.Count > 0)
             {
                 var waiters = new List<Task>(pending.Count + 1);
@@ -1164,22 +1347,22 @@ public static partial class Lyrics
                     graceFromUnsynced = false;
                     grace = Task.Delay(Math.Clamp(_opt.FirstHitGraceMs, 0, int.MaxValue));
                 }
-                if (IsGold(pr.Cand)) goldCollected = true;
-                if (goldCollected && (collected.ContainsKey(_referenceSourceId) || !HasPending(pending, _referenceSourceId)))
-                    break;   // gold is unbeatable, but keep the reference when it is already nearly here
+                // Gold is unbeatable — once the reference has had its say (GoldReady waits for it) and the document
+                // passes the decoy + text-agreement guard.
+                if (GoldReady(collected, pending, req)) break;
             }
             bool continueInBackground = pending.Count > 0;
 
             var candidates = CandidatesOf(collected);
-            var reference = ReferenceOf(candidates);
+            var reference = ReferenceOf(candidates, out string referenceLabel);
             TrimEdgesAgainstReference(candidates, collected, reference);
             Ranked ranked = candidates.Count > 0 ? Reranker.Rank(candidates, reference) : new Ranked(null, null, []);
 
-            PublishReport(trackId, req, collected, ranked, candidates,
-                continueInBackground ? "" : "");
-            LogDecision(trackId, ranked, candidates);
+            PublishReport(trackId, req, collected, ranked, candidates, "", referenceLabel);
+            LogDecision(trackId, ranked, candidates, referenceLabel);
 
             var winner = ranked.Winner;
+            bool winnerVerified = ranked.Best is { Verified: true };
             PublishInspection(trackId, collected, probe, winner,
                 continueInBackground ? "first pass — slower sources are still running in the background" : "complete");
             if (winner is not null) lock (_gate) { _cache[trackId] = winner; TouchLru(trackId); EvictLru(); }
@@ -1187,10 +1370,19 @@ public static partial class Lyrics
             // write from the continuation left two unordered file writes racing — the worse document could land last.
             // When a continuation is going to run it therefore OWNS the write and persists once, with the best document
             // it ends up holding (its finally writes even on a cancel, so a skipped winner save can never be lost).
-            bool willContinue = continueInBackground && winner is not null && Authority.Richness(winner) < 3;
+            //
+            // FIRST-PASS LOCK-IN (v2 §8): the still-running sources are kept, not cancelled, unless the winner is
+            // already final — at the top richness tier, VERIFIED, with the reference in, and no source that could still
+            // answer by identity/ISRC outstanding. Otherwise the grace window's arrival order would decide: an
+            // unverified search hit that happened to land first used to cancel the reference that would have
+            // corrected it.
+            bool referencePending = HasPending(pending, _referenceSourceId);
+            bool willContinue = continueInBackground && winner is not null
+                && (Authority.Richness(winner) < 3 || !winnerVerified || referencePending || AnyPendingTrusted(pending, req));
             if (_disk is { } wdisk)
             {
-                if (winner is not null && !willContinue) SaveToDiskIfBetter(trackId, winner);
+                // An UNVERIFIED winner is persisted PROVISIONAL: served on the next play, and re-searched behind it.
+                if (winner is not null && !willContinue) SaveToDiskIfBetter(trackId, winner, provisional: !winnerVerified);
                 // The negative marker is written ONLY when every source actually ran and none produced a candidate —
                 // never when the grace window cut a still-running fan-out short, and never when the reranker merely
                 // rejected what it was given.
@@ -1198,7 +1390,7 @@ public static partial class Lyrics
                     wdisk.SaveMissing(trackId);
             }
             if (willContinue)
-                _ = ContinueForUpgradeAsync(trackId, req, srcCts, pending, collected, winner!, startedAt, probe);
+                _ = ContinueForUpgradeAsync(trackId, req, srcCts, pending, collected, winner!, winnerVerified, startedAt, probe);
             else
             {
                 srcCts.Cancel();
@@ -1220,10 +1412,30 @@ public static partial class Lyrics
             return list;
         }
 
-        Doc? ReferenceOf(List<Candidate> candidates)
+        /// <summary>The document every candidate is aligned against, and its name for the report
+        /// (<c>spotify</c> / <c>consensus(a,b,…)</c> / <c>none</c>).
+        /// <para>Spotify's own lyric when it has one. Otherwise the CONSENSUS reference (v2 §5): the candidate the most
+        /// peers from other providers agree with. It is returned as that candidate's own document INSTANCE, unchanged,
+        /// because that is how <see cref="Reranker.Rank"/> recognises it — and measures it against its best peer
+        /// instead of itself, so it is verified only by support from a different provider (correction 15). A lone
+        /// document nobody agrees with is never a reference.</para></summary>
+        Doc? ReferenceOf(List<Candidate> candidates, out string label)
         {
             for (int i = 0; i < candidates.Count; i++)
-                if (candidates[i].ProviderId == _referenceSourceId) return candidates[i].Document;
+                if (candidates[i].ProviderId == _referenceSourceId) { label = _referenceSourceId; return candidates[i].Document; }
+
+            if (candidates.Count >= 2
+                && Reranker.ConsensusReference(candidates, out int[] support, out int idx) is { } consensus
+                && idx >= 0 && idx < candidates.Count)
+            {
+                var sb = new StringBuilder("consensus(");
+                sb.Append(candidates[idx].ProviderId);
+                for (int i = 0; i < candidates.Count; i++)
+                    if (i != idx && i < support.Length && support[i] > 0) sb.Append(',').Append(candidates[i].ProviderId);
+                label = sb.Append(')').ToString();
+                return consensus;
+            }
+            label = "none";
             return null;
         }
 
@@ -1231,14 +1443,16 @@ public static partial class Lyrics
         /// candidate's leading/trailing lines that align to nothing the reference sings are padding — the credits the
         /// grammar tier could not name, in whatever language. The reference itself and the identity/ISRC-matched
         /// candidates are left alone: they ARE the exact recording, and a fuzzy alignment is not allowed to cut a
-        /// trusted document.</summary>
+        /// trusted document. A CONSENSUS reference is a candidate too, and is never trimmed against itself — its
+        /// document must also reach the reranker as the very instance <see cref="ReferenceOf"/> returned.</summary>
         void TrimEdgesAgainstReference(List<Candidate> candidates, Dictionary<string, Probed> collected, Doc? reference)
         {
             if (reference is null) return;
             for (int i = 0; i < candidates.Count; i++)
             {
                 var c = candidates[i];
-                if (c.ProviderId == _referenceSourceId || c.Basis is MatchBasis.Identity or MatchBasis.Isrc) continue;
+                if (c.ProviderId == _referenceSourceId || ReferenceEquals(c.Document, reference)
+                    || c.Basis is MatchBasis.Identity or MatchBasis.Isrc) continue;
                 var trimmed = CreditRules.TrimUnalignedEdges(c.Document, reference, out int leading, out int trailing);
                 if (ReferenceEquals(trimmed, c.Document)) continue;
                 candidates[i] = c with { Document = trimmed };
@@ -1252,7 +1466,7 @@ public static partial class Lyrics
         /// hand the still-running sources to the SAME continuation the live path uses, with the cached document as the
         /// incumbent. A richer winner promotes, publishes and re-persists; anything else changes nothing. Offline (no
         /// resolution) it is a no-op.</summary>
-        async Task UpgradeDiskHitAsync(string trackId, Doc fromDisk)
+        async Task UpgradeDiskHitAsync(string trackId, Doc fromDisk, bool initialVerified)
         {
             CancellationTokenSource? owned = null;
             try
@@ -1272,7 +1486,8 @@ public static partial class Lyrics
                 var srcCts = owned;
                 owned = null;   // handed over: the continuation cancels and disposes it in its finally
                 await ContinueForUpgradeAsync(trackId, req, srcCts, pending,
-                    new Dictionary<string, Probed>(StringComparer.Ordinal), fromDisk, startedAt, probe).ConfigureAwait(false);
+                    new Dictionary<string, Probed>(StringComparer.Ordinal), fromDisk, initialVerified, startedAt, probe)
+                    .ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -1283,17 +1498,29 @@ public static partial class Lyrics
 
         /// <summary>The ONE place a document reaches the disk cache. A save never DOWNGRADES: the grade of what the
         /// file holds is tracked per track and a write whose document is not strictly better is dropped. Without it a
-        /// later line-only winner could overwrite the syllable document an earlier session had persisted.</summary>
-        void SaveToDiskIfBetter(string trackId, Doc doc, bool allowSameGrade = false)
+        /// later line-only winner could overwrite the syllable document an earlier session had persisted.
+        /// <para>PROVISIONAL (an unverified winner) orders before grade: a verified document always replaces a
+        /// provisional one, and a provisional document never replaces a verified one.</para></summary>
+        void SaveToDiskIfBetter(string trackId, Doc doc, bool allowSameGrade = false, bool provisional = false)
         {
             if (_disk is not { } disk) return;
             long grade = Grade(doc);
             lock (_gate)
             {
-                if (_diskGrade.TryGetValue(trackId, out long known) && (allowSameGrade ? known > grade : known >= grade)) return;
+                if (_diskGrade.TryGetValue(trackId, out long known))
+                {
+                    bool knownProvisional = _diskProvisional.Contains(trackId);
+                    if (knownProvisional == provisional)
+                    {
+                        if (allowSameGrade ? known > grade : known >= grade) return;
+                    }
+                    else if (provisional) return;   // never overwrite a verified document with an unverified one
+                    // else: a verified document replaces a provisional one, whatever its grade
+                }
                 _diskGrade[trackId] = grade;
+                if (provisional) _diskProvisional.Add(trackId); else _diskProvisional.Remove(trackId);
             }
-            disk.Save(trackId, doc);
+            disk.Save(trackId, doc, provisional);
         }
 
         int InitialGraceMs(Candidate candidate)
@@ -1309,6 +1536,7 @@ public static partial class Lyrics
             List<(ISource Source, Task<Probed> Task)> pending,
             Dictionary<string, Probed> collected,
             Doc initialWinner,
+            bool initialVerified,
             long startedAt,
             Probe probe)
         {
@@ -1316,6 +1544,7 @@ public static partial class Lyrics
             // when it spawns us, so the single write in the finally below is the only one — and it has to happen even
             // when the continuation is cancelled or finds nothing better.
             Doc bestDoc = initialWinner;
+            bool bestVerified = initialVerified;   // false ⇒ persisted PROVISIONAL
             bool replacedUnverified = false;   // bestDoc is a same-grade replacement of an uncorroborated incumbent
             try
             {
@@ -1340,17 +1569,16 @@ public static partial class Lyrics
                     var pr = await entry.Task.ConfigureAwait(false);
                     collected[entry.Source.Id] = pr;
 
-                    if (IsGold(pr.Cand) && (collected.ContainsKey(_referenceSourceId) || !HasPending(pending, _referenceSourceId)))
-                        break;
+                    if (GoldReady(collected, pending, req)) break;
                 }
 
                 var candidates = CandidatesOf(collected);
-                var reference = ReferenceOf(candidates);
+                var reference = ReferenceOf(candidates, out string referenceLabel);
                 TrimEdgesAgainstReference(candidates, collected, reference);
                 Ranked ranked = candidates.Count > 0 ? Reranker.Rank(candidates, reference) : new Ranked(null, null, []);
 
-                PublishReport(trackId, req, collected, ranked, candidates, "background complete");
-                LogDecision(trackId, ranked, candidates);
+                PublishReport(trackId, req, collected, ranked, candidates, "background complete", referenceLabel);
+                LogDecision(trackId, ranked, candidates, referenceLabel);
 
                 // Final = what the UI is left holding, which is the INCUMBENT unless this pass actually beat it. Two
                 // ways a challenger legitimately replaces it: (1) it is a richer document outright (the ordinary
@@ -1358,17 +1586,24 @@ public static partial class Lyrics
                 // corroborated — unverified, or zero text agreement with the reference — while THIS pass's winner is
                 // verified and scores higher. (2) is the decoy's other escape hatch: an incumbent that was cached or
                 // promoted before the stage-one text floor existed must not survive forever just because nothing in
-                // this pass out-tiers it.
+                // this pass out-tiers it. An UNVERIFIED incumbent loses to a verified winner whatever the scores —
+                // verified-before-unverified is the reranker's own stage-two order, and the score is only its third key.
                 var winner = ranked.Winner;
+                Decision? incumbentDec = null;
+                for (int i = 0; i < ranked.All.Count; i++)
+                    if (ranked.All[i].ProviderId == initialWinner.Provider) { incumbentDec = ranked.All[i]; break; }
+                // What this pass says about the incumbent, when it re-ranked it; otherwise what was known going in.
+                if (incumbentDec is not null) bestVerified = incumbentDec.Verified;
                 bool richer = winner is not null && Grade(winner) > Grade(initialWinner);
                 bool replacesUnverifiedIncumbent = false;
-                if (!richer && winner is not null && ranked.Best is { Verified: true } bestDec)
+                if (!richer && winner is not null && ranked.Best is { Verified: true } bestDec
+                    && !ReferenceEquals(incumbentDec, bestDec))
                 {
-                    Decision? incumbentDec = null;
-                    for (int i = 0; i < ranked.All.Count; i++)
-                        if (ranked.All[i].ProviderId == initialWinner.Provider) { incumbentDec = ranked.All[i]; break; }
-                    bool incumbentWeak = incumbentDec is null || !incumbentDec.Verified || incumbentDec.TextAgreement <= 0;
-                    replacesUnverifiedIncumbent = incumbentWeak && bestDec.Score > (incumbentDec?.Score ?? double.NegativeInfinity);
+                    // Not re-ranked this pass (a disk incumbent whose provider did not answer): nothing corroborates
+                    // it against the verified winner, so the winner takes over.
+                    replacesUnverifiedIncumbent = incumbentDec is null
+                        || !incumbentDec.Verified
+                        || (incumbentDec.TextAgreement <= 0 && bestDec.Score > incumbentDec.Score);
                 }
                 if (!richer && !replacesUnverifiedIncumbent)
                 {
@@ -1381,6 +1616,7 @@ public static partial class Lyrics
                         ? "background pass complete — it promoted a richer document"
                         : "background pass complete — it replaced the unverified first winner");
                 bestDoc = winner!;
+                bestVerified = ranked.Best is { Verified: true };
                 replacedUnverified = !richer;
 
                 bool promoted = false;
@@ -1410,8 +1646,9 @@ public static partial class Lyrics
             finally
             {
                 // Write-through, ONCE, with the best document — so disk holds the best doc and never a downgrade of
-                // it. A same-grade replacement of an unverified incumbent must still overwrite it.
-                SaveToDiskIfBetter(trackId, bestDoc, allowSameGrade: replacedUnverified);
+                // it. A same-grade replacement of an unverified incumbent must still overwrite it, and an unverified
+                // best document is persisted PROVISIONAL so the next play re-asks.
+                SaveToDiskIfBetter(trackId, bestDoc, allowSameGrade: replacedUnverified, provisional: !bestVerified);
                 srcCts.Cancel();
                 srcCts.Dispose();
             }
@@ -1423,7 +1660,8 @@ public static partial class Lyrics
             IReadOnlyDictionary<string, Probed> collected,
             Ranked ranked,
             IReadOnlyList<Candidate> candidates,
-            string suffix)
+            string suffix,
+            string referenceLabel)
         {
             string? winnerId = ranked.Best?.ProviderId;
             var traces = new List<SourceTrace>(_sources.Count);
@@ -1436,7 +1674,13 @@ public static partial class Lyrics
                     traces.Add(new SourceTrace(s.Id, pr.Outcome, pr.Ms, pr.Detail,
                         pr.Cand?.Sync ?? SyncKind.None, pr.Cand?.LineCount ?? 0,
                         dec?.Score ?? 0d, dec is not null && s.Id == winnerId, dec?.Reason ?? "",
-                        dec?.TextAgreement ?? 0d, dec?.Coverage ?? 0d, dec?.TimingScore ?? 0d, dec?.SyncScore ?? 0d));
+                        dec?.TextAgreement ?? 0d, dec?.Coverage ?? 0d, dec?.TimingScore ?? 0d, dec?.SyncScore ?? 0d,
+                        Band: pr.Cand?.Band ?? MatchBand.None,
+                        Confidence: pr.Cand?.Confidence ?? 0d,
+                        Match: pr.Cand?.MatchNote ?? "",
+                        Recall: dec?.Recall ?? 0d,
+                        Support: dec?.Support ?? 0,
+                        TieBreak: dec?.TieBreak ?? ""));
                 else
                     traces.Add(new SourceTrace(s.Id, Outcome.Skipped, 0L,
                         suffix.Length > 0 ? suffix : "skipped — a faster match returned first",
@@ -1448,8 +1692,9 @@ public static partial class Lyrics
             string summary = hits == 0
                 ? $"0/{ran} sources returned lyrics — no match anywhere"
                 : ranked.Best is { } sb
-                    ? $"{hits}/{ran} returned; winner={sb.ProviderId} ({sb.Sync}, score {sb.Score:F2}, offset {sb.AppliedOffsetMs}ms)"
-                    : $"{hits}/{ran} returned";
+                    ? $"{hits}/{ran} returned; ref={referenceLabel}; winner={sb.ProviderId} ({sb.Sync}, score {sb.Score:F2}, "
+                        + $"offset {sb.AppliedOffsetMs}ms{(sb.Verified ? "" : ", unverified")})"
+                    : $"{hits}/{ran} returned; ref={referenceLabel}";
             if (suffix.Length > 0) summary += $" — {suffix}";
             Diag.Publish(new SearchReport(
                 trackId, req.Title, req.ArtistsJoined, req.Album, req.DurationMs, req.Isrc,
@@ -1460,7 +1705,7 @@ public static partial class Lyrics
         /// <summary>Keep the "why did this song get these lyrics" surface honest on a disk hit: without a report the
         /// inspector would show nothing (or the previous session's stale entry) for a track that resolved instantly.
         /// The request metadata is empty BY CONSTRUCTION — a disk hit deliberately never resolves the track.</summary>
-        void PublishDiskReport(string trackId, Doc? doc, long savedAtUnixMs)
+        void PublishDiskReport(string trackId, Doc? doc, long savedAtUnixMs, bool provisional = false)
         {
             string when = savedAtUnixMs > 0
                 ? DateTimeOffset.FromUnixTimeMilliseconds(savedAtUnixMs).UtcDateTime.ToString("u",
@@ -1474,7 +1719,8 @@ public static partial class Lyrics
                 traces.Add(new SourceTrace(s.Id, Outcome.Skipped, 0L, detail, SyncKind.None, 0, 0d, false, ""));
 
             string summary = doc is not null
-                ? $"served from the on-disk cache (saved {when}); winner={doc.Provider ?? "?"} ({doc.Sync}, {doc.Lines.Count} lines)"
+                ? $"served from the on-disk cache (saved {when}); winner={doc.Provider ?? "?"} ({doc.Sync}, {doc.Lines.Count} lines"
+                    + (provisional ? ", provisional — re-searching in the background)" : ")")
                 : $"no lyrics anywhere — cached negative result from {when}";
             Diag.Publish(new SearchReport(trackId, "", "", "", 0L, null,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), summary, traces));
@@ -1517,8 +1763,16 @@ public static partial class Lyrics
                 _cache.Remove(trackId);
                 _lru.Remove(trackId);
                 _diskGrade.Remove(trackId);   // the file is about to go, so what we knew about it goes too
+                _diskProvisional.Remove(trackId);
             }
             _disk?.Forget(trackId);
+            // Every source's own per-track memory too (correction 10): a remembered miss — AMLL's 404, a grey source's
+            // persisted SourceGuard miss — would otherwise answer the re-fetch before a single request goes out.
+            foreach (var s in _sources)
+            {
+                try { s.Forget(trackId); }
+                catch (Exception e) { Log.Info(Diag.Category, $"source {s.Id} failed to forget {trackId}: {e.GetType().Name}"); }
+            }
             return GetAsync(trackId, ct);
         }
 
@@ -1527,33 +1781,33 @@ public static partial class Lyrics
         /// would make a post-logout request keep serving the pre-logout answer forever.</summary>
         public void ClearCache()
         {
-            lock (_gate) { _cache.Clear(); _lru.Clear(); _diskGrade.Clear(); }
+            lock (_gate) { _cache.Clear(); _lru.Clear(); _diskGrade.Clear(); _diskProvisional.Clear(); }
             _disk?.Clear();
         }
 
         void LogReport(string trackId, Request req, string summary, IReadOnlyList<SourceTrace> traces)
         {
-            // Debug: the per-search + per-source trace lines are the bulk of the [lyrics] file volume. The single
-            // final-winner line stays Info.
-            if (!Log.IsEnabled(WaveeLogLevel.Debug)) return;
-
-            Log.Debug(Diag.Category, $"search track={trackId} title=\"{LogValue(req.Title)}\" artist=\"{LogValue(req.ArtistsJoined)}\" "
+            // Info, always: with seven sources the per-source line is the only record of WHY a source missed, was
+            // skipped by its breaker, or lost on match band — and Debug never reaches the log file.
+            Log.Info(Diag.Category, $"search track={trackId} title=\"{LogValue(req.Title)}\" artist=\"{LogValue(req.ArtistsJoined)}\" "
                 + $"album=\"{LogValue(req.Album)}\" duration={req.DurationMs}ms isrc={LogValue(req.Isrc ?? "-")} summary=\"{LogValue(summary)}\"");
             foreach (var t in traces)
-                Log.Debug(Diag.Category, $"source track={trackId} id={t.SourceId} outcome={t.Outcome} elapsed={t.ElapsedMs}ms "
-                    + $"sync={t.Sync} lines={t.LineCount} score={t.Score:F3} winner={t.Winner} detail=\"{LogValue(t.Detail)}\" "
-                    + $"rerank=\"{LogValue(t.RerankReason)}\"");
+                Log.Info(Diag.Category, $"source track={trackId} id={t.SourceId} outcome={t.Outcome} elapsed={t.ElapsedMs}ms "
+                    + $"sync={t.Sync} lines={t.LineCount} score={t.Score:F3} winner={t.Winner} "
+                    + $"band={t.Band} conf={t.Confidence:F2} recall={t.Recall:F2} support={t.Support} "
+                    + $"match=\"{LogValue(t.Match)}\" detail=\"{LogValue(t.Detail)}\" rerank=\"{LogValue(t.RerankReason)}\"");
         }
 
         static string LogValue(string s) => s.Replace('\r', ' ').Replace('\n', ' ').Replace('"', '\'');
 
-        void LogDecision(string trackId, Ranked ranked, IReadOnlyList<Candidate> candidates)
+        void LogDecision(string trackId, Ranked ranked, IReadOnlyList<Candidate> candidates, string referenceLabel)
         {
             if (ranked.Best is not { } b) return;
             var ids = new StringBuilder();
             for (int i = 0; i < candidates.Count; i++) { if (i > 0) ids.Append(','); ids.Append(candidates[i].ProviderId); }
             Log.Info(Diag.Category, $"track={trackId} winner={b.ProviderId} sync={b.Sync} score={b.Score:F3} "
-                + $"text={b.TextAgreement:F2} timing={b.TimingScore:F2} offset={b.AppliedOffsetMs}ms candidates=[{ids}] ({b.Reason})");
+                + $"text={b.TextAgreement:F2} timing={b.TimingScore:F2} offset={b.AppliedOffsetMs}ms verified={b.Verified} "
+                + $"ref={referenceLabel} candidates=[{ids}] tiebreak=\"{LogValue(b.TieBreak)}\" ({b.Reason})");
         }
 
         static long Grade(Doc doc)
@@ -1614,7 +1868,7 @@ public static partial class Lyrics
             }
             catch (Exception e)
             {
-                Log.Debug(Diag.Category, $"source {source.Id} failed for {req.TrackId}: {e.GetType().Name}");
+                Log.Info(Diag.Category, $"source {source.Id} failed for {req.TrackId}: {e.GetType().Name}");
                 return new Probed(null, Outcome.Error, Ms(), With($"{e.GetType().Name}: {e.Message}"));
             }
         }
@@ -1765,9 +2019,11 @@ public static partial class Lyrics
     // ── 6b. the request resolver: track id → Request, without a poll (G-252) ─────────────────────────────────────────
     //
     //   aggregator worker ─ ResolveRequest(id) ─ ToUi ─▶ ready now? ─ yes ─▶ answer
-    //                                                        │ no: Ensure(Identity) once, PARK on Requests
+    //                                                        │ no: Ensure(Identity|Isrc) once, PARK on Requests
     //   UI thread: Entities.Publish() ─▶ Requests.AfterPublish() ─▶ parked row knows its identity? ─▶ answer
     //   worker: no answer within RequestTimeoutMs (or the caller cancels) ─▶ null, and the parked entry is released
+    //   worker: answered WITHOUT an ISRC ─▶ park once more on the Isrc group (asked with the identity) for ≤ IsrcWaitMs,
+    //           then answer with or without it
     //
     // The old resolver re-posted a probe every 50 ms for up to 4 s (a TCS, a closure, a publish-wrapped post and a
     // Task.Delay each), waking the UI loop ~20×/s while a lookup waited. Now a wait costs nothing until a publication.
@@ -1798,18 +2054,55 @@ public static partial class Lyrics
             if (Entities.Current is not null)
             {
                 Track track = Entities.Track(id);
-                if (!track.Knows(TrackFields.Identity)) Entities.Ensure(track, TrackFields.Identity, FetchPriority.Visible);
+                // The ISRC is asked in the SAME breath as the identity: it is what lets an ISRC-matched source (the
+                // Musixmatch path) answer by recording rather than by a fuzzy search, and asking now means it usually
+                // lands with — or right after — the identity instead of costing its own round trip later.
+                TrackFields missing = TrackFields.None;
+                if (!track.Knows(TrackFields.Identity)) missing |= TrackFields.Identity;
+                if (!track.Knows(TrackFields.Isrc)) missing |= TrackFields.Isrc;
+                if (missing != TrackFields.None) Entities.Ensure(track, missing, FetchPriority.Visible);
             }
             Requests.Begin(id, trackId, completion);
         });
+        Request? request;
         try
         {
-            return await completion.Task.WaitAsync(TimeSpan.FromMilliseconds((double)RequestTimeoutMs), ct).ConfigureAwait(false);
+            request = await completion.Task.WaitAsync(TimeSpan.FromMilliseconds((double)RequestTimeoutMs), ct).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
             completion.TrySetResult(null);   // releases the parked entry: the next look prunes it
             return null;
+        }
+        catch (OperationCanceledException)
+        {
+            completion.TrySetResult(null);
+            throw;
+        }
+        if (request is null || request.Isrc is not null) return request;
+        return await AwaitIsrcAsync(id, trackId, request, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>How long a resolve whose identity has landed keeps waiting for the row's ISRC before it searches without
+    /// one. Short on purpose: every source is held until the request exists, and the ISRC only sharpens one of them.</summary>
+    public const int IsrcWaitMs = 1_500;
+
+    /// <summary>Phase two of <see cref="ResolveRequest"/>: the identity is in, the ISRC is not. Park once more — on the
+    /// ISRC group this time — for at most <see cref="IsrcWaitMs"/>, then answer with whatever the row knows. A row whose
+    /// ISRC group landed EMPTY (the track has none) answers at once, without an ISRC.</summary>
+    static async Task<Request> AwaitIsrcAsync(EntityId id, string trackId, Request withoutIsrc, CancellationToken ct)
+    {
+        var completion = new TaskCompletionSource<Request?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Store.ToUi(() => Requests.Begin(id, trackId, completion, needIsrc: true));
+        try
+        {
+            var withIsrc = await completion.Task.WaitAsync(TimeSpan.FromMilliseconds((double)IsrcWaitMs), ct).ConfigureAwait(false);
+            return withIsrc ?? withoutIsrc;
+        }
+        catch (TimeoutException)
+        {
+            completion.TrySetResult(null);   // releases the parked entry
+            return withoutIsrc;
         }
         catch (OperationCanceledException)
         {
@@ -1834,6 +2127,7 @@ public static partial class Lyrics
             public EntityId Id;
             public string TrackId;
             public TaskCompletionSource<Request?> Completion;
+            public bool NeedIsrc;
         }
 
         readonly Pending[] _pending = new Pending[Capacity];
@@ -1844,12 +2138,14 @@ public static partial class Lyrics
         public int PendingCount => _count;
 
         /// <summary>Answer at once when the row already knows its identity; otherwise PARK until a publication commits it.
-        /// The caller asks for the identity group itself (the resolver's one <c>Entities.Ensure</c>).</summary>
-        public void Begin(EntityId id, string trackId, TaskCompletionSource<Request?> completion)
+        /// The caller asks for the identity group itself (the resolver's one <c>Entities.Ensure</c>).
+        /// <paramref name="needIsrc"/> additionally holds the answer until the row's <see cref="TrackFields.Isrc"/> group
+        /// is known (it may be known EMPTY — then the request simply has no ISRC).</summary>
+        public void Begin(EntityId id, string trackId, TaskCompletionSource<Request?> completion, bool needIsrc = false)
         {
             if (completion.Task.IsCompleted) return;
             if (Entities.Current is null) { completion.TrySetResult(null); return; }
-            if (RequestFrom(Entities.Track(id), trackId) is { } ready) { completion.TrySetResult(ready); return; }
+            if (ReadyFor(id, trackId, needIsrc) is { } ready) { completion.TrySetResult(ready); return; }
 
             Prune();
             if (_count == Capacity)
@@ -1858,8 +2154,15 @@ public static partial class Lyrics
                 Array.Copy(_pending, 1, _pending, 0, Capacity - 1);
                 _count--;
             }
-            _pending[_count++] = new Pending { Id = id, TrackId = trackId, Completion = completion };
+            _pending[_count++] = new Pending { Id = id, TrackId = trackId, Completion = completion, NeedIsrc = needIsrc };
             _lookedAt = 0;   // the next publication looks, whatever its number
+        }
+
+        static Request? ReadyFor(EntityId id, string trackId, bool needIsrc)
+        {
+            Track track = Entities.Track(id);
+            if (needIsrc && (!track.IsValid || !track.Knows(TrackFields.Isrc))) return null;
+            return RequestFrom(track, trackId);
         }
 
         /// <summary>Right after <c>Entities.Publish()</c>: complete every parked resolve whose row now knows its identity.
@@ -1876,7 +2179,7 @@ public static partial class Lyrics
             {
                 var p = _pending[i];
                 if (p.Completion.Task.IsCompleted) continue;
-                if (scope && RequestFrom(Entities.Track(p.Id), p.TrackId) is { } ready)
+                if (scope && ReadyFor(p.Id, p.TrackId, p.NeedIsrc) is { } ready)
                 {
                     p.Completion.TrySetResult(ready);
                     continue;
@@ -1914,14 +2217,27 @@ public static partial class Lyrics
         DiskCache? diskCache = null)
     {
         var http = new HttpFetch();
-        var sources = new List<ISource> { new Sources.Amll(http), new Sources.LrcLib(http) };
+        // The grey four share the separately attributed, cookie-less, error-body-keeping client. Registration order
+        // does not affect ranking (stage two is a deterministic total order) — it only orders the report's rows.
+        var grey = HttpFetch.Grey;
+        var sources = new List<ISource>
+        {
+            new Sources.Amll(http),
+            new Sources.Musixmatch(grey),
+            new Sources.Qq(grey),
+            new Sources.Netease(grey),
+            new Sources.Kugou(grey),
+            new Sources.LrcLib(http),
+        };
         if (spotifyGet is not null && spotifyBaseUrl is not null)
             sources.Insert(0, new Sources.SpotifyNative(spotifyGet, spotifyBaseUrl));
 
         var aggregator = new Aggregator(sources, resolveRequest, options ?? Options.Default,
             referenceSourceId: "spotify", diskCache: diskCache ?? new DiskCache());
         Store.Attach(aggregator);
-        Log.Info(Diag.Category, $"lyrics stack booted with {sources.Count} source(s)");
+        var names = new StringBuilder();
+        foreach (var s in sources) { if (names.Length > 0) names.Append(','); names.Append(s.Id); }
+        Log.Info(Diag.Category, $"lyrics stack booted with {sources.Count} source(s): {names}");
         return aggregator;
     }
 }

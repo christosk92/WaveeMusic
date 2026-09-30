@@ -1,13 +1,16 @@
-# Drive-WaveeWindow.ps1 — occlusion-proof capture + minimal input for the running Wavee window (dev-box tool; the
-#   sibling of Capture-WaveeWindow.ps1 for when the desktop is busy: PrintWindow reads the window even while it is
-#   covered, clicks wait for the user to be idle and hand the foreground straight back).
-#   -Out <png>      PrintWindow(PW_RENDERFULLCONTENT) → cropped to the DWM frame bounds (works while covered)
+# Drive-WaveeWindow.ps1 — capture + minimal input for the running Wavee window (dev-box tool; the sibling of
+#   Capture-WaveeWindow.ps1; clicks wait for the user to be idle and hand the foreground straight back).
+#   -Out <png>      SCREEN COPY of the DWM frame: raises the window, copies what the compositor shows, restores the
+#                   previous foreground. This is what the user sees. PrintWindow is NOT the default any more: the
+#                   engine presents nothing once a page is idle, and PrintWindow(PW_RENDERFULLCONTENT) then returns a
+#                   stale DWM buffer — a Home page that is fully drawn on screen captured as blank (T1, 2026-09-29).
+#   -PrintWindow    with -Out: the old occlusion-proof PrintWindow capture (works while covered; can be stale at idle)
 #   -Key <vk>       PostMessage WM_KEYDOWN/WM_KEYUP (13 = Enter). Reaches the window proc, but the engine ignores keys
 #                   while the window is inactive (verified 2026-09-02) — prefer -Click for anything that must land
 #   -Click x,y      SendInput click at CLIENT-relative DIP coords; waits until the user has been idle ≥ -IdleMs,
 #                   then restores the previous foreground window and cursor position
 #   -Move x,y,w,h   MoveWindow (physical px)   -Link <wavee://…>  hand a deep link to the running instance
-param([string]$Out, [int]$Key = 0, [string]$Click, [string]$Move, [string]$Link, [int]$Wait = 0, [int]$IdleMs = 4000, [switch]$Info)
+param([string]$Out, [int]$Key = 0, [string]$Click, [string]$Move, [string]$Link, [int]$Wait = 0, [int]$IdleMs = 4000, [switch]$Info, [switch]$PrintWindow)
 Add-Type -AssemblyName System.Drawing
 Add-Type @'
 using System; using System.Runtime.InteropServices;
@@ -63,7 +66,7 @@ if ($Click) {
   $tid2 = [D]::GetWindowThreadProcessId($h, [ref]([uint32]0)); [void][D]::AttachThreadInput($me, $tid2, $true); [void][D]::SetForegroundWindow($prevFg); [void][D]::AttachThreadInput($me, $tid2, $false)
   "clicked $x,$y (dip $Click), foreground restored"
 }
-if ($Out) {
+if ($Out -and $PrintWindow) {
   Start-Sleep -Milliseconds 500
   $fr = Frame; $wr = New-Object D+RECT; [void][D]::GetWindowRect($h, [ref]$wr)
   $w = $wr.R - $wr.L; $hh = $wr.B - $wr.T
@@ -71,5 +74,18 @@ if ($Out) {
   $g = [System.Drawing.Graphics]::FromImage($bmp); $hdc = $g.GetHdc(); $ok = [D]::PrintWindow($h, $hdc, 2); $g.ReleaseHdc($hdc); $g.Dispose()
   $crop = New-Object System.Drawing.Rectangle ($fr.L - $wr.L), ($fr.T - $wr.T), ($fr.R - $fr.L), ($fr.B - $fr.T)
   $c = $bmp.Clone($crop, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb); $c.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png); $c.Dispose(); $bmp.Dispose()
-  "saved $Out ($($crop.Width)x$($crop.Height)) ok=$ok"
+  "saved $Out ($($crop.Width)x$($crop.Height)) ok=$ok (PrintWindow)"
+}
+elseif ($Out) {
+  # Raise → let DWM compose a frame with the window on top → copy the screen pixels of the frame rect → hand back.
+  $prevFg = [D]::GetForegroundWindow(); $me = [D]::GetCurrentThreadId()
+  $fgTid = [D]::GetWindowThreadProcessId($prevFg, [ref]([uint32]0))
+  [void][D]::AttachThreadInput($me, $fgTid, $true); [void][D]::BringWindowToTop($h); [void][D]::SetForegroundWindow($h); [void][D]::AttachThreadInput($me, $fgTid, $false)
+  Start-Sleep -Milliseconds 600
+  $fr = Frame
+  $bmp = New-Object System.Drawing.Bitmap ($fr.R - $fr.L), ($fr.B - $fr.T), ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+  $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($fr.L, $fr.T, 0, 0, $bmp.Size); $g.Dispose()
+  $bmp.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+  if ($prevFg -ne $h) { $tid2 = [D]::GetWindowThreadProcessId($h, [ref]([uint32]0)); [void][D]::AttachThreadInput($me, $tid2, $true); [void][D]::SetForegroundWindow($prevFg); [void][D]::AttachThreadInput($me, $tid2, $false) }
+  "saved $Out ($($fr.R - $fr.L)x$($fr.B - $fr.T)) (screen copy)"
 }

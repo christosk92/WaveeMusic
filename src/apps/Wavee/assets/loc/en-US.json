@@ -3132,7 +3132,12 @@
       "hideSyllables": "Hide syllables",
       "copyParsed": "Copy parsed",
       "blankLine": "(blank)",
-      "moreLines": "…{count} more lines — use Copy parsed to see them all."
+      "moreLines": "…{count} more lines — use Copy parsed to see them all.",
+      "referenceSource": "Reference: {source}",
+      "referenceConsensus": "Reference: consensus of {sources}",
+      "referenceNone": "No reference",
+      "matchLine": "Match: {detail}",
+      "rerankLine": "Rerank: {detail}"
     },
     "runtime": {
       "noSessionTitle": "No playback session yet",

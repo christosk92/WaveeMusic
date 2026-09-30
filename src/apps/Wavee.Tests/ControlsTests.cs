@@ -33,31 +33,75 @@ public class ControlsGeometryTests
     [InlineData(188f)]
     public void The_shelf_extent_is_the_card_width_plus_its_label_block(float cardW)
     {
-        // 6 gutter + 20 plate padding + the cover + 8 gap + 20 title + 2 + 32 subtitle. The renderer AND the estimator
-        // call this; an estimate that disagrees re-pins the scroll anchor mid-scroll and the feed jumps under the cursor.
-        Assert.Equal(cardW + 72f, Controls.ShelfHeight(cardW));
+        // 4 gutter + 8 plate top + the cover (w − 16) + 8 gap + 20 title + 2 + 32 two-line subtitle + 8 plate bottom
+        // + 0 gutter. The renderer AND the estimator call this; an estimate that disagrees re-pins the scroll anchor
+        // mid-scroll and the feed jumps under the cursor.
+        Assert.Equal(cardW + 66f, Controls.ShelfHeight(cardW));
     }
 
     [Theory]
     [InlineData(148f)]
     [InlineData(165f)]
     [InlineData(188f)]
-    public void The_square_shelf_height_is_the_general_form_at_aspect_one_with_no_extra_lines(float cardW)
+    public void The_default_shelf_height_is_the_general_form_at_aspect_one_with_two_caption_lines(float cardW)
     {
-        // `ShelfHeight(w)` must stay `w + 72` now that it delegates: the inner cover (w − 16) + 88 of chrome.
-        Assert.Equal(cardW + 72f, Controls.ShelfHeight(cardW, 1f, 0));
-        Assert.Equal(Controls.ShelfHeight(cardW), Controls.ShelfHeight(cardW, 1f, 0));
+        Assert.Equal(Controls.ShelfHeight(cardW), Controls.ShelfHeight(cardW, 1f, captionLines: 2, metaLine: false));
         Assert.Equal(cardW - 2f * Spacing.S, Controls.CoverHeight(cardW - 2f * Spacing.S, 1f));
     }
 
-    [Fact]
-    public void A_wide_tile_stacks_its_rounded_cover_the_chrome_and_one_extra_line()
+    [Theory]
+    [InlineData(148f)]
+    [InlineData(188f)]
+    public void A_plain_one_line_shelf_reserves_exactly_one_caption_line(float cardW)
+        // 4 + 8 + (w − 16) + 8 + 20 title + 2 + 16 caption + 8 + 0: no dead line under a one-line card.
+        => Assert.Equal(cardW + 50f, Controls.ShelfHeight(cardW, 1f, captionLines: 1, metaLine: false));
+
+    [Theory]
+    [InlineData(148f)]
+    [InlineData(188f)]
+    public void A_lead_shelf_reserves_two_caption_lines_and_no_meta_line(float cardW)
     {
-        // 428 wide: the inner 412 at 16:9 is 231.75 → 232 (rounded to the pixel grid), + 88 chrome + 16 for the meta line.
+        // The lead's meta rides INLINE on its two caption lines: 20 title + 2 + 2·16 = 54 of labels, nothing more.
+        Assert.Equal(cardW + 66f, Controls.ShelfHeight(cardW, 1f, captionLines: 2, metaLine: false));
+        Assert.Equal(16f, Controls.ShelfHeight(cardW, 1f, 2, false) - Controls.ShelfHeight(cardW, 1f, 1, false));
+    }
+
+    [Theory]
+    [InlineData(148f)]
+    [InlineData(188f)]
+    public void A_title_only_card_reserves_no_caption_gap(float cardW)
+        => Assert.Equal(cardW + 32f, Controls.ShelfHeight(cardW, 1f, captionLines: 0, metaLine: false));
+
+    [Fact]
+    public void A_wide_tile_stacks_its_rounded_cover_one_caption_line_and_the_meta_line()
+    {
+        // 428 wide: the inner 412 at 16:9 is 231.75 → 232 (rounded to the pixel grid); + 4 + 8 + 8 + 8 of gutter and
+        // plate, 20 title, 2 + 16 caption, 2 + 16 meta = 232 + 84.
         Assert.Equal(232f, Controls.CoverHeight(428f - 2f * Spacing.S, Design.Size.WideTileAspect));
-        Assert.Equal(232f + 88f + 16f, Controls.ShelfHeight(428f, Design.Size.WideTileAspect, 1));
-        Assert.Equal(16f, Controls.ShelfHeight(428f, Design.Size.WideTileAspect, 2)
-                          - Controls.ShelfHeight(428f, Design.Size.WideTileAspect, 1));
+        Assert.Equal(232f + 84f, Controls.ShelfHeight(428f, Design.Size.WideTileAspect, captionLines: 1, metaLine: true));
+        // The meta line is the labels' 2 gap + one 16 caption line.
+        Assert.Equal(18f, Controls.ShelfHeight(428f, Design.Size.WideTileAspect, 1, true)
+                          - Controls.ShelfHeight(428f, Design.Size.WideTileAspect, 1, false));
+    }
+
+    [Fact]
+    public void The_shelf_chrome_constants_are_the_ones_the_card_renders()
+    {
+        Assert.Equal(Spacing.XS, Controls.ShelfGutterTop);
+        Assert.Equal(0f, Controls.ShelfGutterBottom);
+        Assert.Equal(Spacing.S, Controls.ShelfPlatePad);
+        Assert.Equal(20f, Controls.CardTitleLineH);
+        Assert.Equal(16f, Controls.CardCaptionLineH);
+        Assert.Equal(2f, Controls.CardLabelGap);
+    }
+
+    [Fact]
+    public void The_recents_grid_fits_three_columns_on_a_632_page()
+    {
+        Assert.Equal(200f, Wavee.HomeUi.Zones.RecentsMinCol);
+        Assert.Equal(3, GridEl.AutoFillColumnCount(632f, Wavee.HomeUi.Zones.RecentsMinCol, Spacing.M, 4));
+        Assert.Equal(4, GridEl.AutoFillColumnCount(836f, Wavee.HomeUi.Zones.RecentsMinCol, Spacing.M, 4));
+        Assert.Equal(3, GridEl.AutoFillColumnCount(835f, Wavee.HomeUi.Zones.RecentsMinCol, Spacing.M, 4));
     }
 
     [Theory]
@@ -72,7 +116,7 @@ public class ControlsGeometryTests
         float squareInner = squareW - 2f * Spacing.S, leadInner = leadW - 2f * Spacing.S;
         float aspect = leadInner / squareInner;
         Assert.Equal(squareInner, Controls.CoverHeight(leadInner, aspect));
-        Assert.Equal(Controls.ShelfHeight(squareW), Controls.ShelfHeight(leadW, aspect, 0));
+        Assert.Equal(Controls.ShelfHeight(squareW, 1f, 2, false), Controls.ShelfHeight(leadW, aspect, 2, false));
     }
 
     [Fact]

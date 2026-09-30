@@ -768,10 +768,10 @@ public static partial class Shell
                 else OnPlayLink?.Invoke(verb.Link);
                 break;
             case DeepLinkKind.Resume:
-                Playback.Resume();
+                Playback.Resume("deeplink");
                 break;
             case DeepLinkKind.Pause:
-                Playback.Pause();
+                Playback.Pause("deeplink");
                 break;
             case DeepLinkKind.Report:
                 OnReportRequested?.Invoke(verb.Arg);

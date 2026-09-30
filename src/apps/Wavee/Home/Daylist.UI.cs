@@ -9,9 +9,11 @@
 // the art takes the rest up to its 540 basis (it shrinks, the text never does), and once less than `DaylistForm.ArtMin`
 // of art would be left the card is the text column alone.
 //   text column (Grow 1, SpaceBetween, padding 0/20/0/12)
-//     top:    eyebrow (body, secondary: the greeting lives ONLY here) · `Design.Type.HeroTitle` (≤ 2 lines) ·
+//     top:    eyebrow (body, secondary: the greeting lives ONLY here) · the title (≤ 2 lines; the 40/52
+//             `Design.Type.HeroTitle` while the text column is ≥ `DaylistForm.HeroTitleMinText`, else the 28/36 display
+//             rung at 600, so a narrow column keeps the name on one line and the card at its 320 floor) ·
 //             tags (ONE 14/20 `SpanTextEl` of link spans, a tag opens Search) · meta (caption, tertiary) ·
-//             ONE action row: stock Accent Play + Standard Shuffle + `Controls.SaveButton` + `Controls.MoreButton`
+//             ONE action row: stock Accent Play + Standard Shuffle + `Controls.SaveButton` + a standalone "…" icon button
 //     bottom: `DaylistClock` — a stock determinate `ProgressRing` + "Next daylist in **hh:mm:ss** · {next} arrives at
 //             HH:mm", then five stock determinate `ProgressBar`s (done / current / future, `DaypartTimeline.Fill`)
 //             over their five daypart labels (the current one primary 600, never truncated)
@@ -46,7 +48,7 @@ public static class Daylist
     /// (<see cref="DaylistForm"/>).</summary>
     public const float TextMinWidth = DaylistForm.TextMin;
     /// <summary>The art column's flex basis — its width on a wide card; a narrower card shrinks the art, never the text.</summary>
-    public const float ArtBasis = 540f;
+    public const float ArtBasis = DaylistForm.ArtBasis;
     /// <summary>The decode target for the art (a 540-wide header image decodes near its own size, never a 256 square).</summary>
     public const int ArtDecodePx = 512;
     /// <summary>The art's focal line: a little above centre, where a daylist header's subject sits.</summary>
@@ -110,7 +112,11 @@ public sealed class DaylistCard : Component
                 with { Shrink = 0f },
             Controls.Named(Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title }) with { Key = "save:" + uri },
                            Loc.Get(Strings.Home.Save)),
-            Controls.Named(Controls.MoreButton(null, requestsContext: true), Loc.Get(Strings.Home.More)));
+            // A STANDALONE icon button, not `Controls.MoreButton`: that one is the list-row overflow whose 0.45-opacity
+            // rest + HoverOpacity reveal lights up when its ANCESTOR is hovered — on this card it lit (and pressed) the
+            // "…" whenever the card was hovered or pressed.
+            Controls.Named(Controls.IconAction(Icons.More, null, requestsContext: true) with { BlocksDragArm = true },
+                           Loc.Get(Strings.Home.More)));
 
         // The clock's props freeze at mount, so a new window (or a new current daypart) remounts it through its key.
         var current = DaypartTimeline.Current(title, DateTime.Now.Hour);
@@ -118,8 +124,15 @@ public sealed class DaylistCard : Component
         var clock = Embed.Comp(() => new DaylistClock { ExpiresAtMs = expiresAtMs, CreatedAtMs = createdAtMs, Current = current })
             with { Key = "daylist-clock:" + uri + ":" + expiresAtMs.ToString(CultureInfo.InvariantCulture) + ":" + ((int)current).ToString(CultureInfo.InvariantCulture) };
 
+        // The card IS the daylist: a click anywhere outside its buttons opens the playlist (the buttons are nested
+        // click targets, so Play/Shuffle/♡/… keep their own action). The tile ramp is the card's hover/press feedback.
         var root = Shape(new Parts(eyebrow, title, Tags(card), Strings.Home.DaylistMeta(card.TrackCount), actions, clock,
-                                   DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl)));
+                                   DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl)))
+            .Interactive(Interaction.Tile) with
+            {
+                OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand,
+                Role = AutomationRole.Button, Focusable = true,
+            };
         // The playlist menu rides the card root: a right-click anywhere on the card and the "…" button (which climbs
         // to this handler through the context funnel) open the SAME menu, the button's anchored at itself.
         return menu is not null && host is not null ? root.WithContextMenu(host, menu) : root;
@@ -135,8 +148,8 @@ public sealed class DaylistCard : Component
                 with { MinWidth = Controls.PrimaryMinWidth, Shrink = 0f },
             Button.Create(Loc.Get(Strings.Detail.Shuffle), static () => { }, ButtonAppearance.Standard, glyph: Icons.Shuffle)
                 with { Shrink = 0f },
-            Controls.MoreButton(null, requestsContext: false),
-            Controls.MoreButton(null, requestsContext: false));
+            Controls.IconAction(Icons.More, null),
+            Controls.IconAction(Icons.More, null));
         var line = DaylistClock.Line((TextSpans)new TextSpan[] { new(Strings.Home.NextDaylistIn(DaypartRules.Countdown(0))) });
         var clock = DaylistClock.Shape(ProgressRing.Determinate(0f, Daylist.RingSize), line, null,
                                        (int)DaypartRules.OfHour(DateTime.Now.Hour));
@@ -164,7 +177,7 @@ public sealed class DaylistCard : Component
             Children =
             [
                 Ui.Body(p.Eyebrow).Secondary() with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                Design.Type.HeroTitle(p.Title) with
+                TitleRung(p.Title, w) with
                 {
                     MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
@@ -203,6 +216,14 @@ public sealed class DaylistCard : Component
             Children = [text, art],
         };
     }
+
+    /// <summary>The title's rung at card content width <paramref name="w"/>: the 40/52 <c>HeroTitle</c> while the
+    /// text column is at least <see cref="DaylistForm.HeroTitleMinText"/> wide, else the 28/36 display rung at 600
+    /// (<see cref="DaylistForm.UseHeroTitle"/> over <see cref="DaylistForm.TextWidth"/>).</summary>
+    static TextEl TitleRung(string title, float w)
+        => DaylistForm.UseHeroTitle(DaylistForm.TextWidth(w))
+            ? Design.Type.HeroTitle(title)
+            : Design.Type.DetailHero(title) with { Weight = 600 };
 
     /// <summary>The ONE action row: 20 below the meta, 8 apart, never wrapping (the text column's floor fits it).</summary>
     static BoxEl ActionRow(params Element[] actions) => new()

@@ -512,22 +512,312 @@ public static partial class Diagnostics
              + (p.Truncated ? " · CAPTURE-TRUNCATED to " + p.Text.Length.ToString("N0", Inv) : "")
              + (shownChars < p.Text.Length ? " · showing the first " + shownChars.ToString("N0", Inv) : "");
 
-        /// <summary>Why this provider is (not) the one you are listening to — the line the whole report exists for.</summary>
-        public static string Verdict(Lyrics.SourceTrace t, double winnerScore)
+        /// <summary>Why this provider is (not) the one you are listening to — the line the whole report exists for. The
+        /// tie-break comes from <see cref="FactsOf"/>.</summary>
+        public static string Verdict(Lyrics.SourceTrace t, double winnerScore) => Verdict(t, winnerScore, FactsOf(t).TieBreak);
+
+        /// <summary>The verdict with an explicit stage-two tie-break (<see cref="Lyrics.Decision.TieBreak"/>): the winner
+        /// reads "★ CHOSEN — reranker score 0.93, won on tier (syllable &gt; line) over qq (…)", a losing hit "… against
+        /// the winner's 0.88 — lost to amll on tier (syllable &gt; line) (…)". A guarded source that never sent a request
+        /// reads as the skip it was (<see cref="SkipPhrase"/>), and a breaker this fetch tripped is named.</summary>
+        public static string Verdict(Lyrics.SourceTrace t, double winnerScore, string? tieBreak)
         {
             string reason = t.RerankReason.Length > 0 ? " (" + t.RerankReason + ")" : "";
-            if (t.Winner) return "★ CHOSEN — reranker score " + t.Score.ToString("F2", Inv) + reason;
+            string tb = TieBreakPhrase(tieBreak);
+            if (t.Winner) return "★ CHOSEN — reranker score " + t.Score.ToString("F2", Inv) + (tb.Length > 0 ? ", " + tb : "") + reason;
+            string skip = SkipPhrase(t);
+            if (skip.Length > 0) return skip;
+            string trip = BreakerTripPhrase(t.Detail);
+            if (trip.Length > 0) trip = "; " + trip;
             return t.Outcome switch
             {
                 Lyrics.Outcome.Hit => "not chosen — it returned lyrics but lost the rerank: score " + t.Score.ToString("F2", Inv)
-                                      + " against the winner's " + winnerScore.ToString("F2", Inv) + reason,
-                Lyrics.Outcome.Miss => "not chosen — the provider had nothing for this track",
-                Lyrics.Outcome.Timeout => "not chosen — it did not answer inside the per-source budget",
-                Lyrics.Outcome.Error => "not chosen — the request failed",
+                                      + " against the winner's " + winnerScore.ToString("F2", Inv)
+                                      + (tb.Length > 0 ? " — " + tb : "") + reason,
+                Lyrics.Outcome.Miss => "not chosen — the provider had nothing for this track" + trip,
+                Lyrics.Outcome.Timeout => "not chosen — it did not answer inside the per-source budget" + trip,
+                Lyrics.Outcome.Error => "not chosen — the request failed" + trip,
                 Lyrics.Outcome.Skipped => "not chosen — it never ran to completion (a faster match closed the window)",
                 _ => "not chosen",
             };
         }
+
+        // ── v2 (lyrics-grey-sources-implementation.md, W3-G): the reference, the stage-0 match, the rerank facts, the
+        //    tie-break and the guard skips — every string the provider card and the export print is decided here ──
+
+        /// <summary>The reranker's blend weights, mirrored for the score breakdown (<c>Lyrics.Reranker</c> keeps them
+        /// private). <c>LyricsInspectorRulesTests</c> pins the mirror against a real <c>Reranker.Rank</c> score.</summary>
+        public const double WText = 0.40, WSync = 0.25, WTiming = 0.20, WCoverage = 0.10, WPrior = 0.05;
+
+        /// <summary>The prior term's input exactly as the reranker computes it: provider prior × match confidence.</summary>
+        public static double PriorTerm(double prior, double confidence) => Math.Clamp(prior, 0d, 1d) * Math.Clamp(confidence, 0d, 1d);
+
+        /// <summary>The reranker's blended score from its parts (same terms, same order).</summary>
+        public static double Blend(double text, double sync, double timing, double coverage, double priorTerm)
+            => WText * text + WSync * sync + WTiming * timing + WCoverage * coverage + WPrior * priorTerm;
+
+        /// <summary>"0.912  =  text 0.95 × .40  +  sync 1.00 × .25  +  timing 0.88 × .20  +  coverage 0.97 × .10  +  prior
+        /// 0.55 × conf 0.93 × .05". Without the provider prior (no parsed candidate recorded) the prior × confidence
+        /// product is recovered from the score itself.</summary>
+        public static string ScoreBreakdown(Lyrics.SourceTrace t, double? prior)
+        {
+            var sb = new StringBuilder(160);
+            sb.Append(t.Score.ToString("F3", Inv)).Append("  =  text ").Append(F2(t.Text))
+              .Append(" × .40  +  sync ").Append(F2(t.SyncScore)).Append(" × .25  +  timing ").Append(F2(t.Timing))
+              .Append(" × .20  +  coverage ").Append(F2(t.Coverage)).Append(" × .10  +  ");
+            if (prior is { } p)
+                sb.Append("prior ").Append(F2(p)).Append(" × conf ").Append(F2(t.Confidence)).Append(" × .05");
+            else
+            {
+                double residual = Math.Max(0d, (t.Score - Blend(t.Text, t.SyncScore, t.Timing, t.Coverage, 0d)) / WPrior);
+                sb.Append("prior × conf ").Append(F2(residual)).Append(" × .05");
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>What the reranker aligned every candidate against, as named by the report summary's
+        /// <c>ref=</c> token. <see cref="ReferenceKind.Absent"/> = the summary carries no token (a disk hit, a
+        /// no-match search) and the reference line is not shown at all.</summary>
+        public enum ReferenceKind : byte { Absent, None, Source, Consensus }
+
+        /// <summary><c>Sources</c>: the one source for <see cref="ReferenceKind.Source"/>; for
+        /// <see cref="ReferenceKind.Consensus"/> the reference candidate first, then its agreeing peers.</summary>
+        public sealed record ReferenceInfo(ReferenceKind Kind, IReadOnlyList<string> Sources);
+
+        /// <summary>Parse "N/M returned; ref=spotify|consensus(a,b,…)|none; winner=…" into its reference.</summary>
+        public static ReferenceInfo ReferenceOf(string? summary)
+        {
+            if (string.IsNullOrEmpty(summary)) return new(ReferenceKind.Absent, []);
+            int at = -1;
+            for (int i = summary.IndexOf("ref=", StringComparison.Ordinal); i >= 0; i = summary.IndexOf("ref=", i + 4, StringComparison.Ordinal))
+                if (i == 0 || summary[i - 1] == ' ') { at = i + 4; break; }
+            if (at < 0) return new(ReferenceKind.Absent, []);
+
+            int end = summary.Length;
+            int semi = summary.IndexOf(';', at);
+            if (semi >= 0) end = semi;
+            int dash = summary.IndexOf(" — ", at, StringComparison.Ordinal);
+            if (dash >= 0 && dash < end) end = dash;
+            string value = summary[at..end].Trim();
+
+            if (value.Length == 0 || StringComparer.Ordinal.Equals(value, "none")) return new(ReferenceKind.None, []);
+            const string Consensus = "consensus(";
+            if (value.StartsWith(Consensus, StringComparison.Ordinal) && value.EndsWith(')'))
+            {
+                var ids = new List<string>(4);
+                foreach (string part in value[Consensus.Length..^1].Split(','))
+                {
+                    string id = part.Trim();
+                    if (id.Length > 0) ids.Add(id);
+                }
+                return ids.Count == 0 ? new(ReferenceKind.None, []) : new(ReferenceKind.Consensus, ids);
+            }
+            return new(ReferenceKind.Source, [value]);
+        }
+
+        /// <summary>"kugou, qq, netease".</summary>
+        public static string JoinSources(IReadOnlyList<string> ids) => string.Join(", ", ids);
+
+        /// <summary>A source's product name for prose ("spotify" → "Spotify"); an unknown id prints as itself.</summary>
+        public static string SourceName(string id) => id switch
+        {
+            "spotify" => "Spotify",
+            "amll" => "AMLL",
+            "musixmatch" => "Musixmatch",
+            "qq" => "QQ Music",
+            "netease" => "NetEase",
+            "kugou" => "Kugou",
+            "lrclib" => "LRCLIB",
+            _ => id,
+        };
+
+        /// <summary>"Reference: Spotify" / "Reference: consensus of kugou, qq, netease" / "No reference"; "" when the
+        /// summary names none (the dialog localizes the same three shapes).</summary>
+        public static string ReferenceLine(ReferenceInfo r) => r.Kind switch
+        {
+            ReferenceKind.Source => "Reference: " + SourceName(r.Sources[0]),
+            ReferenceKind.Consensus => "Reference: consensus of " + JoinSources(r.Sources),
+            ReferenceKind.None => "No reference",
+            _ => "",
+        };
+
+        /// <summary>"0.93" — the band's confidence, invariant.</summary>
+        public static string ConfidenceText(double confidence) => F2(confidence);
+
+        /// <summary>The stage-0 metadata match of a SEARCH-matched source: "VeryHigh · conf 0.93 · a1b2 VeryHigh title=7
+        /// …". "" for an identity/ISRC/local match (it carries no search) and for a source that produced no candidate.
+        /// <paramref name="basis"/> is the parsed candidate's, when one was recorded.</summary>
+        public static string MatchText(Lyrics.SourceTrace t, Lyrics.MatchBasis? basis = null)
+        {
+            bool searched = t.Match.Length > 0
+                || basis == Lyrics.MatchBasis.MetadataSearch
+                || (basis is null && t.Band is not (Lyrics.MatchBand.None or Lyrics.MatchBand.Perfect));
+            if (!searched || (t.Band == Lyrics.MatchBand.None && t.Match.Length == 0)) return "";
+            var sb = new StringBuilder(96);
+            sb.Append(t.Band.ToString()).Append(" · conf ").Append(ConfidenceText(t.Confidence));
+            if (t.Match.Length > 0) sb.Append(" · ").Append(t.Match);
+            return sb.ToString();
+        }
+
+        /// <summary>The reranker's verdict facts for one source. <c>Ranked</c> = it produced a candidate the
+        /// reranker scored; <c>Aligned</c> = it was aligned against a reference (recall and offset mean
+        /// something); <c>CappedOffset</c> = the over-cap offset in seconds ("3.2") the reranker refused to
+        /// apply.</summary>
+        public readonly record struct RerankFacts(bool Ranked, bool Aligned, double Recall, int Support, long OffsetMs,
+            bool OffsetCapped, string CappedOffset, string TieBreak);
+
+        /// <summary>The facts a <see cref="Lyrics.SourceTrace"/> carries. The applied offset and the cap verdict are read
+        /// off the reranker's own reason ("ref-align lcs=… off=320ms", "[offset 3.2s &gt; cap …]"); the tie-break is the
+        /// trace's copy of <see cref="Lyrics.Decision.TieBreak"/>.</summary>
+        public static RerankFacts FactsOf(Lyrics.SourceTrace t)
+        {
+            string r = t.RerankReason;
+            bool ranked = t.Outcome == Lyrics.Outcome.Hit && (r.Length > 0 || t.Score > 0d);
+            bool aligned = r.Contains("ref-align", StringComparison.Ordinal);
+            string capped = CappedOffsetOf(r);
+            return new RerankFacts(ranked, aligned, t.Recall, t.Support, aligned ? AppliedOffsetOf(r) : 0L,
+                capped.Length > 0, capped, t.TieBreak);
+        }
+
+        /// <summary>"recall 0.95 · support 2 · offset +320 ms"; an over-cap offset reads "offset 3.2 s not applied
+        /// [capped]", a partial document "recall 0.40 [&lt; 0.60]", no reference "recall n/a (no reference)". "" when
+        /// the source was never ranked.</summary>
+        public static string RerankText(in RerankFacts f)
+        {
+            if (!f.Ranked) return "";
+            var sb = new StringBuilder(80);
+            if (f.Aligned)
+            {
+                sb.Append("recall ").Append(F2(f.Recall));
+                if (f.Recall < Lyrics.Reranker.TierRecall) sb.Append(" [< ").Append(F2(Lyrics.Reranker.TierRecall)).Append(']');
+            }
+            else sb.Append("recall n/a (no reference)");
+            sb.Append(" · support ").Append(f.Support.ToString(Inv));
+            if (f.OffsetCapped) sb.Append(" · offset ").Append(f.CappedOffset).Append(" s not applied [capped]");
+            else if (f.Aligned) sb.Append(" · offset ").Append(SignedMs(f.OffsetMs));
+            return sb.ToString();
+        }
+
+        /// <summary>"+320 ms" / "-1099 ms" / "0 ms".</summary>
+        public static string SignedMs(long ms) => (ms > 0 ? "+" : "") + ms.ToString(Inv) + " ms";
+
+        /// <summary>A stage-two tie-break in prose: "lost to amll on tier (syllable &gt; line)", "won on score (0.912 &gt;
+        /// 0.880) over qq", "the only candidate", "lost to amll on provider id (a full tie)". "" for none.</summary>
+        public static string TieBreakPhrase(string? tieBreak)
+        {
+            string tb = (tieBreak ?? "").Trim();
+            if (tb.Length == 0) return "";
+            if (StringComparer.Ordinal.Equals(tb, "only candidate")) return "the only candidate";
+            const string Lost = "lost to ", Won = "won on ";
+            if (tb.StartsWith(Lost, StringComparison.Ordinal))
+            {
+                int on = tb.IndexOf(" on ", Lost.Length, StringComparison.Ordinal);
+                if (on > Lost.Length) return tb[..(on + 4)] + KeyPhrase(tb[(on + 4)..]);
+            }
+            else if (tb.StartsWith(Won, StringComparison.Ordinal))
+            {
+                int over = tb.LastIndexOf(" over ", StringComparison.Ordinal);
+                if (over > Won.Length) return Won + KeyPhrase(tb[Won.Length..over]) + tb[over..];
+            }
+            return tb;
+        }
+
+        static string KeyPhrase(string key)
+        {
+            const string Tier = "tier ", Score = "score ", Prior = "prior×confidence ";
+            if (key.StartsWith(Tier, StringComparison.Ordinal)) return "tier (" + key[Tier.Length..] + ")";
+            if (key.StartsWith(Score, StringComparison.Ordinal)) return "score (" + key[Score.Length..] + ")";
+            if (key.StartsWith(Prior, StringComparison.Ordinal)) return "prior × confidence (" + key[Prior.Length..] + ")";
+            if (StringComparer.Ordinal.Equals(key, "verified")) return "verification";
+            if (StringComparer.Ordinal.Equals(key, "provider id")) return "provider id (a full tie)";
+            return key;
+        }
+
+        /// <summary>A source that never sent a request, read from the notes it wrote: "skipped — breaker open until 14:32
+        /// (captcha)", "skipped — known miss (no lyric) 3 h ago", "skipped — no title to search with", or a disk hit's
+        /// "skipped — not queried — served from the local lyrics cache". "" otherwise (and always for the winner).</summary>
+        public static string SkipPhrase(Lyrics.SourceTrace t)
+        {
+            if (t.Winner) return "";
+            string d = t.Detail;
+            string open = NoteAfter(d, "skipped: breaker open until ");
+            if (open.Length > 0) return "skipped — breaker open until " + open;
+            string miss = NoteAfter(d, "cached miss ");
+            if (miss.Length > 0)
+            {
+                int sp = miss.IndexOf(' ');
+                string kind = sp > 0 ? miss[..sp] : miss;
+                string age = sp > 0 ? miss[(sp + 1)..].Trim() : "";
+                return "skipped — known miss (" + MissKindPhrase(kind) + ")" + (age.Length > 0 ? " " + SpacedUnit(age) : "");
+            }
+            if (t.Outcome == Lyrics.Outcome.Skipped && d.StartsWith("not queried", StringComparison.Ordinal)) return "skipped — " + d;
+            if (d.Contains("no title to search with", StringComparison.Ordinal)) return "skipped — no title to search with";
+            return "";
+        }
+
+        /// <summary>"it tripped the breaker for 2 h (captcha)" when this fetch opened the source's breaker; "" otherwise.</summary>
+        public static string BreakerTripPhrase(string detail)
+        {
+            string trip = NoteAfter(detail, "breaker tripped for ");
+            if (trip.Length == 0) return "";
+            int colon = trip.IndexOf(": ", StringComparison.Ordinal);
+            return colon > 0
+                ? "it tripped the breaker for " + SpacedUnit(trip[..colon]) + " (" + trip[(colon + 2)..] + ")"
+                : "it tripped the breaker for " + SpacedUnit(trip);
+        }
+
+        /// <summary>A remembered miss's kind in prose ("NoLyricForSong" → "no lyric").</summary>
+        public static string MissKindPhrase(string kind) => kind switch
+        {
+            nameof(Lyrics.SourceGuard.MissKind.NoLyricForSong) => "no lyric",
+            nameof(Lyrics.SourceGuard.MissKind.SongNotFound) => "song not found",
+            _ => kind,
+        };
+
+        /// <summary>"3h ago" → "3 h ago", "10min" → "10 min": a space between a leading number and its unit.</summary>
+        static string SpacedUnit(string s)
+        {
+            int n = 0;
+            while (n < s.Length && char.IsAsciiDigit(s[n])) n++;
+            return n > 0 && n < s.Length && char.IsAsciiLetter(s[n]) ? s[..n] + " " + s[n..] : s;
+        }
+
+        /// <summary>The note text after <paramref name="marker"/>, up to the next note ("; ") or the end; "" if absent.</summary>
+        static string NoteAfter(string detail, string marker)
+        {
+            int at = detail.IndexOf(marker, StringComparison.Ordinal);
+            if (at < 0) return "";
+            at += marker.Length;
+            int end = detail.IndexOf("; ", at, StringComparison.Ordinal);
+            return (end < 0 ? detail[at..] : detail[at..end]).Trim();
+        }
+
+        /// <summary>The applied offset in "… off=320ms …" (0 when absent or unparseable).</summary>
+        static long AppliedOffsetOf(string reason)
+        {
+            int at = reason.IndexOf("off=", StringComparison.Ordinal);
+            if (at < 0) return 0L;
+            at += 4;
+            int end = at;
+            if (end < reason.Length && reason[end] == '-') end++;
+            while (end < reason.Length && char.IsAsciiDigit(reason[end])) end++;
+            return long.TryParse(reason.AsSpan(at, end - at), NumberStyles.AllowLeadingSign, Inv, out long ms) ? ms : 0L;
+        }
+
+        /// <summary>"3.2" from "[offset 3.2s &gt; cap (live/remix cut?)]"; "" when the offset was not capped.</summary>
+        static string CappedOffsetOf(string reason)
+        {
+            const string Marker = "[offset ";
+            for (int at = reason.IndexOf(Marker, StringComparison.Ordinal); at >= 0; at = reason.IndexOf(Marker, at + 1, StringComparison.Ordinal))
+            {
+                int start = at + Marker.Length;
+                int cap = reason.IndexOf("s > cap", start, StringComparison.Ordinal);
+                if (cap > start && cap - start <= 12) return reason[start..cap];
+            }
+            return "";
+        }
+
+        static string F2(double v) => v.ToString("0.00", Inv);
 
         /// <summary>One document as a TSV the bundle files and "Copy parsed" hands over.</summary>
         public static string BuildParsed(string who, Lyrics.Doc doc)
@@ -572,6 +862,7 @@ public static partial class Diagnostics
                 sb.Append("album:   ").Append(Or(r.Album, "-")).Append("   duration=").Append(r.DurationMs.ToString(Inv))
                   .Append("ms   isrc=").Append(Or(r.Isrc, "-")).Append('\n');
                 sb.Append("summary: ").Append(r.Summary).Append('\n');
+                if (ReferenceLine(ReferenceOf(r.Summary)) is { Length: > 0 } reference) sb.Append("ref:     ").Append(reference).Append('\n');
             }
             else sb.Append("summary: (no search recorded)\n");
             if (insp is not null) sb.Append("note:    ").Append(insp.Note).Append('\n');
@@ -585,13 +876,13 @@ public static partial class Diagnostics
                     sb.Append("- ").Append(t.SourceId).Append("  ").Append(t.Outcome).Append("  ").Append(t.ElapsedMs.ToString(Inv)).Append("ms")
                       .Append("  sync=").Append(t.Sync).Append("  lines=").Append(t.LineCount.ToString(Inv))
                       .Append("  score=").Append(t.Score.ToString("F3", Inv)).Append('\n');
-                    sb.Append("    verdict: ").Append(Verdict(t, winnerScore)).Append('\n');
+                    var facts = FactsOf(t);
+                    var parsed = CandidateFor(insp, t.SourceId);
+                    sb.Append("    verdict: ").Append(Verdict(t, winnerScore, facts.TieBreak)).Append('\n');
+                    if (MatchText(t, parsed?.Basis) is { Length: > 0 } match) sb.Append("    match:   ").Append(match).Append('\n');
+                    if (RerankText(facts) is { Length: > 0 } rerank) sb.Append("    rerank:  ").Append(rerank).Append('\n');
                     // The breakdown, not just the total: "0.885 vs 0.740" says who won, "sync 0.60 vs 1.00" says why.
-                    if (t.Score > 0d)
-                        sb.Append("    score:   ").Append(t.Score.ToString("F3", Inv)).Append("  =  text ").Append(t.Text.ToString("F2", Inv))
-                          .Append(" × .40  +  sync ").Append(t.SyncScore.ToString("F2", Inv)).Append(" × .25  +  timing ")
-                          .Append(t.Timing.ToString("F2", Inv)).Append(" × .20  +  coverage ").Append(t.Coverage.ToString("F2", Inv))
-                          .Append(" × .10  +  prior × .05\n");
+                    if (t.Score > 0d) sb.Append("    score:   ").Append(ScoreBreakdown(t, parsed?.Prior)).Append('\n');
                     if (t.Detail.Length > 0) sb.Append("    detail:  ").Append(t.Detail).Append('\n');
                 }
 

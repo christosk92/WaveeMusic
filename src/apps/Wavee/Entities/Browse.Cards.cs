@@ -36,16 +36,29 @@ public static partial class HomeCards
     /// card (component-props-contract "Retained shelf authoring").</summary>
     /// <para><paramref name="WideArt"/> is the card's header (16:9) image, used only when the cell renders at a
     /// non-square <c>coverAspect</c> (falling back to <paramref name="Art"/>); <paramref name="CaptionLines"/> caps the
-    /// second line (1 — the shelf's own — or 2 for a lead card); <paramref name="Meta"/> is the optional tertiary third
-    /// line. All three default to "what every shelf has always shown".</para></summary>
+    /// second line (1 — the shelf's own — or 2 for a lead card); <paramref name="Meta"/> is the optional tertiary meta:
+    /// its own third line, or — with <paramref name="MetaInline"/> — a tertiary " · meta" tail INSIDE the second line
+    /// (the prototype's <c>.lead-meta</c> in <c>.g-cap</c>), so the card shows exactly <paramref name="CaptionLines"/>
+    /// caption lines and no meta line. All default to "what every shelf has always shown".</para></summary>
     public readonly record struct ShelfItem(HomeCard Card, string Title, string Second, string? Art, bool Circular,
-                                            string? WideArt = null, int CaptionLines = 1, string? Meta = null);
+                                            string? WideArt = null, int CaptionLines = 1, string? Meta = null,
+                                            bool MetaInline = false);
 
     /// <summary>Snapshot a card for a shelf. <paramref name="second"/> is the card's second line (a kind word, a
     /// subtitle, a reason) — resolved by the module, because what that line NAMES differs per module (ch 11 W9 vs W27).</summary>
     public static ShelfItem ShelfItemOf(in HomeCard c, string second, bool circular, string? wideArt = null,
-                                        int captionLines = 1, string? meta = null)
-        => new(c, c.Title, second, c.ImageUrl, circular, wideArt, captionLines, meta);
+                                        int captionLines = 1, string? meta = null, bool metaInline = false)
+        => new(c, c.Title, second, c.ImageUrl, circular, wideArt, captionLines, meta, metaInline);
+
+    /// <summary>The caption lines a shelf of <paramref name="items"/> must reserve: the most any card shows (an inline
+    /// meta rides those lines, so it adds none). The row is one height, so the tallest caption sets it.</summary>
+    public static int CaptionLinesOf(ReadOnlySpan<ShelfItem> items)
+    {
+        int lines = 1;
+        foreach (ref readonly var item in items)
+            if (item.CaptionLines > lines) lines = item.CaptionLines;
+        return lines;
+    }
 
     /// <summary>A shelf cell over <see cref="Controls.ShelfCard"/>: the shared plate, hover physics, "…" corner and play
     /// FAB. The entity chrome (drag + menu) rides a column wrapper, because the card itself is a component.
@@ -57,14 +70,16 @@ public static partial class HomeCards
     {
         bool hasMenu = menu is not null && !Controls.IsNullOverlay(menuHost);
         int lines = item.CaptionLines < 1 ? 1 : item.CaptionLines;
-        Element? second = item.Second.Length > 0
+        // An inline meta makes the card render its own caption paragraph (second + " · meta") from STRINGS — the
+        // element subtitle is then absent, and no separate meta line exists.
+        Element? second = !item.MetaInline && item.Second.Length > 0
             ? Design.Type.TrackMeta(item.Second) with
                 { MaxLines = lines, Wrap = lines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
             : null;
         string? art = coverAspect != 1f ? item.WideArt ?? item.Art : item.Art;
         var data = new Controls.CardData(item.Card.Uri, item.Title, second, art, onNav, onPlay,
                                          Circular: item.Circular, Drag: drag, ShowMenu: hasMenu)
-            { CoverAspect = coverAspect, Meta = item.Meta };
+            { CoverAspect = coverAspect, Meta = item.Meta, Caption = item.MetaInline ? item.Second : null, CaptionLines = lines };
         var cell = new BoxEl { Direction = 1, Shrink = 0f, Children = [Controls.ShelfCard(data, cardW)] };
         return hasMenu ? cell.WithContextMenu(menuHost!, menu!) : cell;
     }

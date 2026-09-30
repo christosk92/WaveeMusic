@@ -116,7 +116,7 @@ public static partial class Modules
     {
         EntityId now = Playback.CurrentId.Peek();
         if (!now.IsEmpty && now.Provider == EntityProvider.Module && string.Equals(now.Text, playableUri, StringComparison.Ordinal))
-            Playback.TogglePlay();
+            Playback.TogglePlay("module.play");
         else PlayUri(playableUri);
     }
 

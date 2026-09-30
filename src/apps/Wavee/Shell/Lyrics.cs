@@ -1443,11 +1443,20 @@ public static partial class Lyrics
 
     /// <summary>One source's answer, pre-rank. <see cref="Document"/> is the normalized display lyrics; the reranker
     /// derives comparison text from it on demand. <see cref="Prior"/> is the provider's tiebreak weight — correctness
-    /// and timing dominate the score, the prior only breaks ties.</summary>
+    /// and timing dominate the score, the prior only breaks ties.
+    /// <para>v2 (additive; the positional constructor is unchanged): <see cref="Confidence"/> and <see cref="Band"/> are
+    /// the stage-0 metadata match (<c>MetadataMatch.Score</c>) for a search-matched source — the prior term is
+    /// <c>WPrior × Prior × Confidence</c>, and a <see cref="MatchBasis.MetadataSearch"/> candidate below
+    /// <see cref="MatchBand.Medium"/> is never tier-promoted. Identity/ISRC matches keep the defaults (1.0 /
+    /// <see cref="MatchBand.Perfect"/>). <see cref="MatchNote"/> is the inspector breadcrumb
+    /// (<c>MetadataMatch.Describe</c>).</para></summary>
     public sealed record Candidate(string ProviderId, double Prior, MatchBasis Basis, Doc Document)
     {
         public SyncKind Sync => Document.Sync;
         public int LineCount => Document.Lines.Count;
+        public double Confidence { get; init; } = 1.0;
+        public MatchBand Band { get; init; } = MatchBand.Perfect;
+        public string? MatchNote { get; init; }
     }
 
     /// <summary>Per-candidate decision record — kept so a wrong pick is EXPLAINABLE (which provider, why it won or
@@ -1457,11 +1466,18 @@ public static partial class Lyrics
     /// on.</param>
     /// <param name="Verified">Stage one's VERIFIED verdict, exposed so a caller outside the reranker (the background
     /// upgrade pass) can tell "corroborated as the right song" apart from "merely scored highest".</param>
+    /// <param name="Recall">Share of the reference's non-blank lines this candidate's alignment covers (0 when there is
+    /// no reference). Tier promotion needs ≥ 0.6 — a trusted partial document is verified only at the line tier.</param>
+    /// <param name="Support">How many candidates from OTHER providers agree with this one (the consensus count).</param>
+    /// <param name="OffsetCapped">The measured constant offset exceeded the cap (a different cut of the recording?),
+    /// so it was not applied, the timing term was pinned low and the candidate is not tier-verified.</param>
+    /// <param name="TieBreak">Which stage-two key decided — on the winner "won on … over X", on a loser "lost to X on …".</param>
     public sealed record Decision(
         string ProviderId, SyncKind Sync, double Score,
         double TextAgreement, double Coverage, double TimingScore, long AppliedOffsetMs, string Reason,
         double SyncScore = 0d,
-        bool Verified = false);
+        bool Verified = false,
+        double Recall = 0d, int Support = 0, bool OffsetCapped = false, string TieBreak = "");
 
     /// <summary>The reranker's whole answer.</summary>
     public sealed record Ranked(Doc? Winner, Decision? Best, IReadOnlyList<Decision> All);
@@ -1861,9 +1877,33 @@ public static partial class Lyrics
 
         /// <summary>Comparison-safe text: lowercase, punctuation stripped, whitespace collapsed. The reranker aligns
         /// candidates on THIS (never the display text), so romanization, punctuation and case differences do not look
-        /// like mismatches. Distinct from <see cref="Query.Normalize"/>, which is the SEARCH cleanup.</summary>
+        /// like mismatches. Distinct from <see cref="Query.Normalize"/>, which is the SEARCH cleanup.
+        /// <para>CJK-aware (reranker v2): the text first goes through <see cref="CjkFold.Fold"/> — full-width → ASCII,
+        /// half-width kana → full-width, lowercase, traditional → simplified, katakana → hiragana — so 愛情 and 爱情, or
+        /// ＬＯＶＥ and love, compare equal. COMPARISON ONLY: the result is never displayed. The fold is hand-written
+        /// (no <c>string.Normalize</c>: InvariantGlobalization + NativeAOT). For Latin text it is exactly the old
+        /// lowercase, so every English comparison is unchanged.</para></summary>
         public static string Normalize(string? text)
-            => CollapseWs(PunctRx().Replace(text ?? "", " ").ToLowerInvariant());
+            => CollapseWs(PunctRx().Replace(CjkFold.Fold(text ?? ""), " ").ToLowerInvariant());
+
+        /// <summary>True for a character that is ONE comparison unit on its own: Han ideographs (incl. extension A and
+        /// the compatibility block, 々/〆/〇) and kana (hiragana, katakana, the phonetic extensions, half-width
+        /// katakana). These scripts do not put spaces between words, so a whole CJK line would otherwise be a single
+        /// token. Hangul is deliberately NOT included — Korean is written with spaces between words and splits on them
+        /// like Latin text.</summary>
+        public static bool IsHanOrKana(char c)
+            => c is (>= '぀' and <= 'ヿ' and not '゠' and not '・')   // kana incl. ー (not ゠ / ・)
+                or >= '㐀' and <= '䶿'       // CJK extension A
+                or >= '一' and <= '鿿'       // CJK unified ideographs
+                or >= '豈' and <= '﫿'       // CJK compatibility ideographs
+                or >= 'ㇰ' and <= 'ㇿ'       // katakana phonetic extensions
+                or >= 'ｦ' and <= 'ﾝ'       // half-width katakana
+                or '々' or '〆' or '〇'; // 々 〆 〇
+
+        /// <summary>True when <paramref name="s"/>[<paramref name="i"/>] starts a surrogate pair in planes 2-3 (CJK
+        /// extensions B-H) — one Han unit spelled with two UTF-16 chars.</summary>
+        internal static bool IsHanSurrogatePair(string s, int i)
+            => i + 1 < s.Length && s[i] is >= '\uD840' and <= '\uD8BF' && char.IsLowSurrogate(s[i + 1]);
     }
 
     /// <summary>Parsers for the CJK word-synced lyric body formats (KRC / YRC / QRC) and Musixmatch's richsync, all
@@ -2076,18 +2116,50 @@ public static partial class Lyrics
         /// fragment must not be able to condemn a provider.</summary>
         const int MinJudgeableLines = 5;
 
-        public static int WordCount(string text)
+        /// <summary>Above this, a CJK-dominant line is not physically possible. CJK is counted per CHARACTER (a Han
+        /// character or a kana is roughly one sung syllable), and syllables are sung faster than English words, so the
+        /// bar is higher than <see cref="ImpossibleWordsPerSecond"/>.</summary>
+        public const double ImpossibleCjkUnitsPerSecond = 12.0;
+
+        /// <summary>The number of sung UNITS in a line: every Han character / kana is one unit on its own (those scripts
+        /// put no spaces between words), everything else counts whitespace-separated words as before. A text with no
+        /// CJK at all counts EXACTLY as it always did; in a text that has CJK, a punctuation-only run between the
+        /// characters ("，") is not a unit.</summary>
+        public static int WordCount(string text) => CountUnits(text, out _);
+
+        /// <summary><see cref="WordCount"/>, also reporting how many of the units are CJK characters.</summary>
+        public static int CountUnits(string text, out int cjk)
         {
-            int n = 0;
-            bool inWord = false;
-            foreach (char c in text)
+            cjk = 0;
+            int words = 0, lettered = 0;
+            bool inWord = false, hasLetter = false;
+            for (int i = 0; i < text.Length; i++)
             {
+                char c = text[i];
+                bool pair = Text.IsHanSurrogatePair(text, i);
+                if (pair || Text.IsHanOrKana(c))
+                {
+                    if (inWord && hasLetter) lettered++;
+                    inWord = false; hasLetter = false;
+                    cjk++;
+                    if (pair) i++;
+                    continue;
+                }
                 bool space = char.IsWhiteSpace(c);
-                if (!space && !inWord) n++;
+                if (!space && !inWord) words++;
+                if (space && inWord && hasLetter) lettered++;
+                if (space) hasLetter = false;
+                else if (char.IsLetterOrDigit(c)) hasLetter = true;
                 inWord = !space;
             }
-            return n;
+            if (inWord && hasLetter) lettered++;
+            return cjk == 0 ? words : cjk + lettered;
         }
+
+        /// <summary>The rate limit for a line: <see cref="ImpossibleCjkUnitsPerSecond"/> when more than half of its units
+        /// are CJK characters, <see cref="ImpossibleWordsPerSecond"/> otherwise.</summary>
+        public static double UnitsPerSecondLimit(int units, int cjk)
+            => cjk * 2 > units ? ImpossibleCjkUnitsPerSecond : ImpossibleWordsPerSecond;
 
         /// <summary>How long the WORD timing claims the line takes. Measured across the syllables when there are any
         /// (that is the timing under test), falling back to the line's own end.</summary>
@@ -2105,9 +2177,58 @@ public static partial class Lyrics
         {
             long span = WordSpanMs(line);
             if (span <= 0) return false;
-            int words = WordCount(line.Text);
-            return words >= MinWordsToJudge && words * 1000d / span > ImpossibleWordsPerSecond;
+            int units = CountUnits(line.Text, out int cjk);
+            return units >= MinWordsToJudge && units * 1000d / span > UnitsPerSecondLimit(units, cjk);
         }
+
+        /// <summary>Slack around a line's own span inside which its words must fall.</summary>
+        public const long WordWindowSlackMs = 200;
+        /// <summary>Share of the judged lines that must be incoherent before the document's word timing is condemned.</summary>
+        public const double IncoherentLineShare = 0.30;
+        /// <summary>Fewer judged lines than this say nothing.</summary>
+        const int MinCoherenceLines = 3;
+
+        /// <summary>True for a line whose word timing contradicts the line itself: a word that starts before
+        /// <c>line.start − 200</c> or ends after <c>line.end + 200</c>, or word starts that go backwards. Such a body's
+        /// words are on a different clock from its lines (a mis-parsed absolute/relative offset, a spliced
+        /// translation), and the karaoke wipe over it is nonsense even when the line starts are right.</summary>
+        public static bool IsIncoherentLine(Line line)
+        {
+            if (line.Syllables.Count == 0) return false;
+            long lo = line.StartMs - WordWindowSlackMs;
+            long hi = line.EndMs is { } e && e >= line.StartMs ? e + WordWindowSlackMs : long.MaxValue;
+            long prev = long.MinValue;
+            for (int k = 0; k < line.Syllables.Count; k++)
+            {
+                var s = line.Syllables[k];
+                if (s.StartMs < lo || s.EndMs > hi || s.StartMs < prev) return true;
+                prev = s.StartMs;
+            }
+            return false;
+        }
+
+        /// <summary>True when a word-synced document's word timing is incoherent with its own lines on at least
+        /// <see cref="IncoherentLineShare"/> of the lines that carry words. Like <see cref="HasImplausibleWordTiming"/>
+        /// the consequence is a demotion to the line tier and, on a winner, <see cref="StripWordTiming"/>.</summary>
+        public static bool HasIncoherentWordTiming(Doc doc, out int incoherent, out int judged)
+        {
+            incoherent = 0;
+            judged = 0;
+            if (doc.Sync != SyncKind.Syllable) return false;
+            for (int i = 0; i < doc.Lines.Count; i++)
+            {
+                var l = doc.Lines[i];
+                if (l.Syllables.Count == 0) continue;
+                judged++;
+                if (IsIncoherentLine(l)) incoherent++;
+            }
+            return judged >= MinCoherenceLines && incoherent >= judged * IncoherentLineShare;
+        }
+
+        /// <summary>Either word-timing gate: the syllables of this document must not reach the view as karaoke.</summary>
+        public static bool HasUnusableWordTiming(Doc doc)
+            => doc.Sync == SyncKind.Syllable
+               && (HasImplausibleWordTiming(doc, out _, out _) || HasIncoherentWordTiming(doc, out _, out _));
 
         /// <summary>True when a word-synced document's timings are not singable: at least HALF of its judgeable lines
         /// are impossibly fast. Half (not all) because a handful of legitimately clipped lines is normal, while a body
@@ -2235,12 +2356,16 @@ public static partial class Lyrics
                 parts.Add($"{squashed} line(s) END inside a quarter of their slot — the words burst at the line start and "
                     + "the line then sits dead until the next one (compressed line-end / syllable offsets)");
             if (tooFast > 0)
-                parts.Add($"{tooFast} line(s) would have to be sung faster than {ImpossibleWordsPerSecond:0} words/second");
+                parts.Add($"{tooFast} line(s) would have to be sung faster than {ImpossibleWordsPerSecond:0} words/second "
+                    + $"({ImpossibleCjkUnitsPerSecond:0} characters/second for CJK)");
             if (syllOutOfOrder > 0) parts.Add($"{syllOutOfOrder} syllable(s) run backwards");
             if (syllOutside > 0) parts.Add($"{syllOutside} syllable(s) fall outside their own line");
             if (HasImplausibleWordTiming(doc, out _, out _))
                 parts.Add("VERDICT: the word-timing gate rejects this — the reranker demotes it to the line tier and the "
                     + "winner's syllables are stripped, so the view falls back to line-level highlighting on the (correct) starts");
+            else if (HasIncoherentWordTiming(doc, out int incoherent, out int judgedLines))
+                parts.Add($"VERDICT: the word-timing gate rejects this — {incoherent}/{judgedLines} lines have words outside "
+                    + "their own line or running backwards, so the reranker demotes it to the line tier and strips the syllables");
             if (ExceedsTrackDuration(doc, durationMs))
             {
                 var last = doc.Lines[^1];
@@ -2787,7 +2912,10 @@ public static partial class Lyrics
 
     /// <summary>Score every candidate together against the reference (text agreement + timing coherence + sync tier +
     /// coverage + provider prior), correct a constant timing offset on the winner, and gate word-synced candidates so
-    /// a WRONG word-synced lyric cannot beat a correct line-synced one. Pure and deterministic.</summary>
+    /// a WRONG word-synced lyric cannot beat a correct line-synced one. Pure and deterministic.
+    /// <para>v2 (2026-09-29): CJK-aware tokens, a recall term, an offset guard, prior × match confidence, a consensus
+    /// reference for when Spotify has no lyrics (which never verifies itself), and a total stage-two order so arrival
+    /// order never decides.</para></summary>
     public static class Reranker
     {
         const double WText = 0.40, WSync = 0.25, WTiming = 0.20, WCoverage = 0.10, WPrior = 0.05;
@@ -2804,65 +2932,167 @@ public static partial class Lyrics
         // not rejected; it falls back to the blended score, where a genuinely strong word-sync can still win.
         const double TierTextFloor = 0.50, TierTiming = 0.70, TierCoverage = 0.60;
 
+        // ── v2 (lyrics-grey-sources-implementation.md "Reranker v2 design" §3-§7 + the frozen corrections) ──────────
+        /// <summary>Tier promotion needs the candidate's alignment to cover this share of the reference's non-blank
+        /// lines — for EVERY candidate, trusted ones included (a trusted partial document is verified, but only at the
+        /// line tier, so it cannot win on tier over a complete reference).</summary>
+        public const double TierRecall = 0.60;
+        /// <summary>A constant offset beyond this is a different CUT of the recording (live, remix, extended intro),
+        /// not a clock skew: it is not applied, the timing term is pinned to <see cref="CappedTiming"/> and the
+        /// candidate is not tier-verified.</summary>
+        public const long OffsetCapMs = 1500;
+        const double CappedTiming = 0.4;
+        /// <summary>A TRUSTED word-synced candidate (AMLL, Musixmatch by ISRC) is moved onto the reference clock only
+        /// when the alignment is this tight on at least <see cref="TrustedSnapMinPairs"/> pairs — otherwise it keeps
+        /// its own clock (field data: AMLL once applied −1099 ms on a loose alignment).</summary>
+        public const long TrustedSnapMadMs = 300;
+        public const int TrustedSnapMinPairs = 6;
+        // Pairwise consensus: two candidates from DIFFERENT providers agree ⇔ text ≥ 0.5 ∧ coverage ≥ 0.6 ∧ (both
+        // synced ⇒ MAD ≤ 600 ms over ≥ 3 aligned pairs).
+        const double AgreeText = 0.5, AgreeCoverage = 0.6;
+        const long AgreeMadMs = 600;
+        /// <summary>A trusted word-synced hit short-circuits the fan-out (gold) only with at least this text agreement
+        /// with the reference, when there is one (correction 17).</summary>
+        public const double GoldTextFloor = 0.5;
+
+        /// <summary>Rank the candidates against <paramref name="reference"/> — Spotify's own lyric, a
+        /// <see cref="ConsensusReference"/> built from the candidates when Spotify has none, or null.
+        /// <para>The reference, when it is one of the candidates, must be passed as that candidate's
+        /// <see cref="Candidate.Document"/> INSTANCE (or a doc whose <see cref="Doc.Provider"/> is that candidate's id):
+        /// that is how the candidate is recognised as the reference, and a non-trusted reference candidate is then
+        /// measured against its best-agreeing peer instead of itself and verified only by consensus support
+        /// (correction 15 — a consensus reference never verifies itself).</para>
+        /// <para>Without a reference: verified ⇔ trusted, or support ≥ 1 ∧ <see cref="Candidate.Band"/> ≥ High. A lone
+        /// search-matched candidate with no support is ranked by score only and never tier-promoted.</para></summary>
         public static Ranked Rank(IReadOnlyList<Candidate> candidates, Doc? reference)
         {
-            if (candidates.Count == 0) return new Ranked(null, null, []);
+            int n = candidates.Count;
+            if (n == 0) return new Ranked(null, null, []);
 
-            List<string[]>? refTokens = null;
-            if (reference is not null)
-            {
-                refTokens = new List<string[]>(reference.Lines.Count);
-                for (int i = 0; i < reference.Lines.Count; i++) refTokens.Add(Tokens(reference.Lines[i].Text));
-            }
+            var candTokens = new List<string[]>[n];
+            for (int i = 0; i < n; i++) candTokens[i] = TokensOf(candidates[i].Document);
+            List<string[]>? refTokens = reference is null ? null : TokensOf(reference);
 
-            var decisions = new List<Decision>(candidates.Count);
+            // Pairwise agreement among the candidates themselves — the consensus support every decision reports, and
+            // the only corroboration there is when there is no reference.
+            var consensus = Pairwise(candidates, candTokens);
+
+            var decisions = new Decision[n];
             // Stage-one bookkeeping for the tier pass: is this candidate corroborated as the right recording, and what
             // sync tier does it ACTUALLY deliver (a gated word-sync delivers line, because that is what it is stripped
             // to).
-            var verified = new bool[candidates.Count];
-            var tiers = new int[candidates.Count];
-            int bestIdx = -1; double bestScore = double.NegativeInfinity;
+            var verified = new bool[n];
+            var tiers = new int[n];
 
-            for (int i = 0; i < candidates.Count; i++)
+            for (int i = 0; i < n; i++)
             {
                 var c = candidates[i];
-                bool trusted = c.Basis is MatchBasis.Identity or MatchBasis.Isrc;
-                var candTokens = new List<string[]>(c.Document.Lines.Count);
-                for (int k = 0; k < c.Document.Lines.Count; k++) candTokens.Add(Tokens(c.Document.Lines[k].Text));
+                bool trusted = IsTrusted(c);
+                // A search-matched candidate needs a real metadata match before tier alone may carry it (§6).
+                bool bandOk = c.Basis != MatchBasis.MetadataSearch || c.Band >= MatchBand.Medium;
+                int support = consensus.Support[i];
+                var tokens = candTokens[i];
 
-                double text, coverage, timing; long applied = 0; string reason;
-                if (refTokens is { Count: > 0 } && candTokens.Count > 0)
+                // What this candidate is checked AGAINST. Normally the reference; but the candidate that IS a
+                // non-trusted reference (a consensus pick) would verify ITSELF against itself (text 1, timing 1), so it
+                // is measured against its best-agreeing peer from a different provider instead (correction 15).
+                Doc? against = reference;
+                List<string[]>? againstTokens = refTokens;
+                bool consensusSelf = reference is not null && !trusted && IsReferenceCandidate(c, reference);
+                string prefix = "";
+                if (consensusSelf)
                 {
-                    var (lcs, pairs) = LcsAlign(candTokens, refTokens);
+                    int peer = consensus.BestPeer(i);
+                    if (peer >= 0)
+                    {
+                        against = candidates[peer].Document;
+                        againstTokens = candTokens[peer];
+                        prefix = "consensus-ref vs " + candidates[peer].ProviderId + ": ";
+                    }
+                    else
+                    {
+                        against = null;
+                        againstTokens = null;
+                        prefix = "consensus-ref without an agreeing peer: ";
+                    }
+                }
+                bool hasAgainst = againstTokens is { Count: > 0 };
+
+                double text, coverage, timing, recall = 0d;
+                long applied = 0;
+                bool capped = false, aligned = false;
+                string reason;
+                if (hasAgainst && tokens.Count > 0)
+                {
+                    aligned = true;
+                    List<string[]> refT = againstTokens!;
+                    Doc refDoc = against!;
+                    var (lcs, pairs) = LcsAlign(tokens, refT);
                     bool timingFallback = false;
-                    if (pairs.Count < 3 && trusted && TryTimingFallbackPairs(c.Document, reference!, out var fallbackPairs))
+                    if (pairs.Count < 3 && trusted && TryTimingFallbackPairs(c.Document, refDoc, out var fallbackPairs))
                     {
                         pairs = fallbackPairs;
                         timingFallback = true;
                     }
-                    int overlap = Math.Min(candTokens.Count, refTokens.Count);
+                    int overlap = Math.Min(tokens.Count, refT.Count);
                     text = lcs / (double)Math.Max(1, overlap);
-                    coverage = overlap / (double)Math.Max(1, Math.Max(candTokens.Count, refTokens.Count));
-                    (timing, applied) = TimingScoreVsRef(c.Document, reference!, pairs, text);
-                    reason = $"ref-align lcs={lcs}/{overlap} off={applied}ms";
+                    coverage = overlap / (double)Math.Max(1, Math.Max(tokens.Count, refT.Count));
+                    recall = Math.Min(1.0, lcs / (double)Math.Max(1, NonBlank(refT)));
+                    var t = TimingVsRef(c.Document, refDoc, pairs, text);
+                    timing = t.Score;
+                    applied = t.OffsetMs;
+
+                    // OFFSET GUARD (§4). A large constant offset is a different cut, never a skew to correct.
+                    string guard = "";
+                    if (Math.Abs(t.OffsetMs) > OffsetCapMs)
+                    {
+                        capped = true;
+                        timing = CappedTiming;
+                        applied = 0;
+                        guard = " [offset " + Secs(t.OffsetMs) + "s > cap (live/remix cut?)]";
+                    }
+                    // A trusted word-sync keeps its OWN clock unless the alignment is tight enough to trust the shift.
+                    else if (trusted && c.Sync == SyncKind.Syllable && t.OffsetMs != 0
+                             && !(t.MadMs <= TrustedSnapMadMs && pairs.Count >= TrustedSnapMinPairs))
+                    {
+                        applied = 0;
+                        guard = $" [own-clock: offset {t.OffsetMs}ms not snapped, mad={t.MadMs}ms pairs={pairs.Count}]";
+                    }
+                    // The consensus reference DEFINES the clock the others are moved onto; it is never shifted toward
+                    // the peer it was measured against.
+                    if (consensusSelf && applied != 0)
+                    {
+                        applied = 0;
+                        guard += " [reference clock: not shifted]";
+                    }
+
+                    reason = prefix + $"ref-align lcs={lcs}/{overlap} off={applied}ms" + guard;
                     if (timingFallback) reason += " [timing-fallback]";
                     // Explain the neutral-0.6 / rejected-0.0 timing verdicts — otherwise "timing 0.60" on an unsynced
                     // reference reads identically to a real timing match.
-                    if (reference!.Sync == SyncKind.Unsynced)
+                    if (refDoc.Sync == SyncKind.Unsynced)
                         reason += " [ref-unsynced:timing-neutral-for-all]";
                     else if (pairs.Count < 3)
                         reason += text >= SyncGateTextFloor
                             ? " [timing:too-few-pairs→neutral]"
                             : " [timing:too-few-pairs+no-text→rejected]";
+                    if (recall < TierRecall)
+                        reason += " [recall " + F2(recall) + " < " + F2(TierRecall)
+                            + (trusted ? ": line tier only]" : ": not tier-verified]");
                 }
                 else
                 {
                     // No reference: cannot verify content. Credit coverage + intrinsic timing sanity; stay text-neutral
                     // so a word-synced, internally coherent candidate can still win on sync/timing.
-                    text = candTokens.Count > 0 ? 0.6 : 0.0;
-                    coverage = Math.Min(1.0, candTokens.Count / 10.0);
+                    text = tokens.Count > 0 ? 0.6 : 0.0;
+                    coverage = Math.Min(1.0, tokens.Count / 10.0);
                     timing = IntrinsicTimingSanity(c.Document);
-                    reason = "no-reference";
+                    reason = prefix + "no-reference";
+                    if (!hasAgainst && !consensusSelf)
+                    {
+                        if (support > 0) reason += " [consensus support=" + support.ToString(CultureInfo.InvariantCulture) + "]";
+                        else if (!trusted) reason += " [no support: score only]";
+                    }
                 }
 
                 double sync = c.Sync switch { SyncKind.Syllable => 1.0, SyncKind.Line => 0.6, SyncKind.Unsynced => 0.2, _ => 0.2 };
@@ -2872,7 +3102,7 @@ public static partial class Lyrics
                 // FLOOR plus the timing/coverage guardrails: correct-but-divergent karaoke (romanization, CJK, ad-libs)
                 // scores ~0.15-0.5 text and must survive, while a truly wrong song has incoherent timing and/or
                 // mismatched line counts and is still demoted below a clean line candidate.
-                if (c.Sync == SyncKind.Syllable && refTokens is { Count: > 0 } && !trusted
+                if (c.Sync == SyncKind.Syllable && hasAgainst && !trusted
                     && !(text >= SyncGateTextFloor && timing >= SyncGateTiming && coverage >= SyncGateCoverage))
                 {
                     sync = 0.45;
@@ -2880,96 +3110,346 @@ public static partial class Lyrics
                 }
                 // WORD-TIMING gate — a different question from the sync gate, and deliberately NOT exempted by trust.
                 // An identity/ISRC match proves the candidate is the right RECORDING; it says nothing about whether its
-                // word offsets are physically singable. A body whose lines fire twelve words in 167 ms is word-synced
-                // in name only, and the reranker cannot see it any other way: the timing score aligns LINE STARTS,
-                // which such a document gets perfectly right. Demote to the LINE tier (0.6, not the sync gate's 0.45):
-                // it IS the right song, delivered at line resolution, which is what the winner is repaired down to.
-                int impossible = 0, judged = 0;   // the && short-circuits for a non-syllable candidate, so seed them
-                bool wordTimingRejected = c.Sync == SyncKind.Syllable
+                // word offsets are physically singable (impossibly fast) or even on the same clock as its own lines
+                // (incoherent). Demote to the LINE tier (0.6, not the sync gate's 0.45): it IS the right song, delivered
+                // at line resolution, which is what the winner is repaired down to.
+                int impossible = 0, judged = 0, incoherent = 0, judgedLines = 0;
+                bool implausible = c.Sync == SyncKind.Syllable
                     && Timing.HasImplausibleWordTiming(c.Document, out impossible, out judged);
-                if (wordTimingRejected)
-                {
-                    sync = Math.Min(sync, 0.6);
+                bool incoherentTiming = !implausible && c.Sync == SyncKind.Syllable
+                    && Timing.HasIncoherentWordTiming(c.Document, out incoherent, out judgedLines);
+                bool wordTimingRejected = implausible || incoherentTiming;
+                if (implausible)
                     reason += $" [word-timing-gate: {impossible}/{judged} lines impossibly fast]";
-                }
+                else if (incoherentTiming)
+                    reason += $" [word-timing-gate: {incoherent}/{judgedLines} lines incoherent]";
+                if (wordTimingRejected) sync = Math.Min(sync, 0.6);
+                // A PARTIAL document (recall below the tier bar) counts at the line tier in the blend as well as in
+                // stage two — otherwise half a karaoke outscores the complete line lyric on the sync term alone.
+                if (aligned && recall < TierRecall) sync = Math.Min(sync, 0.6);
 
-                double score = WText * text + WSync * sync + WTiming * timing + WCoverage * coverage + WPrior * Math.Clamp(c.Prior, 0, 1);
+                double score = WText * text + WSync * sync + WTiming * timing + WCoverage * coverage + WPrior * PriorTerm(c);
 
                 // VERIFIED = corroborated well enough to override a better-scoring candidate on tier alone.
-                // Identity/ISRC is verified by construction — BUT ONLY WHEN THERE IS A REFERENCE TO CHECK IT AGAINST: a
-                // decoy is trusted by ISRC and has ZERO text agreement with the real lyric, and "verified by
-                // construction, no text floor" is exactly how it used to win stage two outright regardless of its 0.32
-                // score. With a reference in hand, trust alone is no longer enough — text must be > 0 (any real overlap
-                // at all, not the strict tier bar) before construction-trust is honoured; without a reference there is
-                // nothing to check text against, so trust alone still verifies.
-                verified[i] = refTokens is { Count: > 0 }
-                    ? text > 0 && (trusted || (text >= TierTextFloor && timing >= TierTiming && coverage >= TierCoverage))
-                    : trusted;
+                //  • the consensus reference itself: ONLY by support from a different provider (never its self-compare);
+                //  • against a reference: any real text overlap (a zero-text ISRC decoy never verifies) and then trust, or
+                //    the strict tier bar incl. recall; never with an over-cap offset or a sub-Medium search match;
+                //  • without a reference: trust, or support ≥ 1 with a High-or-better metadata match.
+                bool v;
+                if (consensusSelf)
+                    v = support >= 1 && bandOk && !capped;
+                else if (hasAgainst)
+                    v = text > 0 && bandOk && !capped
+                        && (trusted || (text >= TierTextFloor && timing >= TierTiming && coverage >= TierCoverage
+                                        && recall >= TierRecall));
+                else
+                    v = trusted || (support >= 1 && c.Band >= MatchBand.High);
+                verified[i] = v;
 
-                decisions.Add(new Decision(c.ProviderId, c.Sync, score, text, coverage, timing, applied, reason, sync, verified[i]));
-                if (score > bestScore) { bestScore = score; bestIdx = i; }
                 // The tier it actually DELIVERS — a rejected word-sync delivers line, because that is what the winner
-                // repair strips it to.
-                tiers[i] = wordTimingRejected ? 2 : c.Sync switch
-                {
-                    SyncKind.Syllable => 3,
-                    SyncKind.Line => 2,
-                    SyncKind.Unsynced => 1,
-                    _ => 0,
-                };
+                // repair strips it to; a trusted partial is verified only at the line tier (§3).
+                int tier = wordTimingRejected ? 2 : SyncTier(c.Sync);
+                if (aligned && !consensusSelf && trusted && recall < TierRecall) tier = Math.Min(tier, 2);
+                tiers[i] = tier;
+
+                decisions[i] = new Decision(c.ProviderId, c.Sync, score, text, coverage, timing, applied, reason, sync, v,
+                    Recall: recall, Support: support, OffsetCapped: capped);
             }
 
-            // ── stage two: among the VERIFIED candidates, richness decides ───────────────────────────────────────────
+            // ── stage two: a DETERMINISTIC total order ───────────────────────────────────────────────────────────────
             // The weighted sum answers two questions at once and therefore answers neither well: it mixes "is this the
             // right song?" with "is this the better lyric?". Those are different kinds of judgement — the first is a
-            // THRESHOLD, the second an ORDERING. Conflating them is what made a genuine word-synced candidate lose:
-            // sync is weighted 0.25, so syllable over line is worth only +0.10, and a provider with a perfect text
-            // match beats that on the text term alone — the karaoke lost to the paragraph.
-            //
-            // So: once a candidate is verified, prefer the richest tier it actually delivers, and use the score only to
-            // break ties WITHIN a tier. Only with a reference to verify against — promoting an unchecked word-sync on
-            // tier alone is precisely the wrong-song failure the sync gate exists to prevent.
-            int chosenIdx = bestIdx;
-            if (refTokens is { Count: > 0 })
-            {
-                int bestTier = -1; double bestTierScore = double.NegativeInfinity;
-                for (int i = 0; i < candidates.Count; i++)
-                {
-                    if (!verified[i]) continue;
-                    if (tiers[i] > bestTier || (tiers[i] == bestTier && decisions[i].Score > bestTierScore))
-                    { bestTier = tiers[i]; bestTierScore = decisions[i].Score; chosenIdx = i; }
-                }
-            }
+            // THRESHOLD, the second an ORDERING. So: once a candidate is verified, prefer the richest tier it actually
+            // delivers; an unverified candidate is never promoted on tier (its tier counts as 0), which is precisely
+            // the wrong-song failure the sync gate exists to prevent. The key is (tier, verified, score,
+            // prior × confidence, provider id) — arrival order never matters (§7).
+            int chosen = 0;
+            for (int i = 1; i < n; i++)
+                if (CompareStageTwo(i, chosen, candidates, decisions, verified, tiers, out _) < 0) chosen = i;
 
-            var winnerCand = candidates[chosenIdx];
-            long bestOffset = decisions[chosenIdx].AppliedOffsetMs;
+            int runnerUp = -1;
+            for (int i = 0; i < n; i++)
+            {
+                if (i == chosen) continue;
+                if (runnerUp < 0 || CompareStageTwo(i, runnerUp, candidates, decisions, verified, tiers, out _) < 0) runnerUp = i;
+            }
+            for (int i = 0; i < n; i++)
+            {
+                if (i == chosen) continue;
+                CompareStageTwo(chosen, i, candidates, decisions, verified, tiers, out string key);
+                decisions[i] = decisions[i] with { TieBreak = "lost to " + candidates[chosen].ProviderId + " on " + key };
+            }
+            string winKey = "only candidate";
+            if (runnerUp >= 0)
+            {
+                CompareStageTwo(chosen, runnerUp, candidates, decisions, verified, tiers, out string key);
+                winKey = "won on " + key + " over " + candidates[runnerUp].ProviderId;
+            }
+            decisions[chosen] = decisions[chosen] with { TieBreak = winKey };
+
+            var winnerCand = candidates[chosen];
+            long bestOffset = decisions[chosen].AppliedOffsetMs;
             // Repair before publishing: if the winner only won BECAUSE nothing better existed, it must still not reach
             // the view claiming word timing it does not have. Its line starts are kept (they are the part that is
-            // right) and the unsingable syllables/ends are dropped.
+            // right) and the unsingable / incoherent syllables and ends are dropped.
             var winnerDoc = winnerCand.Document;
-            if (winnerDoc.Sync == SyncKind.Syllable && Timing.HasImplausibleWordTiming(winnerDoc, out _, out _))
-                winnerDoc = Timing.StripWordTiming(winnerDoc);
+            if (Timing.HasUnusableWordTiming(winnerDoc)) winnerDoc = Timing.StripWordTiming(winnerDoc);
             var winner = ApplyOffset(winnerDoc, bestOffset);
-            return new Ranked(winner, decisions[chosenIdx], decisions);
+            return new Ranked(winner, decisions[chosen], decisions);
         }
+
+        static bool IsTrusted(Candidate c) => c.Basis is MatchBasis.Identity or MatchBasis.Isrc;
+
+        static int SyncTier(SyncKind s) => s switch
+        {
+            SyncKind.Syllable => 3,
+            SyncKind.Line => 2,
+            SyncKind.Unsynced => 1,
+            _ => 0,
+        };
+
+        static string TierName(int tier) => tier switch
+        {
+            3 => "syllable",
+            2 => "line",
+            1 => "unsynced",
+            _ => "unverified",
+        };
+
+        /// <summary>The prior term's input: the provider's tiebreak weight scaled by how sure the metadata match is.</summary>
+        static double PriorTerm(Candidate c) => Math.Clamp(c.Prior, 0, 1) * Math.Clamp(c.Confidence, 0, 1);
+
+        /// <summary>Negative when candidate <paramref name="a"/> ranks before <paramref name="b"/>; <paramref name="key"/>
+        /// names the key that separated them.</summary>
+        static int CompareStageTwo(int a, int b, IReadOnlyList<Candidate> cs, Decision[] d, bool[] verified, int[] tiers,
+            out string key)
+        {
+            int ta = verified[a] ? tiers[a] : 0, tb = verified[b] ? tiers[b] : 0;
+            if (ta != tb)
+            {
+                key = "tier " + TierName(Math.Max(ta, tb)) + " > " + TierName(Math.Min(ta, tb));
+                return ta > tb ? -1 : 1;
+            }
+            if (verified[a] != verified[b])
+            {
+                key = "verified";
+                return verified[a] ? -1 : 1;
+            }
+            if (d[a].Score != d[b].Score)
+            {
+                bool aWins = d[a].Score > d[b].Score;
+                key = "score " + F3(Math.Max(d[a].Score, d[b].Score)) + " > " + F3(Math.Min(d[a].Score, d[b].Score));
+                return aWins ? -1 : 1;
+            }
+            double pa = PriorTerm(cs[a]), pb = PriorTerm(cs[b]);
+            if (pa != pb)
+            {
+                key = "prior×confidence " + F3(Math.Max(pa, pb)) + " > " + F3(Math.Min(pa, pb));
+                return pa > pb ? -1 : 1;
+            }
+            key = "provider id";
+            int byId = string.CompareOrdinal(cs[a].ProviderId, cs[b].ProviderId);
+            return byId != 0 ? byId : a.CompareTo(b);
+        }
+
+        /// <summary>Is <paramref name="c"/> the candidate the reference was taken from? The Host passes the reference
+        /// candidate's own document instance; a doc stamped with the candidate's provider id counts too.</summary>
+        static bool IsReferenceCandidate(Candidate c, Doc reference)
+            => ReferenceEquals(c.Document, reference)
+               || ReferenceEquals(c.Document.Lines, reference.Lines)
+               || (reference.Provider is { Length: > 0 } p && string.Equals(p, c.ProviderId, StringComparison.Ordinal));
+
+        // ── consensus (§5) ──────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The consensus reference for when Spotify has no lyrics: pairwise over candidates from DIFFERENT
+        /// providers, agree ⇔ text ≥ 0.5 ∧ coverage ≥ 0.6 ∧ (both synced ⇒ MAD ≤ 600 ms); <paramref name="support"/>[i]
+        /// = how many peers agree with candidate i; the reference is argmax(support, trusted, synced, confidence,
+        /// then provider id for determinism). Null (and <paramref name="referenceIndex"/> −1) when nobody agrees with
+        /// anybody — a lone document is never its own reference. Pass the returned doc to <see cref="Rank"/> AS IS: the
+        /// reference candidate is recognised by instance and is never verified by its own self-compare.</summary>
+        public static Doc? ConsensusReference(IReadOnlyList<Candidate> cs, out int[] support, out int referenceIndex)
+        {
+            referenceIndex = -1;
+            int n = cs.Count;
+            var tokens = new List<string[]>[n];
+            for (int i = 0; i < n; i++) tokens[i] = TokensOf(cs[i].Document);
+            var consensus = Pairwise(cs, tokens);
+            support = consensus.Support;
+
+            int best = -1;
+            for (int i = 0; i < n; i++)
+            {
+                if (support[i] == 0) continue;
+                if (best < 0 || BetterReference(cs[i], support[i], cs[best], support[best])) best = i;
+            }
+            if (best < 0) return null;
+            referenceIndex = best;
+            return cs[best].Document;
+        }
+
+        static bool BetterReference(Candidate a, int supportA, Candidate b, int supportB)
+        {
+            if (supportA != supportB) return supportA > supportB;
+            bool trustedA = IsTrusted(a), trustedB = IsTrusted(b);
+            if (trustedA != trustedB) return trustedA;
+            bool syncedA = a.Sync >= SyncKind.Line, syncedB = b.Sync >= SyncKind.Line;
+            if (syncedA != syncedB) return syncedA;
+            if (a.Confidence != b.Confidence) return a.Confidence > b.Confidence;
+            return string.CompareOrdinal(a.ProviderId, b.ProviderId) < 0;
+        }
+
+        /// <summary>The pairwise agreement matrix over one candidate set.</summary>
+        sealed class Consensus(IReadOnlyList<Candidate> cs, bool[,] agree, double[,] text, int[] support)
+        {
+            public int[] Support { get; } = support;
+
+            /// <summary>The agreeing peer (different provider) with the highest text agreement, or −1.</summary>
+            public int BestPeer(int i)
+            {
+                int best = -1;
+                for (int j = 0; j < cs.Count; j++)
+                {
+                    if (j == i || !agree[i, j]) continue;
+                    if (best < 0 || text[i, j] > text[i, best]
+                        || (text[i, j] == text[i, best] && string.CompareOrdinal(cs[j].ProviderId, cs[best].ProviderId) < 0))
+                        best = j;
+                }
+                return best;
+            }
+        }
+
+        static Consensus Pairwise(IReadOnlyList<Candidate> cs, List<string[]>[] tokens)
+        {
+            int n = cs.Count;
+            var agree = new bool[n, n];
+            var text = new double[n, n];
+            var support = new int[n];
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                {
+                    if (string.Equals(cs[i].ProviderId, cs[j].ProviderId, StringComparison.Ordinal)) continue;
+                    bool ok = Agrees(cs[i].Document, tokens[i], cs[j].Document, tokens[j], out double t);
+                    text[i, j] = text[j, i] = t;
+                    if (!ok) continue;
+                    agree[i, j] = agree[j, i] = true;
+                    support[i]++;
+                    support[j]++;
+                }
+            return new Consensus(cs, agree, text, support);
+        }
+
+        static bool Agrees(Doc a, List<string[]> ta, Doc b, List<string[]> tb, out double text)
+        {
+            text = 0;
+            if (ta.Count == 0 || tb.Count == 0) return false;
+            var (lcs, pairs) = LcsAlign(ta, tb);
+            int overlap = Math.Min(ta.Count, tb.Count);
+            text = lcs / (double)overlap;
+            double coverage = overlap / (double)Math.Max(ta.Count, tb.Count);
+            if (text < AgreeText || coverage < AgreeCoverage) return false;
+            if (a.Sync >= SyncKind.Line && b.Sync >= SyncKind.Line)
+                return pairs.Count >= 3 && PairMad(a, b, pairs).Mad <= AgreeMadMs;
+            return true;
+        }
+
+        // ── gold (correction 17) ────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>May <paramref name="c"/> short-circuit the fan-out as GOLD? Only a trusted (identity/ISRC)
+        /// word-synced candidate that also passes every decoy gate — uniform line steps, running past the track
+        /// (when <paramref name="durationMs"/> is known), impossibly fast or incoherent word timing — and, when a
+        /// reference is in hand, agrees with it on text (≥ <see cref="GoldTextFloor"/>; <see cref="TextAgreement"/>).
+        /// Never gold on its match basis alone.</summary>
+        public static bool GoldAllowed(in Candidate c, Doc? reference, double textAgreement, long durationMs = 0)
+        {
+            if (c.Sync != SyncKind.Syllable || !IsTrusted(c)) return false;
+            var d = c.Document;
+            if (d.Lines.Count == 0) return false;
+            if (Timing.HasUniformLineDurations(d) || Timing.ExceedsTrackDuration(d, durationMs)
+                || Timing.HasImplausibleWordTiming(d, out _, out _) || Timing.HasIncoherentWordTiming(d, out _, out _))
+                return false;
+            return reference is null || reference.Lines.Count == 0 || textAgreement >= GoldTextFloor;
+        }
+
+        /// <summary>Text agreement of <paramref name="cand"/> with <paramref name="reference"/> — the same LCS-over-
+        /// min-length figure the reranker scores with (0 when either side has no lines).</summary>
+        public static double TextAgreement(Doc cand, Doc reference)
+        {
+            var a = TokensOf(cand);
+            var b = TokensOf(reference);
+            if (a.Count == 0 || b.Count == 0) return 0d;
+            var (lcs, _) = LcsAlign(a, b);
+            return lcs / (double)Math.Min(a.Count, b.Count);
+        }
+
+        static List<string[]> TokensOf(Doc doc)
+        {
+            var list = new List<string[]>(doc.Lines.Count);
+            for (int i = 0; i < doc.Lines.Count; i++) list.Add(Tokens(doc.Lines[i].Text));
+            return list;
+        }
+
+        static int NonBlank(List<string[]> tokens)
+        {
+            int n = 0;
+            for (int i = 0; i < tokens.Count; i++) if (tokens[i].Length > 0) n++;
+            return n;
+        }
+
+        static string Secs(long ms) => (Math.Abs(ms) / 1000d).ToString("0.0", CultureInfo.InvariantCulture);
+        static string F2(double v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+        static string F3(double v) => v.ToString("0.000", CultureInfo.InvariantCulture);
 
         // ── text agreement: fuzzy line-sequence LCS ──────────────────────────────────────────────────────────────────
         // Internal, not private: TrimUnalignedEdges asks "does this line align to the reference?" and must use the SAME
         // notion of alignment the score is computed with.
 
+        /// <summary>The comparison tokens of one line: <see cref="Text.Normalize"/>d (CJK-folded) text, split on spaces —
+        /// except that every Han character / kana (<see cref="Text.IsHanOrKana"/>) is a token ON ITS OWN, because those
+        /// scripts put no spaces between words and a whole CJK line would otherwise be one all-or-nothing token. Latin
+        /// and Hangul still split on spaces, so a text without Han/kana tokenizes exactly as it always did.</summary>
         internal static string[] Tokens(string text)
         {
             var n = Text.Normalize(text);
-            return n.Length == 0 ? [] : n.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (n.Length == 0) return [];
+            bool anyCjk = false;
+            for (int i = 0; i < n.Length && !anyCjk; i++)
+                anyCjk = Text.IsHanOrKana(n[i]) || Text.IsHanSurrogatePair(n, i);
+            if (!anyCjk) return n.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            var list = new List<string>(n.Length);
+            int runStart = -1;
+            for (int i = 0; i < n.Length; i++)
+            {
+                char c = n[i];
+                bool pair = Text.IsHanSurrogatePair(n, i);
+                if (c == ' ' || pair || Text.IsHanOrKana(c))
+                {
+                    if (runStart >= 0) { list.Add(n[runStart..i]); runStart = -1; }
+                    if (pair) { list.Add(n.Substring(i, 2)); i++; }
+                    else if (c != ' ') list.Add(c.ToString());
+                    continue;
+                }
+                if (runStart < 0) runStart = i;
+            }
+            if (runStart >= 0) list.Add(n[runStart..]);
+            return [.. list];
         }
 
         internal static bool LineMatch(string[] a, string[] b)
         {
             if (a.Length == 0 && b.Length == 0) return true;
             if (a.Length == 0 || b.Length == 0) return false;
-            var set = new HashSet<string>(a);
             int inter = 0;
-            foreach (var t in b) if (set.Contains(t)) inter++;
+            if (a.Length * b.Length <= 256)
+            {
+                // Small lines (nearly all of them): a scan beats allocating a set, same counting rule.
+                foreach (var t in b) if (Array.IndexOf(a, t) >= 0) inter++;
+            }
+            else
+            {
+                var set = new HashSet<string>(a, StringComparer.Ordinal);
+                foreach (var t in b) if (set.Contains(t)) inter++;
+            }
             double overlap = inter / (double)Math.Min(a.Length, b.Length);   // overlap coefficient (length-robust)
             return overlap >= LineMatchThreshold;
         }
@@ -3064,23 +3544,32 @@ public static partial class Lyrics
         /// 0). That made every candidate's timing term identical and useless for telling a real lyric from a decoy, so
         /// an Unsynced reference now returns the same neutral for every candidate unconditionally, while an
         /// otherwise-synced reference with too few pairs only stays neutral when the candidate ALSO has some text
-        /// agreement — a candidate that aligns on neither text NOR timing gets 0, not a free pass.</summary>
-        static (double Score, long AppliedOffsetMs) TimingScoreVsRef(Doc cand, Doc reff, List<(int C, int R)> pairs, double text)
+        /// agreement — a candidate that aligns on neither text NOR timing gets 0, not a free pass.
+        /// <para><c>OffsetMs</c> is the correction the alignment ASKS for (−median, only when coherent); whether it is
+        /// applied is the caller's offset guard (cap, trusted-snap rule). <c>MadMs</c> is the drift it was measured
+        /// with.</para></summary>
+        static (double Score, long OffsetMs, long MadMs) TimingVsRef(Doc cand, Doc reff, List<(int C, int R)> pairs, double text)
         {
-            if (reff.Sync == SyncKind.Unsynced) return (0.6, 0);
-            if (pairs.Count < 3) return (text >= SyncGateTextFloor ? 0.6 : 0.0, 0);   // too few matches → neutral
-            var deltas = new long[pairs.Count];
-            for (int k = 0; k < pairs.Count; k++)
-                deltas[k] = cand.Lines[pairs[k].C].StartMs - reff.Lines[pairs[k].R].StartMs;
-            long median = Median(deltas);
-            var absDev = new long[deltas.Length];
-            for (int k = 0; k < deltas.Length; k++) absDev[k] = Math.Abs(deltas[k] - median);
-            long mad = Median(absDev);
+            if (reff.Sync == SyncKind.Unsynced) return (0.6, 0, 0);
+            if (pairs.Count < 3) return (text >= SyncGateTextFloor ? 0.6 : 0.0, 0, 0);   // too few matches → neutral
+            var (median, mad) = PairMad(cand, reff, pairs);
             double score = Math.Clamp(1.0 - mad / DriftToleranceMs, 0.0, 1.0);
             // Correct the constant offset only when internally coherent (low drift); otherwise the times are locally
             // wrong and shifting would not help — leave it and let the low score demote it.
-            long applied = mad <= DriftToleranceMs ? -median : 0;
-            return (score, applied);
+            long offset = mad <= DriftToleranceMs ? -median : 0;
+            return (score, offset, mad);
+        }
+
+        /// <summary>Median start delta (a − b) over the aligned pairs, and the median absolute deviation around it.</summary>
+        static (long Median, long Mad) PairMad(Doc a, Doc b, List<(int C, int R)> pairs)
+        {
+            var deltas = new long[pairs.Count];
+            for (int k = 0; k < pairs.Count; k++)
+                deltas[k] = a.Lines[pairs[k].C].StartMs - b.Lines[pairs[k].R].StartMs;
+            long median = Median(deltas);
+            var absDev = new long[deltas.Length];
+            for (int k = 0; k < deltas.Length; k++) absDev[k] = Math.Abs(deltas[k] - median);
+            return (median, Median(absDev));
         }
 
         static double IntrinsicTimingSanity(Doc doc)

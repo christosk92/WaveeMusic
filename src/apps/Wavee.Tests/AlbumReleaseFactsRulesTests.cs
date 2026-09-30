@@ -118,7 +118,9 @@ public class AlbumReleaseFactsRulesTests
         string meta = Detail.Text.AlbumMeta(2, facts.LengthMs, durationsKnown: true, year: 2013)!;
         // Loc-agnostic: the tile's text IS the one formatter's, and the meta line is the template over that same text.
         Assert.Equal(Track.Format.TotalTime(72 * 60_000), Rules.LengthText(facts));
-        Assert.Equal(Strings.Detail.MetaLineYear(2, Rules.LengthText(facts)!, 2013), meta);
+        // The count slot is the "N songs" phrase AlbumMeta passes, not the raw int: with a catalog loaded the two differ
+        // ("2 songs · …" vs "2 · …"), so the raw-int form only passed while no other test had loaded the locale.
+        Assert.Equal(Strings.Detail.MetaLineYear(Strings.Detail.SongCount(2), Rules.LengthText(facts)!, 2013), meta);
     }
 
     // ── Released ─────────────────────────────────────────────────────────────────────────────────────────────────────

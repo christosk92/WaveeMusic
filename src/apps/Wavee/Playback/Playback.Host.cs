@@ -1050,9 +1050,23 @@ public static partial class Playback
 
     public static void Next() => Post(Input.Next(FrameNowMs()));
     public static void Previous() => Post(Input.Prev(FrameNowMs()));
-    public static void Pause() => Post(Input.Pause(FrameNowMs()));
-    public static void Resume() => Post(Input.Resume(FrameNowMs()));
-    public static void TogglePlay() => Post(s_state.IsPlaying ? Input.Pause(FrameNowMs()) : Input.Resume(FrameNowMs()));
+    // The local play/pause verbs take a `cause`: the UI entry that pressed it ("space", "playerbar.button", "tray", …).
+    // ALWAYS-ON attribution, one line per user action (the SMTC twin is "smtc transport button: …", inbound Connect is
+    // "[connect] cmd endpoint=…"). Without it a resume that claims the parked restored row (`connect.owner Nobody → Us
+    // (claimed)`) is unexplainable from a log.
+    public static void Pause(string cause) { LogPlayPause(cause, resume: false); Post(Input.Pause(FrameNowMs())); }
+    public static void Resume(string cause) { LogPlayPause(cause, resume: true); Post(Input.Resume(FrameNowMs())); }
+    public static void TogglePlay(string cause)
+    {
+        bool resume = !s_state.IsPlaying;
+        LogPlayPause(cause, resume);
+        Post(resume ? Input.Resume(FrameNowMs()) : Input.Pause(FrameNowMs()));
+    }
+
+    /// <summary>The one play/pause attribution line: <c>play/pause cause=&lt;entry&gt; action=resume|pause</c>.</summary>
+    static void LogPlayPause(string cause, bool resume)
+        => Log.Info("playback", "play/pause cause=" + cause + (resume ? " action=resume" : " action=pause"));
+
     public static void SeekTo(int ms) => Post(Input.Seek(ms, FrameNowMs()));
     public static void GoLive() => Post(Input.GoLive(FrameNowMs()));
     public static void SetVolume(float linear01) => Post(Input.Volume(linear01));

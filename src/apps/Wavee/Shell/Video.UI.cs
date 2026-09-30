@@ -203,8 +203,8 @@ public static partial class Video
     /// <summary>What the stages' transport verbs do. Play/pause/commit are the SESSION transport's; a scrub preview goes to
     /// the host's <c>Playback.Video.Seek(accurate: false)</c>, which plans it against the live session's keyframe table
     /// and buffered ranges — the closest buffered keyframe, and no fetch while the pointer is down (G-153).</summary>
-    static readonly Action s_play = static () => Playback.Resume();
-    static readonly Action s_pause = static () => Playback.Pause();
+    static readonly Action s_play = static () => Playback.Resume("video.transport");
+    static readonly Action s_pause = static () => Playback.Pause("video.transport");
     static readonly Action<TimeSpan, SeekMode> s_seek = static (target, mode) => SeekFromTransport(target, mode);
     static readonly Action s_toggleDetachedFullscreen = static () => State.DetachedFullscreen.Value = !State.DetachedFullscreen.Peek();
 
@@ -640,7 +640,7 @@ public static partial class Video
                 {
                     if (e.KeyCode != Keys.Space) return;
                     e.Handled = true;
-                    Playback.TogglePlay();
+                    Playback.TogglePlay("video.space");
                 },
                 Focusable = true,
                 Children = [VideoArea()],

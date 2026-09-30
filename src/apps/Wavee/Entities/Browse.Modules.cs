@@ -33,6 +33,9 @@ public static class HomeModuleLayout
     public const float ShelfCardMin = Design.Size.ShelfCardMin;
     public const float ShelfCardMax = Design.Size.ShelfCardMax;
     public const float ShelfEdgeFade = Design.Size.FadeShelf;
+    /// <summary>The gap BETWEEN shelf cards: zero, because the shared card already insets its cover by its plate padding
+    /// (8 each side), so two covers sit 16 apart — the prototype's gutter. A 12 gap on top read as 28 between covers.</summary>
+    public const float ShelfGap = 0f;
 
     public const float GridGap = Spacing.M;
 
@@ -71,7 +74,9 @@ public static class HomeModuleLayout
             _ => (10f, 0f, 3f),
         };
 
-    public static float ShelfCardHeight(float cardW) => Controls.ShelfHeight(cardW);
+    /// <summary>A Browse/Home shelf cell's extent: title + ONE caption line (the house `ShelfCell` caps its second line at
+    /// the item's CaptionLines, 1 by default) — no reserved second line under every card.</summary>
+    public static float ShelfCardHeight(float cardW) => Controls.ShelfHeight(cardW, 1f, captionLines: 1, metaLine: false);
 
     // Memoized per INSTANCE (0.2.9's ConditionalWeakTable, kept): a section-set is immutable, and a page hands a NEW
     // list whenever any section's Version or CardVersion moves, so the key changes exactly when the rendered structure

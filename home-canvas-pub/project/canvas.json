@@ -1,0 +1,115 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-09-25T09:00:00Z"
+  },
+  "title": "Wavee Home Redesign",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 3560,
+      "title": "Home — dark, full page",
+      "is_interactive": true
+    },
+    "Light.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Home — light, above the fold"
+    },
+    "Podcasts.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 2880,
+      "title": "Home — Podcasts, full page"
+    },
+    "Music.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 1360,
+      "title": "Home — Music, top",
+      "is_interactive": true
+    },
+    "States.dc.html": {
+      "x": 0,
+      "y": 3680,
+      "w": 1440,
+      "h": 2600,
+      "title": "States — loading / first-run / audiobooks"
+    },
+    "Components.dc.html": {
+      "x": 1520,
+      "y": 3680,
+      "w": 1440,
+      "h": 6520,
+      "title": "Component sheet"
+    },
+    "FacetSwitch.dc.html": {
+      "x": 3040,
+      "y": 3680,
+      "w": 1440,
+      "h": 5360,
+      "title": "Facet switch — motion & states"
+    },
+    "Motion.dc.html": {
+      "x": 0,
+      "y": 6800,
+      "w": 1440,
+      "h": 1360,
+      "title": "Scroll & motion"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Light.dc.html",
+    "Podcasts.dc.html",
+    "Music.dc.html",
+    "States.dc.html",
+    "Components.dc.html",
+    "FacetSwitch.dc.html",
+    "Motion.dc.html"
+  ],
+  "notes": {
+    "title1": {
+      "x": 0,
+      "y": -260,
+      "text": "Wavee Home Redesign, native pass. Everything inside the content layer is now a stock WinUI 3 surface: the daylist is a card on the layer with its header image inset (no scrim banner), shelves are GridView/ListView item templates with big 4px-radius covers, and each shelf gets a different template (row items, a wide lead plus squares, 16:9 tiles, grouped lists, circles, navigation tiles). Buttons are 32px WinUI controls, text never goes below 12px, and nothing lifts. The real Wavee Mica shell is unchanged.",
+      "kind": "title1",
+      "maxW": 3000,
+      "w": 240
+    },
+    "datasources": {
+      "x": -480,
+      "y": 0,
+      "w": 420,
+      "fill": "blue",
+      "text": "DATA SOURCES by zone\n\nShell (title bar / icon rail / now-playing): existing Wavee app chrome, drawn as real context\n\n0 · Facet control (All / Music / Podcasts / Audiobooks, + Following): home response homeChips (Music and Podcasts carry a Following sub-chip, Audiobooks none); All is the app's own no-facet position. Every facet is its own home document: HomeQuery(facet) with music-chip / podcasts-chip / audiobooks-chip / *-following-chip, cached per facet id under wavee:home:<facet>\n\n1 · Daylist card: home response (daylist section + greeting 'Good morning') + extended metadata (header_image_url_desktop, description tag links, PlaylistItemsPage.totalCount '50 songs', next-update time for the live countdown + daypart fill; the 07:04–13:04 window is illustrative)\n\n2 · Recently played (4×2 row items): Recents (RecentsEdge order, playedAtMs → 'yesterday'/'Monday', entity type; Liked Songs count from library, illustrative). The now-playing marker comes from Connect state\n\n3 · Made for you: home response ('Made For Chris' Daily Mixes 1,3–6 + 'Soundtrack your Friday morning' moods, page 2). Wide lead Discover Weekly uses its header_image_url_desktop + totalCount. DJ excluded\n\n4 · It's New Music Friday!: home response section 1. 16:9 tiles use header_image_url_desktop + totalCount for the six items that have one. 'From artists you follow' uses the followed-artists releases endpoint (type, date, track count; illustrative values)\n\n5 · Because you like…: home response (HomeFeedBaselineSectionData 'More like X' / 'For fans of X'), clustered client-side by entity, max 3 rows per card\n\n6 · Jump back in: home response (curated shelf + Shorts section), 2 pages\n\n7 · Radio & mixes: home response (Recommended Stations + Popular radio + Your top mixes + 'Made for you' baseline mixes, deduped). Wide lead Savage Garden Radio uses its header image\n\n8 · Browse: home response ('Officiële Spotify playlists' + New Music Friday editorial items without header images). Charts: browse (Top 50 NL / Global, Viral 50 NL) as navigation tiles only; no chart tracks were captured, so none are drawn\n\nMUSIC board (home_filtered.json, 'Good afternoon', 29 sections): M1 'Made For Chris' (Daily Mixes 1–6; Discover Weekly as the lead via its header_image_url_desktop; DJ dropped, not supported) · M2 'Soundtrack your Friday afternoon' (the daylist as a plain square + mood mixes, first sentence of each description) · M3 'More like Avril Lavigne' (stations/artists round). No Recents, Jump back in or daylist hero: they aren't in the Music response and are never borrowed from All\n\nPODCASTS board (podcasts.json, Fri 25 Sep 2026, 31 sections regrouped into 8 zones): P1 New episodes ('New episode from {show}' singles, newest first; lead = newest with a 1280×720 videoPreviewThumbnail) · P2 Continue listening (playedState IN_PROGRESS + playPositionMilliseconds → '44 min left' and the hairline; then 'Catch up on your shows') · P3 Your shows (verbatim) · P4 Videos you might like (topped up with VIDEO episodes) · P5 Episodes you might like ('Similar to your interests' + 'Episodes you might like', deduped by uri and by name+date) · P6 Because you listen to… ('Popular with listeners of X' / 'More like {episode}' groups; a shows shelf with the same key becomes the footer strip) · P7 Shows you might like · P8 Popular with listeners of SOLVED with Mark Manson. Dates are relative to the capture day; durations from duration.totalMilliseconds; the video glyph from mediaTypes ∋ VIDEO; the E badge from contentRating / contentRatingV2 EXPLICIT. Episode lookups refresh playedState before a Play; they never block the reveal. Not in the data, so not drawn: per-show unplayed counts, latest-episode dates, podcast categories\n\nAUDIOBOOKS (States panel 3): no capture and no activity → the starter. FACET SWITCH board: states of the switch, no data of its own"
+    },
+    "rationale": {
+      "x": -480,
+      "y": 1500,
+      "w": 420,
+      "fill": "green",
+      "text": "WHY IT FEELS NATIVE NOW (research: 05-native-research.md)\n\n• Layering: Mica base, content layer, 8px cards on it. Imagery sits inside cards; text stays on the layer\n• Geometry 8 / 4 / 0: cards 8, covers/buttons/rows 4, no pills (except the round media play)\n• Windows type ramp only: 12 / 14 / 20 / 28 / 40, Regular + Semibold, sentence case\n• Stock controls: Accent / Standard / Subtle buttons, HyperlinkButton 'See all', PipsPager, SettingsCard-style tiles\n• GridView templates: image + text below (1:1, 16:9) and a two-cell wide lead, like the Store and Xbox apps\n• Hover = fill change, press = lower fill; no lift, no glow. Arrow cursor on buttons. Two-tone focus rectangle\n• Rhythm: no two neighbouring shelves share a template"
+    },
+    "facetflow": {
+      "x": -480,
+      "y": 3320,
+      "w": 420,
+      "fill": "blue",
+      "text": "FACET DATA FLOW. One home document per facet id (\"\" for All, music-chip, podcasts-chip, audiobooks-chip, *-following-chip). A switch keeps the old page, dims it to .6 with no hit-testing, and pins a 3px indeterminate ProgressBar under the control (the rest row, or the sticky band when scrolled). On arrival: 83ms out, 250ms in, 30ms zone stagger. On failure: the pivot reverts and an InfoBar with Retry appears; the old content stays. Cached (≤10 min): instant swap. Stale: instant + a silent refresh (bar, no dim). Skeleton only on the first-ever load. Prefetch on 150ms hover or on focus. Following = the sub-chip id used as the facet. State is per tab; each switch pushes a history entry; scroll is kept per facet.\n\nMAIN IS INTERACTIVE: click Music, Podcasts or Audiobooks (or All) to run the real sequence: about 1.2s dimmed under the bar, then the swap. Podcasts → Following loads the Following page (P1–P3 only). Music → Following plays the failure path, because no Music-Following capture exists. The \"scroll\" tweak shows the compact band with the page scrolled 616px."
+    }
+  },
+  "designSystems": [],
+  "attachments": {}
+}

@@ -592,9 +592,9 @@ public static partial class Diagnostics
             switch (c.Verb)
             {
                 case Headless.Verb.Play: return Play(in c, now.NowMs, out error, out code);
-                case Headless.Verb.Pause: Playback.Pause(); return true;
-                case Headless.Verb.Resume: Playback.Resume(); return true;
-                case Headless.Verb.Toggle: Playback.TogglePlay(); return true;
+                case Headless.Verb.Pause: Playback.Pause("probe"); return true;
+                case Headless.Verb.Resume: Playback.Resume("probe"); return true;
+                case Headless.Verb.Toggle: Playback.TogglePlay("probe"); return true;
                 case Headless.Verb.Stop: Playback.Stop(); return true;
                 case Headless.Verb.Next: Playback.Next(); return true;
                 case Headless.Verb.Prev: Playback.Previous(); return true;

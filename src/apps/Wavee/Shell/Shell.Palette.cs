@@ -289,7 +289,7 @@ public static partial class Shell
             case PaletteKind.Playback:
                 switch (e.PlaybackVerb)
                 {
-                    case PalettePlaybackVerb.PlayPause: TogglePlayPause(); break;
+                    case PalettePlaybackVerb.PlayPause: TogglePlayPause("palette"); break;
                     case PalettePlaybackVerb.Next: Playback.Next(); break;
                     case PalettePlaybackVerb.Previous: Playback.Previous(); break;
                     case PalettePlaybackVerb.Shuffle: ToggleShuffle(); break;

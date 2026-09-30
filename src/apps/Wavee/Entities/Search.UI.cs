@@ -546,10 +546,10 @@ public readonly partial struct Search
         if (items.Count == 0) return new BoxEl();
         return Stretch(PagedShelf.Create(items,
             cardAt: (item, i, cardW) => ShelfCardOf(item.Ref, cardW, in ctx),
-            cardHeight: Controls.ShelfHeight,
+            cardHeight: static w => Controls.ShelfHeight(w, 1f, captionLines: 1, metaLine: false),   // one-line subtitle
             header: TickHeader(Loc.Get(Strings.Search.Playlists), openFacet),
             pager: ShelfPager.Chevrons | ShelfPager.Pips,
-            minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax, gap: Spacing.M,
+            minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax, gap: HomeModuleLayout.ShelfGap,
             snap: ShelfSnap.Page, cardWidthAgnostic: true, edgeFade: HomeModuleLayout.ShelfEdgeFade,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for

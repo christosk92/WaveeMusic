@@ -1,34 +1,34 @@
-// ── Entities/Album.Page.cs ─────────────────────────────────────────────────────────────────────────────────────────
+// â”€â”€ Entities/Album.Page.cs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // the album page and the whole prerelease: surface over the shared detail frame (ch 05; ch 03 items 55-56): the route and
 // its kind-138 resolve, the frame composition (the identity with the upcoming instant and the pre-save target swap, the
-// album table profile with the drawer seam, Shuffle · the hero ⋯ flyout · the cover drag), the whole-model demand, the
+// album table profile with the drawer seam, Shuffle Â· the hero â‹¯ flyout Â· the cover drag), the whole-model demand, the
 // "About this release" panel (+ Other versions), the trailing band (ONE reserved skeleton region, seven fail-soft
-// sections in a fixed order) and InstallPages — the owner-M composition entry the orchestrator calls from App.cs
+// sections in a fixed order) and InstallPages â€” the owner-M composition entry the orchestrator calls from App.cs
 //
 // Role: UI
 // Owner: M
 // Wave: 5
 // Budget: 1500 lines
-// Spec: ch 05 §9
+// Spec: ch 05 Â§9
 //
-// ── WHAT THE FRAME ALREADY DRAWS (do not duplicate) ──────────────────────────────────────────────────────────────────
+// â”€â”€ WHAT THE FRAME ALREADY DRAWS (do not duplicate) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // Detail.Frame owns the cover, eyebrow, title, the Play pill, the heart (keyed `save:<SaveTarget>`), share, the rail and
 // hero scaffolds, the tone plane, the table. This page hands it a FrameSpec VALUE and four SLOTS:
-//   Attribution  → the face pile (Album.UI.cs)            rail row `rail:artists` / the hero attribution block
-//   PreRelease   → the countdown card, keyed on its instant rail row `rail:prerelease` / the hero arm's trailing body
-//   ReleasePanel → About this release + Other versions      rail row `rail:release`  / the hero arm's trailing body
-//   Trailing     → the reserved trailing band               the table's trailing body (both arms)
+//   Attribution  â†’ the face pile (Album.UI.cs)            rail row `rail:artists` / the hero attribution block
+//   PreRelease   â†’ the countdown card, keyed on its instant rail row `rail:prerelease` / the hero arm's trailing body
+//   ReleasePanel â†’ About this release + Other versions      rail row `rail:release`  / the hero arm's trailing body
+//   Trailing     â†’ the reserved trailing band               the table's trailing body (both arms)
 // The frame invokes a slot only when its spec changes, and the table invokes the trailing thunk only when its args
 // change, so every slot body is a component that reads the tables it paints.
 //
-// ── DEMAND (the GateAlbumPage pattern, Detail.UI.cs §6) ──────────────────────────────────────────────────────────────
+// â”€â”€ DEMAND (the GateAlbumPage pattern, Detail.UI.cs Â§6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // The page asks for its WHOLE model from effects: the album's Detail groups + the tracklist edge once per (album slot,
 // scope epoch); the member rows, the next tracklist page while Partial, the kind-138 link while upcoming and the billed
 // artists as the membership lands. The trailing band asks its own relations (0.2.9's AlbumTrailing asked the Full rung
-// the same way) and holds its shimmer on the tracklist plus — for at most PageRules.TrailingDeadlineMs — the sections
-// directly under the rows (About the artist, Featured on, the watch-video verdict; all asked at Visible) — then swaps ONCE and latches.
+// the same way) and holds its shimmer on the tracklist plus â€” for at most PageRules.TrailingDeadlineMs â€” the sections
+// directly under the rows (About the artist, Featured on, the watch-video verdict; all asked at Visible) â€” then swaps ONCE and latches.
 
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -43,25 +43,25 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 /// <summary>The render-cost fix's one shared shape (Album.Page.cs's page render, its trailing band's pending gate and
-/// demand, Artist.Page.cs's row demand): a table-wide generation ("did the table drain at all" — the ONLY thing a
+/// demand, Artist.Page.cs's row demand): a table-wide generation ("did the table drain at all" â€” the ONLY thing a
 /// <c>Signal&lt;uint&gt; Changed</c> read establishes; see <see cref="Table.Version"/> and
-/// <see cref="EdgeTableBase.Version(int)"/>) paired with one row's — or one edge parent's — own version, plus the
+/// <see cref="EdgeTableBase.Version(int)"/>) paired with one row's â€” or one edge parent's â€” own version, plus the
 /// slot/parent itself so two stamps for DIFFERENT rows never compare equal by coincidence (a component that is reused
 /// across a slot change, e.g. an artist page surviving keep-alive across a different artist, must not alias the new
 /// row against the old one's cached stamp).
-/// <para>A stamp only lets the render/demand BODY early-out once the table has already woken this component — reading
+/// <para>A stamp only lets the render/demand BODY early-out once the table has already woken this component â€” reading
 /// the <c>Changed</c> signal itself still must happen in a tracked scope for that wake (the engine's <c>Signal&lt;T&gt;</c>
-/// has no pull cascade — only <c>Memo&lt;T&gt;</c> does, per <c>Signal.NotifySubscribers</c>'s own comment — so nothing
+/// has no pull cascade â€” only <c>Memo&lt;T&gt;</c> does, per <c>Signal.NotifySubscribers</c>'s own comment â€” so nothing
 /// here removes the wake, only the redundant recompute after it).</para></summary>
 /// <para><paramref name="Source"/> disambiguates a gate whose stamp can be built from DIFFERENT TABLES on different
-/// calls — the fans row, which reads the lead artist's related edge on one render and a seed track's on the next. A
+/// calls â€” the fans row, which reads the lead artist's related edge on one render and a seed track's on the next. A
 /// slot is a per-table index, so artist slot 5 and track slot 5 both exist; without a source tag a flip between the
 /// two could produce an identical <c>(Slot, Generation, Version)</c> triple, read as "not moved", and silently skip
 /// the fetch. Sites with one fixed table leave it at 0.</para>
 public readonly record struct RowStamp(int Slot, uint Generation, uint Version, byte Source = 0)
 {
     /// <summary>True when the slot, the source table, the table's generation or the row's own version differs from
-    /// <paramref name="previous"/> — the one comparison every render-cost gate below shares instead of hand-rolling
+    /// <paramref name="previous"/> â€” the one comparison every render-cost gate below shares instead of hand-rolling
     /// its own field-by-field equality.</summary>
     public bool Moved(in RowStamp previous)
         => Slot != previous.Slot || Source != previous.Source
@@ -69,13 +69,13 @@ public readonly record struct RowStamp(int Slot, uint Generation, uint Version, 
 }
 
 /// <summary>The stamp for a ROW SET (W2-A2, the value gates): one 64-bit FNV-1a fold over the (slot, version) pairs of
-/// every row a host paints, in order — the members of a tracklist, the billed artists, the rows a trailing stack
+/// every row a host paints, in order â€” the members of a tracklist, the billed artists, the rows a trailing stack
 /// shows. A host's <c>UseComputed</c> value carries the fold instead of the rows themselves, so the record stays a
 /// handful of words whatever the list's length and the memo's equality cut-off (<c>Memo&lt;T&gt;</c>'s push-pull
 /// compare) decides the re-render with no allocation. Order-sensitive on purpose: a reordered list paints
 /// differently. A row that is <see cref="Table.None"/> or past the table folds as version 0, so a placeholder slot is
 /// still part of the value (its ARRIVAL moves the fold) without an out-of-range read. The collision odds of a 64-bit
-/// fold are the accepted price — a missed re-render needs two distinct row sets to hash identically in the same
+/// fold are the accepted price â€” a missed re-render needs two distinct row sets to hash identically in the same
 /// component's lifetime.</summary>
 public static class RowFold
 {
@@ -92,7 +92,7 @@ public static class RowFold
     public static uint Version(Table table, int slot)
         => slot > Table.None && slot < table.Count ? table.Version[slot] : 0u;
 
-    /// <summary>One row — its slot and its version — into the fold.</summary>
+    /// <summary>One row â€” its slot and its version â€” into the fold.</summary>
     public static ulong Row(ulong fold, Table table, int slot) => Add(Add(fold, slot), Version(table, slot));
 
     /// <summary>Every row of <paramref name="slots"/>, in order, from <see cref="Seed"/>.</summary>
@@ -106,7 +106,7 @@ public static class RowFold
 
 public readonly partial struct Album
 {
-    // ══ 1. INSTALL AND THE ROUTES ════════════════════════════════════════════════════════════════════════════════════
+    // â•â• 1. INSTALL AND THE ROUTES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     /// <summary>Owner M's ONE install: the album, prerelease and show pages, the pre-save resolve seam and the
     /// View-credits seam. Called once by the composition root after <c>Track.InstallActions()</c>; replaces the Wave 4.5
@@ -116,7 +116,7 @@ public readonly partial struct Album
         Shell.SetPage(Shell.RouteKind.Album, Page);
         Shell.SetPage(Shell.RouteKind.Prerelease, PreReleasePage);
         Shell.SetPage(Shell.RouteKind.Show, Show.Page);
-        // Podcast rework wave P2 (owner S): a PLACEHOLDER only — wave P5 (owner Q) replaces this with the real
+        // Podcast rework wave P2 (owner S): a PLACEHOLDER only â€” wave P5 (owner Q) replaces this with the real
         // Episode.Page/Reader. Registered here because Episode joins the shared-detail-surface family this group
         // already installs (gate P2: the route resolves to a named surface, never a play or a not-found).
         Shell.SetPage(Shell.RouteKind.Episode, Episode.Page);
@@ -130,7 +130,7 @@ public readonly partial struct Album
     public static Element Page(in Shell.Route route) => PageFor(in route);
 
     /// <summary><see cref="Shell.RouteKind.Prerelease"/>: the kind-138 pairing resolves to the ordinary album page; an
-    /// unresolvable one paints the shell with an empty title and "Nothing here yet" — never an error page (W18).</summary>
+    /// unresolvable one paints the shell with an empty title and "Nothing here yet" â€” never an error page (W18).</summary>
     // MOUNT POINT (stage B contract)
     public static Element PreReleasePage(in Shell.Route route) => PageFor(in route);
 
@@ -159,7 +159,7 @@ public readonly partial struct Album
         Detail.Config _profileFor;
         // The frame's identity VALUE, rebuilt only when the inputs it reads moved (IdentityInputs, below):
         // Detail.Identity.For walks the tracklist and allocates the face list, and the frame's own _spec.SetIfChanged
-        // already short-circuits an equal spec — so an unmoved identity must cost nothing above the compare.
+        // already short-circuits an equal spec â€” so an unmoved identity must cost nothing above the compare.
         Detail.Identity? _identity;
         IdentityInputs _identityFor;
 
@@ -179,7 +179,7 @@ public readonly partial struct Album
         /// <summary>The page render's gate value (W2-A2). The five table counters are read INSIDE the memo that
         /// computes this, so a publication that leaves it equal never re-renders the page; <see cref="Readiness"/> is
         /// the W18 arm's input, and <see cref="Resolving"/> carries the album table's generation only while a
-        /// <c>prerelease:</c> subject's kind-138 pairing is still unresolved — the one case where "the table drained"
+        /// <c>prerelease:</c> subject's kind-138 pairing is still unresolved â€” the one case where "the table drained"
         /// is itself the news (Render re-looks the pairing up).</summary>
         readonly record struct PageStamp(uint Epoch, IdentityInputs Identity, EdgeState Readiness, uint Resolving);
 
@@ -195,7 +195,7 @@ public readonly partial struct Album
             Func<bool, Element> release = outer => ReleasePanel(_display, outer);
             Func<Element> trailing = () => Trailing(_display);
             _slots = new Detail.FrameSlots { Attribution = attribution, PreRelease = preRelease, ReleasePanel = release, Trailing = trailing };
-            // Without a panel the rail must not hold an empty `rail:release` row — it would still take a 14-DIP gap.
+            // Without a panel the rail must not hold an empty `rail:release` row â€” it would still take a 14-DIP gap.
             _slotsUnresolved = new Detail.FrameSlots { Episodes = static _ => NothingHereYet() };   // Func<bool, Element> (Detail.UI.cs patch P-B1)
         }
 
@@ -219,10 +219,10 @@ public readonly partial struct Album
                 _source = null;
                 _identity = null;
             }
-            // The kind-138 pairing is re-looked-up only when the album table published and nothing resolved yet — a
+            // The kind-138 pairing is re-looked-up only when the album table published and nothing resolved yet â€” a
             // resolved pairing never un-resolves (the cold scan is Upcoming.ResolvePreRelease's). The generation is
             // PEEKED: the wake for it is PageStamp.Resolving inside the gate below, which carries the generation only
-            // while unresolved — after that an album publication no longer re-renders the page by itself.
+            // while unresolved â€” after that an album publication no longer re-renders the page by itself.
             uint albumsPublished = scope.Albums.Changed.Peek();
             if (!_album.IsValid && _row.IsValid && _resolvedAt != albumsPublished)
             {
@@ -233,7 +233,7 @@ public readonly partial struct Album
             _display = a;
 
             // THE gate (W2-A2): the table counters are subscribed inside this memo, and the memo's equality cut-off
-            // means an equal stamp resolves this render CLEAN without running the body below — in real mode the tables
+            // means an equal stamp resolves this render CLEAN without running the body below â€” in real mode the tables
             // publish nearly every frame while covers stream in, and only a stamp that moved rebuilds the frame spec.
             var stamp = UseComputed(_stamp).Value;
 
@@ -242,7 +242,7 @@ public readonly partial struct Album
 
             if (!a.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
-            // W18: an unresolvable prerelease route — the tracklist ask for the prerelease row failed and nothing named it.
+            // W18: an unresolvable prerelease route â€” the tracklist ask for the prerelease row failed and nothing named it.
             if (PageRules.IsUnresolvedPreRelease(_album.IsValid, stamp.Readiness, a.Knows(AlbumFields.Title)))
                 return Detail.Frame(new Detail.FrameSpec
                 {
@@ -296,8 +296,8 @@ public readonly partial struct Album
         static bool IsPreReleaseSubject(EntityUri subject)
             => subject.Id.IsPrerelease || EntityUri.IsPrerelease(subject.Text.AsSpan());
 
-        /// <summary>The gate's compute (the <c>UseComputed</c> body): reads the five counters this page depends on —
-        /// tracked, so a drain of any of them wakes the memo — and folds what the render reads into a
+        /// <summary>The gate's compute (the <c>UseComputed</c> body): reads the five counters this page depends on â€”
+        /// tracked, so a drain of any of them wakes the memo â€” and folds what the render reads into a
         /// <see cref="PageStamp"/>. <c>_display</c>, <c>_row</c> and <c>_album</c> are Render's fields, written before the
         /// memo is read; a value computed against the previous slot differs in <see cref="IdentityInputs.Slot"/> on the
         /// next publication, so a pairing that just resolved re-renders once more and then gates on the new row.
@@ -327,12 +327,12 @@ public readonly partial struct Album
         }
 
         /// <summary>The page accent for the slot bodies the frame does not hand one (the countdown's ring and eyebrow):
-        /// the cover's chrome grading, else the system accent — read in the consumer's render, so a late grading
+        /// the cover's chrome grading, else the system accent â€” read in the consumer's render, so a late grading
         /// re-tints it. Delegates the ladder itself to <see cref="Detail.AccentFor"/> (the single ladder every accent
         /// site now shares), with the row's own <see cref="Album.Accent"/> as the payload rung. The
         /// <see cref="Palette.Watch"/> read is a per-IMAGE signal (bumped when THIS cover grades, never per batch), and
         /// it lands wherever this thunk runs: the countdown card binds it into the eyebrow's <c>Color</c> channel
-        /// (<c>Prop.Of(p.Accent)</c>, a mount-time effect that writes one scene column — no render) and peeks it,
+        /// (<c>Prop.Of(p.Accent)</c>, a mount-time effect that writes one scene column â€” no render) and peeks it,
         /// untracked, for the ring's scalar foreground (W2-A2). Never called from this page's own render.</summary>
         ColorF AccentNow()
         {
@@ -370,7 +370,7 @@ public readonly partial struct Album
         }
 
         /// <summary>The hero's Shuffle satellite: shuffle on, then this album's OUT rows as the context (the table's own
-        /// command-bar shuffle is the same shape over its visible order — G-264).</summary>
+        /// command-bar shuffle is the same shape over its visible order â€” G-264).</summary>
         void ShuffleAlbum()
         {
             var a = _display;
@@ -386,8 +386,8 @@ public readonly partial struct Album
             else Actions.Services.Play?.Invoke(a.Uri);
         }
 
-        /// <summary>The hero ⋯ (W20), built at OPEN from the live model: Add to playlist ▸ (the track menu's own deposit
-        /// submenu over the album's rows) · Play next · Add to queue (the container verbs). No owner rows on an album.</summary>
+        /// <summary>The hero â‹¯ (W20), built at OPEN from the live model: Add to playlist â–¸ (the track menu's own deposit
+        /// submenu over the album's rows) Â· Play next Â· Add to queue (the container verbs). No owner rows on an album.</summary>
         ContextMenuModel? MoreMenu()
         {
             var a = _display;
@@ -443,15 +443,16 @@ public readonly partial struct Album
         ],
     };
 
-    // ══ 2. ABOUT THIS RELEASE (ch 05 W11, W15; ch 03 item 56) ════════════════════════════════════════════════════════
+    // â•â• 2. ABOUT THIS RELEASE (ch 05 W11, W15; ch 03 item 56) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     static Element ReleasePanel(Album a, bool outerPadding)
         => Embed.Comp(new ReleaseProps(a.Slot, outerPadding), static () => new ReleasePanelHost());
 
     sealed record ReleaseProps(int AlbumSlot, bool OuterPadding);
 
-    /// <summary>ONE shape from its first paint: the release date sits on the "About this release" line, and Label/℗/©
-    /// are 11-px note lines under it. Song count and length are not painted — the hero meta line already states both.
+    /// <summary>ONE shape from its first paint: an "About this release" title (14/20 semibold), a label/value facts list
+    /// (Released, Label â€” caption labels, body values that wrap), then the â„—/Â© lines as caption notes. Song count and
+    /// length are not painted â€” the hero meta line already states both.
     /// The whole record is gated on the publishing group, so the panel appears once, complete.</summary>
     sealed class ReleasePanelHost : Component
     {
@@ -462,11 +463,11 @@ public readonly partial struct Album
 
         public ReleasePanelHost() => _stamp = Stamp;
 
-        /// <summary>The facts this panel prints, as the rows they are read from (W2-A2): the album row (label, ℗/©,
+        /// <summary>The facts this panel prints, as the rows they are read from (W2-A2): the album row (label, â„—/Â©,
         /// the release date and its precision), the tracklist edge and every member's version (the facts record still
         /// counts what is out) and the versions edge with every edition's own
-        /// version (the Other-versions labels: title · year · kind). "Out" is a clock verdict and is re-read when any of
-        /// these move, not on its own — a row crossing its release instant with nothing else publishing keeps its old
+        /// version (the Other-versions labels: title Â· year Â· kind). "Out" is a clock verdict and is re-read when any of
+        /// these move, not on its own â€” a row crossing its release instant with nothing else publishing keeps its old
         /// count until the next publication, exactly as the countdown card owns the visible instant.</summary>
         readonly record struct ReleaseStamp(uint Epoch, int Slot, uint Album, uint TracksEdge, ulong Members,
                                             uint VersionsEdge, ulong Versions);
@@ -491,8 +492,8 @@ public readonly partial struct Album
         {
             var p = UseProps<ReleaseProps>();
             _slot = p.AlbumSlot;
-            // The gate (W2-A2): the four counters are subscribed inside the memo; this body — the facts record, the
-            // heading, the notes, the versions flyout — runs only when the stamp moved.
+            // The gate (W2-A2): the four counters are subscribed inside the memo; this body â€” the facts record, the
+            // heading, the notes, the versions flyout â€” runs only when the stamp moved.
             _ = UseComputed(_stamp).Value;
             var a = new Album(p.AlbumSlot);
             if (!a.IsValid) return new BoxEl();
@@ -509,39 +510,27 @@ public readonly partial struct Album
             var children = new List<Element>(2);
             if (released is not null || noteCount > 0)
             {
-                var head = new List<Element>(2)
+                // A section title, then the facts as a label/value list (Released, Label), then the â„—/Â© courtesy
+                // lines â€” one type ramp (14/20 values, 12/16 labels and notes), nothing crammed onto the title's line.
+                var body = new List<Element>(4)
                 {
-                    Design.Type.Eyebrow(Loc.Get(Strings.Detail.AboutRelease)) with { Color = Tok.TextTertiary, Shrink = 0f },
+                    Ui.BodyStrong(Loc.Get(Strings.Detail.AboutRelease)) with { Key = "release-title", MinWidth = 0f },
                 };
-                if (released is not null)
+                var factRows = new List<Element>(2);
+                if (released is not null) factRows.Add(Fact("fact:released", ReleaseFactsRules.ReleasedCaption(facts), released));
+                if (facts.Label is { } label) factRows.Add(Fact("fact:label", Loc.Get(Strings.Detail.FactLabel), label));
+                if (factRows.Count > 0)
+                    body.Add(new BoxEl { Key = "release-facts", Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Children = factRows.ToArray() });
+                if (facts.Notes.Count > 0)
                 {
-                    // On the heading's own line, so a date never takes a row of its own.
-                    head.Add(Design.Type.DenseMeta(ReleaseFactsRules.ReleasedCaption(facts) + " " + released) with
-                    {
-                        Color = Tok.TextSecondary, MinWidth = 0f, Shrink = 1f,
-                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    });
-                }
-                var body = new List<Element>(2)
-                {
-                    new BoxEl
-                    {
-                        Key = "release-head", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                        Children = head.ToArray(),
-                    },
-                };
-                if (noteCount > 0)
-                {
-                    var notes = new Element[noteCount];
-                    int n = 0;
-                    if (facts.Label is { } label) notes[n++] = Note("note:label", Loc.Get(Strings.Detail.FactLabel) + ": " + label);
-                    for (int i = 0; i < facts.Notes.Count; i++)
-                        notes[n++] = Note(i < s_noteKeys.Length ? s_noteKeys[i] : "note:" + i.ToString(CultureInfo.InvariantCulture), facts.Notes[i]);
-                    body.Add(new BoxEl { Key = "release-notes", Direction = 1, Gap = 3f, Children = notes });
+                    var notes = new Element[facts.Notes.Count];
+                    for (int i = 0; i < notes.Length; i++)
+                        notes[i] = Note(i < s_noteKeys.Length ? s_noteKeys[i] : "note:" + i.ToString(CultureInfo.InvariantCulture), facts.Notes[i]);
+                    body.Add(new BoxEl { Key = "release-notes", Direction = 1, Gap = 2f, MinWidth = 0f, Children = notes });
                 }
                 children.Add(new BoxEl
                 {
-                    Key = "release-about", Direction = 1, Gap = Spacing.M, Children = body.ToArray(),
+                    Key = "release-about", Direction = 1, Gap = Spacing.S, MinWidth = 0f, Children = body.ToArray(),
                 });
             }
             if (versions.Length > 0) children.Add(OtherVersions(versions));
@@ -557,20 +546,38 @@ public readonly partial struct Album
             };
         }
 
-        static Element Note(string key, string text) => new BoxEl
+        /// <summary>The facts list's label column: wide enough for "Released"/"Label" in the caption rung, so the values
+        /// start on one line; a longer localized label simply pushes its own value (Shrink 0), never truncates.</summary>
+        const float FactLabelW = 76f;
+
+        /// <summary>One fact: a tertiary caption label and its value in the body rung, the value wrapping (a long label
+        /// name or date never ellipsises in the narrow rail).</summary>
+        static Element Fact(string key, string label, string value) => new BoxEl
         {
-            Key = key, Direction = 1,
+            Key = key, Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Start, MinWidth = 0f,
             Children =
             [
-                Design.Type.MicroMeta(text) with
+                Ui.Caption(label).Tertiary() with { MinWidth = FactLabelW, Shrink = 0f, Margin = new Edges4(0f, 2f, 0f, 0f) },
+                Ui.Body(value).Secondary() with
                 {
-                    Color = Tok.TextTertiary,
-                    Wrap = TextWrap.Wrap, MaxLines = 4, Trim = TextTrim.CharacterEllipsis,
+                    Grow = 1f, Basis = 0f, MinWidth = 0f, Wrap = TextWrap.Wrap, MaxLines = 3, Trim = TextTrim.CharacterEllipsis,
                 },
             ],
         };
 
-        /// <summary>W15: "Name · Year · KIND" per edition; choosing one opens that album.</summary>
+        static Element Note(string key, string text) => new BoxEl
+        {
+            Key = key, Direction = 1, MinWidth = 0f,
+            Children =
+            [
+                Ui.Caption(text).Tertiary() with
+                {
+                    MinWidth = 0f, Wrap = TextWrap.Wrap, MaxLines = 4, Trim = TextTrim.CharacterEllipsis,
+                },
+            ],
+        };
+
+        /// <summary>W15: "Name Â· Year Â· KIND" per edition; choosing one opens that album.</summary>
         static Element OtherVersions(ReadOnlySpan<int> versions)
         {
             var items = new MenuFlyoutItem[versions.Length];
@@ -596,7 +603,7 @@ public readonly partial struct Album
         }
     }
 
-    // ══ 3. THE TRAILING BAND (ch 05 §0.10-§0.11, W7, W12, W18; ch 03 item 55) ════════════════════════════════════════
+    // â•â• 3. THE TRAILING BAND (ch 05 Â§0.10-Â§0.11, W7, W12, W18; ch 03 item 55) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     /// <summary>The band under the rows: reserved from mount, keyed per album so its one-swap latch is per album.</summary>
     static Element Trailing(Album a)
@@ -606,7 +613,7 @@ public readonly partial struct Album
     sealed record TrailingProps(int AlbumSlot);
 
     /// <summary>ONE <c>SkelRegionEl</c>, shimmering from the first frame and revealing once into whatever it resolves
-    /// to — the sections, or a collapsed empty box. The shimmer is shaped by what the row already knows
+    /// to â€” the sections, or a collapsed empty box. The shimmer is shaped by what the row already knows
     /// (<see cref="PageRules.SkeletonShape"/>) and the region is keyed on that shape, so a single never reserves an
     /// album's rows block and the reveal does not collapse the page under the cursor.</summary>
     sealed class TrailingHost : Component
@@ -628,12 +635,12 @@ public readonly partial struct Album
         readonly Action _demand;
         readonly Action _deadlineHit;
 
-        // The pending gate's cached stamp + inputs (ch 08 render-cost fix — see RowStamp in Album.Page.cs).
+        // The pending gate's cached stamp + inputs (ch 08 render-cost fix â€” see RowStamp in Album.Page.cs).
         RowStamp _pendingTracks;
         bool _pendingDemanded, _pendingAbout, _pendingFeatured, _pendingFans, _pendingVideo, _pendingDeadline, _pendingCached;
 
         // The demand block's cached stamps, one per Prefetch relation whose EnsureRows call actually scans a growing
-        // target list (the Ask() calls below stay unconditional — each is already an O(1) no-op once its edge leaves
+        // target list (the Ask() calls below stay unconditional â€” each is already an O(1) no-op once its edge leaves
         // Unknown, so gating them saves nothing; see RowStamp).
         RowStamp _moreByStamp, _similarStamp, _versionsStamp, _recsStamp, _fansStamp;
 
@@ -652,7 +659,7 @@ public readonly partial struct Album
             _slot = p.AlbumSlot;
             UseEffect(_demand);
             // The deadline is keyed on (album, demanded): UseTimeout arms from mount and RE-ARMS when its deps change,
-            // so the fire that counts is the one 400 ms after the page demanded — DeadlineHit ignores the pre-demand
+            // so the fire that counts is the one 400 ms after the page demanded â€” DeadlineHit ignores the pre-demand
             // fire. Reading the signal here (tracked) is what re-renders this host once, when the demand lands.
             bool demanded = _demanded.Value;
             UseTimeout(_deadlineHit, PageRules.TrailingDeadlineMs, DepKey.From(_slot, demanded ? 1 : 0));
@@ -694,19 +701,19 @@ public readonly partial struct Album
             _ = e.AlbumRecommendations.Changed.Value;              // Featured on answering
             _ = e.ArtistRelated.Changed.Value;                     // Fans also like answering (full release)
             _ = e.TrackRelatedArtists.Changed.Value;               // Fans also like answering (short release)
-            bool demanded = _demanded.Value;                       // same-component signals — always tracked too
+            bool demanded = _demanded.Value;                       // same-component signals â€” always tracked too
             bool deadline = _deadline.Value;
             int slot = _slot;
             var a = new Album(slot);
             var billed = a.IsValid ? a.ArtistSlots : default;
             // The two sections directly under the rows: About the artist (the lead's name is known, or nobody is billed
-            // and there is no card) and Featured on (the recommendations edge answered or failed — an EMPTY answer is
+            // and there is no card) and Featured on (the recommendations edge answered or failed â€” an EMPTY answer is
             // ready too, the section simply does not mount).
             bool aboutReady = billed.Length == 0 || new Artist(billed[0]).Knows(ArtistFields.Name);
             bool featuredReady = e.AlbumRecommendations.Readiness(slot) != EdgeState.Unknown;
             // The music-video section: every member's video verdict (asked with the rows in DemandTracked), at ANY
             // release length, so the section reveals with the band instead of landing a beat after it and shoving
-            // About-the-artist down — it is the FIRST section in the band.
+            // About-the-artist down â€” it is the FIRST section in the band.
             var members = MemoryMarshal.Cast<int, Track>(a.IsValid ? a.TrackSlots : default);
             bool shortRelease = PageRules.IsShortRelease(a.IsValid && a.Knows(AlbumFields.Kind) ? a.Kind : AlbumKind.Album, members.Length);
             bool videoReady = PageRules.VideoDecided(members);
@@ -741,7 +748,7 @@ public readonly partial struct Album
             _pendingDeadline = deadline;
             // The tracklist and the demand are unconditional; About, Featured on, Fans also like and the video verdict
             // hold the reserve for at most PageRules.TrailingDeadlineMs (all asked at Visible priority, so they normally
-            // land inside it). Merch, more-by and similar stay Prefetch and are NOT part of this gate — they resolve
+            // land inside it). Merch, more-by and similar stay Prefetch and are NOT part of this gate â€” they resolve
             // later and the sections update in place (see PageRules.TrailingReserved).
             bool pending = PageRules.TrailingReserved(demanded, e.AlbumTracks.Readiness(slot), aboutReady, featuredReady, fansReady, videoReady, deadline);
             if (!pending) _swapped = true;                       // ONE swap per album: later landings update in place
@@ -749,20 +756,20 @@ public readonly partial struct Album
         }
 
         /// <summary>The deadline timer's fire. The timer arms from mount too (UseTimeout has no disabled arm), so a fire
-        /// before the page has demanded is ignored — the re-arm on the (album, demanded) dep change is the one that
+        /// before the page has demanded is ignored â€” the re-arm on the (album, demanded) dep change is the one that
         /// counts. Idempotent: the signal flips once per album.</summary>
         void DeadlineHit()
         {
             if (_demanded.Peek() && !_deadline.Peek()) _deadline.Value = true;
         }
 
-        /// <summary>The band's relations and the rows its sections paint. The two sections directly under the rows —
+        /// <summary>The band's relations and the rows its sections paint. The two sections directly under the rows â€”
         /// About the artist (the lead's Identity|Stats|Bio) and Featured on (the recommendations edge and its playlist
-        /// identities) — are asked at Visible priority: the reserve holds for them (PendingNow), so they must ride the
+        /// identities) â€” are asked at Visible priority: the reserve holds for them (PendingNow), so they must ride the
         /// same planner lane as the tracklist. Merch, more-by, similar and the related artists stay Prefetch (below the
         /// fold; not part of the gate). The
         /// <c>Ask</c> calls stay unconditional (each is a single state check, a no-op once its edge leaves Unknown);
-        /// the <c>EnsureRows</c> calls — the ones that actually walk a growing target span — are each gated behind a
+        /// the <c>EnsureRows</c> calls â€” the ones that actually walk a growing target span â€” are each gated behind a
         /// <see cref="RowStamp"/> for the relation they read, so an unrelated drain elsewhere (another page's
         /// prefetch, a sidebar sync) that merely wakes this effect via one of the eight subscriptions below does not
         /// also re-walk every relation's targets (ch 08 render-cost fix).</summary>
@@ -846,7 +853,7 @@ public readonly partial struct Album
             // The fans source flips between the lead artist's related edge and a seed track's. The SOURCE TAG is what
             // makes that safe: a slot is a per-table index, so the artist parent and the track parent can carry the
             // same slot number, and without the tag a flip could match the other source's cached generation/version
-            // by coincidence, read as "not moved", and skip the fetch — leaving the fans row silently empty.
+            // by coincidence, read as "not moved", and skip the fetch â€” leaving the fans row silently empty.
             var fansStamp = fansFromTrack
                 ? new RowStamp(fansParent, trackRelatedPublished, e.TrackRelatedArtists.Version(fansParent), Source: 1)
                 : new RowStamp(fansParent, relatedPublished, e.ArtistRelated.Version(fansParent), Source: 2);
@@ -887,7 +894,7 @@ public readonly partial struct Album
 
         /// <summary>Which sections are present and what each one paints from (W2-A2): the album row and the members
         /// (the video section's flags and stills and the seed track's play counts), the video COUNTERPART rows (their
-        /// own titles and durations, which land after the members do — they are not members, so the member fold cannot
+        /// own titles and durations, which land after the members do â€” they are not members, so the member fold cannot
         /// see them), the billing edge and the lead artist's version (About the artist; the "More by" title), the fans'
         /// count and rows (the chips), and each list relation's count plus edge version (its section header, its
         /// stack's key signature). The rows INSIDE a list section are the stack's own gate (<c>StackHost</c>), not this
@@ -914,7 +921,7 @@ public readonly partial struct Album
         }
 
         /// <summary>The counterpart rows' identities. Kind 99 hands the page a video's uri and its still and NOTHING
-        /// else (<c>Spotify.Decode.cs</c>), so the video's own title and duration need one Prefetch ask — the same one
+        /// else (<c>Spotify.Decode.cs</c>), so the video's own title and duration need one Prefetch ask â€” the same one
         /// the versions drawer makes for the row it expands (<c>Track.Drawer.cs</c> <c>DemandVersions</c>). Until it
         /// lands the card states the SONG's title and length, which is why a late answer is an upgrade and never a
         /// blank.</summary>
@@ -985,8 +992,8 @@ public readonly partial struct Album
         {
             var p = UseProps<TrailingProps>();
             _slot = p.AlbumSlot;
-            // The gate (W2-A2): the twelve counters are subscribed inside the memo; the section stack below — seven
-            // sections, each a card or a keyed stack — is rebuilt only when the stamp moved.
+            // The gate (W2-A2): the twelve counters are subscribed inside the memo; the section stack below â€” seven
+            // sections, each a card or a keyed stack â€” is rebuilt only when the stamp moved.
             _ = UseComputed(_stamp).Value;
             UseEffect(_demandVideos);
             var e = Entities.Current.Edges;
@@ -996,7 +1003,7 @@ public readonly partial struct Album
             var memberSlots = a.TrackSlots;
             var members = MemoryMarshal.Cast<int, Track>(memberSlots);
             bool shortRelease = PageRules.IsShortRelease(a.Knows(AlbumFields.Kind) ? a.Kind : AlbumKind.Album, members.Length);
-            // ONE entry per video-bearing row, in track order — never the boolean `any` that drew a single card for
+            // ONE entry per video-bearing row, in track order â€” never the boolean `any` that drew a single card for
             // three videos, and never gated on `shortRelease`, which hid every video on anything longer than an EP.
             Span<PageRules.AlbumVideo> videoBuffer = stackalloc PageRules.AlbumVideo[PageRules.VideoCap];
             var videos = videoBuffer[..PageRules.SelectVideos(members, videoBuffer)];
@@ -1071,7 +1078,7 @@ public readonly partial struct Album
 
     static int At(ReadOnlySpan<int> slots, int index) => (uint)index < (uint)slots.Length ? slots[index] : 0;
 
-    /// <summary>A related album: the shared media row (48 cover, hover play FAB, drag source), plated as W10 says —
+    /// <summary>A related album: the shared media row (48 cover, hover play FAB, drag source), plated as W10 says â€”
     /// FillCardSecondary + a hairline, hover FillCardDefault, press FillSubtleTertiary, corners 8.</summary>
     static Element AlbumRow(int slot)
     {
@@ -1133,7 +1140,7 @@ public readonly partial struct Album
         return new DragPayload(kind, uri, uri, title, new EntityRef(entity, slot), TrackResolver: resolver, ArtUrl: cover);
     }
 
-    /// <summary>A merch listing: not a media row — nothing to play, and its call to action is the PRICE, trailing in accent
+    /// <summary>A merch listing: not a media row â€” nothing to play, and its call to action is the PRICE, trailing in accent
     /// ink ("Buy" when the wire gave none). With no shop url it is a listing, not a dead button: no scale, no role, no
     /// focus stop, no cursor, no click.</summary>
     static Element MerchRow(int merchSlot)
@@ -1169,7 +1176,7 @@ public readonly partial struct Album
         };
     }
 
-    /// <summary>"Fans also like": at most eight 48-DIP chips in ONE clipped row — never wrapped, no cap link.</summary>
+    /// <summary>"Fans also like": at most eight 48-DIP chips in ONE clipped row â€” never wrapped, no cap link.</summary>
     static Element FansRow(ReadOnlySpan<int> fans)
     {
         var chips = new Element[fans.Length];
@@ -1204,7 +1211,7 @@ public readonly partial struct Album
     }
 
     /// <summary>"About the artist": 84 round portrait, the eyebrow, the 20/700 name + the verified check (an empty box of
-    /// the same size when unverified, so the name's measure never changes), ≤2 bio lines, Follow. The whole card
+    /// the same size when unverified, so the name's measure never changes), â‰¤2 bio lines, Follow. The whole card
     /// navigates; Follow is its own hit target.</summary>
     static Element AboutSection(Artist artist)
     {
@@ -1266,16 +1273,16 @@ public readonly partial struct Album
         return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = SectionPad, Children = [card] };
     }
 
-    // ── the music-video section (ch 05 W12; the 2026-09-17 rewrite) ──────────────────────────────────────────────────
+    // â”€â”€ the music-video section (ch 05 W12; the 2026-09-17 rewrite) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     //
-    // ONE thumbnail rule for both arms: EVERY still is the video's own (PageRules.SelectVideos → Track.VideoImageId,
-    // the counterpart's art, the song's art — in that order). The card used to draw `Album.ImageId`, so a music video
+    // ONE thumbnail rule for both arms: EVERY still is the video's own (PageRules.SelectVideos â†’ Track.VideoImageId,
+    // the counterpart's art, the song's art â€” in that order). The card used to draw `Album.ImageId`, so a music video
     // was advertised with the album sleeve; the spec never said where the image came from, which is how that survived.
-    // ONE click rule for both arms: the card plays the VIDEO — that is, the SONG that owns it, because kind 99 keys a
+    // ONE click rule for both arms: the card plays the VIDEO â€” that is, the SONG that owns it, because kind 99 keys a
     // video on its song (Track.Drawer.cs PlayVersion does exactly this). It used to play the album.
 
     /// <summary>The section's two arms (<see cref="PageRules.ArmFor"/>). ONE video keeps the hero card's geometry
-    /// (200×116 thumb under a 44 FAB) and its "WATCH THE OFFICIAL VIDEO" eyebrow — the single-video page is unchanged
+    /// (200Ã—116 thumb under a 44 FAB) and its "WATCH THE OFFICIAL VIDEO" eyebrow â€” the single-video page is unchanged
     /// apart from the corrected image, title, subtitle and click. TWO OR MORE get a HORIZONTAL SHELF through the shared
     /// <c>PagedShelf</c>, so the edge fades, the pips and the page snap are the engine's and not hand-rolled. Its
     /// section box has no bottom padding: About-the-artist supplies that step.</summary>
@@ -1295,9 +1302,9 @@ public readonly partial struct Album
         };
     }
 
-    /// <summary>The HERO arm's thumbnail and play FAB — 0.2.9's exact numbers, kept byte for byte. The shelf arm fits
+    /// <summary>The HERO arm's thumbnail and play FAB â€” 0.2.9's exact numbers, kept byte for byte. The shelf arm fits
     /// its own 16:9 thumb to whatever card width the shelf hands it, between <see cref="VideoCardMinW"/> and
-    /// <see cref="VideoCardMaxW"/> (16:9 cards want more room than the 148–188 square-card shelf range), and lands on
+    /// <see cref="VideoCardMaxW"/> (16:9 cards want more room than the 148â€“188 square-card shelf range), and lands on
     /// the same 44 FAB at every reachable width.</summary>
     const float VideoThumbW = 200f, VideoThumbH = 116f, VideoFab = 44f;
     const float VideoCardMinW = 200f, VideoCardMaxW = 280f;
@@ -1334,16 +1341,16 @@ public readonly partial struct Album
         ],
     };
 
-    /// <summary>The SHELF arm: one horizontal, page-snapping strip of video cards under a "Music videos" header — the
+    /// <summary>The SHELF arm: one horizontal, page-snapping strip of video cards under a "Music videos" header â€” the
     /// artist page's own video shelf (<c>Artist.Page.cs</c> <c>VideosShelf</c>), on the same shared
     /// <see cref="PagedShelf"/>. Nothing here is hand-rolled: the edge feather is the control's <c>edgeFade</c> (which
     /// reaches the viewport as the engine's <c>AutoEdgeFadeBand</c> scratch-buffer fade), the dots are its
     /// <see cref="ShelfPager.Pips"/> (a stock <c>PipsPager</c>), and <see cref="ShelfSnap.Page"/> is what makes a
     /// fling, a chevron and a pip all rest on a page boundary.
-    /// <para><c>measured: true</c> — an album has a handful of videos, so the strip lays them all out and sizes itself
+    /// <para><c>measured: true</c> â€” an album has a handful of videos, so the strip lays them all out and sizes itself
     /// to the tallest card instead of estimating a height (the <c>Concert.Page</c> / <c>Modules.UI</c> watch-shelf
     /// idiom). That is also what keeps the strip from jumping: nothing is guessed and then corrected.</para>
-    /// <para>The shelf builds its OWN header row — <c>[header, spacer, pips, chevrons]</c> — so the header passed here
+    /// <para>The shelf builds its OWN header row â€” <c>[header, spacer, pips, chevrons]</c> â€” so the header passed here
     /// is just the title and the count, and the pager lands at the trailing edge.</para></summary>
     static Element VideoShelf(ReadOnlySpan<PageRules.AlbumVideo> videos)
     {
@@ -1405,7 +1412,7 @@ public readonly partial struct Album
         };
     }
 
-    /// <summary>The video's OWN still under the play FAB — never the album cover. The FAB is 44 at every width a shelf
+    /// <summary>The video's OWN still under the play FAB â€” never the album cover. The FAB is 44 at every width a shelf
     /// card can reach, so the hero's badge and a cell's badge are the same object.</summary>
     static Element VideoThumb(StringId thumb, float w, float h)
     {
@@ -1435,7 +1442,7 @@ public readonly partial struct Album
     }
 
     /// <summary>The VIDEO's title: the counterpart row's once its identity has landed (<c>SectionsHost.DemandVideos</c>),
-    /// the song's until then — an upgrade, never a blank.</summary>
+    /// the song's until then â€” an upgrade, never a blank.</summary>
     static string VideoTitle(in PageRules.AlbumVideo v)
     {
         var counterpart = new Track(v.CounterpartSlot);
@@ -1444,21 +1451,21 @@ public readonly partial struct Album
         return member.IsValid ? member.Title : "";
     }
 
-    /// <summary>The hero arm's subtitle: what this card IS, then how long it runs. Never the album's "N songs · M min ·
-    /// year" — that line described the RELEASE and was the third half of this bug.</summary>
+    /// <summary>The hero arm's subtitle: what this card IS, then how long it runs. Never the album's "N songs Â· M min Â·
+    /// year" â€” that line described the RELEASE and was the third half of this bug.</summary>
     static string VideoMeta(in PageRules.AlbumVideo v)
     {
         string kind = Loc.Get(Strings.Detail.Versions.MusicVideo);
-        return v.DurationMs > 0 ? kind + " · " + Track.Format.TrackTime(v.DurationMs) : kind;
+        return v.DurationMs > 0 ? kind + " Â· " + Track.Format.TrackTime(v.DurationMs) : kind;
     }
 
     /// <summary>WATCH this video. Playing the song is NOT enough: the reducer decides a row's media kind from
     /// <c>videoWanted &amp;&amp; (flags &amp; VideoMask)</c> (<c>Playback.Transitions</c> <c>KindOfRow</c>), and
     /// <c>videoWanted</c> comes from the placement state, whose <c>Requested</c> starts at
-    /// <c>SurfacePlacement.None</c> — so starting the song with the surface off gives exactly what it says: audio.
+    /// <c>SurfacePlacement.None</c> â€” so starting the song with the surface off gives exactly what it says: audio.
     /// <para>The card therefore REQUESTS THE SURFACE FIRST and plays second (<see cref="PageRules.WatchAction"/>). It
-    /// requests through <c>State.FoldAvailability</c> + <c>State.OpenAt</c> — the rail's own <c>ShowVideoAt</c> pair,
-    /// which <c>Commit</c>s directly — and not through <c>FoldForTrack</c>, so <c>UpgradeGate.DeferUpgrade</c> (which
+    /// requests through <c>State.FoldAvailability</c> + <c>State.OpenAt</c> â€” the rail's own <c>ShowVideoAt</c> pair,
+    /// which <c>Commit</c>s directly â€” and not through <c>FoldForTrack</c>, so <c>UpgradeGate.DeferUpgrade</c> (which
     /// exists to withhold a MID-TRACK upgrade nobody asked for) can never swallow an explicit click. The commit posts
     /// <c>Playback.SetVideoPlacement(true)</c>, and because the reducer's inbox is FIFO and folded in one batch, that
     /// input lands before the load.</para></summary>
@@ -1473,7 +1480,7 @@ public readonly partial struct Album
         if (!member.IsValid) return;
         // ONE `hasVideo` for both halves of the decision. The gate below asks "can anything host this row's video right
         // now"; RequestVideoSurface then STAMPS that same answer. Asking the gate a hardcoded `true` while the fold
-        // stamped the row's real bit is how a disagreement between them would reopen the original defect — the gate
+        // stamped the row's real bit is how a disagreement between them would reopen the original defect â€” the gate
         // says "go", the fold stamps None, OpenAt resolves to nothing, and the song plays under a play badge with no
         // word said.
         bool hasVideo = member.HasVideo;
@@ -1490,20 +1497,20 @@ public readonly partial struct Album
 
             case PageRules.WatchAction.SwitchInPlace:
                 // Already on the deck: the placement input alone re-decides the row's kind and reloads it on the video
-                // host at the carried position (DoVideoPlacement). Never PlayContext — that would restart it.
+                // host at the carried position (DoVideoPlacement). Never PlayContext â€” that would restart it.
                 RequestVideoSurface(hasVideo);
-                if (!Playback.IsPlaying.Peek()) Playback.TogglePlay();
+                if (!Playback.IsPlaying.Peek()) Playback.TogglePlay("album.watch");
                 return;
 
             default:
-                RequestVideoSurface(hasVideo);        // FIRST — see the summary; order is the contract
+                RequestVideoSurface(hasVideo);        // FIRST â€” see the summary; order is the contract
                 Playback.PlayContext(member.Id);
                 return;
         }
     }
 
     /// <summary>Stamp the availability this row really has, then open at where the user likes to watch (G-150's
-    /// persisted <c>Preferred</c>, docked when nothing is remembered) — the player bar's own
+    /// persisted <c>Preferred</c>, docked when nothing is remembered) â€” the player bar's own
     /// <c>PlacementCore.TogglePrimary</c> opens at exactly that same <c>Preferred</c>, so a card click and the badge
     /// land the surface in the same place.
     /// <para>Two commits, in this order, and NOT <c>State.TogglePrimary</c>: that one is a TOGGLE (a second card click
@@ -1520,7 +1527,7 @@ public readonly partial struct Album
     static string VideoKey(in PageRules.AlbumVideo v)
         => "video:" + v.MemberSlot.ToString(CultureInfo.InvariantCulture);
 
-    // ── the trailing skeleton (W7): the section skeletons PageRules.SkeletonShape names, each with a 160×18 header bar ──
+    // â”€â”€ the trailing skeleton (W7): the section skeletons PageRules.SkeletonShape names, each with a 160Ã—18 header bar â”€â”€
     // The sizes are PageRules.Skel* so PageRules.SkeletonHeight equals what is drawn. It deliberately UNDER-states (no
     // watch-video, merch or "show all" placeholder).
 

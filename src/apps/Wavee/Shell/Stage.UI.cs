@@ -164,7 +164,7 @@ public static partial class Stage
         BrushTransitionMs = Design.Motion.Faster,
         HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
-        IsEnabled = enabled, OnClick = Shell.TogglePlayPause, Cursor = enabled ? CursorId.Hand : (CursorId?)null,
+        IsEnabled = enabled, OnClick = static () => Shell.TogglePlayPause("stage.button"), Cursor = enabled ? CursorId.Hand : (CursorId?)null,
         Children = [new TextEl(playing ? Icons.Pause : Icons.Play) { Size = glyphSize, FontFamily = Theme.IconFont, Color = enabled ? Ink.ButtonInk : Ink.InkTertiary }],
     };
 

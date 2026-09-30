@@ -561,7 +561,7 @@ public static partial class Queue
         {
             RowText text = TextOf(current);
             var kids = new List<Element>(3);
-            if (!classic) kids.Add(ArtTile(text.Art, text.Uri, static () => Playback.TogglePlay(), 44f, 28f, 96));
+            if (!classic) kids.Add(ArtTile(text.Art, text.Uri, static () => Playback.TogglePlay("queue.nowplaying"), 44f, 28f, 96));
             Element identity = classic ? ClassicIdentity(text, nowPlaying: true) : Identity(text, Tok.AccentTextPrimary, Tok.TextSecondary);
             // The title is a LINK to where the track plays from (0.2.9 parity, user report 2026-09-16): the context's page
             // when it has one (a playlist, an album, an artist, the liked songs), else the track's album — a station has no

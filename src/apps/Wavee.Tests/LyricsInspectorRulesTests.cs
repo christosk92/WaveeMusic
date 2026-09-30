@@ -199,6 +199,238 @@ public class LyricsInspectorRulesTests
         Assert.Equal(0d, Diagnostics.LyricsReport.WinnerScore(null));
     }
 
+    // ── v2 (W3-G): the reference line ──────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ReferenceOf_Spotify_IsASource_AndReadsByProductName()
+    {
+        var r = Diagnostics.LyricsReport.ReferenceOf("3/7 returned; ref=spotify; winner=amll (Syllable, score 0.91, offset 0ms)");
+        Assert.Equal(Diagnostics.LyricsReport.ReferenceKind.Source, r.Kind);
+        Assert.Equal(new[] { "spotify" }, r.Sources);
+        Assert.Equal("Reference: Spotify", Diagnostics.LyricsReport.ReferenceLine(r));
+    }
+
+    [Fact]
+    public void ReferenceOf_Consensus_ListsTheReferenceThenItsPeers()
+    {
+        var r = Diagnostics.LyricsReport.ReferenceOf("4/7 returned; ref=consensus(kugou,qq,netease); winner=kugou (Syllable, score 0.84, offset 0ms, unverified)");
+        Assert.Equal(Diagnostics.LyricsReport.ReferenceKind.Consensus, r.Kind);
+        Assert.Equal(new[] { "kugou", "qq", "netease" }, r.Sources);
+        Assert.Equal("Reference: consensus of kugou, qq, netease", Diagnostics.LyricsReport.ReferenceLine(r));
+    }
+
+    [Theory]
+    [InlineData("2/7 returned; ref=none; winner=lrclib (Line, score 0.62, offset 0ms, unverified)")]
+    [InlineData("2/7 returned; ref=none")]
+    [InlineData("2/7 returned; ref=none — background complete")]
+    public void ReferenceOf_None_ReadsNoReference(string summary)
+    {
+        var r = Diagnostics.LyricsReport.ReferenceOf(summary);
+        Assert.Equal(Diagnostics.LyricsReport.ReferenceKind.None, r.Kind);
+        Assert.Equal("No reference", Diagnostics.LyricsReport.ReferenceLine(r));
+    }
+
+    [Theory]
+    [InlineData("0/7 sources returned lyrics — no match anywhere")]
+    [InlineData("served from the on-disk cache (saved 2026-09-29 10:00:00Z); winner=amll (Syllable, 42 lines)")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void ReferenceOf_ASummaryWithoutTheToken_IsAbsent_AndPrintsNothing(string? summary)
+    {
+        var r = Diagnostics.LyricsReport.ReferenceOf(summary);
+        Assert.Equal(Diagnostics.LyricsReport.ReferenceKind.Absent, r.Kind);
+        Assert.Equal("", Diagnostics.LyricsReport.ReferenceLine(r));
+    }
+
+    [Fact]
+    public void ReferenceOf_ASuffixAfterTheToken_IsNotPartOfTheSourceId()
+        => Assert.Equal(new[] { "spotify" }, Diagnostics.LyricsReport.ReferenceOf("1/7 returned; ref=spotify — background complete").Sources);
+
+    // ── v2: the stage-0 match line ──────────────────────────────────────────────────────────────────────────────────
+
+    static Lyrics.SourceTrace V2(string id, Lyrics.Outcome outcome = Lyrics.Outcome.Hit, string detail = "", double score = 0.8,
+        bool winner = false, string reason = "", Lyrics.MatchBand band = Lyrics.MatchBand.None, double conf = 0d, string match = "",
+        double recall = 0d, int support = 0)
+        => new(id, outcome, 300, detail, Lyrics.SyncKind.Line, 40, score, winner, reason,
+            Band: band, Confidence: conf, Match: match, Recall: recall, Support: support);
+
+    [Fact]
+    public void MatchText_ASearchMatchedSource_NamesBandConfidenceAndBreadcrumb()
+        => Assert.Equal("VeryHigh · conf 0.93 · a1b2 VeryHigh title=7 artist=7 dur=+320ms",
+            Diagnostics.LyricsReport.MatchText(V2("kugou", band: Lyrics.MatchBand.VeryHigh, conf: 0.9312,
+                match: "a1b2 VeryHigh title=7 artist=7 dur=+320ms")));
+
+    [Fact]
+    public void MatchText_AnIdentityMatch_HasNoLine()
+    {
+        // Identity/ISRC candidates keep the defaults (Perfect / 1.0) and no breadcrumb: there was no search to explain.
+        var t = V2("amll", band: Lyrics.MatchBand.Perfect, conf: 1d);
+        Assert.Equal("", Diagnostics.LyricsReport.MatchText(t));
+        Assert.Equal("", Diagnostics.LyricsReport.MatchText(t, Lyrics.MatchBasis.Identity));
+    }
+
+    [Fact]
+    public void MatchText_ASourceWithNoCandidate_HasNoLine()
+        => Assert.Equal("", Diagnostics.LyricsReport.MatchText(V2("qq", Lyrics.Outcome.Miss)));
+
+    [Fact]
+    public void MatchText_ASearchBasisWithoutABreadcrumb_StillShowsTheBand()
+        => Assert.Equal("Perfect · conf 1.00",
+            Diagnostics.LyricsReport.MatchText(V2("lrclib", band: Lyrics.MatchBand.Perfect, conf: 1d), Lyrics.MatchBasis.MetadataSearch));
+
+    [Theory]
+    [InlineData(0.925, "0.93")]
+    [InlineData(1d, "1.00")]
+    [InlineData(0d, "0.00")]
+    public void ConfidenceText_IsTwoDecimalsInvariant(double conf, string expected)
+        => Assert.Equal(expected, Diagnostics.LyricsReport.ConfidenceText(conf));
+
+    // ── v2: the rerank line ─────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void RerankText_AnAlignedCandidate_ReadsRecallSupportAndTheAppliedOffset()
+    {
+        var t = V2("kugou", reason: "ref-align lcs=38/40 off=320ms", recall: 0.95, support: 2);
+        var facts = Diagnostics.LyricsReport.FactsOf(t);
+        Assert.True(facts.Ranked);
+        Assert.True(facts.Aligned);
+        Assert.Equal(320L, facts.OffsetMs);
+        Assert.False(facts.OffsetCapped);
+        Assert.Equal("recall 0.95 · support 2 · offset +320 ms", Diagnostics.LyricsReport.RerankText(facts));
+    }
+
+    [Fact]
+    public void RerankText_ANegativeOffset_KeepsItsSign()
+        => Assert.Equal("recall 0.80 · support 0 · offset -1099 ms", Diagnostics.LyricsReport.RerankText(
+            Diagnostics.LyricsReport.FactsOf(V2("amll", reason: "ref-align lcs=30/36 off=-1099ms", recall: 0.8))));
+
+    [Fact]
+    public void RerankText_AnOverCapOffset_SaysItWasNotApplied()
+    {
+        var t = V2("netease", reason: "ref-align lcs=20/40 off=0ms [offset 3.2s > cap (live/remix cut?)]", recall: 0.7, support: 1);
+        var facts = Diagnostics.LyricsReport.FactsOf(t);
+        Assert.True(facts.OffsetCapped);
+        Assert.Equal("3.2", facts.CappedOffset);
+        Assert.Equal("recall 0.70 · support 1 · offset 3.2 s not applied [capped]", Diagnostics.LyricsReport.RerankText(facts));
+    }
+
+    [Fact]
+    public void RerankText_APartialDocument_FlagsRecallUnderTheTierBar()
+        => Assert.Equal("recall 0.40 [< 0.60] · support 0 · offset 0 ms", Diagnostics.LyricsReport.RerankText(
+            Diagnostics.LyricsReport.FactsOf(V2("amll", reason: "ref-align lcs=16/40 off=0ms [recall 0.40 < 0.60: line tier only]", recall: 0.4))));
+
+    [Fact]
+    public void RerankText_WithoutAReference_SaysRecallDoesNotApply()
+        => Assert.Equal("recall n/a (no reference) · support 2", Diagnostics.LyricsReport.RerankText(
+            Diagnostics.LyricsReport.FactsOf(V2("qq", reason: "no-reference [consensus support=2]", support: 2))));
+
+    [Fact]
+    public void RerankText_ASourceTheRerankerNeverSaw_HasNoLine()
+    {
+        Assert.Equal("", Diagnostics.LyricsReport.RerankText(Diagnostics.LyricsReport.FactsOf(V2("qq", Lyrics.Outcome.Miss, score: 0d))));
+        Assert.Equal("", Diagnostics.LyricsReport.RerankText(Diagnostics.LyricsReport.FactsOf(V2("qq", Lyrics.Outcome.Hit, score: 0d))));
+    }
+
+    // ── v2: the tie-break ───────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("lost to amll on tier syllable > line", "lost to amll on tier (syllable > line)")]
+    [InlineData("lost to kugou on verified", "lost to kugou on verification")]
+    [InlineData("lost to qq on score 0.912 > 0.880", "lost to qq on score (0.912 > 0.880)")]
+    [InlineData("lost to amll on prior×confidence 0.550 > 0.500", "lost to amll on prior × confidence (0.550 > 0.500)")]
+    [InlineData("lost to amll on provider id", "lost to amll on provider id (a full tie)")]
+    [InlineData("won on tier syllable > line over qq", "won on tier (syllable > line) over qq")]
+    [InlineData("won on provider id over musixmatch", "won on provider id (a full tie) over musixmatch")]
+    [InlineData("only candidate", "the only candidate")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void TieBreakPhrase_ReadsTheStageTwoKeyInProse(string? tieBreak, string expected)
+        => Assert.Equal(expected, Diagnostics.LyricsReport.TieBreakPhrase(tieBreak));
+
+    [Fact]
+    public void Verdict_ALosingHit_EndsWithWhoItLostToAndOnWhat()
+        => Assert.Equal("not chosen — it returned lyrics but lost the rerank: score 0.74 against the winner's 0.88 — lost to amll on tier (syllable > line)",
+            Diagnostics.LyricsReport.Verdict(Trace("qq", Lyrics.Outcome.Hit, 0.74), 0.88, "lost to amll on tier syllable > line"));
+
+    [Fact]
+    public void Verdict_TheWinner_SaysWhatItWonOn()
+        => Assert.Equal("★ CHOSEN — reranker score 0.91, won on score (0.912 > 0.880) over qq (ref-align)",
+            Diagnostics.LyricsReport.Verdict(Trace("amll", Lyrics.Outcome.Hit, 0.91, winner: true, reason: "ref-align"), 0.91,
+                "won on score 0.912 > 0.880 over qq"));
+
+    // ── v2: guarded skips ───────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SkipPhrase_AnOpenBreaker_NamesUntilWhenAndWhy()
+    {
+        var t = V2("musixmatch", Lyrics.Outcome.Miss, "no match — skipped: breaker open until 14:32 (captcha)", score: 0d);
+        Assert.Equal("skipped — breaker open until 14:32 (captcha)", Diagnostics.LyricsReport.SkipPhrase(t));
+        Assert.Equal("skipped — breaker open until 14:32 (captcha)", Diagnostics.LyricsReport.Verdict(t, 0.9));
+    }
+
+    [Theory]
+    [InlineData("no match — cached miss NoLyricForSong 3h ago", "skipped — known miss (no lyric) 3 h ago")]
+    [InlineData("no match — cached miss SongNotFound 10min ago; other note", "skipped — known miss (song not found) 10 min ago")]
+    public void SkipPhrase_ARememberedMiss_NamesTheKindAndItsAge(string detail, string expected)
+        => Assert.Equal(expected, Diagnostics.LyricsReport.SkipPhrase(V2("kugou", Lyrics.Outcome.Miss, detail, score: 0d)));
+
+    [Fact]
+    public void SkipPhrase_ADiskHit_SaysNoSourceWasQueried()
+        => Assert.Equal("skipped — not queried — served from the local lyrics cache", Diagnostics.LyricsReport.SkipPhrase(
+            V2("qq", Lyrics.Outcome.Skipped, "not queried — served from the local lyrics cache", score: 0d)));
+
+    [Fact]
+    public void SkipPhrase_AnOrdinaryMissOrTheWinner_IsEmpty()
+    {
+        Assert.Equal("", Diagnostics.LyricsReport.SkipPhrase(V2("qq", Lyrics.Outcome.Miss, "no match — search 'x' → 0 hit(s), 0 new", score: 0d)));
+        Assert.Equal("", Diagnostics.LyricsReport.SkipPhrase(V2("qq", detail: "skipped: breaker open until 14:32 (captcha)", winner: true)));
+    }
+
+    [Fact]
+    public void Verdict_AFetchThatTrippedTheBreaker_SaysSo()
+        => Assert.Equal("not chosen — the request failed; it tripped the breaker for 2 h (captcha)",
+            Diagnostics.LyricsReport.Verdict(V2("musixmatch", Lyrics.Outcome.Error, "HttpRequestException: x — breaker tripped for 2h: captcha", score: 0d), 0.9));
+
+    // ── v2: the score breakdown uses the reranker's real prior term ─────────────────────────────────────────────────
+
+    [Fact]
+    public void Blend_MatchesTheRerankersOwnScore_IncludingPriorTimesConfidence()
+    {
+        var doc = new Lyrics.Doc("t1", true,
+            [L(1_000, "one two three", 1_900), L(3_000, "four five six", 3_900), L(5_000, "seven eight", 5_900)],
+            Lyrics.SyncKind.Line, "kugou");
+        var cand = new Lyrics.Candidate("kugou", 0.5, Lyrics.MatchBasis.MetadataSearch, doc)
+            { Confidence = 0.8, Band = Lyrics.MatchBand.High };
+        var d = Lyrics.Reranker.Rank([cand], null).All[0];
+        double rebuilt = Diagnostics.LyricsReport.Blend(d.TextAgreement, d.SyncScore, d.TimingScore, d.Coverage,
+            Diagnostics.LyricsReport.PriorTerm(0.5, 0.8));
+        Assert.Equal(d.Score, rebuilt, 12);
+    }
+
+    [Fact]
+    public void ScoreBreakdown_NamesPriorAndConfidence_OrRecoversTheirProduct()
+    {
+        var t = new Lyrics.SourceTrace("kugou", Lyrics.Outcome.Hit, 300, "", Lyrics.SyncKind.Line, 40,
+            Diagnostics.LyricsReport.Blend(1d, 0.6d, 1d, 1d, 0.4d), false, "", Text: 1d, Coverage: 1d, Timing: 1d, SyncScore: 0.6d,
+            Band: Lyrics.MatchBand.High, Confidence: 0.8d);
+        Assert.EndsWith("coverage 1.00 × .10  +  prior 0.50 × conf 0.80 × .05", Diagnostics.LyricsReport.ScoreBreakdown(t, 0.5));
+        Assert.EndsWith("coverage 1.00 × .10  +  prior × conf 0.40 × .05", Diagnostics.LyricsReport.ScoreBreakdown(t, null));
+    }
+
+    [Fact]
+    public void BuildReport_CarriesTheReference_MatchAndRerankLines()
+    {
+        var src = V2("kugou", reason: "ref-align lcs=38/40 off=320ms", band: Lyrics.MatchBand.VeryHigh, conf: 0.93,
+            match: "a1b2 VeryHigh title=7", recall: 0.95, support: 2);
+        var report = new Lyrics.SearchReport("t1", "Song", "Artist", "Album", 200_000, null, 0,
+            "2/7 returned; ref=consensus(kugou,qq); winner=kugou (Line, score 0.80, offset 320ms)", [src]);
+        string text = Diagnostics.LyricsReport.BuildReport("t1", report, null);
+        Assert.Contains("ref:     Reference: consensus of kugou, qq\n", text);
+        Assert.Contains("    match:   VeryHigh · conf 0.93 · a1b2 VeryHigh title=7\n", text);
+        Assert.Contains("    rerank:  recall 0.95 · support 2 · offset +320 ms\n", text);
+        Assert.DoesNotContain("prior × .05", text);
+    }
+
     // ── the bundle's names ──────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

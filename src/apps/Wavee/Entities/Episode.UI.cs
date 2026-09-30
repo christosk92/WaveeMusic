@@ -252,7 +252,7 @@ public readonly partial struct Episode
         bool deckRow = e.Slot > 0 && e.IsValid && !playing.IsEmpty && playing == e.Id;
         if (Shell.PlayerBarRules.RowVerb(deckRow, Playback.Error.Peek()) == Shell.RowAction.Toggle)
         {
-            Playback.TogglePlay();
+            Playback.TogglePlay("episode.row");
             return;
         }
         startDifferent();

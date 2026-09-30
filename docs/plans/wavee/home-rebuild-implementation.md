@@ -766,7 +766,7 @@ pre-existing). On screen: side-folder build, `wavee://open?route=home`, `Drive-W
 - **Still open (for the owner):** ≈ 85 layout units between a shelf's captions and the next header (prototype ≈ 52);
   the daylist art is a tall crop at his width because the two-line 40/52 title makes the card ≈ 370 tall.
 
-## Traced issues (2026-09-29) — root causes, nothing below is fixed yet unless stated
+## Traced issues (2026-09-29) — root causes; ALL FIXED 2026-09-29 (status below the table)
 | # | Issue | Root cause (evidence) | Fix direction |
 |---|---|---|---|
 | T1 | "Home goes blank at the page end" | **Capture-only, not on screen.** PrintWindow(PW_RENDERFULLCONTENT) shows the page blank once the engine idles after a scroll; `CopyFromScreen` of the same moment shows it fully rendered. The engine draws everything into ONE composition swapchain and presents nothing at idle (`AppHost.cs:1276-1287`, byte-identical skip `:1343-1371`), so PrintWindow gets a stale DWM buffer. | Verification tooling: use a screen copy (or an alpha-flattened `CaptureBgra`), never PrintWindow, for idle frames. |
@@ -780,3 +780,15 @@ pre-existing). On screen: side-folder build, `wavee://open?route=home`, `Drive-W
 | T9 | `AlbumReleaseFactsRulesTests.Length_IsSpelledOnce…` | Order-dependent test bug: expected uses `MetaLineYear(2, …)` (raw int) while the code passes `SongCount(2)`; both render `"[key]"` until another test loads the locale catalog (`Localization.cs:237`). Not the Album edits. | Test: `MetaLineYear(Strings.Detail.SongCount(2), …)` (the `DetailTextTests.cs:133` shape). |
 | T10 | Artist pick photo stays a grey block | Decode is right (`pinnedItem.backgroundImageV2`, `Spotify.Decode.Artist.cs:297`; fallback header `Artist.UI.cs:695`). The band is reserved whenever a URL exists and shows only the flat placeholder with no failure/timeout path (`Artist.UI.cs:756-776`). The owner's session left ~9 images neither Ready nor Pending after that navigation (`images=133 imagesReady=124 imagesPending=0`, `canceled=8`) with no decode failure logged → a None/Canceled leftover on a mounted non-virtual node, which nothing restarts (`ImageCache.cs:929-956`); probable trigger: the top band's first build at the 900 fallback then a rail/band layout flip unmounting the card mid-decode (`Artist.Page.cs:734-753`). Not reproduced in 4 fresh launches. | Engine: sweep pinned `None/Canceled` leftovers in `Pump` (like `RetryPinnedExhausted`). App: reveal the photo band only when the image is Ready, collapse on failure. Diagnostics: put the URL in the `image decode failed` line. |
 | T11 | Artist hero doesn't stretch on overscroll (dark band above) | The stretch exists and computes right (`.StretchFromTop()` on the photo, `Artist.UI.cs:410`; `ScrollEffectEval.cs:70-71,107-111`), but the hero root's `ClipToBounds` (needed for `Collapse(Leading)`, `Artist.UI.cs:470`) clips at its un-stretched top edge (`SceneRecorder.cs:2072-2073`). The engine bench/gate have no clipping ancestor, so they miss it. | Engine: let `Collapse(Leading)` pose its cut as a clip-rect channel open at the top (like `StickyClip`'s `ClipTop`), so the root needs no `ClipToBounds`; add a gate with the app's real structure. |
+
+### Fix status (2026-09-29, all verified: engine D+R + VerticalSlice ALL CHECKS PASSED 1695, canon OK, Wavee.slnx D+R, Wavee.Tests D+R 0 failures)
+- T1: `ops/release/tools/Drive-WaveeWindow.ps1 -Out` screen-copies (`-PrintWindow` keeps the old path).
+- T2: `Controls.ShelfHeight(w, aspect, captionLines, metaLine)` is exact (default w+66, 1-line w+50); plate bottom 12→8, gutter 2→0; the lead's meta rides inline in its caption; Browse/Search shelves reserve 1 caption line.
+- T3: `DaylistForm.TextWidth/UseHeroTitle` — the title steps to 28/36 below a 480 text column; the card stays ≈ 320.
+- T4: `Zones.RecentsMinCol` 200 (632 → 3 columns).
+- T5/T7: no code (owner zoom; not a bug).
+- T6: every local play/pause logs `[playback] play/pause cause=<source> action=…` (required `cause` on `Playback.Pause/Resume/TogglePlay`).
+- T8: shelf gates fixed; ItemsView bound mode no longer re-renders on a `current` move (0 B); PagedShelf pages on keyboard focus (`FollowFocusToPage`).
+- T9: the Album test builds its expectation with `SongCount(2)`.
+- T10: engine `ImageCache` restarts pinned Canceled leftovers (`RestartPinnedLeftovers`, 500 ms) and an idle host wakes for them (`WakeReasons.ImageLeftoverDue`); the pick card reveals its photo only when Ready (`PickPhoto`); `image decode failed` lines carry `src=`.
+- T11: `Collapse(Leading)` cuts its own children via the `ClipBottom`/`CollapseCut` channel; the Artist hero root dropped `ClipToBounds`, so `StretchFromTop` fills a top overpan (gate `gate.scroll.stretch-under-collapse`; touchpad-only in the app — a wheel hard-clamps).

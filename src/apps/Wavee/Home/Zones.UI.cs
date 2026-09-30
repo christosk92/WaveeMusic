@@ -56,7 +56,7 @@
 //
 // ── DISPATCH ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 //   Daylist                                   Daylist.Card (Home/Daylist.UI.cs)                           no header
-//   RecentGrid                                RecentGrid component (+ proxy) → Responsive → GridEl{220, ≤4,  tools: history link
+//   RecentGrid                                RecentGrid component (+ proxy) → Responsive → GridEl{200, ≤4,  tools: history link
 //                                             64} of MediaRow(Tile) × (2·cols − 1) + the history tile (Outline)
 //   CoverShelf/MixedCovers/RadioShelf/
 //   ShowGrid                                  PagedShelf of HomeCards.ShelfCell (+ 2-span lead cell)       tools: See all · ‹ pips ›
@@ -98,7 +98,10 @@ public static class Zones
 
     // ── the grid geometry per body (stock auto-fill: MinColWidth × MaxColumns; the width picks the count) ───────────
 
-    const float RecentsMinCol = 220f, ListMinCol = 320f, ClusterMinCol = 300f, TilesMinCol = 220f;
+    /// <summary>The Recents grid's minimum column: 200, so the owner's 632-DIP page fits three (3·200 + 2·12 = 624 ≤ 632
+    /// → 5 played tiles + the history tile) and four arrive at 836. Public for the fact that pins it.</summary>
+    public const float RecentsMinCol = 200f;
+    const float ListMinCol = 320f, ClusterMinCol = 300f, TilesMinCol = 220f;
     const int RecentsMaxCols = 4, ListMaxCols = 2, ContinueMaxCols = 3, ClusterMaxCols = 3, TilesMaxCols = 4, ChartsMaxCols = 3;
     const float RowH = 64f, ClusterArt = 40f, EpisodeArt = 56f, TileArt = Design.Size.Thumb48, ProgressW = 120f;
     const int ReleaseRowsMax = 6, ClusterMax = 6, ClusterRows = 3;
@@ -252,8 +255,8 @@ public static class Zones
     /// (or its cover) through <c>CardData.CoverAspect</c>, an owner · count meta line, the wide min/max card widths. A
     /// COVER shelf whose lead carries a header image gets PagedShelf's 2-span lead cell (E21/E22): the lead is
     /// <c>ShelfLead.LeadAspect</c> wide so its cover is exactly as tall as the squares beside it, with a two-line caption
-    /// and a "{n} songs" meta line; the template follows the cell, so a page too narrow for the span mounts the lead as
-    /// a plain square (the engine's rule, never ours). Everything else is the square cell, verbatim.</summary>
+    /// whose tail is the inline "{n} songs" meta (no separate meta line); the template follows the cell, so a page too
+    /// narrow for the span mounts the lead as a plain square (the engine's rule, never ours). Everything else is the square cell, verbatim.</summary>
     static Element Shelf(Zone zone, IOverlayService? overlay, ShelfController? controller)
     {
         bool wide = zone.Kind is ZoneKind.WideTiles or ZoneKind.VideoTiles;
@@ -273,8 +276,10 @@ public static class Zones
                 ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl ?? c.ImageUrl,
                                         meta: CardMeta.Of(c.OwnerName, c.TrackCount))
                 : leadWide && i == 0
+                    // The lead's "{n} songs" rides INLINE at the tail of its two-line caption (the prototype's
+                    // `.lead-meta` span inside `.g-cap`): a cover shelf never grows a separate meta line.
                     ? HomeCards.ShelfItemOf(in c, second, circular: false, wideArt: c.HeaderImageUrl, captionLines: 2,
-                                            meta: CardMeta.Of(null, c.TrackCount))
+                                            meta: CardMeta.Of(null, c.TrackCount), metaInline: true)
                     : HomeCards.ShelfItemOf(in c, second, circular);
         }
         var host = HostOf(overlay);
@@ -287,12 +292,12 @@ public static class Zones
         }
 
         float squareAspect = wide ? Design.Size.WideTileAspect : 1f;
-        // The row's cross extent: a wide cell is its 16:9 cover + the label block + the meta line; a shelf carrying the
-        // 2-span lead reserves the lead's meta line for every card (a square card without one is merely shorter than
-        // its row, top-aligned); the plain shelf is the ONE identity `ShelfHeight(w) == w + 72` Browse also uses.
-        Func<float, float> cardHeight = wide ? static w => Controls.ShelfHeight(w, Design.Size.WideTileAspect, 1)
-            : leadWide ? static w => Controls.ShelfHeight(w, 1f, 1)
-            : HomeModuleLayout.ShelfCardHeight;
+        // The row's cross extent, EXACT for what its cards show (`Controls.ShelfHeight`, the rule the card renders): a
+        // wide cell is its 16:9 cover + title + ONE caption line + the separate meta line; a cover shelf reserves the
+        // most caption lines any of its cards shows — 2 when it carries the lead (its meta inline on those lines), else
+        // 1 — and no meta line. A square beside the lead is merely 16 shorter than its row (its plate stretches, labels
+        // top-aligned). Like every PagedShelf prop but the items, the extent is fixed at mount.
+        Func<float, float> cardHeight = wide ? s_wideCardHeight : CoverCardHeight(HomeCards.CaptionLinesOf(items));
 
         return PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, squareAspect),
@@ -301,7 +306,7 @@ public static class Zones
             controller: controller,
             minCardW: wide ? Design.Size.WideTileMin : HomeModuleLayout.ShelfCardMin,
             maxCardW: wide ? Design.Size.WideTileMax : HomeModuleLayout.ShelfCardMax,
-            gap: Spacing.M, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
+            gap: HomeModuleLayout.ShelfGap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
             keyOf: static (item, i) => item.Card.IsBlank
@@ -311,11 +316,24 @@ public static class Zones
             // is frozen mount configuration, so it is set for every cover shelf and simply inert while the span is 1.
             leadSpan: leadWide ? LeadSpan : 1,
             leadCardAt: leadWide
-                ? (item, i, leadW) => Cell(in item, leadW, ShelfLead.LeadAspect(leadW, Spacing.M, LeadSpan, Spacing.S))
+                ? (item, i, leadW) => Cell(in item, leadW, ShelfLead.LeadAspect(leadW, HomeModuleLayout.ShelfGap, LeadSpan, Spacing.S))
                 : null,
             leadMinColumns: wide ? 0 : LeadMinColumns)
            with { Key = "home-shelf:" + zone.Key };
     }
+
+    // The shelf extents as cached delegates (one per shape, never a per-render closure).
+    static readonly Func<float, float> s_wideCardHeight =
+        static w => Controls.ShelfHeight(w, Design.Size.WideTileAspect, captionLines: 1, metaLine: true);
+    static readonly Func<float, float> s_coverCardHeight1 = static w => Controls.ShelfHeight(w, 1f, captionLines: 1, metaLine: false);
+    static readonly Func<float, float> s_coverCardHeight2 = static w => Controls.ShelfHeight(w, 1f, captionLines: 2, metaLine: false);
+
+    static Func<float, float> CoverCardHeight(int captionLines) => captionLines switch
+    {
+        <= 1 => s_coverCardHeight1,
+        2 => s_coverCardHeight2,
+        _ => w => Controls.ShelfHeight(w, 1f, captionLines, metaLine: false),
+    };
 
     /// <summary>The shelf pager in the sticky header's tools slot: ‹ pips › — the stock pips between two stock chevrons
     /// (the prototype's order), every action routed back through the controller (the gallery's

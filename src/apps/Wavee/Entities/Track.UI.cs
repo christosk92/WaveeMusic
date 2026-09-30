@@ -99,7 +99,7 @@ public readonly partial struct Track
         // which goes through `PutOnDeck` and clears the fault (the same heal the bar's Retry performs).
         if (Shell.PlayerBarRules.RowVerb(deckRow, Playback.Error.Peek()) == Shell.RowAction.Toggle)
         {
-            Playback.TogglePlay();
+            Playback.TogglePlay("track.row");
             return;
         }
         startDifferent();

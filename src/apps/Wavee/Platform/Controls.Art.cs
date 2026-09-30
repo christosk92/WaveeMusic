@@ -386,11 +386,23 @@ public static partial class Controls
         /// default) renders nothing, so every existing card keeps its two-line label block.</summary>
         public string? Meta { get; init; }
 
+        /// <summary>The second line as a PLAIN string the card renders itself: ONE secondary 12/16 paragraph capped at
+        /// <see cref="CaptionLines"/>, with <see cref="Meta"/> riding INLINE at its tail as a tertiary " · meta" span (the
+        /// prototype's <c>.lead-meta</c> inside <c>.g-cap</c>) instead of its own line. Null (the default) keeps the
+        /// <see cref="Subtitle"/> element and the separate meta line. A string, not an element, so the card's data-only
+        /// equality holds across re-pushes (a span paragraph's array never compares equal).</summary>
+        public string? Caption { get; init; }
+
+        /// <summary>The line cap of an inline <see cref="Caption"/> (1 or 2 — what <c>ShelfHeight</c>'s
+        /// <c>captionLines</c> reserves). Ignored without a <see cref="Caption"/>.</summary>
+        public int CaptionLines { get; init; } = 1;
+
         public bool Equals(CardData? other)
             => other is not null && (ReferenceEquals(this, other)
                || (Uri == other.Uri && Title == other.Title && CoverUrl == other.CoverUrl
                    && Circular == other.Circular && ShowMenu == other.ShowMenu && TitleLines == other.TitleLines
                    && CoverAspect.Equals(other.CoverAspect) && Meta == other.Meta
+                   && Caption == other.Caption && CaptionLines == other.CaptionLines
                    && (OnPlay is null) == (other.OnPlay is null)
                    && Drag?.Kind == other.Drag?.Kind && Equals(Drag?.Style, other.Drag?.Style)
                    // `float.Equals`, not `==`: NaN (the "unpinned" default) must equal NaN.
@@ -401,26 +413,47 @@ public static partial class Controls
         // The hash stays cheap and consistent with Equals: it walks no Element tree (presence stands in for the two
         // element slots) — equal records still hash equal, unequal ones merely may collide.
         public override int GetHashCode()
-            => HashCode.Combine(Uri, Title, CoverUrl, Circular, ShowMenu, TitleLines, HashCode.Combine(Height, CoverAspect, Meta),
+            => HashCode.Combine(Uri, Title, CoverUrl, Circular, ShowMenu, TitleLines,
+                                HashCode.Combine(Height, CoverAspect, Meta, Caption, CaptionLines),
                                 (OnPlay is not null ? 1 : 0) | (Drag is not null ? 2 : 0) | (Subtitle is not null ? 4 : 0)
                                 | (CoverOverride is not null ? 8 : 0) | (Selected ? 16 : 0)
                                 | (SelectedAccent is not null ? 32 : 0) | (Menu is not null ? 64 : 0));
     }
 
-    /// <summary>THE virtualized shelf's cross extent for a SQUARE-cover, two-line card: <c>cardW + 72</c> — 6 gutter +
-    /// 20 plate padding + the square cover + 8 gap + 20 title + 2 + 32 subtitle. The identity
-    /// <c>ShelfHeight(w) == w + 72</c> is pinned by test; it is the general form below at aspect 1 with no extra lines.
+    /// <summary>THE virtualized shelf's cross extent for a SQUARE-cover card whose subtitle may take TWO lines (the
+    /// Artist / module / episode shelves pass subtitles capped at 2): <c>cardW + 66</c> — the general form below at
+    /// aspect 1, two caption lines, no meta line: 4 gutter + 8 plate top + the square cover (w − 16) + 8 gap + 20 title +
+    /// 2 + 32 subtitle + 8 plate bottom. The identity <c>ShelfHeight(w) == w + 66</c> is pinned by test.
     /// <para>The RENDERER and the ESTIMATOR must both call this. An estimate that disagrees with the rendered height
     /// makes a measured virtual list re-pin its scroll anchor mid-scroll, which reads as the feed jumping under the
     /// cursor.</para></summary>
-    public static float ShelfHeight(float cardW) => ShelfHeight(cardW, 1f, 0);
+    public static float ShelfHeight(float cardW) => ShelfHeight(cardW, 1f, captionLines: 2, metaLine: false);
 
-    /// <summary>The general shelf extent: the cover at <paramref name="coverAspect"/> (width ÷ height, over the card's
-    /// INNER width — the card less its 2 × <c>Spacing.S</c> plate padding) plus the fixed 88 of chrome (6 gutter + 20
-    /// plate padding + 8 gap + 20 title + 2 + 32 subtitle) plus 16 per <paramref name="extraLines"/> — one caption
-    /// line (12/16) each, whether a second subtitle line or the tertiary <see cref="CardData.Meta"/> line.</summary>
-    public static float ShelfHeight(float cardW, float coverAspect, int extraLines)
-        => CoverHeight(cardW - 2f * Spacing.S, coverAspect) + 88f + 16f * extraLines;
+    /// <summary>The EXACT shelf card extent for what the card shows — the renderer (<see cref="ShelfCardHost"/> +
+    /// <see cref="Labels"/>) stacks precisely these, to the DIP:
+    /// <c>ShelfGutterTop (4) + ShelfPlatePad (8) + cover + ShelfPlatePad (8) gap + title 20
+    /// + (captionLines &gt; 0 ? 2 + 16·captionLines : 0) + (metaLine ? 2 + 16 : 0) + ShelfPlatePad (8) + ShelfGutterBottom (0)</c>.
+    /// The cover is <paramref name="coverAspect"/> (width ÷ height) over the card's INNER width (the card less its
+    /// 2 × 8 plate padding). <paramref name="captionLines"/> is the subtitle's line cap (an inline <see cref="CardData.Caption"/>
+    /// carries its meta on those lines); <paramref name="metaLine"/> reserves the separate tertiary
+    /// <see cref="CardData.Meta"/> line a wide tile shows. A card that shows less than its row reserves is merely shorter
+    /// than the row (its plate stretches, the labels stay top-aligned).</summary>
+    public static float ShelfHeight(float cardW, float coverAspect, int captionLines, bool metaLine)
+    {
+        // The chrome is whole DIP, summed FIRST so the cover is added exactly once (no float drift against `w + N`).
+        float chrome = ShelfGutterTop + ShelfPlatePad + ShelfPlatePad + CardTitleLineH
+                       + (captionLines > 0 ? CardLabelGap + CardCaptionLineH * captionLines : 0f)
+                       + (metaLine ? CardLabelGap + CardCaptionLineH : 0f)
+                       + ShelfPlatePad + ShelfGutterBottom;
+        return CoverHeight(cardW - 2f * ShelfPlatePad, coverAspect) + chrome;
+    }
+
+    /// <summary>The shelf card's vertical chrome, read by BOTH <see cref="ShelfHeight(float, float, int, bool)"/> and the
+    /// renderer so the two cannot drift: the outer gutter over the plate (4) and under it (0 — the fill-only hover casts
+    /// no halo that needs room), the plate's padding on every side (8, also the cover → labels gap), the title line
+    /// (14/20), a caption line (12/16) and the labels' inter-line gap (2).</summary>
+    public const float ShelfGutterTop = Spacing.XS, ShelfGutterBottom = 0f, ShelfPlatePad = Spacing.S,
+                       CardTitleLineH = 20f, CardCaptionLineH = 16f, CardLabelGap = Spacing.XXS;
 
     /// <summary>The cover height a card's inner width derives at <paramref name="aspect"/> (width ÷ height): exactly
     /// the width when square, else rounded to whole DIP so a 16:9 tile's label block lands on the pixel grid.</summary>
@@ -491,7 +524,7 @@ public static partial class Controls
             var p = _props.Value;
             if (p is null) return new BoxEl();
             var d = p.Data;
-            float inner = p.CardW - 2f * Spacing.S;
+            float inner = p.CardW - 2f * ShelfPlatePad;
             // A square card keeps its 256 decode and its edge; a wide tile takes the derived height and the 512 decode.
             bool square = d.CoverAspect == 1f;
             // A circle only on a square cover: a wide lead asked to be round would take `inner / 2` and become a pill.
@@ -506,16 +539,17 @@ public static partial class Controls
 
             return new BoxEl
             {
-                // The 6-DIP gutter (4 over, 2 under) is part of `ShelfHeight`'s fixed chrome, so the estimator and the
-                // renderer agree; it no longer reserves a halo — the fill-only hover neither lifts nor casts one.
-                Padding = new Edges4(0f, Spacing.XS, 0f, 2f),
+                // The gutter (4 over, 0 under) and the plate padding (8 all round, 8 cover → labels) are EXACTLY the
+                // constants `ShelfHeight` sums, so the estimator and the renderer agree to the DIP; nothing reserves a
+                // halo — the fill-only hover neither lifts nor casts one.
+                Padding = new Edges4(0f, ShelfGutterTop, 0f, ShelfGutterBottom),
                 Width = p.CardW, Shrink = 0f,
                 Children =
                 [
                     CardShell(new BoxEl
                     {
-                        Direction = 1, Gap = Spacing.S, Grow = 1f,
-                        Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
+                        Direction = 1, Gap = ShelfPlatePad, Grow = 1f,
+                        Padding = Edges4.All(ShelfPlatePad),
                         Children =
                         [
                             CardCover(art, inner, coverH, circular,
@@ -696,8 +730,9 @@ public static partial class Controls
 
     // The label block. The title is capped at the caller's line budget and the subtitle at TWO with an explicit width,
     // and the highlight arm gets the SAME budget as the plain title — so a filter narrowing a grid does not reflow a
-    // card from two lines to one. A `Meta` adds ONE tertiary caption line under the subtitle (16 DIP — the extra line
-    // `ShelfHeight(w, aspect, extraLines)` budgets); without one the block is exactly what it always was.
+    // card from two lines to one. A `Meta` adds ONE tertiary caption line under the subtitle (2 gap + 16 — the
+    // `metaLine` `ShelfHeight` budgets); an inline `Caption` instead carries the meta as a tertiary tail on its own
+    // `CaptionLines`, so no separate line exists. Without either the block is exactly what it always was.
     static Element Labels(CardData d, float inner)
     {
         var kids = new List<Element>(3)
@@ -705,15 +740,42 @@ public static partial class Controls
             Design.Type.CardTitle(d.Title) with
                 { Width = inner, MaxLines = d.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
         };
-        if (d.Subtitle is not null) kids.Add(d.Subtitle);
-        if (d.Meta is { Length: > 0 } meta)
-            kids.Add(Design.Type.TrackMeta(meta) with
-                { Color = Tok.TextTertiary, Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
+        if (d.Caption is not null)
+        {
+            if (InlineCaption(d.Caption, d.Meta, d.CaptionLines, inner) is { } caption) kids.Add(caption);
+        }
+        else
+        {
+            if (d.Subtitle is not null) kids.Add(d.Subtitle);
+            if (d.Meta is { Length: > 0 } meta)
+                kids.Add(Design.Type.TrackMeta(meta) with
+                    { Color = Tok.TextTertiary, Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
+        }
         return new BoxEl
         {
-            Direction = 1, Gap = 2f, MinWidth = 0f,
+            Direction = 1, Gap = CardLabelGap, MinWidth = 0f,
             AlignItems = CoverShape.IsCircular(d.Circular, d.CoverAspect) ? FlexAlign.Center : FlexAlign.Start,
             Children = kids.ToArray(),
+        };
+    }
+
+    // The inline caption: the second line and the meta as ONE secondary 12/16 paragraph (the meta a tertiary " · meta"
+    // tail), capped at `lines` — exactly `captionLines` caption lines of `ShelfHeight`, never a separate meta line.
+    // Null when there is nothing to say.
+    static Element? InlineCaption(string caption, string? meta, int lines, float inner)
+    {
+        bool hasMeta = meta is { Length: > 0 };
+        if (caption.Length == 0 && !hasMeta) return null;
+        if (lines < 1) lines = 1;
+        TextSpan[] spans = caption.Length == 0 ? [new TextSpan(meta!, Color: Tok.TextTertiary)]
+            : hasMeta ? [new TextSpan(caption), new TextSpan(" · " + meta, Color: Tok.TextTertiary)]
+            : [new TextSpan(caption)];
+        var style = Design.Type.TrackMeta("");
+        return new SpanTextEl(spans)
+        {
+            Size = style.Size, LineHeight = style.LineHeight, Color = Tok.TextSecondary,
+            Wrap = lines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = lines, Trim = TextTrim.CharacterEllipsis,
+            Width = inner, MinWidth = 0f,
         };
     }
 

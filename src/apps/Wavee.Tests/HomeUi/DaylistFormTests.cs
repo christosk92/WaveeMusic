@@ -39,6 +39,39 @@ public class DaylistFormTests
         Assert.Equal(0f, DaylistForm.TextMinFor(-5f));
     }
 
+    // ── DaylistForm.TextWidth / UseHeroTitle: a narrow text column steps the title down from 40/52 to 28/36 ──
+
+    [Fact]
+    public void TextWidth_AtTheOwnersWidth_IsTheFloor_AndStepsTheTitleDown()
+    {
+        Assert.True(DaylistForm.ShowArt(588f));
+        Assert.Equal(340f, DaylistForm.TextWidth(588f));             // 588 − 32 − 540 = 16 < 340
+        Assert.False(DaylistForm.UseHeroTitle(DaylistForm.TextWidth(588f)));
+    }
+
+    [Fact]
+    public void TextWidth_Wide_TakesWhatTheArtBasisLeaves_AndKeepsTheHero()
+    {
+        Assert.Equal(700f, DaylistForm.TextWidth(1272f));            // 1272 − 32 − 540
+        Assert.True(DaylistForm.UseHeroTitle(DaylistForm.TextWidth(1272f)));
+    }
+
+    [Fact]
+    public void UseHeroTitle_Boundary_IsInclusive()
+    {
+        Assert.True(DaylistForm.UseHeroTitle(480f));
+        Assert.False(DaylistForm.UseHeroTitle(479.9f));
+    }
+
+    [Fact]
+    public void TextWidth_WithoutTheArt_IsTheWholeContentWidth()
+    {
+        Assert.False(DaylistForm.ShowArt(500f));
+        Assert.Equal(500f, DaylistForm.TextWidth(500f));
+        Assert.True(DaylistForm.UseHeroTitle(DaylistForm.TextWidth(500f)));
+        Assert.False(DaylistForm.UseHeroTitle(DaylistForm.TextWidth(400f)));
+    }
+
     // ── DaylistArt: header image, else cover, else nothing ──
 
     [Fact]

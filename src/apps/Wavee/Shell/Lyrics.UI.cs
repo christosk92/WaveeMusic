@@ -2115,6 +2115,8 @@ public static partial class Lyrics
             else
             {
                 rows.Add(new TextEl(report.Summary) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.AccentTextPrimary, Wrap = TextWrap.Wrap });
+                if (global::Wavee.Diagnostics.LyricsInspector.ReferenceLabel(report.Summary) is { Length: > 0 } reference)
+                    rows.Add(new TextEl(reference) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
                 string artist = report.Artist.Length > 0 ? report.Artist : Loc.Get(Strings.Lyrics.Debug.NoArtist);
                 rows.Add(new TextEl("“" + report.Title + "” — " + artist)
                 { Size = 12f, LineHeight = 16f, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap });
@@ -2169,8 +2171,19 @@ public static partial class Lyrics
                     ],
                 },
             };
+            // v2: the same decided lines as the inspector's provider card (Diagnostics.LyricsReport) — a guarded skip in
+            // prose, the stage-0 match of a search-matched source, and the rerank facts.
+            string skip = global::Wavee.Diagnostics.LyricsReport.SkipPhrase(t);
+            if (skip.Length > 0)
+                lines.Add(new TextEl(skip) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
             if (t.Detail.Length > 0)
                 lines.Add(new TextEl(t.Detail) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
+            string match = global::Wavee.Diagnostics.LyricsReport.MatchText(t);
+            if (match.Length > 0)
+                lines.Add(new TextEl(Strings.Diagnostics.Inspector.MatchLine(match)) { Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap });
+            string rerank = global::Wavee.Diagnostics.LyricsReport.RerankText(global::Wavee.Diagnostics.LyricsReport.FactsOf(t));
+            if (rerank.Length > 0)
+                lines.Add(new TextEl(Strings.Diagnostics.Inspector.RerankLine(rerank)) { Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap });
             if (t.Outcome == Outcome.Hit && t.RerankReason.Length > 0)
                 lines.Add(new TextEl("rerank " + t.Score.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + "  ·  " + t.RerankReason)
                 { Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap });

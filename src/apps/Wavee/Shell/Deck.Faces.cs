@@ -698,12 +698,12 @@ public static partial class Deck
                     }),
                     new CanvasChild(0.08f * d, (d - capH) * 0.5f, GlyphKey(Icons.Previous, capH * 1.4f, capH, glyph, capInk, Playback.Previous)),
                     new CanvasChild(d - 0.08f * d - capH * 1.4f, (d - capH) * 0.5f, GlyphKey(Icons.Next, capH * 1.4f, capH, glyph, capInk, Playback.Next)),
-                    new CanvasChild((d - capH * 1.4f) * 0.5f, d - 0.08f * d - capH, GlyphKey(Icons.Play, capH * 1.4f, capH, glyph, capInk, Playback.TogglePlay)),
+                    new CanvasChild((d - capH * 1.4f) * 0.5f, d - 0.08f * d - capH, GlyphKey(Icons.Play, capH * 1.4f, capH, glyph, capInk, static () => Playback.TogglePlay("deck.face.key"))),
                     new CanvasChild((d - centre) * 0.5f, (d - centre) * 0.5f, new BoxEl
                     {
                         Width = centre, Height = centre, Shrink = 0f, Corners = Radii.Circle(centre),
                         Gradient = new GradientSpec(GradientShape.Radial, 0f, centreStops), BorderWidth = 1f, BorderColor = Black(0.2f),
-                        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = Playback.TogglePlay,
+                        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = static () => Playback.TogglePlay("deck.face.centre"),
                     }),
                 ]) with
                 {
@@ -1057,8 +1057,8 @@ public static partial class Deck
                     // Winamp's STOP has no streaming equivalent: it pauses — the honest mapping, not a dead key.
                     Children =
                     [
-                        TransportKey(btnW, btnH, Playback.Previous), TransportKey(btnW, btnH, Playback.Resume), TransportKey(btnW, btnH, Playback.Pause),
-                        TransportKey(btnW, btnH, Playback.Pause), TransportKey(btnW, btnH, Playback.Next),
+                        TransportKey(btnW, btnH, Playback.Previous), TransportKey(btnW, btnH, static () => Playback.Resume("deck.face.play")), TransportKey(btnW, btnH, static () => Playback.Pause("deck.face.pause")),
+                        TransportKey(btnW, btnH, static () => Playback.Pause("deck.face.stop")), TransportKey(btnW, btnH, Playback.Next),
                     ],
                 }),
             };

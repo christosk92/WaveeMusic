@@ -331,7 +331,7 @@ public static class OnMedia
             HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled),
             PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
-            IsEnabled = enabled, OnClick = enabled ? Shell.TogglePlayPause : null,
+            IsEnabled = enabled, OnClick = enabled ? static () => Shell.TogglePlayPause("onmedia.button") : null,
             Cursor = enabled ? CursorId.Hand : (CursorId?)null,
             Children =
             [

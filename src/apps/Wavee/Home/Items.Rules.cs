@@ -50,6 +50,12 @@ public static class DaylistForm
     public const float Gap = 32f;
     /// <summary>The narrowest art worth showing.</summary>
     public const float ArtMin = 160f;
+    /// <summary>The art column's flex basis — its width on a wide card (Shrink 1, Grow 0: a narrower card shrinks the
+    /// art, never the text).</summary>
+    public const float ArtBasis = 540f;
+    /// <summary>The narrowest text column that keeps the 40/52 hero title rung; below it the title steps down to the
+    /// 28/36 display rung so a typical daylist name stays on one line and the card holds its 320 floor.</summary>
+    public const float HeroTitleMinText = 480f;
 
     public static bool ShowArt(float inner) => inner - Gap - TextMin >= ArtMin;
 
@@ -57,6 +63,17 @@ public static class DaylistForm
     /// never more than the card offers (a floor wider than the card would overflow it).</summary>
     public static float TextMinFor(float inner)
         => ShowArt(inner) ? TextMin : Math.Clamp(inner, 0f, TextMin);
+
+    /// <summary>The text column's resolved width at <paramref name="inner"/>, as the card's flex row resolves it: beside
+    /// the art (text Grow 1 / Basis 0 / MinWidth <see cref="TextMin"/>, art Basis <see cref="ArtBasis"/> / Shrink 1)
+    /// the text takes whatever the art's basis and the <see cref="Gap"/> leave, never below its floor; alone, the whole
+    /// content width.</summary>
+    public static float TextWidth(float inner)
+        => ShowArt(inner) ? Math.Max(TextMin, inner - Gap - ArtBasis) : inner;
+
+    /// <summary>Whether a text column <paramref name="textWidth"/> wide keeps the 40/52 hero title (inclusive at
+    /// <see cref="HeroTitleMinText"/>).</summary>
+    public static bool UseHeroTitle(float textWidth) => textWidth >= HeroTitleMinText;
 }
 
 /// <summary>The daylist card's five-segment daypart timeline (Seventh pass, `Daylist.UI.cs`'s `DaylistClock`): one

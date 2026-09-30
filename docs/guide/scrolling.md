@@ -33,6 +33,7 @@ to say *which* scroller, *which* restore key, *which* effects.
 | Collapse a hero into a band | `.Sticky(0f, scope).Collapse(distance, minH, CollapseAnchor.Leading)` | Track.Table hero |
 | Slide / fade / reveal with scroll | `.Parallax(…)`, `.ParallaxY(fraction, over)`, `.Fade(…)`, `.Reveal(…)` | `Entities/Detail.UI.Hero.cs` |
 | Stretch on overscroll | `.StretchFromTop()` (composes with a parallax) | `Entities/Artist.UI.cs` |
+| Collapse AND stretch one hero | the two compose: the `Leading` collapse cuts at its presented edge by itself, so put NO `ClipToBounds` on the collapsing root (a box clip there cuts the photo's stretch above the root's top) | `Entities/Artist.UI.cs` `HeroBanner` |
 | Exact targets for rows never on screen | `MeasureAll = true` (bounded — lyrics cap it at 400 lines) | `Shell/Lyrics.UI.cs` |
 | Follow something without fighting the user | `ScrollTo(target, ScrollMove.Follow)` — ignored while a user drag/wheel/fling is live | lyrics |
 | React to scroll in UI | `UseScroll(handle?)` / `UseScrollProgress(in0, in1)` in a bind or coarse memo; section spies stay pure (`Detail.ScrollSpy`) | detail pivots |
