@@ -26,8 +26,8 @@ public class BrowseDecodeTests
     {
         TestScope.Fresh();
         var s = Staging.Rent();
-        var uri = Spotify.Decode.BrowseSection(Fixture("browse", "browse-section-chart.json"), 0, s);
-        Assert.False(uri.IsEmpty);
+        var answer = Spotify.Decode.BrowseSection(Fixture("browse", "browse-section-chart.json"), "spotify:section:0JQ5DAzQHECxDlYNI6xD1h"u8, 0, s);
+        Assert.False(answer.Section.IsEmpty);
         TestScope.CommitAndPublish(s);
 
         var weekly = Entities.BrowseSection(ChartSections.Weekly.AsSpan());
@@ -43,7 +43,7 @@ public class BrowseDecodeTests
     {
         TestScope.Fresh();
         var s = Staging.Rent();
-        Spotify.Decode.BrowseSection(Fixture("spotify", "browse-section.json"), 20, s);
+        Spotify.Decode.BrowseSection(Fixture("spotify", "browse-section.json"), "spotify:section:weekly"u8, 20, s);
         TestScope.CommitAndPublish(s);
 
         var band = Entities.Section("spotify:section:weekly".AsSpan());     // titled "Weekly Song Charts" — a title is not a uri

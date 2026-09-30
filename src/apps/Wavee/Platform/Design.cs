@@ -2455,7 +2455,13 @@ public sealed class CoverArtistBlendWash : Component
     }
 }
 
-/// <summary>The artist hero's photography veil — cover-keyed so a late grading does not rebuild the banner.</summary>
+/// <summary>The artist hero's photography veil — cover-keyed so a late grading does not rebuild the banner. Also the
+/// Home daylist card's veil over its full-bleed header art (`Daylist.UI.cs`).
+/// <para><b>Two sizing arms.</b> A finite <c>Props.Width</c>/<c>Props.Height</c> is the SIZED arm (the
+/// artist hero hands it its banner's extent). <c>float.NaN</c> for both is the STRETCH arm, for a surface whose height is
+/// its content's (the daylist card): the component anchor mirrors the NaN extent, so a ZStack parent hands it the whole
+/// slot, and the root's <c>Grow 1</c> fills the anchor's column on the main axis (its cross axis stretches by default).
+/// The veil measures nothing in either arm, so it never sizes its parent.</para></summary>
 public sealed class CoverKeyedVeil : Component
 {
     /// <inheritdoc cref="CoverKeyedVeil"/>
@@ -2495,7 +2501,12 @@ public sealed class CoverKeyedVeil : Component
         };
         _mounted = true;
         _settled = settled;
-        return new BoxEl { Width = p.Width, Height = p.Height, ZStack = true, HitTestVisible = false, Children = [veil] };
+        // Grow only in the STRETCH arm (NaN height): the sized arm keeps Grow 0, exactly as before.
+        return new BoxEl
+        {
+            Width = p.Width, Height = p.Height, Grow = float.IsNaN(p.Height) ? 1f : 0f,
+            ZStack = true, HitTestVisible = false, Children = [veil],
+        };
     }
 }
 

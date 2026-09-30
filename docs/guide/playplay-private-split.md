@@ -37,10 +37,10 @@ Use the (gitignored) helper to junction the private package in/out:
 ```powershell
 ./link-playplay.ps1 -Mode link      # junction the private package -> local DRM build works
 ./link-playplay.ps1 -Mode status
-./link-playplay.ps1 -Mode unlink    # restore the clean/absent default (do this before AI-assisted sessions)
+./link-playplay.ps1 -Mode unlink    # restore the clean/absent default (public-only build)
 ```
 
-Default state is **unlinked/absent** — the clean state agents and CI see.
+Unlinked/absent is the public-only state a fresh clone sees.
 
 ## Local playback in a NEW worktree or scratchpad
 
@@ -134,5 +134,5 @@ the chosen catalog entry *after* verifying the downloaded DLL — it never trust
   any out-of-scope path or mechanism keyword (bypass only for a verified false positive with
   `git commit --no-verify`).
 - CI (`.github/workflows/no-drm-material.yml`) is the backstop: it fails if such material is ever tracked.
-- Agent fences: `.claude/settings.json` (Claude), `.codex/config.toml` + `.codexignore` (Codex),
-  and the steering blocks in `CLAUDE.md` / `AGENTS.md`.
+- Agents may read and edit the private material; `CLAUDE.md` / `AGENTS.md` tell them to commit it only in
+  `wavee-playplay-private`, never here (no `git add -f`, no `--no-verify`).

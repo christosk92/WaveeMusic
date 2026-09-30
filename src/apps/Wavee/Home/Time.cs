@@ -114,11 +114,11 @@ public static class DaypartRules
         return width;
     }
 
-    /// <summary>The daypart succeeding <paramref name="current"/>, wrapping <see cref="Daypart.Night"/> back to
-    /// <see cref="Daypart.EarlyMorning"/> — the five-segment timeline's own cycle order. A general-purpose step
-    /// function (kept independent of any particular clock reading) for a caller reasoning about "what comes after a
-    /// known daypart" without re-deriving it from an hour.</summary>
-    public static Daypart Next(Daypart current) => (Daypart)(((int)current + 1) % 5);
+    /// <summary>The daypart succeeding <paramref name="current"/> on the five-segment timeline (EarlyMorning → Morning →
+    /// Afternoon → Evening → Night → wraps to EarlyMorning). The daylist card's "next" caption names THIS segment
+    /// (<see cref="DaylistNext.Caption"/>), never the arrival hour's own bucket, which repeats the current daypart
+    /// whenever a window ends inside it.</summary>
+    public static Daypart Next(Daypart current) => (Daypart)(((int)current + 1) % DaypartTimeline.Segments);
 
     /// <summary>Allocating convenience over <see cref="FormatCountdown"/> for call sites that want a plain string
     /// (tests, a one-shot caption) rather than a caller-owned buffer — the daylist card's own tick path still writes
@@ -261,37 +261,30 @@ public static class WhenCaption
         => Format(Classify(playedMs, nowMs, playingNow, tz), culture, localize);
 }
 
-/// <summary>The daylist card's "· friday afternoon arrives at 13:04" caption (row 3, `Home/Daylist.UI.cs`'s
-/// `DaypartTimeline`) — self-contained from <paramref name="expiresAtMs"/> alone: the instant a window ends IS the
-/// instant the next edition starts, so the weekday/daypart named are simply that instant's own local calendar day and
-/// <see cref="DaypartRules.OfHour"/> bucket, never a separately-tracked "current" daypart plus
-/// <see cref="DaypartRules.Next"/> step (which would need one more input than this caption's signature carries and
-/// can disagree with the real arrival hour at a window that doesn't land exactly on an <c>OfHour</c> boundary).</summary>
+/// <summary>The daylist card's "friday evening arrives at 16:35" caption (row 3, the second line of
+/// `Home/Daylist.UI.cs`'s `DaylistClock`). The daypart named is the timeline segment AFTER the card's
+/// <c>current</c> one (<see cref="DaypartRules.Next"/>) — the card already shows the current daypart in its title and
+/// timeline, and the expiry's own <see cref="DaypartRules.OfHour"/> bucket repeats it whenever a window ends inside
+/// that bucket (expiry 16:35 on a "wednesday afternoon" daylist would read "wednesday afternoon" again). The weekday
+/// and time stay the expiry instant's own local calendar day and HH:mm.</summary>
 public static class DaylistNext
 {
-    /// <summary>"{weekday} {daypart} arrives at {HH:mm}", both lowercase, local to <paramref name="tz"/>
+    /// <summary>"{weekday} {next daypart} arrives at {HH:mm}", both words lowercase, weekday and time local to
+    /// <paramref name="tz"/>; the daypart is <see cref="DaypartRules.Next"/> of <paramref name="current"/>
     /// (<paramref name="localize"/> resolves the <c>Strings.Home.Daypart.*</c> word only — <c>null</c> defaults to
     /// <see cref="Loc.Get"/>, the same optional-delegate shape as <see cref="WhenCaption.Format"/>; the outer
     /// "arrives at" template always goes through the real <c>Strings.Home.Daylist.ArrivesAt</c>, which carries no
     /// override seam of its own). <paramref name="expiresAtMs"/> &lt;= 0 (no window) returns "".</summary>
-    public static string Caption(long expiresAtMs, TimeZoneInfo tz, CultureInfo culture, Func<string, string>? localize = null)
+    public static string Caption(long expiresAtMs, Daypart current, TimeZoneInfo tz, CultureInfo culture,
+                                 Func<string, string>? localize = null)
     {
         if (expiresAtMs <= 0) return "";
         Func<string, string> resolve = localize ?? Loc.Get;
 
         DateTime local = TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeMilliseconds(expiresAtMs).UtcDateTime, tz);
         string day = culture.DateTimeFormat.GetDayName(local.DayOfWeek).ToLower(culture);
-        string part = DaypartLabel(DaypartRules.OfHour(local.Hour), resolve).ToLower(culture);
+        string part = resolve(DaypartTimeline.LabelKey((int)DaypartRules.Next(current))).ToLower(culture);
         string time = local.ToString("HH:mm", culture);
         return Strings.Home.Daylist.ArrivesAt(day + " " + part, time);
     }
-
-    static string DaypartLabel(Daypart part, Func<string, string> resolve) => part switch
-    {
-        Daypart.EarlyMorning => resolve(Strings.Home.Daypart.Early),
-        Daypart.Morning => resolve(Strings.Home.Daypart.Morning),
-        Daypart.Afternoon => resolve(Strings.Home.Daypart.Afternoon),
-        Daypart.Evening => resolve(Strings.Home.Daypart.Evening),
-        _ => resolve(Strings.Home.Daypart.Night),
-    };
 }

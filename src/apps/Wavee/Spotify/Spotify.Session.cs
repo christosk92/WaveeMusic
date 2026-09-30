@@ -261,8 +261,15 @@ public static partial class Spotify
                 + " live=" + (LinkOf(e.Kind) == SessionLink.Ap ? s.ApEpoch : s.Epoch) + " — ignored");
             return;
         }
+        SessionPhase phaseBefore = s.Phase;
+        LinkPhase apBefore = s.Ap, dealerBefore = s.Dealer;
         SessionEffects fx = Step(ref s, e);
         Volatile.Write(ref s_box, new Box(s));
+        // One always-on line per TRANSITION of the phase or of either link — never per event, and a string is built only
+        // then (dealer-hello-rca.md §6.4: the stuck session's log never said the phase stopped at Minting).
+        if (phaseBefore != s.Phase || apBefore != s.Ap || dealerBefore != s.Dealer)
+            Log.Info("spotify", "session.phase " + phaseBefore + "→" + s.Phase + " ap " + apBefore + "→" + s.Ap
+                + " dealer " + dealerBefore + "→" + s.Dealer + " on " + e.Kind + " epoch=" + s.Epoch + " fault=" + s.Fault);
 
         if ((fx & SessionEffects.ClearCredential) != 0)
         {
@@ -1684,8 +1691,9 @@ public static partial class Spotify
     // ── 11. the dealer websocket ─────────────────────────────────────────────────────────────────────────────────────
     //
     // ONE firehose: cluster pushes, library/playlist events and the Connect REQUEST commands all arrive here. This
-    // loop owns the protocol half only — ping/pong, the connection id, the half-open watchdog and the reconnect — and
-    // hands every other frame to `Spotify.Connect.OnDealer` (owner F), which decides what it means.
+    // loop owns the protocol half only — ping/pong, the connection id, the hello deadline (`DealerHelloRules`), the
+    // half-open watchdog and the reconnect — and hands every other frame to `Spotify.Connect.OnDealer` (owner F), which
+    // decides what it means.
 
     /// <summary>The keepalive interval (P10 names this timer).</summary>
     public const int DealerPingIntervalMs = 30_000;
@@ -1711,7 +1719,8 @@ public static partial class Spotify
     }
 
     /// <summary>The dealer thread, for ONE dealer epoch (<see cref="Session.Epoch"/>). Every exit is one always-on line,
-    /// <c>dealer.exit reason= epoch=</c> — <c>epoch-cancelled</c> or <c>dropped</c> — and a start that arrived while it
+    /// <c>dealer.exit reason= epoch=</c> — <c>epoch-cancelled</c>, <c>dropped</c> or <c>hello-overdue</c> (the socket
+    /// opened but the pusher never registered it, <see cref="DealerHelloRules"/>) — and a start that arrived while it
     /// was unwinding is honoured from here (<see cref="StartDealer"/>).</summary>
     static void DealerLoop(uint epoch, CancellationToken ct)
     {
@@ -1772,10 +1781,11 @@ public static partial class Spotify
                     throw;
                 }
 
-                Volatile.Write(ref s_lastDealerTick, Environment.TickCount64);
+                long connectedAt = Environment.TickCount64;   // the hello deadline and every `afterMs=` count from here
+                Volatile.Write(ref s_lastDealerTick, connectedAt);
                 Log.Info("spotify", "dealer connected (" + host + ", epoch " + epoch + ")");
                 StartKeepalive(ws, ct);
-                Receive(ws, frame, receive, scratch, epoch, ct);
+                Receive(ws, frame, receive, scratch, epoch, connectedAt, ct);
                 throw new IOException("the dealer closed the socket");
             }
             catch (Exception) when (ct.IsCancellationRequested)
@@ -1797,41 +1807,102 @@ public static partial class Spotify
                     continue;
                 }
                 // A cancellation landing between the filter above and this post leaves a drop stamped with an epoch the
-                // fold has already moved past: `IsStale` refuses it.
-                Publish(new SessionEvent(SessionEventKind.DealerDropped, Number: (long)SessionFault.Network, Epoch: epoch));
-                return "dropped";    // the dealer's own backoff owns the next attempt; the AP is untouched (B4)
+                // fold has already moved past: `IsStale` refuses it. A socket the pusher never registered (no hello within
+                // `DealerHelloRules.HelloDeadlineMs`) is the same drop with its own name: the fold records Protocol, the
+                // ladder is the same (dealer-hello-rca.md §6.2).
+                bool overdue = ex is DealerHelloOverdueException;
+                Publish(new SessionEvent(SessionEventKind.DealerDropped,
+                    Number: (long)(overdue ? SessionFault.Protocol : SessionFault.Network), Epoch: epoch));
+                return overdue ? "hello-overdue" : "dropped";    // the dealer's own backoff owns the next attempt; the AP is untouched (B4)
             }
         }
     }
 
-    static void Receive(ClientWebSocket ws, MemoryStream frame, byte[] receive, byte[] scratch, uint epoch, CancellationToken ct)
+    /// <summary>Read frames until the socket closes. Until the pusher's hello is held, every receive is bounded by what
+    /// is left of <see cref="DealerHelloRules.HelloDeadlineMs"/>, counted from <paramref name="connectedAt"/> (the
+    /// <c>dealer connected</c> line): a socket that is open — answering pings, even — but never registered is dropped
+    /// with <see cref="DealerHelloOverdueException"/>, and the dealer's own drop → backoff → retry takes it from there
+    /// (dealer-hello-rca.md). Once the hello is held the receive is the plain unbounded one again and the half-open
+    /// watchdog (<see cref="DealerDeadAfterMs"/>) is the only liveness rule.</summary>
+    static void Receive(ClientWebSocket ws, MemoryStream frame, byte[] receive, byte[] scratch, uint epoch, long connectedAt,
+        CancellationToken ct)
     {
         var segment = new ArraySegment<byte>(receive);
+        bool helloHeld = false;
+        int frames = 0;
         while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
         {
             frame.SetLength(0);
             WebSocketReceiveResult result;
             do
             {
-                result = ws.ReceiveAsync(segment, ct).GetAwaiter().GetResult();
+                result = ReceiveWithin(ws, segment, helloHeld, connectedAt, frames, ct);
                 if (result.MessageType == WebSocketMessageType.Close) return;
                 frame.Write(receive, 0, result.Count);
             }
             while (!result.EndOfMessage);
 
-            Volatile.Write(ref s_lastDealerTick, Environment.TickCount64);   // any frame means the link is alive
+            long now = Environment.TickCount64;
+            Volatile.Write(ref s_lastDealerTick, now);   // any frame means the link is alive
+            if (frames < int.MaxValue) frames++;
             var utf8 = frame.GetBuffer().AsSpan(0, (int)frame.Length);
-            Dispatch(utf8, scratch, epoch);
+            if (Dispatch(utf8, scratch, epoch, frames, now - connectedAt)) helloHeld = true;
         }
+    }
+
+    /// <summary>One receive under the hello budget. Once the hello is held it is the plain receive on the epoch's own
+    /// token — no source, no timer, nothing allocated. Before it, a source linked to <paramref name="ct"/> cancels the
+    /// receive when <see cref="DealerHelloRules.ReceiveBudgetMs"/> runs out; cancelling a <see cref="ClientWebSocket"/>
+    /// receive aborts the socket, which is exactly what the overdue path wants. Only the BUDGET's cancellation becomes
+    /// <see cref="DealerHelloOverdueException"/>: the epoch's own (its drop's fold, a sign-out, a disconnect) is left to
+    /// propagate, so <c>DealerLoopCore</c> still exits <c>epoch-cancelled</c> for it.</summary>
+    static WebSocketReceiveResult ReceiveWithin(ClientWebSocket ws, ArraySegment<byte> segment, bool helloHeld,
+        long connectedAt, int frames, CancellationToken ct)
+    {
+        long now = Environment.TickCount64;
+        switch (DealerHelloRules.Verdict(helloHeld, connectedAt, now))
+        {
+            case DealerHelloRules.HelloVerdict.Held:
+                return ws.ReceiveAsync(segment, ct).GetAwaiter().GetResult();
+            case DealerHelloRules.HelloVerdict.Overdue:
+                throw HelloOverdue(connectedAt, frames);    // the deadline passed between frames: no receive to start
+        }
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(DealerHelloRules.ReceiveBudgetMs(helloHeld, connectedAt, now));
+        try { return ws.ReceiveAsync(segment, deadline.Token).GetAwaiter().GetResult(); }
+        catch (Exception) when (deadline.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            // The budget fired, not the epoch: whatever the aborted receive threw (an OperationCanceledException, or a
+            // WebSocketException on the way down) is the deadline's echo.
+            throw HelloOverdue(connectedAt, frames);
+        }
+    }
+
+    /// <summary>The overdue verdict's one always-on line (<c>dealer.hello overdue afterMs= frames=</c>) and its exception.</summary>
+    static DealerHelloOverdueException HelloOverdue(long connectedAt, int frames)
+    {
+        int afterMs = (int)Math.Min(Environment.TickCount64 - connectedAt, int.MaxValue);
+        Log.Warn("spotify", "dealer.hello overdue afterMs=" + afterMs + " frames=" + frames
+            + " — the socket is open but the pusher never registered it; dropping it for a reconnect");
+        return new DealerHelloOverdueException(afterMs, frames);
     }
 
     /// <summary>Protocol frames are answered here; everything else goes to `Connect.OnDealer` (owner F), which parses
     /// it again with the same pure parser. The re-parse is deliberate: it keeps this loop ignorant of what a topic
     /// means, and a frame the Connect glue cares about arrives a few times a second at most. The pusher's hello is
-    /// stamped with this dealer <paramref name="epoch"/>: a dead connection's late hello is refused by the fold.</summary>
-    static void Dispatch(ReadOnlySpan<byte> utf8, byte[] scratch, uint epoch)
+    /// stamped with this dealer <paramref name="epoch"/>: a dead connection's late hello is refused by the fold.
+    /// <para>Returns whether the frame WAS the hello (<see cref="DealerHelloRules.IsHello"/>) — what lifts
+    /// <see cref="Receive"/>'s deadline. The socket's first <see cref="DealerHelloRules.FirstFramesLogged"/> frames
+    /// (<paramref name="frameIndex"/> counts from 1) are one always-on <c>dealer.frame</c> line each and the hello one
+    /// <c>dealer.hello</c> line, its id through <c>Platform.Redact</c> and every topic through
+    /// <see cref="DealerHelloRules.LogTopic"/> — never an id whole. Later frames log nothing and allocate nothing here.</para></summary>
+    static bool Dispatch(ReadOnlySpan<byte> utf8, byte[] scratch, uint epoch, int frameIndex, long afterMs)
     {
         var message = DealerFrame.Parse(utf8, scratch);
+        if (frameIndex <= DealerHelloRules.FirstFramesLogged)
+            Log.Info("spotify", "dealer.frame n=" + frameIndex + " kind=" + message.Kind
+                + " label=" + DealerHelloRules.LogLabel(message.Kind, message.Uri, message.Ident)
+                + " bytes=" + utf8.Length + " afterMs=" + afterMs + " epoch=" + epoch);
         // §3.3's dealer-inbound row: every frame that reaches here, ping/pong included (Priority.Low for those —
         // CaptureRules.PriorityOf keys off `a is null`, so the chatty keepalive frames are the first thing the
         // header lane drops under budget pressure, never a special-cased code path per §1 item 10). causeId is
@@ -1852,21 +1923,24 @@ public static partial class Spotify
         {
             case DealerFrameKind.Ping:
                 SendDealerText(DealerPong);
-                return;
+                return false;
             case DealerFrameKind.Pong:
             case DealerFrameKind.Unknown:
-                return;
+                return false;
         }
 
-        if (!message.ConnectionId.IsEmpty && message.Uri.StartsWith("hm://pusher/"u8))
+        if (DealerHelloRules.IsHello(message.Kind, message.Uri, message.ConnectionId))
         {
             // The pusher's hello, and the ONE frame that carries the connection id a PutState must quote. It has no
             // payload anyone folds, so it never reaches the Connect glue.
+            Log.Info("spotify", "dealer.hello id=" + Platform.Redact(Encoding.UTF8.GetString(message.ConnectionId))
+                + " afterMs=" + afterMs + " epoch=" + epoch);
             Publish(new SessionEvent(SessionEventKind.DealerOnline, Text: Text.Add(message.ConnectionId), Epoch: epoch));
-            return;
+            return true;
         }
 
         Connect.OnDealer(utf8);
+        return false;
     }
 
     /// <summary>The capture record's `a` label for a non-chatty inbound frame: the `hm://` topic for a MESSAGE, the

@@ -1,7 +1,8 @@
 // ── Entities/Home.Rules.cs ─────────────────────────────────────────────────────────────────────────────────────────
 // the Home/Browse rule sets that OUTLIVE the Wave-5 Home UI: the timeline merge, play routing, card text + identity
-// colour, the section cursor / walk / chart filter / routes / near tail, the Charts deck, and card navigation (CORE
-// half — the UI half moved to Entities/Browse.Cards.cs). The landing projections, the facet strip, the hero / module /
+// colour, the section chart filter / routes, the Charts deck, and card navigation (CORE half — the UI half moved to
+// Entities/Browse.Cards.cs). The page-side section pager (cursor / walk / near tail) is gone: the query layer walks a
+// section whole (Spotify/Spotify.Api.Browse.cs). The landing projections, the facet strip, the hero / module /
 // artist-row geometry, the wash source and the layout document + reducer + wire were the presentation half of the
 // superseded Home page and were deleted with it (docs/plans/wavee/home-rebuild-implementation.md §7); the new Home
 // page lives under src/apps/Wavee/Home/.
@@ -11,8 +12,7 @@
 // Wave: 5
 // Budget: the pre-declared overflow partial of `Home.cs` (WP-5.P contract §1: used because Home.cs passed 2,340 lines)
 // Spec: ch 10 §8, ch 11 §8, ch 12 §8; plan §6.1 rows 10-12; 0.2.9 `Features/Home/{HomeTimelineMerge, HomeCardPlayRouting,
-//   HomeCards (:35-88, :248-264, :478-484, :1081-1088), HomeSectionPaging, BrowseSectionWalk, HomeSectionRoutes,
-//   HomeSectionNavigation, HomeBrowseCards, HomeSectionAppendPreloader (:46-54)}.cs`
+//   HomeCards (:35-88, :248-264, :478-484, :1081-1088), HomeSectionRoutes, HomeSectionNavigation, HomeBrowseCards}.cs`
 //
 // VERBATIM, with ONE type map (contract §2): `HomeFeed` → `HomeFeedView`, `HomeSection` → `HomeSectionView`,
 // `HomeCard`+`HomeCardMeta` → the `HomeCard` handle, a card's `Meta.X` → `card.X`, a card's uri comparison → its
@@ -213,111 +213,11 @@ public static class HomeCardAccent
     }
 }
 
-// ══ 10. SECTIONS: THE CURSOR, THE WALK, THE CHART FILTER, THE ROUTES, THE TAIL (ch 12 §8) ═══════════════════════════
+// ══ 10. SECTIONS: THE CHART FILTER AND THE ROUTES (ch 12 §8) ════════════════════════════════════════════════════════
 
-/// <summary>The "Show all" cursor arithmetic over a section view (0.2.9 <c>HomeSectionPaging</c>): RAW vs DEDUPED, and
-/// termination by the cursor, never by the total. The <c>int?</c> cursors are <see cref="SectionPaging.NoCursor"/> (no
-/// paging info) and <see cref="SectionPaging.Complete"/> (an explicit terminator).</summary>
-public static class HomeSectionPaging
-{
-    /// <summary>The raw number of items handed us, floored at the card count.</summary>
-    public static int NextOffset(HomeSectionView s) => Math.Max(s.RawItemCount, s.Cards.Count);
-
-    /// <summary>Does "Show all" stay armed? The server cursor wins (compared with <c>&gt;=</c>: a cursor EQUAL to our raw
-    /// position means "ask for that next"); only with no cursor is the total an arming hint.</summary>
-    public static bool HasMore(HomeSectionView s, int serverNextOffset = SectionPaging.NoCursor)
-        => serverNextOffset == SectionPaging.NoCursor ? s.TotalCount > NextOffset(s)
-         : serverNextOffset != SectionPaging.Complete && serverNextOffset >= NextOffset(s);
-
-    /// <summary>Can a fetched page's cursor carry us forward from the offset that produced it? A missing or explicit
-    /// terminator, or a value at or behind the request (a complete section answers <c>nextOffset: 0</c>), says no.</summary>
-    public static bool CanAdvance(int requestedOffset, int nextOffset)
-        => nextOffset != SectionPaging.NoCursor && nextOffset != SectionPaging.Complete && nextOffset > requestedOffset;
-
-    /// <summary>Fold a page in: append the cards not seen, advance the raw cursor by the FULL page, never lower the total.</summary>
-    public static HomeSectionView Append(HomeSectionView current, IReadOnlyList<HomeCard> pageCards, int pageTotal)
-    {
-        int raw = NextOffset(current);
-        var seen = new HashSet<long>();
-        var cards = new List<HomeCard>(current.Cards.Count + pageCards.Count);
-        foreach (var card in current.Cards) { seen.Add(card.DedupeKey); cards.Add(card); }
-        int duplicates = 0;
-        for (int i = 0; i < pageCards.Count; i++)
-        {
-            if (seen.Add(pageCards[i].DedupeKey)) cards.Add(pageCards[i]);
-            else duplicates++;
-        }
-        return current with
-        {
-            Cards = cards,
-            TotalCount = Math.Max(current.TotalCount, pageTotal),
-            RawItemCount = raw + pageCards.Count,
-            DuplicateCount = current.DuplicateCount + duplicates,
-        };
-    }
-
-    /// <summary>How far along an eager walk is, 0..1. A total at or below what we hold is worth one assumed page more —
-    /// never a finished bar.</summary>
-    public static float WalkFraction(HomeSectionView s, int pageAssumed)
-    {
-        int have = s.Cards.Count;
-        int total = s.TotalCount > have ? s.TotalCount : have + Math.Max(1, pageAssumed);
-        return total <= 0 ? 0f : have / (float)total;
-    }
-
-    /// <summary>Did a fold put anything new on screen? A TERMINATION signal (a page the dedupe ate whole).</summary>
-    public static bool Progressed(HomeSectionView before, HomeSectionView after) => after.Cards.Count > before.Cards.Count;
-
-    /// <summary>A browse section with no server cursor: offset + page count versus the total; <see cref="SectionPaging.Complete"/>
-    /// when the total is exhausted (or unknown).</summary>
-    public static int BrowseNextOffset(int requestedOffset, int pageCount, int total)
-    {
-        int loaded = requestedOffset + pageCount;
-        return total > loaded ? loaded : SectionPaging.Complete;
-    }
-
-    /// <summary>A fetched browse page's next cursor: a real offset passes through, the explicit terminator is final even
-    /// against a total that claims more, and ONLY a page with no paging info falls back to the synthesized cursor.</summary>
-    public static int BrowseSectionNextOffset(int requestedOffset, int pageNextOffset, int pageCount, int pageTotal)
-        => pageNextOffset == SectionPaging.Complete ? SectionPaging.Complete
-         : pageNextOffset != SectionPaging.NoCursor ? pageNextOffset
-         : BrowseNextOffset(requestedOffset, pageCount, pageTotal);
-}
-
-/// <summary>The Charts drill walk (0.2.9 <c>BrowseSectionWalk</c>): how it begins from an optional seed, and how one page
-/// folds. In 0.3 a fetched page LANDS ON THE ROW (<c>ReplacePage</c>), so <see cref="Fold"/> compares the view before
-/// the landing with the view after it rather than appending a page itself.</summary>
-public static class BrowseSectionWalk
-{
-    public readonly record struct Start(HomeSectionView? Current, int Offset, bool Exhausted, bool Publish, bool FetchFirst);
-
-    /// <summary><see cref="NextOffset"/> is <see cref="SectionPaging.Complete"/> when exhausted.</summary>
-    public readonly record struct Step(HomeSectionView Section, int NextOffset, bool Exhausted);
-
-    /// <summary>A seed with cards is PUBLISHED before the next offset is asked (never treated as complete — the total
-    /// under-reports); an empty seed that still has more fetches offset 0 unpublished; an empty finished seed stops.</summary>
-    public static Start Begin(HomeSectionView? seed)
-    {
-        if (seed is null) return new Start(null, 0, false, false, true);
-        if (seed.Cards.Count == 0)
-            return HomeSectionPaging.HasMore(seed)
-                ? new Start(null, 0, false, false, true)
-                : new Start(seed, 0, true, true, false);
-        return new Start(seed, HomeSectionPaging.NextOffset(seed), false, true, false);
-    }
-
-    /// <summary>One landed page: <paramref name="after"/> is the row's view once the page at
-    /// <paramref name="requestedOffset"/> landed. An empty page, a cursor that cannot advance and a page that put nothing
-    /// new on screen all latch exhausted.</summary>
-    public static Step Fold(HomeSectionView before, HomeSectionView after, int requestedOffset)
-    {
-        int pageCount = after.RawItemCount - requestedOffset;
-        if (pageCount <= 0) return new Step(after, SectionPaging.Complete, true);
-        int next = HomeSectionPaging.BrowseSectionNextOffset(requestedOffset, after.NextOffset, pageCount, after.TotalCount);
-        bool exhausted = !HomeSectionPaging.CanAdvance(requestedOffset, next) || !HomeSectionPaging.Progressed(before, after);
-        return new Step(after, exhausted ? SectionPaging.Complete : next, exhausted);
-    }
-}
+// The section's cursor arithmetic (`SectionPaging`, Home.cs) is the QUERY layer's now: a drill page demands its section
+// WHOLE and the provider walks it (Spotify/Spotify.Api.Browse.cs, `BrowseWalk`). The page-side ports that paged it —
+// 0.2.9's `HomeSectionPaging`, the Charts `BrowseSectionWalk` and the infinite-scroll `HomeNearTail` — are gone.
 
 /// <summary>The Charts grid's title filter: ordinal-ignore-case, first occurrence; the span is what the pill paints.</summary>
 public static class ChartTitleMatch
@@ -358,26 +258,13 @@ public static class HomeSectionRoutes
     public static bool IsLocal(string? uri) => uri is not null && uri.StartsWith(LocalPrefix, StringComparison.Ordinal);
 }
 
-/// <summary>The <c>browse-section:</c> drill route (paged through <c>browseSection</c>, whatever its uri looks like).</summary>
+/// <summary>The <c>browse-section:</c> drill route (answered through <c>browseSection</c>, whatever its uri looks like).</summary>
 public static class BrowseSectionRoutes
 {
     public const string Prefix = "browse-section:";
     public static string Page(string sectionUri) => Prefix + sectionUri;
     public static bool Is(string route) => route.StartsWith(Prefix, StringComparison.Ordinal);
     public static string UriOf(string route) => Is(route) ? route[Prefix.Length..] : "";
-}
-
-/// <summary>The infinite-scroll grammar's pure half (0.2.9 <c>HomeSectionAppendPreloader.NearTailWatch</c>, :46-54).</summary>
-public static class HomeNearTail
-{
-    /// <summary>The scroll-geometry projection key: the offset floored to 24 px, XOR the content height floored to 48 px —
-    /// so an append's own growth re-evaluates nearness.</summary>
-    public static long Project(float offsetY, float viewportH, float contentH)
-        => ((long)(offsetY / 24f) << 20) ^ (long)(contentH / 48f);
-
-    /// <summary>Within 1.5 viewports of the content end.</summary>
-    public static bool IsNear(float offsetY, float viewportH, float contentH)
-        => offsetY + viewportH >= contentH - 1.5f * viewportH;
 }
 
 // ══ 11. THE CHARTS DECK (0.2.9 HomeBrowseCards.cs — the browse → home boundary) ══════════════════════════════════════

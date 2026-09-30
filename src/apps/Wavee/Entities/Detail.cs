@@ -15,9 +15,11 @@
 // DetailRail.EyebrowText/ShowCollaborators, DetailVerticalHero's byline, DetailPage.ResolveConfig/Map*,
 // DetailShell.SortColKey/SortDescKey} and Wavee.Core's ImageSource.SameArt/PreferVisible. THE NUMBERS ARE LOAD-BEARING
 // and are ported verbatim (ch 03 §9 "must not be simplified"): the title type plan, NaturalLineRatio 1.3301, the snap
-// grid, the packing constants, StableTitleSize's asymmetric hysteresis and every hysteresis band. Two deliberate 0.3
-// changes, both from ch 03: the W28 `chart` presence flag (the chart caption is reserved like the daylist pulse) and the
-// real table header height in ChromeExtent/StickyClipInset (the Classic skin's 32, parity item 63).
+// grid, the packing constants and every hysteresis band. Two deliberate 0.3 changes, both from ch 03: the W28 `chart`
+// presence flag (the chart caption is reserved like the daylist pulse) and the real table header height in
+// ChromeExtent/StickyClipInset (the Classic skin's 32, parity item 63). One deliberate 2026-09-30 change (the owner's
+// "never trim a title" report): the title plan no longer leans on engine auto-fit or a size hysteresis — it is ONE
+// size per (bucketed width, title), drawn exactly, wrapping freely up to TitleLineCap (StableTitleSize is gone).
 //
 // Podcast rework wave P2 (podcast-show-rework-implementation.md §5.4): `DetailKind.Episode` + `Config.Episode` (the show's
 // frame, sharing the show's rail pair), the Episode eyebrow arm, and the rail's ROW MODEL — `RailSlotSet` (which rail
@@ -247,15 +249,6 @@ public static partial class Detail
         public static float TitleWidthFor(float colW, bool rowFlow)
             => MathF.Min(TitleWMax, MathF.Max(ContentWMin, CopyAvailFor(colW, rowFlow)));
 
-        /// <summary>The TWO-COLUMN rail title's line height (it picks 40 or 28 off the window height). The vertical hero
-        /// does not use it — its heights come from <see cref="NaturalLineRatio"/>.</summary>
-        public static float TitleLineHeightFor(float titleSize)
-            => titleSize >= 96f ? 104f
-             : titleSize >= 72f ? 80f
-             : titleSize >= 56f ? 64f
-             : titleSize >= 40f ? 52f
-             : titleSize >= 28f ? 36f : 28f;
-
         /// <summary>Row flow: two lines at the wide measure hold what three held in the column; stacked keeps four.</summary>
         public static int DescriptionMaxLines(bool rowFlow) => rowFlow ? 2 : 4;
 
@@ -315,14 +308,18 @@ public static partial class Detail
         public const float ToolbarSurfacePadY = 5f;
 
         // ── the title TYPE PLAN ──
-        // Two engine facts drive it: (1) a line box resolves to max(natural, LineHeight) and Segoe UI Variable's natural
-        // box is 1.3301 em — taller than every authored rung above 20 — so every height here derives from
-        // NaturalLineRatio and the hero clears its LineHeight to NaN; (2) TextEl auto-fit only SHRINKS within
-        // MinSize…Size, so the app must pick a good Size up front and leave auto-fit a non-empty window. A short title's
-        // empty band is a HEIGHT problem: the cover's own height is the type's budget.
+        // ONE engine fact drives it: a line box resolves to max(natural, LineHeight) (the text seam's MaxHeight stacking)
+        // and Segoe UI Variable's natural box is 1.3301 em, so every height here derives from NaturalLineRatio and every
+        // title clears its LineHeight to NaN — the line box drawn is always the natural one OF THE SIZE DRAWN. The plan is
+        // ONE size per (bucketed width, title): a pure function, no size hysteresis, and NO engine auto-fit
+        // (TextEl.MinSize) behind it — the engine draws exactly the plan's size, so the plan's lines, its block height and
+        // the pixels describe the same text. A short title's empty band is a HEIGHT problem (the cover's own height is the
+        // type's budget); a long one WRAPS — at the floor if it must — and only a pathological one, past TitleLineCap
+        // lines, ends in an ellipsis (2026-09-30: "never trim a title unless it's REALLY long").
 
-        /// <summary>The resolved plan: size, auto-fit floor, the NATURAL line box, lines spent, and the wrap width.</summary>
-        public readonly record struct TitleTypePlan(float Size, float MinSize, float LineHeight, int Lines, float WrapWidth)
+        /// <summary>The resolved plan: the ONE size drawn, its NATURAL line box, the lines it spends at that size, and
+        /// the wrap width.</summary>
+        public readonly record struct TitleTypePlan(float Size, float LineHeight, int Lines, float WrapWidth)
         {
             public float BlockHeight => Lines * LineHeight;
         }
@@ -330,8 +327,18 @@ public static partial class Detail
         /// <summary>Segoe UI Variable's measured natural line box, in em.</summary>
         public const float NaturalLineRatio = 1.3301f;
 
-        public const float TitleSizeCap = 96f, TitleSizeFloor = 20f, TitleMinSizeFloor = 18f;
+        /// <summary>The natural line box of a size, whole DIP — what the engine resolves for a title's NaN LineHeight.</summary>
+        public static float NaturalLineHeightFor(float size) => MathF.Round(size * NaturalLineRatio);
+
+        public const float TitleSizeCap = 96f, TitleSizeFloor = 20f;
+        /// <summary>The hero's size-search line budget: a line count only WINS when it buys a strictly larger size.</summary>
         public const int TitleLinesMax = 2;
+
+        /// <summary>THE trim rule, and the ONLY one: a title is ellipsised only past this many lines AT THE SIZE DRAWN — a
+        /// pathological-length guard, never a layout budget. Eight lines at the 20-DIP floor in the narrowest title
+        /// measure any surface gives (the 180-DIP rail's 156-DIP cover, ≈ 13 characters a line) hold ≈ 100 characters of
+        /// real words — a sentence or two, past any real album / playlist / show name.</summary>
+        public const int TitleLineCap = 8;
 
         /// <summary>The fluid cap's two locks: 28 at a 360 column, 96 at 1100 (the old ladder's Title and top rungs).</summary>
         public const float CapLockMinW = 360f, CapLockMinSize = 28f, CapLockMaxW = 1100f, CapLockMaxSize = TitleSizeCap;
@@ -357,8 +364,14 @@ public static partial class Detail
             return Math.Clamp(MathF.Round(s / step) * step, TitleSizeFloor, TitleSizeCap);
         }
 
-        /// <summary>A cheap per-glyph advance estimate in em (not shaping — auto-fit corrects it). The tracking matches
-        /// the DetailHero face's −20/1000 em, once per inter-character gap.</summary>
+        /// <summary>How far below a grid point the size it was snapped FROM can sit: half the grid step just under it
+        /// (<see cref="SnapTitleSize"/> rounds to the nearest point — 64 stands for [62, 68), 32 for [31, 34), the floor 20
+        /// for [20, 21]).</summary>
+        public static float SnapTolerance(float gridSize) => 0.5f * TitleSnapStep(gridSize - 0.01f);
+
+        /// <summary>A cheap per-glyph advance estimate in em (not shaping: it sizes the plan and its pre-measure block;
+        /// the painted hero's MEASURED height replaces the block once laid out, and nothing ever trims on it). The
+        /// tracking matches the DetailHero face's −20/1000 em, once per inter-character gap.</summary>
         public static float TitleAdvanceEm(string? title, float trackingEm = -0.020f)
         {
             if (string.IsNullOrEmpty(title)) return 0f;
@@ -428,42 +441,58 @@ public static partial class Detail
             return MathF.Max(0f, ArtworkFor(colW, rowFlow) - chrome - (blocks - 1) * IdentityGap);
         }
 
-        /// <summary>One-line packing (1/1.08: spaces cost more than the average), two-line (0.94: each half only fits its
-        /// line) and the auto-fit floor's loosest packing (0.78).</summary>
-        public const float OneLinePacking = 1f / 1.08f, TwoLinePacking = 0.94f, TitleFloorPacking = 0.78f;
+        /// <summary>One-line packing (1/1.08: spaces cost more than the average) and the packing of every further line
+        /// (0.94: each line only fits its own words).</summary>
+        public const float OneLinePacking = 1f / 1.08f, TwoLinePacking = 0.94f;
 
-        /// <summary>The core: the largest size — and the fewest lines — that fits both budgets under the cap. A line count
-        /// only WINS when it buys a strictly larger size (<c>cand &gt; best + 0.5</c>).</summary>
+        /// <summary>The core: the largest size — and the fewest lines — that fits both budgets under the cap, searching up
+        /// to <paramref name="preferredLines"/> lines. A line count only WINS when it buys a strictly larger size
+        /// (<c>cand &gt; best + 0.5</c>). The size is snapped to the grid exactly as ever and is the size DRAWN (no auto-fit
+        /// behind it); the plan's lines are the lines OF THAT SIZE (<see cref="TitleLinesAt"/>) — never more than the
+        /// search budgeted for a size it solved, and, for a title no preferred line count holds above the floor, the
+        /// floor size wrapped to as many lines as it takes, never trimmed short of <see cref="TitleLineCap"/>. Pure: the
+        /// same inputs always give the same plan.</summary>
         public static TitleTypePlan TitleTypeFor(float titleW, float heightBudget, float sizeCap,
-                                                 float advanceEm, float longestWordEm)
+                                                 float advanceEm, float longestWordEm, int preferredLines = TitleLinesMax)
         {
             float avail = titleW > 0f ? titleW : ContentWMin;
             float adv   = advanceEm > 0.001f ? advanceEm : 0.001f;
             float word  = Math.Clamp(longestWordEm > 0.001f ? longestWordEm : adv, 0.001f, adv);
             float cap   = Math.Clamp(sizeCap, TitleSizeFloor, TitleSizeCap);
+            int search  = Math.Clamp(preferredLines, 1, TitleLineCap);
 
-            float best = TitleSizeFloor; int bestLines = 1;
-            for (int lines = 1; lines <= TitleLinesMax; lines++)
+            float best = TitleSizeFloor;
+            for (int lines = 1; lines <= search; lines++)
             {
-                float packing  = lines == 1 ? OneLinePacking : TwoLinePacking;
-                float widthFit = MathF.Min(packing * lines * avail / adv, avail / word);
+                float widthFit = MathF.Min((lines == 1 ? OneLinePacking : TwoLinePacking) * lines * avail / adv, avail / word);
                 float heightFit = heightBudget > 0f ? heightBudget / (lines * NaturalLineRatio) : float.PositiveInfinity;
                 float cand = MathF.Min(MathF.Min(widthFit, heightFit), cap);
-                if (cand > best + 0.5f) { best = cand; bestLines = lines; }
+                if (cand > best + 0.5f) best = cand;
             }
 
             float size = SnapTitleSize(best);
-            float step = TitleSnapStep(size);
-            // The auto-fit floor: strictly below the size by at least one step (auto-fit needs MinSize < Size to arm).
-            float floorFit = TitleFloorPacking * bestLines * avail / adv;
-            float min = Math.Clamp(MathF.Min(SnapTitleSize(floorFit), size - step),
-                                   TitleMinSizeFloor, MathF.Max(TitleMinSizeFloor, size - step));
-            return new TitleTypePlan(size, min, MathF.Round(size * NaturalLineRatio), bestLines, avail);
+            return new TitleTypePlan(size, NaturalLineHeightFor(size), TitleLinesAt(size, avail, adv), avail);
+        }
+
+        /// <summary>The lines a title of <paramref name="advanceEm"/> spends at the GRID size <paramref name="size"/> in
+        /// <paramref name="titleW"/> — the size search's own packing model read backwards (one line at
+        /// <see cref="OneLinePacking"/>, n ≥ 2 at <see cref="TwoLinePacking"/> each) for the fit that grid point stands
+        /// for (<see cref="SnapTolerance"/> below it, so a solved plan never claims more lines than the search gave it),
+        /// clamped to [1, <see cref="TitleLineCap"/>] (the engine ellipsises at the cap, so the drawn block never exceeds
+        /// it). Non-decreasing over the grid.</summary>
+        public static int TitleLinesAt(float size, float titleW, float advanceEm)
+        {
+            const float Eps = 1e-4f;   // a fit sitting exactly on its n-line width must not round to n + 1 on float noise
+            float avail = titleW > 0f ? titleW : ContentWMin;
+            float fit = MathF.Max(0f, size - SnapTolerance(size));
+            float need = fit * MathF.Max(0.001f, advanceEm) / avail;   // the run's length, in measures
+            if (need <= OneLinePacking + Eps) return 1;
+            return Math.Clamp((int)MathF.Ceiling(need / TwoLinePacking - Eps), 2, TitleLineCap);
         }
 
         /// <summary>The convenience form over a column width and the title string. <c>title: null</c> starves both width
         /// terms and yields the PESSIMISTIC plan (a one-line title at the fluid cap) the skeleton and the pre-measure
-        /// fallback reserve.</summary>
+        /// fallback reserve when no title is known yet.</summary>
         public static TitleTypePlan TitleTypeFor(float colW, bool rowFlow, string? title,
             bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
             => TitleTypeFor(TitleWidthFor(colW, rowFlow),
@@ -471,16 +500,17 @@ public static partial class Detail
                             FluidTitleCapFor(colW),
                             TitleAdvanceEm(title), TitleLongestWordEm(title));
 
-        /// <summary>Resize hysteresis for the CHOSEN size: growing needs TWO steps, shrinking ONE; an uninitialized or
-        /// below-floor current takes the target outright.</summary>
-        public static float StableTitleSize(float target, float current, bool initialized)
-        {
-            if (!initialized || current < TitleMinSizeFloor) return target;
-            float step = TitleSnapStep(current);
-            if (target > current) return target - current >= 2f * step ? target : current;
-            if (target < current) return current - target >= step ? target : current;
-            return current;
-        }
+        /// <summary>The two-column RAIL's search budget: the rail held three lines before it would shrink the type.</summary>
+        public const int RailTitleLinesPreferred = 3;
+
+        /// <summary>The two-column RAIL's title plan — the SAME rule as the hero's: the window rung (40 tall / 28 short)
+        /// is the size CAP, the cover edge the measure, and there is no height budget (the rail scrolls; a row that wraps
+        /// grows below its reservation). The size steps down the snap grid only as far as it takes to hold the title in
+        /// <see cref="RailTitleLinesPreferred"/> lines, never below <see cref="TitleSizeFloor"/>; past that the title
+        /// wraps at the floor, in its natural line box, and is ellipsised only past <see cref="TitleLineCap"/>.</summary>
+        public static TitleTypePlan RailTitleTypeFor(float coverW, float rungSize, string? title)
+            => TitleTypeFor(coverW, heightBudget: 0f, rungSize, TitleAdvanceEm(title), TitleLongestWordEm(title),
+                            RailTitleLinesPreferred);
 
         /// <summary>The identity column's height: chrome + this plan's block + one gap per block boundary. The
         /// description no longer contributes here — it is a sibling block under the whole hero row
@@ -522,11 +552,14 @@ public static partial class Detail
                  + ExpandedToolbarTopPad + ToolbarRowHeight + ExpandedToolbarBottomPad;
         }
 
-        /// <summary>The pre-measure / skeleton form: the PESSIMISTIC null-title plan, never an invented string.</summary>
+        /// <summary>The pre-measure / skeleton form. With the page's KNOWN <paramref name="title"/> it reserves exactly the
+        /// plan the loaded hero draws at this width (one pure rule, so the skeleton → hero swap does not jump); with none
+        /// (null / empty) the PESSIMISTIC null-title plan — never an invented string.</summary>
         public static float HeroBandHeight(float colW, bool rowFlow,
-            bool eyebrow, bool attribution, bool meta, bool description, bool pulse = false, bool chart = false)
+            bool eyebrow, bool attribution, bool meta, bool description, bool pulse = false, bool chart = false,
+            string? title = null)
             => HeroBandHeight(colW, rowFlow,
-                TitleTypeFor(colW, rowFlow, title: null, eyebrow, attribution, meta, pulse, chart),
+                TitleTypeFor(colW, rowFlow, title, eyebrow, attribution, meta, pulse, chart),
                 eyebrow, attribution, meta, description, pulse, chart);
 
         /// <summary>Scroll distance over which the expanded hero becomes the 56-DIP band.</summary>
@@ -608,7 +641,7 @@ public static partial class Detail
         /// has never dragged opens here; a dragged one carries its persisted width into these modes too.</summary>
         public const float MidRestWidth = 224f, NarrowRestWidth = 188f;
 
-        /// <summary>180, not 220: every rail's content survives it (cover floor, title MinSize 18, wrapping CTAs).
+        /// <summary>180, not 220: every rail's content survives it (cover floor, a title that wraps at its 20-DIP floor, wrapping CTAs).
         /// <see cref="MaxWidth"/> is the ABSOLUTE ceiling; the live one is <see cref="MaxWidthForPage"/>.</summary>
         public const float MinWidth = 180f, MaxWidth = 480f;
 
@@ -669,6 +702,19 @@ public static partial class Detail
             float want = mode == WideMode || HasDraggedWidth(storedWidth, scope) ? stored : NarrowRestWidthFor(mode);
             return ClampLive(want, scope, maxWidth);
         }
+
+        /// <summary>The width a rail COMPOSES in a render. The live width is re-rested (<see cref="RestingWidth"/>) from an
+        /// EFFECT, i.e. only after the render that first sees a new (mode, maximum) — the pre-measure seed mode, the first
+        /// page measure, a breakpoint cross — so composing the live width there paints the rail at the PREVIOUS arm's
+        /// width for a frame or two and then snaps it narrower, the title re-wrapping underneath (2026-09-30: "the full
+        /// title shows for 1 or 2 frames"). Until the rail has rested for exactly (<paramref name="mode"/>,
+        /// <paramref name="maxWidth"/>) this answers what that rest WILL write; once it has, the live (possibly dragged)
+        /// width, clamped on read as ever.</summary>
+        public static float ComposedWidth(float liveWidth, float storedWidth, RailScope scope,
+                                          int restedMode, float restedMax, int mode, float maxWidth)
+            => restedMode == mode && restedMax == maxWidth
+                ? ClampLive(liveWidth, scope, maxWidth)
+                : RestingWidth(storedWidth, scope, mode, maxWidth);
 
         /// <summary>What a drag RELEASE persists. A drag that merely parked against a page-imposed cap keeps the wider
         /// remembered width (the cap is the page's verdict, not the user's); any other release is the user's own number.</summary>
@@ -1113,7 +1159,7 @@ public static partial class Detail
 
     // ══ 8. THE SKELETON'S GEOMETRY ═══════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The loading band's bar shapes (the band's HEIGHT is <see cref="VerticalLayout.HeroBandHeight(float,bool,bool,bool,bool,bool,bool,bool)"/>).
+    /// <summary>The loading band's bar shapes (the band's HEIGHT is <see cref="VerticalLayout.HeroBandHeight(float,bool,bool,bool,bool,bool,bool,bool,string)"/>).
     /// Every bar is <c>max(32, round(measure · fraction))</c> wide at radius 4.</summary>
     public static class Skeleton
     {
@@ -1482,15 +1528,13 @@ public static partial class Detail
              : meta is { Length: > 0 } ? meta
              : eyebrow is { Length: > 0 } ? eyebrow : null;
 
-        /// <summary>"13 songs · 1 hr 14 min · 2013". <paramref name="durationsKnown"/> false (any row still thin) DROPS
-        /// the duration segment — a sum over zero-duration disc rows is a lie. Year 0 (unknown) drops the year.</summary>
-        public static string? AlbumMeta(int trackCount, long totalMs, bool durationsKnown, int year)
+        /// <summary>"13 songs · 1 hr 14 min". <paramref name="durationsKnown"/> false (any row still thin) DROPS the
+        /// duration segment — a sum over zero-duration disc rows is a lie. No year: it lives in the eyebrow and the
+        /// release panel, never a third time on this line.</summary>
+        public static string? AlbumMeta(int trackCount, long totalMs, bool durationsKnown)
         {
             string songs = Strings.Detail.SongCount(trackCount);
-            if (year <= 0) return durationsKnown ? Strings.Detail.MetaLine(songs, Track.Format.TotalTime(totalMs)) : songs;
-            return durationsKnown
-                ? Strings.Detail.MetaLineYear(songs, Track.Format.TotalTime(totalMs), year)
-                : Strings.Detail.MetaLineYearPending(songs, year);
+            return durationsKnown ? Strings.Detail.MetaLine(songs, Track.Format.TotalTime(totalMs)) : songs;
         }
 
         /// <summary>"50 songs · 18.7M saves · 2 hr 59 min"; the saves segment only when &gt; 0 (never "0 saves"). A MIXED

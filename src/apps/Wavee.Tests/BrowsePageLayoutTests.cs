@@ -1,9 +1,13 @@
 // ── Wavee.Tests/BrowsePageLayoutTests.cs — shelves or one flattened grid (ch 13 §8) ─────────────────────────────────
 //
-// Ported verbatim from 0.2.9 `BrowsePageLayoutTests`. The 0.2.9 record graph (`BrowseSection` carrying its cards and
+// Ported from 0.2.9 `BrowsePageLayoutTests`. The 0.2.9 record graph (`BrowseSection` carrying its cards and
 // categories, `BrowsePageModel`) is replaced by the facts the rule actually reads — `BrowseSectionFacts(Uri, Title,
 // Kind, CardCount, CategoryCount, Total)` and `BrowsePageFacts(Uri, Title, Sections)` (Entities/Browse.cs) — so the
-// builders below count cards instead of minting them. Every assertion is unchanged.
+// builders below count cards instead of minting them. RCA 2026-09-30 replaced 0.2.9's FlattenOne heuristic ("the lone
+// untitled-or-redundant shelf among the page's bands") with the official client's SINGLE-SECTION rule: a page that
+// RETURNED one section is that section's full grid whatever its title says, and a page that returned more never
+// flattens one of them. The assertions that encoded the old heuristic are rewritten to the new rule; the two-up rules,
+// the empty drop and the identityless gate are unchanged.
 
 using System.Linq;
 using Wavee;
@@ -12,11 +16,10 @@ using Xunit;
 namespace Wavee.Tests;
 
 /// <summary>BrowsePageLayout decides whether a browse category page reads as named shelves or as one flattened grid.
-/// The rule exists for the page that IS a single untitled bag of cards — that renders as a one-row carousel otherwise,
-/// which is silly. These tests pin the shape decision (untitled-or-redundant single shelf, two untitled shelves
-/// concat-vs-stacked by whether either has more, three-or-more always Shelves), the empty-section drop, that
-/// CategoryGrid/Related never participate in the shelf count, and that an identityless page (no Uri) never flattens
-/// because there is no endpoint to page a flattened section against.</summary>
+/// These tests pin the shape decision (the single-section page — one RETURNED section — is its section's grid whatever
+/// the title; two untitled shelves concat-vs-stacked by whether either has more; three-or-more always Shelves), the
+/// empty-section drop, that CategoryGrid/Related never participate in the shelf count, and that an identityless page
+/// (no Uri) never flattens because there is no endpoint to page a flattened section against.</summary>
 public sealed class BrowsePageLayoutTests
 {
     static BrowseSectionFacts Shelf(string title, int cardCount = 3, int? total = null, string uri = "spotify:section:s") =>
@@ -37,7 +40,7 @@ public sealed class BrowsePageLayoutTests
     static BrowsePageFacts Page(string? title, params BrowseSectionFacts[] sections) =>
         new("spotify:page:test", title, sections);
 
-    // ── FlattenOne ────────────────────────────────────────────────────────────────────────────────────────────
+    // ── FlattenOne: the single-section page ───────────────────────────────────────────────────────────────────
     [Fact]
     public void OneUntitledShelf_Flattens()
     {
@@ -60,9 +63,36 @@ public sealed class BrowsePageLayoutTests
     }
 
     [Fact]
-    public void OneShelf_TitledDifferentlyFromPage_StaysShelves()
+    public void OneShelf_TitledDifferentlyFromPage_StillFlattens_ItIsTheSingleSectionPage()
     {
-        var page = Page("Charts", Shelf(title: "Weekly"));
+        // Browse › 70s answers ONE section, "Popular 70s playlists": the official client renders its whole list as the
+        // page's grid (RCA 2026-09-30, root cause 2). The title no longer decides — the returned section count does.
+        var page = Page("70s", Shelf(title: "Popular 70s playlists", cardCount: 40, total: 40));
+        Assert.Equal(BrowsePageLayout.Mode.FlattenOne, BrowsePageLayout.Of(page).Mode);
+    }
+
+    [Fact]
+    public void ASingleTileSection_StaysShelves_ItsCategoryBlockIsAlreadyAGrid()
+    {
+        var page = Page("Moods", CategoryGrid(categoryCount: 12));
+        var result = BrowsePageLayout.Of(page);
+        Assert.Equal(BrowsePageLayout.Mode.Shelves, result.Mode);
+        Assert.Single(result.Sections);
+    }
+
+    [Fact]
+    public void ASingleEmptySection_LeavesNothingToRender()
+    {
+        var result = BrowsePageLayout.Of(Page("70s", EmptyShelf()));
+        Assert.Equal(BrowsePageLayout.Mode.Shelves, result.Mode);
+        Assert.Empty(result.Sections);
+    }
+
+    [Fact]
+    public void ALoneRedundantShelfBesideAnotherBand_NoLongerFlattens_TwoSectionsWereReturned()
+    {
+        // 0.2.9 flattened the lone shelf here; the page returned TWO sections, so it is not a single-section page.
+        var page = Page("Jazz", Shelf(title: "jazz", uri: "spotify:section:solo"), Related());
         Assert.Equal(BrowsePageLayout.Mode.Shelves, BrowsePageLayout.Of(page).Mode);
     }
 
@@ -106,11 +136,12 @@ public sealed class BrowsePageLayoutTests
 
     // ── empty-section dropping ───────────────────────────────────────────────────────────────────────────────────
     [Fact]
-    public void EmptyShelf_IsDropped_LeavingTheSoleUntitledShelfToFlatten()
+    public void EmptyShelf_IsDropped_ButTwoReturnedSectionsAreNotASingleSectionPage()
     {
+        // The rule counts what the page RETURNED, before the empties drop: two sections came back, so no flatten.
         var page = Page("Jazz", EmptyShelf(), Shelf(title: null!, uri: "spotify:section:real"));
         var result = BrowsePageLayout.Of(page);
-        Assert.Equal(BrowsePageLayout.Mode.FlattenOne, result.Mode);
+        Assert.Equal(BrowsePageLayout.Mode.Shelves, result.Mode);
         Assert.Single(result.Sections);
         Assert.Equal("spotify:section:real", result.Sections[0].Uri);
     }
@@ -120,7 +151,7 @@ public sealed class BrowsePageLayoutTests
     {
         var page = Page("Jazz", EmptyRelated(), Shelf(title: null!, uri: "spotify:section:real"));
         var result = BrowsePageLayout.Of(page);
-        Assert.Equal(BrowsePageLayout.Mode.FlattenOne, result.Mode);
+        Assert.Equal(BrowsePageLayout.Mode.Shelves, result.Mode);
         Assert.Single(result.Sections);
     }
 
@@ -129,13 +160,14 @@ public sealed class BrowsePageLayoutTests
     public void CategoryGridAndRelated_NeverAffectShelfCount_AndPassThroughInOrder()
     {
         var relatedSection = Related();
-        var shelfSection = Shelf(title: null!, uri: "spotify:section:solo");
-        var page = Page("Jazz", shelfSection, relatedSection);
+        var shelfA = Shelf(title: null!, uri: "spotify:section:a");
+        var shelfB = Shelf(title: null!, uri: "spotify:section:b");
+        var page = Page("Jazz", shelfA, relatedSection, shelfB);
 
         var result = BrowsePageLayout.Of(page);
 
-        Assert.Equal(BrowsePageLayout.Mode.FlattenOne, result.Mode);
-        Assert.Equal([shelfSection.Uri, relatedSection.Uri], result.Sections.Select(s => s.Uri));
+        Assert.Equal(BrowsePageLayout.Mode.FlattenTwoConcat, result.Mode);
+        Assert.Equal([shelfA.Uri, relatedSection.Uri, shelfB.Uri], result.Sections.Select(s => s.Uri));
     }
 
     [Fact]

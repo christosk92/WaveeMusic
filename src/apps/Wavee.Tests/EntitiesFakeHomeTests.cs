@@ -103,7 +103,9 @@ public class EntitiesFakeHomeTests
 
         var weekly = Entities.BrowseSection(ChartSections.Weekly.AsSpan());
         Assert.True(weekly.HasMore);
-        Assert.Equal(10, weekly.NextRequest);
+        Assert.Equal(10, SectionPaging.NextRequest(weekly.Raw, weekly.Cards));
+        // The seed IS the offline catalogue's whole section: the drill page (which demands Whole) reads it at once.
+        Assert.True(weekly.Knows(SectionFields.Identity | SectionFields.Whole));
     }
 
     [Fact]

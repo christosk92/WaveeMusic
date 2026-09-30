@@ -278,8 +278,11 @@ public static partial class Palette
         => Embed.Comp(new CoverArtistBlendWash.Props(url, height, boundary, disabled, payloadAccent),
                       static () => new CoverArtistBlendWash()) with { Key = key };
 
-    /// <summary>The full-bleed artist hero veil over photography. <paramref name="payloadAccent"/> is the header row's
-    /// raw accent (the ladder's payload rung) — 0 when the caller has none.</summary>
+    /// <summary>The full-bleed artist hero veil over photography (also the Home daylist card's). <paramref name="payloadAccent"/>
+    /// is the header row's raw accent (the ladder's payload rung) — 0 when the caller has none.
+    /// <para><paramref name="width"/>/<paramref name="height"/> finite = the veil at that size (the artist hero);
+    /// <c>float.NaN</c> for both = the STRETCH arm: the veil takes its ZStack slot, for a surface whose height is its
+    /// content's (<see cref="CoverKeyedVeil"/>).</para></summary>
     public static Element ArtistHeroVeil(string? url, bool vertical, float width, float height, string key,
                                           uint payloadAccent = 0)
         => Embed.Comp(new CoverKeyedVeil.Props(url, vertical, width, height, payloadAccent),

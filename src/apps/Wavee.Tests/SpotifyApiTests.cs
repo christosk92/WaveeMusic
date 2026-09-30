@@ -518,7 +518,6 @@ public class SpotifyApiProviderRouteTests
     [InlineData(FetchEdge.ArtistReleases, 40, true)]
     [InlineData(FetchEdge.TrackCredits, 0, true)]
     [InlineData(FetchEdge.HomeSections, 0, true)]
-    [InlineData(FetchEdge.HomeSectionCards, 20, true)]
     [InlineData(FetchEdge.BrowseSections, 10, true)]
     [InlineData(FetchEdge.SearchResults, 0, true)]
     // pins (G-062, B2b) route through the same collection-v2 paging as every other library set

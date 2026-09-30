@@ -79,16 +79,13 @@ public enum FetchEdge : byte
     // the track drawer's traits (parent = track)
     TrackCredits, TrackVersions, TrackWaveform,
     // synthetic subjects' children
-    /// <summary>A Home feed's bands (<c>Edges.HomeSection</c>).</summary>
+    /// <summary>A Home feed's bands (<c>Edges.HomeSection</c>). A band's own cards are no relation here: the section
+    /// row's <c>SectionFields.Whole</c> asks them, and the query layer walks them to the end.</summary>
     HomeSections,
-    /// <summary>A Home band's cards, paged (<c>Edges.SectionCards</c>, <c>homeSection</c>).</summary>
-    HomeSectionCards,
     /// <summary>A Home feed's baseline-section cards' preview tracks, one request per facet answer (D2,
     /// <c>feedBaselineLookup</c>; <c>Edges.HomePreviews</c> the readiness marker, <c>Edges.SectionPreviewTracks</c>
     /// the content).</summary>
     HomePreviews,
-    /// <summary>A Browse band's cards, paged (<c>Edges.SectionCards</c>, <c>browseSection</c>).</summary>
-    BrowseSectionCards,
     /// <summary>One search facet's hits, paged (<c>Edges.SearchResult</c>).</summary>
     SearchResults,
     /// <summary>The Browse directory's category tiles (<c>Edges.BrowseDirectory</c>).</summary>
@@ -297,8 +294,17 @@ public static class FetchRoutes
     // ── the synthetic subjects' routes ──
 
     static readonly FetchRoute[] s_home = [FetchRoute.Pathfinder(PathfinderOp.Home, (uint)HomeFields.All)];
+    // A section's own route is WALKED to the server's end by the query layer (Spotify.Api.Browse.cs) and lands the band
+    // whole — `SectionFields.Whole` among what it fills. Only the drill page asks a Home band on its own, so homeSection
+    // is always the walk. A Browse band has a cheaper ask besides: a deck tile (the Charts band, Home's featured charts)
+    // wants the band's identity and first page, not every card, so an ask WITHOUT Whole takes the one-page route — the
+    // provider tells the two apart by the groups the route fills (`FetchRoute.Groups`).
     static readonly FetchRoute[] s_homeSection = [FetchRoute.Pathfinder(PathfinderOp.HomeSection, (uint)SectionFields.All)];
-    static readonly FetchRoute[] s_browseSection = [FetchRoute.Pathfinder(PathfinderOp.BrowseSection, (uint)SectionFields.All)];
+    static readonly FetchRoute[] s_browseSection =
+    [
+        FetchRoute.Pathfinder(PathfinderOp.BrowseSection, (uint)SectionFields.All, primary: (uint)SectionFields.Whole),
+        FetchRoute.Pathfinder(PathfinderOp.BrowseSection, (uint)(SectionFields.Identity | SectionFields.Accent)),
+    ];
     static readonly FetchRoute[] s_browseDirectory = [FetchRoute.Pathfinder(PathfinderOp.BrowseAll, (uint)BrowseFields.All)];
     static readonly FetchRoute[] s_browsePage = [FetchRoute.Pathfinder(PathfinderOp.BrowsePage, (uint)BrowseFields.All)];
 
@@ -409,9 +415,7 @@ public static class FetchRoutes
         FetchEdge.TrackVersions => FetchRoute.Metadata(AudioAssociations, 0),
         FetchEdge.TrackWaveform => FetchRoute.Metadata(ThreeBandWaveforms, 0),
         FetchEdge.HomeSections => FetchRoute.Pathfinder(PathfinderOp.Home, 0),
-        FetchEdge.HomeSectionCards => FetchRoute.Pathfinder(PathfinderOp.HomeSection, 0),
         FetchEdge.HomePreviews => FetchRoute.Pathfinder(PathfinderOp.FeedBaselineLookup, 0),
-        FetchEdge.BrowseSectionCards => FetchRoute.Pathfinder(PathfinderOp.BrowseSection, 0),
         FetchEdge.SearchResults => FetchRoute.Pathfinder(PathfinderOp.Search, 0),
         FetchEdge.BrowseCategories => FetchRoute.Pathfinder(PathfinderOp.BrowseAll, 0),
         FetchEdge.BrowseSections => FetchRoute.Pathfinder(PathfinderOp.BrowsePage, 0),

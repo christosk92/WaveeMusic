@@ -34,12 +34,14 @@
 // already shows the route's arg, so the breadcrumb never shimmers (§9 must-not-simplify 9). `BrowsePageLayout` decides
 // the body's SHAPE: Shelves keeps a page ScrollView; a flattened body hands scroll to `HomeModules.SectionGrid`'s own
 // virtual viewport inside a Grow-1 / MinHeight-0 slot (a virtual viewport inside a page ScrollView measures 0 and shears
-// every cover — must-not-simplify 10). FlattenOne pages IN PLACE through `Home.RequestNextPage` — the masthead "Show all"
-// and the silent tail preloader both — never through a navigation. FlattenTwoStacked renders as Shelves (0.2.9's
-// documented pragmatic deviation, kept). The shimmer is an explicit, NON-virtual stand-in (a PagedShelf yields zero rows
-// against an unmeasured viewport — must-not-simplify 11), revealed FadeOnly.
+// every cover — must-not-simplify 10). FlattenOne is the SINGLE-SECTION page (`BrowseSingleSection`, the official
+// client's rule): the page's model is that section's WHOLE item list, which the query layer walks to the server's end
+// (`Spotify.Api.Browse.cs`) — so the page never pages anything itself: no "Show all" tool, no tail preloader, no
+// viewport demand (RCA 2026-09-30; the owner's "no page-side fetch windows" rule). The lone section's title heads the
+// grid when it says more than the masthead. FlattenTwoStacked renders as Shelves (0.2.9's documented pragmatic
+// deviation, kept). The shimmer is an explicit, NON-virtual stand-in (a PagedShelf yields zero rows against an
+// unmeasured viewport — must-not-simplify 11), revealed FadeOnly.
 
-using System.Globalization;
 using FluentGpu.Animation;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Controls;
@@ -286,9 +288,9 @@ public readonly partial struct Browse
 
     sealed record CategoryProps(Shell.Route Route, string PageUri);
 
-    /// <summary>The state the flattened grid's responsive box is gated on: the memoized card list BY REFERENCE, its key,
-    /// the DECODED chart bit (never a uri lookup — ch 12 trap 10) and whether the tail watch is armed.</summary>
-    sealed record GridState(IReadOnlyList<HomeCard> Cards, string Key, bool Charts, bool Watch);
+    /// <summary>The state the flattened grid's responsive box is gated on: the memoized card list BY REFERENCE, its key and
+    /// the DECODED chart bit (never a uri lookup — ch 12 trap 10).</summary>
+    sealed record GridState(IReadOnlyList<HomeCard> Cards, string Key, bool Charts);
 
     sealed class CategoryPage : Component
     {
@@ -304,12 +306,6 @@ public readonly partial struct Browse
         bool _factsBuilt;
         BrowsePageLayout.Result _layout = s_noSections;
 
-        // FlattenOne's primary shelf: the in-place pager's subject.
-        Section _primary;
-        HomeSectionView _primaryView = HomeSectionView.Empty;
-        bool _toolsVisible, _toolsLoading;
-        int _tailSlot, _tailCount = -1;
-
         // FlattenTwoConcat's merged list, memoized on the two view instances so the grid's gate compares by reference.
         HomeSectionView? _concatA, _concatB;
         IReadOnlyList<HomeCard> _concat = Array.Empty<HomeCard>();
@@ -317,18 +313,14 @@ public readonly partial struct Browse
         Element? _body;
         IOverlayService? _overlay;
         string _scrollScope = "";                         // the tab (Shell.PageScrollScope), composed onto the restore keys
-        readonly Signal<bool> _nearTail = new(true);     // seeded true: a first page shorter than the viewport fills once
-        readonly AppendLoading _loading = new();
-        readonly NearTailWatch _tailWatch;
 
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _failedPanelFn;
-        readonly Action _demand, _retry, _demandCards, _publish, _loadMore, _disarmTail;
+        readonly Action _demand, _retry, _demandCards, _publish;
         readonly Action<HomeCard> _openCard;
 
         public CategoryPage()
         {
-            _tailWatch = new NearTailWatch(_nearTail);
             _pendingFn = () => !_known && !_failed;
             _failedFn = () => _failed;
             _contentFn = () => _body ?? new BoxEl();
@@ -336,8 +328,6 @@ public readonly partial struct Browse
             _retry = Retry;
             _demandCards = DemandCards;
             _publish = Publish;
-            _loadMore = LoadMore;
-            _disarmTail = DisarmTail;
             _openCard = static c => HomeCardNav.Open(in c);
             // W22 + 0.3's Retry (§9 gap 9): the error arm offers Retry AND the Explore link, inside the scroll frame.
             // `_retry`, never `_demand`: the page only reads Failed once the row is Asked-and-unanswered, which is
@@ -374,7 +364,6 @@ public readonly partial struct Browse
                 _page = Browse.IsNodeUri(_uri.AsSpan()) ? Entities.BrowseNode(_uri.AsSpan()) : default;
                 _demanded = false;
                 _factsBuilt = false;
-                _tailCount = -1;
             }
             _overlay = UseContext(Overlay.Service);
             UseEffect(_demand, DepKey.From(_page.Slot, (int)epoch));   // the page model, once per page per scope
@@ -391,10 +380,7 @@ public readonly partial struct Browse
             if (_known) Project(scope);
             else _layout = s_noSections;
 
-            ResolvePrimary();
-            UseEffect(_disarmTail, DepKey.From(_primaryView.Cards.Count, _primary.Slot));
-            UseEffect(_publish, DepKey.From(
-                HashCode.Combine(_title, (int)_layout.Mode), _toolsVisible ? 1 : 0, _toolsLoading ? 1 : 0, _page.Slot));
+            UseEffect(_publish, DepKey.From(HashCode.Combine(_title, (int)_layout.Mode), _page.Slot));
 
             _body = _known ? Body() : null;
 
@@ -451,30 +437,6 @@ public readonly partial struct Browse
                 facts.Add(new BrowseSectionFacts(uri, title, kind, cards, tiles, s.Total, s.Slot));
             }
             _layout = BrowsePageLayout.Of(new BrowsePageFacts(_uri, _title, facts));
-        }
-
-        /// <summary>FlattenOne's pager state (0.2.9 <c>BrowsePage.Render</c>'s tools leg): "Show all" is visible while the
-        /// shelf has more (<see cref="BrowsePageLayout.HasMore"/>) and the server has not said Complete; it is LOADING
-        /// while the next page is asked and has not landed.</summary>
-        void ResolvePrimary()
-        {
-            _primary = default;
-            _primaryView = HomeSectionView.Empty;
-            _toolsVisible = _toolsLoading = false;
-            _loading.Slot = Table.None;
-            if (_layout.Mode != BrowsePageLayout.Mode.FlattenOne) return;
-            var sections = _layout.Sections;
-            for (int i = 0; i < sections.Count; i++)
-            {
-                if (sections[i].Kind != BrowseSectionKind.Shelf) continue;
-                var f = sections[i];
-                _primary = new Section(f.Slot);
-                _primaryView = HomeSectionView.Of(_primary);
-                _loading.Slot = f.Slot;
-                _toolsVisible = _primary.NextOffset != SectionPaging.Complete && BrowsePageLayout.HasMore(in f);
-                _toolsLoading = _toolsVisible && _loading.Peek();
-                return;
-            }
         }
 
         // ── the body ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -572,22 +534,34 @@ public readonly partial struct Browse
         }
 
         /// <summary>A flattened body (0.2.9 <c>BrowsePage.FlattenBody</c>): the non-shelf blocks and the Explore link PIN
-        /// above a Grow-1 / MinHeight-0 slot whose grid owns its own scroll. FlattenOne pages its shelf in place (the tail
-        /// preloader, keyed per cursor — its Key is the prop channel); FlattenTwoConcat merges both shelves, no pager.</summary>
+        /// above a Grow-1 / MinHeight-0 slot whose grid owns its own scroll. FlattenOne is the single-section page: its
+        /// grid is the section's WHOLE list as the query layer walked it — nothing here pages — headed by the section's
+        /// title when that says more than the masthead (<see cref="BrowsePageLayout.TitleIsRedundant"/>).
+        /// FlattenTwoConcat merges both shelves.</summary>
         Element FlattenBody(bool concat)
         {
             var pinned = new List<Element>(3);
             HomeSectionView? first = null, second = null;
             string key = _uri;
+            string? heading = null;
             var sections = _layout.Sections;
             for (int i = 0; i < sections.Count; i++)
             {
                 var f = sections[i];
                 if (f.Kind != BrowseSectionKind.Shelf) { pinned.Add(CategoryBlockOf(in f)); continue; }
                 var view = HomeSectionView.Of(new Section(f.Slot));
-                if (first is null) { first = view; if (!concat) key = f.Uri; }
+                if (first is null)
+                {
+                    first = view;
+                    if (!concat)
+                    {
+                        key = f.Uri;
+                        if (!BrowsePageLayout.TitleIsRedundant(f.Title, _title)) heading = f.Title!.Trim();
+                    }
+                }
                 else second ??= view;
             }
+            if (heading is not null) pinned.Insert(0, HomeModules.DrillHeader(heading, null));
             pinned.Add(ExploreAll(GoDirectory));
 
             IReadOnlyList<HomeCard> cards;
@@ -595,17 +569,8 @@ public readonly partial struct Browse
             else cards = first?.Cards ?? (IReadOnlyList<HomeCard>)Array.Empty<HomeCard>();
             bool charts = first is { IsChart: true } && (!concat || second is null || second.IsChart);
 
-            Element preloader = new BoxEl();
-            bool watch = !concat && _toolsVisible;
-            if (watch)
-            {
-                string cursor = HomeSectionPaging.NextOffset(_primaryView).ToString(CultureInfo.InvariantCulture);
-                preloader = Embed.Comp(() => new HomeSectionAppendPreloader { Loading = _loading, NearTail = _nearTail, Start = _loadMore })
-                    with { Key = "browse-flatten-append:" + key + ":" + cursor };
-            }
-
-            Element grid = Responsive.Of(new GridState(cards, key, charts, watch), (st, w) => HomeModules.SectionGrid(
-                st.Cards, st.Key, w, _openCard, WatchOf(st.Watch), charts: st.Charts), fallback: HomeModuleLayout.FallbackWidth, grow: 1f);
+            Element grid = Responsive.Of(new GridState(cards, key, charts), (st, w) => HomeModules.SectionGrid(
+                st.Cards, st.Key, w, _openCard, charts: st.Charts), fallback: HomeModuleLayout.FallbackWidth, grow: 1f);
 
             return new BoxEl
             {
@@ -613,12 +578,10 @@ public readonly partial struct Browse
                 Children =
                 [
                     new BoxEl { Direction = 1, Gap = Spacing.L, MinWidth = 0f, Children = pinned.ToArray() },
-                    new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = [grid, preloader] },
+                    new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = [grid] },
                 ],
             };
         }
-
-        NearTailWatch? WatchOf(bool armed) => armed ? _tailWatch : null;
 
         IReadOnlyList<HomeCard> Merge(HomeSectionView? a, HomeSectionView? b)
         {
@@ -655,7 +618,7 @@ public readonly partial struct Browse
         }
 
         /// <summary>Every shelf band's card rows, in one batch per band (<see cref="Home.EnsureSection"/>, browse routing);
-        /// re-runs as the page's bands and an appended page land.</summary>
+        /// re-runs as the page's bands land.</summary>
         void DemandCards()
         {
             _ = Entities.ScopeEpoch.Value;
@@ -672,55 +635,12 @@ public readonly partial struct Browse
             }
         }
 
-        /// <summary>One publication per data change: the live title and FlattenOne's "Show all" (disabled while a page is
-        /// in flight, gone when the shelf is exhausted). The band resolves the LATEST delegate at click time.</summary>
+        /// <summary>One publication per data change: the live title. The page has no tools — its whole model is walked by
+        /// the query layer, so there is nothing to "Show all" in place.</summary>
         void Publish()
         {
             if (_props is not { } p) return;
-            Shell.Mastheads.Publish(p.Route, new Shell.MastheadPublication(
-                _title.Length > 0 ? _title : null, _toolsVisible, _toolsLoading, _toolsVisible ? _loadMore : null));
-        }
-
-        /// <summary>"Show all" and the tail preloader: the next page of the flattened shelf, IN PLACE (never a navigation).
-        /// A failure leaves the loaded cards and the button armed (the relation un-asks the page); an empty answer stops
-        /// the pager (parity 102).</summary>
-        void LoadMore()
-        {
-            if (_primary.IsValid) Home.RequestNextPage(_primary, browse: true);
-        }
-
-        /// <summary>After an append LANDS, drop the near-tail flag so only a FRESH scroll continues the chain (0.2.9's
-        /// post-hop rule, parity 76). The first observation is the baseline, never a disarm.</summary>
-        void DisarmTail()
-        {
-            int slot = _primary.Slot, count = _primaryView.Cards.Count;
-            if (slot == _tailSlot && _tailCount >= 0 && count > _tailCount && _nearTail.Peek()) _nearTail.Value = false;
-            _tailSlot = slot;
-            _tailCount = count;
-        }
-    }
-
-    /// <summary>"The next page of this shelf is asked and has not landed" as a read signal for the preloader and the
-    /// masthead: the relation's ask mark at <c>HomeSectionPaging.NextOffset</c>. Reading <see cref="Value"/> subscribes
-    /// the relation, so a landing page (which moves the offset past the mark) re-evaluates it.</summary>
-    sealed class AppendLoading : IReadSignal<bool>
-    {
-        public int Slot;
-
-        public bool Value
-        {
-            get
-            {
-                _ = Entities.Current.Edges.SectionCards.Changed.Value;
-                return Peek();
-            }
-        }
-
-        public bool Peek()
-        {
-            if (Slot <= Table.None) return false;
-            var s = new Section(Slot);
-            return s.IsValid && Entities.Current.Edges.SectionCards.WasAsked(Slot, HomeSectionPaging.NextOffset(HomeSectionView.Of(s)));
+            Shell.Mastheads.Publish(p.Route, new Shell.MastheadPublication(_title.Length > 0 ? _title : null));
         }
     }
 

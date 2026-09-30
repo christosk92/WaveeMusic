@@ -222,8 +222,54 @@ public sealed record BrowsePageFacts(string Uri, string? Title, IReadOnlyList<Br
     public bool IsEmpty => Sections.Count == 0 && string.IsNullOrEmpty(Title);
 }
 
-/// <summary>Decides the SHAPE of a browse category page's body — named shelves, or one uniform grid ("flatten"). A lone
-/// untitled shelf (or one whose title just repeats the page's) earns a grid, not a carousel.</summary>
+/// <summary>THE BROWSE WALK (RCA 2026-09-30, root cause 3): how the QUERY layer pages a browse answer — a page's
+/// <c>sections.pagingInfo.nextOffset</c>, a section's <c>sectionItems.pagingInfo.nextOffset</c> — to its end, so a page
+/// demands its WHOLE model and never pages anything itself (the "no page-side fetch windows" rule). The official client's
+/// terminator, verbatim: the walk stops on the server's cursor (null, absent, or one that does not move PAST the offset
+/// that produced it — a complete section answers <c>0</c>), and NEVER on "fewer items than the limit came back".
+/// <see cref="MaxPages"/> bounds a cursor that advances forever. Pure; <c>Spotify.Api.Browse.cs</c> is the one caller.</summary>
+public static class BrowseWalk
+{
+    /// <summary>"Ask nothing more."</summary>
+    public const int Stop = -1;
+
+    /// <summary>The most pages one walk asks — 500 sections at the page's 10, 1,000 items at the section's 20. A server
+    /// whose cursor never ends is a bug the always-on <c>browse.*</c> lines name, never a request loop.</summary>
+    public const int MaxPages = 50;
+
+    /// <summary>The offset to ask next after the page asked at <paramref name="requestedOffset"/> answered
+    /// <paramref name="nextOffset"/> (<see cref="SectionPaging.NoCursor"/> / <see cref="SectionPaging.Complete"/> / a
+    /// real offset), with <paramref name="pagesTaken"/> pages answered so far — or <see cref="Stop"/>.</summary>
+    public static int Next(int requestedOffset, int nextOffset, int pagesTaken)
+        => pagesTaken >= MaxPages || !SectionPaging.CanAdvance(requestedOffset, nextOffset) ? Stop : nextOffset;
+
+    /// <summary>Did a walk that stopped after <paramref name="requestedOffset"/> stop because the SERVER said so (its
+    /// cursor ended), rather than on the <see cref="MaxPages"/> cap? Only then is the list the server's whole list.</summary>
+    public static bool EndedByServer(int requestedOffset, int nextOffset) => !SectionPaging.CanAdvance(requestedOffset, nextOffset);
+}
+
+/// <summary>THE SINGLE-SECTION RULE (RCA 2026-09-30, root cause 2 — the official client's BrowsePage module 83320 and its
+/// browseSection hook 87009, proven by captures): a <c>browsePage</c> answer that RETURNED exactly one section is that
+/// section. The client then calls <c>browseSection</c> on <c>sections[0].uri</c>, walks its items to the server's end and
+/// renders ALL of them as one full-page grid (category-tile density when the items are category wrappers); when that
+/// read is empty or refused, the browsePage's own band stands. Count the RETURNED sections, never
+/// <c>sections.totalCount</c> — a captured single-section page states 2. Pure: the query layer
+/// (<c>Spotify.Api.Browse.cs</c>) decides the walk with it and <see cref="BrowsePageLayout"/> decides the grid.</summary>
+public static class BrowseSingleSection
+{
+    /// <summary>Is a page that returned <paramref name="returnedSections"/> sections (summed over every section page the
+    /// walk read) a single-section page?</summary>
+    public static bool Applies(int returnedSections) => returnedSections == 1;
+
+    /// <summary>Does the section's own walk replace the browsePage's band? Only when it produced items: an empty walk,
+    /// a <c>GenericError</c>/<c>NotFound</c> root or a refused first page all fall back to the band the page carried.</summary>
+    public static bool UseWalk(int walkedItems) => walkedItems > 0;
+}
+
+/// <summary>Decides the SHAPE of a browse category page's body — named shelves, or one uniform grid ("flatten"). A page
+/// that returned ONE section is that section's full grid (<see cref="BrowseSingleSection"/> — the official client's
+/// rule, which replaced 0.2.9's "a lone untitled shelf among other bands" heuristic); two untitled shelves still read as
+/// one grid.</summary>
 public static class BrowsePageLayout
 {
     public enum Mode { Shelves, FlattenOne, FlattenTwoConcat, FlattenTwoStacked }
@@ -243,6 +289,13 @@ public static class BrowsePageLayout
         // A page with no uri has no endpoint to page a section against, so it never earns a grid (the skeleton's shape).
         if (string.IsNullOrWhiteSpace(page.Uri)) return new Result(Mode.Shelves, survivors);
 
+        // THE SINGLE-SECTION RULE: the page RETURNED one section (counted before the empties drop — the rule is the
+        // answer's, not the survivors'), so the query layer has already walked that section's whole item list and the
+        // page IS its grid, whatever its title says. A lone tile band is a grid already (CategoryBlock).
+        if (BrowseSingleSection.Applies(page.Sections.Count))
+            return new Result(survivors.Count == 1 && survivors[0].Kind == BrowseSectionKind.Shelf ? Mode.FlattenOne : Mode.Shelves,
+                              survivors);
+
         // CategoryGrid/Related never flatten — only Shelf sections count here.
         BrowseSectionFacts first = default, second = default;
         int shelfCount = 0;
@@ -254,8 +307,6 @@ public static class BrowsePageLayout
             else if (shelfCount == 2) second = s;
         }
 
-        if (shelfCount == 1 && TitleIsRedundant(first.Title, page.Title)) return new Result(Mode.FlattenOne, survivors);
-
         // Two-up flatten is STRICTER: both titles genuinely blank, not merely redundant with the page.
         if (shelfCount == 2 && IsBlank(first.Title) && IsBlank(second.Title))
             return new Result(HasMore(first) || HasMore(second) ? Mode.FlattenTwoStacked : Mode.FlattenTwoConcat, survivors);
@@ -265,6 +316,8 @@ public static class BrowsePageLayout
 
     public static bool HasMore(in BrowseSectionFacts s) => s.Total > s.CardCount;
 
+    /// <summary>Does a section's title only repeat the page's (or say nothing)? A flattened grid shows a title that says
+    /// something more than the masthead already does, and no header at all for one that does not.</summary>
     public static bool TitleIsRedundant(string? sectionTitle, string? pageTitle)
     {
         var s = sectionTitle?.Trim();

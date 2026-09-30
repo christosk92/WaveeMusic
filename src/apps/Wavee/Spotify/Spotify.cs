@@ -96,7 +96,10 @@ public static partial class Spotify
         /// <summary>Not running and not owed: no session, a teardown, or (the dealer) not yet opened in this login.</summary>
         Down = 0,
         /// <summary>Its thread is opening it — the AP: apresolve, connect, handshake, login; the dealer: the wss handshake up
-        /// to the pusher's hello.</summary>
+        /// to the pusher's hello.
+        /// <para>The dealer's <c>Opening</c> is bounded by <see cref="DealerHelloRules.HelloDeadlineMs"/>: a socket that is
+        /// open but never registered (no pusher hello) is dropped by its own thread and climbs the dealer ladder like any
+        /// drop, with <see cref="SessionFault.Protocol"/> (dealer-hello-rca.md).</para></summary>
         Opening = 1,
         /// <summary>Open. The AP: logged in (the welcome arrived), its pump answering pings and routing audio keys. The
         /// dealer: a connection id is held.</summary>

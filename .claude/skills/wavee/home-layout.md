@@ -34,14 +34,14 @@ All under `src/apps/Wavee/Home/` (namespace `Wavee.HomeUi`):
 | `ZonePlanner.cs` | `SectionRoles` (per-section role classification: Recents, Daylist, Personal, Radio, Cluster, WideEditorial, Releases, Browse, Generic) + `ZonePlanner.Plan`/`PlanAll` (bands → ordered `Zone[]`); `RecentsCap` = 8 |
 | `Zones.Rules.cs` | pure per-zone rules `Zones.UI.cs` renders from: `ReleaseListRules` (type badge + trailing date column), `ShelfLead` (merges a zone's separately-carried lead card back into its item list) |
 | `Zones.UI.cs` | every zone body over stock controls — `ModuleHeader`/`PagedShelf` for cover shelves (verbatim `Browse.Page.cs`'s pager/pips idiom), `GridEl` of `Controls.MediaRow` for Recents/Release/Cluster/Episode rows, `GridEl` of `SettingsCard` for Browse/Charts tiles, `Controls.Vacancy` for empty/failed. Headers pass `open: null` (no chevron after the subtitle; See all / Listening history carry the drill); tools = See all · divider · ‹ pips ›; a 2-span lead is never circular (`CoverShape.IsCircular`). `ShelfChapter` and `RecentGrid` carry a `SkeletonProxy` = their own static tree builder (see Skeletons) |
-| `Daylist.UI.cs` / `DaylistSource.cs` | the daylist card and its data source. Text column has priority (`Grow 1, Basis 0, MinWidth 340`, `SpaceBetween`: eyebrow with the greeting, `Design.Type.HeroTitle` ≤ 2 lines, tags, meta, actions on one row); art is `Controls.CoverFill` at `Basis 540, Shrink 1, MinWidth 0`, stretched to card height, so it shrinks first; `DaylistForm.ShowArt(inner)` drops the art when it would be < 160. `DaylistClock` = stock `ProgressRing` + countdown text, five stock determinate `ProgressBar`s (done/current/future) + daypart labels. `DaylistCard` has a `SkeletonProxy` (same tree, blank text) |
+| `Daylist.UI.cs` / `DaylistSource.cs` | the daylist card and its data source. A padless `Ui.Card` (`ClipToBounds`, 8-DIP corners, MinHeight 320) around a ZStack: the header art (`Controls.CoverFill` of `DaylistArt.Of`) across the WHOLE card, the artist hero's horizontal veil (`Palette.ArtistHeroVeil` in its NaN stretch arm), then the copy column on the left (`SpaceBetween`: eyebrow with the greeting, `Design.Type.HeroTitle` ≤ 2 lines, tags, meta, actions on one row, the clock at the foot) at `DaylistForm.CopyWidth(inner)` (half the content width within [340, 560]; the whole width below `SplitMin` 532) inside `Daylist.CopyPadding`. No art url ⇒ no art, no veil. `DaylistClock` = stock `ProgressRing` + two-line countdown, five stock determinate `ProgressBar`s (done/current/future) + daypart labels. `DaylistCard` has a `SkeletonProxy` (same tree, placeholder art slot, no veil) |
 | `Time.cs` | `DaypartRules` (the five-segment daypart timeline the daylist card's `DaylistClock` renders + `FormatCountdown`/`Countdown`), `RecentsWeek`/`WeekSummary` (the history tile's 7-day strip, restored in the sixth pass), `WhenCaption` (Recently-played / episode-row "when" ladder), `DaylistNext` (the next-window arrival caption) |
 | `EpisodeCaption.cs` | episode-row caption formatting |
 | `PodcastPlanner.cs` | the Podcasts facet's own regroup (a different algorithm from `ZonePlanner`) — rendered by `Zones.UI.cs` now, no separate `Podcasts.UI.cs` |
 | `Items.Rules.cs` | small pure item-shaping rules `Zones.UI.cs` calls into |
 | `RecentsCells.cs` | the Recently-played grid's cell shape (kept as-is across the fifth pass) |
 | `Reveal.cs` | `ScreenLoad` (a facet's `Loadable<ScreenModel>` state) and `WashPick` (shell wash accent source order: daylist accent → first cover accent → fallback) — card open/play routing lives OFF this file now (below) |
-| `SectionScreen.Rules.cs` / `SectionScreen.UI.cs` | the "See all"/charts drill page for a Home or Browse section (`Shell.RouteKind.HomeSection`/`BrowseSection`); a bound `ItemsView` over `RepeatLayout.GridFit` (its own grid, unrelated to Home's own zone column) |
+| `SectionScreen.Rules.cs` / `SectionScreen.UI.cs` | the "See all"/charts drill page for a Home or Browse section (`Shell.RouteKind.HomeSection`/`BrowseSection`); a bound `ItemsView` over `RepeatLayout.GridFit` (its own grid, unrelated to Home's own zone column). It demands the section WHOLE (`SectionFields.Identity \| Whole`, one `Home.EnsureSection`) and renders what the row holds, skeleton while the walk is in flight; the QUERY layer walks `homeSection`/`browseSection` to the server's end (`Spotify/Spotify.Api.Browse.cs`). No near-tail hook, no append, no page-side paging — never add one back |
 | `Customize.UI.cs` | `CustomizeScreen` — the full-page customizer (`Shell.RouteKind.HomeCustomize`), a `Reorderable` list of `ZoneRow`s |
 | `LayoutFile.cs` | the v2 layout document (below) |
 
@@ -68,7 +68,7 @@ Home-private card-nav type.
 `Entities/Home.cs` and `Home.Rules.cs` still hold what the page reads OFF THE
 TABLES: `HomeCard`/`HomeCardKind` (the entity handle), `HomeSectionView` (the
 lossless per-section ledger), `HomeCardText`/`HomeCardAccent`, the section
-paging/routing rules, `HomeBrowseCards`.
+routing rules, `HomeBrowseCards`. (Section paging is the query layer's: `SectionPaging` + `BrowseWalk`.)
 
 ## The layout document (home-layout.json v2)
 

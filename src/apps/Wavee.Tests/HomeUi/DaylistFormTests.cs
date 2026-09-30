@@ -8,53 +8,48 @@ namespace Wavee.Tests.HomeUi;
 
 public class DaylistFormTests
 {
-    // ── DaylistForm: the art shows while 160 of it fits beside the 340 text column and the 32 gap ──
+    // ── DaylistForm.CopyWidth: half the content width within [340, 560]; the whole width below 532 ──
 
     [Fact]
-    public void ShowArt_AtTheOwnersWidth_LeavesTheArt278()
+    public void CopyWidth_Floor_HoldsTheActionRow()
     {
-        Assert.True(DaylistForm.ShowArt(650f));
-        Assert.Equal(278f, 650f - DaylistForm.Gap - DaylistForm.TextMin);
-        Assert.True(650f - DaylistForm.Gap - DaylistForm.TextMin >= DaylistForm.ArtMin);
+        Assert.Equal(340f, DaylistForm.CopyWidth(600f));             // 600 × 0.5 = 300 < 340
+        Assert.Equal(340f, DaylistForm.CopyWidth(680f));             // exactly the floor
     }
 
     [Fact]
-    public void ShowArt_Narrow_DropsTheArt() => Assert.False(DaylistForm.ShowArt(480f));
+    public void CopyWidth_Half_BetweenTheFloorAndTheCeiling()
+        => Assert.Equal(482f, DaylistForm.CopyWidth(964f));          // a 1008 card minus the copy's 32 + 12 side insets
 
     [Fact]
-    public void ShowArt_Boundary_IsInclusive()
+    public void CopyWidth_Max_CapsAWideCard()
     {
-        Assert.True(DaylistForm.ShowArt(532f));
-        Assert.False(DaylistForm.ShowArt(531.9f));
+        Assert.Equal(560f, DaylistForm.CopyWidth(1120f));            // exactly the ceiling
+        Assert.Equal(560f, DaylistForm.CopyWidth(1800f));
     }
 
     [Fact]
-    public void TextMinFor_BesideTheArt_IsTheTextFloor() => Assert.Equal(340f, DaylistForm.TextMinFor(650f));
-
-    [Fact]
-    public void TextMinFor_Alone_NeverExceedsTheCard()
+    public void CopyWidth_Narrow_TakesTheWholeWidth()
     {
-        Assert.Equal(300f, DaylistForm.TextMinFor(300f));
-        Assert.Equal(340f, DaylistForm.TextMinFor(480f));
-        Assert.Equal(0f, DaylistForm.TextMinFor(-5f));
-    }
-
-    // ── DaylistForm.TextWidth / UseHeroTitle: a narrow text column steps the title down from 40/52 to 28/36 ──
-
-    [Fact]
-    public void TextWidth_AtTheOwnersWidth_IsTheFloor_AndStepsTheTitleDown()
-    {
-        Assert.True(DaylistForm.ShowArt(588f));
-        Assert.Equal(340f, DaylistForm.TextWidth(588f));             // 588 − 32 − 540 = 16 < 340
-        Assert.False(DaylistForm.UseHeroTitle(DaylistForm.TextWidth(588f)));
+        Assert.Equal(500f, DaylistForm.CopyWidth(500f));
+        Assert.Equal(300f, DaylistForm.CopyWidth(300f));
+        Assert.Equal(0f, DaylistForm.CopyWidth(-5f));
     }
 
     [Fact]
-    public void TextWidth_Wide_TakesWhatTheArtBasisLeaves_AndKeepsTheHero()
+    public void CopyWidth_SplitBoundary_IsInclusive()
     {
-        Assert.Equal(700f, DaylistForm.TextWidth(1272f));            // 1272 − 32 − 540
-        Assert.True(DaylistForm.UseHeroTitle(DaylistForm.TextWidth(1272f)));
+        Assert.Equal(340f, DaylistForm.CopyWidth(DaylistForm.SplitMin));
+        Assert.Equal(531.9f, DaylistForm.CopyWidth(531.9f));
     }
+
+    // ── UseHeroTitle over CopyWidth: a narrow copy steps the title down from 40/52 to 28/36 ──
+
+    [Fact]
+    public void Title_AtTheFloor_StepsDown() => Assert.False(DaylistForm.UseHeroTitle(DaylistForm.CopyWidth(600f)));
+
+    [Fact]
+    public void Title_WideCard_KeepsTheHero() => Assert.True(DaylistForm.UseHeroTitle(DaylistForm.CopyWidth(964f)));
 
     [Fact]
     public void UseHeroTitle_Boundary_IsInclusive()
@@ -64,12 +59,10 @@ public class DaylistFormTests
     }
 
     [Fact]
-    public void TextWidth_WithoutTheArt_IsTheWholeContentWidth()
+    public void Title_NarrowCard_FollowsTheWholeWidth()
     {
-        Assert.False(DaylistForm.ShowArt(500f));
-        Assert.Equal(500f, DaylistForm.TextWidth(500f));
-        Assert.True(DaylistForm.UseHeroTitle(DaylistForm.TextWidth(500f)));
-        Assert.False(DaylistForm.UseHeroTitle(DaylistForm.TextWidth(400f)));
+        Assert.True(DaylistForm.UseHeroTitle(DaylistForm.CopyWidth(500f)));
+        Assert.False(DaylistForm.UseHeroTitle(DaylistForm.CopyWidth(400f)));
     }
 
     // ── DaylistArt: header image, else cover, else nothing ──

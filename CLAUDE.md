@@ -22,19 +22,21 @@ in `..\fluent-gpu` and verified there (`dotnet build src/FluentGpu.slnx` Debug +
 (both arches, Azure Trusted Signing, uploaded with `gh`). The `wavee-stable` feed and `wavee-v*` tags live on
 **this** repository (`github.com/christosk92/WaveeMusic`).
 
-## Out-of-scope paths — do NOT read, search, edit, or summarize
+## PlayPlay: in scope to work on, committed only to its private repo
 
-The PlayPlay (Spotify DRM) derivation lives in the separate private repo `wavee-playplay-private`
-(`docs/guide/playplay-private-split.md`). Unless the user names a specific file below **and** confirms it for
-this session, do not read, grep, edit, or summarize:
+The PlayPlay (Spotify DRM) derivation lives in the separate **private** repo `christosk92/wavee-playplay-private`
+(`C:\WAVEE\wavee-playplay-private`, `docs/guide/playplay-private-split.md`). Agents may read, search, and edit it
+like any other code. The one rule: **it never enters this public repo** — commit and push PlayPlay work only in
+`wavee-playplay-private` (`git -C C:\WAVEE\wavee-playplay-private …`). These paths are private material:
 
 - `src/apps/.native/**`, `src/apps/Wavee.PlayPlay/**`, `private-runtimes/**`
 - `src/apps/tmp_*`, `ops/scripts/pyghidra*`, `ops/tools/pyghidra*`, `ops/tools/playplay_*`, `ops/tools/x64_*`
 - `docs/plans/wavee/wavee-playplay*.md`, `docs/plans/wavee/playplay-*.md`, `docs/plans/wavee/spotiload-offline-path.md`
 - `**/playplay-runtime.json`
 
-They are gitignored + agent-fenced here and `.githooks/pre-commit` blocks them from entering the tree
-(`git config core.hooksPath .githooks` once per clone). `src\apps\Wavee.PlayPlay` is a **per-checkout junction**
+They are gitignored here and `.githooks/pre-commit` blocks them from entering the tree
+(`git config core.hooksPath .githooks` once per clone) — never `git add -f` them or bypass the hook with
+`--no-verify`. `src\apps\Wavee.PlayPlay` is a **per-checkout junction**
 to `C:\WAVEE\wavee-playplay-private\app\Wavee.PlayPlay` (`.\link-playplay.ps1`, untracked helper); a checkout
 without it still builds — the public-only variant — which is why the release script asserts the junction unless
 `-PublicOnly` is passed.

@@ -237,6 +237,11 @@ The dealer receive loop answers `ping`, takes the connection id off the pusher h
 loop's own scratch is not shared. Ack a REQUEST with `Spotify.Reply(msg.Key, ok: true)` and feed the cluster's
 `server_timestamp_ms` to `Spotify.ObserveClusterTimestamp` so the ownership fence has a server clock (C5).
 
+(2026-09-30, `dealer-hello-rca.md`) The hello is bounded: a socket with no pusher hello within
+`Spotify.DealerHelloRules.HelloDeadlineMs` (10 s) is dropped by the loop itself (`dealer.hello overdue` →
+`DealerDropped` with `SessionFault.Protocol` → `dealer.exit reason=hello-overdue` → the dealer's own backoff). The
+first three frames of every socket log one `dealer.frame` line each, the hello one `dealer.hello` line (id redacted).
+
 **Until `Spotify.Connect.OnDealer` exists, `Spotify.Session.cs` does not compile.** That is the one cross-file
 dependency in Wave 2's D/F pair, and it is the plan's own shape.
 

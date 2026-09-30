@@ -126,13 +126,14 @@ public class DetailTextTests
 
     // ── the meta lines (DetailPage.Map*) ─────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>"13 songs · 1 hr 14 min" — no year: the eyebrow and the release panel already state it.</summary>
     [Fact]
-    public void AlbumMeta_DurationsKnown_IsCountDurationYear()
+    public void AlbumMeta_DurationsKnown_IsCountDuration()
     {
-        string meta = Text.AlbumMeta(13, Ms1h14, durationsKnown: true, year: 2013)!;
-        Assert.Equal(Strings.Detail.MetaLineYear(Strings.Detail.SongCount(13), Track.Format.TotalTime(Ms1h14), 2013), meta);
+        string meta = Text.AlbumMeta(13, Ms1h14, durationsKnown: true)!;
+        Assert.Equal(Strings.Detail.MetaLine(Strings.Detail.SongCount(13), Track.Format.TotalTime(Ms1h14)), meta);
         // The known and the thin phrasing are two different lines (not one line with a blank segment).
-        Assert.NotEqual(Text.AlbumMeta(13, Ms1h14, durationsKnown: false, year: 2013), meta);
+        Assert.NotEqual(Text.AlbumMeta(13, Ms1h14, durationsKnown: false), meta);
     }
 
     /// <summary>While any row is thin its zero duration would make the sum a lie ("39 songs · 1 min" for a 2 hr 41 min
@@ -140,17 +141,9 @@ public class DetailTextTests
     [Fact]
     public void AlbumMeta_DurationsUnknown_DropsTheDurationSegment()
     {
-        string meta = Text.AlbumMeta(39, 60_000, durationsKnown: false, year: 2027)!;
-        Assert.Equal(Strings.Detail.MetaLineYearPending(Strings.Detail.SongCount(39), 2027), meta);
+        string meta = Text.AlbumMeta(39, 60_000, durationsKnown: false)!;
+        Assert.Equal(Strings.Detail.SongCount(39), meta);
         Assert.DoesNotContain(Track.Format.TotalTime(60_000), meta);
-    }
-
-    [Fact]
-    public void AlbumMeta_UnknownYear_DropsTheYear()
-    {
-        Assert.Equal(Strings.Detail.MetaLine(Strings.Detail.SongCount(13), Track.Format.TotalTime(Ms1h14)),
-            Text.AlbumMeta(13, Ms1h14, durationsKnown: true, year: 0));
-        Assert.Equal(Strings.Detail.SongCount(13), Text.AlbumMeta(13, Ms1h14, durationsKnown: false, year: 0));
     }
 
     [Fact]

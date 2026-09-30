@@ -518,6 +518,96 @@ public class SessionStepTests
         Assert.Equal(apEpoch, s.ApEpoch);
     }
 
+    /// <summary>A login walked up to its first bearer: the AP is Up, the dealer thread is opening its socket and the phase
+    /// is Minting — where the 2026-09-30 stuck session sat for ten minutes (docs/plans/wavee/dealer-hello-rca.md).</summary>
+    static Spotify.Session DealerOpening()
+    {
+        var s = Handshaken();
+        Step(ref s, Spotify.SessionEventKind.Welcome, number: (long)Spotify.Tier.Premium);
+        Step(ref s, Spotify.SessionEventKind.ClientTokenMinted, text: new(8, 4), number: 1_000);
+        Step(ref s, Spotify.SessionEventKind.AccessTokenMinted, text: new(12, 4), number: 2_000);
+        return s;
+    }
+
+    /// <summary>dealer-hello-rca.md §6.6: a socket that opened but never carried the pusher's hello is dropped by its own
+    /// thread (<c>DealerHelloOverdueException</c> → <c>DealerDropped</c> with Protocol). The fold answers it from Opening
+    /// exactly like any dealer drop: close + back off, Reconnecting with the fault named, the AP and the login untouched,
+    /// the ladder climbing per overdue socket, the retry re-opening on the login's bearer, and the next socket's hello
+    /// taking the session Online and resetting the ladder.</summary>
+    [Fact]
+    public void A_dealer_drop_before_its_hello_backs_off_and_re_opens_without_touching_the_ap()
+    {
+        var s = DealerOpening();
+        Assert.Equal(Spotify.LinkPhase.Opening, s.Dealer);
+        Assert.Equal(Spotify.SessionPhase.Minting, s.Phase);
+        uint epoch = s.Epoch, apEpoch = s.ApEpoch;
+        Spotify.TokenRef bearer = s.AccessToken;
+
+        var fx = Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Protocol);
+        Assert.Equal(Spotify.SessionEffects.CloseDealer | Spotify.SessionEffects.DealerBackoff, fx);   // never CloseAp
+        Assert.Equal(Spotify.SessionPhase.Reconnecting, s.Phase);
+        Assert.Equal(Spotify.SessionFault.Protocol, s.Fault);
+        Assert.Equal(Spotify.LinkPhase.Waiting, s.Dealer);
+        Assert.Equal(Spotify.LinkPhase.Up, s.Ap);
+        Assert.Equal(epoch + 1, s.Epoch);
+        Assert.Equal(apEpoch, s.ApEpoch);
+        Assert.Equal(1u, s.DealerAttempt);
+        Assert.True(s.LoggedIn);
+        Assert.Equal(bearer, s.AccessToken);                                // the retry re-opens on the login's bearer
+        Assert.True(s.ConnectionId.IsEmpty);
+
+        Assert.Equal(Spotify.SessionEffects.OpenDealer, Step(ref s, Spotify.SessionEventKind.DealerRetry));
+        Assert.Equal(Spotify.LinkPhase.Opening, s.Dealer);
+
+        // A second overdue socket climbs the ladder (3 s, then 6 s) — the AP still untouched.
+        Assert.Equal(Spotify.SessionEffects.CloseDealer | Spotify.SessionEffects.DealerBackoff,
+            Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Protocol));
+        Assert.Equal(2u, s.DealerAttempt);
+        Assert.Equal(6_000, Spotify.BackoffMs(s.DealerAttempt));
+        Assert.Equal(epoch + 2, s.Epoch);
+        Assert.Equal(apEpoch, s.ApEpoch);
+        Assert.Equal(Spotify.LinkPhase.Up, s.Ap);
+        Assert.Equal(Spotify.SessionEffects.OpenDealer, Step(ref s, Spotify.SessionEventKind.DealerRetry));
+
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(24, 4)));
+        Assert.Equal(Spotify.SessionPhase.Online, s.Phase);
+        Assert.Equal(Spotify.SessionFault.None, s.Fault);
+        Assert.Equal(Spotify.LinkPhase.Up, s.Dealer);
+        Assert.Equal(new Spotify.TokenRef(24, 4), s.ConnectionId);
+        Assert.Equal(0u, s.DealerAttempt);
+        Assert.Equal(apEpoch, s.ApEpoch);
+    }
+
+    /// <summary>dealer-hello-rca.md §6.6: the overdue socket's drop abandons its epoch, so a hello it carries after all —
+    /// late, on the socket being torn down — is refused as stale: no Online, no announce, no id from a connection that no
+    /// longer exists. Still stale once the retry's socket is opening; only the new epoch's hello folds.</summary>
+    [Fact]
+    public void A_late_hello_from_the_overdue_socket_is_stale()
+    {
+        var s = DealerOpening();
+        uint overdue = s.Epoch;
+        Step(ref s, Spotify.SessionEventKind.DealerDropped, number: (long)Spotify.SessionFault.Protocol);
+        Spotify.Session before = s;
+
+        Assert.True(Spotify.IsStale(in s, new Spotify.SessionEvent(Spotify.SessionEventKind.DealerOnline, Epoch: overdue)));
+        Assert.Equal(Spotify.SessionEffects.None,
+            Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(24, 4), epoch: overdue));
+        Assert.Equal(before, s);                                            // not one field moved
+        Assert.Equal(Spotify.SessionPhase.Reconnecting, s.Phase);
+        Assert.True(s.ConnectionId.IsEmpty);
+
+        Step(ref s, Spotify.SessionEventKind.DealerRetry);
+        Assert.Equal(Spotify.SessionEffects.None,
+            Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(24, 4), epoch: overdue));
+        Assert.Equal(Spotify.LinkPhase.Opening, s.Dealer);
+        Assert.Equal(Spotify.SessionPhase.Reconnecting, s.Phase);
+        Assert.True(s.ConnectionId.IsEmpty);
+
+        Assert.Equal(Spotify.SessionEffects.AnnounceDevice, Step(ref s, Spotify.SessionEventKind.DealerOnline, text: new(28, 4)));
+        Assert.True(s.IsOnline);
+        Assert.Equal(new Spotify.TokenRef(28, 4), s.ConnectionId);
+    }
+
     /// <summary>Both sockets down at once (the host's network blipped — 10:10:59 on 2026-09-19 dropped both in the same
     /// millisecond): each reconnects on its own ladder, neither waits for the other, and the one that ends Online is the
     /// dealer's hello.</summary>

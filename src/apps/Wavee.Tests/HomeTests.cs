@@ -3,8 +3,8 @@
 // Wave 1's gate for Entities/Home.cs (plan §5). The three questions ch 10 §7 separates — is the PAGE ready, has the
 // CHROME concluded, is this SECTION whole — are three different predicates with three different failure modes, and
 // 0.2.9 got each of them wrong in a different way. All three are pure, so all three are pinned here without a scope
-// (D17). The paging arithmetic is the ported `HomeSectionPaging`, whose two defects are measured rather than
-// hypothetical.
+// (D17). The paging arithmetic is `SectionPaging` (the cursor the query layer's section walk stops on), whose two
+// defects are measured rather than hypothetical.
 //
 // The LIFETIME facts at the bottom were added on 2026-09-12 with the packed identity
 // (docs/plans/wavee/wavee-0.3-entity-identity-memory.md, defect 1). A Home subject, a section row and every chip are

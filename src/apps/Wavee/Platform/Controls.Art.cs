@@ -1411,12 +1411,18 @@ public static partial class Controls
     }
 
     /// <summary>A rich paragraph with a native inline overflow suffix: the collapsed state reserves "… More" on the
-    /// FINAL line only when the body actually overflows, and the expanded state appends a clickable "Less".
-    /// <para>KEY IT on the whole content signature at the mount site — the body freezes at mount.</para></summary>
+    /// FINAL line only when the body actually overflows (the engine's own clip decision — <c>SpanTextEl.OverflowSuffix</c>
+    /// is hidden while the body fits), and the expanded state appends a clickable "Less".
+    /// <para>Every input is a LIVE prop (re-pushed, never frozen at mount — a late page accent reaches the links); the key
+    /// is the CONTENT's identity only, so a new body resets the expansion and a resize or a new line cap does not.</para>
+    /// <para><paramref name="fullTextTip"/>: while collapsed, hovering the paragraph shows its whole text in a tooltip
+    /// (<see cref="RichTextTip"/>) — the detail description's opt-in; a long show-notes body (Episode) does not ask.</para></summary>
     public static Element ExpandableRichText(string? html, float size, ColorF color, ColorF linkColor, float width,
-                                             int maxLines, string contextKey, Action<string>? onNavRoute = null)
-        => Embed.Comp(() => new ExpandableRich(html, size, color, linkColor, width, maxLines, onNavRoute))
-            with { Key = $"rich-expand:{contextKey}:{html}:{(int)width}:{maxLines}" };
+                                             int maxLines, string contextKey, Action<string>? onNavRoute = null,
+                                             bool fullTextTip = false)
+        => Embed.Comp(new ExpandableRichProps(html, size, color, linkColor, width, maxLines, onNavRoute, fullTextTip),
+                      static () => new ExpandableRich())
+            with { Key = $"rich-expand:{contextKey}:{html}" };
 
     public static Element ExpandableRichTextFlex(string? html, float size, ColorF color, ColorF linkColor,
                                                 int maxLines, string contextKey, Action<string>? onNavRoute = null)
@@ -1426,44 +1432,83 @@ public static partial class Controls
             [ExpandableRichText(html, size, color, linkColor, float.NaN, maxLines, contextKey, onNavRoute)],
         };
 
+    sealed record ExpandableRichProps(string? Html, float Size, ColorF Color, ColorF LinkColor, float Width, int MaxLines,
+                                      Action<string>? OnNav, bool FullTextTip);
+
     sealed class ExpandableRich : Component
     {
-        readonly string? _html;
-        readonly float _size, _width;
-        readonly ColorF _color, _linkColor;
-        readonly int _maxLines;
-        readonly Action<string>? _onNav;
         readonly Signal<bool> _expanded = new(false);
+        readonly Action _expand, _collapse;
 
-        public ExpandableRich(string? html, float size, ColorF color, ColorF linkColor, float width, int maxLines,
-                              Action<string>? onNav)
-        { _html = html; _size = size; _color = color; _linkColor = linkColor; _width = width; _maxLines = maxLines; _onNav = onNav; }
+        public ExpandableRich()
+        {
+            _expand = () => _expanded.Value = true;
+            _collapse = () => _expanded.Value = false;
+        }
 
         public override Element Render()
         {
-            if (string.IsNullOrWhiteSpace(_html)) return new BoxEl();
-            var parsed = ParseRich(_html!, _linkColor, _onNav);
+            var p = UseProps<ExpandableRichProps>();
+            bool expanded = _expanded.Value;
+            if (string.IsNullOrWhiteSpace(p.Html)) return new BoxEl();
+            var parsed = ParseRich(p.Html!, p.LinkColor, p.OnNav);
             if (parsed.Count == 0) return new BoxEl();
 
-            bool expanded = _expanded.Value;
+            // The tip is the paragraph's OWN text, taken before the "Less" affordance joins it.
+            string? tip = p.FullTextTip ? RichTextTip.For(expanded, PlainTextOf(parsed)) : null;
             if (expanded)
-                parsed.Add(new TextSpan(" " + Loc.Get(Strings.Common.Less), Weight: 600, Color: _linkColor,
-                                        OnClick: () => _expanded.Value = false));
+                parsed.Add(new TextSpan(" " + Loc.Get(Strings.Common.Less), Weight: 600, Color: p.LinkColor, OnClick: _collapse));
 
-            return new SpanTextEl(parsed.ToArray())
+            Element body = new SpanTextEl(parsed.ToArray())
             {
-                Size = _size, Color = _color, LineHeight = LineHeightFor(_size),
-                Width = float.IsNaN(_width) ? float.NaN : _width,
+                Size = p.Size, Color = p.Color, LineHeight = LineHeightFor(p.Size),
+                Width = p.Width,
                 Grow = 0f,
                 MinWidth = 0f,
-                MaxLines = expanded ? 0 : _maxLines,
+                MaxLines = expanded ? 0 : p.MaxLines,
                 Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
                 OverflowSuffix = expanded
                     ? null
-                    : [new TextSpan("… " + Loc.Get(Strings.Common.More), Weight: 600, Color: _linkColor,
-                                    OnClick: () => _expanded.Value = true)],
+                    : [new TextSpan("… " + Loc.Get(Strings.Common.More), Weight: 600, Color: p.LinkColor, OnClick: _expand)],
             };
+            if (!p.FullTextTip) return body;
+            // The BOUND-text wrap keeps the tree shape across collapse/expand: a null tip mounts no tooltip wiring.
+            Prop<string?> tipText = tip;
+            return ToolTip.Wrap(body, tipText);
         }
+
+        static string PlainTextOf(List<TextSpan> spans)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < spans.Count; i++) sb.Append(spans[i].Text);
+            return sb.ToString();
+        }
+    }
+}
+
+/// <summary>The full-text tooltip a clamped rich paragraph carries (the detail description, 2026-09-30: "on hover it should
+/// show the tooltip showing the full text"). Engine-free: the paragraph's plain text in, the tip out.
+/// <para>SCOPE (honest): the tip is gated on the COLLAPSED state, not on the paragraph actually being clipped — the
+/// engine decides the clip inside the text seam (the <c>OverflowSuffix</c> shows only then) but exposes no "trimmed" fact
+/// to the app, so a collapsed body short enough to fit still offers its (identical) text on hover.</para></summary>
+public static class RichTextTip
+{
+    /// <summary>A tooltip is a glance, not a reader: past this many characters the tip ends in an ellipsis at a word
+    /// boundary and the inline "More" is the way to the rest. A Spotify playlist description (≤ 300) always fits.</summary>
+    public const int MaxChars = 500;
+
+    /// <summary>The tip for a paragraph whose plain text is <paramref name="plain"/>: its whole text (trimmed, runs of
+    /// blank lines folded to one) while collapsed, capped at <see cref="MaxChars"/>; null once expanded (the paragraph
+    /// shows everything) and for a blank body.</summary>
+    public static string? For(bool expanded, string? plain)
+    {
+        if (expanded || string.IsNullOrWhiteSpace(plain)) return null;
+        string text = plain.Trim().Replace("\r\n", "\n");
+        while (text.Contains("\n\n\n", StringComparison.Ordinal)) text = text.Replace("\n\n\n", "\n\n", StringComparison.Ordinal);
+        if (text.Length <= MaxChars) return text;
+        int cut = text.LastIndexOf(' ', MaxChars - 1);
+        if (cut < MaxChars / 2) cut = MaxChars - 1;
+        return text[..cut].TrimEnd() + "…";
     }
 }
 

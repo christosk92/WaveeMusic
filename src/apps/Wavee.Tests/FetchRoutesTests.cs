@@ -129,9 +129,33 @@ public class FetchRoutesTests
     [InlineData(FetchEdge.TrackWaveform, RouteTransport.Metadata)]
     [InlineData(FetchEdge.AlbumRecommendations, RouteTransport.Metadata)]
     [InlineData(FetchEdge.BrowseSections, RouteTransport.Pathfinder)]
-    [InlineData(FetchEdge.HomeSectionCards, RouteTransport.Pathfinder)]
+    [InlineData(FetchEdge.HomeSections, RouteTransport.Pathfinder)]
     public void Every_relation_the_door_accepts_has_a_route(FetchEdge edge, RouteTransport transport)
         => Assert.Equal(transport, FetchRoutes.ForEdge(edge).Transport);
+
+    [Fact]
+    public void A_sections_whole_ask_is_the_walk_and_a_browse_bands_identity_ask_is_one_page()
+    {
+        // The drill page asks Identity | Whole; a band a feed already identified asks Whole alone. Both take the route
+        // whose groups carry Whole — the provider walks it to the end (Spotify.Api.Browse.cs).
+        uint drill = (uint)(SectionFields.Identity | SectionFields.Whole);
+        var browseWhole = Assert.Single(Routes(FetchSubject.BrowseSection, EntityKind.Unknown, drill, out uint sealedGroups));
+        Assert.Equal(PathfinderOp.BrowseSection, browseWhole.Op);
+        Assert.NotEqual(0u, browseWhole.Groups & (uint)SectionFields.Whole);
+        Assert.Equal(0u, sealedGroups);
+        var wholeOnly = Assert.Single(Routes(FetchSubject.BrowseSection, EntityKind.Unknown, (uint)SectionFields.Whole, out _));
+        Assert.NotEqual(0u, wholeOnly.Groups & (uint)SectionFields.Whole);
+
+        // A deck tile (the Charts band, Home's featured charts) asks Identity: the band's first page, never the walk.
+        var tile = Assert.Single(Routes(FetchSubject.BrowseSection, EntityKind.Unknown, (uint)SectionFields.Identity, out _));
+        Assert.Equal(PathfinderOp.BrowseSection, tile.Op);
+        Assert.Equal(0u, tile.Groups & (uint)SectionFields.Whole);
+
+        // Only the drill asks a Home band on its own: its one route is always the walk.
+        var home = Assert.Single(Routes(FetchSubject.HomeSection, EntityKind.Unknown, (uint)SectionFields.Identity, out _));
+        Assert.Equal(PathfinderOp.HomeSection, home.Op);
+        Assert.NotEqual(0u, home.Groups & (uint)SectionFields.Whole);
+    }
 
     [Fact]
     public void An_albums_first_tracklist_is_one_kind_and_a_later_page_is_the_pathfinder()

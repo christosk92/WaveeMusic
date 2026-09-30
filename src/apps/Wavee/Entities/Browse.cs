@@ -86,9 +86,12 @@ public sealed class BrowseTable : Table
     public Column<uint> Accent;
     public Column<uint> Flags;
 
-    /// <summary>How many sections the page has in total, and the page-level paging cursor. Deliberately kept even
-    /// though nothing pages it in practice (captured browse pages return every section at offset 0): the field exists
-    /// on the wire, and a column that mirrors the wire cannot silently disagree with it later.</summary>
+    /// <summary>How many sections the page says it has in total, and the page-level cursor where the last answer left it.
+    /// A browse page answers ten sections per request (Music has 14), and the QUERY layer walks
+    /// <c>sections.pagingInfo.nextOffset</c> to its end before the page model lands (<c>Spotify.Api.Browse.cs</c>,
+    /// <see cref="BrowseWalk"/>; RCA 2026-09-30) — so a page's section list is ALL its sections and no page ever pages it
+    /// itself. After a whole walk the cursor reads <see cref="SectionPaging.Complete"/> (the server's explicit end) or
+    /// <see cref="SectionPaging.NoCursor"/> (no pagingInfo); the total is the wire's claim, never a terminator.</summary>
     public Column<int> TotalSections, NextSectionOffset;
 
     public Column<byte> IdentityAuthority, PageAuthority;
@@ -130,10 +133,12 @@ public sealed partial class Scope
 /// needs a payload, and the one cross-table hop (a section's category tiles) is still single-table on each side.
 ///
 ///     Browses[wavee:browse]  ── BrowseDirectory ──▶ Browses[spotify:page:…]     (browseAll's ~70 tiles, in wire order)
-///     Browses[spotify:page:] ── BrowseSections  ──▶ Sections[spotify:section:…] (browsePage's bands, paged by section)
+///     Browses[spotify:page:] ── BrowseSections  ──▶ Sections[spotify:section:…] (browsePage's bands, every page walked)
 ///     Sections[a grid band]  ── SectionCategories ▶ Browses[spotify:page:…]     (a grid / related band's tiles)
 ///
-/// A SHELF band's cards are entities, and they ride <c>Edges.SectionCards</c> exactly as a Home band's do.</summary>
+/// A SHELF band's cards are entities, and they ride <c>Edges.SectionCards</c> exactly as a Home band's do. A band whose
+/// items are category wrappers is a tile band (<c>SectionCategories</c>) whatever its <c>__typename</c>; a page that
+/// returned ONE section carries that section's WHOLE list (the single-section rule, <see cref="BrowseSingleSection"/>).</summary>
 public sealed partial class Edges
 {
     /// <summary>Parent = the directory's browse row, targets = category tile rows.</summary>

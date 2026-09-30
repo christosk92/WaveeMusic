@@ -23,8 +23,33 @@
 //                    a feature (Live Events): content.data{ __typename: BrowseClientFeature, featureUri, title, … }
 //   browsePage     data.browse{ uri, header{ title, color{hex} }, sections{ totalCount, pagingInfo, items[] } }
 //                    a band:  uri + data{ __typename, title } + sectionItems{ totalCount, pagingInfo, items[] }
-//   browseSection  data.browseSection                                              → one band, paged
-//   homeSection    data.homeSections.sections[0]                                   → one Home band, paged
+//   browseSection  data.browseSection{ data{ __typename, title, subtitle }, sectionItems{ items, pagingInfo, totalCount } }
+//                    → one band: its first page (`BrowseSection`), or every page the query layer walked landed WHOLE
+//                    (`BrowseSectionWhole`). NO `uri` in the official answer (captures: charts, home_23 #628): the band
+//                    is keyed on the uri the caller ASKED for, the body's own uri (a trimmed fixture's) is only checked
+//                    against it. Keying on the body alone dropped every live browseSection answer (RCA 2026-09-30, 1).
+//   homeSection    data.homeSections{ __typename: HomeSectionCollection, sections[0]{ __typename: HomeSection, uri, data,
+//                    sectionItems } } → one Home band, every page the query layer walked landed WHOLE
+//                    (`HomeSectionWhole`), keyed on the uri ASKED for like browseSection's
+//
+// THE ROOT IS A UNION (`BrowseRootOf`): `data.browse` / `data.browseSection` is content, or `GenericError` / `NotFound`
+// — a DEFINITE answer ("nothing here"), staged as a known, empty page / band so the planner seals it and the page says
+// "unavailable" instead of re-asking a 200 three times (`fetch.miss`). A body with no union at all (`data: null` beside
+// `errors[]`) stages nothing and says why through the caller's always-on `browse.empty` line (`BrowseAnswer.Error`).
+// Every fold answers a `BrowseAnswer` — the root, the section / item ledger, the bands kept and dropped — which is what
+// `Spotify.Api.Browse.cs` walks the cursors with and logs.
+//
+// A NEXT OFFSET THAT IS `null` IS THE END (`SectionPaging.Complete`), even when the total claims more; an absent
+// `pagingInfo` is `NoCursor`. The query layer's walk (`BrowseWalk`) stops on either — and on a cursor that does not move
+// past the request, which is how a homeSection page's `null` (read `NoCursor`, the Home band decoders' rule) ends it too.
+// A band landed WHOLE is staged `SectionFields.Identity | Whole` with its card run closed Complete: the drill page reads
+// it and never pages.
+//
+// CATEGORY WRAPPERS IN A GENERIC SHELF (RCA 2026-09-30, 4): a `BrowseGenericSectionData` band whose FIRST item is a
+// `BrowseSectionContainerWrapper` / `BrowseXlinkResponseWrapper` (sub-category `spotify:page:` cards, a client feature)
+// is a band of CATEGORY TILES — staged through the same `TileAt` a grid band uses, `SectionKind.BrowseCategoryGrid` —
+// never a shelf whose every item `Stage` refuses (0 cards, silently dropped by `BrowsePageLayout`). The official client
+// renders them as category tiles too.
 //
 // THE TREE'S SHAPE IS Entities/Browse.cs's: tiles are browse ROWS, a page's bands are SECTION rows (Home.cs's one
 // section table), a shelf band's cards ride `Edges.SectionCards` like a Home band's, and a grid band's tiles ride
@@ -80,24 +105,87 @@ public static partial class Spotify
             AppendBrowseRun(s, in directory, BrowseRelation.Directory, start, offset: -1, total: 0);
         }
 
+        // ── the answer (RCA 2026-09-30) ──────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>What a browse answer's root union was (file header).</summary>
+        public enum BrowseRoot : byte
+        {
+            /// <summary>No union at all — <c>data</c> null or absent, or the union itself null (a GraphQL error beside
+            /// it). Nothing is staged; the planner's miss review re-asks it like any 200 that named nothing.</summary>
+            Missing = 0,
+            /// <summary>A page / a band.</summary>
+            Content = 1,
+            /// <summary><c>__typename: GenericError</c> (or any other <c>…Error</c> member): a DEFINITE "nothing here".</summary>
+            GenericError = 2,
+            /// <summary><c>__typename: NotFound</c>: a DEFINITE "nothing here".</summary>
+            NotFound = 3,
+        }
+
+        /// <summary>One band as a decode saw it, for the always-on <c>browse.*</c> line: its <see cref="SectionKind"/>, its
+        /// raw items, how many of them no table or tile could hold, and whether the band itself stood (a band with no uri
+        /// is dropped).</summary>
+        public readonly record struct BrowseBandTally(byte Kind, int Raw, int Unsupported, bool Kept);
+
+        /// <summary>What ONE browse answer said — every browse fold returns it, and the query layer's walk
+        /// (<c>Spotify.Api.Browse.cs</c>) follows its cursors and logs it. <see cref="SectionsReturned"/> counts the
+        /// sections the answer RETURNED (the single-section rule's input — never <see cref="SectionsTotal"/>). A cursor is
+        /// <see cref="SectionPaging.NoCursor"/> (no pagingInfo), <see cref="SectionPaging.Complete"/> (an explicit null)
+        /// or a real offset.</summary>
+        public struct BrowseAnswer
+        {
+            public BrowseRoot Root;
+            /// <summary>The union's own <c>__typename</c>, or null.</summary>
+            public string? RootType;
+            /// <summary><c>errors[0].message</c> of a body that carried no union — why a 200 decoded to nothing.</summary>
+            public string? Error;
+            public int SectionsReturned, SectionsTotal, SectionsNext;
+            /// <summary>The (last) band's own ledger: items THIS answer carried, the stated total, the cursor.</summary>
+            public int ItemsReturned, ItemsTotal, ItemsNext;
+            public int BandsKept, BandsDropped;
+            /// <summary>Index into <see cref="Staging.Sections"/> of the first band this answer staged.</summary>
+            public int BandStart;
+            /// <summary>The band a <c>browseSection</c> answer staged (keyed on the uri asked for), or empty.</summary>
+            public StagedId Section;
+            /// <summary>The body named a uri other than the one asked for. The row is keyed on the asked one regardless.</summary>
+            public bool UriMismatch;
+
+            /// <summary>A <c>GenericError</c> / <c>NotFound</c> root: an ANSWER ("nothing here"), never a failure.</summary>
+            public readonly bool Definite => Root is BrowseRoot.GenericError or BrowseRoot.NotFound;
+
+            /// <summary>An answer before anything is read: no cursor anywhere.</summary>
+            public static BrowseAnswer Blank => new() { SectionsNext = SectionPaging.NoCursor, ItemsNext = SectionPaging.NoCursor };
+        }
+
         // ── browsePage ───────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary><c>browsePage</c> → the page's header (its accent, and its title THIN so the directory tile's own
         /// title and colour always win), one section row per band with its cards or its tiles, and the page's
         /// <see cref="BrowseRelation.PageSections"/> run as the page at <paramref name="sectionOffset"/> — Partial until
-        /// the page's own section total is reached. A body carrying only <c>__typename</c> is a real, empty page.</summary>
-        public static void BrowsePage(ReadOnlySpan<byte> json, ReadOnlySpan<byte> pageUri, int sectionOffset, Staging s)
+        /// the page's own section total is reached. A body carrying only <c>__typename</c> is a real, empty page. Keyed on
+        /// <paramref name="pageUri"/> — the uri ASKED for, a genre spelling folded onto its page — with the body's own uri
+        /// only the fallback and a consistency check. A <c>GenericError</c>/<c>NotFound</c> root at the first page is a
+        /// known page with an EMPTY, Complete section list (<see cref="UnavailablePage"/>); at a later page it stages
+        /// nothing and the pages already read stand.</summary>
+        public static BrowseAnswer BrowsePage(ReadOnlySpan<byte> json, ReadOnlySpan<byte> pageUri, int sectionOffset, Staging s,
+                                              List<BrowseBandTally>? tally = null)
         {
+            var answer = BrowseAnswer.Blank;
             var r = new Utf8JsonReader(json);
-            if (!Descend(ref r, "data"u8, "browse"u8)) return;
+            answer.Root = BrowseRootOf(ref r, "browse"u8, ref answer);
+            if (answer.Root == BrowseRoot.Missing) return answer;
+            if (answer.Definite)
+            {
+                if (sectionOffset <= 0) UnavailablePage(s, pageUri);
+                return answer;
+            }
 
             TextRef uri = default, title = default;
             uint accent = 0;
-            int total = 0, next = SectionPaging.NoCursor;
             // The page's bands are read back off the staged SECTION rows after the walk, not pushed as they close: a grid
             // band appends its own tile run to the same child list while the walk is still inside the page, and a run
             // is a contiguous slice.
             int bands = s.Sections.Count;
+            answer.BandStart = bands;
 
             for (int d = Fields(ref r); Next(ref r, d);)
             {
@@ -115,127 +203,16 @@ public static partial class Spotify
                 {
                     for (int sections = Fields(ref r); Next(ref r, sections);)
                     {
-                        if (r.ValueTextEquals("totalCount"u8)) { r.Read(); total = (int)Num(ref r); }
-                        else if (r.ValueTextEquals("pagingInfo"u8)) next = (int)OneNumber(ref r, "nextOffset"u8, SectionPaging.NoCursor);
-                        else if (r.ValueTextEquals("items"u8) && EnterArray(ref r))
-                        {
-                            for (int list = r.CurrentDepth; Element(ref r, list);) Band(ref r, s, offset: -1);
-                        }
-                        else SkipValue(ref r);
-                    }
-                }
-                else SkipValue(ref r);
-            }
-
-            var page = uri.IsEmpty ? PageId(s, pageUri) : PageId(s, uri);
-            if (page.IsEmpty) return;
-            int start = s.BrowseChildren.Count;
-            for (int i = bands; i < s.Sections.Count; i++) s.BrowseChildren.Add() = s.Sections[i].Id;
-
-            // The page group is this answer's; the identity (title) only fills a node nobody listed — Thin (D16).
-            ref var header = ref s.Browses.RowFor(page, Authority.Thin, (uint)BrowseFields.Identity);
-            header.Title = title;
-            ref var body = ref s.Browses.RowFor(page, Authority.Full, (uint)BrowseFields.Page);
-            body.Accent = accent;
-            body.TotalSections = total;
-            body.NextSectionOffset = next;
-            AppendBrowseRun(s, in page, BrowseRelation.PageSections, start, Math.Max(0, sectionOffset), total);
-        }
-
-        // ── browseSection / homeSection ──────────────────────────────────────────────────────────────────────────────
-
-        /// <summary><c>browseSection</c> → one browse band, its cards as the page at <paramref name="offset"/>.</summary>
-        public static StagedId BrowseSection(ReadOnlySpan<byte> json, int offset, Staging s)
-        {
-            var r = new Utf8JsonReader(json);
-            if (!Descend(ref r, "data"u8, "browseSection"u8)) return default;
-            return Band(ref r, s, Math.Max(0, offset));
-        }
-
-        /// <summary><c>homeSection</c> → one Home band, its cards as the page at <paramref name="offset"/>. The root is
-        /// <c>data.homeSections.sections</c> — a bare array in every capture, an object wrapping <c>items</c> accepted —
-        /// and its FIRST element is the band; a 200 with none is "this did not work" (the caller's to fail), never an
-        /// empty band.</summary>
-        public static StagedId HomeSection(ReadOnlySpan<byte> json, int offset, Staging s)
-        {
-            var r = new Utf8JsonReader(json);
-            if (!Descend(ref r, "data"u8, "homeSections"u8)) return default;
-            for (int d = Fields(ref r); Next(ref r, d);)
-            {
-                if (!r.ValueTextEquals("sections"u8)) { SkipValue(ref r); continue; }
-                if (!r.Read()) return default;
-                if (r.TokenType == JsonTokenType.StartObject)
-                {
-                    // `sections: { items: [ … ] }`
-                    for (int o = r.CurrentDepth; Next(ref r, o);)
-                    {
-                        if (!r.ValueTextEquals("items"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
-                        return FirstBand(ref r, s, offset);
-                    }
-                    return default;
-                }
-                if (r.TokenType != JsonTokenType.StartArray) { r.Skip(); return default; }
-                return FirstBand(ref r, s, offset);
-            }
-            return default;
-
-            static StagedId FirstBand(ref Utf8JsonReader r, Staging s, int offset)
-                => Element(ref r, r.CurrentDepth) ? Section(ref r, s, Math.Max(0, offset)) : default;
-        }
-
-        // ── the band ─────────────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>One browse band (the reader on its object): the section row, and by its KIND either its entity cards
-        /// (<c>Edges.SectionCards</c>) or its category tiles (<see cref="BrowseRelation.SectionCategories"/>). The kind
-        /// is read first off a copy of the reader (the file header); <c>BrowseGenericSectionData</c> and anything unknown
-        /// is a shelf, exactly as 0.2.9's mapper decided.</summary>
-        static StagedId Band(ref Utf8JsonReader r, Staging s, int offset)
-        {
-            byte kind = BandKindOf(r);
-            bool tiles = kind != (byte)SectionKind.BrowseShelf;
-            ref var row = ref s.Sections.RowFor(default, Authority.Full, (uint)SectionFields.Identity);
-            row.NextOffset = SectionPaging.NoCursor;
-            row.Kind = kind;
-            int cards = s.Edges.PendingMark, tileStart = s.BrowseChildren.Count;
-
-            for (int depth = r.CurrentDepth; Next(ref r, depth);)
-            {
-                if (r.ValueTextEquals("uri"u8)) { r.Read(); if (row.Id.IsEmpty) row.Id = JsonId(ref r, s); }
-                else if (r.ValueTextEquals("data"u8))
-                {
-                    for (int d = Fields(ref r); Next(ref r, d);)
-                    {
-                        if (r.ValueTextEquals("title"u8)) { r.Read(); row.Title = Label(ref r, s); }
-                        else if (r.ValueTextEquals("subtitle"u8)) { r.Read(); row.Subtitle = Label(ref r, s); }
-                        else SkipValue(ref r);
-                    }
-                }
-                else if (r.ValueTextEquals("sectionItems"u8))
-                {
-                    for (int d = Fields(ref r); Next(ref r, d);)
-                    {
-                        if (r.ValueTextEquals("totalCount"u8)) { r.Read(); row.Total = (int)Num(ref r); }
+                        if (r.ValueTextEquals("totalCount"u8)) { r.Read(); answer.SectionsTotal = (int)Num(ref r); }
+                        // `nextOffset: null` is the END (Complete); no pagingInfo at all is NoCursor. The walk stops on both.
                         else if (r.ValueTextEquals("pagingInfo"u8))
-                            row.NextOffset = (int)OneNumber(ref r, "nextOffset"u8, SectionPaging.NoCursor);
+                            answer.SectionsNext = (int)OneNumber(ref r, "nextOffset"u8, SectionPaging.Complete);
                         else if (r.ValueTextEquals("items"u8) && EnterArray(ref r))
                         {
                             for (int list = r.CurrentDepth; Element(ref r, list);)
                             {
-                                row.Raw++;
-                                if (tiles)
-                                {
-                                    var tile = TileAt(ref r, s);
-                                    if (tile.IsEmpty) { row.Unsupported++; continue; }
-                                    row.Cards++;
-                                    s.BrowseChildren.Add() = tile;
-                                    continue;
-                                }
-                                var node = default(Node);
-                                EntityNode(ref r, s, ref node);
-                                var card = Stage(s, in node, Authority.Thin);
-                                if (card.IsEmpty) { row.Unsupported++; continue; }
-                                row.Cards++;
-                                s.Edges.Push().Target = card;
+                                answer.SectionsReturned++;
+                                Band(ref r, s, offset: -1, requested: default, ref answer, tally);
                             }
                         }
                         else SkipValue(ref r);
@@ -244,7 +221,318 @@ public static partial class Spotify
                 else SkipValue(ref r);
             }
 
+            var asked = pageUri.IsEmpty ? default : PageId(s, pageUri);
+            var said = uri.IsEmpty ? default : PageId(s, uri);
+            if (!asked.IsEmpty && !said.IsEmpty && !s.Utf8(asked.Text).SequenceEqual(s.Utf8(said.Text))) answer.UriMismatch = true;
+            var page = asked.IsEmpty ? said : asked;
+            if (page.IsEmpty) return answer;
+            int start = s.BrowseChildren.Count;
+            for (int i = bands; i < s.Sections.Count; i++) s.BrowseChildren.Add() = s.Sections[i].Id;
+
+            // The page group is this answer's; the identity (title) only fills a node nobody listed — Thin (D16).
+            ref var header = ref s.Browses.RowFor(page, Authority.Thin, (uint)BrowseFields.Identity);
+            header.Title = title;
+            ref var body = ref s.Browses.RowFor(page, Authority.Full, (uint)BrowseFields.Page);
+            body.Accent = accent;
+            body.TotalSections = answer.SectionsTotal;
+            body.NextSectionOffset = answer.SectionsNext;
+            AppendBrowseRun(s, in page, BrowseRelation.PageSections, start, Math.Max(0, sectionOffset), answer.SectionsTotal);
+            return answer;
+        }
+
+        /// <summary>A page the server says is not there (<c>GenericError</c> / <c>NotFound</c>): a KNOWN page with an EMPTY,
+        /// Complete section list — what the category page renders as "unavailable", and what seals the ask instead of
+        /// the miss review re-asking a 200 that will never say more.</summary>
+        static void UnavailablePage(Staging s, ReadOnlySpan<byte> pageUri)
+        {
+            var page = PageId(s, pageUri);
+            if (page.IsEmpty) return;
+            ref var body = ref s.Browses.RowFor(page, Authority.Full, (uint)BrowseFields.Page);
+            body.NextSectionOffset = SectionPaging.Complete;
+            AppendBrowseRun(s, in page, BrowseRelation.PageSections, s.BrowseChildren.Count, offset: -1, total: 0);
+        }
+
+        // ── browseSection / homeSection ──────────────────────────────────────────────────────────────────────────────
+
+        /// <summary><c>browseSection</c> → one browse band keyed on <paramref name="sectionUri"/> — the uri ASKED for; the
+        /// official answer carries none (file header) — its cards or tiles as the page at <paramref name="offset"/> (the
+        /// query layer asks the first page alone for a deck tile; the drill's whole band is <see cref="BrowseSectionWhole"/>).
+        /// A <c>GenericError</c>/<c>NotFound</c> root at offset 0 is a known, EMPTY, Complete band
+        /// (<see cref="UnavailableSection"/>); at a later offset it stages nothing and the pages already landed stand.</summary>
+        public static BrowseAnswer BrowseSection(ReadOnlySpan<byte> json, ReadOnlySpan<byte> sectionUri, int offset, Staging s,
+                                                 List<BrowseBandTally>? tally = null)
+        {
+            var answer = BrowseAnswer.Blank;
+            var r = new Utf8JsonReader(json);
+            answer.Root = BrowseRootOf(ref r, "browseSection"u8, ref answer);
+            if (answer.Root == BrowseRoot.Missing) return answer;
+            answer.BandStart = s.Sections.Count;
+            if (answer.Definite)
+            {
+                if (offset <= 0) answer.Section = UnavailableSection(sectionUri, SectionKind.BrowseShelf, s);
+                return answer;
+            }
+            answer.Section = Band(ref r, s, Math.Max(0, offset), sectionUri, ref answer, tally);
+            return answer;
+        }
+
+        /// <summary>A band the server says is not there (a <c>GenericError</c> / <c>NotFound</c> first page): a KNOWN section
+        /// row with no cards, its cursor at the end, and an empty, Complete card list — an answer the planner seals, never a
+        /// miss it re-asks. "Nothing here" is the whole list, so it answers <see cref="SectionFields.Whole"/> too.
+        /// <paramref name="kind"/> keeps the row in its family (a Home band must keep routing to <c>homeSection</c>).</summary>
+        public static StagedId UnavailableSection(ReadOnlySpan<byte> sectionUri, SectionKind kind, Staging s)
+        {
+            if (sectionUri.IsEmpty) return default;
+            var id = new StagedId(s.AddText(sectionUri));
+            ref var row = ref s.Sections.RowFor(id, Authority.Full, (uint)(SectionFields.Identity | SectionFields.Whole));
+            row.Kind = (byte)kind;
+            row.NextOffset = SectionPaging.Complete;
+            if (IsChartSection(s, in id)) row.Flags |= (byte)SectionFlags.Chart;
+            s.Sections.Settle();
+            s.Edges.Close(Relation.SectionCards, in id, s.Edges.PendingMark);
+            return id;
+        }
+
+        /// <summary>A <c>browseSection</c> page READ WITHOUT STAGING: its root, its item count and its cursor. The query
+        /// layer's section walks read every page this way first, because what lands — the whole band, the page's own band
+        /// (<see cref="BrowseSingleSection.UseWalk"/>), a known empty band — is known only once the walk has ended.</summary>
+        public static BrowseAnswer ScanBrowseSection(ReadOnlySpan<byte> json)
+        {
+            var answer = BrowseAnswer.Blank;
+            var r = new Utf8JsonReader(json);
+            answer.Root = BrowseRootOf(ref r, "browseSection"u8, ref answer);
+            if (answer.Root != BrowseRoot.Content) return answer;
+            for (int depth = r.CurrentDepth; Next(ref r, depth);)
+            {
+                if (!r.ValueTextEquals("sectionItems"u8)) { SkipValue(ref r); continue; }
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (r.ValueTextEquals("totalCount"u8)) { r.Read(); answer.ItemsTotal = (int)Num(ref r); }
+                    else if (r.ValueTextEquals("pagingInfo"u8))
+                        answer.ItemsNext = (int)OneNumber(ref r, "nextOffset"u8, SectionPaging.Complete);
+                    else if (r.ValueTextEquals("items"u8) && EnterArray(ref r))
+                    {
+                        for (int list = r.CurrentDepth; Element(ref r, list);) { answer.ItemsReturned++; r.Skip(); }
+                    }
+                    else SkipValue(ref r);
+                }
+            }
+            return answer;
+        }
+
+        /// <summary>A <c>browseSection</c> WALK LANDED WHOLE — the drill page's band, and the single-section rule's
+        /// (<see cref="BrowseSingleSection"/>): every <c>browseSection</c> page the query layer read for
+        /// <paramref name="sectionUri"/>, in order, as ONE section row (<see cref="SectionFields.Identity"/> |
+        /// <see cref="SectionFields.Whole"/>) and ONE whole-list run — the cards (<c>Edges.SectionCards</c>, Complete) or,
+        /// when the first item is a category wrapper, the tiles (<see cref="BrowseRelation.SectionCategories"/>). A whole
+        /// rewrite, so it replaces whatever first page a page staged for the same uri earlier (rows and runs commit in
+        /// staging order). <paramref name="endCursor"/> is where the walk ended — <see cref="SectionPaging.Complete"/> when
+        /// the server's cursor did, else the offset it would have asked next — and becomes the row's <c>NextOffset</c>, so
+        /// the ledger never claims more than it read.</summary>
+        public static BrowseAnswer BrowseSectionWhole(IReadOnlyList<byte[]> pages, ReadOnlySpan<byte> sectionUri, int endCursor,
+                                                      Staging s, List<BrowseBandTally>? tally = null)
+        {
+            var answer = BrowseAnswer.Blank;
+            if (sectionUri.IsEmpty || pages.Count == 0) return answer;
+            var id = new StagedId(s.AddText(sectionUri));
+            answer.BandStart = s.Sections.Count;
+            ref var row = ref s.Sections.RowFor(id, Authority.Full, (uint)(SectionFields.Identity | SectionFields.Whole));
+            row.Kind = (byte)SectionKind.BrowseShelf;
+            int cards = s.Edges.PendingMark, tileStart = s.BrowseChildren.Count;
+            bool first = true, tiles = false;
+
+            for (int p = 0; p < pages.Count; p++)
+            {
+                var page = BrowseAnswer.Blank;
+                var r = new Utf8JsonReader(pages[p]);
+                if (BrowseRootOf(ref r, "browseSection"u8, ref page) != BrowseRoot.Content) continue;
+                bool header = first;
+                if (first)
+                {
+                    // The density is the FIRST page's first item's, exactly as the official client decides it.
+                    first = false;
+                    answer.Root = BrowseRoot.Content;
+                    answer.RootType = page.RootType;
+                    row.Kind = BandKindOf(r);
+                    tiles = row.Kind != (byte)SectionKind.BrowseShelf;
+                }
+                for (int depth = r.CurrentDepth; Next(ref r, depth);)
+                {
+                    if (header && r.ValueTextEquals("data"u8)) BandData(ref r, s, ref row);
+                    else if (r.ValueTextEquals("sectionItems"u8)) BandItems(ref r, s, ref row, tiles);
+                    else SkipValue(ref r);
+                }
+            }
+            if (first)
+            {
+                // Not one page carried a band: nothing to land (the caller only hands over pages it scanned as content).
+                s.Sections.Drop();
+                return answer;
+            }
+
+            row.NextOffset = endCursor;
+            if (IsChartSection(s, in id)) row.Flags |= (byte)SectionFlags.Chart;
+            answer.ItemsReturned = row.Raw;
+            answer.ItemsTotal = row.Total;
+            answer.ItemsNext = endCursor;
+            tally?.Add(new BrowseBandTally(row.Kind, row.Raw, row.Unsupported, Kept: true));
+            s.Sections.Settle();
+            answer.BandsKept = 1;
+            answer.Section = id;
+            if (tiles)
+            {
+                s.Edges.Pop(cards);
+                AppendBrowseRun(s, in id, BrowseRelation.SectionCategories, tileStart, offset: -1, total: 0);
+            }
+            else s.Edges.Close(Relation.SectionCards, in id, cards);
+            return answer;
+        }
+
+        /// <summary>A <c>homeSection</c> page READ WITHOUT STAGING — the query layer's home walk steps with it before
+        /// anything is staged, as <see cref="ScanBrowseSection"/> does for browse. The band is the FIRST element of
+        /// <c>data.homeSections.sections</c> (<see cref="FirstHomeBand"/>) and its own <c>__typename</c> is the union: none
+        /// (a trimmed body) or <c>HomeSection</c> is content, <c>GenericError</c>/<c>NotFound</c> a DEFINITE "nothing here";
+        /// no band at all is <see cref="BrowseRoot.Missing"/> — a 200 that named nothing. <c>nextOffset: null</c> reads
+        /// <see cref="SectionPaging.NoCursor"/>, the Home band decoders' rule; the walk stops on it all the same (the
+        /// official client: <c>nextOffset &gt; 0 ? nextOffset : end</c>).</summary>
+        public static BrowseAnswer ScanHomeSection(ReadOnlySpan<byte> json)
+        {
+            var answer = BrowseAnswer.Blank;
+            var r = new Utf8JsonReader(json);
+            if (!FirstHomeBand(ref r)) return answer;
+            answer.RootType = TypenameOf(r);
+            answer.Root = RootOf(answer.RootType);
+            if (answer.Root != BrowseRoot.Content) return answer;
+            for (int depth = r.CurrentDepth; Next(ref r, depth);)
+            {
+                if (!r.ValueTextEquals("sectionItems"u8)) { SkipValue(ref r); continue; }
+                for (int d = Fields(ref r); Next(ref r, d);)
+                {
+                    if (r.ValueTextEquals("totalCount"u8)) { r.Read(); answer.ItemsTotal = (int)Num(ref r); }
+                    else if (r.ValueTextEquals("pagingInfo"u8))
+                        answer.ItemsNext = (int)OneNumber(ref r, "nextOffset"u8, SectionPaging.NoCursor);
+                    else if (r.ValueTextEquals("items"u8) && EnterArray(ref r))
+                    {
+                        for (int list = r.CurrentDepth; Element(ref r, list);) { answer.ItemsReturned++; r.Skip(); }
+                    }
+                    else SkipValue(ref r);
+                }
+            }
+            return answer;
+        }
+
+        /// <summary>THE HOME WALK LANDED WHOLE — the drill page's Home band: every <c>homeSection</c> page the query layer
+        /// read for <paramref name="sectionUri"/>, in order, as ONE section row keyed on the uri ASKED for
+        /// (<see cref="SectionFields.Identity"/> | <see cref="SectionFields.Whole"/>) and ONE whole-list
+        /// <see cref="Relation.SectionCards"/> run, closed Complete. The title, subtitle and kind are the FIRST page's; the
+        /// ledger (<c>Raw</c>, <c>Cards</c>, <c>Unsupported</c>) is every page's added up; <paramref name="endCursor"/> — where
+        /// the walk ended, <see cref="SectionPaging.Complete"/> when the server's cursor did — becomes <c>NextOffset</c>.
+        /// A whole rewrite: it replaces the first page a feed band landed for the same uri. Pages that are not content
+        /// are skipped (the walk hands over only content pages).</summary>
+        public static BrowseAnswer HomeSectionWhole(IReadOnlyList<byte[]> pages, ReadOnlySpan<byte> sectionUri, int endCursor,
+                                                    Staging s)
+        {
+            var answer = BrowseAnswer.Blank;
+            if (sectionUri.IsEmpty || pages.Count == 0) return answer;
+            var id = new StagedId(s.AddText(sectionUri));
+            answer.BandStart = s.Sections.Count;
+            ref var row = ref s.Sections.RowFor(id, Authority.Full, (uint)(SectionFields.Identity | SectionFields.Whole));
+            row.Kind = (byte)SectionKind.HomeGeneric;          // the typename's verdict when the first page names one
+            int cards = s.Edges.PendingMark;
+            bool first = true;
+
+            for (int p = 0; p < pages.Count; p++)
+            {
+                var r = new Utf8JsonReader(pages[p]);
+                if (!FirstHomeBand(ref r) || RootOf(TypenameOf(r)) != BrowseRoot.Content) continue;
+                bool header = first;
+                first = false;
+                for (int depth = r.CurrentDepth; Next(ref r, depth);)
+                {
+                    if (header && r.ValueTextEquals("data"u8)) HomeBandData(ref r, s, ref row);
+                    else if (r.ValueTextEquals("sectionItems"u8)) HomeBandItems(ref r, s, ref row);
+                    else SkipValue(ref r);
+                }
+            }
+            if (first)
+            {
+                // Not one page carried a band: nothing to land.
+                s.Edges.Pop(cards);
+                s.Sections.Drop();
+                return answer;
+            }
+
+            row.NextOffset = endCursor;
+            if (IsChartSection(s, in id)) row.Flags |= (byte)SectionFlags.Chart;
+            answer.Root = BrowseRoot.Content;
+            answer.ItemsReturned = row.Raw;
+            answer.ItemsTotal = row.Total;
+            answer.ItemsNext = endCursor;
+            s.Sections.Settle();
+            answer.BandsKept = 1;
+            answer.Section = id;
+            s.Edges.Close(Relation.SectionCards, in id, cards);
+            return answer;
+        }
+
+        /// <summary>Position the reader ON the first band of a <c>homeSection</c> answer — the StartObject a band walk begins
+        /// at. The band list is <c>data.homeSections.sections</c>: a bare array in every capture, an object wrapping
+        /// <c>items</c> accepted. False when there is none (a 200 that named nothing).</summary>
+        static bool FirstHomeBand(ref Utf8JsonReader r)
+        {
+            if (!Descend(ref r, "data"u8, "homeSections"u8)) return false;
+            for (int d = Fields(ref r); Next(ref r, d);)
+            {
+                if (!r.ValueTextEquals("sections"u8)) { SkipValue(ref r); continue; }
+                if (!r.Read()) return false;
+                if (r.TokenType == JsonTokenType.StartObject)
+                {
+                    // `sections: { items: [ … ] }`
+                    for (int o = r.CurrentDepth; Next(ref r, o);)
+                    {
+                        if (!r.ValueTextEquals("items"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
+                        return Element(ref r, r.CurrentDepth);
+                    }
+                    return false;
+                }
+                return r.TokenType == JsonTokenType.StartArray && Element(ref r, r.CurrentDepth);
+            }
+            return false;
+        }
+
+        // ── the band ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>One browse band (the reader on its object, or on the property naming it): the section row, and by its
+        /// KIND either its entity cards (<c>Edges.SectionCards</c>) or its category tiles
+        /// (<see cref="BrowseRelation.SectionCategories"/>). The kind is read first off a copy of the reader
+        /// (<see cref="BandKindOf"/>). <paramref name="requested"/> — the uri a <c>browseSection</c> caller ASKED for —
+        /// keys the row when given; otherwise (a browsePage band) the body's own <c>uri</c> does, and a band with none is
+        /// dropped. Tallied into <paramref name="answer"/> (kept / dropped, the band's item ledger) and
+        /// <paramref name="tally"/>.</summary>
+        static StagedId Band(ref Utf8JsonReader r, Staging s, int offset, ReadOnlySpan<byte> requested, ref BrowseAnswer answer,
+                             List<BrowseBandTally>? tally)
+        {
+            byte kind = BandKindOf(r);
+            bool tiles = kind != (byte)SectionKind.BrowseShelf;
+            var asked = requested.IsEmpty ? default : new StagedId(s.AddText(requested));
+            ref var row = ref s.Sections.RowFor(asked, Authority.Full, (uint)SectionFields.Identity);
+            row.NextOffset = SectionPaging.NoCursor;
+            row.Kind = kind;
+            int cards = s.Edges.PendingMark, tileStart = s.BrowseChildren.Count;
+
+            for (int depth = r.CurrentDepth; Next(ref r, depth);)
+            {
+                if (r.ValueTextEquals("uri"u8)) { r.Read(); BandUri(ref r, s, ref row, requested, ref answer); }
+                else if (r.ValueTextEquals("data"u8)) BandData(ref r, s, ref row);
+                else if (r.ValueTextEquals("sectionItems"u8)) BandItems(ref r, s, ref row, tiles);
+                else SkipValue(ref r);
+            }
+
             var uri = row.Id;
+            answer.ItemsReturned = row.Raw;
+            answer.ItemsTotal = row.Total;
+            answer.ItemsNext = row.NextOffset;
+            tally?.Add(new BrowseBandTally(kind, row.Raw, row.Unsupported, Kept: !uri.IsEmpty));
             // The DECODED chart bit (ch 12 trap 10): the drill grid threads it in and never re-derives it from a uri.
             if (IsChartSection(s, in uri)) row.Flags |= (byte)SectionFlags.Chart;
             if (offset > 0)
@@ -252,7 +540,14 @@ public static partial class Spotify
                 row.Raw = SectionPaging.Advance(offset, row.Raw);
                 row.Cards += offset;
             }
-            if (!s.Sections.Settle()) { s.Edges.Pop(cards); s.BrowseChildren.Rewind(tileStart); return default; }
+            if (!s.Sections.Settle())
+            {
+                answer.BandsDropped++;
+                s.Edges.Pop(cards);
+                s.BrowseChildren.Rewind(tileStart);
+                return default;
+            }
+            answer.BandsKept++;
             if (tiles)
             {
                 s.Edges.Pop(cards);
@@ -263,24 +558,214 @@ public static partial class Spotify
             return uri;
         }
 
+        /// <summary>A band's <c>uri</c> (the reader on its value). With no <paramref name="requested"/> uri it IS the
+        /// row's identity; with one, it is only checked against it — the row stays keyed on the uri asked for, and a
+        /// disagreement is recorded for the always-on line, never trusted.</summary>
+        static void BandUri(ref Utf8JsonReader r, Staging s, ref StagedSection row, ReadOnlySpan<byte> requested,
+                            ref BrowseAnswer answer)
+        {
+            if (requested.IsEmpty)
+            {
+                if (row.Id.IsEmpty) row.Id = JsonId(ref r, s);
+                return;
+            }
+            var said = s.AddJson(ref r);
+            if (said.IsEmpty) return;
+            if (!s.Utf8(said).SequenceEqual(requested)) answer.UriMismatch = true;
+            s.RewindText(said.Offset);                           // it was the last thing written: give the arena back
+        }
+
+        /// <summary>A band's <c>data</c>: its title and subtitle (a <c>null</c> subtitle is none).</summary>
+        static void BandData(ref Utf8JsonReader r, Staging s, ref StagedSection row)
+        {
+            for (int d = Fields(ref r); Next(ref r, d);)
+            {
+                if (r.ValueTextEquals("title"u8)) { r.Read(); row.Title = Label(ref r, s); }
+                else if (r.ValueTextEquals("subtitle"u8)) { r.Read(); row.Subtitle = Label(ref r, s); }
+                else SkipValue(ref r);
+            }
+        }
+
+        /// <summary>A band's <c>sectionItems</c>: the stated total (the largest seen — a whole walk folds several pages
+        /// into one row), the cursor (<c>null</c> = <see cref="SectionPaging.Complete"/>), and every item — a TILE for a
+        /// tile band, a staged entity CARD otherwise; whatever neither can hold is counted unsupported.</summary>
+        static void BandItems(ref Utf8JsonReader r, Staging s, ref StagedSection row, bool tiles)
+        {
+            for (int d = Fields(ref r); Next(ref r, d);)
+            {
+                if (r.ValueTextEquals("totalCount"u8)) { r.Read(); int total = (int)Num(ref r); if (total > row.Total) row.Total = total; }
+                else if (r.ValueTextEquals("pagingInfo"u8))
+                    row.NextOffset = (int)OneNumber(ref r, "nextOffset"u8, SectionPaging.Complete);
+                else if (r.ValueTextEquals("items"u8) && EnterArray(ref r))
+                {
+                    for (int list = r.CurrentDepth; Element(ref r, list);)
+                    {
+                        row.Raw++;
+                        if (tiles)
+                        {
+                            var tile = TileAt(ref r, s);
+                            if (tile.IsEmpty) { row.Unsupported++; continue; }
+                            row.Cards++;
+                            s.BrowseChildren.Add() = tile;
+                            continue;
+                        }
+                        var node = default(Node);
+                        EntityNode(ref r, s, ref node);
+                        var card = Stage(s, in node, Authority.Thin);
+                        if (card.IsEmpty) { row.Unsupported++; continue; }
+                        row.Cards++;
+                        s.Edges.Push().Target = card;
+                    }
+                }
+                else SkipValue(ref r);
+            }
+        }
+
         /// <summary>A band's kind, read off a COPY of the reader (so the caller's cursor does not move): the
-        /// <c>data.__typename</c> of the object the reader is on.</summary>
+        /// <c>data.__typename</c> of the object the reader is on — grid and related bands are tiles, anything else a
+        /// shelf, as 0.2.9's mapper decided — EXCEPT a shelf whose FIRST item is a category wrapper
+        /// (<see cref="IsCategoryItem"/>), which is a band of tiles (RCA 2026-09-30, 4; the official client's density
+        /// rule). The copy walks the whole band, so <c>data</c> may come before or after <c>sectionItems</c>.</summary>
         static byte BandKindOf(Utf8JsonReader r)
         {
+            byte declared = (byte)SectionKind.BrowseShelf;
+            bool categoryItems = false;
             for (int depth = r.CurrentDepth; Next(ref r, depth);)
             {
+                if (r.ValueTextEquals("data"u8))
+                {
+                    for (int d = Fields(ref r); Next(ref r, d);)
+                    {
+                        if (!r.ValueTextEquals("__typename"u8)) { SkipValue(ref r); continue; }
+                        r.Read();
+                        if (Says(ref r, "BrowseGridSectionData")) declared = (byte)SectionKind.BrowseCategoryGrid;
+                        else if (Says(ref r, "BrowseRelatedSectionData")) declared = (byte)SectionKind.BrowseRelated;
+                    }
+                }
+                else if (r.ValueTextEquals("sectionItems"u8)) categoryItems = FirstItemIsCategory(ref r);
+                else SkipValue(ref r);
+            }
+            return declared != (byte)SectionKind.BrowseShelf ? declared
+                 : categoryItems ? (byte)SectionKind.BrowseCategoryGrid
+                 : (byte)SectionKind.BrowseShelf;
+        }
+
+        /// <summary>Is the FIRST item of a <c>sectionItems</c> object (the reader on its property name) a category
+        /// wrapper? Consumes the whole value, so the caller's walk resumes at the band's next property.</summary>
+        static bool FirstItemIsCategory(ref Utf8JsonReader r)
+        {
+            bool category = false, seen = false;
+            for (int d = Fields(ref r); Next(ref r, d);)
+            {
+                if (!r.ValueTextEquals("items"u8) || !EnterArray(ref r)) { SkipValue(ref r); continue; }
+                for (int list = r.CurrentDepth; Element(ref r, list);)
+                {
+                    if (seen) { r.Skip(); continue; }
+                    seen = true;
+                    category = IsCategoryItem(ref r);
+                }
+            }
+            return category;
+        }
+
+        /// <summary>One item (the reader on its object, consumed whole): is it a category card rather than an entity?
+        /// <c>content.__typename</c> <c>BrowseSectionContainerWrapper</c> (a sub-category <c>spotify:page:</c> card) or
+        /// <c>BrowseXlinkResponseWrapper</c> (a client feature such as Live Events), or — where the wire leaves the wrapper
+        /// unnamed — <c>content.data.__typename</c> <c>BrowseSectionContainer</c> / <c>BrowseClientFeature</c>. Exactly the
+        /// shapes <see cref="TileAt"/> stages.</summary>
+        static bool IsCategoryItem(ref Utf8JsonReader r)
+        {
+            bool category = false;
+            for (int depth = r.CurrentDepth; Next(ref r, depth);)
+            {
+                if (!r.ValueTextEquals("content"u8)) { SkipValue(ref r); continue; }
+                for (int c = Fields(ref r); Next(ref r, c);)
+                {
+                    if (r.ValueTextEquals("__typename"u8))
+                    {
+                        r.Read();
+                        category |= Says(ref r, "BrowseSectionContainerWrapper") || Says(ref r, "BrowseXlinkResponseWrapper");
+                    }
+                    else if (r.ValueTextEquals("data"u8))
+                    {
+                        for (int d = Fields(ref r); Next(ref r, d);)
+                        {
+                            if (!r.ValueTextEquals("__typename"u8)) { SkipValue(ref r); continue; }
+                            r.Read();
+                            category |= Says(ref r, "BrowseSectionContainer") || Says(ref r, "BrowseClientFeature");
+                        }
+                    }
+                    else SkipValue(ref r);
+                }
+            }
+            return category;
+        }
+
+        // ── the root (RCA 2026-09-30) ────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>THE ROOT of a browse answer: walk <c>{ data: { &lt;field&gt;: … }, errors: [ … ] }</c> and leave the
+        /// reader ON <paramref name="field"/>'s property name when its value is an object — the position every fold's
+        /// <c>Fields</c>/<c>Next</c> walk starts from — with the union's <c>__typename</c> in
+        /// <see cref="BrowseAnswer.RootType"/>. <see cref="BrowseRoot.Missing"/> when there is no union object at all, with
+        /// <c>errors[0].message</c> (read wherever it sits, before or after <c>data</c>) in <see cref="BrowseAnswer.Error"/>.</summary>
+        static BrowseRoot BrowseRootOf(ref Utf8JsonReader r, ReadOnlySpan<byte> field, ref BrowseAnswer answer)
+        {
+            if (!r.Read() || r.TokenType != JsonTokenType.StartObject) return BrowseRoot.Missing;
+            for (int root = r.CurrentDepth; Next(ref r, root);)
+            {
+                if (r.ValueTextEquals("errors"u8))
+                {
+                    string? message = FirstErrorMessage(ref r);
+                    answer.Error ??= message;
+                    continue;
+                }
                 if (!r.ValueTextEquals("data"u8)) { SkipValue(ref r); continue; }
                 for (int d = Fields(ref r); Next(ref r, d);)
                 {
-                    if (!r.ValueTextEquals("__typename"u8)) { SkipValue(ref r); continue; }
-                    r.Read();
-                    return Says(ref r, "BrowseGridSectionData") ? (byte)SectionKind.BrowseCategoryGrid
-                         : Says(ref r, "BrowseRelatedSectionData") ? (byte)SectionKind.BrowseRelated
-                         : (byte)SectionKind.BrowseShelf;
+                    if (!r.ValueTextEquals(field)) { SkipValue(ref r); continue; }
+                    var peek = r;
+                    if (!peek.Read() || peek.TokenType != JsonTokenType.StartObject) { SkipValue(ref r); continue; }   // a null union
+                    answer.RootType = TypenameOf(r);
+                    return RootOf(answer.RootType);
                 }
-                return (byte)SectionKind.BrowseShelf;
             }
-            return (byte)SectionKind.BrowseShelf;
+            return BrowseRoot.Missing;
+        }
+
+        /// <summary>The union member a <c>__typename</c> names: the two error members, or content (an absent typename
+        /// included — a trimmed body is still a page).</summary>
+        static BrowseRoot RootOf(string? typename)
+            => typename is null ? BrowseRoot.Content
+             : typename == "NotFound" ? BrowseRoot.NotFound
+             : typename == "GenericError" || typename.EndsWith("Error", StringComparison.Ordinal) ? BrowseRoot.GenericError
+             : BrowseRoot.Content;
+
+        /// <summary>The <c>__typename</c> of the object the reader copy is on (or on the property naming it).</summary>
+        static string? TypenameOf(Utf8JsonReader r)
+        {
+            for (int depth = r.CurrentDepth; Next(ref r, depth);)
+            {
+                if (!r.ValueTextEquals("__typename"u8)) { SkipValue(ref r); continue; }
+                r.Read();
+                return r.TokenType == JsonTokenType.String ? r.GetString() : null;
+            }
+            return null;
+        }
+
+        /// <summary><c>errors[0].message</c> (the reader on <c>errors</c>, the value consumed whole), or null.</summary>
+        static string? FirstErrorMessage(ref Utf8JsonReader r)
+        {
+            if (!EnterArray(ref r)) return null;
+            string? message = null;
+            for (int list = r.CurrentDepth; Element(ref r, list);)
+                for (int e = r.CurrentDepth; Next(ref r, e);)
+                {
+                    if (message is not null || !r.ValueTextEquals("message"u8)) { SkipValue(ref r); continue; }
+                    r.Read();
+                    if (r.TokenType == JsonTokenType.String) message = r.GetString();
+                    else if (r.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray) r.Skip();
+                }
+            return message;
         }
 
         // ── the tile ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -302,6 +787,9 @@ public static partial class Spotify
             }
             var route = tile.Feature && !tile.FeatureUri.IsEmpty ? tile.FeatureUri : tile.Uri;
             if (route.IsEmpty || tile.Title.IsEmpty) return default;
+            // An xlink that names no feature uri opens nothing (RCA 2026-09-30, 4): not a tile — the band counts it
+            // unsupported rather than painting a card whose click lands on "unavailable".
+            if (StartsWith(s.Utf8(route), "spotify:xlink:")) return default;
             var id = PageId(s, route);
             if (id.IsEmpty) return default;
 

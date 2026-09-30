@@ -1,0 +1,308 @@
+<title>Daylist Hero Fade</title>
+<style>
+  /* Layout: a mock Home column (Wavee's content gutter) holding the Daylist card in the variant under review,
+     over the page ground; the art is generated like a Spotify daylist header and cover-fills the whole hero. */
+  :root {
+    --page: #f3f5f8;              /* Home ground (Mica, light) */
+    --layer: #fbfbfc;             /* FillLayerDefault-ish: what the veil is made of */
+    --card: #ffffff;
+    --card-stroke: rgba(0, 0, 0, 0.0803);
+    --ctrl: rgba(255, 255, 255, 0.78);
+    --ctrl-stroke: rgba(0, 0, 0, 0.0803);
+    --text: #1a1a1a;
+    --text-2: rgba(0, 0, 0, 0.786);
+    --text-3: rgba(0, 0, 0, 0.5442);
+    --track: rgba(0, 0, 0, 0.4458);        /* ControlStrongStroke */
+    --accent: #005fb8;
+    --on-accent: #ffffff;
+    --art-accent: #e7c64b;                  /* the palette pick from the art (warm) */
+    --veil-pull: 16%;                        /* Controls.ArtistHeroVeil: 0.16 light / 0.24 dark */
+    --chip: rgba(0, 0, 0, 0.0373);
+    --chip-on: #ffffff;
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-d: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --r-ctrl: 4px;
+    --r-card: 8px;
+    --gutter: 40px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #1c1c1c; --layer: #2b2b2b; --card: #2b2b2b; --card-stroke: rgba(255, 255, 255, 0.0698);
+      --ctrl: rgba(255, 255, 255, 0.0605); --ctrl-stroke: rgba(255, 255, 255, 0.0698);
+      --text: #ffffff; --text-2: rgba(255, 255, 255, 0.786); --text-3: rgba(255, 255, 255, 0.5442);
+      --track: rgba(255, 255, 255, 0.5442); --accent: #60cdff; --on-accent: #003545;
+      --veil-pull: 24%; --chip: rgba(255, 255, 255, 0.0605); --chip-on: rgba(255, 255, 255, 0.12);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: #1c1c1c; --layer: #2b2b2b; --card: #2b2b2b; --card-stroke: rgba(255, 255, 255, 0.0698);
+    --ctrl: rgba(255, 255, 255, 0.0605); --ctrl-stroke: rgba(255, 255, 255, 0.0698);
+    --text: #ffffff; --text-2: rgba(255, 255, 255, 0.786); --text-3: rgba(255, 255, 255, 0.5442);
+    --track: rgba(255, 255, 255, 0.5442); --accent: #60cdff; --on-accent: #003545;
+    --veil-pull: 24%; --chip: rgba(255, 255, 255, 0.0605); --chip-on: rgba(255, 255, 255, 0.12);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--page); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 20px; }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: var(--r-ctrl); }
+
+  /* ── review bar ─────────────────────────────────────────────────────────────── */
+  .review { padding-block: 20px 8px; padding-inline: 16px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; max-width: 1180px; margin: 0 auto; }
+  .review h1 { font-family: var(--font-d); font-size: 20px; line-height: 28px; font-weight: 600; margin: 0; text-wrap: balance; }
+  .review p { margin: 0; color: var(--text-3); font-size: 12px; line-height: 16px; max-width: 62ch; }
+  .review .grow { flex: 1 1 280px; min-width: 0; display: grid; gap: 2px; }
+  .seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--chip); border-radius: 6px; }
+  .seg button { padding: 4px 12px; border-radius: var(--r-ctrl); color: var(--text-2); font-size: 13px; }
+  .seg button[aria-pressed="true"] { background: var(--chip-on); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .controls label { font-size: 12px; color: var(--text-3); }
+
+  /* ── mock Home ──────────────────────────────────────────────────────────────── */
+  .home { max-width: 1180px; margin: 0 auto; padding-block: 12px 48px; padding-inline: 16px; }
+  .col { margin: 0 auto; width: 100%; transition: max-width 0.25s ease; }
+  .col.wide { max-width: 1088px; }   /* 1008 DIP content + 2 × 40 gutter */
+  .col.narrow { max-width: 800px; }
+  .variant { display: grid; gap: 8px; margin-block-end: 36px; }
+  .variant > .tag { font-size: 12px; color: var(--text-3); padding-inline: var(--gutter); letter-spacing: 0.02em; }
+  .variant > .tag b { color: var(--text); font-weight: 600; }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; padding-inline: var(--gutter); margin-block-start: 28px; }
+  .section-head h2 { font-family: var(--font-d); font-size: 20px; line-height: 28px; font-weight: 600; margin: 0; }
+  .section-head a { font-size: 13px; color: var(--accent); text-decoration: none; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 16px; padding-inline: var(--gutter); margin-block-start: 12px; }
+  .tile { aspect-ratio: 1; max-width: 100%; border-radius: var(--r-card); background: var(--chip); }
+
+  /* ── the hero (shared) ──────────────────────────────────────────────────────── */
+  .hero { position: relative; min-height: 320px; display: flex; isolation: isolate; }
+  .hero .art { position: absolute; inset: 0; background-size: cover; background-position: 62% 40%; z-index: -2; }
+  /* Controls.ArtistHeroVeil, horizontal: veil = lerp(layer, artAccent, pull); stops 0 → .96, .30 → .92, .62 → .35, 1 → 0 */
+  .hero .veil {
+    --veil: color-mix(in srgb, var(--layer), var(--art-accent) var(--veil-pull));
+    position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background: linear-gradient(to right,
+      color-mix(in srgb, var(--veil) 96%, transparent) 0%,
+      color-mix(in srgb, var(--veil) 92%, transparent) 30%,
+      color-mix(in srgb, var(--veil) 35%, transparent) 62%,
+      color-mix(in srgb, var(--veil) 0%, transparent) 100%);
+  }
+  .copy { display: flex; flex-direction: column; justify-content: space-between; gap: 20px; min-width: 0;
+          width: clamp(300px, 50%, 560px); padding-block: 20px 12px; }
+
+  /* A — keep the card: Ui.Card frame, art clipped to its corners */
+  .hero.card { background: var(--card); border: 1px solid var(--card-stroke); border-radius: var(--r-card); overflow: hidden;
+               margin-inline: var(--gutter); padding: 12px 12px 12px 32px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04); }
+  /* B — borderless full-bleed: art spans the content width, fades into the page at the bottom (EdgeFade Bottom) */
+  .hero.bleed { padding: 12px var(--gutter) 28px; min-height: 360px; }
+  .hero.bleed .art { -webkit-mask-image: linear-gradient(to bottom, #000 64%, transparent 100%); mask-image: linear-gradient(to bottom, #000 64%, transparent 100%); }
+  .hero.bleed .veil { -webkit-mask-image: linear-gradient(to bottom, #000 64%, transparent 100%); mask-image: linear-gradient(to bottom, #000 64%, transparent 100%); }
+  /* Today — text column + a separate art column (for reference) */
+  .hero.today { background: var(--card); border: 1px solid var(--card-stroke); border-radius: var(--r-card);
+                margin-inline: var(--gutter); padding: 12px 12px 12px 32px; gap: 32px; }
+  .hero.today .copy { width: auto; flex: 1 1 0; min-width: 300px; }
+  .hero.today .side { flex: 0 1 540px; min-width: 0; border-radius: var(--r-ctrl); background-size: cover; background-position: 50% 40%; }
+
+  .eyebrow { color: var(--text-2); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .title { font-family: var(--font-d); font-size: 40px; line-height: 52px; font-weight: 600; margin: 4px 0 0; letter-spacing: -0.01em;
+           display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-wrap: balance; }
+  .narrow .title { font-size: 28px; line-height: 36px; }
+  .tags { margin: 6px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-3); }
+  .tags a { color: var(--text-2); text-decoration: none; }
+  .tags a:hover { text-decoration: underline; }
+  .meta { margin: 4px 0 0; font-size: 12px; line-height: 16px; color: var(--text-3); }
+  .actions { display: flex; gap: 8px; align-items: center; margin-block-start: 20px; flex-wrap: wrap; }
+  .btn { height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: var(--r-ctrl); white-space: nowrap; }
+  .btn svg { width: 16px; height: 16px; flex: none; }
+  .btn.accent { background: var(--accent); color: var(--on-accent); min-width: 120px; justify-content: center; }
+  .btn.std { background: var(--ctrl); border: 1px solid var(--ctrl-stroke); backdrop-filter: blur(20px); }
+  .btn.icon { width: 32px; padding: 0; justify-content: center; }
+  .btn.icon.saved { color: var(--accent); }
+
+  /* the clock: ring beside TWO lines, then the five-segment timeline */
+  .clock { display: grid; gap: 10px; }
+  .clock .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .clock .lines { display: grid; min-width: 0; }
+  .clock .l1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .clock .l1 b { font-weight: 600; }
+  .clock .l2 { font-size: 12px; line-height: 16px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .ring { width: 20px; height: 20px; flex: none; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 2px; }
+  .ring .t { stroke: var(--track); opacity: 0.45; }
+  .ring .v { stroke: var(--accent); stroke-linecap: round; }
+  .timeline { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); column-gap: 4px; row-gap: 6px; }
+  .bar { position: relative; height: 3px; }
+  .bar::before { content: ""; position: absolute; left: 0; right: 0; top: 1px; height: 1px; background: var(--track); border-radius: 0.5px; }
+  .bar i { position: absolute; left: 0; top: 0; height: 3px; border-radius: 1.5px; background: var(--accent); }
+  .daypart { font-size: 12px; line-height: 16px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .daypart.now { color: var(--text); font-weight: 600; overflow: visible; }
+
+  .notes { max-width: 1088px; margin: 0 auto; padding-inline: calc(var(--gutter) + 16px); color: var(--text-2); font-size: 13px; line-height: 20px; }
+  .notes ul { margin: 6px 0 0; padding-inline-start: 18px; max-width: 72ch; }
+
+  @media (max-width: 720px) {
+    :root { --gutter: 0px; }
+    .hero.card, .hero.today { padding-left: 20px; }
+    .copy { width: 100%; }
+    .hero .veil { background: linear-gradient(to right, color-mix(in srgb, var(--veil) 92%, transparent) 0%, color-mix(in srgb, var(--veil) 70%, transparent) 100%); }
+    .hero.today .side { display: none; }
+    .title { font-size: 28px; line-height: 36px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .col { transition: none; } }
+</style>
+
+<header class="review">
+  <div class="grow">
+    <h1>Daylist hero: artist-style fade</h1>
+    <p>The daylist header art fills the whole hero and a veil fades it under the text, the way the artist page does. Pick A (keep the card) or B (borderless, bleeds into the page). Both use the two-line countdown and full bars for finished dayparts.</p>
+  </div>
+  <div class="controls">
+    <span class="seg" role="group" aria-label="Variant">
+      <button id="v-both" aria-pressed="true" data-v="both">A + B</button>
+      <button id="v-a" aria-pressed="false" data-v="a">A · Card</button>
+      <button id="v-b" aria-pressed="false" data-v="b">B · Bleed</button>
+      <button id="v-today" aria-pressed="false" data-v="today">Today</button>
+    </span>
+    <span class="seg" role="group" aria-label="Width">
+      <button id="w-wide" aria-pressed="true" data-w="wide">Wide</button>
+      <button id="w-narrow" aria-pressed="false" data-w="narrow">Narrow</button>
+    </span>
+    <span class="seg" role="group" aria-label="Theme">
+      <button id="t-sys" aria-pressed="true" data-t="">System</button>
+      <button id="t-light" aria-pressed="false" data-t="light">Light</button>
+      <button id="t-dark" aria-pressed="false" data-t="dark">Dark</button>
+    </span>
+  </div>
+</header>
+
+<main class="home">
+  <div class="col wide" id="col"></div>
+</main>
+
+<section class="notes">
+  <strong>What each variant is in code</strong>
+  <ul>
+    <li><b>A · Card</b> — the <code>Ui.Card</code> stays (border, 8 px corners, 32/12/12/12 padding). The art is <code>Controls.CoverFill</code> across the whole card, clipped to its corners, with <code>Palette.ArtistHeroVeil</code> (horizontal) over it; the text column is about half the card, never under 340.</li>
+    <li><b>B · Bleed</b> — no card frame. The art spans the Home content width at the page gutter and fades out at the bottom (<code>EdgeFade</code> Bottom, the artist hero's 28 % band); the same veil from the left.</li>
+    <li>Both: the countdown is two lines (the count, then "wednesday evening arrives at 16:35", named from the next timeline segment), and finished dayparts fill their bars.</li>
+  </ul>
+</section>
+
+<script>
+(() => {
+  // ── generative daylist art: a warm bloom over blue with film grain (the Spotify daylist header look) ──
+  function daylistArt(w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    const base = g.createLinearGradient(0, 0, 0, h);
+    base.addColorStop(0, "#5f8fd8"); base.addColorStop(1, "#2f6ff0");
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    const r = g.createRadialGradient(w * 0.52, h * 0.18, 0, w * 0.52, h * 0.18, w * 0.62);
+    r.addColorStop(0.00, "rgba(245,140,30,1)");
+    r.addColorStop(0.16, "rgba(248,205,55,1)");
+    r.addColorStop(0.36, "rgba(248,232,80,0.96)");
+    r.addColorStop(0.55, "rgba(170,200,140,0.75)");
+    r.addColorStop(0.78, "rgba(110,160,200,0.35)");
+    r.addColorStop(1.00, "rgba(60,120,230,0)");
+    g.fillStyle = r; g.fillRect(0, 0, w, h);
+    const img = g.getImageData(0, 0, w, h), d = img.data;
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < d.length; i += 4) {
+      const n = (rnd() - 0.5) * 46;
+      d[i] = Math.max(0, Math.min(255, d[i] + n));
+      d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + n));
+      d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + n));
+    }
+    g.putImageData(img, 0, 0);
+    return c.toDataURL("image/jpeg", 0.88);
+  }
+  const ART = daylistArt(1400, 560);
+
+  const icon = {
+    play: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.9v10.2c0 .5.5.8.9.5l8-5.1a.6.6 0 0 0 0-1L5.4 2.4c-.4-.3-.9 0-.9.5Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+    shuffle: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5h2.2c1.2 0 2.2.6 2.9 1.5l2.8 4c.6.9 1.7 1.5 2.9 1.5h2.2M12.7 9.7l1.8 1.8-1.8 1.8M1.5 11.5h2.2c1 0 1.9-.4 2.5-1.1M9.6 5.6c.6-.7 1.5-1.1 2.5-1.1h2.4M12.7 2.7l1.8 1.8-1.8 1.8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    heart: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14s-5.5-3.3-5.5-7.3A3.1 3.1 0 0 1 8 4.6a3.1 3.1 0 0 1 5.5 2.1C13.5 10.7 8 14 8 14Z" fill="currentColor"/></svg>',
+    more: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="13" cy="8" r="1.2" fill="currentColor"/></svg>',
+  };
+
+  const tags = ["throwback pop", "2010s", "microcore", "nostalgia", "international", "feel-good"];
+  const dayparts = ["Early morning", "Morning", "Afternoon", "Evening", "Night"];
+  const current = 2;                       // Afternoon
+  const elapsed = 0.27;                    // share of this daylist's window already gone
+  const RING = 2 * Math.PI * 8;
+
+  function copy() {
+    const bars = dayparts.map((_, i) => {
+      const f = i < current ? 1 : i === current ? elapsed : 0;
+      return `<div class="bar"><i style="width:${(f * 100).toFixed(1)}%"></i></div>`;
+    }).join("");
+    const labels = dayparts.map((p, i) => `<div class="daypart${i === current ? " now" : ""}">${p}</div>`).join("");
+    return `
+      <div class="copy">
+        <div>
+          <p class="eyebrow">Good afternoon, Chris · your daylist</p>
+          <h3 class="title">throwback pop 2010s wednesday afternoon</h3>
+          <p class="tags">${tags.map(t => `<a href="#search">${t}</a>`).join(" · ")}</p>
+          <p class="meta">Playlist · Spotify · 50 songs</p>
+          <div class="actions">
+            <button class="btn accent">${icon.play}Play</button>
+            <button class="btn std">${icon.shuffle}Shuffle</button>
+            <button class="btn icon saved" aria-label="Remove from Your Library">${icon.heart}</button>
+            <button class="btn icon" aria-label="More options">${icon.more}</button>
+          </div>
+        </div>
+        <div class="clock">
+          <div class="row">
+            <svg class="ring" viewBox="0 0 20 20" aria-hidden="true"><circle class="t" cx="10" cy="10" r="8"/><circle class="v" cx="10" cy="10" r="8" stroke-dasharray="${(RING * elapsed).toFixed(2)} ${RING.toFixed(2)}"/></svg>
+            <div class="lines">
+              <div class="l1">Next daylist in <b class="count">02:07:03</b></div>
+              <div class="l2">wednesday evening arrives at 16:35</div>
+            </div>
+          </div>
+          <div class="timeline">${bars}${labels}</div>
+        </div>
+      </div>`;
+  }
+
+  function hero(kind) {
+    if (kind === "today")
+      return `<div class="hero today">${copy()}<div class="side" style="background-image:url(${ART})"></div></div>`;
+    return `<div class="hero ${kind === "a" ? "card" : "bleed"}"><div class="art" style="background-image:url(${ART})"></div><div class="veil"></div>${copy()}</div>`;
+  }
+
+  function home(kind, label) {
+    return `<div class="variant"><div class="tag"><b>${label}</b></div>${hero(kind)}
+      <div class="section-head"><h2>Recently played</h2><a href="#history">Listening history</a></div>
+      <div class="tiles"><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div></div></div>`;
+  }
+
+  const col = document.getElementById("col");
+  let variant = "both";
+  function render() {
+    col.innerHTML = variant === "both"
+      ? home("a", "A · Keep the card") + home("b", "B · Borderless, bleeds into the page")
+      : variant === "a" ? home("a", "A · Keep the card")
+      : variant === "b" ? home("b", "B · Borderless, bleeds into the page")
+      : home("today", "Today (for reference)");
+    tick();
+  }
+
+  // live countdown, like the real 1-Hz clock
+  let remain = 2 * 3600 + 7 * 60 + 3;
+  function fmt(s) { const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60; return [h, m, x].map(n => String(n).padStart(2, "0")).join(":"); }
+  function tick() { document.querySelectorAll(".count").forEach(el => { el.textContent = fmt(remain); }); }
+  setInterval(() => { remain = Math.max(0, remain - 1); tick(); }, 1000);
+
+  function press(group, btn) { group.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === btn))); }
+  document.querySelectorAll("[data-v]").forEach(b => b.addEventListener("click", () => { variant = b.dataset.v; press(b.parentElement, b); render(); }));
+  document.querySelectorAll("[data-w]").forEach(b => b.addEventListener("click", () => { col.className = "col " + b.dataset.w; press(b.parentElement, b); }));
+  document.querySelectorAll("[data-t]").forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.t) document.documentElement.setAttribute("data-theme", b.dataset.t);
+    else document.documentElement.removeAttribute("data-theme");
+    press(b.parentElement, b);
+  }));
+  render();
+})();
+</script>

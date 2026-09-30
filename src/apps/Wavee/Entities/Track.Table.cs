@@ -1354,7 +1354,8 @@ public readonly partial struct Track
         float HeroHeightFor(Detail.VerticalSpec spec, float colW)
         {
             float measured = _heroH.Value;
-            // Pre-measure: the SAME pessimistic null-title plan the skeleton reserves (ch 03 §9.3).
+            // Pre-measure: the SAME title plan the skeleton reserves — the known title's, else the pessimistic null-title
+            // one (ch 03 §9.3).
             return measured > 1f ? measured : Detail.HeroBandHeight(spec, colW);
         }
 

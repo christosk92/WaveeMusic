@@ -426,9 +426,10 @@ public readonly partial struct Artist
 //      `Album.CommandCircle(…) with { Fill = Tok.AccentDefault }`: `CommandCircle` returns `Element` (it wraps its box in
 //      a tooltip), so `with { Fill = … }` does not compile, and `Interaction.Subtle` OWNS the circle's `Fill` — an accent
 //      rest face has to come from a control that declares one. `PlayFab` is that control, at the head's 32-DIP tier.
-//   4. The head's meta is `Detail.Text.AlbumMeta(n, totalMs, durationsKnown, year: 0)`, not `Detail.Identity.For(a).Meta`:
+//   4. The head's meta is `Detail.Text.AlbumMeta(n, totalMs, durationsKnown)`, not `Detail.Identity.For(a).Meta`:
 //      `Identity.For` allocates a record plus a `List<Controls.Face>` of billed artists this surface never draws and
-//      walks the tracklist a second time, and the year belongs to the cover's caption (W3), not the head.
+//      walks the tracklist a second time. (The meta line carries no year anywhere: it belongs to the cover's caption
+//      here, W3, and to the eyebrow on the album page.)
 //   5. The shimmer branch draws the head's title/meta/verbs as explicitly-sized boxes instead of live text and live
 //      `SaveButton`/`MoreButton` components. `SkeletonDeriver` derives the shimmer from this tree, so an empty title
 //      would derive a zero-width bar, and `Skel.Region`'s own doc forbids mounting stateful components during load.
@@ -1892,8 +1893,8 @@ public readonly partial struct Artist
                         totalMs += t.DurationMs;
                         if (!t.Knows(TrackFields.Duration)) durationsKnown = false;
                     }
-                    // Year 0 on purpose: the cover's caption already states it (W3), so the head reads "3 songs · 10 min".
-                    meta = Detail.Text.AlbumMeta(slots.Length, totalMs, durationsKnown, 0) ?? "";
+                    // "3 songs · 10 min": the cover's caption states the year (W3).
+                    meta = Detail.Text.AlbumMeta(slots.Length, totalMs, durationsKnown) ?? "";
                 }
                 return new BoxEl
                 {

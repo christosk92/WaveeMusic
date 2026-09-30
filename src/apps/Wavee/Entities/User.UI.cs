@@ -361,7 +361,8 @@ public readonly partial struct User
     /// <summary>The collapsed layout's breadcrumb (W14-W17): on the navigator's layer rung, a 1-DIP divider under it.
     /// <para>KEYED. It is the first child of the collapsed library's root and the nav column is the first child of the
     /// wide one, so with both unkeyed the reconciler paired the two by ordinal and reused ONE node for both — which
-    /// handed the nav column this box's static <c>Width</c> in place of its own bound one (bind wiring is mount-only).
+    /// handed the nav column this box's static <c>Width</c> in place of its own bound one (a static↔bound flip on a reused
+    /// node is never re-wired — the engine's BindContract flags it).
     /// The key is what makes the crossing a remount.</para></summary>
     public static Element CrumbBar(IReadOnlyList<string> crumbs, Action<int> onPick) => new BoxEl
     {

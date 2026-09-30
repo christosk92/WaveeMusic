@@ -1098,21 +1098,24 @@ public static partial class Spotify
                     if (result.Ok) Decode.HomeFeed(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
                     break;
                 case PathfinderOp.HomeSection:
-                    result = HomeSection(uri, LocalTimeZone, offset, ct);
-                    if (result.Ok) Decode.HomeSection(result.Bytes, offset, s);
-                    break;
+                    // The band WHOLE: walked to the server's end and landed as one run (Spotify.Api.Browse.cs), each
+                    // request noted into the outcome there.
+                    HomeSectionAnswer(uri, s, ref outcome, groups);
+                    return;
                 case PathfinderOp.BrowseAll:
                     result = BrowseAll(ct);
                     if (result.Ok) Decode.BrowseAll(result.Bytes, s);
                     break;
                 case PathfinderOp.BrowsePage:
-                    result = BrowsePage(uri, offset, ct);
-                    if (result.Ok) Decode.BrowsePage(result.Bytes, Encoding.UTF8.GetBytes(uri), offset, s);
-                    break;
+                    // The page WHOLE — every section page, then the single-section rule's walk (Spotify.Api.Browse.cs,
+                    // RCA 2026-09-30) — each request noted into the outcome there.
+                    BrowsePageAnswer(uri, offset, s, ref outcome, groups);
+                    return;
                 case PathfinderOp.BrowseSection:
-                    result = BrowseSection(uri, offset, ct);
-                    if (result.Ok) Decode.BrowseSection(result.Bytes, offset, s);
-                    break;
+                    // Keyed on the uri ASKED for: the official answer names none (RCA 2026-09-30, root cause 1). The
+                    // route's groups say which answer: with SectionFields.Whole the band walked whole, else one page.
+                    BrowseSectionAnswer(uri, s, ref outcome, groups);
+                    return;
                 case PathfinderOp.Search:
                     if (!TryParseSearchSubject(uri, out SearchFacet facet, out string term) || term.Length == 0) return;
                     result = Search(facet, term, offset, SearchPageSize(facet), ct);

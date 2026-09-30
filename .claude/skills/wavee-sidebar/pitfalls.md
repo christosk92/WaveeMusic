@@ -89,10 +89,13 @@ collapsed-folder-filtered rows, AND the binder's full flattened projection (`Sid
 hydration that only touches a playlist inside a collapsed folder never shows up in the published rows, but the
 planner reads the full projection — without the second gate the pane would keep drawing that row's stale content.
 
-### Bind wiring is MOUNT-ONLY — a per-row bound thunk must read `_scope.Index.Value`, never a captured index
+### A per-row bound thunk reads `_scope.Index.Value`, never a captured index
 
-The reconciler registers a node's bound `Prop<T>` thunks when the node **mounts** and never again: `Update` rewrites
-props, not bindings. In a recycling `ItemsView` that is a trap with teeth, because a slot's children are paired by
+Until 2026-09-30 the reconciler registered a node's bound `Prop<T>` thunks when the node **mounted** and never again
+(`Update` rewrote props, not bindings). Since then a reused node re-wires a bound thunk whose identity changed
+(engine `Reconciler.Rewire.cs`, gates `gate.bind.rewire-*`), so the defects below cannot recur by this mechanism —
+but `_scope.Index.Value` is still the form to use: the bind follows the signal with no re-run per recycle. The
+historical trap, for context: in a recycling `ItemsView` because a slot's children are paired by
 `(Key, type)` — a child with a CONSTANT key (`"drop-line"`, `"drop-plate"`) is **Updated** across a recycle while the
 entity row beside it, keyed by the row's own key, genuinely remounts.
 

@@ -470,6 +470,11 @@ public static partial class Entities
         return id;
     }
 
+    /// <summary>What a seeded band answers: its identity AND its whole card list — the seed IS the offline catalogue's
+    /// whole section, so the drill page (which demands <see cref="SectionFields.Whole"/>) reads it at once and asks no
+    /// provider (there is none behind the fake scope).</summary>
+    const uint SeededSection = (uint)(SectionFields.Identity | SectionFields.Whole);
+
     /// <summary>The same shape as `StageSection` (Charts/Browse's own helper, above) but for cards ALREADY staged this
     /// batch as `StagedId` values -- every mockup card is a real entity `Mock*` already minted, so re-encoding its uri
     /// as text a second time (what `StageSection`'s `string[]` overload does) would just waste arena bytes.</summary>
@@ -477,7 +482,7 @@ public static partial class Entities
         ReadOnlySpan<StagedId> cardIds, int total, int nextOffset)
     {
         var id = new StagedId(s.AddText(Utf8(sectionUri)));
-        ref var row = ref s.Sections.RowFor(id, Authority.Seed, (uint)SectionFields.Identity);
+        ref var row = ref s.Sections.RowFor(id, Authority.Seed, SeededSection);
         row.Title = title.Length == 0 ? default : s.AddText(Utf8(title));
         row.Kind = (byte)kind;
         row.Total = total;
@@ -496,7 +501,7 @@ public static partial class Entities
     static void StageDaylistSection(Staging s, string sectionUri, StagedId daylistId, string[] tags)
     {
         var id = new StagedId(s.AddText(Utf8(sectionUri)));
-        ref var row = ref s.Sections.RowFor(id, Authority.Seed, (uint)SectionFields.Identity);
+        ref var row = ref s.Sections.RowFor(id, Authority.Seed, SeededSection);
         row.Kind = (byte)SectionKind.HomeSpotlight;
         row.Total = 1;
         row.Raw = 1;
@@ -525,7 +530,7 @@ public static partial class Entities
     static StagedId StageEpisodeSection(Staging s, string sectionUri, string title, SectionKind kind, EpisodeCardSeed[] cards)
     {
         var id = new StagedId(s.AddText(Utf8(sectionUri)));
-        ref var row = ref s.Sections.RowFor(id, Authority.Seed, (uint)SectionFields.Identity);
+        ref var row = ref s.Sections.RowFor(id, Authority.Seed, SeededSection);
         row.Title = s.AddText(Utf8(title));
         row.Kind = (byte)kind;
         row.Total = cards.Length;
@@ -878,9 +883,10 @@ public static partial class Entities
                 SectionKind.BrowseRelated, tileFrom: 26, count: 6);
             SeedPage(s, PopPage, 0xFF8C1932, [popPlaylists, popAlbums, popRelated]);
 
-            // FlattenOne: ONE untitled shelf that pages (12 of 30) — the grid + the silent append preloader.
+            // FlattenOne: the page RETURNED one section, so the page IS that section's whole grid (the single-section
+            // rule, RCA 2026-09-30) — seeded WHOLE, exactly as the query layer's walk lands it: the server's end reached.
             var madeForYou = StageSection(s, "spotify:section:wavee-seed-mfy-1", "", SectionKind.BrowseShelf, false,
-                CatalogueRange(0, 12), total: 30, nextOffset: 12);
+                CatalogueRange(0, 12), total: 12, nextOffset: SectionPaging.Complete);
             SeedPage(s, MadeForYouPage, 0xFF14485C, [madeForYou]);
 
             // FlattenTwoConcat: two untitled shelves, neither with more.
@@ -922,7 +928,7 @@ public static partial class Entities
         ReadOnlySpan<string> cardUris, int total, int nextOffset)
     {
         var id = new StagedId(s.AddText(Utf8(uri)));
-        ref var row = ref s.Sections.RowFor(id, Authority.Seed, (uint)SectionFields.Identity);
+        ref var row = ref s.Sections.RowFor(id, Authority.Seed, SeededSection);
         row.Title = title.Length == 0 ? default : s.AddText(Utf8(title));
         row.Kind = (byte)kind;
         row.Flags = chart ? (byte)SectionFlags.Chart : (byte)0;
@@ -942,7 +948,7 @@ public static partial class Entities
     static StagedId StageTileSection(Staging s, string uri, string title, SectionKind kind, int tileFrom, int count)
     {
         var id = new StagedId(s.AddText(Utf8(uri)));
-        ref var row = ref s.Sections.RowFor(id, Authority.Seed, (uint)SectionFields.Identity);
+        ref var row = ref s.Sections.RowFor(id, Authority.Seed, SeededSection);
         row.Title = s.AddText(Utf8(title));
         row.Kind = (byte)kind;
         row.Total = count;

@@ -1,8 +1,8 @@
 // ── Entities/Detail.UI.Hero.cs ─────────────────────────────────────────────────────────────────────────────────────
 // THE VERTICAL HERO SYSTEM (ch 03 §0.3, §0.6-§0.8, §0.14-§0.18; W6-W9, W12-W14, W27-W28): VerticalSpec + HeroParts (the
 // table's view of the vertical arm), Hero — the expanded presentation and the 56-DIP context band with its scroll binds
-// and input handoff — HeroBandHeight (the pessimistic null-title plan), HeroSkeleton (the loading band that IS the loaded
-// band), and the band helpers Band / BandTitle / BandByline / BandHairline / Pivot the artist page also consumes.
+// and input handoff — HeroBandHeight (the known title's plan, else the pessimistic null-title one), HeroSkeleton (the
+// loading band that IS the loaded band), and the band helpers Band / BandTitle / BandByline / BandHairline / Pivot the artist page also consumes.
 //
 // Role: UI
 // Owner: M
@@ -21,8 +21,9 @@
 // ── THE THREE NUMBERS THAT MUST AGREE (D49) ──────────────────────────────────────────────────────────────────────────
 //
 // The skeleton's reserved band, the pre-measure collapse height and the loaded hero are all derived from ONE bucketed
-// width (BucketW, once, at the top) and ONE presence-flag set (FlagsOf): every block the hero adds has its flag, and the
-// flow decision is read off the raw column width in all three (424 enter / 400 leave).
+// width (BucketW, once, at the top), ONE presence-flag set (FlagsOf) and ONE title plan (VerticalLayout.TitleTypeFor over
+// the identity's title — pure, so all three agree whenever the title is known): every block the hero adds has its flag,
+// and the flow decision is read off the raw column width in all three (424 enter / 400 leave).
 //
 // NAME NOTE: `Text`, `Skeleton` and `Config` are nested Detail classes here — text runs are `new TextEl`/`Ui.*`.
 
@@ -109,7 +110,8 @@ public static partial class Detail
     }
 
     /// <summary>The band height the skeleton reserves and the loaded hero's collapse binds assume before the first
-    /// measure: the PESSIMISTIC null-title plan (a one-line title at the fluid cap) at the bucketed width.</summary>
+    /// measure, at the bucketed width: the KNOWN title's plan — the very plan the hero draws — else the PESSIMISTIC
+    /// null-title plan (a one-line title at the fluid cap).</summary>
     public static float HeroBandHeight(VerticalSpec spec, float columnWidth)
     {
         float w = columnWidth > 0f ? columnWidth : VerticalLayout.FallbackW;
@@ -117,7 +119,7 @@ public static partial class Detail
         float bw = VerticalLayout.BucketW(w);
         var f = FlagsOf(spec);
         return VerticalLayout.HeroBandHeight(bw, rowFlow, f.Eyebrow, f.Attribution, f.Meta, f.Description,
-                                             pulse: f.Pulse, chart: f.Chart);
+                                             pulse: f.Pulse, chart: f.Chart, title: spec.Identity.Title);
     }
 
     // ══ 3. THE HERO ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -131,7 +133,7 @@ public static partial class Detail
 
     /// <summary>The vertical arm's item 0: the expanded presentation (artwork · eyebrow · title · rule · attribution ·
     /// meta · pulse · chart · actions · description, then the toolbar) and the 56-DIP context band, scroll-bound. The
-    /// hero owns its flow and title hysteresis, so it is a small component under a plain wrapper box.</summary>
+    /// hero owns its flow hysteresis, so it is a small component under a plain wrapper box.</summary>
     public static Element Hero(VerticalSpec spec, in HeroParts parts)
         => new BoxEl
         {
@@ -167,10 +169,10 @@ public static partial class Detail
         readonly Signal<HeroProps?> _props = new(null);
         readonly Action<RectF> _measure;
 
-        // hysteresis state — plain fields, written in render (not signals: nothing re-renders off them)
-        bool _rowFlow, _flowInit, _boundsSeen, _titleInit;
-        float _titleSize, _lastMeasuredH;
-        string? _titleFor;
+        // hysteresis state — plain fields, written in render (not signals: nothing re-renders off them). The TITLE keeps
+        // none: its plan is a pure function of (bucketed width, flow, title), so it cannot disagree with its own lines.
+        bool _rowFlow, _flowInit, _boundsSeen;
+        float _lastMeasuredH;
 
         public HeroHost() => _measure = Measure;
 
@@ -219,9 +221,9 @@ public static partial class Detail
             ColorF accent = spec.Accent();
             var f = FlagsOf(spec);
 
-            // ── the title TYPE PLAN (measured, never a rung) + the ±2 up / 1 down size hysteresis ──
-            var plan = StablePlan(VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
-                eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart), id.Title);
+            // ── the title TYPE PLAN: ONE size per (bucketed width, title), drawn exactly (no auto-fit, no hysteresis) ──
+            var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
+                eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart);
 
             // ── the identity column, block for block (each keyed; late rows fade up, every row FLIPs) ──
             var blocks = new List<Element>(10);
@@ -230,11 +232,12 @@ public static partial class Detail
                 ? editTitle(plan.Size, float.NaN)
                 : Design.Type.DetailHero(id.Title) with
                 {
-                    Size = plan.Size, MinSize = plan.MinSize, Weight = 600,
-                    // CLEARED: the plan's line box is already the natural one; an authored pair would be discarded.
+                    Size = plan.Size, Weight = 600,
+                    // CLEARED: the natural line box of the size drawn (the plan's LineHeight is that same number).
                     LineHeight = float.NaN,
                     Width = plan.WrapWidth, MaxWidth = plan.WrapWidth,
-                    Wrap = TextWrap.WrapWholeWords, MaxLines = plan.Lines,
+                    // WRAPS freely: the cap is the pathological-length guard, never the plan's line count.
+                    Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap,
                     Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary,
                 }));
             blocks.Add(Block("hero-rule", Controls.AccentRule(accent)));
@@ -250,8 +253,10 @@ public static partial class Detail
             if (id.EditableMetadata && slots.Description is { } editDescription)
                 description = editDescription(descW);
             else if (id.DescriptionHtml is { Length: > 0 } html)
+                // Clamped with the inline "… More" the engine shows only when the body overflows, and the whole text on
+                // hover while collapsed (fullTextTip).
                 description = Controls.ExpandableRichText(html, 13f, Tok.TextSecondary, accent, descW, descLines,
-                                                          id.Subject.Text, s_navRoute);
+                                                          id.Subject.Text, s_navRoute, fullTextTip: true);
 
             float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
                 f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart);
@@ -389,22 +394,6 @@ public static partial class Detail
                 .Fade(VerticalLayout.ExpandedFadeStart(cd), cd, 1f, 0f);
             return ZStack(presentation, compact) with { Direction = 1 };
         }
-
-        /// <summary><c>StableTitleSize</c> applied to the plan: growing waits for two snap steps, shrinking commits at one.
-        /// A held size is always the SMALLER one, so it still fits the budget; a new title string starts fresh.</summary>
-        VerticalLayout.TitleTypePlan StablePlan(VerticalLayout.TitleTypePlan plan, string title)
-        {
-            bool sameTitle = string.Equals(_titleFor, title, StringComparison.Ordinal);
-            float size = VerticalLayout.StableTitleSize(plan.Size, _titleSize, _titleInit && sameTitle);
-            _titleFor = title;
-            _titleSize = size;
-            _titleInit = true;
-            if (size == plan.Size) return plan;
-            float step = VerticalLayout.TitleSnapStep(size);
-            float min = Math.Clamp(MathF.Min(plan.MinSize, size - step),
-                                   VerticalLayout.TitleMinSizeFloor, MathF.Max(VerticalLayout.TitleMinSizeFloor, size - step));
-            return plan with { Size = size, MinSize = min, LineHeight = MathF.Round(size * VerticalLayout.NaturalLineRatio) };
-        }
     }
 
     /// <summary>A keyed identity block: a position-only FLIP always, a fade-up entrance when it can arrive late.</summary>
@@ -502,8 +491,9 @@ public static partial class Detail
         float art = VerticalLayout.ArtworkFor(bw, rowFlow);
         float contentW = VerticalLayout.ContentWidthFor(bw, rowFlow);
         float descW = VerticalLayout.DescriptionWidthFor(bw, rowFlow);
-        // The PESSIMISTIC plan (title: null) — the one the pre-measure collapse height builds too.
-        var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, title: null,
+        // The KNOWN title's plan (the loaded hero's own, so the swap does not jump), else the PESSIMISTIC null-title plan
+        // (an empty Title is null to the estimator) — the one the pre-measure collapse height builds too.
+        var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
             eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart);
         float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
             f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart);

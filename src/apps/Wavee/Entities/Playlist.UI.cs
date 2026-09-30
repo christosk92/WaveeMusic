@@ -328,10 +328,13 @@ public readonly partial struct Playlist
     // ══ 3. THE INLINE EDITORS (W14, W15) ═════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The frame's Title slot: ONE box across read↔edit whose height tweens (CardResize), the status row BELOW it
-    /// — never inline, so the title's measure never moves (ch 06 §0.6). Read-only renders the same hero run.</summary>
+    /// — never inline, so the title's measure never moves (ch 06 §0.6). Read-only renders the same hero run.
+    /// <para>NOT keyed on the size: the props are re-pushed, so the read arm follows the frame's title rule (which moves
+    /// the size with the measure) without a remount — a remount would replay the read arm's fade-in at every size step
+    /// of a rail drag. The edit field, whose font size freezes at mount, is keyed on its own size instead.</para></summary>
     public static Element TitleSlot(Playlist p, float size, float lineHeight)
         => Embed.Comp(new EditorProps(p.Slot, size, lineHeight, Description: false), static () => new InlineEditor())
-            with { Key = "pl-title:" + (int)size + ":" + (float.IsNaN(lineHeight) ? -1 : (int)lineHeight) };
+            with { Key = "pl-title" };
 
     /// <summary>The frame's Description slot (the frame invokes it only while <c>Identity.EditableMetadata</c>).</summary>
     public static Element DescriptionSlot(Playlist p, float width)
@@ -418,8 +421,11 @@ public readonly partial struct Playlist
                          : Controls.RichTextFlex(text, 12f, Tok.TextSecondary, AccentOf(p), 6, NavRoute))
                 : Design.Type.DetailHero(shown) with
                 {
-                    Size = props.Size, MinSize = 18f, Weight = 600, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    LineHeight = props.LineHeight, Wrap = TextWrap.WrapWholeWords, MaxLines = 3, Trim = TextTrim.CharacterEllipsis,
+                    // The frame's title rule: the size it chose, drawn exactly (no auto-fit under an authored line box),
+                    // wrapping freely, ellipsised only past the pathological cap.
+                    Size = props.Size, Weight = 600, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    LineHeight = props.LineHeight, Wrap = TextWrap.WrapWholeWords,
+                    MaxLines = Detail.VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
                     Color = blank ? Tok.TextTertiary : Tok.TextPrimary,
                 };
             if (!editable) return run;
@@ -476,7 +482,7 @@ public readonly partial struct Playlist
                         Text = draft, Width = float.NaN, Height = fieldH, FontSize = fontSize, Placeholder = placeholder,
                         PlaceCaretAtEndOnFocus = true, CommitOnLostFocus = true, OnCommit = commit, OnCancel = cancel,
                         Parts = parts,
-                    }) with { Key = "pl-field" },
+                    }) with { Key = "pl-field:" + (int)fontSize },   // its FontSize/Height freeze at mount: a new size remounts it
                     new BoxEl
                     {
                         Direction = 0, Gap = Spacing.S, Justify = FlexJustify.End,

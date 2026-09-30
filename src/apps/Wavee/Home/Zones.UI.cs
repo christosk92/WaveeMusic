@@ -63,7 +63,8 @@
 //   WideTiles/VideoTiles                      PagedShelf of 16:9 HomeCards.ShelfCell                       tools: See all · ‹ pips ›
 //   ReleaseList                               Ui.SectionHeader + GridEl{320, ≤2, 64} of MediaRow           (sub-block)
 //   ClusterCards/PodcastGroups                GridEl{300, ≤3} of Ui.Card(SectionHeader + ≤3 MediaRow 40)
-//   BrowseTiles                               GridEl{220, ≤4} of SettingsCard + the Charts sub-block
+//   BrowseTiles                               GridEl{220, ≤4} of SettingsCard + the Charts sub-block (ChartsBlockView:
+//                                             Charts page · Top 50 / Viral 50 playlists picked from Featured Charts)
 //   EpisodeLead/EpisodeRows                   GridEl{320, ≤2} of MediaRow(56, 2-line title, meta)
 //   ContinueEpisodes                          GridEl{320, ≤3} of the same row + ProgressBar
 //   EmptyFacet                                Controls.Vacancy(Empty, … → Browse)                          no header
@@ -716,17 +717,67 @@ public static class Zones
         };
     }
 
-    /// <summary>The Browse facet's "Charts" sub-block: three glyph SettingsCards over the same three stable chart section
-    /// uris Browse's own Charts band reads (<see cref="ChartSections"/>), each a legal <c>browseSection</c> target.
-    /// The two chart titles are the same literals the previous pass carried — the loc table has captions for these tiles
-    /// (<c>home.chartsCaption.*</c>) but no title keys yet.</summary>
+    /// <summary>The Browse facet's "Charts" sub-block (RCA 2026-09-30): "Charts" opens the Charts CATEGORY page
+    /// (<see cref="ChartPages.Charts"/>, the Browse directory's own route for it); "Top 50" / "Viral 50" open the actual
+    /// playlists, picked data-driven from the Featured Charts section's items (<see cref="ChartTilePick"/>), each on the
+    /// category page until that section lands or when it carries no match. Every route carries its title as the
+    /// frame-one arg. The component owns the section's demand and the derived tile model; its skeleton proxy is the same
+    /// static tree over <see cref="ChartTilesModel.Fallback"/>. The two chart titles are the same literals the previous
+    /// pass carried — the loc table has captions for these tiles (<c>home.chartsCaption.*</c>) but no title keys yet.</summary>
     public static Element ChartsBlock()
+        => Embed.Comp(static () => new ChartsBlockView()) with { Key = "home:charts", SkeletonProxy = s_chartsProxy };
+
+    static readonly Func<Element> s_chartsProxy = static () => ChartsTree(ChartTilesModel.Fallback);
+
+    /// <summary>The Charts block: demands the Featured Charts section once per scope through the query layer
+    /// (<see cref="Home.EnsureSection"/> as a browse section — the demand Browse's Charts band and the section drill use)
+    /// and renders from the derived <see cref="ChartTilesModel"/>, a memo that re-renders only when a tile's target
+    /// actually changes.</summary>
+    public sealed class ChartsBlockView : Component
+    {
+        static readonly Action s_demand = static () => Home.EnsureSection(Entities.BrowseSection(ChartSections.Featured), browse: true);
+        static readonly Func<ChartTilesModel> s_read = ReadChartTiles;
+
+        public override Element Render()
+        {
+            uint epoch = Entities.ScopeEpoch.Value;
+            UseEffect(s_demand, DepKey.From((int)epoch));
+            var model = UseComputed(s_read);
+            return ChartsTree(model.Value);
+        }
+    }
+
+    /// <summary>The tile model from the Featured Charts section's items, in section order, through the Home model reader
+    /// (<see cref="SectionReader.Of"/>). Subscribes to the section rows, their card edge and the playlist rows (a card's
+    /// title lands on its playlist row); before the section lands the list is empty and both tiles read the fallback.</summary>
+    static ChartTilesModel ReadChartTiles()
+    {
+        _ = Entities.ScopeEpoch.Value;
+        var scope = Entities.Current;
+        _ = scope.Sections.Changed.Value;
+        _ = scope.Edges.SectionCards.Changed.Value;
+        _ = scope.Playlists.Changed.Value;
+        var featured = Entities.BrowseSection(ChartSections.Featured);
+        if (!featured.IsValid) return ChartTilesModel.Fallback;
+        var cards = SectionReader.Of(featured).Cards;
+        if (cards.Count == 0) return ChartTilesModel.Fallback;
+        var items = new FeaturedChartItem[cards.Count];
+        for (int i = 0; i < items.Length; i++)
+        {
+            var c = cards[i];
+            items[i] = c.IsBlank ? new FeaturedChartItem("", null) : new FeaturedChartItem(c.Uri, c.Title);
+        }
+        return ChartTilePick.Of(items);
+    }
+
+    /// <summary>The block's one static tree (Render and the skeleton proxy both build it).</summary>
+    static Element ChartsTree(ChartTilesModel m)
     {
         Element[] tiles =
         [
-            ChartTile(Loc.Get(Strings.Home.Charts), Loc.Get(Strings.Home.UpdatedDaily), Icons.Equalizer, ChartSections.Featured),
-            ChartTile("Top 50", Loc.Get(Strings.Home.ChartsCaption.Top50Global), Icons.Globe, ChartSections.Weekly),
-            ChartTile("Viral 50", Loc.Get(Strings.Home.ChartsCaption.Viral50Country), Icons.Star, ChartSections.Daily),
+            ChartTile("charts", Loc.Get(Strings.Home.Charts), Loc.Get(Strings.Home.UpdatedDaily), Icons.Equalizer, ChartTileTarget.Fallback),
+            ChartTile("top50", "Top 50", Loc.Get(Strings.Home.ChartsCaption.Top50Global), Icons.Globe, m.Top50),
+            ChartTile("viral50", "Viral 50", Loc.Get(Strings.Home.ChartsCaption.Viral50Country), Icons.Star, m.Viral50),
         ];
         return new BoxEl
         {
@@ -740,15 +791,28 @@ public static class Zones
     }
 
     /// <summary>A chart tile is the browse tile with a glyph PLATE where the category art would be — the same 48 edge, so
-    /// the two grids line up.</summary>
-    static Element ChartTile(string title, string description, string glyph, string sectionUri)
+    /// the two grids line up. Keyed by the tile's role, so a target landing re-skins the same card.</summary>
+    static Element ChartTile(string key, string title, string description, string glyph, ChartTileTarget target)
         => SettingsCard.Create(new SettingsCard.Options
         {
             Header = title, Description = description, IsClickEnabled = true,
             HeaderIconElement = Controls.IconPlate(glyph, TileArt, Tok.FillControlDefault, Tok.TextSecondary),
-            OnClick = () => Shell.GoTo(new Shell.Route(Shell.RouteKind.BrowseSection, EntityUri.Parse(sectionUri))),
+            OnClick = () => Shell.GoTo(ChartTileRoute(target)),
             Style = Controls.TileCardStyle, Parts = Controls.TileCardParts,
-        }) with { Key = "chart-tile:" + sectionUri };
+        }) with { Key = "chart-tile:" + key };
+
+    /// <summary>A picked item opens as itself (<see cref="Shell.For"/>: the playlist page, its title the arg); the
+    /// fallback — and a uri no page renders — is the Charts category page with its title (<c>BrowseTiles.PageRoute</c>,
+    /// the Browse directory's own route for it). UI thread (both parse/intern).</summary>
+    static Shell.Route ChartTileRoute(ChartTileTarget target)
+    {
+        if (!target.IsFallback)
+        {
+            var route = Shell.For(EntityUri.Parse(target.Uri.AsSpan()), target.Title);
+            if (route.Kind != Shell.RouteKind.NotFound) return route;
+        }
+        return global::Wavee.BrowseTiles.PageRoute(ChartPages.Charts, Loc.Get(Strings.Home.Charts));
+    }
 
     // ── 2.6 episodes: MediaRow(56, two-line title) with the podcast caption, a ProgressBar while in progress ─────────
 

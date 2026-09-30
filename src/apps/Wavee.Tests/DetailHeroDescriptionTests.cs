@@ -55,9 +55,12 @@ public class DetailHeroDescriptionTests
                     eyebrow: true, attribution: true, meta: true, pulse: true);
                 float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow: true,
                     eyebrow: true, attribution: true, meta: true, pulse: true);
+                // A title no line budget holds above the floor WRAPS at the floor (2026-09-30: never trimmed) — its extra
+                // lines are the title's own, not the description's, and are the only other growth allowed.
+                float wrapped = plan.Size <= VerticalLayout.TitleSizeFloor ? (plan.Lines - 1) * plan.LineHeight : 0f;
                 float art = VerticalLayout.ArtworkFor(w, rowFlow: true);
-                Assert.True(identity <= art + knownFloorSlop,
-                    $"identity {identity} outgrows the cover {art} by more than the known floor slop at w={w} title={title}");
+                Assert.True(identity - wrapped <= art + knownFloorSlop,
+                    $"identity {identity} (floor wrap {wrapped}) outgrows the cover {art} by more than the known floor slop at w={w} title={title}");
             }
     }
 

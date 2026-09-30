@@ -404,8 +404,8 @@ public class PathfinderDecodeTests
     {
         TestScope.Fresh();
         var s = Staging.Rent();
-        var uri = Spotify.Decode.BrowseSection(Fixture("browse-section.json"), 20, s);
-        Assert.False(uri.IsEmpty);
+        var answer = Spotify.Decode.BrowseSection(Fixture("browse-section.json"), "spotify:section:weekly"u8, 20, s);
+        Assert.False(answer.Section.IsEmpty);
         TestScope.CommitAndPublish(s);
 
         var band = Entities.Section("spotify:section:weekly".AsSpan());
@@ -419,28 +419,38 @@ public class PathfinderDecodeTests
     }
 
     [Fact]
-    public void A_home_section_drill_lands_its_band_and_accounts_for_every_raw_item()
+    public void A_home_section_drill_lands_its_band_whole_and_accounts_for_every_raw_item()
     {
+        // The query layer's walk hands the pages it read to `HomeSectionWhole`; the capture is one such page, and the
+        // walk's end (here: the server's) becomes the row's cursor.
+        const string SectionUri = "spotify:section:0JQ5DAIiKWzVFULQfUm85Y";
         TestScope.Fresh();
         var s = Staging.Rent();
-        var uri = Spotify.Decode.HomeSection(Fixture("home-section.json"), 0, s);
-        Assert.False(uri.IsEmpty);
+        var answer = Spotify.Decode.HomeSectionWhole([Fixture("home-section.json")], System.Text.Encoding.UTF8.GetBytes(SectionUri),
+                                                     SectionPaging.Complete, s);
+        Assert.False(answer.Section.IsEmpty);
+        Assert.Equal(3, answer.ItemsReturned);
         TestScope.CommitAndPublish(s);
 
-        var band = Entities.Section("spotify:section:0JQ5DAIiKWzVFULQfUm85Y".AsSpan());
+        var band = Entities.Section(SectionUri.AsSpan());
+        Assert.True(band.Knows(SectionFields.Identity | SectionFields.Whole));
         Assert.Equal("Made for you", Entities.Strings.Resolve(band.TitleId));
         Assert.Equal("Picked today", Entities.Strings.Resolve(band.SubtitleId));
         Assert.Equal(SectionKind.HomeGeneric, band.Kind);
         Assert.Equal(64, band.Total);
-        Assert.Equal(20, band.NextOffset);
+        Assert.Equal(SectionPaging.Complete, band.NextOffset);
         Assert.Equal(3, band.Raw);
         Assert.Equal(band.Raw, band.Cards + band.Unsupported + band.Duplicates);
         Assert.Equal(2, band.CardSlots.Length);
+        Assert.Equal(EdgeState.Complete, band.CardState);
 
-        // A 200 whose homeSections carried nothing is "this did not work", never an empty band.
+        // A 200 whose homeSections carried nothing is "this did not work" — a miss the planner re-asks — never an empty band.
+        Assert.Equal(Spotify.Decode.BrowseRoot.Missing, Spotify.Decode.ScanHomeSection("""{"data":{"homeSections":{"sections":[]}}}"""u8).Root);
+        Assert.Equal(Spotify.Decode.BrowseRoot.Missing, Spotify.Decode.ScanHomeSection("""{"data":{}}"""u8).Root);
         var nothing = Staging.Rent();
-        Assert.True(Spotify.Decode.HomeSection("""{"data":{"homeSections":{"sections":[]}}}"""u8, 0, nothing).IsEmpty);
-        Assert.True(Spotify.Decode.HomeSection("""{"data":{}}"""u8, 0, nothing).IsEmpty);
+        Assert.True(Spotify.Decode.HomeSectionWhole([System.Text.Encoding.UTF8.GetBytes("""{"data":{"homeSections":{"sections":[]}}}""")],
+                                                    System.Text.Encoding.UTF8.GetBytes(SectionUri), SectionPaging.Complete, nothing)
+                        .Section.IsEmpty);
         Staging.Return(nothing);
     }
 

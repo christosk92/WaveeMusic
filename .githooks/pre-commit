@@ -40,7 +40,7 @@ done
 
 if [ -n "$block" ]; then
   printf '\nBLOCKED by pre-commit guard — out-of-scope RE/DRM material staged:\n%s\n\n' "$block"
-  echo "These belong in the private wavee-playplay-private repo, not public fluent-gpu."
+  echo "These belong in the private wavee-playplay-private repo, not this public repo."
   echo "False positive? Review carefully, then: git commit --no-verify"
   exit 1
 fi

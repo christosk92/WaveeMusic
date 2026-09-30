@@ -9,8 +9,10 @@
 // WAVE 5 ADDS, in this file: the section FLAGS and the per-section CARD FACTS (§2b — what a home card paints that no
 // entity column holds: the payload accent of a non-playlist card, the section's own subtitle line, the raw format token,
 // the audiobook facts, the seeds), the account's TOP relations, `SectionKind.HomeShorts`, the readiness gate
-// (`HomeFeedReadiness` + `HomeRevealGate`, §5b) and the page's demand (`Home.EnsureFeed` / `EnsureSection` /
-// `RequestNextPage`, §7). The composed feed model, the composer and every ported rule set live in `Home.Rules.cs`.
+// (`HomeFeedReadiness` + `HomeRevealGate`, §5b) and the page's demand (`Home.EnsureFeed` / `EnsureSection`, §7). The
+// composed feed model, the composer and every ported rule set live in `Home.Rules.cs`. A drill page demands its section
+// WHOLE (`SectionFields.Whole`): the query layer walks the section to its end (Spotify/Spotify.Api.Browse.cs) and no page
+// ever pages a section itself (the "no page-side fetch windows" rule).
 //
 // HOME IS A SUBJECT, NOT A PAGE MODEL. 0.2.9 rebuilt a `HomeFeed` record — greeting, chips, sections, cards, all of it
 // — on every load, handed it to the page, and let the page hold it; a keep-alive eviction threw the whole thing away
@@ -92,8 +94,14 @@ public enum SectionFields : uint
     Identity = 1 << 0,
     /// <summary>The server's own accent for the band (browse pages carry one; Home sections usually do not).</summary>
     Accent = 1 << 1,
+    /// <summary>THE WHOLE CARD LIST: the section's own route walked to the server's end by the query layer
+    /// (<c>Spotify.Api.Browse.cs</c> — <c>homeSection</c> / <c>browseSection</c>, <c>BrowseWalk</c>'s stop rules), landed as
+    /// ONE whole run. A feed's or a page's band carries only its first page, so a row that knows
+    /// <see cref="Identity"/> from one does not know this; the drill page demands it, and a later first-page answer for
+    /// the same band takes it back (<c>Home.Commit</c>).</summary>
+    Whole = 1 << 2,
 
-    All = Identity | Accent,
+    All = Identity | Accent | Whole,
 }
 
 /// <summary>What KIND of band a section row is, namespaced by the composer that produced it.
@@ -639,9 +647,6 @@ public readonly partial struct Section(int slot) : IEquatable<Section>
     /// <summary>Does "Show all" stay armed?</summary>
     public bool HasMore => SectionPaging.HasMore(Raw, Cards, Total, NextOffset);
 
-    /// <summary>The offset the next "Show all" page should request.</summary>
-    public int NextRequest => SectionPaging.NextRequest(Raw, Cards);
-
     public bool Equals(Section other) => other.Slot == Slot;
     public override bool Equals(object? o) => o is Section s && s.Slot == Slot;
     public override int GetHashCode() => Slot;
@@ -1048,7 +1053,19 @@ public readonly partial struct Home
                 if (row.HasFacts && row.FactStart >= 0 && row.FactCount >= 0 && row.FactStart + row.FactCount <= facts.Length)
                     t.SetFacts(slot, s, facts.Slice(row.FactStart, row.FactCount), seeds);
                 t.Applied(slot, (uint)SectionFields.Identity, authority, ref t.IdentityAuthority);
+                // A band answered WITHOUT its whole list (a feed's or a page's first page, one browseSection page) has just
+                // replaced the run a walk landed: the row holds a first page again, so the fact goes — and its ask, so the
+                // drill's next demand walks the section again instead of reading a first page as the whole.
+                if ((row.Known & (uint)SectionFields.Whole) == 0)
+                {
+                    t.Known[slot] &= ~(uint)SectionFields.Whole;
+                    t.Asked[slot] &= ~(uint)SectionFields.Whole;
+                }
             }
+
+            if ((row.Known & (uint)SectionFields.Whole) != 0
+                && t.Accepts(slot, (uint)SectionFields.Whole, authority, in t.IdentityAuthority))
+                t.Applied(slot, (uint)SectionFields.Whole, authority, ref t.IdentityAuthority);
 
             if ((row.Known & (uint)SectionFields.Accent) != 0
                 && t.Accepts(slot, (uint)SectionFields.Accent, authority, in t.IdentityAuthority))
@@ -1278,33 +1295,22 @@ public readonly partial struct Home
         Entities.EnsureEdge(FetchEdge.HomePreviews, h.Slot);
     }
 
-    /// <summary>A drill page's demand (ch 12 §7a): the band's identity, then its cards' rows. <paramref name="browse"/>
-    /// stamps an unformed row a browse shelf first, so the planner routes it to <c>browseSection</c>
-    /// (<c>Entities.BrowseSection</c>'s rule, for a row minted through <c>Entities.Section</c>).</summary>
-    public static void EnsureSection(Section s, bool browse)
+    /// <summary>A band's demand (ch 12 §7a): <paramref name="fields"/> of the section row, then its cards' rows.
+    /// <paramref name="browse"/> stamps an unformed row a browse shelf first, so the planner routes it to
+    /// <c>browseSection</c> (<c>Entities.BrowseSection</c>'s rule, for a row minted through <c>Entities.Section</c>). A
+    /// deck tile asks <see cref="SectionFields.Identity"/> (one page); the drill page asks
+    /// <see cref="SectionFields.Identity"/> | <see cref="SectionFields.Whole"/> — the section WHOLE, walked to its end by
+    /// the query layer, never paged by the page.</summary>
+    public static void EnsureSection(Section s, bool browse, SectionFields fields = SectionFields.Identity)
     {
         if (!s.IsValid) return;
         var t = Entities.Current.Sections;
         if (browse && t.Form[s.Slot] == (byte)SectionKind.Unknown) t.Form[s.Slot] = (byte)SectionKind.BrowseShelf;
         int slot = s.Slot;
-        Entities.Ensure(t, new ReadOnlySpan<int>(in slot), (uint)SectionFields.Identity);
+        Entities.Ensure(t, new ReadOnlySpan<int>(in slot), (uint)fields);
         s_demand.Clear();
         s_demand.AddCards(s);
         s_demand.Flush();
-    }
-
-    /// <summary>"Show all", the append preloader and the Charts walk: the next page of the band's cards at
-    /// <c>HomeSectionPaging.NextOffset(view)</c>. False when there is nothing to ask for — the server's EXPLICIT terminator
-    /// (<see cref="SectionPaging.Complete"/>), a band with no identity, or that page already asked this scope. Totals are
-    /// NOT consulted: the walk must ask past an under-reported total (<c>BrowseSectionWalk.Begin</c>).</summary>
-    public static bool RequestNextPage(Section s, bool browse)
-    {
-        if (!s.IsValid || s.NextOffset == SectionPaging.Complete) return false;
-        int offset = HomeSectionPaging.NextOffset(HomeSectionView.Of(s));
-        var edge = browse ? FetchEdge.BrowseSectionCards : FetchEdge.HomeSectionCards;
-        if (E.SectionCards.WasAsked(s.Slot, offset)) return false;
-        Entities.EnsureEdge(edge, s.Slot, offset);
-        return true;
     }
 
     static readonly CardDemand s_demand = new();

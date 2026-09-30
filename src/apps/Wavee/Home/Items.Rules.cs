@@ -30,46 +30,41 @@ public static class CardMeta
 }
 
 /// <summary>The daylist card's art source (`Daylist.UI.cs`): the daylist's header image, else its square cover, else
-/// null (the art column still shows, as the watched placeholder). The column's SHAPE is the card's, never the
-/// picture's — the art is cover-cropped into it — so no aspect or width cap rides along.</summary>
+/// null (no art layer and no veil: the plain card). The art cover-fills the WHOLE card, so its SHAPE is the card's,
+/// never the picture's — no aspect or width cap rides along.</summary>
 public static class DaylistArt
 {
     public static string? Of(string? headerImage, string? image)
         => headerImage is { Length: > 0 } ? headerImage : image is { Length: > 0 } ? image : null;
 }
 
-/// <summary>The daylist card's form (Seventh pass, `Daylist.UI.cs`): the text column holds its
-/// <see cref="TextMin"/> (the 40/52 title's line plus the one-row action strip), the art takes what is left of the
-/// card's content width after the <see cref="Gap"/>, and below <see cref="ArtMin"/> of art the card drops the art
-/// and is the text column alone. <c>inner</c> is the card's content width (after its padding).</summary>
+/// <summary>The daylist card's form (`Daylist.UI.cs`, hero fade variant A): the header art fills the whole card under
+/// the artist hero's horizontal veil, and the copy column (eyebrow · title · tags · meta · actions · clock) sits on the
+/// veil's opaque left side. <c>inner</c> is the card's content width — the card minus the copy's side insets
+/// (<c>Daylist.CopyPadding</c>) — and <see cref="CopyWidth"/> is the copy's text width at it: half of it, held between
+/// <see cref="TextMin"/> and <see cref="CopyMax"/>, and all of it once it is narrower than <see cref="SplitMin"/>.</summary>
 public static class DaylistForm
 {
-    /// <summary>The text column's floor while the art shows.</summary>
+    /// <summary>The copy's floor: the 40/52 title's line plus the ONE action row (Play at its primary floor, Shuffle,
+    /// the heart and "…") fit without wrapping. Also the clock's timeline fallback width.</summary>
     public const float TextMin = 340f;
-    /// <summary>The text ↔ art gap (== <c>Spacing.XXXL</c>, which the card's row uses).</summary>
-    public const float Gap = 32f;
-    /// <summary>The narrowest art worth showing.</summary>
-    public const float ArtMin = 160f;
-    /// <summary>The art column's flex basis — its width on a wide card (Shrink 1, Grow 0: a narrower card shrinks the
-    /// art, never the text).</summary>
-    public const float ArtBasis = 540f;
-    /// <summary>The narrowest text column that keeps the 40/52 hero title rung; below it the title steps down to the
-    /// 28/36 display rung so a typical daylist name stays on one line and the card holds its 320 floor.</summary>
+    /// <summary>The copy's ceiling on a wide card: the veil's opaque plate (its 0.92 stop sits at 30 % of the card)
+    /// keeps the long lines readable, and the art keeps the rest.</summary>
+    public const float CopyMax = 560f;
+    /// <summary>The copy's share of the content width between the floor and the ceiling.</summary>
+    public const float CopyShare = 0.5f;
+    /// <summary>The narrowest content width that still splits into the copy and art beside it (the copy's 340 floor
+    /// plus 192 of art); below it the copy takes the whole width and the veil washes the art under all of it.</summary>
+    public const float SplitMin = 532f;
+    /// <summary>The narrowest copy that keeps the 40/52 hero title rung; below it the title steps down to the 28/36
+    /// display rung so a typical daylist name stays on one line and the card holds its 320 floor.</summary>
     public const float HeroTitleMinText = 480f;
 
-    public static bool ShowArt(float inner) => inner - Gap - TextMin >= ArtMin;
-
-    /// <summary>The text column's MinWidth at <paramref name="inner"/>: <see cref="TextMin"/> beside the art; alone,
-    /// never more than the card offers (a floor wider than the card would overflow it).</summary>
-    public static float TextMinFor(float inner)
-        => ShowArt(inner) ? TextMin : Math.Clamp(inner, 0f, TextMin);
-
-    /// <summary>The text column's resolved width at <paramref name="inner"/>, as the card's flex row resolves it: beside
-    /// the art (text Grow 1 / Basis 0 / MinWidth <see cref="TextMin"/>, art Basis <see cref="ArtBasis"/> / Shrink 1)
-    /// the text takes whatever the art's basis and the <see cref="Gap"/> leave, never below its floor; alone, the whole
-    /// content width.</summary>
-    public static float TextWidth(float inner)
-        => ShowArt(inner) ? Math.Max(TextMin, inner - Gap - ArtBasis) : inner;
+    /// <summary>The copy's text width at content width <paramref name="inner"/>: <see cref="CopyShare"/> of it, clamped
+    /// to [<see cref="TextMin"/>, <see cref="CopyMax"/>]; below <see cref="SplitMin"/> the whole (never negative)
+    /// width.</summary>
+    public static float CopyWidth(float inner)
+        => inner < SplitMin ? Math.Max(0f, inner) : Math.Clamp(inner * CopyShare, TextMin, CopyMax);
 
     /// <summary>Whether a text column <paramref name="textWidth"/> wide keeps the 40/52 hero title (inclusive at
     /// <see cref="HeroTitleMinText"/>).</summary>

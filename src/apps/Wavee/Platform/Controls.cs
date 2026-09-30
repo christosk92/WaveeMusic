@@ -298,8 +298,8 @@ public static partial class Controls
 
     /// <summary>A cover that FILLS its box (object-fit: cover), no aspect box — the box's own size decides the crop.
     /// <para>The <see cref="Cover"/> twin for a slot whose SHAPE is the layout's, not the picture's: the daylist card's
-    /// art column is as tall as the card's text and as wide as the row leaves it, so any ratio this imposed would
-    /// fight the row. The image carries NO extent and NO aspect, so it measures nothing and a ZStack parent hands it
+    /// art fills the whole card, which is as wide as Home gives it and as tall as its copy, so any ratio this imposed
+    /// would fight the card. The image carries NO extent and NO aspect, so it measures nothing and a ZStack parent hands it
     /// the whole box; the wrapper takes <c>Grow 1</c> on a column parent's main axis and <c>AlignSelf Stretch</c> on
     /// its cross axis, with both minimums at 0 so a shrinking row can take it all the way down. Place it in a box that
     /// is itself sized or stretched on both axes; in a content-sized parent it collapses to nothing, by design.</para>

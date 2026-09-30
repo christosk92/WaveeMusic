@@ -76,13 +76,6 @@ public static partial class Detail
         /// <summary>Null + <see cref="MetaLoading"/> ⇒ a shimmer bar shaped "00 songs · 0 hr 00 min".</summary>
         public string? Meta { get; init; }
         public bool MetaLoading { get; init; }
-        /// <summary>Album release year drawn as its own control at the end of <see cref="Meta"/> (0 = the year stays
-        /// plain text inside the line). Clicking it opens the release-date tip.</summary>
-        public int ReleaseYear { get; init; }
-        /// <summary>The date that tip shows ("November 23, 2012"). Null ⇒ the tip shows <see cref="ReleaseYear"/>.</summary>
-        public string? ReleaseDateText { get; init; }
-        /// <summary>True while the release instant is still ahead: the tip's caption reads "Releases".</summary>
-        public bool ReleasesInFuture { get; init; }
         /// <summary>The subject's header (title, cover, owner/artists) has not answered yet. The two-column rail and the
         /// hero band shimmer AS A WHOLE on this flag and cross-dissolve once when it drops — never a real layout with
         /// empty cells. Each page derives it from its own row (<c>Knows(…Identity)</c>); Liked is never pending.</summary>
@@ -118,9 +111,6 @@ public static partial class Detail
                 && CardAccent == o.CardAccent
                 && string.Equals(Eyebrow, o.Eyebrow, StringComparison.Ordinal)
                 && string.Equals(Meta, o.Meta, StringComparison.Ordinal) && MetaLoading == o.MetaLoading
-                && ReleaseYear == o.ReleaseYear
-                && string.Equals(ReleaseDateText, o.ReleaseDateText, StringComparison.Ordinal)
-                && ReleasesInFuture == o.ReleasesInFuture
                 && HeaderPending == o.HeaderPending
                 && string.Equals(OwnerName, o.OwnerName, StringComparison.Ordinal)
                 && string.Equals(OwnerImageUrl, o.OwnerImageUrl, StringComparison.Ordinal)
@@ -165,8 +155,8 @@ public static partial class Detail
             bool countKnown = a.Knows(AlbumFields.TrackCount) && a.TrackCount > 0;
             bool metaLoading = !countKnown && state == EdgeState.Unknown;
             int trackCount = Album.PageRules.SongCount(countKnown ? a.TrackCount : 0, slots.Length);
-            string? meta = metaLoading ? null : Text.AlbumMeta(trackCount, totalMs, durationsKnown, a.Year);
-            var release = ReleaseDateOf(a);
+            // No year here: the eyebrow carries it, and the release panel spells the full date.
+            string? meta = metaLoading ? null : Text.AlbumMeta(trackCount, totalMs, durationsKnown);
 
             // Billed artists. An album with no artist edge (the fake seed's al3) has no attribution row at all.
             List<Controls.Face>? faces = null;
@@ -200,9 +190,6 @@ public static partial class Detail
                     : "",
                 Meta = meta,
                 MetaLoading = metaLoading,
-                ReleaseYear = a.Year,
-                ReleaseDateText = release.Text,
-                ReleasesInFuture = release.InFuture,
                 Artists = faces,
                 UpcomingAtUnixSeconds = upcoming ? a.PreReleaseEnd : 0,
                 SaveTarget = saveTarget,
@@ -211,29 +198,6 @@ public static partial class Detail
                     ? DetailNotice.None
                     : NoticeRules.ForAlbum(MemoryMarshal.Cast<int, Track>(slots)),
             };
-        }
-
-        /// <summary>The release date the year control expands into. Year-only when the publishing columns have not
-        /// landed yet; the precise phrase once they have.</summary>
-        static (string? Text, bool InFuture) ReleaseDateOf(Album a)
-        {
-            if (a.Year <= 0 && !a.Knows(AlbumFields.Release)) return (null, false);
-            long now = Store.ToUnix(Entities.Now);
-            Album.ReleaseDate? parsed = null;
-            int at = 0;
-            if (a.Knows(AlbumFields.Release) && !a.ReleaseDateIsoId.IsEmpty)
-            {
-                string iso = Entities.Strings.Resolve(a.ReleaseDateIsoId);
-                parsed = Album.ReleaseFactsRules.ParseReleaseDate(iso, a.DatePrecision);
-                at = Album.Upcoming.ReleaseInstant(iso);
-            }
-            if (at == 0 && a.Knows(AlbumFields.Release)) at = a.ReleaseAt;
-            parsed ??= a.Year > 0 ? new Album.ReleaseDate(a.Year, 0, 0, 0) : null;
-            bool future = at != 0 && at > now;
-            if (parsed is not { } date) return (null, future);
-            string? text = Album.ReleaseFactsRules.ReleasedText(
-                new Album.ReleaseFacts(0, 0, 0, date, future, null, Array.Empty<string>()));
-            return (text, future);
         }
     }
 
@@ -488,6 +452,15 @@ public static partial class Detail
             _max = max;
             float w = RailPolicy.RestingWidth(_stored, Scope, mode, max);
             if (w != Width.Peek()) Width.Value = w;
+        }
+
+        /// <summary>The width the frame COMPOSES this render for (mode, max): what <see cref="Rest"/> will write until it
+        /// has run for exactly that pair, the live (dragged) width after (<see cref="RailPolicy.ComposedWidth"/>). Reads
+        /// <see cref="Width"/> unconditionally, so a drag always re-renders. Pure read — a render never writes the cell.</summary>
+        public float ComposedWidth(int mode, float max)
+        {
+            float live = Width.Value;
+            return RailPolicy.ComposedWidth(live, _stored, Scope, _mode, _max, mode, max);
         }
 
         void CommitNow()
@@ -820,10 +793,15 @@ public static partial class Detail
             bool resizable = RailPolicy.ResizableFor(cfg.RailResizable, mode);
             // Read unconditionally (a stable subscription) but honoured only where the grip that can undo it exists.
             bool collapsed = rail.Collapsed.Value && resizable;
-            // The page-aware cap: the rail may never squeeze the content column below its 300-DIP floor. Clamped again
-            // HERE (on read) so the one frame between a resize and the re-resting effect still lays out inside the page.
-            float railMax = _railMax.Value;
-            float railW = resizable ? RailPolicy.ClampLive(rail.Width.Value, rail.Scope, railMax) : RailWidthForMode(mode, cfg);
+            // The page-aware cap: the rail may never squeeze the content column below its 300-DIP floor. Before the first
+            // page measure it is the viewport ESTIMATE's cap (the same estimate the mode seed above reads), not the absolute
+            // ceiling. The width is the one the rail will REST at for this (mode, cap) until the re-resting effect has run
+            // (RailPolicy.ComposedWidth): composing the live width instead painted the pre-measure frame(s) at the WIDE
+            // arm's width and snapped the rail narrower a frame or two later — the title re-wrapping under it (the
+            // "full title for 1-2 frames" flicker, 2026-09-30).
+            float railMaxLive = _railMax.Value;
+            float railMax = _measuredW > 0f ? railMaxLive : RailPolicy.MaxWidthForPage(pageWidthEstimate, mode);
+            float railW = resizable ? rail.ComposedWidth(mode, railMax) : RailWidthForMode(mode, cfg);
 
             Element[] rowKids;
             if (collapsed)
@@ -834,8 +812,9 @@ public static partial class Detail
             else
             {
                 int rungs = rungsMemo.Value;                                      // re-renders only on a rung cross
+                // The window rung is the title's size CAP; the size drawn and its natural line box are the title rule's
+                // (VerticalLayout.RailTitleTypeFor), never an authored pair.
                 float titleSize = (rungs & RungTall) != 0 ? 40f : 28f;
-                float titleLineHeight = VerticalLayout.TitleLineHeightFor(titleSize);
                 int descLines = (rungs & RungShort) != 0 ? 3 : 6;
                 // The fade wrapper is present in every non-collapsed mode so a breakpoint cross never changes the row's
                 // child shape at index 0. PAINT-BOUND: the resist cue never re-renders the rail.
@@ -855,7 +834,7 @@ public static partial class Detail
                     ClipToBounds = true,
                     MinHeight = 0f, Shrink = 0f, Width = railW,
                     Opacity = _railFade,
-                    Children = [RailRegion(spec, acts, railW, titleSize, titleLineHeight, descLines)],
+                    Children = [RailRegion(spec, acts, railW, titleSize, descLines)],
                 };
                 rowKids = resizable ? [railFaded, Grip(rail, railMax, collapsedNow: false), right] : [railFaded, right];
             }
@@ -901,11 +880,11 @@ public static partial class Detail
         /// tween). The frame (layer fill + scroller) sits OUTSIDE the boundary so the fill never blinks. The content thunk
         /// closes over this render's spec; a later push re-renders the frame and the region refreshes its Ready branch in
         /// place, so the rail keeps following the header (meta, description, a rename) after the reveal.</summary>
-        Element RailRegion(FrameSpec spec, FrameActions acts, float railW, float titleSize, float titleLineHeight, int descLines)
+        Element RailRegion(FrameSpec spec, FrameActions acts, float railW, float titleSize, int descLines)
             => RailFrame(spec.Identity.Kind, railW, new SkelRegionEl(
                 Pending: _railPending, Failed: s_false,
-                Content: () => RailColumn(spec, acts, railW, titleSize, titleLineHeight, descLines, _accentFn, _playAll),
-                ShimmerSource: () => RailSkeletonColumn(spec, railW, titleLineHeight, descLines),
+                Content: () => RailColumn(spec, acts, railW, titleSize, descLines, _accentFn, _playAll),
+                ShimmerSource: () => RailSkeletonColumn(spec, railW, titleSize, descLines),
                 OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
 
         /// <summary>The collapsed strip's identity (cover + title) behind the same boundary; the expand chevron stays real.</summary>
@@ -1223,15 +1202,16 @@ public static partial class Detail
     static Action DefaultPlay(EntityUri subject) => () => Actions.Services.Play?.Invoke(subject);
 
     /// <summary>The fixed-width metadata rail (two-column arm): cover · eyebrow/owner · title · artists · meta · daylist ·
-    /// chart · CTA · prerelease · release panel · description · liked facts, in its own scroller.</summary>
-    public static Element Rail(FrameSpec spec, float railWidth, float titleSize, float titleLineHeight, int descriptionLines,
+    /// chart · CTA · prerelease · release panel · description · liked facts, in its own scroller. <paramref name="titleSize"/>
+    /// is the title's size CAP (the window rung); the size drawn is <see cref="VerticalLayout.RailTitleTypeFor"/>'s.</summary>
+    public static Element Rail(FrameSpec spec, float railWidth, float titleSize, int descriptionLines,
                                Func<ColorF> accent)
-        => RailCore(spec, spec.Actions, railWidth, titleSize, titleLineHeight, descriptionLines, accent,
+        => RailCore(spec, spec.Actions, railWidth, titleSize, descriptionLines, accent,
                     DefaultPlay(spec.Identity.Subject));
 
-    static Element RailCore(FrameSpec spec, FrameActions acts, float railW, float titleSize, float titleLineHeight,
+    static Element RailCore(FrameSpec spec, FrameActions acts, float railW, float titleSize,
                             int descMaxLines, Func<ColorF> accent, Action play)
-        => RailFrame(spec.Identity.Kind, railW, RailColumn(spec, acts, railW, titleSize, titleLineHeight, descMaxLines, accent, play));
+        => RailFrame(spec.Identity.Kind, railW, RailColumn(spec, acts, railW, titleSize, descMaxLines, accent, play));
 
     /// <summary>The rail's frame: the layer fill and, the LAST resort once the text has given, the rail's own scroller.
     /// The Liked arm differs in exactly ONE property — no layer fill (ch 03 §9). Holds the loaded column, or the skeleton
@@ -1249,7 +1229,7 @@ public static partial class Detail
     /// <see cref="RailLayout.RowsFor"/>'s decisions; <see cref="RailSkeletonColumn"/> reserves the same rows
     /// (<see cref="Skeleton.RailPlanFor"/>) in the same order at the same widths, so the swap is a dissolve and never a
     /// reflow. With none of the podcast slots declared the column is exactly the pre-podcast one.</summary>
-    static Element RailColumn(FrameSpec spec, FrameActions acts, float railW, float titleSize, float titleLineHeight,
+    static Element RailColumn(FrameSpec spec, FrameActions acts, float railW, float titleSize,
                               int descMaxLines, Func<ColorF> accent, Action play)
     {
         var id = spec.Identity;
@@ -1297,11 +1277,15 @@ public static partial class Detail
         if (rows.Badges == RailBadgeRow.OwnRow && slots.Badges is { } badgesOwn)
             kids.Add(SlotRow("rail:badges", badgesOwn(), RailLayout.BadgeHeight));
 
-        kids.Add(Row("rail:title", slots.Title?.Invoke(titleSize, titleLineHeight)
+        // The title: ONE size from the title rule (the rung is its cap), drawn exactly — no engine auto-fit under an
+        // authored line box (that pairing kept a 36/52 box around 18-DIP glyphs) — wrapping freely in its natural line
+        // box, ellipsised only past TitleLineCap.
+        var titlePlan = VerticalLayout.RailTitleTypeFor(cover, titleSize, id.Title);
+        kids.Add(Row("rail:title", slots.Title?.Invoke(titlePlan.Size, float.NaN)
             ?? Design.Type.DetailHero(id.Title) with
             {
-                Size = titleSize, MinSize = 18f, Weight = 600, Width = cover, LineHeight = titleLineHeight,
-                Wrap = TextWrap.WrapWholeWords, MaxLines = 3, Trim = TextTrim.CharacterEllipsis,
+                Size = titlePlan.Size, Weight = 600, Width = cover, LineHeight = float.NaN,
+                Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
             }));
 
         // Attribution: an album's billed artists; a podcast's Attribution slot (a show's publisher line).
@@ -1353,7 +1337,10 @@ public static partial class Detail
             if (id.EditableMetadata && slots.Description is { } editDescription)
                 kids.Add(LateRow("rail:desc", editDescription(cover)));
             else if (id.DescriptionHtml is { Length: > 0 } html)
-                kids.Add(LateRow("rail:desc", Controls.RichText(html, 12f, Tok.TextSecondary, accentColor, cover, descMaxLines, s_navRoute)));
+                // Clamped with the inline "… More" the engine shows only when the body overflows (a bare "…" left the
+                // rest unreachable), and the whole text on hover while collapsed (fullTextTip).
+                kids.Add(LateRow("rail:desc", Controls.ExpandableRichText(html, 12f, Tok.TextSecondary, accentColor, cover,
+                    descMaxLines, id.Subject.Text, s_navRoute, fullTextTip: true)));
         }
 
         // Row, not LateRow: the facts panel owns its own entrance.
@@ -1434,7 +1421,7 @@ public static partial class Detail
     /// badge style and the rail slots the page declared) at the same widths, gap and padding — its nominal height is
     /// <see cref="RailLayout.HeightOf"/> of that plan. Unfilled boxes; a cover already known (a shelf card's 256 bucket)
     /// is painted for real and exempted from the deriver, as the hero's skeleton does.</summary>
-    static Element RailSkeletonColumn(FrameSpec spec, float railW, float titleLineHeight, int descMaxLines)
+    static Element RailSkeletonColumn(FrameSpec spec, float railW, float titleSize, int descMaxLines)
     {
         var id = spec.Identity;
         var cfg = spec.Config;
@@ -1468,7 +1455,15 @@ public static partial class Detail
                 ],
             });
         if (plan.Badges == RailBadgeRow.OwnRow) kids.Add(Bar(Skeleton.BadgeBarWidth, RailLayout.BadgeHeight));
-        kids.Add(Lines(cover, titleLineHeight, plan.TitleLines, Skeleton.TitleLastLineFraction));
+        // The title block: a KNOWN title's own plan (the rule the loaded rail draws, so the dissolve does not reflow it);
+        // none yet ⇒ the reserved two lines in the rung's natural line box.
+        if (id.Title is { Length: > 0 } knownTitle)
+        {
+            var titlePlan = VerticalLayout.RailTitleTypeFor(cover, titleSize, knownTitle);
+            kids.Add(Lines(cover, titlePlan.LineHeight, titlePlan.Lines, Skeleton.TitleLastLineFraction));
+        }
+        else
+            kids.Add(Lines(cover, VerticalLayout.NaturalLineHeightFor(titleSize), plan.TitleLines, Skeleton.TitleLastLineFraction));
         if (plan.Artists) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.AttributionFraction), VerticalLayout.AttributionRowHeight));
         if (plan.Rating) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.RatingFraction), RailLayout.RatingHeight));
         if (plan.Meta) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight));
@@ -1642,7 +1637,8 @@ public static partial class Detail
             ?? Design.Type.PageHero(id.Title) with
             {
                 Size = 28f, LineHeight = 36f, Weight = 600,
-                Wrap = TextWrap.WrapWholeWords, MaxLines = 3, Trim = TextTrim.CharacterEllipsis,
+                // The detail frame's ONE trim rule: a title wraps, ellipsised only past the pathological cap.
+                Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
             }));
         if (rows.Artists)
             info.Add(LateRow("hdr:artists", slots.Attribution?.Invoke(600f)
@@ -1719,27 +1715,13 @@ public static partial class Detail
     static Element MetaRow(Identity id, float width, int maxLines)
         => MetaLine(id, width, maxWidth: float.NaN, maxLines);
 
-    /// <summary>The meta caption. An album year is its own control at the end of the line: hover lights it, click
-    /// opens the release-date tip. Every other meta stays one run.</summary>
+    /// <summary>The meta caption: ONE TrackMeta run ("2 songs · 6 min"), whole-word wrapped to
+    /// <paramref name="maxLines"/> — or its loading shimmer. An album's year is not on it (the eyebrow and the release
+    /// panel carry it).</summary>
     static Element MetaLine(Identity id, float width, float maxWidth, int maxLines)
     {
         if (!id.MetaLoading && id.Meta is { Length: > 0 } meta)
         {
-            if (YearLead(meta, id.ReleaseYear) is { } lead)
-            {
-                var row = new BoxEl
-                {
-                    Direction = 0, Wrap = true, AlignItems = FlexAlign.Center,
-                    Children =
-                    [
-                        Design.Type.TrackMeta(lead) with { MaxLines = 1, Wrap = TextWrap.NoWrap },
-                        YearChip(id),
-                    ],
-                };
-                if (!float.IsNaN(width)) row = row with { Width = width };
-                if (!float.IsNaN(maxWidth)) row = row with { MaxWidth = maxWidth };
-                return row;
-            }
             var line = Design.Type.TrackMeta(meta) with
             {
                 MaxLines = maxLines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
@@ -1756,77 +1738,6 @@ public static partial class Detail
     static readonly Func<bool> s_true = static () => true;
     static readonly Func<bool> s_false = static () => false;
     static readonly Func<Element> s_metaShimmer = static () => Design.Type.TrackMeta(MetaShimmerText) with { MaxLines = 1 };
-
-    /// <summary>The meta line with its trailing year cut off, keeping the " · " separator, when
-    /// <paramref name="meta"/> ends in that year. Null when the year is not the line's last token.</summary>
-    static string? YearLead(string meta, int year)
-    {
-        if (year <= 0) return null;
-        string suffix = " · " + year.ToString(CultureInfo.CurrentCulture);
-        return meta.EndsWith(suffix, StringComparison.Ordinal) ? meta[..^suffix.Length] + " · " : null;
-    }
-
-    static Element YearChip(Identity id)
-        => Embed.Comp(() => new ReleaseYearHost
-        {
-            Year = id.ReleaseYear.ToString(CultureInfo.CurrentCulture),
-            When = id.ReleaseDateText is { Length: > 0 } when ? when : id.ReleaseYear.ToString(CultureInfo.CurrentCulture),
-            Caption = Loc.Get(id.ReleasesInFuture ? Strings.Detail.FactReleases : Strings.Detail.FactReleased),
-        }) with { Key = "release-year:" + id.ReleaseYear.ToString(CultureInfo.InvariantCulture) + ":" + (id.ReleaseDateText ?? "") };
-
-    /// <summary>The album year's hit target. Resting, it is the same 12/16 secondary run as the rest of the meta
-    /// line, underlined so it reads as a control. Hover fills a pill and lifts the year to primary. Click opens a
-    /// teaching tip — large date, "Released" under it, beak on the year.</summary>
-    sealed class ReleaseYearHost : Component
-    {
-        public string Year = "";
-        public string When = "";
-        public string Caption = "";
-
-        public override Element Render()
-        {
-            var overlay = UseContext(Overlay.Service);
-            var anchor = UseRef<NodeHandle>(default);
-            var tip = UseRef<OverlayHandle?>(null);
-
-            void Toggle()
-            {
-                if (overlay is null) return;
-                if (tip.Value is { IsOpen: true }) { tip.Value.Close(); return; }
-                var parts = new TemplateParts();
-                parts.Set<TextEl>(TeachingTip.PartTitle, t => t with { Size = 22f, Weight = 600 });
-                tip.Value = TeachingTip.Show(overlay, () => anchor.Value, t =>
-                {
-                    t.Title = When;
-                    t.Subtitle = Caption;
-                    t.IconGlyph = Icons.Calendar;
-                    t.PreferredPlacement = TeachingTip.PlacementMode.Bottom;
-                    t.IsLightDismissEnabled = true;
-                    t.Parts = parts;
-                });
-            }
-
-            return new BoxEl
-            {
-                OnRealized = n => anchor.Value = n,
-                OnClick = Toggle,
-                Cursor = CursorId.Hand,
-                Role = AutomationRole.Button,
-                Padding = new Edges4(3f, 0f, 3f, 0f),
-                Corners = CornerRadius4.All(4f),
-                HoverFill = Tok.FillSubtleSecondary,
-                PressedFill = Tok.FillSubtleTertiary,
-                Children =
-                [
-                    new TextEl(Year)
-                    {
-                        Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary,
-                        Underline = true,
-                    },
-                ],
-            };
-        }
-    }
 
     /// <summary>A rich-text anchor's route key → navigation.</summary>
     static readonly Action<string> s_navRoute = static key => Shell.GoTo(Shell.Parse(key));

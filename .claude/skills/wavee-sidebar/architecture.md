@@ -451,7 +451,7 @@ properties delegate to them, so there is one rule) and the pure geometry.
 
   **`SidebarRowSpec.DropCue` is deleted and the row's `Fill`/`BorderColor` are STATIC values again.** They used to be
   `Prop.Of` thunks that folded the cue with `enabled && selected` — captured as values at the render that built them —
-  and because bindings are mount-only, a same-keyed re-render (which is exactly what `RefreshSelection`'s epoch bump
+  and because bindings were mount-only until 2026-09-30 (the engine now re-wires a changed thunk), a same-keyed re-render (which is exactly what `RefreshSelection`'s epoch bump
   produces) left the old thunk in place: the resting **route** plate stayed on the previous route until the row
   scrolled out and remounted. Static fills also re-enter the 83 ms `BrushTransition` cross-fade for free. The boolean
   `SidebarRowSpec.DropActive` survives for the whole-row surfaces that are **not** recycled plan rows — the rail

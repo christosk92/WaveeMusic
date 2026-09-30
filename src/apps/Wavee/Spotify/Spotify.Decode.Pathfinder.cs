@@ -1017,15 +1017,7 @@ public static partial class Spotify
         /// <para>The cards land as a <see cref="Relation.SectionCards"/> run over the band (ch 10 §7). They go on the
         /// PENDING stack because this walk is nested inside the home's own section run, and they close HERE, before
         /// the section's edge is pushed, so neither run's slice interleaves with the other's.</para></summary>
-        static StagedId Section(ref Utf8JsonReader r, Staging s) => Section(ref r, s, offset: -1);
-
-        /// <summary>One band, as a whole list (<paramref name="offset"/> &lt; 0: the Home feed's inline band) or as the
-        /// page at <paramref name="offset"/> of a "Show all" drill (<c>homeSection</c>, G-045). A page lands as a
-        /// <c>ReplacePage</c> with an UNSTATED total — the band's own total overshoots in 7 of 31 captured sections, and
-        /// a stated one would settle the list Complete on a number the cursor contradicts — and its ledger is the RAW
-        /// cursor: <c>Raw = offset + items this page</c>, <c>Cards = offset + cards this page</c>
-        /// (<see cref="SectionPaging.Advance"/>).</summary>
-        static StagedId Section(ref Utf8JsonReader r, Staging s, int offset)
+        static StagedId Section(ref Utf8JsonReader r, Staging s)
         {
             ref var row = ref s.Sections.RowFor(default, Authority.Full, (uint)SectionFields.Identity);
             row.NextOffset = SectionPaging.NoCursor;
@@ -1034,66 +1026,65 @@ public static partial class Spotify
             for (int depth = r.CurrentDepth; Next(ref r, depth);)
             {
                 if (r.ValueTextEquals("uri"u8)) { r.Read(); if (row.Id.IsEmpty) row.Id = JsonId(ref r, s); }
-                else if (r.ValueTextEquals("data"u8)) Data(ref r, s, ref row);
-                else if (r.ValueTextEquals("sectionItems"u8)) Items(ref r, s, ref row);
+                else if (r.ValueTextEquals("data"u8)) HomeBandData(ref r, s, ref row);
+                else if (r.ValueTextEquals("sectionItems"u8)) HomeBandItems(ref r, s, ref row);
                 else SkipValue(ref r);
             }
 
             var uri = row.Id;
-            if (offset > 0)
-            {
-                row.Raw = SectionPaging.Advance(offset, row.Raw);
-                row.Cards += offset;
-            }
             if (!s.Sections.Settle()) { s.Edges.Pop(cards); return default; }
-            if (offset >= 0) s.Edges.ClosePage(Relation.SectionCards, in uri, cards, offset, total: 0);
-            else s.Edges.Close(Relation.SectionCards, in uri, cards);
+            s.Edges.Close(Relation.SectionCards, in uri, cards);
             return uri;
-
-            static void Data(ref Utf8JsonReader r, Staging s, ref StagedSection row)
-            {
-                for (int d = Fields(ref r); Next(ref r, d);)
-                {
-                    if (r.ValueTextEquals("__typename"u8)) { r.Read(); row.Kind = KindOf(ref r); }
-                    else if (r.ValueTextEquals("title"u8)) { r.Read(); row.Title = Label(ref r, s); }
-                    else if (r.ValueTextEquals("subtitle"u8)) { r.Read(); row.Subtitle = Label(ref r, s); }
-                    else SkipValue(ref r);
-                }
-            }
-
-            static void Items(ref Utf8JsonReader r, Staging s, ref StagedSection row)
-            {
-                for (int d = Fields(ref r); Next(ref r, d);)
-                {
-                    if (r.ValueTextEquals("totalCount"u8)) { r.Read(); row.Total = (int)Num(ref r); }
-                    // `nextOffset: null` is the server saying "no more", and it is NOT `nextOffset: 0` — which a
-                    // COMPLETE section can legitimately answer (ch 10 §7). `NoCursor` is what keeps the two apart.
-                    else if (r.ValueTextEquals("pagingInfo"u8))
-                        row.NextOffset = (int)OneNumber(ref r, "nextOffset"u8, SectionPaging.NoCursor);
-                    else if (r.ValueTextEquals("items"u8) && EnterArray(ref r))
-                    {
-                        for (int list = r.CurrentDepth; Element(ref r, list);)
-                        {
-                            row.Raw++;
-                            var node = default(Node);
-                            EntityNode(ref r, s, ref node);
-                            var card = Stage(s, in node, Authority.Thin);
-                            if (card.IsEmpty) { row.Unsupported++; continue; }
-                            row.Cards++;
-                            s.Edges.Push().Target = card;
-                        }
-                    }
-                    else SkipValue(ref r);
-                }
-            }
-
-            static byte KindOf(ref Utf8JsonReader r)
-                => Says(ref r, "HomeSpotlightSectionData") ? (byte)SectionKind.HomeSpotlight
-                 : Says(ref r, "HomeRecentlyPlayedSectionData") ? (byte)SectionKind.HomeRecentlyPlayed
-                 : Says(ref r, "HomeFeedBaselineSectionData") ? (byte)SectionKind.HomeBaseline
-                 : Says(ref r, "HomeShortsSectionData") ? (byte)SectionKind.HomeShorts
-                 : (byte)SectionKind.HomeGeneric;
         }
+
+        /// <summary>A Home band's <c>data</c>: its <c>__typename</c> (<see cref="HomeBandKind"/>), title and subtitle. Shared
+        /// by the feed's inline band and the <c>homeSection</c> walk landed whole (Spotify.Decode.Browse.cs).</summary>
+        static void HomeBandData(ref Utf8JsonReader r, Staging s, ref StagedSection row)
+        {
+            for (int d = Fields(ref r); Next(ref r, d);)
+            {
+                if (r.ValueTextEquals("__typename"u8)) { r.Read(); row.Kind = HomeBandKind(ref r); }
+                else if (r.ValueTextEquals("title"u8)) { r.Read(); row.Title = Label(ref r, s); }
+                else if (r.ValueTextEquals("subtitle"u8)) { r.Read(); row.Subtitle = Label(ref r, s); }
+                else SkipValue(ref r);
+            }
+        }
+
+        /// <summary>A Home band's <c>sectionItems</c>: the stated total, the cursor and every item as a staged card on the
+        /// PENDING stack — <c>Raw</c>, <c>Cards</c> and <c>Unsupported</c> ADD UP, so a walk that folds several pages into
+        /// one row keeps the whole ledger.</summary>
+        static void HomeBandItems(ref Utf8JsonReader r, Staging s, ref StagedSection row)
+        {
+            for (int d = Fields(ref r); Next(ref r, d);)
+            {
+                if (r.ValueTextEquals("totalCount"u8)) { r.Read(); row.Total = (int)Num(ref r); }
+                // `nextOffset: null` is the server saying "no more", and it is NOT `nextOffset: 0` — which a
+                // COMPLETE section can legitimately answer (ch 10 §7). `NoCursor` is what keeps the two apart.
+                else if (r.ValueTextEquals("pagingInfo"u8))
+                    row.NextOffset = (int)OneNumber(ref r, "nextOffset"u8, SectionPaging.NoCursor);
+                else if (r.ValueTextEquals("items"u8) && EnterArray(ref r))
+                {
+                    for (int list = r.CurrentDepth; Element(ref r, list);)
+                    {
+                        row.Raw++;
+                        var node = default(Node);
+                        EntityNode(ref r, s, ref node);
+                        var card = Stage(s, in node, Authority.Thin);
+                        if (card.IsEmpty) { row.Unsupported++; continue; }
+                        row.Cards++;
+                        s.Edges.Push().Target = card;
+                    }
+                }
+                else SkipValue(ref r);
+            }
+        }
+
+        static byte HomeBandKind(ref Utf8JsonReader r)
+            => Says(ref r, "HomeSpotlightSectionData") ? (byte)SectionKind.HomeSpotlight
+             : Says(ref r, "HomeRecentlyPlayedSectionData") ? (byte)SectionKind.HomeRecentlyPlayed
+             : Says(ref r, "HomeFeedBaselineSectionData") ? (byte)SectionKind.HomeBaseline
+             : Says(ref r, "HomeShortsSectionData") ? (byte)SectionKind.HomeShorts
+             : (byte)SectionKind.HomeGeneric;
 
         /// <summary>`searchDesktop` → every facet's hits as one <see cref="Relation.SearchResult"/> run over the
         /// caller's subject, each hit carrying its own kind in the edge payload. Ported from

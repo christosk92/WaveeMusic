@@ -344,26 +344,33 @@ public class DetailVerticalLayoutTests
         Assert.Equal(1, plan.Lines);
     }
 
-    /// <summary>Every plan over a width × title grid leaves auto-fit ARMED: MinSize strictly below Size, never below the floor.</summary>
+    /// <summary>The plan is the size DRAWN (no engine auto-fit behind it), so over a width × title grid its lines are the
+    /// lines of that size, its line box is that size's natural one, and a size the search SOLVED (above the floor) never
+    /// needs more lines than the search budgeted — the snap never carries it past the width that holds them.</summary>
     [Fact]
-    public void TitlePlan_MinSizeAlwaysArmsAutoFit()
+    public void TitlePlan_LinesAndLineBoxAreThoseOfTheSizeDrawn()
     {
         string?[] titles = ["Pony", "To Pimp a Butterfly",
             "Can This Love Be Translated? (Soundtrack from the Netflix Series)", "X", "", null];
-        for (float w = LadderMin; w <= LadderMax; w += 40f)
+        for (float w = LadderMin; w <= LadderMax; w += 5f)
             foreach (bool row in new[] { false, true })
                 foreach (string? title in titles)
                 {
                     var plan = VerticalLayout.TitleTypeFor(w, row, title,
                         eyebrow: false, attribution: false, meta: false);
-                    Assert.True(plan.MinSize < plan.Size,
-                        $"MinSize {plan.MinSize} does not arm auto-fit against Size {plan.Size} at w={w} row={row} title={title}");
-                    Assert.True(plan.MinSize >= VerticalLayout.TitleMinSizeFloor,
-                        $"MinSize {plan.MinSize} fell below the floor at w={w} row={row} title={title}");
+                    Assert.Equal(VerticalLayout.TitleLinesAt(plan.Size, plan.WrapWidth, VerticalLayout.TitleAdvanceEm(title)),
+                                 plan.Lines);
+                    Assert.Equal(VerticalLayout.NaturalLineHeightFor(plan.Size), plan.LineHeight);
+                    Assert.InRange(plan.Lines, 1, VerticalLayout.TitleLineCap);
+                    if (plan.Size > VerticalLayout.TitleSizeFloor)
+                        Assert.True(plan.Lines <= VerticalLayout.TitleLinesMax,
+                            $"a solved plan ({plan.Size}) needs {plan.Lines} lines at w={w} row={row} title={title}");
                 }
     }
 
-    /// <summary>The identity reservation for the chosen plan never runs past the cover by more than a snap step's slop.</summary>
+    /// <summary>The identity reservation for the chosen plan never runs past the cover by more than a snap step's slop —
+    /// save for a title no line budget holds above the floor: that one WRAPS at the floor instead of trimming, and its
+    /// extra lines are the only thing that may run past the cover.</summary>
     [Fact]
     public void TitlePlan_NeverOverflowsTheCover()
     {
@@ -376,8 +383,10 @@ public class DetailVerticalLayoutTests
                     eyebrow: true, attribution: true, meta: true);
                 float h = VerticalLayout.IdentityHeightFor(plan, rowFlow: true,
                     eyebrow: true, attribution: true, meta: true);
+                float wrapped = plan.Size <= VerticalLayout.TitleSizeFloor ? (plan.Lines - 1) * plan.LineHeight : 0f;
                 float art = VerticalLayout.ArtworkFor(w, rowFlow: true);
-                Assert.True(h <= art + 8f, $"identity {h} overflows the cover {art} by more than a snap step at w={w} title={title}");
+                Assert.True(h - wrapped <= art + 8f,
+                    $"identity {h} (floor wrap {wrapped}) overflows the cover {art} by more than a snap step at w={w} title={title}");
             }
     }
 
@@ -396,7 +405,6 @@ public class DetailVerticalLayoutTests
         Assert.Equal(size, plan.Size);
         Assert.Equal(lineHeight, plan.LineHeight);
         Assert.Equal(lines, plan.Lines);
-        Assert.True(plan.MinSize < plan.Size);
     }
 
     [Fact]
@@ -422,19 +430,37 @@ public class DetailVerticalLayoutTests
         }
     }
 
-    /// <summary>Growing needs TWO snap steps, shrinking ONE, and a cleared delta lands exactly on the target.</summary>
+    /// <summary>A grid point's tolerance covers every size that snaps TO it — the fact that lets
+    /// <see cref="VerticalLayout.TitleLinesAt"/> read a solved plan's lines back without ever exceeding the search's.</summary>
     [Fact]
-    public void StableTitleSize_IsAsymmetricAndConverges()
+    public void SnapTolerance_CoversEverySizeThatSnapsToTheGridPoint()
     {
-        const float current = 40f;   // TitleSnapStep(40) == 4
-        Assert.Equal(48f, VerticalLayout.StableTitleSize(target: 48f, current, initialized: true));
-        Assert.Equal(current, VerticalLayout.StableTitleSize(target: 46f, current, initialized: true));
-        Assert.Equal(36f, VerticalLayout.StableTitleSize(target: 36f, current, initialized: true));
-        Assert.Equal(current, VerticalLayout.StableTitleSize(target: 38f, current, initialized: true));
-        Assert.Equal(current, VerticalLayout.StableTitleSize(target: current, current, initialized: true));
+        for (float s = VerticalLayout.TitleSizeFloor; s <= VerticalLayout.TitleSizeCap; s += 0.25f)
+        {
+            float grid = VerticalLayout.SnapTitleSize(s);
+            Assert.True(grid - VerticalLayout.SnapTolerance(grid) <= s + 0.001f,
+                $"{s} snaps to {grid}, below its tolerance {VerticalLayout.SnapTolerance(grid)}");
+        }
+    }
 
-        Assert.Equal(40f, VerticalLayout.StableTitleSize(target: 40f, current: 20f, initialized: false));
-        Assert.Equal(40f, VerticalLayout.StableTitleSize(target: 40f, current: 10f, initialized: true));
+    /// <summary>No size hysteresis: the plan is a pure function of (bucketed width, flow, title), so the hero's repeated
+    /// renders at one width can never disagree with each other — and every raw width inside one 8-DIP bucket gets the
+    /// very same plan (the hero plans off <see cref="VerticalLayout.BucketW"/>).</summary>
+    [Fact]
+    public void TitlePlan_IsStableAcrossRepeatedEvaluationAndWithinABucket()
+    {
+        const string title = "throwback pop 2000s vibes wednesday evening";
+        for (float w = LadderMin; w <= LadderMax; w += 1f)
+        {
+            bool row = VerticalLayout.RowFlow(w);
+            float bw = VerticalLayout.BucketW(w);
+            var first = VerticalLayout.TitleTypeFor(bw, row, title, eyebrow: true, attribution: true, meta: true);
+            for (int i = 0; i < 3; i++)
+                Assert.Equal(first, VerticalLayout.TitleTypeFor(bw, row, title, eyebrow: true, attribution: true, meta: true));
+            if (VerticalLayout.RowFlow(w + 1f) == row && VerticalLayout.BucketW(w + 1f) == bw)
+                Assert.Equal(first, VerticalLayout.TitleTypeFor(VerticalLayout.BucketW(w + 1f), row, title,
+                                                                eyebrow: true, attribution: true, meta: true));
+        }
     }
 
     [Fact]

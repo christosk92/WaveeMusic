@@ -106,8 +106,6 @@
     "metaLineSaved": "{count} · {saves} · {duration}",
     "saveCount": "{count, plural, one {# save} other {# saves}}",
     "saveCountCompact": "{value} saves",
-    "metaLineYear": "{count} · {duration} · {year}",
-    "metaLineYearPending": "{count} · {year}",
     "chartNewEntries": "{count, plural, one {# new entry} other {# new entries}} · {date}",
     "column": {
       "number": "#",

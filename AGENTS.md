@@ -8,8 +8,9 @@ the short form for agents that do not load `CLAUDE.md` automatically.
   `fluentgpu` skill live there — `..\fluent-gpu\CLAUDE.md`, `..\fluent-gpu\AGENTS.md`.
 - **Build & test:** `dotnet build Wavee.slnx` (Debug **and** `-c Release`), `dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj`,
   `Invoke-Pester -Path ops/release/tests`. No CI exists; releases are local (`ops/release/wavee-release.ps1`).
-- **Out of scope (never read/edit):** `src/apps/.native/**`, `src/apps/Wavee.PlayPlay/**`, `private-runtimes/**`,
+- **PlayPlay (private, never committed here):** `src/apps/.native/**`, `src/apps/Wavee.PlayPlay/**`, `private-runtimes/**`,
   `src/apps/tmp_*`, `ops/tools/playplay_*`, `ops/tools/x64_*`, `ops/*/pyghidra*`, `docs/plans/wavee/{wavee-playplay*,playplay-*,spotiload-offline-path}.md`,
-  `**/playplay-runtime.json` — the private PlayPlay workspace, fenced by `.githooks/pre-commit`.
+  `**/playplay-runtime.json`. Read and edit freely; commit/push only in the private `wavee-playplay-private` repo.
+  Gitignored here and blocked by `.githooks/pre-commit` — never `git add -f` or `--no-verify` them.
 - **Rules:** component props freeze at mount (data flows through signals/context/keys); no source-text tests;
   no env-var switches; no legacy paths; plans carry real code; only the orchestrator builds/tests/launches.

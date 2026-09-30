@@ -305,7 +305,7 @@ public readonly partial struct Album
         static string MetaOf(Album a, Detail.Identity id)
         {
             string meta = id.Meta
-                ?? Detail.Text.AlbumMeta(a.Knows(AlbumFields.TrackCount) ? a.TrackCount : a.TrackSlots.Length, 0L, durationsKnown: false, a.Year)
+                ?? Detail.Text.AlbumMeta(a.Knows(AlbumFields.TrackCount) ? a.TrackCount : a.TrackSlots.Length, 0L, durationsKnown: false)
                 ?? "";
             int added = User.Me.IsValid ? User.Me.AddedAt(LibraryEdgeKind.SavedAlbums, a.Slot) : 0;   // UNIX seconds (User.cs:288)
             if (added <= 0) return meta;

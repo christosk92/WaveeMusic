@@ -2,29 +2,38 @@
 //
 // Role: UI
 // Spec: docs/plans/wavee/home-rebuild-implementation.md "Fifth pass — stock controls" (zone → control table, Daylist row)
-//        + "Seventh pass" (the Daylist card wireframe: text left, cover-cropped art right, the daypart timeline).
+//        + "Seventh pass" (the daypart timeline) + docs/plans/wavee/daylist-hero-fade-implementation.md (variant A: the
+//        header art full-bleed inside the card, under the artist hero's veil).
 //
-// One `Ui.Card` (padding 32/12/12/12, at least 320 tall) around a `Responsive.Of` row, so the card's own content width
-// picks its form through the pure `DaylistForm` rule: beside the art the text column holds `Daylist.TextMinWidth`,
-// the art takes the rest up to its 540 basis (it shrinks, the text never does), and once less than `DaylistForm.ArtMin`
-// of art would be left the card is the text column alone.
-//   text column (Grow 1, SpaceBetween, padding 0/20/0/12)
+// One `Ui.Card` (border, 8-DIP corners, at least 320 tall, NO padding, ClipToBounds — the art and the veil clip to its
+// rounded corners; its border paints after its children, so it stays on top of the art) around a `Responsive.Of`
+// ZStack built at the card's width — the artist hero's layering (`Artist.UI.cs` `HeroBanner`: media · veil · copy):
+//   art:  `Controls.CoverFill` of `DaylistArt.Of` across the WHOLE card (corner 0: the card's clip rounds it), focused a
+//         little above centre (the crop stays centred horizontally);
+//   veil: `Palette.ArtistHeroVeil`, horizontal (0 → .96, .30 → .92, .62 → .35, 1 → 0), cover-keyed, in its STRETCH arm
+//         (NaN extent: it takes the card's content-driven height), hit-test free;
+//   copy: the left column over the veil's opaque side — `DaylistForm.CopyWidth` of the card's content width (half of
+//         it within [340, 560]; the whole card below `DaylistForm.SplitMin`) inside `Daylist.CopyPadding` 32/32/12/24,
+//         the card's insets, which ride on the copy so the art reaches the card's edges.
+//   No art url ⇒ neither layer: the plain card, the copy alone. The whole card is the click target.
+//   copy column (SpaceBetween)
 //     top:    eyebrow (body, secondary: the greeting lives ONLY here) · the title (≤ 2 lines; the 40/52
-//             `Design.Type.HeroTitle` while the text column is ≥ `DaylistForm.HeroTitleMinText`, else the 28/36 display
-//             rung at 600, so a narrow column keeps the name on one line and the card at its 320 floor) ·
+//             `Design.Type.HeroTitle` while the copy is ≥ `DaylistForm.HeroTitleMinText`, else the 28/36 display
+//             rung at 600, so a narrow copy keeps the name on one line and the card at its 320 floor) ·
 //             tags (ONE 14/20 `SpanTextEl` of link spans, a tag opens Search) · meta (caption, tertiary) ·
 //             ONE action row: stock Accent Play + Standard Shuffle + `Controls.SaveButton` + a standalone "…" icon button
-//     bottom: `DaylistClock` — a stock determinate `ProgressRing` + "Next daylist in **hh:mm:ss** · {next} arrives at
-//             HH:mm", then five stock determinate `ProgressBar`s (done / current / future, `DaypartTimeline.Fill`)
+//     bottom: `DaylistClock` — a stock determinate `ProgressRing` centred beside TWO lines ("Next daylist in
+//             **hh:mm:ss**" body primary, then the caption "{weekday} {next daypart} arrives at HH:mm" secondary),
+//             then five stock determinate `ProgressBar`s (done / current / future, `DaypartTimeline.Fill`)
 //             over their five daypart labels (the current one primary 600, never truncated)
-//   art column (Basis 540, Shrink 1, stretch): `Controls.CoverFill` of `DaylistArt.Of`, focused a little above centre.
 //
 // The "…" button re-enters the engine's context funnel (`ClickRequestsContext`) and finds the card's ATTACHED playlist
 // menu (`HomeCardNav.MenuOf`, the grammar every other card wears) — attaching it needs the overlay service, which the
 // caller hands in. What must SUBSCRIBE (the greeted name) is read in `DaylistCard.Render`; the saved heart is the stock
 // `SaveButton`, which subscribes on its own. The 1-Hz tick lives in `DaylistClock` and reaches the screen through BINDS
 // only (the countdown spans, the ring, the five bars): no component re-renders on the tick. The cold-load skeleton is
-// the SAME builders fed placeholders (`Daylist.Card`'s `SkeletonProxy`), so it shimmers as this card's real shape.
+// the SAME builders fed placeholders (`Daylist.Card`'s `SkeletonProxy`) — the placeholder art slot across the card, no
+// veil — so it shimmers as this card's real shape.
 // Pure rules: `DaylistForm` / `DaypartTimeline` / `DaylistCountdownLine` / `DaylistArt` (Items.Rules.cs) and
 // `DaypartRules` / `DaylistCountdown` / `DaylistNext`.
 
@@ -43,22 +52,18 @@ namespace Wavee.HomeUi;
 
 public static class Daylist
 {
-    /// <summary>The text column's floor beside the art: the 40/52 hero title's line plus the ONE action row (Play at
-    /// its primary floor, Shuffle, the heart and "…") fit without wrapping. Below it the art goes, not the text
-    /// (<see cref="DaylistForm"/>).</summary>
-    public const float TextMinWidth = DaylistForm.TextMin;
-    /// <summary>The art column's flex basis — its width on a wide card; a narrower card shrinks the art, never the text.</summary>
-    public const float ArtBasis = DaylistForm.ArtBasis;
-    /// <summary>The decode target for the art (a 540-wide header image decodes near its own size, never a 256 square).</summary>
-    public const int ArtDecodePx = 512;
-    /// <summary>The art's focal line: a little above centre, where a daylist header's subject sits.</summary>
+    /// <summary>The decode target for the art: it cover-fills the whole card (~1000 DIP on a wide Home), so the square
+    /// hint is sized to that, not to a column.</summary>
+    public const int ArtDecodePx = 1024;
+    /// <summary>The art's focal line: a little above centre, where a daylist header's subject sits.
+    /// (<c>Controls.CoverFill</c> takes no horizontal focus, so the crop stays centred on that axis.)</summary>
     public const float ArtFocusY = 0.4f;
     /// <summary>The card's floor height (the prototype's 320 hero).</summary>
     public const float CardMinHeight = 320f;
-    /// <summary>The card's padding — a wide left inset for the text, the art near-flush to the other three edges.</summary>
-    public static readonly Edges4 CardPadding = new(Spacing.XXXL, Spacing.M, Spacing.M, Spacing.M);
-    /// <summary>The text column's own inset: the eyebrow sits 20 below the card's edge, the timeline labels 12 above it.</summary>
-    public static readonly Edges4 TextPadding = new(0f, Spacing.XL, 0f, Spacing.M);
+    /// <summary>The copy column's insets, which are the card's own (the card has no padding, so the art reaches its
+    /// edges): 32 from the left edge, the eyebrow 32 below the top, 12 from the right edge (where a narrow card's copy
+    /// ends), the timeline labels 24 above the foot.</summary>
+    public static readonly Edges4 CopyPadding = new(Spacing.XXXL, Spacing.XXXL, Spacing.M, Spacing.XXL);
     /// <summary>At most this many tag links on the description line.</summary>
     public const int MaxTags = 6;
     /// <summary>The countdown ring's size (the stock ring's minimum).</summary>
@@ -83,8 +88,11 @@ public sealed record DaylistProps(Zone Zone, IOverlayService? Overlay)
 public sealed class DaylistCard : Component
 {
     /// <summary>The card's content, built once per render (or from placeholders for the skeleton) and laid out by
-    /// <see cref="Shape"/> at whatever width the card measures.</summary>
-    readonly record struct Parts(string Eyebrow, string Title, Element Tags, string Meta, Element Actions, Element Clock, string? ArtUrl);
+    /// <see cref="Shape"/> at whatever width the card measures. <c>Art</c> / <c>Veil</c> are the two layers under the
+    /// copy — both null for a daylist without art (the plain card); the skeleton has the placeholder
+    /// art slot and no veil.</summary>
+    readonly record struct Parts(string Eyebrow, string Title, Element Tags, string Meta, Element Actions, Element Clock,
+                                 Element? Art, Element? Veil);
 
     public override Element Render()
     {
@@ -124,10 +132,21 @@ public sealed class DaylistCard : Component
         var clock = Embed.Comp(() => new DaylistClock { ExpiresAtMs = expiresAtMs, CreatedAtMs = createdAtMs, Current = current })
             with { Key = "daylist-clock:" + uri + ":" + expiresAtMs.ToString(CultureInfo.InvariantCulture) + ":" + ((int)current).ToString(CultureInfo.InvariantCulture) };
 
+        // The header art across the whole card under the artist hero's horizontal veil; no art ⇒ neither layer (the
+        // plain card, like the artist hero's "no url ⇒ flat"). The veil leaf is cover-keyed (a late grading swaps its
+        // gradient without rebuilding this card) and keyed on the CARD, the surface, never the url: a new daylist's art
+        // re-grades the mounted leaf, which cross-fades its tone instead of remounting. The card's accent is the
+        // ladder's payload rung until the grading lands.
+        string? artUrl = DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl);
+        Element? art = artUrl is null ? null : ArtLayer(artUrl);
+        Element? veil = artUrl is null ? null
+            : Palette.ArtistHeroVeil(artUrl, vertical: false, float.NaN, float.NaN, key: "daylist-veil:" + uri,
+                                     payloadAccent: card.Accent);
+
         // The card IS the daylist: a click anywhere outside its buttons opens the playlist (the buttons are nested
         // click targets, so Play/Shuffle/♡/… keep their own action). The tile ramp is the card's hover/press feedback.
         var root = Shape(new Parts(eyebrow, title, Tags(card), Strings.Home.DaylistMeta(card.TrackCount), actions, clock,
-                                   DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl)))
+                                   art, veil))
             .Interactive(Interaction.Tile) with
             {
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand,
@@ -150,34 +169,74 @@ public sealed class DaylistCard : Component
                 with { Shrink = 0f },
             Controls.IconAction(Icons.More, null),
             Controls.IconAction(Icons.More, null));
+        var current = DaypartRules.OfHour(DateTime.Now.Hour);
         var line = DaylistClock.Line((TextSpans)new TextSpan[] { new(Strings.Home.NextDaylistIn(DaypartRules.Countdown(0))) });
-        var clock = DaylistClock.Shape(ProgressRing.Determinate(0f, Daylist.RingSize), line, null,
-                                       (int)DaypartRules.OfHour(DateTime.Now.Hour));
+        // The caption's placeholder is the real rule read at "now": a caption-width line with the next daypart's word.
+        string caption = DaylistNext.Caption(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), current,
+                                             TimeZoneInfo.Local, CultureInfo.CurrentCulture);
+        var clock = DaylistClock.Shape(ProgressRing.Determinate(0f, Daylist.RingSize), line, caption, null, (int)current);
+        // The art slot as its watched placeholder across the card (the real shape), and no veil: a component the
+        // deriver cannot see into would shimmer as one stray bar.
         return Shape(new Parts(words, Loc.Get(Strings.Home.Layout.Daylist), TagLine(new TextSpan[] { new(words) }, null),
-                               Strings.Home.DaylistMeta(50), actions, clock, null));
+                               Strings.Home.DaylistMeta(50), actions, clock, ArtLayer(null), null));
     }
 
-    /// <summary>The card: a Fluent card whose content width decides the form (<see cref="DaylistForm"/>).</summary>
+    /// <summary>The card: a Fluent card frame (border, 8-DIP corners) with NO padding — the art reaches its edges and
+    /// the insets ride on the copy (<see cref="Daylist.CopyPadding"/>) — that clips its layers to its rounded corners
+    /// (the border paints after the children, so it stays on top of the art), around the layers built at the card's
+    /// width (<see cref="Row"/>; the copy's width follows <see cref="DaylistForm"/>).</summary>
     static BoxEl Shape(Parts parts)
         => Ui.Card(Responsive.Of(w => Row(parts, w), fallback: HomeModuleLayout.FallbackWidth, grow: 1f))
             with
             {
-                Padding = Daylist.CardPadding, MinHeight = Daylist.CardMinHeight,
+                Padding = default, ClipToBounds = true, MinHeight = Daylist.CardMinHeight,
                 MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
             };
 
-    /// <summary>The card's row at content width <paramref name="w"/>: the text column, and the art beside it while
-    /// <see cref="DaylistForm.ShowArt"/> holds. The text never shrinks (Shrink 0) — a narrow card takes it out of the
-    /// art, whose basis is its wide width and whose floor is 0.</summary>
+    /// <summary>The art layer: <see cref="Controls.CoverFill"/> across the whole card, corner 0 (the card's rounded clip
+    /// rounds it), focused a little above centre. A null <paramref name="url"/> is the watched placeholder slot (the
+    /// skeleton's).</summary>
+    static Element ArtLayer(string? url) => Controls.CoverFill(url, 0f, Daylist.ArtDecodePx, focusY: Daylist.ArtFocusY);
+
+    /// <summary>The card's layers at card width <paramref name="w"/> (the card has no padding, so this is its whole
+    /// width), in a ZStack: the art, its veil, then the copy over the veil's opaque side —
+    /// <see cref="DaylistForm.CopyWidth"/> of the content width inside <see cref="Daylist.CopyPadding"/>, plus that
+    /// padding. Neither layer measures anything, so the copy alone decides the card's height above its 320 floor, and
+    /// the stack stretches both layers over the whole card and the copy over its full height (SpaceBetween pins the
+    /// clock to the foot). The three slots never move — an absent layer is an empty, hit-test-free box — and the copy
+    /// is keyed, so art arriving late mounts the layers without remounting the copy and its clock.</summary>
     static Element Row(Parts p, float w)
     {
-        var top = new BoxEl
+        var pad = Daylist.CopyPadding;
+        float text = DaylistForm.CopyWidth(MathF.Max(0f, w - pad.Horizontal));
+        var copy = new BoxEl
+        {
+            Key = "daylist-copy",
+            Direction = 1, Width = text + pad.Horizontal, MinWidth = 0f,
+            // SpaceBetween pins the clock to the card's foot; the Gap is its floor when a two-line title fills the card.
+            Justify = FlexJustify.SpaceBetween, Padding = pad, Gap = Spacing.XL,
+            Children = [Top(p, text), p.Clock],
+        };
+        return new BoxEl
+        {
+            ZStack = true, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Children = [p.Art ?? NoLayer(), p.Veil ?? NoLayer(), copy],
+        };
+    }
+
+    /// <summary>An absent layer's slot: empty and hit-test free.</summary>
+    static BoxEl NoLayer() => new() { HitTestVisible = false };
+
+    /// <summary>The copy's top block at text width <paramref name="text"/>: eyebrow · title · tags · meta · the ONE
+    /// action row.</summary>
+    static BoxEl Top(Parts p, float text)
+        => new()
         {
             Direction = 1, MinWidth = 0f,
             Children =
             [
                 Ui.Body(p.Eyebrow).Secondary() with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                TitleRung(p.Title, w) with
+                TitleRung(p.Title, text) with
                 {
                     MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
@@ -192,40 +251,15 @@ public sealed class DaylistCard : Component
             ],
         };
 
-        var text = new BoxEl
-        {
-            Direction = 1, Grow = 1f, Shrink = 0f, Basis = 0f, MinWidth = DaylistForm.TextMinFor(w),
-            // SpaceBetween pins the clock to the card's foot; the Gap is its floor when a two-line title fills the card.
-            Justify = FlexJustify.SpaceBetween, Padding = Daylist.TextPadding, Gap = Spacing.XL,
-            Children = [top, p.Clock],
-        };
-
-        if (!DaylistForm.ShowArt(w))
-            return new BoxEl { Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [text] };
-
-        // A column box, so the cover-fill image grows to the column's full height; the row stretches it to the card's.
-        var art = new BoxEl
-        {
-            Direction = 1, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch,
-            Grow = 0f, Shrink = 1f, Basis = Daylist.ArtBasis, MinWidth = 0f,
-            Children = [Controls.CoverFill(p.ArtUrl, Radii.Control, Daylist.ArtDecodePx, focusY: Daylist.ArtFocusY)],
-        };
-        return new BoxEl
-        {
-            Direction = 0, Gap = Spacing.XXXL, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = [text, art],
-        };
-    }
-
-    /// <summary>The title's rung at card content width <paramref name="w"/>: the 40/52 <c>HeroTitle</c> while the
-    /// text column is at least <see cref="DaylistForm.HeroTitleMinText"/> wide, else the 28/36 display rung at 600
-    /// (<see cref="DaylistForm.UseHeroTitle"/> over <see cref="DaylistForm.TextWidth"/>).</summary>
-    static TextEl TitleRung(string title, float w)
-        => DaylistForm.UseHeroTitle(DaylistForm.TextWidth(w))
+    /// <summary>The title's rung at the copy's text width <paramref name="text"/>: the 40/52 <c>HeroTitle</c> while
+    /// the copy is at least <see cref="DaylistForm.HeroTitleMinText"/> wide, else the 28/36 display rung at 600
+    /// (<see cref="DaylistForm.UseHeroTitle"/> over <see cref="DaylistForm.CopyWidth"/>).</summary>
+    static TextEl TitleRung(string title, float text)
+        => DaylistForm.UseHeroTitle(text)
             ? Design.Type.HeroTitle(title)
             : Design.Type.DetailHero(title) with { Weight = 600 };
 
-    /// <summary>The ONE action row: 20 below the meta, 8 apart, never wrapping (the text column's floor fits it).</summary>
+    /// <summary>The ONE action row: 20 below the meta, 8 apart, never wrapping (the copy's floor fits it).</summary>
     static BoxEl ActionRow(params Element[] actions) => new()
     {
         Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = false, MinWidth = 0f,
@@ -301,13 +335,14 @@ public sealed class DaylistCard : Component
         => Shell.GoTo(new Shell.Route(Shell.RouteKind.Search, default, Entities.Strings.Intern(tag)));
 }
 
-/// <summary>The card's clock: a stock determinate <see cref="ProgressRing"/> beside "Next daylist in <b>hh:mm:ss</b> ·
-/// {weekday} {daypart} arrives at HH:mm", over the five-segment daypart timeline (five stock determinate
-/// <see cref="ProgressBar"/>s over their labels). A 1-Hz <c>UseInterval</c> writes caller-owned signals — the countdown
-/// text, the elapsed fraction, one fill per segment — and every one of them reaches the screen through a BIND (the
-/// line's bound spans, the ring, the bars' indicator widths): <see cref="Render"/> reads none of them, so neither this
-/// leaf nor anything above it re-renders on the tick. Props freeze at mount; the card keys this leaf on its window and
-/// daypart, so a new window remounts it.</summary>
+/// <summary>The card's clock: a stock determinate <see cref="ProgressRing"/> beside two lines — "Next daylist in
+/// <b>hh:mm:ss</b>" and, under it, the caption "{weekday} {next daypart} arrives at HH:mm" (<see cref="DaylistNext"/>)
+/// — over the five-segment daypart timeline (five stock determinate <see cref="ProgressBar"/>s over their labels).
+/// A 1-Hz <c>UseInterval</c> writes caller-owned signals — the countdown text, the elapsed fraction, one fill per
+/// segment — and every one of them reaches the screen through a BIND (the first line's bound spans, the ring, the bars'
+/// indicator widths): <see cref="Render"/> reads none of them, so neither this leaf nor anything above it re-renders on
+/// the tick. The caption is static per mount. Props freeze at mount; the card keys this leaf on its window and
+/// daypart, so a new window remounts it (and re-reads the caption).</summary>
 public sealed class DaylistClock : Component
 {
     public required long ExpiresAtMs { get; init; }
@@ -340,8 +375,8 @@ public sealed class DaylistClock : Component
 
         // The sentence stays the translator's; only the count is cut out of it to be its own semibold span.
         var (before, after) = DaylistCountdownLine.Split(Strings.Home.NextDaylistIn(DaylistCountdownLine.Slot));
-        string arrives = DaylistNext.Caption(expiresAtMs, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
-        string tail = arrives.Length > 0 ? " · " + arrives : "";
+        // The second line names the timeline segment AFTER the card's current one; static per mount.
+        string caption = DaylistNext.Caption(expiresAtMs, Current, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
 
         // The bound line: one fill of the reused buffer per tick (the scene copies it), a relayout of this one run.
         var line = Line(Prop.Of(() =>
@@ -351,11 +386,10 @@ public sealed class DaylistClock : Component
             if (before.Length > 0) spans.Add(new TextSpan(before));
             spans.Add(new TextSpan(count, Weight: 600));
             if (after.Length > 0) spans.Add(new TextSpan(after));
-            if (tail.Length > 0) spans.Add(new TextSpan(tail, Color: Tok.TextSecondary));
             return spans.Current;
         }));
         var ring = ProgressRing.Create(elapsed, Daylist.RingSize, track: Tok.StrokeControlStrongDefault);
-        return Shape(ring, line, segs, current);
+        return Shape(ring, line, caption, segs, current);
     }
 
     static FloatSignal[] NewSegments()
@@ -365,28 +399,53 @@ public sealed class DaylistClock : Component
         return segs;
     }
 
-    /// <summary>The countdown line's paragraph: body 14/20, primary, one line, ellipsised before the ring ever is.</summary>
+    /// <summary>The countdown line's paragraph: body 14/20, primary, one line; it stretches to the lines column's width
+    /// and ellipsises only when the column is narrower than the sentence (the ring never gives way).</summary>
     internal static SpanTextEl Line(Prop<TextSpans> spans)
     {
         var body = Ui.Body("");
         return new SpanTextEl(spans)
         {
             Size = body.Size, LineHeight = body.LineHeight, Color = Tok.TextPrimary,
-            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
     }
 
-    /// <summary>The clock block — shared by <see cref="Render"/> and the card's skeleton: [ring · line], then the
-    /// timeline at the block's measured width. <paramref name="segs"/> null = static empty bars (the skeleton).</summary>
-    internal static Element Shape(Element ring, SpanTextEl line, FloatSignal[]? segs, int current) => new BoxEl
+    /// <summary>The clock block — shared by <see cref="Render"/> and the card's skeleton: [ring · (line / caption)],
+    /// then the timeline at the block's measured width. The ring is centred against the two-line column (the Fluent
+    /// settings-card stack: a 16–20 icon beside a 14/20 header over a 12/16 description); an empty
+    /// <paramref name="caption"/> leaves the countdown line alone. <paramref name="segs"/> null = static empty bars
+    /// (the skeleton).</summary>
+    internal static Element Shape(Element ring, SpanTextEl line, string caption, FloatSignal[]? segs, int current) => new BoxEl
     {
         Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
         Children =
         [
-            new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [ring, line] },
+            new BoxEl
+            {
+                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Children =
+                [
+                    ring,
+                    // Grow 1 / Basis 0: the column takes exactly what the ring leaves, so both lines ellipsise at it.
+                    new BoxEl
+                    {
+                        Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                        Children = caption.Length > 0 ? [line, CaptionLine(caption)] : [line],
+                    },
+                ],
+            },
             Responsive.Of(w => Timeline(w, segs, current), fallback: DaylistForm.TextMin),
         ],
     };
+
+    /// <summary>The second line: "{weekday} {next daypart} arrives at HH:mm" at the caption rung (12/16), secondary,
+    /// one line with an ellipsis.</summary>
+    static TextEl CaptionLine(string caption)
+        => Ui.Caption(caption).Secondary() with
+        {
+            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
 
     /// <summary>The timeline at width <paramref name="w"/>: five equal cells (<see cref="DaypartTimeline.CellWidth"/>)
     /// of stock determinate bars, and the labels on the same cells — tertiary and ellipsised, except the current one,

@@ -1,57 +1,61 @@
 // ── Home/SectionScreen.Rules.cs ────────────────────────────────────────────────────────────────────────────────────
-// The tiny pure rules `Home/SectionScreen.UI.cs` needs: the charts eager-walk fraction and the "close enough to the
-// tail to page" / "can auto-page right now" predicates. Written FRESH — no reference to the old
-// `HomeSectionPaging.WalkFraction` / `HomeSectionPageView` (Entities/Home.Rules.cs, Entities/Home.Page.cs); those
-// were read only to learn the shape of the problem (RAW cursor vs. deduped count, a total that under-reports). The
-// actual cursor arithmetic (`SectionPaging`, the `Section` handle) is DATA layer and stays — this file adds nothing
-// that duplicates it, only the walk-progress estimate and the two small booleans the UI branches on.
+// The tiny pure rules `Home/SectionScreen.UI.cs` needs: the page's load state (`SectionScreenLoadRule`: pending / ready /
+// empty / failed from the section row's facts, so the walk landing — or a seal — reaches the region reactively, RCA
+// 2026-09-30) and its hero title (`SectionScreenTitle`: the route arg first).
+//
+// There is no paging rule here, and there must never be one again: the page demands its section WHOLE
+// (`SectionFields.Whole`) and the QUERY layer walks the section to its end (Spotify/Spotify.Api.Browse.cs, `BrowseWalk`)
+// — the "no page-side fetch windows" rule. The near-tail / auto-page / walk-fraction rules that lived here went with the
+// page-side pager.
 //
 // Role: CORE (pure; no engine, no tables, no I/O)
 // Owner: B5
 // Wave: 3
-// Spec: docs/plans/wavee/home-redesign-implementation.md — Workstream H, New files table row `SectionScreen.UI.cs`
-//   ("the charts walk bar"); "Pure rules" section (test files live under Wavee.Tests/HomeUi/, no source-text tests).
-
-using System;
+// Spec: docs/plans/wavee/home-redesign-implementation.md — Workstream H, New files table row `SectionScreen.UI.cs`;
+//   "Pure rules" section (test files live under Wavee.Tests/HomeUi/, no source-text tests).
 
 namespace Wavee.HomeUi;
 
-/// <summary>How far a Charts drill's eager walk (Home/SectionScreen.UI.cs's <c>Walk</c>) is along, 0..1 — purely an
-/// ESTIMATE for the determinate walk bar, never a termination signal (the walk stops on the section's own cursor
-/// arithmetic, <c>SectionPaging.CanAdvance</c>, not on this fraction reaching 1).</summary>
-public static class SectionWalk
+/// <summary>The drill page's load state — what its skeleton region shows: the shimmer (<see cref="Pending"/>), the
+/// grid (<see cref="Ready"/>), the empty card (<see cref="Empty"/>: the section answered with no cards) or the error card
+/// (<see cref="Failed"/>).</summary>
+public enum SectionScreenLoad : byte { Pending, Ready, Empty, Failed }
+
+/// <summary>Decides <see cref="SectionScreenLoad"/> from the section row's facts. The page demands the row's identity AND
+/// its WHOLE card list (<c>SectionFields.Identity | Whole</c>), so it reads Pending until the query layer's walk has landed
+/// it — a feed's or a page's first page of cards is never shown as the drill (partial data behind no readiness gate).
+/// Derived, never latched: a re-ask (the error card's Retry, or a band a feed refresh took back) reads Pending again, and
+/// its answer reads Ready. Precedence: no row → Failed; the whole list → Ready / Empty; a request on the wire → Pending;
+/// the ask terminally failed, or was sealed with no answer while Online → Failed; otherwise Pending.</summary>
+public static class SectionScreenLoadRule
 {
-    /// <summary>A total that already under-reports (at or below what's on screen) is worth one assumed page more, so
-    /// the bar never reads "done" while a request is still about to land. <paramref name="assumedPageSize"/> is
-    /// clamped to at least 1 so a caller passing 0 can't divide the bar into an all-zero denominator.</summary>
-    public static float Fraction(int haveCount, int total, int assumedPageSize)
+    /// <param name="rowValid">The route names a section row at all (a blank uri never will).</param>
+    /// <param name="whole">The row knows its identity AND its whole card list (the walk landed).</param>
+    /// <param name="cardCount">The cards the whole list holds (the page's grid source).</param>
+    /// <param name="failed">The row's last ask for the demanded groups terminally failed (<c>Table.Failed</c>).</param>
+    /// <param name="inflight">A request for the row is on the wire.</param>
+    /// <param name="asked">The demanded groups have been asked this scope.</param>
+    /// <param name="online">The session is Online — an unanswered ask only means "failed" when one could have answered.</param>
+    public static SectionScreenLoad Of(bool rowValid, bool whole, int cardCount, bool failed, bool inflight, bool asked,
+                                       bool online)
     {
-        int denom = total > haveCount ? total : haveCount + Math.Max(1, assumedPageSize);
-        if (denom <= 0) return 0f;
-        float f = haveCount / (float)denom;
-        return f < 0f ? 0f : f > 1f ? 1f : f;
+        if (!rowValid) return SectionScreenLoad.Failed;
+        if (whole) return cardCount > 0 ? SectionScreenLoad.Ready : SectionScreenLoad.Empty;
+        if (inflight) return SectionScreenLoad.Pending;
+        if (failed) return SectionScreenLoad.Failed;
+        if (asked && online) return SectionScreenLoad.Failed;   // sealed without an answer
+        return SectionScreenLoad.Pending;
     }
 }
 
-/// <summary>The grid's silent append-on-scroll rule (non-chart sections only — Charts self-walks, see
-/// <see cref="SectionWalk"/>): when the realized window is close enough to the end that a fetch should already be in
-/// flight, and whether one may actually be started right now.</summary>
-public static class SectionScreenRules
+/// <summary>The drill page's hero title: the route's arg (what the user clicked, trimmed) when present, else the row's
+/// own live title, else empty.</summary>
+public static class SectionScreenTitle
 {
-    /// <summary>Default how-close-to-the-end trigger, in items: the same "a screen or so of runway" idea a PagedShelf
-    /// preloader uses, expressed as a plain item count so the grid doesn't need to know its own row height.</summary>
-    public const int DefaultNearTailThreshold = 8;
-
-    /// <summary>True once the realized window's tail is within <paramref name="threshold"/> items of the end of the
-    /// list. <paramref name="lastRealizedExclusive"/> is the EXCLUSIVE upper bound `ItemsView`/`VirtualListEl` report
-    /// (the same "last, exclusive" contract as <c>ListOptions.OnVisibleRange</c>); an empty or invalid window (0 or
-    /// negative <paramref name="itemCount"/>) never triggers.</summary>
-    public static bool NearTail(int lastRealizedExclusive, int itemCount, int threshold = DefaultNearTailThreshold)
-        => itemCount > 0 && lastRealizedExclusive >= itemCount - Math.Max(0, threshold);
-
-    /// <summary>May the silent auto-page fire right now? Charts NEVER auto-pages this way — its own eager
-    /// <c>Walk</c> owns every request — and a request already in flight or a section already latched exhausted both
-    /// refuse a second one.</summary>
-    public static bool CanAutoPage(bool isChart, bool hasMore, bool loading, bool exhausted)
-        => !isChart && hasMore && !loading && !exhausted;
+    public static string Of(string? routeArg, string? liveTitle)
+    {
+        if (!string.IsNullOrWhiteSpace(routeArg)) return routeArg.Trim();
+        if (!string.IsNullOrWhiteSpace(liveTitle)) return liveTitle.Trim();
+        return "";
+    }
 }
