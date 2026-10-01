@@ -56,11 +56,11 @@ public readonly partial struct Home
 
     // ── Home C1's own three page factories (the new Wavee.HomeUi screens) ──────────────────────────────────────────
 
-    static Element HomeSectionPageFor(in Shell.Route route) => Wavee.HomeUi.SectionScreen.For(SectionRouteUri(route), SectionRouteTitle(route), browse: false);
-    static Element BrowseSectionPageFor(in Shell.Route route) => Wavee.HomeUi.SectionScreen.For(SectionRouteUri(route), SectionRouteTitle(route), browse: true);
+    static Element HomeSectionPageFor(in Shell.Route route) => Wavee.HomeUi.SectionScreen.For(SectionRouteUri(route), SectionRouteTitle(route), route, browse: false);
+    static Element BrowseSectionPageFor(in Shell.Route route) => Wavee.HomeUi.SectionScreen.For(SectionRouteUri(route), SectionRouteTitle(route), route, browse: true);
     static Element CustomizePageFor(in Shell.Route route) => Wavee.HomeUi.CustomizeScreen.For();
 
-    static string SectionRouteUri(in Shell.Route route) => route.Subject.IsValid ? route.Subject.Id.ToString() : "";
+    static string SectionRouteUri(in Shell.Route route) => SectionRouteSubject.Of(route.Subject);
     static string? SectionRouteTitle(in Shell.Route route) => route.Arg.IsEmpty ? null : Entities.Strings.Resolve(route.Arg);
 
     /// <summary>The feed host (G-088 / G-089 / G-045, the P halves). UI thread unless a member says otherwise.</summary>

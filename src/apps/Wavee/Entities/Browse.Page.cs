@@ -318,9 +318,13 @@ public readonly partial struct Browse
         readonly Func<Element> _contentFn, _failedPanelFn;
         readonly Action _demand, _retry, _demandCards, _publish;
         readonly Action<HomeCard> _openCard;
+        readonly Action<string, string> _openCategory;
 
         public CategoryPage()
         {
+            // A chip drills with this page as its origin; both inputs are read when the chip is CLICKED.
+            _openCategory = (uri, title) => Shell.GoTo(BrowseTiles.PageRoute(uri, title),
+                _props is { } p ? BrowseTileOrigin.For(isDirectory: false, _title, p.Route) : null);
             _pendingFn = () => !_known && !_failed;
             _failedFn = () => _failed;
             _contentFn = () => _body ?? new BoxEl();
@@ -523,13 +527,15 @@ public readonly partial struct Browse
                with { Key = "browse-shelf:" + f.Uri };
         }
 
-        /// <summary>A grid / related band: its category tiles as live link cells under a LABEL header.</summary>
-        static Element CategoryBlockOf(in BrowseSectionFacts f)
+        /// <summary>A grid / related band: its category tiles as live link cells under a LABEL header. A tile drills with THIS
+        /// page as its origin (<see cref="BrowseTileOrigin"/>), so Decades › 00s keeps its parent crumb; the origin is read at
+        /// click time from the page's own fields (<see cref="_title"/>, the route), never frozen into a mount-time closure.</summary>
+        Element CategoryBlockOf(in BrowseSectionFacts f)
         {
             var targets = Entities.Current.Edges.SectionCategories.Targets(f.Slot);
             var tiles = new List<BrowseTileModel>(targets.Length);
             for (int i = 0; i < targets.Length; i++)
-                if (CategoryAt(targets[i]) is { } c) tiles.Add(BrowseTiles.ModelOf(c, live: true));
+                if (CategoryAt(targets[i]) is { } c) tiles.Add(BrowseTiles.ToModel(c, _openCategory, BrowseTiles.OpenFeature));
             return CategoryBlock(f.Title, tiles) with { Key = "browse-cats:" + f.Uri };
         }
 

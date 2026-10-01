@@ -507,3 +507,24 @@ public class DiagDeepLinkTests
     public void A_diag_verb_never_raises_the_window()
         => Assert.False(Tray.WakeFor(Shell.DeepLinkKind.Diag));
 }
+
+// Parsing a text-form subject interns through `Entities`, so this shares the ENTITIES collection (ShellTrailTests' reason).
+[Collection(EntitiesCollection.Name)]
+public class SectionRouteSubjectTests
+{
+    [Theory]
+    [InlineData("browse-section:spotify:section:abc")]
+    [InlineData("home-section:spotify:section:abc")]
+    public void A_section_route_keeps_its_text_subject_though_the_uri_is_not_a_valid_entity(string key)
+    {
+        // The contract that bit us: spotify:section:<id> has Kind Unknown, so IsValid is false while the subject is real.
+        var r = Shell.Parse(key);
+        Assert.Equal("spotify:section:abc", r.Subject.Text);
+        Assert.False(r.Subject.IsValid);
+        Assert.Equal("spotify:section:abc", SectionRouteSubject.Of(r.Subject));
+    }
+
+    [Fact]
+    public void A_route_with_no_subject_asks_for_nothing()
+        => Assert.Equal("", SectionRouteSubject.Of(default));
+}

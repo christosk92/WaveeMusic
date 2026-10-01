@@ -397,3 +397,12 @@ public static partial class HomeCardNav
     }
 }
 
+/// <summary>The uri a section drill route (<c>home-section:</c> / <c>browse-section:</c>) asks the planner for. A section
+/// uri (<c>spotify:section:&lt;id&gt;</c>) parses to <c>Kind Unknown</c>, so <c>EntityUri.IsValid</c> is FALSE for every real
+/// one while the route still has a subject (<c>Form != None</c>, the shell's own <c>HasSubject</c>): the TEXT form is the key
+/// the decoders write the row under, and the validity predicate is the wrong gate (it sent every section drill to "Failed").</summary>
+public static class SectionRouteSubject
+{
+    public static string Of(EntityUri subject) => subject.Id.Form != EntityForm.None ? subject.Text : "";
+}
+

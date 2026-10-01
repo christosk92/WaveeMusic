@@ -170,6 +170,28 @@ public class ShellTrailTests
     }
 
     [Fact]
+    public void A_category_chip_on_a_category_page_keeps_that_page_as_its_parent()
+    {
+        // Decades > 00s: the chip's origin is the page it was clicked on (Browse.Page.cs CategoryBlockOf).
+        var decades = Shell.Parse("browse:spotify:page:decades", "Decades");
+        var trail = Shell.Trail(Shell.Parse("browse:spotify:page:00s", "00s"), default, new Shell.NavOrigin("Decades", decades));
+        Assert.Equal(3, trail.Count);
+        Assert.Equal(Loc.Get(Strings.Browse.HomeTitle), trail[0].Label);
+        Assert.Equal("Decades", trail[1].Label);
+        Assert.Equal("00s", trail[2].Label);
+    }
+
+    [Fact]
+    public void The_directory_tile_origin_is_none_and_a_category_pages_is_itself()
+    {
+        var page = Shell.Parse("browse:spotify:page:decades", "Decades");
+        Assert.Null(BrowseTileOrigin.For(isDirectory: true, "Decades", page));
+        var origin = BrowseTileOrigin.For(isDirectory: false, "Decades", page);
+        Assert.Equal("Decades", origin!.Value.Label);
+        Assert.Equal(page, origin.Value.Route);
+    }
+
+    [Fact]
     public void The_concert_family_resolves_with_zero_page_code()
     {
         var hub = Shell.Trail(Shell.Parse("concerts"), default);

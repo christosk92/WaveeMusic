@@ -407,6 +407,15 @@ public static class BrowseLayout
 /// block, a search genre (0.2.9 <c>BrowseTileModel</c>).</summary>
 public readonly record struct BrowseTileModel(string Title, string Uri, uint? Color, string? Artwork, Action Open);
 
+/// <summary>The origin a category tile's drill carries. The directory's tiles carry none (the route family composes
+/// <c>Browse › X</c> itself); a tile on a category page keeps THAT page as its parent (<c>Browse › Decades › 00s</c>),
+/// exactly as the page's shelf headers already do.</summary>
+public static class BrowseTileOrigin
+{
+    public static Shell.NavOrigin? For(bool isDirectory, string pageTitle, Shell.Route pageRoute)
+        => isDirectory ? null : new Shell.NavOrigin(pageTitle, pageRoute);
+}
+
 /// <summary>The cell factories' pure half (the densities themselves are <c>Browse.UI.cs</c>).</summary>
 public static partial class BrowseTiles
 {

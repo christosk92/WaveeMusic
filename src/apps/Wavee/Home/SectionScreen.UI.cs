@@ -37,7 +37,7 @@ namespace Wavee.HomeUi;
 /// row holds; the query layer walks every page (file header).</summary>
 public sealed class SectionScreen : Component
 {
-    public sealed record Props(string Uri, string? Title, bool Browse);
+    public sealed record Props(string Uri, string? Title, bool Browse, Shell.Route Route);
 
     /// <summary>Route-constructible factory (plan: "expose a static <c>Element For(...)</c>-style factory"). C1
     /// (Wave 4) wires this from <c>Shell.SetPage(RouteKind.HomeSection / .BrowseSection, …)</c> — this file does not
@@ -45,9 +45,10 @@ public sealed class SectionScreen : Component
     /// <c>Entities.Section</c>/<see cref="Home.EnsureSection"/>(browse: false) (a <c>home-section:</c> route),
     /// <c>true</c> through <c>Entities.BrowseSection</c> (a <c>browse-section:</c> route, where Charts also lives).
     /// <paramref name="title"/> is the hero text (the route's <c>Arg</c>, <see cref="SectionScreenTitle"/>); without
-    /// one the row's own title shows once it lands.</summary>
-    public static Element For(string sectionUri, string? title, bool browse = false)
-        => Embed.Comp(new Props(sectionUri ?? "", title, browse), () => new SectionScreen());
+    /// one the row's own title shows once it lands. <paramref name="route"/> is the page's own route — the masthead
+    /// publication's key.</summary>
+    public static Element For(string sectionUri, string? title, Shell.Route route, bool browse = false)
+        => Embed.Comp(new Props(sectionUri ?? "", title, browse, route), () => new SectionScreen());
 
     // The grid's fit knobs: a MIN cell width (RepeatLayout.GridFit derives the column count from it and the engine's
     // own measured cross size — no app-side width/tier math) and a row-height ESTIMATE (the seed before the first
@@ -69,7 +70,7 @@ public sealed class SectionScreen : Component
     readonly BoundItemsSource<HomeCard> _cardsSource;
     readonly Func<bool> _pendingFn, _failedFn;
     readonly Func<Element> _contentFn, _failedPanelFn;
-    readonly Action _demand, _sync, _retry;
+    readonly Action _demand, _sync, _retry, _publish;
     readonly Func<BoundItemScope<HomeCard>, Element> _cardTemplate;
     readonly Action<int, HomeCard> _onInvoked;
     readonly Func<int, HomeCard, bool> _isEnabled;
@@ -79,6 +80,7 @@ public sealed class SectionScreen : Component
     HomeCard[] _cards = [];
     IReadOnlyList<HomeCard>? _cardsSrc;
     string _scrollScope = "";
+    string _title = "";
     bool _demanded;
 
     /// <summary>What the page demands of its section row: the band's identity and its WHOLE card list — the query layer's
@@ -89,6 +91,7 @@ public sealed class SectionScreen : Component
     {
         _demand = Demand;
         _sync = Sync;
+        _publish = Publish;
         _pendingFn = () => _load.Value == SectionScreenLoad.Pending;
         _failedFn = () => _load.Value == SectionScreenLoad.Failed;
         _contentFn = BodyContent;
@@ -118,39 +121,33 @@ public sealed class SectionScreen : Component
         UseEffect(_demand, DepKey.From(StringComparer.Ordinal.GetHashCode(p.Uri) ^ (p.Browse ? 1 : 0)));
         UseSignalEffect(_sync);
 
-        string title = SectionScreenTitle.Of(p.Title, _liveTitle.Value);
+        // The title is the masthead's (the overlay band paints the route's arg, else what Publish says): this page owns no
+        // header of its own, only the reserve under the band and a thin "N items" meta row.
+        _title = SectionScreenTitle.Of(p.Title, _liveTitle.Value);
+        UseEffect(_publish, DepKey.From(StringComparer.Ordinal.GetHashCode(_title)));
         int total = _total.Value;
 
         return new BoxEl
         {
-            Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+            Key = "home-section-body", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = 4f,
+            Padding = BrowseMastheadMetrics.FamilyBodyPad(Spacing.XXL),
             Children =
             [
-                Header(title, total),
-                new BoxEl
-                {
-                    Key = "home-section-body", Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-                    Padding = new Edges4(Left: Spacing.XXXL, Top: 0f, Right: Spacing.XXXL, Bottom: Spacing.XXL),
-                    Children = [Body()],
-                },
+                total > 0
+                    ? Design.Type.TrackMeta(Strings.Home.SectionItems(total))
+                    : new BoxEl(),
+                new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Children = [Body()] },
             ],
         };
     }
 
-    // ── header: title 28/36, subtitle ───────────────────────────────────────────────────────────────────────────────
-
-    Element Header(string title, int total) => new BoxEl
+    /// <summary>One publication per title change (as <c>CategoryPage</c>): a route with no arg — a deep link, a history
+    /// entry — still gets its title from the row once it lands, so the masthead never falls back to "Home".</summary>
+    void Publish()
     {
-        Key = "home-section-header", Direction = 1, Gap = 4f, Shrink = 0f,
-        Padding = new Edges4(Left: Spacing.XXXL, Top: Spacing.XXL, Right: Spacing.XXXL, Bottom: 0f),
-        Children =
-        [
-            Design.Type.PageHero(title) with { Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 },
-            total > 0
-                ? Design.Type.TrackMeta(Strings.Home.SectionItems(total))
-                : new BoxEl(),
-        ],
-    };
+        if (_p is not { } p) return;
+        Shell.Mastheads.Publish(p.Route, new Shell.MastheadPublication(_title.Length > 0 ? _title : null));
+    }
 
     // ── the shimmer/content/failed boundary (Skel — Pending until the whole section has landed) ────────────────────
 

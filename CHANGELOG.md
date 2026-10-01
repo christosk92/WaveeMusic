@@ -38,6 +38,12 @@ the design are in `docs/plans/wavee/scroll-feel-and-recording-defects-2026-09-16
 
 ### Fixed
 
+- **Browse section pages failed to load, showed their title twice, and a decade lost its parent crumb.** Featured
+  Charts, Food, drinks & music and every other section drill went straight to "Failed": a section uri
+  (`spotify:section:…`) is not a valid entity uri, and the route keyed the page on that validity check instead of on
+  the uri itself. The page now loads its section, gives its title to the masthead instead of drawing a second header,
+  and a category tile on a category page drills with that page as its parent, so Decades › 00s keeps its breadcrumb.
+  Home's "See all" carries the section's title and the Home crumb too. (#156)
 - **Music videos stuttered a few seconds in, and again every time the pop-out was reopened.** Every quality change is a
   decoder and swap-chain rebuild, and the ladder made three of them per play: the throughput estimator discarded every
   sample a fast link produced (a 5 MB burst that finished under 200 ms), then acted on its 2 Mbps prior, and a rebuilt

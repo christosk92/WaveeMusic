@@ -895,9 +895,10 @@ public static class Zones
         int slot = zone.SectionSlot;
         return () =>
         {
-            string uri = SectionReader.Of(new Section(slot)).Uri;
-            if (uri.Length == 0) return;
-            Shell.GoTo(new Shell.Route(Shell.RouteKind.HomeSection, EntityUri.Parse(uri)));
+            // The section's own drill route (title arg + Home origin), the one composer every "See all" shares.
+            var route = HomeCardNav.SectionRoute(HomeSectionView.Of(new Section(slot)), browse: false);
+            if (route.IsNone) return;
+            Shell.GoTo(route, HomeCardNav.HomeOrigin);
         };
     }
 }
