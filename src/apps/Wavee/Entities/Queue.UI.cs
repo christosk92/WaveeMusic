@@ -151,13 +151,20 @@ public static partial class Queue
     };
 
     /// <summary>The context's name, from the entity it names — never a "Playing from" with no name. Liked Songs answers
-    /// at once. Shared with the stage's queue skin (<c>Stage.UI.cs</c>).</summary>
-    internal static string? ContextName(EntityId context)
+    /// at once. A <c>spotify:list:</c> context is named by what the owner's cluster called it (<paramref name="wire"/>:
+    /// "FLEMMING Popular"), else by the artist it belongs to. Shared with the stage's queue skin (<c>Stage.UI.cs</c>).</summary>
+    public static string? ContextName(EntityId context, in ContextWire wire)
     {
-        var scope = Entities.Current;
+        if (context.Kind != EntityKind.List) return NameOf(context);
+        return ListName(context, in wire) ?? NameOf(ContextTarget(context, in wire));
+    }
+
+    static string? NameOf(EntityId context)
+    {
+        if (context.Kind == EntityKind.Collection) return Loc.Get(Strings.Player.LikedSongs);
+        if (Entities.Current is not { } scope) return null;
         switch (context.Kind)
         {
-            case EntityKind.Collection: return Loc.Get(Strings.Player.LikedSongs);
             case EntityKind.Playlist:
                 _ = scope.Playlists.Changed.Value;
                 return scope.Playlists.TryGetSlot(context, out int p) && new Playlist(p).Knows(PlaylistFields.Identity)
@@ -190,7 +197,7 @@ public static partial class Queue
                 if (r.Kind == EntityKind.Track) tracks[nt++] = r.Slot;
                 else if (r.Kind == EntityKind.Episode) episodes[ne++] = r.Slot;
             }
-            if (nt > 0) Entities.Ensure(Entities.Current.Tracks, tracks.AsSpan(0, nt), (uint)TrackFields.Row, FetchPriority.Visible);
+            if (nt > 0) Entities.Ensure(Entities.Current.Tracks, tracks.AsSpan(0, nt), (uint)(TrackFields.Identity | TrackFields.Availability), FetchPriority.Visible);
             if (ne > 0) Entities.Ensure(Entities.Current.Episodes, episodes.AsSpan(0, ne), (uint)EpisodeFields.Row, FetchPriority.Visible);
         }
         finally { ArrayPool<int>.Shared.Return(tracks); ArrayPool<int>.Shared.Return(episodes); }
@@ -242,6 +249,7 @@ public static partial class Queue
         protected bool Viewer, Autoplay;
         protected EntityRef Current;
         protected EntityId ContextId;
+        protected ContextWire Wire;
         readonly float _rowExtent;
 
         protected QueueSurface(float rowExtent)
@@ -281,7 +289,9 @@ public static partial class Queue
             _ = Playback.PhaseSignal.Value;
             Current = Playback.Current.Value;
             ContextId = Playback.ContextUri.Value;
-            UseEffect(static () => EnsureContext(Playback.ContextUri.Peek()), DepKey.From(ContextId.GetHashCode()));
+            Wire = Playback.ContextLabel.Value;
+            UseEffect(static () => EnsureContext(ContextTarget(Playback.ContextUri.Peek(), Playback.ContextLabel.Peek())),
+                      DepKey.From(ContextId.GetHashCode() ^ (Wire.Referrer.GetHashCode() * 31)));
             UseEffect(s_observeContext);
             Viewer = Playback.OwnerSignal.Value == Playback.Owner.Foreign;
             _ = Platform.SettingsChanged.Value;
@@ -429,7 +439,7 @@ public static partial class Queue
             DumpRows(rows);
 
             var content = new List<Element>(4);
-            if (ContextName(ContextId) is { Length: > 0 } source) content.Add(PlayingFrom(source, ContextId));
+            if (ContextName(ContextId, in Wire) is { Length: > 0 } source) content.Add(PlayingFrom(source, ContextTarget(ContextId, in Wire)));
             if (!Current.IsNone) content.Add(NowPlayingCard(Current, classic));
             if (View.SlotCount > 0) content.Add((BoxEl)Reorder.List(Upcoming(rows, art, classic)) with { Grow = 0f, Key = "lane:upcoming" });
             if (Current.IsNone && View.User == 0 && View.Next == 0)
@@ -613,7 +623,8 @@ public static partial class Queue
         {
             if (!ContextId.IsEmpty)
             {
-                var ctx = Shell.For(new EntityUri(ContextId), ContextName(ContextId) ?? "");
+                EntityId target = ContextTarget(ContextId, in Wire);
+                var ctx = target.IsEmpty ? new Shell.Route(Shell.RouteKind.NotFound) : Shell.For(new EntityUri(target), ContextName(ContextId, in Wire) ?? "");
                 if (!ctx.IsNone) return ctx;
             }
             if (current.Kind == EntityKind.Track)

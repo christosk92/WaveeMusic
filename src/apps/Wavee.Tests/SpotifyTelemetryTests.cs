@@ -26,6 +26,7 @@
 // bytes copied from the decoded bodies (`HerodotusWire`; every uri synthetic).
 
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using Google.Protobuf;
@@ -45,32 +46,71 @@ public class SpotifyTelemetryBatcherTests
     {
         Assert.Equal(100, Spotify.Telemetry.GaboMaxEvents);
         Assert.Equal(125 * 1024, Spotify.Telemetry.GaboMaxUncompressedBytes);
-        Assert.Equal(300_000, Spotify.Telemetry.GaboFlushIntervalMs);
+        Assert.Equal(30_000, Spotify.Telemetry.GaboFlushIntervalMs);
     }
 
     [Fact]
     public void The_two_timers_this_file_owns_are_named_and_numbered()
     {
-        Assert.Equal(300_000, Spotify.Telemetry.GaboFlushIntervalMs);   // the gabo heartbeat
+        Assert.Equal(30_000, Spotify.Telemetry.GaboFlushIntervalMs);    // the gabo heartbeat
         Assert.Equal(2_000, Spotify.Telemetry.ResumeFlushMs);           // the resume-point tick
     }
 
     [Fact]
-    public void A_batch_under_both_caps_waits_for_the_heartbeat()
+    public void A_batch_under_both_caps_and_inside_the_window_waits()
     {
-        Assert.False(Spotify.Telemetry.ShouldFlush(99, 1024));
-        Assert.False(Spotify.Telemetry.ShouldFlush(0, 0));
+        Assert.False(Spotify.Telemetry.GaboFlush.Due(99, 1024, 5_000, false));
+        Assert.False(Spotify.Telemetry.GaboFlush.Due(0, 0, 0, false));
     }
 
     [Fact]
     public void A_batch_flushes_at_the_event_cap()
-        => Assert.True(Spotify.Telemetry.ShouldFlush(Spotify.Telemetry.GaboMaxEvents, 0));
+        => Assert.True(Spotify.Telemetry.GaboFlush.Due(Spotify.Telemetry.GaboMaxEvents, 0, 0, false));
 
     [Fact]
     public void A_batch_flushes_at_the_size_cap_even_with_one_event_in_it()
-        => Assert.True(Spotify.Telemetry.ShouldFlush(1, Spotify.Telemetry.GaboMaxUncompressedBytes));
+        => Assert.True(Spotify.Telemetry.GaboFlush.Due(1, Spotify.Telemetry.GaboMaxUncompressedBytes, 0, false));
 
-    /// <summary>An outage shorter than the backlog loses nothing…</summary>
+    [Theory]
+    [InlineData(1, 29_000L, true)]    // the tick that lands a hair early still counts as a full window
+    [InlineData(1, 28_999L, false)]
+    [InlineData(40, 30_000L, true)]
+    [InlineData(0, 120_000L, false)]  // an idle app is silent however long it has been
+    public void A_pending_event_goes_out_once_a_window_has_passed(int pending, long sinceMs, bool due)
+        => Assert.Equal(due, Spotify.Telemetry.GaboFlush.Due(pending, 1024, sinceMs, false));
+
+    [Fact]
+    public void Closing_the_app_flushes_whatever_is_pending_and_nothing_when_empty()
+    {
+        Assert.True(Spotify.Telemetry.GaboFlush.Due(1, 10, 0, true));
+        Assert.False(Spotify.Telemetry.GaboFlush.Due(0, 0, 0, true));
+    }
+
+    [Fact]
+    public void A_rejected_event_name_is_reported_once_and_a_transient_error_never()
+    {
+        var sent = new List<Wavee.Protocol.EventSender.EventEnvelope>
+        {
+            new() { EventName = "A" }, new() { EventName = "B" }, new() { EventName = "A" },
+        };
+        var response = new Wavee.Protocol.EventSender.PublishEventsResponse();
+        response.Error.Add(new Wavee.Protocol.EventSender.PublishEventsResponse.Types.EventError { Index = 0, Reason = 3 });
+        response.Error.Add(new Wavee.Protocol.EventSender.PublishEventsResponse.Types.EventError { Index = 1, Transient = true, Reason = 1 });
+        response.Error.Add(new Wavee.Protocol.EventSender.PublishEventsResponse.Types.EventError { Index = 2, Reason = 3 });
+        var seen = new HashSet<string>();
+        var first = Spotify.Telemetry.NewRejections(response, sent, seen);
+        Assert.Equal([("A", 3)], first);
+        Assert.Empty(Spotify.Telemetry.NewRejections(response, sent, seen));
+    }
+
+    [Theory]
+    [InlineData(0, 1, true, true)]     // a first page of songs: read the second
+    [InlineData(0, 2, true, false)]    // never a third (the capture's 3 x 69 KB)
+    [InlineData(100, 1, true, false)]  // enough episodes already
+    [InlineData(0, 1, false, false)]   // no next page
+    public void The_recent_episodes_walk_reads_at_most_two_pages(int found, int pages, bool hasNext, bool more)
+        => Assert.Equal(more, Spotify.Telemetry.HistoryWantsMore(found, pages, hasNext));
+
     [Fact]
     public void A_backlog_inside_the_cap_drops_nothing()
     {

@@ -70,6 +70,50 @@ public static partial class Playback
         string Text(TextRef value) => value.IsEmpty ? "" : Encoding.UTF8.GetString(buffer.Utf8(value));
     }
 
+    /// <summary>The foreign owner's own account of its context — <c>play_origin</c> and the whole <c>context_metadata</c> map
+    /// as its last cluster stated them — kept while it owns playback so a takeover (<see cref="AdoptForeignOrigin"/>) publishes
+    /// on as the owner with the context's description instead of a bare <c>player.arch</c>. Rebuilt only when the cluster's
+    /// bytes moved, so a heartbeat allocates nothing (<see cref="DeviceHash(ReadOnlySpan{byte})"/> over the same texts).</summary>
+    static WireOrigin? s_foreignOrigin;
+    static EntityId s_foreignOriginContext;
+    static ulong s_foreignOriginHash;
+
+    static void CaptureForeignOrigin(ClusterBuffer buffer, in Spotify.Decode.ClusterDelta d, EntityId context)
+    {
+        ulong hash = DeviceHash(buffer.Utf8(d.FeatureIdentifier));
+        hash = hash * 31UL + DeviceHash(buffer.Utf8(d.FeatureVersion));
+        hash = hash * 31UL + DeviceHash(buffer.Utf8(d.ViewUri));
+        hash = hash * 31UL + DeviceHash(buffer.Utf8(d.ExternalReferrer));
+        hash = hash * 31UL + DeviceHash(buffer.Utf8(d.ReferrerIdentifier));
+        hash = hash * 31UL + DeviceHash(buffer.Utf8(d.DeviceIdentifier));
+        ReadOnlySpan<Spotify.Decode.ClusterMeta> meta = buffer.Meta(d.MetaStart, d.MetaCount);
+        foreach (ref readonly Spotify.Decode.ClusterMeta entry in meta)
+            hash = (hash * 31UL + DeviceHash(buffer.Utf8(entry.Key))) * 31UL + DeviceHash(buffer.Utf8(entry.Value));
+        if (hash == s_foreignOriginHash && s_foreignOrigin is not null && context.Equals(s_foreignOriginContext)) return;
+        s_foreignOriginHash = hash;
+        s_foreignOriginContext = context;
+        var map = new KeyValuePair<string, string>[meta.Length];
+        for (int k = 0; k < meta.Length; k++) map[k] = new(Text(meta[k].Key), Text(meta[k].Value));
+        s_foreignOrigin = new WireOrigin(Text(d.FeatureIdentifier), Text(d.FeatureVersion), Text(d.ViewUri),
+            Text(d.ExternalReferrer), Text(d.ReferrerIdentifier), Text(d.DeviceIdentifier), "", map);
+        string Text(TextRef value) => value.IsEmpty ? "" : Encoding.UTF8.GetString(buffer.Utf8(value));
+    }
+
+    /// <summary>A takeover (<c>Effects.TakeoverSeed</c>, UI thread): the context on the deck is the previous owner's, so what we
+    /// publish about it is that owner's description — its play origin and <c>context_metadata</c> (<see cref="Queue.OwnedContextMetadata"/>:
+    /// the keys we write ourselves still win). With nothing held for this context the origin of an earlier play of another
+    /// context is dropped rather than mislabelling this one.</summary>
+    static void AdoptForeignOrigin()
+    {
+        EntityId context = s_state.Context;
+        if (s_foreignOrigin is { } origin && context.Equals(s_foreignOriginContext))
+        {
+            s_wireOrigin = origin with { Metadata = Queue.OwnedContextMetadata(origin.Metadata, takeover: true) };
+            s_wireOriginContext = context;
+        }
+        else if (!context.Equals(s_wireOriginContext)) s_wireOrigin = null;
+    }
+
     static WireExtras CaptureWire(long frameNowMs)
     {
         string? sender = s_state.LastCommandSender != 0 && s_state.LastCommandMessageId != 0
@@ -115,6 +159,7 @@ public static partial class Playback
     static int s_windowCursor = int.MinValue;
     static EntityId s_windowCurrent, s_windowContext;
     static ulong s_windowRows;
+    static string s_windowStation = "";
 
     /// <summary>The queue around the deck. Rebuilt only when what it would contain changed; otherwise the SAME immutable
     /// window is handed to the next snapshot — which is what keeps a pause, a seek and a volume drag allocation-free.</summary>
@@ -131,10 +176,11 @@ public static partial class Playback
         ulong versions = RowVersion(s_state.Current);
         for (int k = first; k < end; k++) versions = (versions ^ RowVersion(Queue.RefAt(k))) * 1099511628211UL;
         uint queueVersion = Queue.Version;
+        string station = s_autoplay.StationFor(s_state.Context);
         int windowCursor = laid ? cursor : -1;
         if (s_window is { } kept && ReferenceEquals(scope, s_windowScope) && queueVersion == s_windowQueue
             && windowCursor == s_windowCursor && s_state.CurrentId.Equals(s_windowCurrent)
-            && s_state.Context.Equals(s_windowContext) && versions == s_windowRows)
+            && s_state.Context.Equals(s_windowContext) && versions == s_windowRows && ReferenceEquals(station, s_windowStation))
             return kept;
 
         int prevCount = laid ? cursor - first : 0;
@@ -149,7 +195,8 @@ public static partial class Playback
             WireRow current = RowOf(s_state.Current, in deck, s_state.CurrentId);
             int contextIndex = 0;
             for (int k = 0; laid && k < cursor; k++) if (rows[k].Provider == (byte)QueueProvider.Context) contextIndex++;
-            s_window = new WireWindow(in current, scratch.AsSpan(0, prevCount), scratch.AsSpan(prevCount, nextCount), s_state.Context.Kind == EntityKind.Show ? -1 : contextIndex);
+            s_window = new WireWindow(in current, scratch.AsSpan(0, prevCount), scratch.AsSpan(prevCount, nextCount),
+                s_state.Context.Kind == EntityKind.Show ? -1 : contextIndex, station);
         }
         finally { ArrayPool<WireRow>.Shared.Return(scratch, clearArray: true); }
 
@@ -159,8 +206,29 @@ public static partial class Playback
         s_windowCurrent = s_state.CurrentId;
         s_windowContext = s_state.Context;
         s_windowRows = versions;
+        s_windowStation = station;
         return s_window;
     }
+
+    /// <summary>The signed-in account's canonical username — <c>queued_by</c> on a row THIS device queued; "" before a login names one.</summary>
+    static string CanonicalUser() => Spotify.Current.Username.IsEmpty ? "" : Entities.Strings.Resolve(Spotify.Current.Username);
+
+    /// <summary>A row the user queues on this device: an item id booked under the next <c>q&lt;n&gt;</c> uid
+    /// (<see cref="UidBook.MintQueued"/>). The queue's own writes (Add to queue, Play next, a controller's
+    /// <c>add_to_queue</c>) mint through here; context and autoplay rows keep their own scheme. UI thread.</summary>
+    internal static ulong MintQueuedItemId() => s_uids.MintQueued();
+
+    /// <summary>The <c>queued_by</c> a queued row publishes: what its owner stated, else the signed-in user for a row this device
+    /// queued (an item id we minted, never one an owner sent), else nothing (<see cref="QueueAttribution"/>).</summary>
+    static string QueuedByOf(in QueueEdge edge)
+    {
+        if (edge.Provider != (byte)QueueProvider.Queue || edge.ItemId == 0) return "";
+        bool carried = s_uids.TryQueuedBy(edge.ItemId, out string stated);
+        return QueueAttribution.QueuedBy(stated, queuedHere: !carried, CanonicalUser());
+    }
+
+    /// <summary>The autoplay answers' stations and decision ids, by the rows they produced.</summary>
+    static readonly AutoplayBook s_autoplay = new();
 
     /// <summary>A row's table version with its slot, so a row that moved and a row that changed both move the key.</summary>
     static ulong RowVersion(EntityRef row)
@@ -178,8 +246,10 @@ public static partial class Playback
         if (id.IsEmpty) id = row.Id;
         var provider = (QueueProvider)edge.Provider;
         string? uid = s_uids.TextOf(edge.ItemId);
+        string? decision = provider == QueueProvider.Autoplay ? s_autoplay.DecisionOf(edge.ItemId) : null;
+        string? queuedBy = provider == QueueProvider.Queue ? QueuedByOf(in edge) : null;
         Scope? scope = Entities.Current;
-        if (row.IsNone || scope is null) return new WireRow(id, edge.ItemId, uid, provider);
+        if (row.IsNone || scope is null) return new WireRow(id, edge.ItemId, uid, provider, decisionId: decision, queuedBy: queuedBy);
 
         if (row.Kind == EntityKind.Track && (uint)row.Slot < (uint)scope.Tracks.Count)
         {
@@ -208,7 +278,7 @@ public static partial class Playback
                 albumId = album.Id;
                 image ??= Interned(album.ImageId);
             }
-            return new WireRow(id, edge.ItemId, uid, provider, Interned(track.TitleId), artistName, albumTitle, image, albumId, artistId);
+            return new WireRow(id, edge.ItemId, uid, provider, Interned(track.TitleId), artistName, albumTitle, image, albumId, artistId, decision, queuedBy);
         }
 
         if (row.Kind == EntityKind.Episode && (uint)row.Slot < (uint)scope.Episodes.Count)
@@ -219,9 +289,9 @@ public static partial class Playback
             string? showTitle = known ? Interned(show.TitleId) : null;
             string? image = Interned(episode.ImageId) ?? (known ? Interned(show.ImageId) : null);
             return new WireRow(id, edge.ItemId, uid, provider, Interned(episode.TitleId), showTitle, showTitle, image,
-                known ? show.Id : default);
+                known ? show.Id : default, decisionId: decision, queuedBy: queuedBy);
         }
-        return new WireRow(id, edge.ItemId, uid, provider);
+        return new WireRow(id, edge.ItemId, uid, provider, decisionId: decision, queuedBy: queuedBy);
     }
 
     static string? Interned(StringId id) => id.IsEmpty ? null : Entities.Strings.Resolve(id);
@@ -257,19 +327,23 @@ public static partial class Playback
     }
 
     static WireIds s_wireIds;
-    static EntityId s_wireContext;
+    /// <summary>The session id the inbound play now being started was offered (<c>options.session_id</c>); zero = none.
+    /// <see cref="StartContext"/> sets it just before its Play step, <see cref="WireStarted"/> takes it.</summary>
+    static UInt128 s_wireOffered;
 
-    /// <summary>A row's audio began (the play report's Started, UI thread): a new <c>playback_id</c> for it, and a new
-    /// session — <c>session_id</c>, <c>session_command_id</c>, the interaction and page-instance ids — for a new play or a
-    /// new context (0.2.9: <c>Started</c>, or the context changed). An advance inside the context keeps the session.</summary>
-    static void WireStarted(EntityId context, PlayReason why)
+    /// <summary>A row's audio began (the play report's Started, UI thread): a new <c>playback_id</c> for it, and the
+    /// session <see cref="PlayerSession.NextSession"/> names — a new one (<c>session_id</c>, <c>session_command_id</c>, the
+    /// interaction and page-instance ids) for a local play, a transfer or a remote play with no offer; the offered one for a
+    /// remote play that carries one; the same one for everything that advances.</summary>
+    static void WireStarted(SessionCause cause)
     {
-        bool fresh = s_wireIds.SessionId == UInt128.Zero || !context.Equals(s_wireContext);
+        UInt128 offered = s_wireOffered;
+        s_wireOffered = default;
+        UInt128 session = PlayerSession.NextSession(s_wireIds.SessionId, cause, offered, Random128);
         UInt128 playback = Random128();
-        s_wireIds = fresh
-            ? new WireIds(Random128(), playback, Random128(), Random128(), Random128())
-            : s_wireIds with { PlaybackId = playback };
-        s_wireContext = context;
+        s_wireIds = session == s_wireIds.SessionId
+            ? s_wireIds with { PlaybackId = playback }
+            : new WireIds(session, playback, Random128(), Random128(), Random128());
     }
 
     /// <summary>The wire's <c>playback_id</c> as the 16 bytes the play registration is keyed by — one id for both, as 0.2.9
@@ -300,16 +374,27 @@ public static partial class Playback
 
         byte[] _text = new byte[8192];
         int _textLength, _revisionStart, _revisionLength;
-        readonly (int Uri, int UriLength, int Uid, int UidLength, bool Queued)[] _rows = new (int, int, int, int, bool)[2 * MaxRows];
+        readonly (int Uri, int UriLength, int Uid, int UidLength, bool Queued, bool Autoplay, int By, int ByLength)[] _rows
+            = new (int, int, int, int, bool, bool, int, int)[2 * MaxRows];
+        ulong _stamp;
 
         public int PrevCount { get; private set; }
         public int NextCount { get; private set; }
+        /// <summary>Did the last <see cref="Take"/> move the owner's (session id, queue revision) stamp — a new playback
+        /// session, or its queue was edited (by anyone, a forwarded Play next included)? True after a <see cref="Clear"/>
+        /// too, so the first cluster of a mirror always re-derives the rows.</summary>
+        public bool Changed { get; private set; } = true;
 
-        public void Clear() { _textLength = 0; _revisionLength = 0; PrevCount = 0; NextCount = 0; }
+        public void Clear() { Reset(); _stamp = 0; Changed = true; }
+
+        void Reset() { _textLength = 0; _revisionLength = 0; PrevCount = 0; NextCount = 0; }
 
         public void Take(ClusterBuffer buffer, in Spotify.Decode.ClusterDelta delta)
         {
-            Clear();
+            Reset();
+            ulong stamp = Playback.DeviceHash(buffer.Utf8(delta.SessionId)) * 31UL + Playback.DeviceHash(buffer.Utf8(delta.QueueRevision)) + 1UL;
+            Changed = stamp != _stamp;
+            _stamp = stamp;
             (_revisionStart, _revisionLength) = Add(buffer.Utf8(delta.QueueRevision));
             ReadOnlySpan<ClusterTrack> prev = buffer.Tracks(delta.PrevStart, delta.PrevCount);
             ReadOnlySpan<ClusterTrack> next = buffer.Tracks(delta.NextStart, delta.NextCount);
@@ -322,7 +407,9 @@ public static partial class Playback
         {
             var (uri, uriLength) = Add(buffer.Utf8(track.Uri));
             var (uid, uidLength) = Add(buffer.Utf8(track.Uid));
-            _rows[slot] = (uri, uriLength, uid, uidLength, buffer.Utf8(track.Provider).SequenceEqual("queue"u8));
+            var (by, byLength) = Add(buffer.Utf8(track.QueuedBy));
+            ReadOnlySpan<byte> provider = buffer.Utf8(track.Provider);
+            _rows[slot] = (uri, uriLength, uid, uidLength, provider.SequenceEqual("queue"u8), provider.SequenceEqual("autoplay"u8), by, byLength);
         }
 
         (int, int) Add(ReadOnlySpan<byte> utf8)
@@ -362,6 +449,17 @@ public static partial class Playback
 
         /// <summary>Was this row the mirrored device's OWN user queue ("Next in queue"), by its wire provenance?</summary>
         public bool IsQueued(bool next, int index) => _rows[(next ? MaxRows : 0) + index].Queued;
+
+        /// <summary>The row's <c>queued_by</c> exactly as the owner stated it, RAW; empty when it stated none. Kept so a row we
+        /// mirror and re-announce is not relabelled as ours.</summary>
+        public ReadOnlySpan<byte> Utf8QueuedBy(bool next, int index)
+        {
+            var r = _rows[(next ? MaxRows : 0) + index];
+            return r.ByLength > 0 ? _text.AsSpan(r.By, r.ByLength) : default;
+        }
+
+        /// <summary>Was this row the owner's autoplay tail, by its wire provenance?</summary>
+        public bool IsAutoplay(bool next, int index) => _rows[(next ? MaxRows : 0) + index].Autoplay;
 
         ReadOnlySpan<byte> Slice(bool next, int index, bool uid)
         {
@@ -530,7 +628,11 @@ public static partial class Playback
         s_wireIds = default;
         s_wireOrigin = null;
         s_wireOriginContext = default;
-        s_wireContext = default;
+        s_foreignOrigin = null;
+        s_foreignOriginContext = default;
+        s_foreignOriginHash = 0;
+        s_autoplay.Clear();
+        s_wireOffered = default;
         s_foreign.Clear();
         s_forward.Clear();
     }

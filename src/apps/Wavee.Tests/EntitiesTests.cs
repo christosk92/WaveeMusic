@@ -54,6 +54,7 @@ public class EntitiesTests
     [InlineData("spotify:collection:tracks", EntityKind.Collection, EntityProvider.Spotify)]
     [InlineData("spotify:collection:albums", EntityKind.Collection, EntityProvider.Spotify)]
     [InlineData("spotify:concert:3ab7ff", EntityKind.Concert, EntityProvider.Spotify)]
+    [InlineData("spotify:list:popular-release-segments-main-roles:artist_0YLlTW9rW7ZCy2cA2u3RYk", EntityKind.List, EntityProvider.Spotify)]
     // the user-namespaced forms 0.2.9 answered Unknown for until the one parser landed
     [InlineData("spotify:user:christos:playlist:37i9dQ", EntityKind.Playlist, EntityProvider.Spotify)]
     [InlineData("spotify:user:christos:collection", EntityKind.Collection, EntityProvider.Spotify)]

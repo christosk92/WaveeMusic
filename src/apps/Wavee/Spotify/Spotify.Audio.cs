@@ -1151,6 +1151,24 @@ public static partial class Spotify
         /// first seconds of audio, and a buffer the pump can reuse without pinning an LOH block per track.</summary>
         public const int HeadMaxBytes = 80 * 1024;
 
+        /// <summary>What a head reply is worth reading. The request asks for <c>Range: bytes=0-(HeadMaxBytes-1)</c>, so the
+        /// CDN answers 206 with only those bytes and the connection is reused without draining a megabyte of unread FLAC;
+        /// a host that ignores the Range answers 200 with the whole file, of which only the first
+        /// <see cref="HeadMaxBytes"/> are ever kept. A refusal (416 for an empty file, anything non-2xx) is an empty head,
+        /// exactly as before.</summary>
+        public static class HeadResponse
+        {
+            /// <summary>How many bytes to read from the reply: 0 for a refusal, otherwise the smaller of
+            /// <see cref="HeadMaxBytes"/> and the length the reply names (its Content-Length, else the total of its
+            /// Content-Range), so a file shorter than the head gives a short head and not a buffer of zeros.</summary>
+            public static int Decide(int status, long? contentRangeTotal, long? contentLength)
+            {
+                if (status is not (200 or 206)) return 0;
+                long named = contentLength ?? contentRangeTotal ?? HeadMaxBytes;
+                return (int)Math.Clamp(named, 0, HeadMaxBytes);
+            }
+        }
+
         /// <summary>The clear head. Empty on any failure — a missing head is a slower start, never a failed play.</summary>
         public static byte[] Head(string fileIdHex, CancellationToken ct)
         {
@@ -1159,18 +1177,23 @@ public static partial class Spotify
                 Interlocked.Increment(ref s_statHeads);
                 using var deadline = Deadline(ct, 20);
                 using var message = new HttpRequestMessage(HttpMethod.Get, HeadHost + fileIdHex.ToLowerInvariant());
+                message.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, HeadMaxBytes - 1);
                 using HttpResponseMessage response = Cdn.Send(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-                if (!response.IsSuccessStatusCode) return [];
+                int status = (int)response.StatusCode;
+                long? rangeTotal = response.Content.Headers.ContentRange is { HasLength: true, Length: { } whole } ? whole : null;
+                int want = HeadResponse.Decide(status, rangeTotal, response.Content.Headers.ContentLength);
+                Log.Info("audio", $"audio.head.http file={fileIdHex} status={status} total={rangeTotal ?? -1} want={want}");
+                if (want <= 0) return [];
                 using System.IO.Stream body = response.Content.ReadAsStream(deadline.Token);
-                var buffer = new byte[HeadMaxBytes];
+                var buffer = new byte[want];
                 int total = 0;
-                while (total < HeadMaxBytes)
+                while (total < want)
                 {
-                    int n = body.Read(buffer, total, HeadMaxBytes - total);
+                    int n = body.Read(buffer, total, want - total);
                     if (n <= 0) break;
                     total += n;
                 }
-                return total == HeadMaxBytes ? buffer : buffer.AsSpan(0, total).ToArray();
+                return total == want ? buffer : buffer.AsSpan(0, total).ToArray();
             }
             catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException)
             {

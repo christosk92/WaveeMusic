@@ -42,8 +42,8 @@ public class ConnectOptionVerbTests
         Assert.True(verbs[0].BoolArg);
         Assert.Equal(RemoteCmd.SetRepeatingTrack, verbs[1].Kind);
         Assert.True(verbs[1].BoolArg);
-        Assert.Equal(7, verbs[0].MessageId);
-        Assert.Equal(7, verbs[1].MessageId);
+        Assert.Equal(7u, verbs[0].MessageId);
+        Assert.Equal(7u, verbs[1].MessageId);
         Assert.NotEqual(verbs[0].DedupeKey, verbs[1].DedupeKey);
     }
 

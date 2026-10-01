@@ -111,6 +111,242 @@ public static partial class Spotify
         }
     }
 
+    /// <summary>What a dealer REQUEST is answered with (2026-10-01 audit: every one of 15 requests in nine days was acked
+    /// <c>success:true</c> before anything ran, unknown endpoints included). The ack says "received and understood as
+    /// something this device does", never "it worked" — the execution happens after it, on the host. PURE.</summary>
+    public static class DealerAck
+    {
+        /// <summary>The one <c>message_ident</c> a controller's command arrives under.</summary>
+        public static ReadOnlySpan<byte> CommandIdent => "hm://connect-state/v1/player/command"u8;
+
+        public static bool IsCommandIdent(ReadOnlySpan<byte> ident) => ident.SequenceEqual(CommandIdent);
+
+        /// <summary>The reply's <c>success</c>. False for a request that is not a player command, and for an endpoint this
+        /// device does not know (<see cref="Decode.RemoteCmd.Unknown"/>) — librespot answers Failure for both. TRUE for a
+        /// KNOWN endpoint whose body was garbled: <c>Ok</c> is not consulted, because a failure reply there gets the sender
+        /// cached out of ever sending that endpoint again (0.2.9, see <see cref="Decode.RemoteCommand"/>).</summary>
+        public static bool For(ReadOnlySpan<byte> ident, Decode.RemoteCmd kind)
+            => IsCommandIdent(ident) && kind != Decode.RemoteCmd.Unknown;
+    }
+
+    /// <summary>Recent REQUEST identities, so a controller's retry of a command we already ran is acked but not run twice
+    /// (<see cref="Decode.RemoteCommand.DedupeKey"/> folds sender, message id and endpoint). Fixed size, allocation-free,
+    /// thread-safe; the oldest key is overwritten.</summary>
+    public sealed class DealerDedupeRing(int capacity = DealerDedupeRing.DefaultCapacity)
+    {
+        public const int DefaultCapacity = 32;
+
+        readonly ulong[] _keys = new ulong[Math.Max(1, capacity)];
+        readonly Lock _gate = new();
+        int _next;
+
+        /// <summary>A command that can be told apart from another: it names its sender and carries a message id. One that
+        /// does not (an undecodable body, a controller that sends no id) would collide with every sibling, so it is never
+        /// deduplicated.</summary>
+        public static bool IsDedupable(in Decode.RemoteCommand command)
+            => command.Kind != Decode.RemoteCmd.Unknown && command.MessageId != 0 && command.SenderHash != 0 && command.DedupeKey != 0;
+
+        /// <summary>True when <paramref name="key"/> is among the recent ones (a duplicate); otherwise records it and
+        /// answers false. Key 0 is the empty slot and is never recorded.</summary>
+        public bool SeenOrAdd(ulong key)
+        {
+            if (key == 0) return false;
+            lock (_gate)
+            {
+                foreach (ulong k in _keys) if (k == key) return true;
+                _keys[_next] = key;
+                _next = (_next + 1) % _keys.Length;
+                return false;
+            }
+        }
+    }
+
+    /// <summary>A per-key counter that says when a line is worth writing: the first time a key is seen, then at most once
+    /// per interval with the running total. For the frames and mailbox drops that are otherwise silent — one line per frame
+    /// would flood the log, no line at all hides a protocol change. Bounded: past <c>capacity</c> distinct keys the rest
+    /// share one <c>(other)</c> slot. Thread-safe.</summary>
+    public sealed class DealerTally(int intervalMs, int capacity = 16)
+    {
+        public const string Other = "(other)";
+
+        readonly string?[] _keys = new string?[Math.Max(2, capacity)];
+        readonly long[] _totals = new long[Math.Max(2, capacity)];
+        readonly long[] _lastLogged = new long[Math.Max(2, capacity)];
+        readonly Lock _gate = new();
+
+        /// <summary>The key's run ended (the link came up): the next sighting is a first one again and logs in full.</summary>
+        public void Forget(string key)
+        {
+            lock (_gate)
+            {
+                for (int i = 0; i < _keys.Length - 1; i++)
+                {
+                    if (_keys[i] is null) return;
+                    if (_keys[i] != key) continue;
+                    _totals[i] = 0;
+                    _lastLogged[i] = long.MinValue / 2;
+                    return;
+                }
+            }
+        }
+
+        /// <summary>Count one occurrence of <paramref name="key"/>. True when the caller should log it now;
+        /// <paramref name="total"/> is the count so far for that key.</summary>
+        public bool Note(string key, long nowMs, out long total)
+        {
+            lock (_gate)
+            {
+                int slot = -1;
+                for (int i = 0; i < _keys.Length - 1; i++)
+                {
+                    if (_keys[i] is null) { _keys[i] = key; _lastLogged[i] = nowMs - intervalMs - 1; slot = i; break; }
+                    if (_keys[i] == key) { slot = i; break; }
+                }
+                if (slot < 0) { slot = _keys.Length - 1; _keys[slot] ??= Other; }
+                total = ++_totals[slot];
+                // `_lastLogged` starts a full interval in the past for a new key, so its first sighting logs.
+                if (total > 1 && nowMs - _lastLogged[slot] < intervalMs) return false;
+                _lastLogged[slot] = nowMs;
+                return true;
+            }
+        }
+    }
+
+    /// <summary>At most one links kick (wake or address change) per gap: one adapter change fires several
+    /// <c>NetworkAddressChanged</c> events, a flapping Wi-Fi fires them for as long as it flaps. PURE.</summary>
+    public static class KickLimiter
+    {
+        public const int MinGapMs = 5_000;
+
+        /// <summary>The "no kick yet" stamp: far enough in the past that any clock reads it as due.</summary>
+        public const long Never = -1_000_000_000L;
+
+        /// <summary>True when a kick at <paramref name="nowMs"/> may go out, the last one having gone at
+        /// <paramref name="lastKickMs"/>. A clock that went backwards reads as due rather than silencing kicks.</summary>
+        public static bool Due(long nowMs, long lastKickMs, int minGapMs = MinGapMs)
+            => nowMs < lastKickMs || nowMs - lastKickMs >= minGapMs;
+    }
+
+    /// <summary>Which dealer MESSAGE topics this app knows it does not read. PURE.</summary>
+    public static class DealerTopicRules
+    {
+        public enum Kind : byte
+        {
+            /// <summary>An <c>hm://</c> topic: the host's handlers (playback settings, progress, library) take it or leave it.</summary>
+            Hm = 0,
+            /// <summary>A topic without the <c>hm://</c> scheme (<c>social-connect/v2/broadcast_status_update</c>, 264 in nine
+            /// days): never read by this app, counted so a new one is visible.</summary>
+            NonHm,
+            /// <summary><c>hm://playlist/v2/list/liked-songs-artist/&lt;id&gt;</c>: a push this app ignores on purpose.</summary>
+            IgnoredOnPurpose,
+        }
+
+        public static Kind Classify(ReadOnlySpan<byte> uri)
+        {
+            if (!uri.StartsWith("hm://"u8)) return Kind.NonHm;
+            if (uri.StartsWith("hm://playlist/v2/list/liked-songs-artist/"u8)) return Kind.IgnoredOnPurpose;
+            return Kind.Hm;
+        }
+
+        /// <summary>A non-<c>hm://</c> topic as a counter key and the log may print it: its first three path segments while
+        /// each is a plain topic word (<c>social-connect/v2/broadcast_status_update</c> whole), cut to <c>/…</c> at the first
+        /// segment that is not — an id never reaches the always-on log.</summary>
+        public static string LogKey(ReadOnlySpan<byte> uri)
+        {
+            if (uri.IsEmpty) return "(none)";
+            int end = 0, at = 0;
+            for (int segment = 0; segment < 3 && at <= uri.Length; segment++)
+            {
+                var rest = uri[at..];
+                int slash = rest.IndexOf((byte)'/');
+                var word = slash < 0 ? rest : rest[..slash];
+                if (!IsWord(word)) break;
+                end = at + word.Length;
+                if (slash < 0) return Encoding.UTF8.GetString(uri);
+                at = end + 1;
+            }
+            return end == 0 ? "(opaque)" : Encoding.UTF8.GetString(uri[..end]) + "/…";
+        }
+
+        static bool IsWord(ReadOnlySpan<byte> word)
+        {
+            if (word.IsEmpty || word.Length > 32 || word[0] is < (byte)'a' or > (byte)'z') return false;
+            foreach (byte b in word)
+                if (b is not ((>= (byte)'a' and <= (byte)'z') or (>= (byte)'0' and <= (byte)'9') or (byte)'-' or (byte)'_'))
+                    return false;
+            return true;
+        }
+    }
+
+    /// <summary>When the keepalive gives up on a socket that stopped answering. librespot waits 3 s for a pong; the old
+    /// rule here was "70 s without any frame" evaluated on a 30 s tick — up to ninety blind seconds on a half-open socket.
+    /// PURE.</summary>
+    public static class DealerLiveness
+    {
+        /// <summary>The ping cadence (P10 names this timer).</summary>
+        public const int PingIntervalMs = 30_000;
+
+        /// <summary>How long after a ping any frame at all must have arrived. Observed pong latency: median 29 ms, p95 73 ms,
+        /// one 10 s outlier in nine days — 8 s is generous for a live socket and short for a dead one.</summary>
+        public const int PongDeadlineMs = 8_000;
+
+        /// <summary>True when a ping went out at <paramref name="pingSentAtMs"/>, nothing has arrived since
+        /// (<paramref name="lastFrameMs"/>) and the deadline has passed.</summary>
+        public static bool PongOverdue(long pingSentAtMs, long lastFrameMs, long nowMs)
+            => lastFrameMs < pingSentAtMs && nowMs - pingSentAtMs >= PongDeadlineMs;
+    }
+
+    /// <summary>How long the dealer waits before its next connect. PURE.</summary>
+    public static class ReconnectDelay
+    {
+        /// <summary>A clean server Close frame gets an immediate first retry (the server is up and asked us to come back;
+        /// 3 s of dead air lost commands in the gap), jittered so a fleet restart does not stampede. Every other drop — an
+        /// error, a reset, a repeat — climbs <see cref="BackoffMs"/>'s 3/6/12/24/30 s ladder.</summary>
+        public const int CleanCloseJitterMs = 500;
+
+        /// <param name="attempt"><see cref="Session.DealerAttempt"/>: 1 for the first retry after a drop.</param>
+        /// <param name="jitterSample">Any non-negative random sample; only used for the clean-close jitter.</param>
+        public static int For(uint attempt, bool wasCleanClose, int jitterSample = 0)
+            => wasCleanClose && attempt <= 1
+                ? (int)((uint)jitterSample % (CleanCloseJitterMs + 1))
+                : BackoffMs(attempt);
+    }
+
+    /// <summary>The ordered hosts apresolve listed for one service, and the one in use. A transport failure against the
+    /// current host moves to the next (wrapping); a failure reported for a host that is no longer current moves nothing,
+    /// so several threads failing at once advance one step. Thread-safe.</summary>
+    public sealed class HostRotation
+    {
+        string[] _hosts = [];
+        int _index;
+        readonly Lock _gate = new();
+
+        public static int Next(int index, int count) => count <= 1 ? 0 : (index + 1) % count;
+
+        public void Set(string[] hosts)
+        {
+            lock (_gate) { _hosts = hosts; _index = 0; }
+        }
+
+        /// <summary>The host in use, or null when apresolve has not listed any.</summary>
+        public string? Current
+        {
+            get { lock (_gate) return _hosts.Length == 0 ? null : _hosts[_index]; }
+        }
+
+        /// <summary>The caller's connection to <paramref name="failedHost"/> failed at the transport level. True when this
+        /// moved to a different host.</summary>
+        public bool NoteFailure(string failedHost)
+        {
+            lock (_gate)
+            {
+                if (_hosts.Length <= 1 || _hosts[_index] != failedHost) return false;
+                _index = Next(_index, _hosts.Length);
+                return true;
+            }
+        }
+    }
+
     /// <summary>The receive loop's word for "the deadline passed with no hello": an <see cref="IOException"/>, so
     /// <c>DealerLoopCore</c>'s existing drop path handles it, distinguishable so the fold gets
     /// <see cref="SessionFault.Protocol"/> and the exit line says <c>hello-overdue</c>.</summary>

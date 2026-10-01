@@ -44,11 +44,12 @@ public class PutStateWireTests
     static Playback.Snapshot Snap(Playback.PlayableKind kind = Playback.PlayableKind.Audio, bool hasVideo = false,
         string videoGid = "", bool paused = false, bool buffering = false, EntityId context = default,
         Playback.WireWindow? window = null, ulong revision = 0, bool privateSession = false, string output = "",
-        string sender = "", uint lastCommandMessageId = 0, long startedPlayingAtMs = 0, string uid = "")
+        string sender = "", uint lastCommandMessageId = 0, long startedPlayingAtMs = 0, string uid = "",
+        Playback.WireOrigin? origin = null)
     {
         var identity = new Playback.DeviceIdentity("wavee-device-id", "PC", "65b708073fc0480ea92a077233ca87bd",
             "Win32_x86_64", "1.2.94.583.g60394bd5", "3.2.6");
-        var wire = new Playback.WireExtras(window, revision, in Ids, privateSession, output, sender);
+        var wire = new Playback.WireExtras(window, revision, in Ids, privateSession, output, sender, origin: origin);
         return new Playback.Snapshot(in identity, isActive: true, reason: Playback.PublishReason.PlayerStateChanged,
             messageId: 9, volume: 32_768, clientTimestampMs: 1_700_000_050_000, startedPlayingAtMs: startedPlayingAtMs,
             hasBeenPlayingForMs: 4_000, hasTrack: true, track: Track, context: context.IsEmpty ? Playlist : context, uid: uid,
@@ -82,6 +83,15 @@ public class PutStateWireTests
         Assert.Equal("controller-device", request.LastCommandSentByDeviceId);
         Assert.Equal(0u, Encode(Snap()).LastCommandMessageId);
         Assert.Equal("", Encode(Snap()).LastCommandSentByDeviceId);
+    }
+
+    [Fact]
+    public void A_command_id_past_int_max_is_echoed_exactly()
+    {
+        // The wire's message_id is uint32 (live ids were ~1.955e9 on 2026-10-01; 2^31 is ~2 days of ids away).
+        var request = Encode(Snap(lastCommandMessageId: 3_000_000_000u, sender: "controller-device"));
+        Assert.Equal(3_000_000_000u, request.LastCommandMessageId);
+        Assert.Equal(uint.MaxValue, Encode(Snap(lastCommandMessageId: uint.MaxValue)).LastCommandMessageId);
     }
 
     [Fact]
@@ -208,12 +218,20 @@ public class PutStateWireTests
         Assert.Equal("5bd5aabfe4434940c96f", ps.PrevTracks[0].Uid);
         Assert.False(ps.PrevTracks[0].Metadata.ContainsKey("view_index"));
 
-        Assert.Equal(4, ps.NextTracks.Count);
-        var delimiter = ps.NextTracks[3];
+        Assert.Equal(5, ps.NextTracks.Count);
+        var page = ps.NextTracks[3];
+        Assert.Equal("spotify:meta:page:1", page.Uri);
+        Assert.Equal("page1_0", page.Uid);
+        Assert.Equal("true", page.Metadata["hidden"]);
+        var delimiter = ps.NextTracks[4];
         Assert.Equal("spotify:delimiter", delimiter.Uri);
         Assert.Equal("delimiter0", delimiter.Uid);
+        Assert.Equal("autoplay", delimiter.Provider);
+        Assert.Equal("context/delimiter", Assert.Single(delimiter.Removed));
         Assert.Equal("true", delimiter.Metadata["hidden"]);
         Assert.Equal("pause", delimiter.Metadata["actions.advancing_past_track"]);
+        Assert.Equal("pause", delimiter.Metadata["actions.skipping_next_past_track"]);
+        Assert.Equal("0", delimiter.Metadata["iteration"]);
         var queued = ps.NextTracks[0];
         Assert.Equal("queue", queued.Provider);
         Assert.Equal("q2", queued.Uid);
@@ -260,6 +278,90 @@ public class PutStateWireTests
         Assert.Equal("Now", track.Metadata["title"]);
         Assert.Equal("spotify:image:ab67616d0000b273", track.Metadata["image_url"]);   // a bare image id becomes a uri
         Assert.Equal("true", track.Metadata["is_queued"]);
+    }
+
+    [Fact]
+    public void A_queued_row_is_marked_manually_queued_by_the_signed_in_user()
+    {
+        var mine = Row(2, QueueProvider.Queue, uid: "q0").WithQueuedBy("31unjfmo3oefvlz36ef3eb6kj5tq");
+        var queued = Player(Snap(window: Window(next: [mine]))).NextTracks[0].Metadata;
+
+        Assert.Equal("true", queued["is_queued"]);
+        Assert.Equal("true", queued["manually_queued"]);
+        Assert.Equal("31unjfmo3oefvlz36ef3eb6kj5tq", queued["queued_by"]);
+
+        // No name (signed out, or an owner that stated none): is_queued stays, the attribution is omitted.
+        var nobody = Player(Snap(window: Window(next: [Row(2, QueueProvider.Queue)]))).NextTracks[0].Metadata;
+        Assert.Equal("true", nobody["is_queued"]);
+        Assert.False(nobody.ContainsKey("queued_by"));
+        Assert.False(nobody.ContainsKey("manually_queued"));
+    }
+
+    [Fact]
+    public void The_autoplay_tail_is_stated_as_the_official_client_states_it()
+    {
+        const string Station = "spotify:station:album:7eZqfrilfQeDlMI4YmqZ9y";
+        var first = Row(10, QueueProvider.Autoplay).WithDecision("ssp~065cbb43");
+        var second = Row(11, QueueProvider.Autoplay).WithDecision("ssp~065cbb43");
+        var window = new Playback.WireWindow(default, [], [Row(9), first, second], 0, autoplayStation: Station);
+        var next = Player(Snap(window: window)).NextTracks;
+
+        Assert.Equal(5, next.Count);                                            // context row, two autoplay rows, page marker, delimiter
+        Assert.Equal("1", next[0].Metadata["view_index"]);
+        Assert.Equal("0", next[1].Metadata["view_index"]);                      // the tail numbers itself from 0
+        Assert.Equal("1", next[2].Metadata["view_index"]);
+        Assert.Equal("0", next[1].Metadata["iteration"]);
+        Assert.Equal(Station, next[1].Metadata["context_uri"]);
+        Assert.Equal(Station, next[1].Metadata["entity_uri"]);
+        Assert.Equal("ssp~065cbb43", next[1].Metadata["decision_id"]);
+        Assert.Equal(Playlist.Text, next[0].Metadata["context_uri"]);           // a context row keeps its own context
+        Assert.Equal("spotify:meta:page:1", next[3].Uri);
+        Assert.Equal("spotify:delimiter", next[4].Uri);
+    }
+
+    [Fact]
+    public void A_carried_origin_publishes_the_previous_owners_description_and_our_own_keys_win()
+    {
+        var origin = new Playback.WireOrigin("album", "9.1.86.2428", "spotify:album:7eZq", "", "find", "", "",
+            [new("context_description", "I loved you too much"), new("format_list_type", "album"), new("player.arch", "9")]);
+        var ps = Player(Snap(window: Window(), origin: origin));
+
+        Assert.Equal("album", ps.PlayOrigin.FeatureIdentifier);
+        Assert.Equal("find", ps.PlayOrigin.ReferrerIdentifier);
+        Assert.Equal("spotify:album:7eZq", ps.PlayOrigin.ViewUri);
+        Assert.Equal("I loved you too much", ps.ContextMetadata["context_description"]);
+        Assert.Equal("album", ps.ContextMetadata["format_list_type"]);
+        Assert.Equal("2", ps.ContextMetadata["player.arch"]);                   // one entry, ours
+    }
+
+    [Fact]
+    public void A_takeover_copies_the_previous_owners_metadata_a_local_play_copies_nothing()
+    {
+        KeyValuePair<string, string>[] previous = [new("context_description", "Radio"), new("player.arch", "9"), new("albumType", "SINGLE")];
+
+        var taken = Queue.OwnedContextMetadata(previous, takeover: true);
+        Assert.Equal(2, taken.Length);
+        Assert.Contains(new KeyValuePair<string, string>("context_description", "Radio"), taken);
+        Assert.DoesNotContain(taken, entry => entry.Key == "player.arch");
+        Assert.Empty(Queue.OwnedContextMetadata(previous, takeover: false));
+        Assert.Empty(Queue.OwnedContextMetadata([], takeover: true));
+    }
+
+    [Fact]
+    public void The_autoplay_book_holds_a_station_for_its_context_and_a_decision_per_row()
+    {
+        var book = new Playback.AutoplayBook();
+        book.SetStation(Playlist, "spotify:station:playlist:x");
+        book.Note(7, "ssp~1");
+
+        Assert.Equal("spotify:station:playlist:x", book.StationFor(Playlist));
+        Assert.Equal("", book.StationFor(AlbumContext));
+        Assert.Equal("ssp~1", book.DecisionOf(7));
+        Assert.Null(book.DecisionOf(8));
+        book.Retain([new QueueEdge(8, (byte)QueueProvider.Autoplay, (byte)QueueBucket.NextUp)]);
+        Assert.Null(book.DecisionOf(7));
+        Assert.Equal("spotify:station:album:y", Playback.AutoplayBook.StationOf("spotify:station:album:y"));
+        Assert.Equal("", Playback.AutoplayBook.StationOf("spotify:playlist:y"));
     }
 
     [Fact]

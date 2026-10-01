@@ -20,10 +20,11 @@
 //     { command: { endpoint: "play",                                               RemoteLoad
 //         context: { uri, url, pages: [ { tracks: [ … ] } ] },                  ─▶  ContextUri, ContextUrl, Tracks
 //         options | prepare_play_options: { skip_to: { track_uri, track_uid, track_index },   SkipTo*
-//                    seek_to, initially_paused, player_options_override: {…} },               SeekToMs, Paused, Shuffle/Repeat
+//                    seek_to, initially_paused, player_options_override: {…},                SeekToMs, Paused, Shuffle/Repeat
+//                    session_id },                                                            SessionId (the session to adopt)
 //         play_origin: { feature_identifier, view_uri } } }                                  FeatureIdentifier, ViewUri
 //     { command: { endpoint: "transfer", data: "<base64 TransferState>",
-//         options: { restore_paused, restore_position, restore_track, retain_session } } }
+//         options: { restore_paused, restore_position, restore_track, retain_session } } }   (a transfer always mints a session)
 //
 // Two 0.2.9 gaps are closed on purpose: `skip_to` was read under either options object but `player_options_override`
 // only under `options`, so a desktop-shaped `prepare_play_options.player_options_override` was silently dropped — both
@@ -63,6 +64,9 @@ public static partial class Spotify
             public sbyte Shuffle;
             /// <summary>-1 unstated, else a <see cref="RepeatMode"/> (track wins over context).</summary>
             public sbyte Repeat;
+            /// <summary>The player session the controller offered (<c>options.session_id</c>, base62); zero when it named none
+            /// or the text is not a 128-bit base62 id. The owner adopts it and publishes it as its own.</summary>
+            public UInt128 SessionId;
             public TextRef FeatureIdentifier, ViewUri, FeatureVersion, ReferrerIdentifier, DeviceIdentifier, ExternalReferrer, CommandId, ContextMetadata, ResolvedMetadata;
             /// <summary>The rows the body carried: a play's embedded pages (play them as sent, no resolve), or a transfer's
             /// queue.</summary>
@@ -85,8 +89,6 @@ public static partial class Spotify
             public bool Extrapolate;
             /// <summary><c>restore_track: "always_play_something"</c> — fall back to the context head when no track is named.</summary>
             public bool AlwaysPlaySomething;
-            /// <summary><c>retain_session: "do_not_retain"</c> — mint a new session id.</summary>
-            public bool NewSession;
         }
 
         /// <summary>The dealer REQUEST body of a <c>play</c> / <c>transfer</c> → a <see cref="RemoteLoad"/> over
@@ -213,7 +215,12 @@ public static partial class Spotify
                 else if (r.ValueTextEquals("restore_paused"u8)) { r.Read(); load.ForcePlay = Says(ref r, "kill"); }
                 else if (r.ValueTextEquals("restore_position"u8)) { r.Read(); load.Extrapolate = Says(ref r, "extrapolate"); }
                 else if (r.ValueTextEquals("restore_track"u8)) { r.Read(); load.AlwaysPlaySomething = Says(ref r, "always_play_something"); }
-                else if (r.ValueTextEquals("retain_session"u8)) { r.Read(); load.NewSession = Says(ref r, "do_not_retain"); }
+                else if (r.ValueTextEquals("session_id"u8))
+                {
+                    r.Read();
+                    if (r.TokenType == JsonTokenType.String && !r.HasValueSequence && !r.ValueIsEscaped
+                        && Base62.TryDecode(r.ValueSpan, out UInt128 session)) load.SessionId = session;
+                }
                 else SkipValue(ref r);
             }
         }
@@ -363,6 +370,8 @@ public static partial class Spotify
             else if (Is(key, "image_large_url")) large = into.AddText(value);
             else if (Is(key, "image_url")) plain = into.AddText(value);
             else if (Is(key, "duration")) duration = Math.Max(0, Number(value));
+            else if (Is(key, "decision_id")) row.DecisionId = into.AddText(value);
+            else if (Is(key, "queued_by")) row.QueuedBy = into.AddText(value);
         }
 
         // ── context-resolve / autoplay ───────────────────────────────────────────────────────────────────────────────
@@ -452,6 +461,8 @@ public static partial class Spotify
                             else if (r.ValueTextEquals("image_large_url"u8)) { r.Read(); large = Text(ref r, into); }
                             else if (r.ValueTextEquals("image_url"u8)) { r.Read(); plain = Text(ref r, into); }
                             else if (r.ValueTextEquals("duration"u8)) { r.Read(); duration = Math.Max(0, Num(ref r)); }
+                            else if (r.ValueTextEquals("decision_id"u8)) { r.Read(); row.DecisionId = Text(ref r, into); }
+                            else if (r.ValueTextEquals("queued_by"u8)) { r.Read(); row.QueuedBy = Text(ref r, into); }
                             else SkipValue(ref r);
                         }
                     }

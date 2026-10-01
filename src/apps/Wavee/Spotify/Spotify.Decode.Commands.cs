@@ -84,7 +84,7 @@ public static partial class Spotify
             {
                 Kind = RemoteCmd.SetPlaybackSpeed,
                 SeekToMs = BitConverter.SingleToInt32Bits(speed),
-                DedupeKey = Fnv(Fnv(command.SenderHash, (ulong)(uint)command.MessageId), (ulong)RemoteCmd.SetPlaybackSpeed),
+                DedupeKey = Fnv(Fnv(command.SenderHash, command.MessageId), (ulong)RemoteCmd.SetPlaybackSpeed),
             };
             return n;
         }
@@ -104,7 +104,7 @@ public static partial class Spotify
             {
                 Kind = kind,
                 BoolArg = on,
-                DedupeKey = Fnv(Fnv(command.SenderHash, (ulong)(uint)command.MessageId), (ulong)kind),
+                DedupeKey = Fnv(Fnv(command.SenderHash, command.MessageId), (ulong)kind),
             };
 
         // ── set_queue / update_context ───────────────────────────────────────────────────────────────────────────────

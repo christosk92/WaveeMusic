@@ -93,16 +93,7 @@ public static partial class Playback
         // load anyway once it saw the foreign owner, and the listener saw nothing happen — 2026-09-16). The same desktop
         // `play` envelope a row click forwards from the reducer (DoPlay → ForwardPlay), sent straight from the host
         // because there is no row to post yet.
-        if (s_state.Owner == Owner.Foreign && s_state.Own.Device != 0)
-        {
-            string target = Devices.IdOf(s_state.Own.Device);
-            if (target.Length == 0) { Log.Warn("playback", "play dropped: the owner is not in the roster"); return; }
-            string contextUri = context.Text, trackUri = startAt.IsEmpty ? "" : startAt.Text;
-            bool shuffle = s_state.Shuffle;
-            Log.Info("playback", "play forwarded to the owner: context=" + contextUri + " track=" + trackUri);
-            Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, fromMs));
-            return;
-        }
+        if (ForwardPlayToOwner(context, startAt, fromMs)) return;
         if (context.IsPlayable)
         {
             EntityRef row = Entities.Ref(context);
@@ -124,6 +115,21 @@ public static partial class Playback
         load.ContextUri = buffer.AddText(text[..context.Format(text)]);
         if (!startAt.IsEmpty) load.SkipToUri = buffer.AddText(text[..startAt.Format(text)]);
         ResolveContext(++s_contextSeq, context.Text, load, buffer, ClaimCause.UserPlay);
+    }
+
+    /// <summary>While another device owns playback (<see cref="Queue.LocalQueueWritable"/>), hand a play to IT — the
+    /// desktop <c>play</c> envelope a row click forwards from the reducer (DoPlay → ForwardPlay) — and touch no local row.
+    /// True when the play was the owner's (sent, or refused because it is not in the roster); false when it is ours to run.</summary>
+    static bool ForwardPlayToOwner(EntityId context, EntityId startAt, int fromMs)
+    {
+        if (Queue.LocalQueueWritable(s_state.Owner) || s_state.Own.Device == 0) return false;
+        string target = Devices.IdOf(s_state.Own.Device);
+        if (target.Length == 0) { Log.Warn("playback", "play dropped: the owner is not in the roster"); return true; }
+        string contextUri = ForwardPlayEnvelope.For(context, startAt).Text, trackUri = startAt.IsEmpty ? "" : startAt.Text;
+        bool shuffle = s_state.Shuffle;
+        Log.Info("playback", "play forwarded to the owner: context=" + contextUri + " track=" + trackUri);
+        Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, fromMs));
+        return true;
     }
 
     /// <summary>Play a context named by its uri TEXT — a station (<c>spotify:station:track:…</c>), a radio, any context
@@ -323,6 +329,9 @@ public static partial class Playback
     public static void PlayRows(ReadOnlySpan<EntityRef> rows, int start, EntityId context, int fromMs = -1)
     {
         if (Entities.Current is null || (uint)start >= (uint)rows.Length || rows[start].IsNone) return;
+        // Another device owns playback: the click is a command to IT, sent BEFORE any local layout, Replace or publish —
+        // local rows laid out now would sit under the owner's untouched header. The panel follows its next cluster.
+        if (ForwardPlayToOwner(context.IsEmpty ? rows[start].Id : context, rows[start].Id, fromMs)) return;
         Rebind();                                          // the queue this play keeps from must be this scope's (G-241)
         int existing = Math.Max(1, Queue.Count);
         int[] targets = ArrayPool<int>.Shared.Rent(rows.Length);
@@ -561,6 +570,7 @@ public static partial class Playback
             long from = RemotePlan.StartPositionMs(in load, UnixNowMs());
             Apply(Input.ShuffleOrdered(shuffle));
             if (load.Repeat >= 0) Apply(Input.Repeat((RepeatMode)load.Repeat));
+            s_wireOffered = load.SessionId;               // a controller's play names the session the owner publishes (WireStarted)
             Apply(Input.PlayFrom(row, row.Id, contextId, Queue.CursorOf(at), PlayableKind.Audio,
                 (int)Math.Min(from, int.MaxValue), now, cause, RemotePlan.StartsPaused(in load), explicitPosition: load.SeekToMs >= 0));
             s_pageContext = contextId;
@@ -617,7 +627,10 @@ public static partial class Playback
         if (row.IsNone) return;
         QueueProvider provider = bucket == QueueBucket.UserQueue ? QueueProvider.Queue : RemotePlan.ProviderOf(buffer.Utf8(track.Provider));
         refs[n] = row;
-        rows[n] = new QueueEdge(s_uids.ItemIdOf(buffer.Utf8(track.Uid)), (byte)provider, (byte)bucket);
+        ulong itemId = s_uids.ItemIdOf(buffer.Utf8(track.Uid));
+        if (provider == QueueProvider.Queue && itemId != 0)      // an owner's queued row keeps its own queued_by (possibly none)
+            s_uids.NoteQueuedBy(itemId, System.Text.Encoding.UTF8.GetString(buffer.Utf8(track.QueuedBy)));
+        rows[n] = new QueueEdge(itemId, (byte)provider, (byte)bucket);
         n++;
     }
 
@@ -1195,9 +1208,12 @@ public static partial class Playback
         if (id.Provider != EntityProvider.Spotify || !id.IsPlayable) return;
         string uri = id.Text;
         Audio.Opened opened = Audio.PlayingOpened;
+        byte[] mediaGid = new byte[16];   // RawCoreStream.media_id: the track's own gid, the one thing the royalty row names it by
         s_registration = Spotify.Telemetry.Started(NewPlaybackIds(), uri, r.Context.IsEmpty ? "" : r.Context.Text,
-            ProviderText(), ReasonText(r.StartReason), null, null, opened.BitrateKbps, opened.Label,
-            r.DurationMs > 0 ? r.DurationMs : opened.DurationMs, r.StartPosMs);
+            ProviderText(), ReasonText(r.StartReason), id.WriteGid(mediaGid) == mediaGid.Length ? mediaGid : null,
+            opened.BitrateKbps, opened.Label,
+            r.DurationMs > 0 ? r.DurationMs : opened.DurationMs, r.StartPosMs,
+            PlayerSession.TelemetryText(s_wireIds.SessionId, s_state.Kind == PlayableKind.Video));   // WireStarted already ran for this row
         s_registeredId = id;
         if (s_state.ContentRate != 1f) Spotify.Telemetry.RateChanged(ref s_registration, r.StartPosMs, s_state.ContentRate);
         if (id.Kind == EntityKind.Episode)

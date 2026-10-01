@@ -67,7 +67,14 @@ public static partial class Playback
         public readonly ulong ItemId;
         public readonly QueueProvider Provider;
         public readonly EntityId AlbumId, ArtistId;
-        readonly string? _uidText, _title, _artistName, _albumTitle, _image;
+        readonly string? _uidText, _title, _artistName, _albumTitle, _image, _decisionId, _queuedBy;
+
+        /// <summary>An autoplay row's <c>decision_id</c> as the answer stated it; "" for every other row.</summary>
+        public string DecisionId => _decisionId ?? "";
+
+        /// <summary>A queued row's <c>queued_by</c> and <c>manually_queued</c> (<see cref="QueueAttribution"/>): what the queue's
+        /// owner stated, else the signed-in user for a row this device queued; "" when neither names anyone.</summary>
+        public string QueuedBy => _queuedBy ?? "";
 
         /// <summary>A uid kept as TEXT (20 hex, <c>q2</c> — <see cref="UidBook"/>); "" when <see cref="ItemId"/> formats itself.</summary>
         public string UidText => _uidText ?? "";
@@ -79,12 +86,20 @@ public static partial class Playback
 
         public WireRow(EntityId id, ulong itemId, string? uidText, QueueProvider provider, string? title = null,
             string? artistName = null, string? albumTitle = null, string? image = null, EntityId albumId = default,
-            EntityId artistId = default)
+            EntityId artistId = default, string? decisionId = null, string? queuedBy = null)
         {
             Id = id; ItemId = itemId; _uidText = uidText; Provider = provider;
             _title = title; _artistName = artistName; _albumTitle = albumTitle; _image = image;
-            AlbumId = albumId; ArtistId = artistId;
+            AlbumId = albumId; ArtistId = artistId; _decisionId = decisionId; _queuedBy = queuedBy;
         }
+
+        /// <summary>This row again with the autoplay answer's <paramref name="decisionId"/>.</summary>
+        public WireRow WithDecision(string? decisionId)
+            => new(Id, ItemId, _uidText, Provider, _title, _artistName, _albumTitle, _image, AlbumId, ArtistId, decisionId, _queuedBy);
+
+        /// <summary>This row again with its <paramref name="queuedBy"/>.</summary>
+        public WireRow WithQueuedBy(string? queuedBy)
+            => new(Id, ItemId, _uidText, Provider, _title, _artistName, _albumTitle, _image, AlbumId, ArtistId, _decisionId, queuedBy);
     }
 
     /// <summary>The queue around the deck as the PUT carries it: up to <see cref="MaxPrev"/> already-played rows (the
@@ -102,19 +117,62 @@ public static partial class Playback
         public readonly WireRow Current;
         /// <summary>The deck row's position among the CONTEXT's rows (<c>index.track</c>): the context-provided rows before it.</summary>
         public readonly int ContextIndex;
+        /// <summary>The autoplay answer's station uri (<c>spotify:station:…</c>), the <c>context_uri</c> / <c>entity_uri</c> its
+        /// rows carry; "" when none is held.</summary>
+        public readonly string AutoplayStation;
 
         public ReadOnlySpan<WireRow> Prev => _prev;
         public ReadOnlySpan<WireRow> Next => _next;
 
         /// <summary>Copies the NEWEST <see cref="MaxPrev"/> of <paramref name="prev"/> and the FIRST <see cref="MaxNext"/>
         /// of <paramref name="next"/>, in reading order.</summary>
-        public WireWindow(in WireRow current, ReadOnlySpan<WireRow> prev, ReadOnlySpan<WireRow> next, int contextIndex)
+        public WireWindow(in WireRow current, ReadOnlySpan<WireRow> prev, ReadOnlySpan<WireRow> next, int contextIndex,
+            string? autoplayStation = null)
         {
+            AutoplayStation = autoplayStation ?? "";
             Current = current;
             _prev = (prev.Length > MaxPrev ? prev[(prev.Length - MaxPrev)..] : prev).ToArray();
             _next = (next.Length > MaxNext ? next[..MaxNext] : next).ToArray();
             ContextIndex = contextIndex;
         }
+    }
+
+    /// <summary>What an autoplay answer said about its rows, kept so the tail is published as the official client publishes
+    /// it: the answer's station uri (the rows' <c>context_uri</c> / <c>entity_uri</c>, valid for the context it was asked
+    /// for) and each row's <c>decision_id</c> by queue item id. UI thread only; <see cref="Retain"/> after each append keeps
+    /// it to the live rows.</summary>
+    public sealed class AutoplayBook
+    {
+        readonly Dictionary<ulong, string> _decisions = new();
+        string _station = "";
+        EntityId _stationContext;
+
+        /// <summary>The station uri held for <paramref name="context"/>; "" for any other context.</summary>
+        public string StationFor(EntityId context) => _station.Length > 0 && context.Equals(_stationContext) ? _station : "";
+
+        public void SetStation(EntityId context, string station) { _stationContext = context; _station = station; }
+
+        public void Note(ulong itemId, string decisionId) { if (itemId != 0 && decisionId.Length > 0) _decisions[itemId] = decisionId; }
+
+        public string? DecisionOf(ulong itemId) => itemId != 0 && _decisions.TryGetValue(itemId, out string? id) ? id : null;
+
+        public void Retain(ReadOnlySpan<QueueEdge> live)
+        {
+            if (_decisions.Count == 0) return;
+            foreach (KeyValuePair<ulong, string> entry in _decisions)
+            {
+                bool present = false;
+                for (int i = 0; i < live.Length && !present; i++) present = live[i].ItemId == entry.Key;
+                if (!present) _decisions.Remove(entry.Key);
+            }
+        }
+
+        public void Clear() { _decisions.Clear(); _station = ""; _stationContext = default; }
+
+        /// <summary>The station an autoplay answer named, or "" when its uri is not a station (a fallback resolve of a bare
+        /// seed answers the station itself). PURE.</summary>
+        public static string StationOf(string? answerUri)
+            => answerUri is not null && answerUri.StartsWith("spotify:station:", StringComparison.Ordinal) ? answerUri : "";
     }
 
     /// <summary>The PUT's parity half beside the deck: what 0.2.9 sent and 0.3's first encoder did not (G-240). A value;

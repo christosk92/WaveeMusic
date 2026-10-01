@@ -753,6 +753,26 @@ public class PutStateEncodeTests
     }
 
     [Fact]
+    public void A_picker_opened_put_is_device_info_only_with_reason_6_while_another_device_owns_playback()
+    {
+        // Official client, picker open (capture 2026-10-01): is_active false, put_state_reason 6, no player half.
+        var state = Playing();
+        ulong phone = Playback.DeviceHash("phone");
+        Playback.Ownership.PutSent(ref state.Own, 1, isActive: true);
+        Playback.Ownership.Fold(ref state.Own,
+            new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.PutResponse, 1, phone, 9_000), state.Us);
+
+        var identity = Identity();
+        var snapshot = Playback.Snapshot.Of(in state, in identity, Playback.PublishReason.PickerOpened, 1, 5_000, 0);
+        Pb.PutStateRequest request = Encode(in snapshot);
+
+        Assert.False(request.IsActive);
+        Assert.Equal(Pb.PutStateReason.PickerOpened, request.PutStateReason);
+        Assert.Equal(6, (int)request.PutStateReason);
+        Assert.Null(request.Device.PlayerState.Track);
+    }
+
+    [Fact]
     public void The_put_state_reason_is_the_protos_own_ordinal_and_not_the_glues()
     {
         // The BODY carries the PROTO's ordinal, read off connect.proto: BECAME_INACTIVE is 7, and 6 is PICKER_OPENED.

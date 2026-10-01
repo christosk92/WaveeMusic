@@ -121,6 +121,9 @@ public static partial class Playback
     public static readonly Signal<EntityId> CurrentId = new(default);
     /// <summary>The context it is playing from — the art tile's "Playing from…" route.</summary>
     public static readonly Signal<EntityId> ContextUri = new(default);
+    /// <summary>What the foreign owner's cluster called <see cref="ContextUri"/> (a <c>spotify:list:</c> context's only
+    /// name) and the artist page it came from — <c>default</c> when nobody said.</summary>
+    public static readonly Signal<Queue.ContextWire> ContextLabel = new(default);
     public static readonly Signal<Phase> PhaseSignal = new(Phase.Idle);
     /// <summary>The play/pause glyph. Derived once here rather than re-derived at each of its six readers.</summary>
     public static readonly Signal<bool> IsPlaying = new(false);
@@ -337,6 +340,23 @@ public static partial class Playback
     public static PublishReason HelloReason(int announcedBefore)
         => announcedBefore <= 0 ? PublishReason.NewDevice : PublishReason.NewConnection;
 
+    static long s_pickerAtMs;
+
+    /// <summary>A device picker just opened: tell the cluster, as the official client does — a put-state with reason
+    /// PICKER_OPENED (device info; our player half only while we own playback) and, with it, an empty POST to
+    /// <c>cluster/wake-devices</c> so the other devices re-announce themselves before the list is read. Rate-limited
+    /// (<see cref="Spotify.Connect.PickerGapMs"/>) and silent without a connection (a held picker announce would be a stale
+    /// hello). UI THREAD: the snapshot reads the reducer's state (C1).</summary>
+    public static void PickerOpened()
+    {
+        long now = FrameNowMs();
+        if (Spotify.Current.ConnectionId.IsEmpty || !Spotify.Connect.PickerDue(now, s_pickerAtMs)) return;
+        s_pickerAtMs = now;
+        Snapshot snapshot = SnapshotForConnect(PublishReason.PickerOpened);
+        Spotify.Connect.PublishNow(in snapshot, Spotify.Connect.PutReason.PickerOpened);
+        Spotify.Api.Run(() => Spotify.Connect.WakeDevices(CancellationToken.None));
+    }
+
     static int s_hellos;
     static readonly Action s_hello = static () =>
     {
@@ -436,7 +456,7 @@ public static partial class Playback
         uint loadBefore = s_state.LoadEpoch;
         Step(ref s_state, in i, ref s_fx);
         if (s_state.LoadEpoch != loadBefore && (s_fx.Load || s_fx.Adopt))
-            WireStarted(s_state.Context, s_state.StartReason);
+            WireStarted(PlayerSession.CauseOf(i.Kind == InputKind.Play, (ClaimCause)(byte)(i.LongArg & 0xFF), s_fx.TakeoverSeed));
         if (i.Kind == InputKind.SetSpeed || (i.Kind == InputKind.RemoteCommand && i.Command.Kind == RemoteCmd.SetPlaybackSpeed))
         {
             EpisodeSpeed.SetIfChanged(s_state.EpisodeRate);
@@ -496,7 +516,7 @@ public static partial class Playback
                     FoldCluster(in item, now);
                     break;
                 case Spotify.Connect.ItemKind.RemoteCommand:
-                    StepOne(Input.Controller(in item.Command, now));
+                    StepOne(Input.Controller(in item.Command, now, SkipTargetOf(in item.Command)));
                     break;
                 case Spotify.Connect.ItemKind.Volume:
                     // THIS device's volume, set by a controller: applied and announced, never forwarded (G-073).
@@ -505,6 +525,20 @@ public static partial class Playback
             }
         }
         finally { Spotify.Connect.Release(in item); }
+    }
+
+    /// <summary>The queue row an inbound skip_next that NAMES a track means (<see cref="Queue.SkipTarget"/>: uid first, then
+    /// uri), or −1 — a plain skip, or a name we hold nowhere ahead of the cursor, which the reducer steps one row on. The
+    /// capture of 2026-10-01 showed the official client naming rows 2 and 4-5 ahead; stepping one row played the wrong song.
+    /// UI thread: the uid book is ours alone.</summary>
+    static int SkipTargetOf(in Spotify.Decode.RemoteCommand c)
+    {
+        if (c.Kind != RemoteCmd.SkipNext || (c.Track.IsEmpty && c.TrackUidHash == 0)) return -1;
+        ulong itemId = c.TrackUidItemId != 0 ? c.TrackUidItemId : s_uids.FindByHash(c.TrackUidHash);
+        int at = Queue.SkipTarget(Queue.Rows, default(LiveRowIds), s_state.Cursor.Index, itemId, c.Track);
+        Log.Info("playback", at >= 0 ? "skip_next names a row: jumping to queue index " + at
+            : "skip_next names a track not ahead of the cursor: advancing one row");
+        return at;
     }
 
     /// <summary>One cluster → the two PURE values the core folds: the ownership <see cref="ClusterFrame"/> and the
@@ -520,7 +554,7 @@ public static partial class Playback
         Devices.Update(buffer, in d, active);
 
         var frame = new ClusterFrame(d.Origin, d.PutMsgId, active, d.ServerTimestampMs, d.UpdateReason,
-            d.ActiveStartedPlayingAt);
+            d.ActiveStartedPlayingAt, d.AckId);
         var remote = new RemoteState(
             d.HasTrack,
             d.HasTrack ? Identify(buffer.Utf8(d.Track.Uri)) : default,
@@ -533,8 +567,33 @@ public static partial class Playback
         StepOne(Input.Cluster(in frame, in remote, now));
         s_state.ActiveDeviceSlot = Devices.SlotOf(s_state.ActiveDevice);
         // The owner's own queue, kept for a forwarded set_queue to echo back (G-248). A cluster the fold dropped is not it.
-        if (s_state.Own.Kind == Owner.Foreign && active == s_state.Own.Device) s_foreign.Take(buffer, in d);
-        else if (s_state.Own.Kind != Owner.Foreign) s_foreign.Clear();
+        if (s_state.Own.Kind == Owner.Foreign && active == s_state.Own.Device)
+        {
+            s_foreign.Take(buffer, in d);
+            s_contextWire = WireOf(buffer, in d, remote.Context);
+            CaptureForeignOrigin(buffer, in d, remote.Context);   // what a takeover publishes on as the owner
+        }
+        else if (s_state.Own.Kind != Owner.Foreign)
+        {
+            s_foreign.Clear();
+            if (s_state.Own.Kind == Owner.Us) s_contextWire = default;   // Nobody keeps the departed owner's snapshot, label included
+        }
+    }
+
+    /// <summary>What the last foreign cluster said about its context, published as <see cref="ContextLabel"/>.</summary>
+    static Queue.ContextWire s_contextWire;
+    static ulong s_contextWireHash;
+
+    /// <summary>The owner's label for its context. The description string is made only when the cluster's bytes moved,
+    /// so a heartbeat allocates nothing. The referrer is parsed pure (gid form only — <c>TryParseGid</c> never interns).</summary>
+    static Queue.ContextWire WireOf(Spotify.Decode.ClusterBuffer buffer, in Spotify.Decode.ClusterDelta d, EntityId context)
+    {
+        ReadOnlySpan<byte> description = buffer.Utf8(d.ContextDescription), referrer = buffer.Utf8(d.ReferrerIdentifier);
+        ulong hash = DeviceHash(description) * 31UL + DeviceHash(referrer);
+        if (hash == s_contextWireHash && context.Equals(s_contextWire.Context)) return s_contextWire;
+        s_contextWireHash = hash;
+        EntityId.TryParseGid(referrer, out EntityId from);
+        return new Queue.ContextWire(context, description.IsEmpty ? "" : System.Text.Encoding.UTF8.GetString(description), from);
     }
 
     /// <summary>A wire uri → a packed identity. UI thread, so the text form may intern (C1).</summary>
@@ -587,7 +646,11 @@ public static partial class Playback
         // adoption only means something when no load replaced the voice it names.
         // A takeover re-seeds the queue and the cursor from the owner's last cluster BEFORE the load it rides with: the
         // seed bumps the queue version, and the watch re-arms the next row inside this drain (A4).
-        if (s_fx.TakeoverSeed) SeedQueueFromCluster(takeover: true);
+        if (s_fx.TakeoverSeed)
+        {
+            SeedQueueFromCluster(takeover: true);
+            s_uids.ReseedCounter(Queue.Rows);         // a fresh activation restarts the q<n> mint at q0, above every uid still booked
+        }
         if (s_fx.Stop) StopHost();
         if (s_fx.Load) LoadHost(s_fx.LoadRow, s_fx.LoadId, s_fx.LoadKind, s_fx.LoadEpoch, s_fx.LoadFromMs, s_fx.LoadPaused);
         else if (s_fx.Adopt) PumpAdopt(s_fx.AdoptFrom, s_fx.AdoptTo);
@@ -867,13 +930,28 @@ public static partial class Playback
             ForwardQueue(target, s_fx.RemoteCmd, s_fx.RemoteArg, s_fx.RemoteFlag);   // G-248, Playback.Host.Wire.cs
             return;
         }
+        if (s_fx.RemoteCmd is RemoteCmd.NextTrack or RemoteCmd.SkipNext)
+        {
+            // A row of the owner's queue: its uri, and the uid the owner minted — spelled from the row's item id (UI thread:
+            // the uid book and the interner are ours alone). The plain skip button names no row; the official client spells
+            // it `next_track` too (7 of 7 captured), so both are the one envelope.
+            bool named = s_fx.RemoteCmd == RemoteCmd.NextTrack;
+            string trackUri = named ? s_fx.RemoteTrack.Text : "";
+            Span<char> uidChars = stackalloc char[UidBook.MaxChars];
+            string trackUid = named ? new(uidChars[..s_uids.Format((ulong)s_fx.RemoteArg, uidChars)]) : "";
+            Log.Info("playback", "next_track forwarded to the owner: track=" + (named ? trackUri : "(plain skip)") + " uid=" + trackUid);
+            Spotify.Api.Run(() => Spotify.Connect.NextTrack(target, trackUri, trackUid, CancellationToken.None));
+            return;
+        }
         if (s_fx.RemoteCmd == RemoteCmd.PlayContext)
         {
             // The texts are formatted HERE (UI thread; an EntityId's text is the interner's) and captured as strings.
             string contextUri = s_fx.RemoteContext.Text, trackUri = s_fx.RemoteTrack.Text;
             bool shuffle = s_fx.RemoteFlag;
+            Span<char> uidChars = stackalloc char[UidBook.MaxChars];
+            string? skipUid = Spotify.Connect.SkipUidOf(new(uidChars[..s_uids.Format((ulong)s_fx.RemoteArg, uidChars)]));
             Log.Info("playback", "play forwarded to the owner: context=" + contextUri + " track=" + trackUri);
-            Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None));
+            Spotify.Api.Run(() => Spotify.Connect.PlayContext(target, contextUri, trackUri, shuffle, CancellationToken.None, skipUid: skipUid));
             return;
         }
         string endpoint = Endpoint(s_fx.RemoteCmd);
@@ -897,8 +975,7 @@ public static partial class Playback
         RemoteCmd.Pause => "pause",
         RemoteCmd.Resume => "resume",
         RemoteCmd.SeekTo => "seek_to",
-        RemoteCmd.SkipNext => "skip_next",
-        RemoteCmd.SkipPrev => "skip_prev",
+        RemoteCmd.SkipPrev => "skip_prev",          // no capture: the official client's previous button was never sent
         RemoteCmd.SetShufflingContext => "set_shuffling_context",
         RemoteCmd.SetRepeatingContext => "set_repeating_context",
         RemoteCmd.SetRepeatingTrack => "set_repeating_track",
@@ -917,13 +994,12 @@ public static partial class Playback
             Post(Input.TransferDone(s_fx.TransferEpoch, ok: false));
             return;
         }
-        string from = Devices.IdOf(s_state.ActiveDevice);
-        if (from.Length == 0) from = Platform.DeviceId;
         uint epoch = s_fx.TransferEpoch;
         Pending.Transfer.Value = true;
         Spotify.Api.Run(() =>
         {
-            bool ok = Spotify.Connect.Transfer(from, target, CancellationToken.None);
+            bool ok = Spotify.Connect.Transfer(target, CancellationToken.None, out string? ackId);
+            Log.Info("playback", "transfer " + (ok ? "accepted ack=" + (ackId ?? "(none)") : "refused"));
             Post(Input.TransferDone(epoch, ok));
         });
     }
@@ -939,6 +1015,7 @@ public static partial class Playback
         Current.Value = s_state.Current;
         CurrentId.Value = s_state.CurrentId;
         ContextUri.Value = s_state.Context;
+        ContextLabel.Value = s_contextWire;
         PhaseSignal.Value = s_state.Phase;
         IsPlaying.Value = s_state.IsPlaying;
         Buffering.Value = s_state.Buffering;

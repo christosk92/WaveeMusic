@@ -12,7 +12,7 @@ public static partial class Spotify
 {
     public static partial class Telemetry
     {
-        readonly record struct GaboWork(Ev.EventEnvelope? Event, string Account = "", TaskCompletionSource? Completion = null);
+        readonly record struct GaboWork(Ev.EventEnvelope? Event, string Account = "", TaskCompletionSource? Completion = null, bool Tick = false);
         static readonly Lock GaboJournalGate = new();
         static readonly Dictionary<string, List<Ev.EventEnvelope>> GaboJournals = new(StringComparer.Ordinal);
         static string s_pendingAccount = "";
@@ -100,6 +100,27 @@ public static partial class Spotify
             return retry.ToArray();
         }
 
+        static readonly HashSet<string> s_rejectedLogged = new(StringComparer.Ordinal);   // gabo worker thread only
+
+        /// <summary>The names of events the service refused for good, each NEW to <paramref name="seen"/> (which it
+        /// fills): the first rejection of a name is worth a line, the thousandth is noise. Indices outside
+        /// <paramref name="sent"/> are skipped — <see cref="RetryGaboIndices"/> is the one that throws on them. PURE.</summary>
+        public static List<(string Name, int Reason)> NewRejections(
+            Ev.PublishEventsResponse response, IReadOnlyList<Ev.EventEnvelope> sent, HashSet<string> seen)
+        {
+            var fresh = new List<(string, int)>();
+            foreach (var error in response.Error)
+                if (!error.Transient && (uint)error.Index < (uint)sent.Count && seen.Add(sent[error.Index].EventName))
+                    fresh.Add((sent[error.Index].EventName, error.Reason));
+            return fresh;
+        }
+
+        static void LogRejectedEvents(Ev.PublishEventsResponse response, IReadOnlyList<Ev.EventEnvelope> sent, HashSet<string> seen)
+        {
+            foreach (var (name, reason) in NewRejections(response, sent, seen))
+                Log.Warn("spotify", "gabo rejected event name=" + name + " reason=" + reason + " (logged once per name)");
+        }
+
         static bool SameEvent(Ev.EventEnvelope left, Ev.EventEnvelope right)
             => left.EventName == right.EventName && left.SequenceNumber == right.SequenceNumber && left.SequenceId.Equals(right.SequenceId);
 
@@ -179,9 +200,9 @@ public static partial class Spotify
         public static void AudioRoute(string endpointId, string endpointName, string routeType)
         {
             if (s_endpointId == endpointId && s_endpointName == endpointName && s_routeType == routeType) return;
+            // Only the route AudioRouteSegmentEnd names. The service rejected every WasapiAudioDriverInfo (reason 3,
+            // 2026-10-01 capture) and the official client never sends one, so the driver event is gone.
             s_endpointId = endpointId; s_endpointName = endpointName; s_routeType = routeType;
-            Enqueue("WasapiAudioDriverInfo", new Evt.WasapiAudioDriverInfo
-            { DriverName = "WASAPI", OutputDeviceName = endpointName }.ToByteArray());
         }
 
         public static void RateChanged(ref Registration r, long positionMs, double rate)

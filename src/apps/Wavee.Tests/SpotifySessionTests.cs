@@ -1110,6 +1110,10 @@ public class RequestFoldTests
         Assert.True(put.Headers.HasFlag(Spotify.HeaderSet.ConnectionId));
         Assert.True(put.Headers.HasFlag(Spotify.HeaderSet.GzipBody));
 
+        // The picker-opened PUT (put_state_reason 6) alone carries the wake-devices=false query (captured 3 of 3).
+        Assert.Equal("/connect-state/v1/devices/device-1?wake-devices=false",
+            Fold(Spotify.RequestKind.ConnectStatePut, "device-1", flag: true).Path);
+
         Assert.Equal("/connect-state/v1/connect/transfer/from/a/to/b",
             Fold(Spotify.RequestKind.ConnectStateTransfer, "a", "b").Path);
         Assert.Equal("/connect-state/v1/player/command/from/a/to/b",

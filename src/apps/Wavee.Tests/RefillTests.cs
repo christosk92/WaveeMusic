@@ -35,13 +35,29 @@ public class RefillTests
     }
 
     static Playback.RefillKind Decide(QueueEdge[] rows, int cursor, Playback.AutoplayPhase phase = Playback.AutoplayPhase.None,
-        bool pagesKnown = true, bool morePages = false, bool autoplayPages = false, RepeatMode repeat = RepeatMode.Off)
-        => Playback.Refill.Decide(rows, cursor, phase, pagesKnown, morePages, autoplayPages, repeat);
+        bool pagesKnown = true, bool morePages = false, bool autoplayPages = false, RepeatMode repeat = RepeatMode.Off,
+        bool autoplayEnabled = true)
+        => Playback.Refill.Decide(rows, cursor, phase, pagesKnown, morePages, autoplayPages, repeat, autoplayEnabled);
 
     [Fact]
     public void A_two_row_context_with_no_page_asks_autoplay_at_once()
     {
         Assert.Equal(Playback.RefillKind.AskAutoplay, Decide(Context(2, 0), 0));
+    }
+
+    [Fact]
+    public void The_first_autoplay_ask_waits_for_five_context_rows_ahead()
+    {
+        Assert.Equal(Playback.RefillKind.None, Decide(Context(7, 0), 0));            // six ahead
+        Assert.Equal(Playback.RefillKind.AskAutoplay, Decide(Context(6, 0), 0));     // five ahead
+        Assert.Equal(Playback.RefillKind.AskAutoplay, Decide(Context(1, 0), 0));     // a single-track context: none ahead
+    }
+
+    [Fact]
+    public void The_first_autoplay_ask_is_not_made_with_the_toggle_off_or_when_autoplay_rows_are_held()
+    {
+        Assert.Equal(Playback.RefillKind.None, Decide(Context(2, 0), 0, autoplayEnabled: false));
+        Assert.Equal(Playback.RefillKind.None, Decide(AutoplayRun(8), 0));
     }
 
     [Fact]

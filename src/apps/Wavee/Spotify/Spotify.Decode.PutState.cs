@@ -396,25 +396,21 @@ public static partial class Spotify
             w.Empty(18);                                       // suppressions {}
             if (window is not null)
             {
-                foreach (ref readonly Playback.WireRow row in window.Prev) QueueRow(ref w, 19, in row, context, -1, in ids, scratch);
-                int view = Math.Max(0, contextIndex + 1);
+                foreach (ref readonly Playback.WireRow row in window.Prev) QueueRow(ref w, 19, in row, context, -1, in ids, scratch, window);
+                int view = Math.Max(0, contextIndex + 1), autoplayView = 0;   // the autoplay tail numbers itself from 0, as the official tail does
                 foreach (ref readonly Playback.WireRow row in window.Next)
                 {
-                    bool numbered = row.Provider == QueueProvider.Autoplay || (contextIndex >= 0 && row.Provider != QueueProvider.Queue);   // context and autoplay rows number the context
-                    QueueRow(ref w, 20, in row, context, numbered ? view : -1, in ids, scratch);
-                    if (numbered) view++;
+                    bool autoplay = row.Provider == QueueProvider.Autoplay;
+                    bool numbered = autoplay || (contextIndex >= 0 && row.Provider != QueueProvider.Queue);   // context and autoplay rows number their run
+                    QueueRow(ref w, 20, in row, context, numbered ? (autoplay ? autoplayView : view) : -1, in ids, scratch, window);
+                    if (autoplay) autoplayView++;
+                    else if (numbered) view++;
                 }
-                if (window.Next.Length > 0 && window.Next[^1].Provider == QueueProvider.Autoplay)
-                {
-                    int delimiter = w.Open(20);
-                    w.Utf8(1, "spotify:delimiter"u8); w.Utf8(2, "delimiter0"u8);
-                    w.Entry(3, "hidden"u8, "true"u8);
-                    w.Entry(3, "actions.advancing_past_track"u8, "pause"u8);
-                    w.Close(delimiter);
-                }
+                if (window.Next.Length > 0 && window.Next[^1].Provider == QueueProvider.Autoplay) AutoplayEnd(ref w, in ids, scratch);
             }
             if (snap.Wire.Origin is { } carriedOrigin)
-                foreach (var entry in carriedOrigin.Metadata) w.Entry(21, entry.Key, entry.Value);
+                foreach (var entry in carriedOrigin.Metadata)
+                    if (!Queue.OwnsContextMetadataKey(entry.Key)) w.Entry(21, entry.Key, entry.Value);   // ours wins, below
             w.Entry(21, "player.arch"u8, "2"u8);               // context_metadata
             if (ids.SessionId != UInt128.Zero) { Base62.Encode(ids.SessionId, scratch); w.Utf8(23, scratch[..Base62.GidChars]); }            // session_id
             if (snap.Wire.QueueRevision != 0 && Utf8Formatter.TryFormat(snap.Wire.QueueRevision, scratch, out int digits))
@@ -434,6 +430,33 @@ public static partial class Spotify
             w.Close(unknown);
         }
 
+        /// <summary>The tail's end the way the official client states it: the hidden <c>spotify:meta:page:1</c> page marker, then
+        /// the <c>spotify:delimiter</c> (both provider <c>autoplay</c>, the delimiter with its <c>removed</c> mark and the
+        /// pause-at-the-edge actions) — what a viewer sections the autoplay run by.</summary>
+        static void AutoplayEnd(ref ProtoWriter w, in Playback.WireIds ids, scoped Span<byte> scratch)
+        {
+            int page = w.Open(20);
+            w.Utf8(1, "spotify:meta:page:1"u8); w.Utf8(2, "page1_0"u8);
+            w.Entry(3, "hidden"u8, "true"u8);
+            w.Entry(3, "autoplay.is_autoplay"u8, "true"u8);
+            w.Entry(3, "iteration"u8, "0"u8);
+            if (ids.InteractionId != UInt128.Zero) w.Entry(3, "interaction_id"u8, scratch[..Dashed(ids.InteractionId, scratch)]);
+            w.Utf8(6, ProviderWord(QueueProvider.Autoplay));
+            w.Close(page);
+
+            int delimiter = w.Open(20);
+            w.Utf8(1, "spotify:delimiter"u8); w.Utf8(2, "delimiter0"u8);
+            w.Utf8(4, "context/delimiter"u8);                    // removed
+            w.Entry(3, "hidden"u8, "true"u8);
+            w.Entry(3, "autoplay.is_autoplay"u8, "true"u8);
+            w.Entry(3, "actions.advancing_past_track"u8, "pause"u8);
+            w.Entry(3, "actions.skipping_next_past_track"u8, "pause"u8);
+            w.Entry(3, "iteration"u8, "0"u8);
+            if (ids.InteractionId != UInt128.Zero) w.Entry(3, "interaction_id"u8, scratch[..Dashed(ids.InteractionId, scratch)]);
+            w.Utf8(6, ProviderWord(QueueProvider.Autoplay));
+            w.Close(delimiter);
+        }
+
         /// <summary>The row on the deck: the snapshot's uri and uid, the window's display picks, the live media kind.</summary>
         static void CurrentTrack(ref ProtoWriter w, in Playback.Snapshot snap, scoped ReadOnlySpan<byte> context, int contextIndex,
             scoped Span<byte> scratch)
@@ -444,7 +467,7 @@ public static partial class Spotify
             int track = w.Open(7);
             w.Id(1, snap.Track);
             w.Str(2, snap.Uid);
-            Head(ref w, in row, provider, context, video);
+            Head(ref w, in row, provider, context, video, snap.Wire.Window);
             // The video offer: the current row carries its 32-hex video gid whether we host audio or video (0.2.9).
             if (snap.VideoGid.Length > 0) w.Entry(3, "associated_video_id", snap.VideoGid);
             w.Entry(3, "track_player"u8, video ? "video"u8 : "audio"u8);
@@ -455,20 +478,20 @@ public static partial class Spotify
                 if (Utf8Formatter.TryFormat(Math.Max(0L, snap.PositionAsOfMs), scratch, out int length))
                     w.Entry(3, "media.start_position"u8, scratch[..length]);
             }
-            Tail(ref w, provider, video, contextIndex, in snap.Wire.Ids, scratch);
+            Tail(ref w, provider, video, provider == QueueProvider.Autoplay ? -1 : contextIndex, in snap.Wire.Ids, scratch);
             w.Utf8(6, ProviderWord(provider));
             w.Close(track);
         }
 
         /// <summary>A prev/next row. Never the current media, so its player is audio and it carries no video keys.</summary>
         static void QueueRow(ref ProtoWriter w, int field, in Playback.WireRow row, scoped ReadOnlySpan<byte> context, int viewIndex,
-            in Playback.WireIds ids, scoped Span<byte> scratch)
+            in Playback.WireIds ids, scoped Span<byte> scratch, Playback.WireWindow? window)
         {
             int m = w.Open(field);
             w.Id(1, row.Id);
             if (row.UidText.Length > 0) w.Str(2, row.UidText);
             else if (row.ItemId != 0) w.Utf8(2, scratch[..Hex16(row.ItemId, scratch)]);
-            Head(ref w, in row, row.Provider, context, isVideo: false);
+            Head(ref w, in row, row.Provider, context, isVideo: false, window);
             w.Entry(3, "track_player"u8, "audio"u8);
             Tail(ref w, row.Provider, isVideo: false, viewIndex, in ids, scratch);
             w.Utf8(6, ProviderWord(row.Provider));
@@ -477,7 +500,8 @@ public static partial class Spotify
 
         /// <summary>A row's display metadata, in 0.2.9's order: title, artist, album, their uris, the context (a context row
         /// only; <c>entity_uri</c> never for a video), the cover four times over, then the provenance marks.</summary>
-        static void Head(ref ProtoWriter w, in Playback.WireRow row, QueueProvider provider, scoped ReadOnlySpan<byte> context, bool isVideo)
+        static void Head(ref ProtoWriter w, in Playback.WireRow row, QueueProvider provider, scoped ReadOnlySpan<byte> context, bool isVideo,
+            Playback.WireWindow? window)
         {
             w.EntryText(3, "title"u8, row.Title);
             w.EntryText(3, row.Id.Kind == EntityKind.Episode ? "author_name"u8 : "artist_name"u8, row.ArtistName);
@@ -501,8 +525,25 @@ public static partial class Spotify
                     w.Entry(3, "image_xlarge_url"u8, image[..n]);
                 }
             }
-            if (provider == QueueProvider.Queue) w.Entry(3, "is_queued"u8, "true"u8);
-            else if (provider == QueueProvider.Autoplay) w.Entry(3, "autoplay.is_autoplay"u8, "true"u8);
+            if (provider == QueueProvider.Queue)
+            {
+                w.Entry(3, "is_queued"u8, "true"u8);
+                if (row.QueuedBy.Length > 0)                       // the owner's own, else the user who queued it here; else nothing
+                {
+                    w.Entry(3, "manually_queued"u8, "true"u8);
+                    w.EntryText(3, "queued_by"u8, row.QueuedBy);
+                }
+            }
+            else if (provider == QueueProvider.Autoplay)
+            {
+                w.Entry(3, "autoplay.is_autoplay"u8, "true"u8);
+                if (window is { AutoplayStation.Length: > 0 } && !isVideo)   // the answer's station: both uris, as the official tail
+                {
+                    w.Entry(3, "context_uri", window.AutoplayStation);
+                    w.Entry(3, "entity_uri", window.AutoplayStation);
+                }
+                w.EntryText(3, "decision_id"u8, row.DecisionId);
+            }
             else
             {
                 w.Entry(3, "actions.skipping_prev_past_track"u8, "resume"u8);
@@ -516,7 +557,7 @@ public static partial class Spotify
         {
             if (ids.InteractionId != UInt128.Zero) w.Entry(3, "interaction_id"u8, scratch[..Dashed(ids.InteractionId, scratch)]);
             if (ids.PageInstanceId != UInt128.Zero) w.Entry(3, "page_instance_id"u8, scratch[..Dashed(ids.PageInstanceId, scratch)]);
-            if (isVideo || provider != QueueProvider.Context) return;
+            if (isVideo || provider is not (QueueProvider.Context or QueueProvider.Autoplay)) return;
             if (viewIndex >= 0 && Utf8Formatter.TryFormat(viewIndex, scratch, out int n)) w.Entry(3, "view_index"u8, scratch[..n]);
             w.Entry(3, "iteration"u8, "0"u8);
         }

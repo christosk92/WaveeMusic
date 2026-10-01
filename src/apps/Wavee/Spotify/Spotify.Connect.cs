@@ -149,6 +149,9 @@ public static partial class Spotify
             {
                 Release(oldest);
                 Interlocked.Increment(ref s_droppedItems);
+                // Always-on, but one line a minute: the dropped item was already acked, so nothing else says it was lost.
+                if (s_dealerTally.Note("inbox-overflow", Environment.TickCount64, out long total))
+                    Log.Warn("spotify", "dealer.inbox overflow — dropped the oldest queued item (depth " + InboxDepth + ", " + total + " so far)");
             }
             Wake?.Invoke();
         }
@@ -167,6 +170,12 @@ public static partial class Spotify
         // ── 2. in: the dealer ────────────────────────────────────────────────────────────────────────────────────────
 
         [ThreadStatic] static byte[]? t_scratch;
+
+        /// <summary>Requests already run, newest 32: a controller's retry of one is acked, not run twice.</summary>
+        static readonly DealerDedupeRing s_recentRequests = new();
+
+        /// <summary>The always-on word for frames nobody reads and mailbox drops: first sighting, then a total a minute.</summary>
+        static readonly DealerTally s_dealerTally = new(intervalMs: 60_000);
         static byte[]? s_deviceIdUtf8;
 
         /// <summary>OUR device id — the persisted, launch-stable one. `Platform.DeviceId` is the SAME value the
@@ -199,6 +208,13 @@ public static partial class Spotify
 
             if (message.IsClusterUpdate)
             {
+                // A payload past the scratch decodes from EMPTY, and an empty cluster reads as "no active device": drop it.
+                if (message.Truncated)
+                {
+                    Log.Warn("spotify", "dealer cluster dropped: payload did not fit the 256 KiB scratch");
+                    if (Capture.Enabled) Capture.Point(CaptureKind.DecodeFailed, causeId: 0, a: "truncated", b: "cluster-update");
+                    return;
+                }
                 Decode.ClusterBuffer buffer = Decode.ClusterBuffer.Rent();
                 Decode.ClusterDelta delta;
                 try { delta = Decode.ClusterUpdate(message.Payload, DeviceIdUtf8, buffer); }
@@ -218,6 +234,15 @@ public static partial class Spotify
 
             if (message.IsRequest)
             {
+                // A truncated body would decode as Unknown: say so, refuse it (the controller may resend) and run nothing.
+                if (message.Truncated)
+                {
+                    Log.Warn("spotify", "dealer request dropped: payload did not fit the scratch (" + DealerHelloRules.LogTopic(message.Ident) + ")");
+                    if (Capture.Enabled) Capture.Point(CaptureKind.DecodeFailed, causeId: 0, a: "truncated", b: "connect-command");
+                    Reply(message.Key, ok: false);
+                    return;
+                }
+
                 Decode.RemoteCommand command;
                 try { command = Decode.ConnectCommand(message.Payload); }
                 catch (Exception ex)
@@ -236,14 +261,25 @@ public static partial class Spotify
                 long remoteRequestId = Capture.Begin(CaptureKind.RemoteRequest, causeId: 0,
                     a: command.Kind.ToString(), b: command.MessageId.ToString(), n0: unchecked((long)command.SenderHash));
 
-                // ACK FIRST, ALWAYS. The controller retries an unacked command, and a retry storm from a phone in a
-                // pocket is worse than a command we could not read: `Ok` says whether we understood the BODY, and a
-                // body we did not understand is still a command we received.
-                Reply(message.Key, ok: true, causeId: remoteRequestId);
+                // ACK BEFORE ROUTING, AFTER DECODING. The controller retries an unacked command, and a retry storm from a
+                // phone in a pocket is worse than a body we could not read, so a KNOWN endpoint is acked even when its body
+                // was garbled; an endpoint we do not know, or a request that is not a player command, is refused
+                // (`DealerAck.For`) — what is routed below is unchanged.
+                bool ack = DealerAck.For(message.Ident, command.Kind);
+                Reply(message.Key, ok: ack, causeId: remoteRequestId);
+
+                // A retry of a command already run (the controller saw no ack in time): acked above, never run twice.
+                if (DealerDedupeRing.IsDedupable(in command) && s_recentRequests.SeenOrAdd(command.DedupeKey))
+                {
+                    Log.Info("spotify", "dealer request duplicate ignored (" + command.Kind + ", message " + command.MessageId + ")");
+                    Capture.End(remoteRequestId, n0: ack ? 1 : 0);
+                    return;
+                }
+
                 // A play/transfer goes to the playback host with its decoded body (claim and load in ONE slot, G-071); the
                 // verbs with a body are folded or decoded first (G-074). Spotify.Connect.Commands.cs.
                 RouteCommand(in command, message.Payload, epoch);
-                Capture.End(remoteRequestId, n0: 1 /* ok: true, always — see the ack comment above */);
+                Capture.End(remoteRequestId, n0: ack ? 1 : 0);
                 return;
             }
 
@@ -276,6 +312,7 @@ public static partial class Spotify
                     || Telemetry.OnDealerProgress(message.Uri, message.Truncated ? default : message.Payload);
                 if (!handledLocally)
                 {
+                    NoteUnreadTopic(message.Uri);
                     // §3.3's "everything else … is not an error and is not logged per push" fall-through — made
                     // visible to the CAPTURE (never to the always-on log; §1's own words for why `FrameIgnored`
                     // exists at all). `Unclassified` here because THIS layer does not know what `Library.OnDealerPush`
@@ -287,6 +324,17 @@ public static partial class Spotify
                     Library.OnDealerPush(message.Uri, message.Truncated ? default : message.Payload);
                 }
             }
+        }
+
+        /// <summary>A MESSAGE topic this app never reads (no <c>hm://</c> scheme) or ignores on purpose: counted, and logged
+        /// on first sight and then once a minute with its total — never one line per frame.</summary>
+        static void NoteUnreadTopic(ReadOnlySpan<byte> uri)
+        {
+            var kind = DealerTopicRules.Classify(uri);
+            if (kind == DealerTopicRules.Kind.Hm) return;
+            string key = kind == DealerTopicRules.Kind.NonHm ? DealerTopicRules.LogKey(uri) : "hm://playlist/v2/list/liked-songs-artist/…";
+            if (s_dealerTally.Note(key, Environment.TickCount64, out long total))
+                Log.Info("spotify", "dealer.unread topic=" + key + " total=" + total);
         }
 
         static string DealerCaptureLabel(ReadOnlySpan<byte> uri) => uri.IsEmpty ? "(unknown)" : Encoding.UTF8.GetString(uri);
@@ -733,7 +781,7 @@ public static partial class Spotify
                 putCaptureId = Capture.Begin(CaptureKind.ConnectStatePut, causeId, a: reason.ToString(),
                     n0: messageId, payload: rented.AsMemory(0, written));
 
-                var args = new RequestArgs { Id = OurDeviceId, Body = rented.AsSpan(0, written) };
+                var args = new RequestArgs { Id = OurDeviceId, Body = rented.AsSpan(0, written), Flag = reason == PutReason.PickerOpened };
                 Api.Result result = Api.Send(RequestKind.ConnectStatePut, args, CancellationToken.None);
                 // Closed here, unconditionally, the moment the response is in hand — a non-2xx is an ORDINARY End
                 // whose n0 sits outside 200-299 (§3.3's error row), not a special capture path.

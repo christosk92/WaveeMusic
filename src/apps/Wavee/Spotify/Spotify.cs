@@ -242,6 +242,11 @@ public static partial class Spotify
         ApRetry,
         /// <summary>The dealer's backoff elapsed; try the dealer again.</summary>
         DealerRetry,
+        /// <summary>The OS says the network may be back (a wake from sleep, an address change): every link that is only
+        /// WAITING for its backoff tries now, with its ladder reset so a kick that lands before the network is really up
+        /// retries in 3 s, not 30. A link that is Opening or Up ignores it, so a flapping adapter can never stack sockets.
+        /// A session-level event: no epoch, never stale.</summary>
+        LinksKick,
         /// <summary>The user signed out: close everything and WIPE the stored credential.</summary>
         Logout,
         /// <summary>Close the session and forget its tokens, but KEEP the stored credential — a shutdown, a headless run
@@ -418,12 +423,22 @@ public static partial class Spotify
                 s.Ap = LinkPhase.Up;
                 // The FIRST welcome of this login signs the account in and moves the ladder on; a reconnect's welcome (the
                 // AP came back under an account already signed in) moves only the AP (B4).
-                if (!s.LoggedIn)
+                bool firstWelcome = !s.LoggedIn;
+                if (firstWelcome)
                 {
                     s.LoggedIn = true;
                     s.Phase = SessionPhase.Minting;
                 }
-                return SessionEffects.SaveCredential | SessionEffects.MintClientToken | SessionEffects.Welcome;
+                SessionEffects welcome = SessionEffects.SaveCredential | SessionEffects.MintClientToken | SessionEffects.Welcome;
+                // A working AP proves the network is up: a dealer still waiting out its backoff (up to 30 s) opens now. Only a
+                // RECONNECT's welcome can find it waiting — the first one precedes the dealer's first open.
+                if (!firstWelcome && s.Dealer == LinkPhase.Waiting)
+                {
+                    s.Dealer = LinkPhase.Opening;
+                    s.DealerAttempt = 0;
+                    welcome |= SessionEffects.OpenDealer;
+                }
+                return welcome;
             }
 
             case SessionEventKind.AuthRejected:
@@ -527,6 +542,29 @@ public static partial class Spotify
                 if (s.Dealer != LinkPhase.Waiting || s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
                 s.Dealer = LinkPhase.Opening;
                 return SessionEffects.OpenDealer;
+
+            case SessionEventKind.LinksKick:
+            {
+                if (s.Phase is SessionPhase.Offline or SessionPhase.Failed) return SessionEffects.None;
+                SessionEffects kicked = SessionEffects.None;
+                // The retry timers' own transitions, taken early and with the ladder reset. Their pending timers are stamped
+                // with the epoch they were armed for: they land on a link that is no longer Waiting (or, if this attempt
+                // fails first, on a bumped epoch) and fold to nothing — a kick can never double-open (B4).
+                if (s.Ap == LinkPhase.Waiting)
+                {
+                    s.Ap = LinkPhase.Opening;
+                    s.ApAttempt = 0;
+                    if (!s.LoggedIn) s.Phase = SessionPhase.Resolving;
+                    kicked |= SessionEffects.ResolveHosts;
+                }
+                if (s.Dealer == LinkPhase.Waiting)
+                {
+                    s.Dealer = LinkPhase.Opening;
+                    s.DealerAttempt = 0;
+                    kicked |= SessionEffects.OpenDealer;
+                }
+                return kicked;
+            }
 
             case SessionEventKind.Logout:
             {
@@ -1813,6 +1851,9 @@ public static partial class Spotify
         AcceptAny = 1 << 21,
         /// <summary>The PlayReady licence POST: text/xml; charset=utf-8 + the AcquireLicense SOAPAction (G-144).</summary>
         SoapLicense = 1 << 22,
+        /// <summary>The bare word <c>Accept: protobuf</c> — what the official client puts on the connect-state transfer POST
+        /// (capture 2026-10-01, 3 of 3); not the <c>application/protobuf</c> of <see cref="AcceptProtobuf"/>.</summary>
+        AcceptBareProtobuf = 1 << 23,
     }
 
     /// <summary>Which request. One per FAMILY, not one per caller: <c>Spotify.Api.cs</c>'s function per request picks
@@ -2038,6 +2079,7 @@ public static partial class Spotify
             case RequestKind.ConnectStatePut:
                 w.Append("/connect-state/v1/devices/");
                 w.AppendEscaped(args.Id);
+                if (args.Flag) w.Append("?wake-devices=false");   // the picker-opened PUT only (3 of 3 captured; the sibling POST wakes)
                 return new Request(Verb.Put, ApiHost.Spclient, w.Written,
                     Common | HeaderSet.ContentProtobuf | HeaderSet.ConnectionId | HeaderSet.GzipBody, args.Body);
 
@@ -2121,7 +2163,7 @@ public static partial class Spotify
 
     // ── 11. two small wire parses the session itself needs ───────────────────────────────────────────────────────────
 
-    /// <summary>apresolve answers <c>{"accesspoint":["host:port",…],"spclient":[…],"dealer":[…]}</c>. Returns how many
+    /// <summary>apresolve answers <c>{"accesspoint":["host:port",…],"spclient":[…],"dealer-g2":[…]}</c>. Returns how many
     /// hosts were written, as RANGES into <paramref name="json"/> — no strings, and the caller keeps the order (the
     /// AP failover walks it, :4070 first).</summary>
     public static int ParseHosts(ReadOnlySpan<byte> json, ReadOnlySpan<byte> key, Span<Range> into)

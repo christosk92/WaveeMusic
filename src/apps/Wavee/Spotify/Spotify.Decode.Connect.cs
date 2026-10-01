@@ -45,7 +45,18 @@ public static partial class Spotify
         public struct ClusterTrack
         {
             public TextRef Uri, Uid, Provider, Title, ArtistName, ArtistUri, AlbumTitle, AlbumUri, Image;
+            /// <summary><c>metadata["decision_id"]</c>: the recommender's id for an autoplay row, echoed back when we publish it.</summary>
+            public TextRef DecisionId;
+            /// <summary><c>metadata["queued_by"]</c>: who the owner says queued the row, kept exactly (empty when it stated none).</summary>
+            public TextRef QueuedBy;
             public long DurationMs;
+        }
+
+        /// <summary>One <c>map&lt;string, string&gt;</c> entry of a cluster's <c>context_metadata</c>, kept whole so a takeover
+        /// can carry the previous owner's description of the context into what we publish.</summary>
+        public struct ClusterMeta
+        {
+            public TextRef Key, Value;
         }
 
         /// <summary>Where a cluster's variable-length halves live. The same shape as <see cref="Staging"/> and for
@@ -64,8 +75,9 @@ public static partial class Spotify
             int _textLength;
             ClusterDevice[] _devices = new ClusterDevice[8];
             ClusterTrack[] _tracks = new ClusterTrack[32];
+            ClusterMeta[] _meta = new ClusterMeta[16];
 
-            public int DeviceCount, TrackCount;
+            public int DeviceCount, TrackCount, MetaCount;
 
             public static ClusterBuffer Rent()
             {
@@ -80,7 +92,7 @@ public static partial class Spotify
                 lock (s_pool) { if (s_pool.Count < 4) s_pool.Push(b); }
             }
 
-            public void Reset() { _textLength = 0; DeviceCount = 0; TrackCount = 0; }
+            public void Reset() { _textLength = 0; DeviceCount = 0; TrackCount = 0; MetaCount = 0; }
 
             public TextRef AddText(ReadOnlySpan<byte> utf8)
             {
@@ -107,6 +119,13 @@ public static partial class Spotify
                 return ref FreshSlot.Of(_tracks, TrackCount++);
             }
 
+            public ref ClusterMeta AddMeta()
+            {
+                if (MetaCount == _meta.Length) Array.Resize(ref _meta, _meta.Length * 2);
+                return ref FreshSlot.Of(_meta, MetaCount++);
+            }
+
+            public ReadOnlySpan<ClusterMeta> Meta(int start, int length) => _meta.AsSpan(start, length);
             public ReadOnlySpan<ClusterDevice> Devices(int start, int length) => _devices.AsSpan(start, length);
             public ReadOnlySpan<ClusterTrack> Tracks(int start, int length) => _tracks.AsSpan(start, length);
         }
@@ -118,6 +137,20 @@ public static partial class Spotify
         public struct ClusterDelta
         {
             public TextRef ActiveDeviceId, ContextUri, QueueRevision;
+            /// <summary>The owner's playback session (<c>session_id</c>, field 23): a NEW one means the owner started
+            /// something else, whatever its queue revision says — with <see cref="QueueRevision"/> the stamp the mirror
+            /// re-derives the queue on.</summary>
+            public TextRef SessionId;
+            /// <summary>What the owner says the context IS — <c>context_metadata["context_description"]</c> ("FLEMMING
+            /// Popular"), the only name a server-generated <c>spotify:list:</c> context has — and
+            /// <c>play_origin.feature_identifier</c> / <c>referrer_identifier</c> (the page it was started from, usually
+            /// <c>spotify:artist:…</c>). Empty when the cluster carried none.</summary>
+            public TextRef ContextDescription, FeatureIdentifier, ReferrerIdentifier;
+            /// <summary>The rest of <c>play_origin</c> (<c>feature_version</c>, <c>view_uri</c>, <c>external_referrer</c>,
+            /// <c>device_identifier</c>) and the WHOLE <c>context_metadata</c> map (<see cref="MetaStart"/>/<see cref="MetaCount"/>
+            /// into <see cref="ClusterBuffer.Meta"/>): what a takeover publishes on as the owner.</summary>
+            public TextRef FeatureVersion, ViewUri, ExternalReferrer, DeviceIdentifier;
+            public int MetaStart, MetaCount;
             public bool HasTrack;
             public ClusterTrack Track;
             public bool IsPlaying, IsPaused, IsBuffering;
@@ -132,6 +165,9 @@ public static partial class Spotify
             public ClusterOrigin Origin;
             public uint PutMsgId;
             public int UpdateReason;
+            /// <summary>A push's <c>ack_id</c> (field 3) as an FNV-1a hash, 0 when absent: the server echoing the HTTP command
+            /// (a transfer, a player verb) this connection sent — the same string as that POST's <c>{"ack_id"}</c> answer.</summary>
+            public ulong AckId;
             /// <summary>A push's <c>devices_that_changed</c>, comma-joined in the arena (empty for a put-state response) —
             /// the Connect diagnostics page's row, never a routing input.</summary>
             public TextRef ChangedDevices;
@@ -144,6 +180,7 @@ public static partial class Spotify
             var r = new ProtoReader(proto);
             ReadOnlySpan<byte> cluster = default;
             int reason = 0;
+            ulong ack = 0;
             TextRef changed = default;
             while (r.Next())
             {
@@ -151,6 +188,7 @@ public static partial class Spotify
                 {
                     case 1: cluster = r.Bytes(); break;
                     case 2: reason = r.Int32(); break;
+                    case 3: { ReadOnlySpan<byte> id = r.Bytes(); if (!id.IsEmpty) ack = AckHash(id); break; }
                     case 4:                                        // devices_that_changed, joined contiguously in the arena
                         {
                             ReadOnlySpan<byte> id = r.Bytes();
@@ -166,9 +204,14 @@ public static partial class Spotify
             var delta = Cluster(cluster, ourDeviceId, into);
             delta.Origin = ClusterOrigin.Push;
             delta.UpdateReason = reason;
+            delta.AckId = ack;
             delta.ChangedDevices = changed;
             return delta;
         }
+
+        /// <summary>An <c>ack_id</c>'s text (the cluster's field 3, the POST answer's <c>"ack_id"</c> value) as the one hash
+        /// both sides compare. PURE.</summary>
+        public static ulong AckHash(ReadOnlySpan<byte> utf8) => Fnv(14695981039346656037UL, utf8);
 
         /// <summary>`connectstate.Cluster` → <see cref="ClusterDelta"/>, ported from `ClusterMapper.Map`.
         ///
@@ -262,7 +305,7 @@ public static partial class Spotify
             var r = new ProtoReader(proto);
             // The two lists are each a contiguous run in the buffer, but the wire's order between them is the
             // serializer's business (prev_tracks is field 19, next_tracks is 20), so each records its OWN start.
-            int next = 0, nextStart = -1, prev = 0, prevStart = -1;
+            int next = 0, nextStart = -1, prev = 0, prevStart = -1, metaStart = -1;
 
             while (r.Next())
             {
@@ -270,6 +313,24 @@ public static partial class Spotify
                 {
                     case 1: delta.TimestampMs = (long)r.Varint(); break;
                     case 2: delta.ContextUri = into.AddText(r.Bytes()); break;
+                    case 5:                                        // PlayOrigin
+                        {
+                            var o = r.Message();
+                            while (o.Next())
+                            {
+                                switch (o.Field)
+                                {
+                                    case 1: delta.FeatureIdentifier = into.AddText(o.Bytes()); break;
+                                    case 2: delta.FeatureVersion = into.AddText(o.Bytes()); break;
+                                    case 3: delta.ViewUri = into.AddText(o.Bytes()); break;
+                                    case 4: delta.ExternalReferrer = into.AddText(o.Bytes()); break;
+                                    case 5: delta.ReferrerIdentifier = into.AddText(o.Bytes()); break;
+                                    case 6: delta.DeviceIdentifier = into.AddText(o.Bytes()); break;
+                                    default: o.Skip(); break;
+                                }
+                            }
+                            break;
+                        }
                     case 7:
                         {
                             // The current track is the DELTA's own field, not a row in either list: decoded into a
@@ -318,6 +379,18 @@ public static partial class Spotify
                             }
                             break;
                         }
+                    case 21:                                       // context_metadata: map<string, string> { key = 1, value = 2 }
+                        {
+                            r.Message().Fields(1, 2, out var key, out var value);
+                            if (key.IsEmpty) break;
+                            if (metaStart < 0) metaStart = into.MetaCount;
+                            ref var entry = ref into.AddMeta();
+                            entry.Key = into.AddText(key);
+                            entry.Value = into.AddText(value);
+                            delta.MetaCount++;
+                            if (key.SequenceEqual("context_description"u8)) delta.ContextDescription = entry.Value;
+                            break;
+                        }
                     case 19:                                       // prev_tracks
                         {
                             if (prevStart < 0) prevStart = into.TrackCount;
@@ -336,6 +409,7 @@ public static partial class Spotify
                             else next++;
                             break;
                         }
+                    case 23: delta.SessionId = into.AddText(r.Bytes()); break;
                     case 24: delta.QueueRevision = into.AddText(r.Bytes()); break;
                     default: r.Skip(); break;
                 }
@@ -345,6 +419,7 @@ public static partial class Spotify
             delta.NextCount = next;
             delta.PrevStart = prevStart < 0 ? 0 : prevStart;
             delta.PrevCount = prev;
+            delta.MetaStart = metaStart < 0 ? 0 : metaStart;
         }
 
         /// <summary>A `ProvidedTrack`. The display fields live in its `metadata` map — the map the remote fills so a
@@ -389,6 +464,10 @@ public static partial class Spotify
             /// while a phone owned playback used to do nothing visible (2026-09-16).</summary>
             PlayContext,
             SetPlaybackSpeed,
+            /// <summary>OUTBOUND only: "advance YOUR queue to this row" — the desktop `next_track` envelope with the row's
+            /// uri + uid, which is how the official client jumps to a row of the owner's queue. The inbound
+            /// `next_track` decodes as <see cref="SkipNext"/>.</summary>
+            NextTrack,
         }
 
         /// <summary>One decoded remote command — a pure value, no strings (ported from `ConnectCommand.TryParse`).
@@ -402,18 +481,23 @@ public static partial class Spotify
         /// context, the track to start at, the position, the transferred queue — is <see cref="ConnectLoad"/>'s, decoded
         /// from the same body into a pooled <see cref="ClusterBuffer"/> (Spotify.Decode.Remote.cs, G-071). The bodies of
         /// <see cref="RemoteCmd.SetOptions"/> (<see cref="OptionVerbs"/>) and of <see cref="RemoteCmd.SetQueue"/> /
-        /// <see cref="RemoteCmd.UpdateContext"/> (<see cref="ConnectQueue"/>) are Spotify.Decode.Commands.cs's (G-074).</para></summary>
+        /// <see cref="RemoteCmd.UpdateContext"/> (<see cref="ConnectQueue"/>) are Spotify.Decode.Commands.cs's (G-074).</para>
+        /// <para><see cref="MessageId"/> is the wire's uint32, carried whole so the next put-state echoes it exactly
+        /// (`last_command_message_id`). <see cref="TrackUidItemId"/> / <see cref="TrackUidHash"/> are the command's
+        /// `track.uid` as the queue knows uids: the packed item id when the uid is 16 lowercase hex (else 0) and the
+        /// FNV-1a of its text (0 when absent) — the host resolves a booked, non-packing uid from the hash (`UidBook`).</para></summary>
         public readonly record struct RemoteCommand(
-            RemoteCmd Kind, bool Ok, int MessageId, long SeekToMs, bool BoolArg,
-            EntityId Track, ulong SenderHash, ulong SessionHash, ulong DedupeKey);
+            RemoteCmd Kind, bool Ok, uint MessageId, long SeekToMs, bool BoolArg,
+            EntityId Track, ulong SenderHash, ulong SessionHash, ulong DedupeKey,
+            ulong TrackUidItemId = 0, ulong TrackUidHash = 0);
 
         /// <summary>The dealer REQUEST body → a <see cref="RemoteCommand"/>. `Utf8JsonReader` over the raw bytes:
         /// no `JsonDocument`, no DOM, nothing allocated on a path that runs per controller keypress.</summary>
         public static RemoteCommand ConnectCommand(ReadOnlySpan<byte> payload)
         {
             var r = new System.Text.Json.Utf8JsonReader(payload);
-            int messageId = 0;
-            ulong sender = 0, session = 0;
+            uint messageId = 0;
+            ulong sender = 0, session = 0, uidItem = 0, uidHash = 0;
             var kind = RemoteCmd.Unknown;
             long seek = 0;
             bool boolArg = false, ok = false;
@@ -422,19 +506,19 @@ public static partial class Spotify
             while (r.Read())
             {
                 if (r.TokenType != System.Text.Json.JsonTokenType.PropertyName) continue;
-                // `message_id` is uint32 on the wire and routinely exceeds int.MaxValue. Read WIDE, then clamp —
-                // narrowing it threw in 0.2.9 and the outer catch discarded the whole command.
-                if (r.ValueTextEquals("message_id"u8)) { r.Read(); messageId = (int)Math.Clamp(Long(ref r), int.MinValue, int.MaxValue); }
+                // `message_id` is uint32 on the wire and ids >= 2^31 are live. Read WIDE and keep it whole as uint (the
+                // put-state echoes it exactly); narrowing to int threw in 0.2.9 and then clamped here until 2026-10.
+                if (r.ValueTextEquals("message_id"u8)) { r.Read(); messageId = (uint)Math.Clamp(Long(ref r), 0L, (long)uint.MaxValue); }
                 else if (r.ValueTextEquals("sent_by_device_id"u8)) { r.Read(); sender = Hash(ref r); }
-                else if (r.ValueTextEquals("command"u8)) { r.Read(); ok = Command(ref r, ref kind, ref seek, ref boolArg, ref session, ref track); }
+                else if (r.ValueTextEquals("command"u8)) { r.Read(); ok = Command(ref r, ref kind, ref seek, ref boolArg, ref session, ref track, ref uidItem, ref uidHash); }
                 else r.Skip();
             }
 
-            ulong dedupe = Fnv(Fnv(sender, (ulong)(uint)messageId), (ulong)kind);
-            return new RemoteCommand(kind, ok, messageId, seek, boolArg, track, sender, session, dedupe);
+            ulong dedupe = Fnv(Fnv(sender, messageId), (ulong)kind);
+            return new RemoteCommand(kind, ok, messageId, seek, boolArg, track, sender, session, dedupe, uidItem, uidHash);
 
             static bool Command(ref System.Text.Json.Utf8JsonReader r, ref RemoteCmd kind, ref long seek,
-                                ref bool boolArg, ref ulong session, ref EntityId track)
+                                ref bool boolArg, ref ulong session, ref EntityId track, ref ulong uidItem, ref ulong uidHash)
             {
                 if (r.TokenType != System.Text.Json.JsonTokenType.StartObject) { r.Skip(); return false; }
                 int depth = r.CurrentDepth;
@@ -468,6 +552,18 @@ public static partial class Spotify
                                 // and the fold reads it as "the remote did not say which track".
                                 if (r.TokenType == System.Text.Json.JsonTokenType.String && !r.HasValueSequence)
                                     EntityId.TryParseGid(r.ValueSpan, out track);
+                            }
+                            else if (r.TokenType == System.Text.Json.JsonTokenType.PropertyName && r.ValueTextEquals("uid"u8))
+                            {
+                                // The row's queue uid: how a skip_next names WHICH next row it means (the same uri can sit in
+                                // the queue twice). Folded to the item id / hash the queue book speaks, never kept as text.
+                                r.Read();
+                                if (r.TokenType == System.Text.Json.JsonTokenType.String && !r.HasValueSequence
+                                    && r.ValueSpan.Length is > 0 and <= Playback.UidBook.MaxChars)
+                                {
+                                    uidItem = Playback.QueueUid.ItemIdOf(r.ValueSpan);
+                                    uidHash = Fnv(14695981039346656037UL, r.ValueSpan);
+                                }
                             }
                             else if (r.TokenType == System.Text.Json.JsonTokenType.PropertyName) { r.Read(); r.Skip(); }
                         }

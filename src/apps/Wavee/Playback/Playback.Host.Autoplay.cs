@@ -88,7 +88,7 @@ public static partial class Playback
         {
             ClusterBuffer buffer = ClusterBuffer.Rent();
             int start = 0, count = 0;
-            string next = "";
+            string next = "", answerStation = "";
             bool retry = false;
             try
             {
@@ -100,6 +100,7 @@ public static partial class Playback
                     Spotify.Decode.ContextPage page = Spotify.Decode.ContextResolve(result.Bytes, buffer);
                     start = page.TrackStart;
                     count = page.TrackCount;
+                    answerStation = AutoplayBook.StationOf(System.Text.Encoding.UTF8.GetString(buffer.Utf8(page.Uri)));
                     if (!page.NextPageUrl.IsEmpty) next = System.Text.Encoding.UTF8.GetString(buffer.Utf8(page.NextPageUrl));
                 }
                 else
@@ -114,6 +115,7 @@ public static partial class Playback
                             Spotify.Decode.ContextPage page = Spotify.Decode.ContextResolve(fallback.Bytes, buffer);
                             start = page.TrackStart;
                             count = page.TrackCount;
+                            answerStation = AutoplayBook.StationOf(System.Text.Encoding.UTF8.GetString(buffer.Utf8(page.Uri)));
                             if (!page.NextPageUrl.IsEmpty) next = System.Text.Encoding.UTF8.GetString(buffer.Utf8(page.NextPageUrl));
                         }
                         else Log.Warn("playback", "autoplay station fallback refused (" + fallback.Status + ")");
@@ -125,7 +127,7 @@ public static partial class Playback
             {
                 try
                 {
-                    int appended = AppendRows(context, buffer, start, count, QueueProvider.Autoplay, recent);
+                    int appended = AppendRows(context, buffer, start, count, QueueProvider.Autoplay, recent, answerStation);
                     if (context.Equals(s_state.Context))
                     {
                         s_autoplayPageContext = context;
@@ -182,9 +184,10 @@ public static partial class Playback
 
     /// <summary>Append a resolve's rows after the whole queue as NextUp of <paramref name="provider"/> — while the context
     /// is still the one on the deck. Answers how many landed.</summary>
-    static int AppendRows(EntityId context, ClusterBuffer buffer, int start, int count, QueueProvider provider, EntityId[]? excluded = null)
+    static int AppendRows(EntityId context, ClusterBuffer buffer, int start, int count, QueueProvider provider, EntityId[]? excluded = null,
+        string station = "")
     {
-        if (count <= 0 || !context.Equals(s_state.Context) || Entities.Current is null) return 0;
+        if (count <= 0 || !context.Equals(s_state.Context) || Entities.Current is null || !Queue.LocalQueueWritable(s_state.Own.Kind)) return 0;
         Rebind();                                          // append to this scope's queue, never under a stale one (G-241)
         int existing = Queue.Count;
         int cap = existing + Math.Min(count, RemotePlan.MaxRows);
@@ -214,15 +217,19 @@ public static partial class Playback
                 if (target == 0) continue;
                 packed[n] = target;
                 rows[n] = new QueueEdge(s_uids.ItemIdOf(buffer.Utf8(tracks[k].Uid)), (byte)provider, (byte)QueueBucket.NextUp);
+                if (provider == QueueProvider.Autoplay && !tracks[k].DecisionId.IsEmpty)
+                    s_autoplay.Note(rows[n].ItemId, System.Text.Encoding.UTF8.GetString(buffer.Utf8(tracks[k].DecisionId)));
                 n++;
             }
             int appended = n - existing;
             if (appended > 0)
             {
+                if (provider == QueueProvider.Autoplay && station.Length > 0) s_autoplay.SetStation(context, station);
                 FillQueueIds(context, packed.AsSpan(0, n), rows.AsSpan(0, n));
                 Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
             }
             s_uids.Retain(Queue.Rows);
+            s_autoplay.Retain(Queue.Rows);
             return appended;
         }
         finally

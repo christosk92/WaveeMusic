@@ -173,9 +173,13 @@ public static partial class Spotify
         /// stops being accepted for a reason nothing in the response explains.</summary>
         public const int GaboMaxEvents = 100;
         public const int GaboMaxUncompressedBytes = 125 * 1024;
-        /// <summary>The heartbeat flush (P10, named). Five minutes: long enough that an idle app is silent, short
-        /// enough that a crash loses at most one window of plays.</summary>
-        public const int GaboFlushIntervalMs = 300_000;
+        /// <summary>The heartbeat flush (P10, named). Thirty seconds, the official client's cadence (1.2.96.518,
+        /// captured 2026-10-01: batches 31 s and 61 s apart): a play registers within one window and a crash loses at
+        /// most one. An idle app stays silent — an empty batch is never sent.</summary>
+        public const int GaboFlushIntervalMs = 30_000;
+        /// <summary>How early a heartbeat tick may fire and still count as a full window: the timer's period jitters, and
+        /// a tick that lands 20 ms short must not push the flush a whole window further.</summary>
+        public const int GaboTickSlackMs = 1_000;
         /// <summary>How many events survive a persistent outage. Beyond this the OLDEST are dropped and counted.</summary>
         public const int GaboBacklogCap = 500;
         const int GaboQueueDepth = 512;
@@ -184,8 +188,18 @@ public static partial class Spotify
         /// <summary>WHEN to flush, as a pure function of what is pending. Separate from the worker because the caps
         /// are advertised to the service in <c>SdkVersionName</c> above, and a cap that drifts from that string is a
         /// batch the service can refuse for a reason nothing in the response explains.</summary>
-        public static bool ShouldFlush(int pendingCount, int pendingBytes)
-            => pendingCount >= GaboMaxEvents || pendingBytes >= GaboMaxUncompressedBytes;
+        public static class GaboFlush
+        {
+            /// <summary>Flush when the app is closing (anything pending), at either advertised cap (the upper bounds),
+            /// or once a window has passed with anything pending. Nothing pending is never due.</summary>
+            public static bool Due(int pendingCount, int pendingBytes, long sinceLastFlushMs, bool shuttingDown)
+            {
+                if (pendingCount <= 0) return false;
+                return shuttingDown
+                    || pendingCount >= GaboMaxEvents || pendingBytes >= GaboMaxUncompressedBytes
+                    || sinceLastFlushMs >= GaboFlushIntervalMs - GaboTickSlackMs;
+            }
+        }
 
         /// <summary>WHAT to drop when a persistent outage has grown the backlog past its cap (C8). The excess, and the
         /// excess is taken off the FRONT — the newest plays are the ones still worth registering.</summary>
@@ -207,6 +221,8 @@ public static partial class Spotify
         static int s_pendingBytes;
         static int s_gaboDropped;
         static int s_booted;
+        static volatile bool s_shuttingDown;
+        static long s_lastFlushTick = Stopwatch.GetTimestamp();   // gabo worker thread only
 
         /// <summary>The monotonic per-event sequence the service dedupes on. Persisted so a restart does not replay
         /// numbers the service has already seen.</summary>
@@ -217,7 +233,7 @@ public static partial class Spotify
         public static int Dropped => Volatile.Read(ref s_gaboDropped);
 
         /// <summary>How far ahead of the last PERSISTED sequence a fresh boot starts. The number is persisted only on
-        /// a flush (every 100 events at most, or the 300 s heartbeat) and not on every `Enqueue`, so a crash between
+        /// a flush (every 100 events at most, or the 30 s heartbeat) and not on every `Enqueue`, so a crash between
         /// two flushes can strand up to <see cref="GaboMaxEvents"/> increments that never reached disk. Resuming at
         /// exactly the persisted value would then replay numbers the service has already seen; resuming a full
         /// batch ahead never does, at the cost of a small, harmless gap in the sequence the service does not mind
@@ -237,7 +253,7 @@ public static partial class Spotify
 
             LoadTelemetryIdentity();
             new Thread(GaboLoop) { IsBackground = true, Name = "wavee-spotify-gabo" }.Start();
-            s_gaboHeartbeat = new Timer(static _ => { RestoreGabo(s_outboxAccount); GaboQueue.TryAdd(new GaboWork(null)); }, null,
+            s_gaboHeartbeat = new Timer(static _ => { RestoreGabo(s_outboxAccount); GaboQueue.TryAdd(new GaboWork(null, Tick: true)); }, null,
                 GaboFlushIntervalMs, GaboFlushIntervalMs);
             s_resumeTicker = new Timer(static _ => Api.Run(FlushResumePoints), null,
                 ResumeFlushMs, ResumeFlushMs);
@@ -267,6 +283,7 @@ public static partial class Spotify
         /// nowhere is a play that did not happen, so the last window is worth the milliseconds it costs.</summary>
         public static void Shutdown()
         {
+            s_shuttingDown = true;
             s_gaboHeartbeat?.Dispose();
             s_gaboHeartbeat = null;
             s_resumeTicker?.Dispose();
@@ -280,7 +297,12 @@ public static partial class Spotify
             {
                 try
                 {
-                    if (work.Event is null) { FlushGabo(); continue; }
+                    if (work.Event is null)
+                    {
+                        // An explicit flush (sign-out, exit) is unconditional; a heartbeat tick asks the rule.
+                        if (!work.Tick || GaboFlush.Due(Pending.Count, s_pendingBytes, SinceLastFlushMs(), s_shuttingDown)) FlushGabo();
+                        continue;
+                    }
                     if (s_pendingAccount != work.Account)
                     {
                         FlushGabo();
@@ -292,12 +314,16 @@ public static partial class Spotify
                         Pending.Add(work.Event);
                         s_pendingBytes += work.Event.CalculateSize();
                     }
-                    if (ShouldFlush(Pending.Count, s_pendingBytes)) FlushGabo();
+                    // An enqueue answers to the caps only (events/bytes/exit); the 30 s window belongs to the heartbeat tick above,
+                    // so a long-idle process does not flush its first event of a burst alone.
+                    if (GaboFlush.Due(Pending.Count, s_pendingBytes, sinceLastFlushMs: 0, s_shuttingDown)) FlushGabo();
                 }
                 catch (Exception ex) { Log.Error("spotify", "gabo worker faulted", ex); }
                 finally { work.Completion?.TrySetResult(); }
             }
         }
+
+        static long SinceLastFlushMs() => (long)Stopwatch.GetElapsedTime(s_lastFlushTick).TotalMilliseconds;
 
         static void FlushGabo()
         {
@@ -310,7 +336,10 @@ public static partial class Spotify
                 request.Event.AddRange(Pending);
                 byte[] body = Api.Gzip(request.ToByteArray());
 
-                for (int attempt = 0; attempt < 3; attempt++)
+                // At exit ONE attempt: the shutdown budget (ShutdownBudgetMs) cannot hold three, and what is not sent stays
+                // in the journal for the next launch.
+                int attempts = s_shuttingDown ? 1 : 3;
+                for (int attempt = 0; attempt < attempts; attempt++)
                 {
                     if (s_pendingAccount.Length > 0 && !OutboxAccountIsCurrent(s_pendingAccount)) return;
                     Api.Result result = PostGabo(body);
@@ -320,6 +349,7 @@ public static partial class Spotify
                             : Ev.PublishEventsResponse.Parser.ParseFrom(result.Bytes);
                         int[] retry = RetryGaboIndices(response, Pending.Count, out int rejected);
                         AcknowledgeGabo(s_pendingAccount, Pending, retry);
+                        LogRejectedEvents(response, Pending, s_rejectedLogged);
                         var retained = retry.Select(index => Pending[index]).ToArray();
                         Log.Info("spotify", "gabo settled " + Pending.Count + " event(s), retry=" + retained.Length + " rejected=" + rejected);
                         if (rejected > 0) Interlocked.Add(ref s_gaboDropped, rejected);
@@ -347,6 +377,7 @@ public static partial class Spotify
             }
             finally
             {
+                s_lastFlushTick = Stopwatch.GetTimestamp();
                 // ONE settings write per FLUSH, not per event (G-077) — and posted through `Spotify.Post` so it lands
                 // on the UI thread like every other write, whatever thread the gabo worker happens to be. Runs
                 // whether the POST above succeeded, failed-and-retained or failed-and-dropped: the sequence numbers
@@ -389,7 +420,10 @@ public static partial class Spotify
         {
             public PlaybackIds Ids;
             public string ContentUri, PlayContext, Provider, ReasonStart, SourceStart, AudioFormatName;
-            public byte[]? MediaId, FileId;
+            /// <summary>The player session the stream STARTED in, as the text put-state publishes it ("" for video or none) —
+            /// captured at <see cref="Started"/>, so a later new session does not rewrite it.</summary>
+            public string? PlayerSessionId;
+            public byte[]? MediaId;
             public int BitrateKbps, MsPlayed, SegmentStartPositionMs;
             public long TrackStartMs, SegmentStartMs, DurationMs, SegmentSequence, SegmentSequenceInternal;
             public bool Open, SegmentActive;
@@ -402,8 +436,8 @@ public static partial class Spotify
         /// <summary>A track started. Emits the five open-time events the desktop client sends before the first
         /// sample is heard, and returns the registration the caller keeps until the track ends.</summary>
         public static Registration Started(in PlaybackIds ids, string contentUri, string contextUri, string provider,
-            string reasonStart, byte[]? mediaId, byte[]? fileId, int bitrateKbps, string audioFormatName,
-            long durationMs, long positionMs)
+            string reasonStart, byte[]? mediaId, int bitrateKbps, string audioFormatName,
+            long durationMs, long positionMs, string playerSessionId)
         {
             long now = NowMs();
             var registration = new Registration
@@ -415,8 +449,8 @@ public static partial class Spotify
                 ReasonStart = reasonStart.Length > 0 ? reasonStart : "clickrow",
                 SourceStart = ContextKind(contextUri.Length > 0 ? contextUri : contentUri),
                 AudioFormatName = audioFormatName,
+                PlayerSessionId = playerSessionId,
                 MediaId = mediaId,
-                FileId = fileId,
                 BitrateKbps = bitrateKbps,
                 DurationMs = durationMs,
                 TrackStartMs = now,
@@ -431,10 +465,12 @@ public static partial class Spotify
                 PlaybackId = ByteString.CopyFrom(ids.PlaybackId),
                 CommandId = ids.CommandId,
             }.ToByteArray());
+            // What this client does not measure per open — resolve, key, setup and buffering time, and the quality NAME the
+            // service files a selection under — is left unset rather than sent as a constant: an invented number reads as
+            // a measurement. The bitrate is the opened file's own.
             Enqueue("AudioResolve", new Evt.AudioResolve
             {
                 PlaybackId = ByteString.CopyFrom(ids.PlaybackId),
-                ResolveMs = 120,
                 ContentUri = contentUri,
                 CommandId = ids.CommandId,
             }.ToByteArray());
@@ -444,32 +480,17 @@ public static partial class Spotify
                 PlaybackId = ByteString.CopyFrom(ids.PlaybackId),
                 Reason = "best matching bitrate",
                 SelectedBitrate = bitrate,
-                Quality = "high",
                 TargetBitrate = bitrate,
             }.ToByteArray());
             Session("open", ids.PlaybackId, "", 0);
             Enqueue("BoomboxPlaybackSession", new Evt.BoomboxPlaybackSession
             {
                 PlaybackId = ByteString.CopyFrom(ids.PlaybackId),
-                AudioKeyMs = 200,
-                ResolveMs = 120,
-                TotalSetupMs = 400,
-                BufferingMs = 200,
                 DurationMs = durationMs,
                 Preset = "default",
                 FirstPlay = s_firstPlayInSession,
             }.ToByteArray());
             s_firstPlayInSession = false;
-            if (fileId is { Length: > 0 })
-                Enqueue("HeadFileDownload", new Evt.HeadFileDownload
-                {
-                    FileId = ByteString.CopyFrom(fileId),
-                    PlaybackId = ByteString.CopyFrom(ids.PlaybackId),
-                    CdnDomain = "heads-fa-tls13.spotifycdn.com",
-                    HeadFileSize = 131072,
-                    HttpResult = 200,
-                    RequestType = "interactive",
-                }.ToByteArray());
             return registration;
         }
 
@@ -519,55 +540,7 @@ public static partial class Spotify
             CloseSegment(ref r, endPosition, isPause: false, isLast: true, reason);
             Session("close", r.Ids.PlaybackId, reason, 0);
 
-            int bitrate = r.BitrateKbps > 0 ? r.BitrateKbps * 1000 : 160_000;
-            if (r.FileId is { Length: > 0 } fileId)
-                Enqueue("Download", new Evt.Download
-                {
-                    FileId = ByteString.CopyFrom(fileId),
-                    PlaybackId = ByteString.CopyFrom(r.Ids.PlaybackId),
-                    FileSize = long.MaxValue,
-                    BytesDownloaded = long.MaxValue,
-                    Realm = "music",
-                    CdnUriScheme = "https",
-                    CdnDomain = "audio-fa.scdn.co",
-                    RequestType = "interactive",
-                    Bitrate = bitrate,
-                }.ToByteArray());
-
-            var raw = new Evt.RawCoreStream
-            {
-                PlaybackId = ByteString.CopyFrom(r.Ids.PlaybackId),
-                ParentPlaybackId = ByteString.CopyFrom(new byte[16]),
-                MediaId = r.MediaId is { Length: > 0 } media ? ByteString.CopyFrom(media) : ByteString.Empty,
-                MediaType = "audio",
-                SourceStart = r.SourceStart,
-                ReasonStart = r.ReasonStart,
-                SourceEnd = r.SourceStart,
-                ReasonEnd = reason,
-                PlaybackStartTime = r.TrackStartMs,
-                MsPlayed = r.MsPlayed,
-                MsPlayedNominal = r.MsPlayed,
-                AudioFormat = FormatName(in r),
-                PlayContext = r.PlayContext,
-                ContentUri = r.ContentUri,
-                Provider = r.Provider,
-                Referrer = r.SourceStart,
-                CoreVersion = CoreVersion,
-                PlayType = "full",
-                IsAssumedPremium = Current.Tier == Tier.Premium,
-                CoreBundle = "local",
-                PlaybackStack = PlaybackStack,
-                DecisionId = "",
-                PlayContextDecisionId = "",
-                StreamId = ByteString.CopyFrom(r.Ids.StreamId),
-                CommandId = r.Ids.CommandId,
-                PlaybackStackSecondary = PlaybackStack,
-                OrchestrationStack = OrchestrationStack,
-                DeviceBrand = "spotify",
-                DeviceModelName = Client.DeviceModel,
-                DeviceTypeName = "computer",
-            };
-            Enqueue("RawCoreStream", raw.ToByteArray());
+            Enqueue("RawCoreStream", BuildRawCoreStream(in r, reason, Current.Tier == Tier.Premium).ToByteArray());
 
             Enqueue("ContentIntegrity", new Evt.ContentIntegrity
             {
@@ -590,13 +563,69 @@ public static partial class Spotify
             r.Open = false;
         }
 
+        /// <summary>The RawCoreStream a finished registration is reported as — a pure shape, so the field set is pinned
+        /// by a test. Field numbers are the official client's own descriptor (1.2.96.518). media_id (4) is the track gid as
+        /// 32-char lowercase hex TEXT in the bytes field, as the official client writes it. Left UNSET on purpose: audio_id
+        /// (63, a bytes file id this player does not plumb here — it used to carry the command id, which is not an audio
+        /// id), connect_controller_device_id_v2 (44, the official client sends nothing for a self-controlled play; the
+        /// "local" that lived there was a mis-named core_bundle) and controlling_device_brand/model/type (78-80, omitted when the player is its own controller; core_bundle
+        /// is 38). player_session_id (59) is the put-state session the stream started in ("" for video) and jam_session_id (64)
+        /// is "" — both always WRITTEN, as the official client does.</summary>
+        public static Evt.RawCoreStream BuildRawCoreStream(in Registration r, string reasonEnd, bool isAssumedPremium)
+        {
+            return new Evt.RawCoreStream
+            {
+                PlaybackId = ByteString.CopyFrom(r.Ids.PlaybackId),
+                ParentPlaybackId = ByteString.CopyFrom(new byte[16]),
+                MediaId = r.MediaId is { Length: > 0 } media ? ByteString.CopyFromUtf8(Convert.ToHexStringLower(media)) : ByteString.Empty,
+                MediaType = "audio",
+                SourceStart = r.SourceStart,
+                ReasonStart = r.ReasonStart,
+                SourceEnd = r.SourceStart,
+                ReasonEnd = reasonEnd,
+                PlaybackStartTime = r.TrackStartMs,
+                MsPlayed = r.MsPlayed,
+                MsPlayedNominal = r.MsPlayed,
+                AudioFormat = FormatName(in r),
+                PlayContext = r.PlayContext,
+                ContentUri = r.ContentUri,
+                Provider = r.Provider,
+                Referrer = r.SourceStart,
+                CoreVersion = CoreVersion,
+                CoreBundle = "full",
+                IsAssumedPremium = isAssumedPremium,
+                PlaybackStack = PlaybackStack,
+                DecisionId = "",
+                PlayContextDecisionId = "",
+                StreamId = ByteString.CopyFrom(r.Ids.StreamId),
+                PlayerSessionId = r.PlayerSessionId ?? "",
+                JamSessionId = "",
+                PlaybackStackSecondary = PlaybackStack,
+                OrchestrationStack = OrchestrationStack,
+            };
+        }
+
         static void CloseSegment(ref Registration r, int endPositionMs, bool isPause, bool isLast, string reasonEnd)
         {
             int played = r.SegmentActive ? (int)Math.Clamp(Stopwatch.GetElapsedTime(r.SegmentStartTick).TotalMilliseconds, 0, int.MaxValue) : 0;
             r.MsPlayed += played;
             long endTimestamp = NowMs();
 
-            Enqueue("RawCoreStreamSegment", new Evt.RawCoreStreamSegment
+            Enqueue("RawCoreStreamSegment", BuildSegment(in r, endPositionMs, isPause, isLast, reasonEnd, played, endTimestamp).ToByteArray());
+
+            r.SegmentSequence++;
+            r.SegmentSequenceInternal++;
+            if (isLast) return;
+            r.SegmentStartTick = Stopwatch.GetTimestamp();
+            r.SegmentStartMs = endTimestamp;
+            r.SegmentStartPositionMs = endPositionMs;
+        }
+
+        /// <summary>The RawCoreStreamSegment a closing segment is reported as — a pure shape, so a test pins it. The player
+        /// session (f64) rides the <paramref name="isLast"/> segment only, as the official client sends it.</summary>
+        public static Evt.RawCoreStreamSegment BuildSegment(in Registration r, int endPositionMs, bool isPause, bool isLast,
+            string reasonEnd, int played, long endTimestamp)
+            => new()
             {
                 PlaybackId = ByteString.CopyFrom(r.Ids.PlaybackId),
                 StartPosition = r.SegmentStartPositionMs,
@@ -619,18 +648,11 @@ public static partial class Spotify
                 InteractionId = r.Ids.InteractionId,
                 PlayContext = r.PlayContext,
                 SequenceIdInternal = r.SegmentSequenceInternal,
+                PlayerSessionId = isLast ? r.PlayerSessionId ?? "" : "",
                 DeviceBrand = "spotify",
                 DeviceModelName = Client.DeviceModel,
                 DeviceTypeName = "computer",
-            }.ToByteArray());
-
-            r.SegmentSequence++;
-            r.SegmentSequenceInternal++;
-            if (isLast) return;
-            r.SegmentStartTick = Stopwatch.GetTimestamp();
-            r.SegmentStartMs = endTimestamp;
-            r.SegmentStartPositionMs = endPositionMs;
-        }
+            };
 
         static void Session(string eventName, byte[] playbackId, string reason, int seekPosition)
             => Enqueue("AudioSessionEvent", new Evt.AudioSessionEvent

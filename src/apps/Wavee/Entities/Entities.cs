@@ -55,8 +55,11 @@ namespace Wavee;
 /// metadata transport can fetch come first (ported from <c>Wavee.Core/Hydration/EntityUri.cs</c>).
 /// <para><c>spotify:prerelease:&lt;id&gt;</c> is deliberately NOT a kind of its own: a prerelease resolves to an ALBUM
 /// row carrying <c>AlbumFlags.PreRelease</c> (ch 05, ch 31 §7.3), so the countdown surface reads one table and a
-/// release does not migrate a row between kinds. <see cref="EntityUri.IsPrerelease"/> answers the uri shape.</para></summary>
-public enum EntityKind : byte { Unknown, Track, Episode, Album, Artist, Playlist, Show, User, Collection, Concert }
+/// release does not migrate a row between kinds. <see cref="EntityUri.IsPrerelease"/> answers the uri shape.</para>
+/// <para><c>spotify:list:&lt;kind&gt;:&lt;subject&gt;</c> is a server-generated LIST context (an artist's "Popular" list) —
+/// text form, no table of its own and no page: it only names where playback comes from, and
+/// <see cref="Queue.ContextTarget"/> says which entity the header opens.</para></summary>
+public enum EntityKind : byte { Unknown, Track, Episode, Album, Artist, Playlist, Show, User, Collection, Concert, List }
 
 /// <summary>Who owns a uri — the routing half of the parse, kept separate from <see cref="EntityKind"/>, which is the
 /// hydration half. Typed rather than the raw <c>byte</c> plan §4.1 sketched: the same one byte in a column, but a
@@ -413,6 +416,7 @@ public readonly struct EntityId : IEquatable<EntityId>
         EntityKind.User => "user",
         EntityKind.Collection => "collection",
         EntityKind.Concert => "concert",
+        EntityKind.List => "list",
         _ => "unknown",
     };
 
@@ -810,6 +814,7 @@ public readonly record struct EntityUri(EntityId Id)
         if (Is(type, "user")) return EntityKind.User;
         if (Is(type, "collection")) return EntityKind.Collection;
         if (Is(type, "concert")) return EntityKind.Concert;
+        if (Is(type, "list")) return EntityKind.List;
         // A prerelease resolves to an ALBUM row (see EntityKind's doc): one table, one countdown surface, and a
         // release does not migrate the row between kinds.
         if (Is(type, "prerelease")) return EntityKind.Album;

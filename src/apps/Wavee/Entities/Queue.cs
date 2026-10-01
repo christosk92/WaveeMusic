@@ -386,6 +386,102 @@ public static partial class Queue
     public static bool ShouldFollowMirror(EdgeState state, bool isForeign, int foundIndex, byte foundBucket)
         => isForeign && state != EdgeState.Unknown && foundIndex >= 0 && foundBucket != (byte)QueueBucket.NowPlaying;
 
+    // ── the mirror decision: while ANOTHER device owns playback the panel IS the owner's ─────────────────────────────
+    //
+    // The one-shot `DecideSeed` gate and the follow above left the rows of the LAST LOCAL queue on screen whenever the
+    // owner moved to anything the old rows did not contain (a new album, a new list): the current row was not found,
+    // so nothing followed, and the owner's own ~80 next_tracks sat unused in the host's copy. The owner's cluster is
+    // the truth — re-derive the rows from it whenever its session or queue revision moves, or the row it plays is not
+    // in ours. The local queue is DROPPED, not parked: `Queue.Replace` is the only write, and a takeover (A4) reseeds
+    // from the same cluster anyway.
+
+    /// <summary>What the mirror does with a cluster the owner just pushed.</summary>
+    public enum MirrorDecision : byte
+    {
+        /// <summary>Not a foreign mirror, nothing playing, an <see cref="EdgeState.Unknown"/> queue (<see cref="DecideSeed"/>'s
+        /// job) or rows that already agree with the owner.</summary>
+        None = 0,
+        /// <summary>Rebuild every row from the cluster's own prev / current / next (<c>SeedFromForeignQueue</c>).</summary>
+        ReplaceFromCluster = 1,
+        /// <summary>The rows are the owner's already; only re-bucket around the row now playing (<see cref="ShouldFollowMirror"/>).</summary>
+        FollowMirror = 2,
+    }
+
+    /// <summary>The mirror decision (see <see cref="MirrorDecision"/>). PURE. <paramref name="hasClusterTracks"/> is
+    /// "the cluster carried prev or next tracks"; <paramref name="stampChanged"/> is "the
+    /// owner's session id or queue revision differs from the last cluster mirrored" (a forwarded Play next / Add to
+    /// queue lands here too: the owner bumps its revision); <paramref name="foundIndex"/> / <paramref name="foundBucket"/>
+    /// are where the current row sits in the local rows (−1 = absent). A cluster with no prev/next tracks still
+    /// replaces on a changed stamp: the owner's queue ENDED, and the panel must say so rather than keep the old rows.</summary>
+    public static MirrorDecision DecideMirror(Playback.Owner owner, EdgeState state, bool hasCurrent, bool hasClusterTracks,
+        bool stampChanged, int foundIndex, byte foundBucket)
+    {
+        if (owner != Playback.Owner.Foreign || !hasCurrent) return MirrorDecision.None;
+        // A queue nothing ever loaded (or an empty one) takes the owner's rows the moment the cluster carries any; with
+        // none to give, `DecideSeed` resolves the context instead.
+        if (state == EdgeState.Unknown) return hasClusterTracks ? MirrorDecision.ReplaceFromCluster : MirrorDecision.None;
+        if (stampChanged || foundIndex < 0) return MirrorDecision.ReplaceFromCluster;
+        return ShouldFollowMirror(state, isForeign: true, foundIndex, foundBucket) ? MirrorDecision.FollowMirror : MirrorDecision.None;
+    }
+
+    /// <summary>Does the deck name a row this scope can point at? PURE. A mirrored owner's new track is an id first and a
+    /// row only once the host re-points the slot (<c>EnsureRow</c>): deciding or laying out before that finds nothing.</summary>
+    public static bool DeckResolved(EntityRef current, EntityId id) => !current.IsNone && !id.IsEmpty;
+
+    /// <summary>One row of the owner's cluster as the layout sees it: has it a playable identity this scope resolved
+    /// (a <c>spotify:delimiter</c> or <c>spotify:meta:page:1</c> marker has not), its wire provenance, and its item id.</summary>
+    public readonly record struct MirrorRow(bool Playable, bool Queued, bool Autoplay, ulong ItemId);
+
+    /// <summary>Lay the owner's queue out as rows: history (<paramref name="prev"/>), the deck (item id 0 — its uid is not on
+    /// this wire), the owner's queued rows (UserQueue / Queue), then the rest as NextUp — provenance Autoplay or Context by
+    /// the wire. PURE. Unplayable rows are dropped. <paramref name="origin"/>[i] says what row i is: −1 the deck, else the
+    /// index into <paramref name="prev"/> followed by <paramref name="next"/> (<c>prev.Length + k</c> for next k), so the
+    /// caller can pack its targets. Returns the rows written (capped by the spans); <paramref name="deck"/> is the deck's
+    /// index (= the history rows kept), which is what <see cref="Divider"/> answers for a mirror.</summary>
+    public static int LayoutMirror(ReadOnlySpan<MirrorRow> prev, ReadOnlySpan<MirrorRow> next, Span<QueueEdge> rows,
+        Span<int> origin, out int deck)
+    {
+        int cap = Math.Min(rows.Length, origin.Length), n = 0;
+        for (int k = 0; k < prev.Length && n < cap; k++)
+        {
+            if (!prev[k].Playable) continue;
+            rows[n] = new QueueEdge(prev[k].ItemId, (byte)(prev[k].Autoplay ? QueueProvider.Autoplay : QueueProvider.Context), (byte)QueueBucket.History);
+            origin[n++] = k;
+        }
+        deck = n;
+        if (n < cap)
+        {
+            rows[n] = new QueueEdge(0, (byte)QueueProvider.Context, (byte)QueueBucket.NowPlaying);
+            origin[n++] = -1;
+        }
+        for (int k = 0; k < next.Length && n < cap; k++)
+        {
+            if (!next[k].Playable || !next[k].Queued) continue;
+            rows[n] = new QueueEdge(next[k].ItemId, (byte)QueueProvider.Queue, (byte)QueueBucket.UserQueue);
+            origin[n++] = prev.Length + k;
+        }
+        for (int k = 0; k < next.Length && n < cap; k++)
+        {
+            if (!next[k].Playable || next[k].Queued) continue;
+            rows[n] = new QueueEdge(next[k].ItemId, (byte)(next[k].Autoplay ? QueueProvider.Autoplay : QueueProvider.Context), (byte)QueueBucket.NextUp);
+            origin[n++] = prev.Length + k;
+        }
+        return n;
+    }
+
+    /// <summary>May this device write its OWN queue rows? PURE. Not while another device owns playback: the rows are the
+    /// owner's mirror then (<see cref="DecideMirror"/>), and a local layout, autoplay append or refill would paint rows
+    /// the owner never queued — a play is forwarded to it instead and the panel follows its next cluster. The ONE gate
+    /// <c>PlayRows</c>, the autoplay / page append and the reducer's refill all read.</summary>
+    public static bool LocalQueueWritable(Playback.Owner owner) => owner != Playback.Owner.Foreign;
+
+    /// <summary>The context the deck paints for a cluster while <paramref name="owner"/> owns playback. PURE. A foreign
+    /// owner's context IS the header — even an empty one (a single track, a radio the wire names no context for), or the
+    /// panel keeps naming an old local playlist — but an idle cluster (<paramref name="hasTrack"/> false) says nothing
+    /// about what is playing and leaves the last painted context alone. Anyone else keeps <paramref name="local"/>.</summary>
+    public static EntityId MirrorContextFor(Playback.Owner owner, bool hasTrack, EntityId remote, EntityId local)
+        => owner == Playback.Owner.Foreign && hasTrack ? remote : local;
+
     // ── the seed retry decision (bug: a boot-time context resolve asked before the session authorises) ───────────────
     //
     // `SeedSource.Context` still has to go run `ContextResolve` on an api thread (`Playback.Host.Context.cs`'s
@@ -556,7 +652,7 @@ public static partial class Queue
             int at = EnqueueIndex(run.R, cursor.Index);
             Open(ref run, at, 1);
             run.Targets[at] = packed;
-            run.Rows[at] = new QueueEdge(itemId != 0 ? itemId : MintItemIds(1), (byte)QueueProvider.Queue, (byte)QueueBucket.UserQueue);
+            run.Rows[at] = new QueueEdge(itemId != 0 ? itemId : Playback.MintQueuedItemId(), (byte)QueueProvider.Queue, (byte)QueueBucket.UserQueue);
             Land(in run);
             // §2.5 step 2's "optimistic local mutation" — the exact position it landed at, read off this splice's
             // own return value, never recomputed. `row.Id.Text` can allocate (EntityId.Text's own doc), so it is

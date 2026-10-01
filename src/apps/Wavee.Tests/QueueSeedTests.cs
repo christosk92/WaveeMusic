@@ -260,4 +260,184 @@ public class QueueSeedTests
         bool should = Queue.ShouldFollowMirror(EdgeState.Unknown, isForeign: true, foundIndex: 3, foundBucket: (byte)QueueBucket.NextUp);
         Assert.False(should);
     }
+
+    // ── the mirror decision: while another device owns playback the panel IS the owner's ──────────────────────────────
+
+    static Queue.MirrorDecision Mirror(Playback.Owner owner = Playback.Owner.Foreign, EdgeState state = EdgeState.Complete,
+        bool hasCurrent = true, bool tracks = true, bool stampMoved = false, int found = 2, QueueBucket bucket = QueueBucket.NowPlaying)
+        => Queue.DecideMirror(owner, state, hasCurrent, tracks, stampMoved, found, (byte)bucket);
+
+    [Fact]
+    public void A_moved_session_or_revision_replaces_the_rows_from_the_cluster()
+        => Assert.Equal(Queue.MirrorDecision.ReplaceFromCluster, Mirror(stampMoved: true));
+
+    [Fact]
+    public void A_current_row_missing_from_the_local_rows_replaces_them()
+        => Assert.Equal(Queue.MirrorDecision.ReplaceFromCluster, Mirror(found: -1, bucket: 0));
+
+    [Fact]
+    public void The_last_row_of_an_old_local_queue_with_the_stamp_moved_replaces_them()
+    {
+        // The Fly Away capture: 12 local album rows, the owner's row is the last one (found = 11, nothing after it), and
+        // the owner's 52 autoplay rows were never turned into rows — a moved stamp re-derives them.
+        Assert.Equal(Queue.MirrorDecision.ReplaceFromCluster,
+            Mirror(stampMoved: true, found: 11, bucket: QueueBucket.NextUp));
+    }
+
+    [Fact]
+    public void An_empty_or_never_loaded_queue_takes_the_owners_rows_when_the_cluster_has_any()
+    {
+        Assert.Equal(Queue.MirrorDecision.ReplaceFromCluster, Mirror(state: EdgeState.Unknown, tracks: true, found: -1, bucket: 0));
+        // With none to give, DecideSeed resolves the context instead.
+        Assert.Equal(Queue.MirrorDecision.None, Mirror(state: EdgeState.Unknown, tracks: false, found: -1, bucket: 0));
+    }
+
+    [Fact]
+    public void An_agreeing_mirror_only_follows_and_a_settled_one_does_nothing()
+    {
+        Assert.Equal(Queue.MirrorDecision.FollowMirror, Mirror(found: 3, bucket: QueueBucket.NextUp));
+        Assert.Equal(Queue.MirrorDecision.None, Mirror(found: 3, bucket: QueueBucket.NowPlaying));
+    }
+
+    [Theory]
+    [InlineData(Playback.Owner.Us)]
+    [InlineData(Playback.Owner.Nobody)]
+    public void Only_a_foreign_owner_is_mirrored(Playback.Owner owner)
+    {
+        Assert.Equal(Queue.MirrorDecision.None, Mirror(owner, stampMoved: true, found: -1, bucket: 0));
+        Assert.Equal(Queue.MirrorDecision.None, Mirror(hasCurrent: false, stampMoved: true));
+    }
+
+    // ── the mirror layout: the owner's prev / deck / next as rows ──────────────────────────────────────────────────────
+
+    static Queue.MirrorRow Row(bool queued = false, bool autoplay = false, ulong item = 0, bool playable = true)
+        => new(playable, queued, autoplay, item);
+
+    static int Lay(Queue.MirrorRow[] prev, Queue.MirrorRow[] next, out QueueEdge[] rows, out int[] origin, out int deck)
+    {
+        rows = new QueueEdge[prev.Length + next.Length + 1];
+        origin = new int[rows.Length];
+        int n = Queue.LayoutMirror(prev, next, rows, origin, out deck);
+        rows = rows[..n];
+        return n;
+    }
+
+    [Fact]
+    public void The_layout_buckets_history_the_deck_the_queue_and_the_continuation_by_provenance()
+    {
+        var prev = new[] { Row(item: 1), Row(item: 2) };
+        var next = new[] { Row(item: 3), Row(queued: true, item: 4), Row(autoplay: true, item: 5), Row(item: 6) };
+        int n = Lay(prev, next, out var rows, out var origin, out int deck);
+
+        Assert.Equal(7, n);
+        Assert.Equal(prev.Length, deck);
+        Assert.Equal(((byte)QueueBucket.History, (byte)QueueProvider.Context), (rows[0].Bucket, rows[0].Provider));
+        Assert.Equal(new QueueEdge(0, (byte)QueueProvider.Context, (byte)QueueBucket.NowPlaying), rows[deck]);   // the deck: item 0
+        Assert.Equal(new QueueEdge(4, (byte)QueueProvider.Queue, (byte)QueueBucket.UserQueue), rows[3]);          // queued first
+        Assert.Equal(new QueueEdge(3, (byte)QueueProvider.Context, (byte)QueueBucket.NextUp), rows[4]);
+        Assert.Equal(new QueueEdge(5, (byte)QueueProvider.Autoplay, (byte)QueueBucket.NextUp), rows[5]);
+        Assert.Equal(new QueueEdge(6, (byte)QueueProvider.Context, (byte)QueueBucket.NextUp), rows[6]);
+        Assert.True(Queue.IsOrdered(rows));
+        Assert.Equal(new[] { 0, 1, -1, 3, 2, 4, 5 }, origin[..n]);   // prev 0,1 · deck · next k = prev.Length + k
+    }
+
+    [Fact]
+    public void A_mirrors_divider_is_the_deck_and_upcoming_is_only_the_owners_next_rows()
+    {
+        // The screenshot regression as a pure assertion: nothing of prev, and not the current row, is upcoming.
+        Lay([Row(item: 1), Row(item: 2)], [Row(item: 3), Row(item: 4), Row(autoplay: true, item: 5)], out var rows, out _, out int deck);
+
+        Assert.Equal(deck, Queue.Divider(rows, -1));
+        var dst = new int[rows.Length];
+        int n = Queue.Split(rows, Queue.Divider(rows, -1), dst, out int user, out int next, out int auto);
+        Assert.Equal(3, n);
+        Assert.Equal((0, 2, 1), (user, next, auto));
+        Assert.Equal(new[] { deck + 1, deck + 2, deck + 3 }, dst[..n]);
+    }
+
+    [Fact]
+    public void A_skip_moves_the_first_upcoming_row()
+    {
+        // prev=2,next=50 vs prev=1,next=51 after the owner skipped: the same tail, one row nearer the front.
+        var tail = new Queue.MirrorRow[51];
+        for (int i = 0; i < tail.Length; i++) tail[i] = Row(item: (ulong)(100 + i));
+        Lay([Row(item: 1), Row(item: 2)], tail[1..], out var before, out _, out int d1);
+        Lay([Row(item: 1)], tail, out var after, out _, out int d2);
+
+        Assert.Equal(d1, Queue.Divider(before, -1));
+        Assert.Equal(2, d1);
+        Assert.Equal(1, d2);
+        Assert.NotEqual(before[d1 + 1].ItemId, after[d2 + 1].ItemId);
+    }
+
+    [Fact]
+    public void Unplayable_rows_are_dropped_from_the_layout_and_the_count()
+    {
+        // `spotify:delimiter` / `spotify:meta:page:1` markers resolve to no playable target.
+        int n = Lay([Row(playable: false), Row(item: 1)], [Row(playable: false), Row(item: 2), Row(playable: false)],
+            out var rows, out var origin, out int deck);
+
+        Assert.Equal(3, n);
+        Assert.Equal(1, deck);
+        Assert.Equal(new[] { 1, -1, 3 }, origin[..n]);
+        Assert.True(Queue.IsOrdered(rows));
+    }
+
+    // ── a click on a row while another device owns playback ──────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(QueueBucket.NextUp, Queue.RowVerb.NextTrack)]
+    [InlineData(QueueBucket.UserQueue, Queue.RowVerb.NextTrack)]
+    [InlineData(QueueBucket.History, Queue.RowVerb.PlayContext)]
+    [InlineData(QueueBucket.NowPlaying, Queue.RowVerb.PlayContext)]
+    public void Only_a_row_of_the_owners_next_tracks_is_a_next_track(QueueBucket bucket, Queue.RowVerb expected)
+    {
+        var rows = new[] { new QueueEdge(5, (byte)QueueProvider.Context, (byte)bucket) };
+        Assert.Equal(expected, Queue.RemoteRowVerb(rows, 0, rowMatches: true, out ulong item));
+        Assert.Equal(expected == Queue.RowVerb.NextTrack ? 5UL : 0UL, item);
+    }
+
+    [Fact]
+    public void A_click_without_a_cursor_or_on_another_row_is_a_context_play()
+    {
+        var rows = new[] { new QueueEdge(5, (byte)QueueProvider.Context, (byte)QueueBucket.NextUp) };
+        Assert.Equal(Queue.RowVerb.PlayContext, Queue.RemoteRowVerb(rows, -1, rowMatches: false, out _));
+        Assert.Equal(Queue.RowVerb.PlayContext, Queue.RemoteRowVerb(rows, 0, rowMatches: false, out _));   // a stale cursor
+        Assert.Equal(Queue.RowVerb.PlayContext, Queue.RemoteRowVerb(rows, 3, rowMatches: true, out _));    // past the rows
+    }
+
+    [Fact]
+    public void A_single_track_context_never_frames_a_different_track()
+    {
+        EntityId a = EntityId.ForGid(EntityKind.Track, (UInt128)1UL), b = EntityId.ForGid(EntityKind.Track, (UInt128)2UL);
+        EntityId album = EntityId.ForGid(EntityKind.Album, (UInt128)3UL);
+        Assert.Equal(b, ForwardPlayEnvelope.For(a, b));          // the owner's painted track context, another track clicked
+        Assert.Equal(a, ForwardPlayEnvelope.For(a, a));
+        Assert.Equal(album, ForwardPlayEnvelope.For(album, b));  // a real context passes through
+        Assert.Equal(b, ForwardPlayEnvelope.For(default, b));    // no context: the track is its own
+        Assert.Equal(album, ForwardPlayEnvelope.For(album, default));
+    }
+
+    [Fact]
+    public void No_resolved_deck_mirrors_nothing()
+        => Assert.Equal(Queue.MirrorDecision.None, Mirror(hasCurrent: false, stampMoved: true, found: -1, bucket: 0));
+
+    [Fact]
+    public void Only_a_foreign_owner_takes_the_local_queue_away()
+    {
+        Assert.False(Queue.LocalQueueWritable(Playback.Owner.Foreign));
+        Assert.True(Queue.LocalQueueWritable(Playback.Owner.Us));
+        Assert.True(Queue.LocalQueueWritable(Playback.Owner.Nobody));
+    }
+
+    [Fact]
+    public void The_header_context_is_the_foreign_owners_and_only_while_it_owns()
+    {
+        EntityId remote = EntityId.ForGid(EntityKind.Album, (UInt128)1UL), local = EntityId.ForGid(EntityKind.Playlist, (UInt128)2UL);
+        Assert.Equal(remote, Queue.MirrorContextFor(Playback.Owner.Foreign, true, remote, local));
+        Assert.True(Queue.MirrorContextFor(Playback.Owner.Foreign, true, default, local).IsEmpty);   // no context IS the answer
+        Assert.Equal(local, Queue.MirrorContextFor(Playback.Owner.Foreign, false, default, local));  // an idle cluster says nothing
+        Assert.Equal(local, Queue.MirrorContextFor(Playback.Owner.Us, true, remote, local));
+        Assert.Equal(local, Queue.MirrorContextFor(Playback.Owner.Nobody, true, remote, local));
+    }
 }

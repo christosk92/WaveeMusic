@@ -337,6 +337,9 @@ public static partial class Spotify
             catch (Exception ex) when (ex is HttpRequestException or IOException or ObjectDisposedException)
             {
                 Log.Warn("spotify", "api " + verb + " failed: " + ex.GetType().Name + " " + ex.Message);
+                // DNS, connect and TLS failures carry no HTTP status: the next apresolve spclient host takes over.
+                if (ex is HttpRequestException { StatusCode: null } && Uri.TryCreate(url, UriKind.Absolute, out var failed))
+                    NoteSpclientTransportFailure(failed.GetLeftPart(UriPartial.Authority));
                 return Result.Transport;
             }
         }
@@ -432,6 +435,7 @@ public static partial class Spotify
             if ((headers & HeaderSet.Origin) != 0) h.TryAddWithoutValidation("Origin", SpclientBaseUrl().TrimEnd('/'));
             if ((headers & HeaderSet.XpuiOrigin) != 0) { h.TryAddWithoutValidation("Origin", XpuiOrigin); h.TryAddWithoutValidation("Referer", XpuiOrigin + "/"); }
             if ((headers & HeaderSet.AcceptAny) != 0) h.TryAddWithoutValidation("Accept", "*/*");
+            if ((headers & HeaderSet.AcceptBareProtobuf) != 0) h.TryAddWithoutValidation("Accept", "protobuf");
             if ((headers & HeaderSet.SoapLicense) != 0) h.TryAddWithoutValidation("SOAPAction", "\"http://schemas.microsoft.com/DRM/2007/03/protocols/AcquireLicense\"");
             if (syncReason.Length > 0) h.TryAddWithoutValidation("spotify-playlist-sync-reason", syncReason);
 

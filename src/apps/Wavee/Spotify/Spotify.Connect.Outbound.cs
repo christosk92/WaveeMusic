@@ -38,36 +38,113 @@ public static partial class Spotify
         const HeaderSet CommandHeaders = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity
             | HeaderSet.AcceptLanguage | HeaderSet.ContentForm | HeaderSet.GzipBody | HeaderSet.ConnectionId;
 
+        /// <summary>The transfer POST: the form content type, NOT gzipped, and the bare <c>Accept: protobuf</c> (the official
+        /// client's, 3 of 3 captured transfers).</summary>
         const HeaderSet TransferHeaders = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity
-            | HeaderSet.AcceptLanguage | HeaderSet.ContentForm | HeaderSet.ConnectionId;
+            | HeaderSet.AcceptLanguage | HeaderSet.AcceptBareProtobuf | HeaderSet.ContentForm | HeaderSet.ConnectionId;
 
         const string PlayerCommandRoute = "/connect-state/v1/player/command/from/";
+        public const string TransferRoute = "/connect-state/v1/connect/transfer/from/";
+        public const string WakeDevicesRoute = "/connect-state/v1/cluster/wake-devices";
 
-        /// <summary>Move playback to <paramref name="targetDeviceId"/>, from whoever owns it now. Self-to-self is a
-        /// 400 and the caller must not ask for it.</summary>
-        public static bool Transfer(string fromDeviceId, string targetDeviceId, CancellationToken ct)
+        /// <summary>Move playback to <paramref name="targetDeviceId"/>, from whoever owns it now. The route's <c>from</c> is
+        /// OUR device id even when we are not the owner — the official client does the same in all three captured
+        /// transfers, and the target is what names the device that takes over. Self-to-self is a 400 and the caller must not
+        /// ask for it. <paramref name="ackId"/> is the answer's <c>{"ack_id"}</c> (null when the answer carried none), the
+        /// value the cluster echoes once the command was applied.</summary>
+        public static bool Transfer(string targetDeviceId, CancellationToken ct, out string? ackId)
         {
             var buffer = new ArrayBufferWriter<byte>(256);
-            using (var w = new Utf8JsonWriter(buffer))
+            TransferBody(buffer, NewId(), NewId(), Guid.NewGuid().ToString());
+            Span<char> path = stackalloc char[256];
+            int length = CommandPath(TransferRoute, OurDeviceId, targetDeviceId, path);
+            var args = new RequestArgs
             {
-                w.WriteStartObject();
-                w.WriteStartObject("options");
-                w.WriteString("restore_paused", "restore");
-                w.WriteString("restore_position", "extrapolate");
-                w.WriteString("restore_track", "only_current");
-                w.WriteString("license", "premium");
-                w.WriteEndObject();
-                w.WriteString("transfer_intent_id", NewId());
-                w.WriteString("command_id", NewId());
-                w.WriteString("interaction_id", Guid.NewGuid().ToString());
-                w.WriteEndObject();
+                Path = path[..length],
+                Host = ApiHost.Spclient,
+                Verb = Verb.Post,
+                Headers = TransferHeaders,
+                Body = buffer.WrittenSpan,
+            };
+            Api.Result result = Api.Send(RequestKind.Custom, args, ct);
+            ackId = result.Ok ? AckIdOf(result.Body) : null;
+            if (!result.Ok) Log.Warn("spotify", "connect " + TransferRoute + " rejected (" + result.Status + ")");
+            return result.Ok;
+        }
+
+        /// <summary>The transfer body, key order as the official client writes it. PURE.</summary>
+        public static void TransferBody(IBufferWriter<byte> into, string transferIntentId, string commandId, string interactionId)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("options");
+            w.WriteString("restore_paused", "restore");
+            w.WriteString("restore_position", "extrapolate");
+            w.WriteString("restore_track", "only_current");
+            w.WriteString("license", "premium");
+            w.WriteEndObject();
+            w.WriteString("transfer_intent_id", transferIntentId);
+            w.WriteString("command_id", commandId);
+            w.WriteString("interaction_id", interactionId);
+            w.WriteEndObject();
+        }
+
+        /// <summary><c>{"ack_id":"…"}</c> → the id, or null for any other body. PURE.</summary>
+        public static string? AckIdOf(ReadOnlySpan<byte> body)
+        {
+            try
+            {
+                var r = new Utf8JsonReader(body);
+                if (!r.Read() || r.TokenType != JsonTokenType.StartObject) return null;
+                while (r.Read() && r.TokenType == JsonTokenType.PropertyName)
+                {
+                    if (r.ValueTextEquals("ack_id"u8)) return r.Read() && r.TokenType == JsonTokenType.String ? r.GetString() : null;
+                    r.Read();
+                    r.Skip();
+                }
             }
-            return PostCommand("/connect-state/v1/connect/transfer/from/", fromDeviceId, targetDeviceId,
-                buffer.WrittenSpan, TransferHeaders, ct);
+            catch (JsonException) { }
+            return null;
+        }
+
+        /// <summary>The picker was opened: the official client POSTs this with an EMPTY body in the same millisecond as its
+        /// picker-opened put-state, so every other device re-announces itself into the cluster (captured 3 of 3). Blocks;
+        /// api threads only.</summary>
+        public static bool WakeDevices(CancellationToken ct)
+        {
+            var args = new RequestArgs
+            {
+                Path = WakeDevicesRoute,
+                Host = ApiHost.Spclient,
+                Verb = Verb.Post,
+                Headers = HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.Identity | HeaderSet.AcceptLanguage | HeaderSet.ConnectionId,
+            };
+            Api.Result result = Api.Send(RequestKind.Custom, args, ct);
+            if (!result.Ok) Log.Warn("spotify", "connect wake-devices rejected (" + result.Status + ")");
+            return result.Ok;
+        }
+
+        /// <summary>The least gap between two picker-opened announces (put-state + wake-devices): a picker that flickers open
+        /// and shut must not ask the whole cluster to re-announce each time.</summary>
+        public const int PickerGapMs = 5_000;
+
+        /// <summary>May a picker-opened announce go out now, given when the last one did (0 = never)? PURE.</summary>
+        public static bool PickerDue(long nowMs, long lastMs) => lastMs == 0 || nowMs < lastMs || nowMs - lastMs >= PickerGapMs;
+
+        /// <summary><c>{prefix}{from}/to/{to}</c> with both ids escaped, written into <paramref name="into"/>; answers the
+        /// length written. PURE.</summary>
+        public static int CommandPath(string prefix, string fromDeviceId, string targetDeviceId, Span<char> into)
+        {
+            var w = new PathWriter(into);
+            w.Append(prefix);
+            w.AppendEscaped(fromDeviceId);
+            w.Append("/to/");
+            w.AppendEscaped(targetDeviceId);
+            return w.Written.Length;
         }
 
         /// <summary>One verb for the device that holds playback. <paramref name="endpoint"/> is the wire spelling
-        /// (`pause`, `resume`, `skip_next`, `seek_to`, `set_shuffling_context`, …) and <paramref name="value"/> is the
+        /// (`pause`, `resume`, `skip_prev`, `seek_to`, `set_shuffling_context`, …) and <paramref name="value"/> is the
         /// verb's one argument, written under <paramref name="valueName"/> when that name is non-empty.</summary>
         public static bool Command(string targetDeviceId, string endpoint, string valueName, long value,
             bool flag, CancellationToken ct)
@@ -108,17 +185,31 @@ public static partial class Spotify
         /// <summary>"Play this context from this row" on the device that owns playback — the desktop `play` envelope
         /// (0.2.9 <c>OutboundEnvelope.Play</c>): an opaque, URI-only context, a play_origin, `prepare_play_options` with
         /// the skip_to track and the shuffle override, and `play_options` interactive/replace/immediately.</summary>
-        public static bool PlayContext(string targetDeviceId, string contextUri, string? trackUri, bool shuffle, CancellationToken ct, int fromMs = -1)
+        public static bool PlayContext(string targetDeviceId, string contextUri, string? trackUri, bool shuffle, CancellationToken ct,
+            int fromMs = -1, string? skipUid = null, int skipIndex = -1)
         {
             var buffer = new ArrayBufferWriter<byte>(768);
-            PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs);
+            PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs, skipUid, skipIndex);
             return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
         }
 
+        /// <summary>The uid a <c>skip_to</c> may carry: only the 32-lowercase-hex uid the owner's CONTEXT stamped on a row, else
+        /// null. Never our own <c>q&lt;n&gt;</c> or packed-hex mint — an owner that does not know the uid ignores it at best.
+        /// PURE.</summary>
+        public static string? SkipUidOf(string? uid)
+        {
+            if (uid is not { Length: 32 }) return null;
+            foreach (char c in uid) if (!(c is >= '0' and <= '9' or >= 'a' and <= 'f')) return null;
+            return uid;
+        }
+
         /// <summary>The `play` envelope body. PURE (SpotifyConnectTests). <paramref name="trackUri"/> null/empty plays the
-        /// context from its head. `always_play_something` false and `license` premium as every desktop capture carries.</summary>
+        /// context from its head. `always_play_something` false and `license` premium as every desktop capture carries.
+        /// Owners match <c>skip_to</c> by uid, then uri, then index — a uri alone lands on the FIRST copy of a track that sits in
+        /// the context twice — so the row's <paramref name="skipUid"/> (<see cref="SkipUidOf"/>) and a known
+        /// <paramref name="skipIndex"/> (&gt;= 0) ride beside the uri; everything else stays thin.</summary>
         public static void PlayBody(IBufferWriter<byte> into, string contextUri, string? trackUri, bool shuffle, string deviceId,
-            string commandId, string intentId, long nowMs, int fromMs = -1)
+            string commandId, string intentId, long nowMs, int fromMs = -1, string? skipUid = null, int skipIndex = -1)
         {
             using var w = new Utf8JsonWriter(into);
             w.WriteStartObject();
@@ -143,6 +234,8 @@ public static partial class Spotify
             {
                 w.WriteStartObject("skip_to");
                 w.WriteString("track_uri", trackUri);
+                if (SkipUidOf(skipUid) is { } uid) w.WriteString("track_uid", uid);
+                if (skipIndex >= 0) w.WriteNumber("track_index", skipIndex);
                 w.WriteEndObject();
             }
             w.WriteString("license", "premium");
@@ -155,6 +248,45 @@ public static partial class Spotify
             w.WriteString("operation", "replace");
             w.WriteString("trigger", "immediately");
             w.WriteEndObject();
+            LoggingParams(w, deviceId, commandId, "", nowMs);
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>"Jump to this row of YOUR queue" on the device that owns playback — the desktop `next_track` envelope; with
+        /// an empty <paramref name="trackUri"/> it is the plain skip button, which the official client also spells `next_track`
+        /// (7 of 7 captured; the gateway rewrites it to `skip_next` for dealer delivery). Blocks; api threads only.</summary>
+        public static bool NextTrack(string targetDeviceId, string? trackUri, string? trackUid, CancellationToken ct)
+        {
+            var buffer = new ArrayBufferWriter<byte>(512);
+            NextTrackBody(buffer, trackUri, trackUid, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
+        }
+
+        /// <summary>The `next_track` envelope body, as the official client's queue-row click sends it: the three option
+        /// bools, <c>track { uri, uid, metadata }</c> (the owner matches on uid, else uri, and advances its own queue until
+        /// it reaches that row — uid and metadata always written, metadata empty: the owner has the row), the logging
+        /// params, then <c>connection_type</c> and <c>intent_id</c>. A null or empty <paramref name="trackUri"/> writes no
+        /// <c>track</c> at all: the plain skip button. PURE.</summary>
+        public static void NextTrackBody(IBufferWriter<byte> into, string? trackUri, string? trackUid, string deviceId,
+            string commandId, string intentId, long nowMs)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "next_track");
+            QueueOptions(w);
+            if (!string.IsNullOrEmpty(trackUri))
+            {
+                w.WriteStartObject("track");
+                w.WriteString("uri", trackUri);
+                w.WriteString("uid", trackUid ?? "");
+                w.WriteStartObject("metadata");
+                w.WriteEndObject();
+                w.WriteEndObject();
+            }
             LoggingParams(w, deviceId, commandId, "", nowMs);
             w.WriteEndObject();
             w.WriteString("connection_type", "wlan");
@@ -377,14 +509,10 @@ public static partial class Spotify
             HeaderSet headers, CancellationToken ct)
         {
             Span<char> path = stackalloc char[256];
-            var w = new PathWriter(path);
-            w.Append(prefix);
-            w.AppendEscaped(fromDeviceId);
-            w.Append("/to/");
-            w.AppendEscaped(targetDeviceId);
+            int length = CommandPath(prefix, fromDeviceId, targetDeviceId, path);
             var args = new RequestArgs
             {
-                Path = w.Written,
+                Path = path[..length],
                 Host = ApiHost.Spclient,
                 Verb = Verb.Post,
                 Headers = headers,

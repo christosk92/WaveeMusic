@@ -90,6 +90,67 @@ public class ClusterDecodeTests
     }
 
     [Fact]
+    public void A_cluster_carries_the_session_the_play_origin_and_the_contexts_own_description()
+    {
+        var cluster = Fixture();
+        cluster.PlayerState.SessionId = "session-a";
+        cluster.PlayerState.PlayOrigin = new P.PlayOrigin
+        {
+            FeatureIdentifier = "artist",
+            ReferrerIdentifier = "spotify:artist:0YLlTW9rW7ZCy2cA2u3RYk",
+        };
+        cluster.PlayerState.ContextMetadata["context_description"] = "FLEMMING Popular";
+        cluster.PlayerState.ContextMetadata["other"] = "ignored";
+
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var delta = Spotify.Decode.Cluster(cluster.ToByteArray(), OursUtf8, buffer);
+
+        Assert.Equal("session-a", Encoding.UTF8.GetString(buffer.Utf8(delta.SessionId)));
+        Assert.Equal("artist", Encoding.UTF8.GetString(buffer.Utf8(delta.FeatureIdentifier)));
+        Assert.Equal("spotify:artist:0YLlTW9rW7ZCy2cA2u3RYk", Encoding.UTF8.GetString(buffer.Utf8(delta.ReferrerIdentifier)));
+        Assert.Equal("FLEMMING Popular", Encoding.UTF8.GetString(buffer.Utf8(delta.ContextDescription)));
+        Assert.Equal("rev-1", Encoding.UTF8.GetString(buffer.Utf8(delta.QueueRevision)));   // the neighbours still decode
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+    }
+
+    [Fact]
+    public void A_cluster_carries_the_whole_context_metadata_map_and_the_rest_of_the_play_origin()
+    {
+        var cluster = Fixture();
+        cluster.PlayerState.PlayOrigin = new P.PlayOrigin { FeatureIdentifier = "album", FeatureVersion = "9.1.86", ViewUri = "spotify:album:x", ExternalReferrer = "ext", DeviceIdentifier = "dev" };
+        cluster.PlayerState.ContextMetadata["context_description"] = "Radio";
+        cluster.PlayerState.ContextMetadata["format_list_type"] = "inspiredby-mix";
+        cluster.PlayerState.ContextMetadata["player.arch"] = "2";
+
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var delta = Spotify.Decode.Cluster(cluster.ToByteArray(), OursUtf8, buffer);
+
+        var map = new Dictionary<string, string>();
+        foreach (var entry in buffer.Meta(delta.MetaStart, delta.MetaCount))
+            map[Encoding.UTF8.GetString(buffer.Utf8(entry.Key))] = Encoding.UTF8.GetString(buffer.Utf8(entry.Value));
+        Assert.Equal(3, map.Count);
+        Assert.Equal("inspiredby-mix", map["format_list_type"]);
+        Assert.Equal("Radio", Encoding.UTF8.GetString(buffer.Utf8(delta.ContextDescription)));
+        Assert.Equal("9.1.86", Encoding.UTF8.GetString(buffer.Utf8(delta.FeatureVersion)));
+        Assert.Equal("spotify:album:x", Encoding.UTF8.GetString(buffer.Utf8(delta.ViewUri)));
+        Assert.Equal("ext", Encoding.UTF8.GetString(buffer.Utf8(delta.ExternalReferrer)));
+        Assert.Equal("dev", Encoding.UTF8.GetString(buffer.Utf8(delta.DeviceIdentifier)));
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+    }
+
+    [Fact]
+    public void A_cluster_with_no_origin_or_description_leaves_them_empty()
+    {
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var delta = Spotify.Decode.Cluster(Fixture().ToByteArray(), OursUtf8, buffer);
+
+        Assert.True(delta.ContextDescription.IsEmpty);
+        Assert.True(delta.ReferrerIdentifier.IsEmpty);
+        Assert.True(delta.SessionId.IsEmpty);
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+    }
+
+    [Fact]
     public void The_current_track_comes_off_the_metadata_map_with_the_cover_falling_back_by_size()
     {
         var buffer = Spotify.Decode.ClusterBuffer.Rent();
@@ -229,8 +290,40 @@ public class ClusterDecodeTests
         Assert.Equal(Spotify.Decode.RemoteCmd.SeekTo, cmd.Kind);
         Assert.True(cmd.Ok);
         Assert.Equal(42_000, cmd.SeekToMs);
-        Assert.Equal(int.MaxValue, cmd.MessageId);
+        Assert.Equal(uint.MaxValue, cmd.MessageId);
         Assert.NotEqual(0ul, cmd.SenderHash);
+    }
+
+    [Fact]
+    public void A_skip_that_names_a_row_carries_its_uid_as_the_item_id_and_a_hash()
+    {
+        var packed = Parse("""{"command":{"endpoint":"next_track","track":{"uri":"spotify:track:7idegBIikag5rTZP4WZihP","uid":"00000000000000a1","metadata":{"x":"y"}}}}""");
+        Assert.Equal(Spotify.Decode.RemoteCmd.SkipNext, packed.Kind);
+        Assert.Equal(0xa1ul, packed.TrackUidItemId);
+        Assert.NotEqual(0ul, packed.TrackUidHash);
+
+        var short_ = Parse("""{"command":{"endpoint":"skip_next","track":{"uri":"spotify:track:7idegBIikag5rTZP4WZihP","uid":"q2"}}}""");
+        Assert.Equal(0ul, short_.TrackUidItemId);                                  // not 16 hex: the host resolves it from the hash
+        Assert.NotEqual(0ul, short_.TrackUidHash);
+
+        var plain = Parse("""{"command":{"endpoint":"next_track"}}""");
+        Assert.Equal(0ul, plain.TrackUidHash);
+        Assert.True(plain.Track.IsEmpty);
+    }
+
+    [Fact]
+    public void A_cluster_update_carries_the_command_ack_id_it_echoes()
+    {
+        // ClusterUpdate.ack_id is field 3 (string): tag 0x1A. The same text as the HTTP answer's {"ack_id"} hashes alike.
+        byte[] update = [0x1A, 3, (byte)'a', (byte)'b', (byte)'c'];
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var delta = Spotify.Decode.ClusterUpdate(update, OursUtf8, buffer);
+        buffer.Reset();
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+
+        Assert.NotEqual(0ul, delta.AckId);
+        Assert.Equal(Spotify.Decode.AckHash("abc"u8), delta.AckId);
+        Assert.NotEqual(Spotify.Decode.AckHash("abd"u8), delta.AckId);
     }
 
     [Fact]
@@ -252,7 +345,7 @@ public class ClusterDecodeTests
         var cmd = Parse("""{"message_id":7,"command":{"endpoint":"frobnicate"}}""");
         Assert.Equal(Spotify.Decode.RemoteCmd.Unknown, cmd.Kind);
         Assert.False(cmd.Ok);
-        Assert.Equal(7, cmd.MessageId);
+        Assert.Equal(7u, cmd.MessageId);
     }
 
     [Fact]
@@ -302,6 +395,32 @@ public class ClusterDecodeTests
         Assert.Equal((sbyte)Spotify.Decode.RepeatMode.Context, load.Repeat);
         Assert.Equal("playlist", Str(buffer, load.FeatureIdentifier));
         Assert.Equal(0, load.TrackCount);                                  // no embedded pages: the host resolves the uri
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+    }
+
+    [Theory]
+    [InlineData("prepare_play_options")]
+    [InlineData("options")]
+    public void APlayCarriesItsPrepareOptionsSessionId(string spelling)
+    {
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var load = Spotify.Decode.ConnectLoad(Encoding.UTF8.GetBytes(
+            "{\"command\":{\"endpoint\":\"play\",\"context\":{\"uri\":\"spotify:album:0dijb70Boi9TIdmiLLq13V\"},\"" + spelling
+            + "\":{\"session_id\":\"1A2b3C4d5E6f7G8h9I0jKl\"}}}"), buffer);
+
+        Span<char> text = stackalloc char[Base62.GidChars];
+        Base62.Encode(load.SessionId, text);
+        Assert.Equal("1A2b3C4d5E6f7G8h9I0jKl", new string(text));
+        Spotify.Decode.ClusterBuffer.Return(buffer);
+    }
+
+    [Fact]
+    public void AnUnreadableSessionIdIsNoOffer()
+    {
+        var buffer = Spotify.Decode.ClusterBuffer.Rent();
+        var load = Spotify.Decode.ConnectLoad(
+            """{"command":{"endpoint":"play","options":{"session_id":"not-a-session"}}}"""u8, buffer);
+        Assert.Equal(UInt128.Zero, load.SessionId);
         Spotify.Decode.ClusterBuffer.Return(buffer);
     }
 
@@ -383,7 +502,7 @@ public class ClusterDecodeTests
         Assert.True(load.IsPlayingQueue);
         Assert.Equal(1, load.TrackCount);
         Assert.Equal("q1", Str(buffer, buffer.Tracks(load.TrackStart, 1)[0].Uid));
-        Assert.True(load.ForcePlay && load.Extrapolate && load.AlwaysPlaySomething && load.NewSession);
+        Assert.True(load.ForcePlay && load.Extrapolate && load.AlwaysPlaySomething);
         Spotify.Decode.ClusterBuffer.Return(buffer);
     }
 

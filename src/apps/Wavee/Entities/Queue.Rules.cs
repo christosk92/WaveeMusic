@@ -259,6 +259,124 @@ public static partial class Queue
         => (uint)cursorIndex < (uint)rows.Length ? cursorIndex
          : Range(rows, QueueBucket.NowPlaying, out int start, out _) ? start : -1;
 
+    // ── the context label: what a server-generated `spotify:list:` context is called and where its header goes ───────
+
+    /// <summary>What the owner's cluster SAID about <paramref name="Context"/>: <c>context_metadata.context_description</c>
+    /// ("FLEMMING Popular") and <c>play_origin.referrer_identifier</c> (the artist page it was started from). Carried with
+    /// the context it labels, so a wire that outlives a context change (a local play) is simply not read for the new one.
+    /// <c>default</c> = the cluster said nothing.</summary>
+    public readonly record struct ContextWire(EntityId Context, string Description, EntityId Referrer);
+
+    /// <summary>The artist a list context names in its id's trailing segment —
+    /// <c>spotify:list:popular-release-segments-main-roles:artist_&lt;22 base62&gt;</c> → <c>spotify:artist:&lt;id&gt;</c> —
+    /// or <c>default</c> when the id carries none (not a list, or another shape). PURE.</summary>
+    public static EntityId ListArtist(EntityId list)
+    {
+        if (list.Kind != EntityKind.List || list.Form != EntityForm.Text) return default;
+        ReadOnlySpan<char> text = Entities.Strings.Resolve(list.TextId);
+        ReadOnlySpan<char> tail = text[(text.LastIndexOf(':') + 1)..];
+        const string Tag = "artist_", Scheme = "spotify:artist:";
+        if (tail.Length != Tag.Length + Base62.GidChars || !tail.StartsWith(Tag, StringComparison.Ordinal)) return default;
+        Span<char> uri = stackalloc char[Scheme.Length + Base62.GidChars];
+        Scheme.CopyTo(uri);
+        tail[Tag.Length..].CopyTo(uri[Scheme.Length..]);
+        return EntityId.TryParseGid(uri, out EntityId artist) ? artist : default;
+    }
+
+    /// <summary>The entity a context's header NAMES and OPENS. A list context has no page of its own: its target is the
+    /// artist the wire's referrer says it was started from, else the artist its own id names; anything else targets
+    /// itself. <c>default</c> for a list that names no artist (the header then says its description and opens nothing).
+    /// PURE.</summary>
+    public static EntityId ContextTarget(EntityId context, in ContextWire wire)
+    {
+        if (context.Kind != EntityKind.List) return context;
+        if (wire.Context.Equals(context) && wire.Referrer.Kind == EntityKind.Artist) return wire.Referrer;
+        return ListArtist(context);
+    }
+
+    /// <summary>The name a list context carries on the wire, or null when the wire said none (or labelled another context).
+    /// PURE.</summary>
+    public static string? ListName(EntityId context, in ContextWire wire)
+        => context.Kind == EntityKind.List && wire.Context.Equals(context) && !string.IsNullOrEmpty(wire.Description) ? wire.Description : null;
+
+    // ── the context metadata we publish as the owner ──────────────────────────────────────────────────────────────────
+
+    /// <summary>The <c>context_metadata</c> keys WE write on every state we publish (the player's own constants): whatever a
+    /// previous owner carried under one of them never survives, ours always wins.</summary>
+    public static bool OwnsContextMetadataKey(string key) => key == "player.arch";
+
+    /// <summary>The previous owner's <c>context_metadata</c> a state we publish carries. A TAKEOVER adopts the whole map —
+    /// <c>context_description</c>, <c>albumType</c>, <c>format_list_type</c>, <c>context_owner</c>… — so a viewer of what we
+    /// now play still paints the context's name (the iPhone's 18 keys shrank to our <c>player.arch</c> alone, 2026-09-30
+    /// capture); a context WE started carries only what we wrote ourselves, so nothing is taken from anyone. The keys we own
+    /// (<see cref="OwnsContextMetadataKey"/>) are dropped either way. PURE.</summary>
+    public static KeyValuePair<string, string>[] OwnedContextMetadata(ReadOnlySpan<KeyValuePair<string, string>> previousOwner, bool takeover)
+    {
+        if (!takeover || previousOwner.IsEmpty) return [];
+        var kept = new List<KeyValuePair<string, string>>(previousOwner.Length);
+        foreach (KeyValuePair<string, string> entry in previousOwner)
+            if (!OwnsContextMetadataKey(entry.Key)) kept.Add(entry);
+        return kept.ToArray();
+    }
+
+    // ── the verb for a click on a row while ANOTHER device owns playback ────────────────────────────────────────────────
+
+    /// <summary>What a Play that reaches a foreign owner says to it.</summary>
+    public enum RowVerb : byte
+    {
+        /// <summary>"Play this context from this track" — a page or context play, which has no row of the owner's queue.</summary>
+        PlayContext = 0,
+        /// <summary>"Advance your queue to this row" — a row of the owner's mirrored next_tracks (queued, continuation or
+        /// autoplay, all NextUp/UserQueue here), by its uri and uid. The only thing the official client sends for it.</summary>
+        NextTrack = 1,
+    }
+
+    /// <summary>The verb for a Play forwarded to the owner. PURE. <paramref name="index"/> is the cursor's row (−1 none)
+    /// and <paramref name="rowMatches"/> says that row IS the row played. Only a row the owner's next_tracks carry
+    /// (<see cref="QueueBucket.UserQueue"/> / <see cref="QueueBucket.NextUp"/>) is a <see cref="RowVerb.NextTrack"/>;
+    /// history, the deck and everything without a cursor stay a context play. <paramref name="itemId"/> is the row's,
+    /// from which the host spells its uid.</summary>
+    public static RowVerb RemoteRowVerb(ReadOnlySpan<QueueEdge> rows, int index, bool rowMatches, out ulong itemId)
+    {
+        itemId = 0;
+        if (!rowMatches || (uint)index >= (uint)rows.Length) return RowVerb.PlayContext;
+        if (rows[index].Bucket is not ((byte)QueueBucket.UserQueue or (byte)QueueBucket.NextUp)) return RowVerb.PlayContext;
+        itemId = rows[index].ItemId;
+        return RowVerb.NextTrack;
+    }
+
+    /// <summary>The identity of the row at a flat index — what <see cref="SkipTarget"/> compares a controller's uri
+    /// against. A struct implementation (no boxing); the reducer's reads the live queue, a test hands an array.</summary>
+    public interface IRowIds
+    {
+        EntityId IdAt(int index);
+    }
+
+    /// <summary>Row identities as a flat array — a fixture's shape. An index past the array answers <c>default</c>.</summary>
+    public readonly struct RowIdArray(EntityId[] ids) : IRowIds
+    {
+        public EntityId IdAt(int index) => (uint)index < (uint)ids.Length ? ids[index] : default;
+    }
+
+    /// <summary>Which upcoming row an inbound <c>skip_next</c> that NAMES a track means, or -1 (name nothing, or no such
+    /// row ahead: the caller advances one row). The controller's uid wins over its uri — the same recording can sit in
+    /// the queue twice and only the uid says which — and the uri is the fallback for a uid we do not carry (a transfer's
+    /// gid-only rows). Only rows after <paramref name="cursorIndex"/> that are not history qualify: a skip never goes
+    /// BACK. The rows jumped over stay behind the cursor, which is exactly "history" to the next walk. PURE.</summary>
+    public static int SkipTarget<TIds>(ReadOnlySpan<QueueEdge> rows, TIds ids, int cursorIndex, ulong itemId, EntityId uri)
+        where TIds : struct, IRowIds
+    {
+        if (itemId == 0 && uri.IsEmpty) return -1;
+        int from = cursorIndex < 0 ? 0 : cursorIndex + 1;
+        if (itemId != 0)
+            for (int i = from; i < rows.Length; i++)
+                if (rows[i].ItemId == itemId && rows[i].Bucket != (byte)QueueBucket.History) return i;
+        if (!uri.IsEmpty)
+            for (int i = from; i < rows.Length; i++)
+                if (rows[i].Bucket != (byte)QueueBucket.History && ids.IdAt(i).Equals(uri)) return i;
+        return -1;
+    }
+
     /// <summary>A row's section, by provenance: queued → Queue, autoplay → Autoplay, anything else → NextUp.</summary>
     public static QueueSection SectionOf(in QueueEdge row)
         => row.Provider == (byte)QueueProvider.Queue || row.Bucket == (byte)QueueBucket.UserQueue ? QueueSection.Queue
@@ -427,14 +545,13 @@ public static partial class Queue
             int first = FirstUpcoming(run.R);
             int at = first + Math.Clamp(userIndex, 0, UserRun(run.R, first));
             Open(ref run, at, valid);
-            ulong id = MintItemIds(valid);
             int w = at;
             for (int i = 0; i < refs.Length; i++)
             {
                 int packed = Pack(refs[i]);
                 if (packed == 0) continue;
                 run.Targets[w] = packed;
-                run.Rows[w] = new QueueEdge(id++, (byte)QueueProvider.Queue, (byte)QueueBucket.UserQueue);
+                run.Rows[w] = new QueueEdge(Playback.MintQueuedItemId(), (byte)QueueProvider.Queue, (byte)QueueBucket.UserQueue);   // a q<n> uid each
                 w++;
             }
             Land(in run);
@@ -527,4 +644,28 @@ public static partial class Queue
         finally { Return(in run); }
     }
 
+}
+
+/// <summary><c>queued_by</c> on a queued row. PURE. The only value in every capture is the account's canonical username (never a
+/// device id or display name), and the Web Player sometimes sends "". An owner's value is kept exactly; this device stamps
+/// the signed-in user only on rows it queued itself (so another person's row in a Jam is never relabelled); a signed-out
+/// device stamps nothing. <c>manually_queued</c> follows the same rule — written when this answers a name.</summary>
+public static class QueueAttribution
+{
+    public static string QueuedBy(string? carried, bool queuedHere, string? canonicalUser)
+        => carried is { Length: > 0 } ? carried : queuedHere && canonicalUser is { Length: > 0 } ? canonicalUser : "";
+}
+
+/// <summary>The context a forwarded `play` envelope names. PURE. A single playable is never the context of a DIFFERENT
+/// track: the owner cannot start "track B" inside "the context that is track A" — it answers with an empty session and
+/// leaves (2026-10-01, a stale owner-painted single-track context). Such a pair sends the track as its own context, as
+/// the desktop plays a single track; an empty context names the track too, and a real context passes through.</summary>
+public static class ForwardPlayEnvelope
+{
+    public static EntityId For(EntityId context, EntityId track)
+    {
+        if (context.IsEmpty) return track;
+        if (track.IsEmpty) return context;
+        return context.IsPlayable && !context.Equals(track) ? track : context;
+    }
 }

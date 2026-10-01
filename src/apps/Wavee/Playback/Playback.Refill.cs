@@ -34,6 +34,10 @@ public static partial class Playback
         /// the cursor, or at most <see cref="MinAhead"/> rows are ahead of it.</summary>
         public const int ConsumedNum = 3, ConsumedDen = 4, MinAhead = 3;
 
+        /// <summary>The first autoplay ask waits until this many context rows (or fewer) remain ahead of the cursor — owners
+        /// ask at about five remaining, never at play start.</summary>
+        public const int AutoplayLead = 5;
+
         /// <summary>Count one provider's run: every row of <paramref name="provider"/> is <paramref name="total"/>, those
         /// past <paramref name="cursor"/> are <paramref name="ahead"/>. User-queued rows never count, whatever their
         /// provider says; history rows count as consumed.</summary>
@@ -57,7 +61,7 @@ public static partial class Playback
         /// <summary>The verdict for a deck at <paramref name="cursor"/>. Nothing while an ask is out, before the host has
         /// said whether the context pages (<paramref name="pagesKnown"/>), under repeat-track, or off the queue.</summary>
         public static RefillKind Decide(ReadOnlySpan<QueueEdge> rows, int cursor, AutoplayPhase phase, bool pagesKnown,
-            bool morePages, bool autoplayPages, Spotify.Decode.RepeatMode repeat)
+            bool morePages, bool autoplayPages, Spotify.Decode.RepeatMode repeat, bool autoplayEnabled = true)
         {
             if (phase != AutoplayPhase.None || !pagesKnown || repeat == Spotify.Decode.RepeatMode.Track) return RefillKind.None;
             if ((uint)cursor >= (uint)rows.Length) return RefillKind.None;
@@ -67,7 +71,12 @@ public static partial class Playback
                 return NearlyConsumed(total, ahead) ? RefillKind.PageContext : RefillKind.None;
             }
             Run(rows, cursor, QueueProvider.Autoplay, out int autoTotal, out int autoAhead);
-            if (autoTotal == 0) return RefillKind.AskAutoplay;
+            if (autoTotal == 0)
+            {
+                // Owners ask when about five context rows remain, not at play start; a single-track context has 0 ahead.
+                Run(rows, cursor, QueueProvider.Context, out _, out int ctxAhead);
+                return autoplayEnabled && ctxAhead <= AutoplayLead ? RefillKind.AskAutoplay : RefillKind.None;
+            }
             if (!NearlyConsumed(autoTotal, autoAhead)) return RefillKind.None;
             return autoplayPages ? RefillKind.PageAutoplay : RefillKind.AskAutoplay;
         }
@@ -77,8 +86,9 @@ public static partial class Playback
     /// until the host answers.</summary>
     static void CheckRefill(ref State s, ref Effects fx)
     {
-        if (!s.RoutesLocal || !s.HasCurrent || s.Context.IsEmpty || s.Cursor.IsNone || Entities.Current is null) return;
-        switch (Refill.Decide(Queue.Rows, s.Cursor.Index, s.Autoplay, s.PagesKnown, s.MorePages, s.AutoplayPages, s.Repeat))
+        if (!Queue.LocalQueueWritable(s.Own.Kind) || !s.HasCurrent || s.Context.IsEmpty || s.Cursor.IsNone || Entities.Current is null) return;
+        switch (Refill.Decide(Queue.Rows, s.Cursor.Index, s.Autoplay, s.PagesKnown, s.MorePages, s.AutoplayPages, s.Repeat,
+                Platform.Settings.Get(Platform.Keys.AutoplayEnabled)))
         {
             case RefillKind.PageContext:
                 s.Autoplay = AutoplayPhase.Requested;

@@ -597,7 +597,8 @@ public static partial class Playback
         ulong ActiveDevice,
         long ServerTs,
         int UpdateReason = 0,
-        long ActiveStartedPlayingAt = 0);
+        long ActiveStartedPlayingAt = 0,
+        ulong AckId = 0);
 
     /// <summary>The whole ownership state, folded into <see cref="State.Own"/>. <see cref="Device"/> is the foreign
     /// owner (Foreign) or the device that just left (Nobody/FromForeign). <see cref="ClaimMsgId"/> is the first
@@ -887,10 +888,10 @@ public static partial class Playback
     /// <param name="NoPrev">Restriction: previous is disallowed (a non-empty <c>disallow_skipping_prev</c>).</param>
     /// <param name="NoNext">Restriction: next is disallowed.</param>
     /// <param name="NoSeek">Restriction: seeking is disallowed.</param>
-    /// <param name="Context">The remote's own context uri, <c>default</c> when the cluster carried none. Never
-    /// painted directly (<see cref="MirrorRemote"/> only CACHES it, into <see cref="State.MirrorContext"/>) — a
-    /// takeover (A4) is what adopts it into <see cref="State.Context"/>, atomically with the queue reseed, so the
-    /// header never names a session the rows do not yet match.</param>
+    /// <param name="Context">The remote's own context uri, <c>default</c> when the cluster carried none.
+    /// <see cref="MirrorRemote"/> paints it into <see cref="State.Context"/> while <see cref="Owner.Foreign"/> owns
+    /// playback (<see cref="Queue.MirrorContextFor"/>), so the header names what the OWNER plays; a takeover (A4) then
+    /// simply adopts what is already there.</param>
     public readonly record struct RemoteState(
         bool HasTrack,
         EntityId Track,
@@ -927,17 +928,14 @@ public static partial class Playback
         public EntityId CurrentId;
         /// <summary>Which host runs it (<see cref="MediaSwitch.KindOf"/>).</summary>
         public PlayableKind Kind;
-        /// <summary>The context it is playing FROM — a playlist, an album, a station. The art tile's route.</summary>
+        /// <summary>The context it is playing FROM — a playlist, an album, a station. The art tile's route. While
+        /// <see cref="Owner.Foreign"/> owns playback it is the OWNER's context (<see cref="MirrorRemote"/>), so a takeover
+        /// (A4: <c>DoResume</c>'s parked branch, <c>DoPlay</c> over the same row, <see cref="DoTakeOver"/>) adopts it
+        /// as it stands, atomically with the queue reseed the host runs for <see cref="Effects.TakeoverSeed"/>.</summary>
         public EntityId Context;
         /// <summary>Where in <c>Edges.Queue</c> the session is (bucket, index). A VALUE, re-validated, never a row
         /// pointer: the same recording may legitimately sit in the queue twice.</summary>
         public QueueCursor Cursor;
-        /// <summary>The last MIRRORED remote's own context uri (<see cref="RemoteState.Context"/>), cached by
-        /// <see cref="MirrorRemote"/> while <see cref="Owner.Foreign"/> owns playback. Never painted directly — only
-        /// a TAKEOVER (A4: <c>DoResume</c>'s parked branch, <c>DoPlay</c> over the same row) adopts it into
-        /// <see cref="Context"/>, atomically with the queue reseed the host runs for <see cref="Effects.TakeoverSeed"/>,
-        /// so the header never names a session the rows do not yet match.</summary>
-        public EntityId MirrorContext;
 
         // ── the transport ──
         public Phase Phase;
@@ -1002,6 +1000,12 @@ public static partial class Playback
         public uint LoadEpoch;
         /// <summary>The epoch of the transfer in flight.</summary>
         public uint TransferEpoch;
+        /// <summary>The newest <c>ack_id</c> (FNV hash) a cluster update echoed — the server's "your command was applied" for
+        /// the HTTP command that carries it (capture 2026-10-01: the cluster's ack_id equals the POST's <c>{"ack_id"}</c>).
+        /// 0 = none seen.</summary>
+        public ulong ClusterAck;
+        /// <summary><see cref="ClusterAck"/> as it stood when the transfer in flight was sent: an ack that differs came after it.</summary>
+        public ulong TransferAckBase;
         /// <summary>How many claims/announces this session has minted. Diagnostics; the wire's message id is the
         /// host's, because the glue owns the debounce that decides how many PUTs actually go out.</summary>
         public float EpisodeRate;
@@ -1298,8 +1302,10 @@ public static partial class Playback
             => new(InputKind.Cluster, frame: frame, remote: remote, nowMs: nowMs);
         /// <summary>A controller's verb. (Named <c>Controller</c> and not <c>Remote</c> because
         /// <see cref="Input.Remote"/> is already the mirrored remote STATE field on this same value.)</summary>
-        public static Input Controller(in RemoteCommand command, long nowMs = 0)
-            => new(InputKind.RemoteCommand, command: command, nowMs: nowMs);
+        /// <param name="skipTo">The queue row a skip_next that named a track resolved to (<see cref="Queue.SkipTarget"/>,
+        /// found by the host that owns the uid book), −1 for none; carried as <c>IntArg</c> + 1.</param>
+        public static Input Controller(in RemoteCommand command, long nowMs = 0, int skipTo = -1)
+            => new(InputKind.RemoteCommand, intArg: skipTo + 1, command: command, nowMs: nowMs);
         public static Input Audio(AudioSignal signal, uint epoch, long nowMs = 0, long arg = 0)
             => new(InputKind.AudioSignal, intArg: (int)signal, epoch: epoch, nowMs: nowMs, longArg: arg);
         public static Input Ended(uint epoch, long nowMs = 0) => new(InputKind.Ended, epoch: epoch, nowMs: nowMs);
@@ -1484,7 +1490,9 @@ public static partial class Playback
         public long RemoteArg;
         public bool RemoteFlag;
         public uint RemoteEpoch;
-        /// <summary><see cref="RemoteCmd.PlayContext"/>: what to play on the owner — the context and the row to start at.</summary>
+        /// <summary><see cref="RemoteCmd.PlayContext"/>: what to play on the owner — the context and the row to start at.
+        /// <see cref="RemoteCmd.NextTrack"/>: the row to advance to (<see cref="RemoteTrack"/>, its item id in
+        /// <see cref="RemoteArg"/>).</summary>
         public EntityId RemoteContext, RemoteTrack;
 
         // ── connect: a transfer ──
@@ -1647,11 +1655,11 @@ public static partial class Playback
         }
 
         // A4: claiming the row currently MIRRORED from a foreign device — it has no cursor of its own (nothing local
-        // ever queued it) — is a TAKEOVER, not an ordinary click: the context comes from the cluster we cached, never
-        // from the click's own (possibly stale) `i.Context`, and the host re-seeds prev/next + cursor atomically
-        // (fx.TakeoverSeed) once this Step lands.
+        // ever queued it) — is a TAKEOVER, not an ordinary click: the context is the owner's, already painted into
+        // `s.Context` by the mirror, never the click's own (possibly stale) `i.Context`, and the host re-seeds
+        // prev/next + cursor atomically (fx.TakeoverSeed) once this Step lands.
         bool takeover = s.Cursor.IsNone && !id.IsEmpty && id.Equals(s.CurrentId);
-        EntityId context = takeover && !s.MirrorContext.IsEmpty ? s.MirrorContext : i.Context;
+        EntityId context = takeover && !s.Context.IsEmpty ? s.Context : i.Context;
 
         long activeSince = s.Own.Kind == Owner.Us && s.StartedPlayingAtMs > 0 ? s.StartedPlayingAtMs : i.NowMs;
         Owner ownerBefore = s.Own.Kind;
@@ -1676,8 +1684,9 @@ public static partial class Playback
     /// <summary>Next / Previous, and the natural end (<paramref name="why"/> = <see cref="PlayReason.TrackDone"/>).
     /// TEN CLICKS ARE TEN STEPS AND ONE LOAD (C3): each one moves the cursor synchronously — which is what answers the
     /// click inside the frame — and rewrites the same <see cref="Effects.Load"/> slot, so the shell opens exactly one
-    /// stream, for the LAST epoch.</summary>
-    static void Advance(ref State s, in Input i, ref Effects fx, bool forward, PlayReason why)
+    /// stream, for the LAST epoch. <paramref name="jumpTo"/> is a controller's named row (a skip_next carrying a track,
+    /// <see cref="Queue.SkipTarget"/>): the cursor lands THERE instead of one row on, the rows between staying behind it.</summary>
+    static void Advance(ref State s, in Input i, ref Effects fx, bool forward, PlayReason why, int jumpTo = -1)
     {
         if (!s.RoutesLocal) { Forward(ref s, forward ? RemoteCmd.SkipNext : RemoteCmd.SkipPrev, ref fx, 0, false); return; }
         bool natural = why == PlayReason.TrackDone;
@@ -1690,7 +1699,8 @@ public static partial class Playback
         // Repeat-one re-plays the same row rather than moving: the one place the cursor stands still under a transport
         // verb. A natural end reloads the row (its session has ended); a click restarts the live one. An explicit
         // Previous past the first three seconds also restarts the row instead of stepping back.
-        if (forward && s.Repeat == RepeatMode.Track && s.HasCurrent)
+        if (jumpTo >= 0 && !(forward && default(LiveRows).IsPlayable(jumpTo))) jumpTo = -1;   // a dead named row: the plain walk
+        if (jumpTo < 0 && forward && s.Repeat == RepeatMode.Track && s.HasCurrent)
         {
             if (!natural) { Restart(ref s, in i, ref fx, why); return; }
             ReportEnd(ref s, ref fx, why, s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
@@ -1707,10 +1717,10 @@ public static partial class Playback
         // first, or the rows past its first page would never play, G-242) the walk wraps to the first row the CONTEXT
         // provided (`Queue.WrapIndex`): a consumed queued or autoplay row must not replay.
         bool wrap = forward && s.Repeat == RepeatMode.Context && !s.MorePages;
-        int at = Queue.NextPlayable(Queue.Rows, default(LiveRows), s.Cursor.Index, forward, wrap);
+        int at = jumpTo >= 0 ? jumpTo : Queue.NextPlayable(Queue.Rows, default(LiveRows), s.Cursor.Index, forward, wrap);
         if (at < 0)
         {
-            if (!forward) return;                        // the head of history (or only dead rows behind us): stay
+            if (!forward) return;                     // the head of history (or only dead rows behind us): stay
             if (!wrap) { EndOfContext(ref s, in i, ref fx, why); return; }
             EndOfQueue(ref s, in i, ref fx, why);        // repeat-context with nothing playable anywhere in it
             return;
@@ -1799,10 +1809,9 @@ public static partial class Playback
             // new playback as far as the newest-starter rule goes, so it restamps.
             //
             // A4: a MIRRORED row this session never queued (no cursor of its own) resumes as a TAKEOVER — the
-            // context is adopted from the cluster we cached and the host re-seeds prev/next + cursor atomically
-            // (fx.TakeoverSeed) once this Step lands.
+            // context is the owner's, already painted into `s.Context` by the mirror, and the host re-seeds
+            // prev/next + cursor atomically (fx.TakeoverSeed) once this Step lands.
             bool takeover = s.Cursor.IsNone;
-            if (takeover && !s.MirrorContext.IsEmpty) s.Context = s.MirrorContext;
 
             long activeSince = s.Own.Kind == Owner.Us && s.StartedPlayingAtMs > 0 ? s.StartedPlayingAtMs : i.NowMs;
             Owner resumeOwnerBefore = s.Own.Kind;
@@ -2107,6 +2116,7 @@ public static partial class Playback
     {
         Owner before = s.Own.Kind;
         OwnerFx owner = Ownership.Fold(ref s.Own, in i.Frame, s.Us);
+        if (i.Frame.AckId != 0) s.ClusterAck = i.Frame.AckId;
         // §3.3's ownership-transition row: the ONE cluster-apply call site. Remote-originated (a dealer push or the
         // response to our own PUT) — causeId 0, per §2.2.
         Capture.Decision(CaptureKind.OwnershipTransition, causeId: 0L, owner, before, s.Own.Kind,
@@ -2228,7 +2238,11 @@ public static partial class Playback
         s.PosMs = proj.PosMs;
         s.PosQpc = i.NowMs;
         s.DurationMs = durMs;
-        if (!r.Context.IsEmpty) s.MirrorContext = r.Context;   // cached for a later takeover (A4); never painted here
+        // The header follows the OWNER: its context is painted the moment it arrives, so a takeover (A4) adopts what
+        // is already on screen. A new context is a new refill story, as in DoPlay.
+        EntityId context = Queue.MirrorContextFor(s.Own.Kind, r.HasTrack, r.Context, s.Context);
+        if (!context.Equals(s.Context)) ResetRefill(ref s);
+        s.Context = context;
         s.Shuffle = r.Shuffling;
         s.Repeat = r.Repeat;
         s.NoNext = r.NoNext;
@@ -2252,7 +2266,7 @@ public static partial class Playback
         // CommandAttribution.WindowMs, and no longer (G-246): stamped here, aged when the snapshot is captured.
         if (c.MessageId != 0)
         {
-            s.LastCommandMessageId = (uint)c.MessageId;
+            s.LastCommandMessageId = c.MessageId;
             s.LastCommandAtMs = i.NowMs;
             s.LastCommandSender = c.SenderHash;
         }
@@ -2298,7 +2312,8 @@ public static partial class Playback
                 OwnerFx skipNextClaimFx = Ownership.Claim(ref s.Own, ClaimCause.InboundSkip, ++s.PublishSeq, s.StartedPlayingAtMs, i.NowMs, true);
                 Capture.Decision(CaptureKind.OwnershipTransition, 0L, skipNextClaimFx,
                     ownerBeforeRemote, s.Own.Kind, nameof(ClaimCause.InboundSkip));
-                Advance(ref s, in i, ref fx, forward: true, PlayReason.Remote);
+                // A skip that NAMES a row jumps to it (the host resolved the row, `i.IntArg - 1`); without one it is a step.
+                Advance(ref s, in i, ref fx, forward: true, PlayReason.Remote, jumpTo: i.IntArg - 1);
                 break;
 
             case RemoteCmd.SkipPrev:
@@ -2392,6 +2407,7 @@ public static partial class Playback
         Bump(ref s);
         LoseHost(ref s, in i, ref fx, StopReason.Released, PlayReason.Remote);
         s.TransferEpoch = s.Epoch;
+        s.TransferAckBase = s.ClusterAck;
         fx.Transfer = true;
         fx.TransferTo = target;
         fx.TransferSlot = i.IntArg;
@@ -2405,6 +2421,9 @@ public static partial class Playback
     {
         if (i.Epoch != s.TransferEpoch) return;          // a transfer we already superseded
         if (i.IntArg != 0) return;                       // accepted: the cluster will name the new owner
+        // The POST's answer was lost (or refused) but the cluster already echoed a command ack and names another owner:
+        // the transfer took effect, and a "transfer failed" toast over a moved session would be the lie.
+        if (TransferTookEffect(s.Own.Kind, s.ClusterAck, s.TransferAckBase)) return;
         // Rejected: nothing moved, but the deck was already released and parked (waiting for the target to confirm is
         // what made 0.2.9 play here while the bar said "Playing on iPhone"). Keep the row and its position on the deck —
         // one Play press claims it back — and SAY so, rather than leaving a silent empty bar.
@@ -2412,6 +2431,12 @@ public static partial class Playback
         fx.TransferFailed = true;
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
     }
+
+    /// <summary>Did the transfer in flight take effect, whatever its POST said? The cluster echoed an <c>ack_id</c> newer
+    /// than the one standing when the transfer was sent (<paramref name="ackBase"/>) AND now names another device as the
+    /// owner. The ack is the server's confirmation, the owner is the inference; neither alone is enough. PURE.</summary>
+    public static bool TransferTookEffect(Owner owner, ulong clusterAck, ulong ackBase)
+        => owner == Owner.Foreign && clusterAck != 0 && clusterAck != ackBase;
 
     /// <summary>The start stamp a claim carries (what the newest-starter rule compares across devices): kept while we
     /// already own playback, otherwise now. Written to <see cref="State.StartedPlayingAtMs"/> — the ONE field the wire
@@ -2430,12 +2455,7 @@ public static partial class Playback
     {
         if (s.Own.Kind == Owner.Us || !s.HasCurrent) return;    // already here, or nothing to bring
         bool paused = s.Own.Kind == Owner.Foreign && s.Phase == Phase.Paused;
-        int fromMs = s.Position(i.NowMs);                       // the mirror extrapolated to now
-        if (!s.MirrorContext.IsEmpty)
-        {
-            if (!s.MirrorContext.Equals(s.Context)) ResetRefill(ref s);
-            s.Context = s.MirrorContext;
-        }
+        int fromMs = s.Position(i.NowMs);                       // the mirror extrapolated to now; s.Context is the owner's already
 
         s.StartedPlayingAtMs = i.NowMs;                         // BEFORE the claim: its first put carries it
         s.HasBeenPlayingForMs = 0;
@@ -2720,8 +2740,24 @@ public static partial class Playback
     static void ForwardPlay(ref State s, in Input i, ref Effects fx)
     {
         if (i.Id.IsEmpty) return;
-        Forward(ref s, RemoteCmd.PlayContext, ref fx, 0, s.Shuffle);
-        fx.RemoteContext = i.Context.IsEmpty ? i.Id : i.Context;
+        // A click on a row of the OWNER's queue (the panel's cursor sits in its mirrored next_tracks) is "advance your
+        // queue to this row" — `next_track` with the row's uri and uid, never a context play (a `play` naming the owner's
+        // own single-track context and a different skip_to is unsatisfiable). The row's item id rides in RemoteArg; the
+        // host spells the uid from it.
+        if (Entities.Current is not null && !i.Cursor.IsNone
+            && Queue.RemoteRowVerb(Queue.Rows, i.Cursor.Index, Queue.RefAt(in i.Cursor) == i.Row, out ulong itemId) == Queue.RowVerb.NextTrack)
+        {
+            Forward(ref s, RemoteCmd.NextTrack, ref fx, (long)itemId, false);
+            fx.RemoteTrack = i.Id;
+            fx.RemoteContext = default;
+            return;
+        }
+        // The row's item id rides in RemoteArg when the click is on a row of the mirrored queue: the host spells its uid for
+        // `skip_to.track_uid` (only a context uid is ever sent — Spotify.Connect.SkipUidOf).
+        long rowItem = Entities.Current is not null && !i.Cursor.IsNone && (uint)i.Cursor.Index < (uint)Queue.Rows.Length
+            && Queue.RefAt(in i.Cursor) == i.Row ? (long)Queue.Rows[i.Cursor.Index].ItemId : 0;
+        Forward(ref s, RemoteCmd.PlayContext, ref fx, rowItem, s.Shuffle);
+        fx.RemoteContext = ForwardPlayEnvelope.For(i.Context, i.Id);
         fx.RemoteTrack = i.Id;
     }
 

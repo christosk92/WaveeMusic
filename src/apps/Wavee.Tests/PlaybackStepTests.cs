@@ -570,6 +570,53 @@ public class PlaybackStepTests
     }
 
     [Fact]
+    public void A_foreign_clusters_context_is_painted_at_once_and_a_newer_one_replaces_it()
+    {
+        // The header follows the OWNER: no takeover needed for `Context` (what `Playback.ContextUri` publishes) to name it.
+        var s = PhoneOwns(out EntityId track, out EntityId context);
+        Assert.Equal(context, s.Context);
+
+        var fx = new Playback.Effects();
+        EntityId album = EntityId.ForGid(EntityKind.Album, (UInt128)0xB0B0UL);
+        var frame = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, Playback.DeviceHash("phone"), 2_000);
+        var next = new Playback.RemoteState(true, track, true, false, false, 91_000, 2_000, 244_960, false, RepeatMode.Off, -1,
+            NoPrev: false, NoNext: false, NoSeek: false, Context: album);
+        Playback.Step(ref s, Playback.Input.Cluster(in frame, in next, nowMs: 2_000), ref fx);
+        Assert.Equal(album, s.Context);
+
+        // A foreign track with no context at all is not a reason to keep naming an old playlist...
+        var bare = new Playback.RemoteState(true, track, true, false, false, 92_000, 3_000, 244_960, false, RepeatMode.Off, -1,
+            NoPrev: false, NoNext: false, NoSeek: false);
+        var frame3 = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, Playback.DeviceHash("phone"), 3_000);
+        Playback.Step(ref s, Playback.Input.Cluster(in frame3, in bare, nowMs: 3_000), ref fx);
+        Assert.True(s.Context.IsEmpty);
+
+        // ...but an idle cluster says nothing about what plays, so the last painted context stays.
+        s.Context = album;
+        var idle = new Playback.RemoteState(false, default, false, false, false, 0, 4_000, 0, false, RepeatMode.Off, -1,
+            NoPrev: false, NoNext: false, NoSeek: false);
+        var frame4 = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, Playback.DeviceHash("phone"), 4_000);
+        Playback.Step(ref s, Playback.Input.Cluster(in frame4, in idle, nowMs: 4_000), ref fx);
+        Assert.Equal(album, s.Context);
+    }
+
+    [Fact]
+    public void A_takeover_adopts_the_context_the_mirror_already_painted()
+    {
+        var s = PhoneOwns(out _, out EntityId context);
+        var fx = new Playback.Effects();
+        Playback.Step(ref s, Playback.Input.Cluster(new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, Playback.DeviceHash("phone"), 2_000),
+            new Playback.RemoteState(true, EntityId.ForGid(EntityKind.Track, (UInt128)0xC105E5UL), true, false, false, 91_000, 2_000, 244_960,
+                false, RepeatMode.Off, -1, NoPrev: false, NoNext: false, NoSeek: false, Context: context), nowMs: 2_000), ref fx);
+        fx.Clear();
+
+        Playback.Step(ref s, Playback.Input.TakeOver(nowMs: 6_000), ref fx);
+
+        Assert.Equal(context, s.Context);
+        Assert.True(fx.TakeoverSeed);
+    }
+
+    [Fact]
     public void TakeOver_keeps_a_paused_mirror_paused()
     {
         var s = PhoneOwns(out _, out _, playing: false);
@@ -1213,6 +1260,84 @@ public class PlaybackStepTests
     }
 
     [Fact]
+    public void A_skip_that_names_a_row_jumps_to_it_and_leaves_the_rows_between_behind()
+    {
+        var s = PlayingQueueOf(6);
+        s.Own = Playback.OwnerState.Initial;
+        var fx = new Playback.Effects();
+        var cmd = new Spotify.Decode.RemoteCommand(Spotify.Decode.RemoteCmd.SkipNext, Ok: true, MessageId: 4,
+            SeekToMs: 0, BoolArg: false, Track: default, SenderHash: 9, SessionHash: 0, DedupeKey: 1);
+
+        Playback.Step(ref s, Playback.Input.Controller(in cmd, nowMs: 1_000, skipTo: 3), ref fx);
+
+        Assert.Equal(Playback.Owner.Us, s.Owner);
+        Assert.Equal(3, s.Cursor.Index);                 // not 1: the controller named the row two past the next
+        Assert.Equal(Queue.RefAt(3), s.Current);
+        Assert.True(fx.Load);
+    }
+
+    [Fact]
+    public void A_controllers_message_id_past_int_max_is_echoed_exactly_on_the_next_put()
+    {
+        var s = PlayingQueueOf(3);
+        var fx = new Playback.Effects();
+        var cmd = Spotify.Decode.ConnectCommand(System.Text.Encoding.UTF8.GetBytes(
+            """{"message_id":2955000000,"sent_by_device_id":"phone","command":{"endpoint":"pause"}}"""));
+
+        Playback.Step(ref s, Playback.Input.Controller(in cmd, nowMs: 1_000), ref fx);
+
+        Assert.Equal(2_955_000_000u, cmd.MessageId);
+        Assert.Equal(2_955_000_000u, s.LastCommandMessageId);
+        Assert.Equal(2_955_000_000u, Playback.CommandAttribution.MessageId(s.LastCommandMessageId, s.LastCommandAtMs, 1_050));
+    }
+
+    [Theory]
+    [InlineData(Playback.Owner.Foreign, 7UL, 3UL, true)]     // a new ack arrived and the phone owns playback: it took effect
+    [InlineData(Playback.Owner.Foreign, 3UL, 3UL, false)]    // the same ack as before the transfer: not ours
+    [InlineData(Playback.Owner.Foreign, 0UL, 0UL, false)]    // no ack at all
+    [InlineData(Playback.Owner.Nobody, 7UL, 3UL, false)]     // nobody named: unconfirmed
+    [InlineData(Playback.Owner.Us, 7UL, 3UL, false)]
+    public void A_transfer_took_effect_when_a_new_ack_arrived_and_another_device_owns_playback(Playback.Owner owner, ulong ack, ulong before, bool expected)
+        => Assert.Equal(expected, Playback.TransferTookEffect(owner, ack, before));
+
+    [Fact]
+    public void A_refused_transfer_post_is_no_failure_when_the_cluster_already_confirmed_it()
+    {
+        var s = PlayingQueueOf(2);
+        var fx = new Playback.Effects();
+        s.TransferEpoch = 5;
+        s.TransferAckBase = 3;
+        s.ClusterAck = 7;
+        s.Own = Playback.OwnerState.Initial with { Kind = Playback.Owner.Foreign, Device = Playback.DeviceHash("phone") };
+
+        Playback.Step(ref s, Playback.Input.TransferDone(5, ok: false), ref fx);
+        Assert.False(fx.TransferFailed);
+
+        s.ClusterAck = 3;                                         // no ack since the transfer went out: the refusal stands
+        Playback.Step(ref s, Playback.Input.TransferDone(5, ok: false), ref fx);
+        Assert.True(fx.TransferFailed);
+    }
+
+    [Fact]
+    public void SkipTarget_prefers_the_uid_then_the_uri_and_only_looks_ahead_of_the_cursor()
+    {
+        var a = EntityId.ForGid(EntityKind.Track, (UInt128)0xA1UL);
+        var b = EntityId.ForGid(EntityKind.Track, (UInt128)0xB2UL);
+        var ids = new Queue.RowIdArray([a, b, a, b, a]);
+        QueueEdge[] rows =
+        [
+            Row(QueueBucket.NowPlaying, 1), Row(QueueBucket.NextUp, 2), Row(QueueBucket.NextUp, 3),
+            Row(QueueBucket.NextUp, 4), Row(QueueBucket.NextUp, 5),
+        ];
+
+        Assert.Equal(4, Queue.SkipTarget(rows, ids, 0, itemId: 5, uri: b));          // the uid names row 4 although the uri also fits row 1
+        Assert.Equal(1, Queue.SkipTarget(rows, ids, 0, itemId: 0, uri: b));          // no uid: the first row ahead with that uri
+        Assert.Equal(3, Queue.SkipTarget(rows, ids, 2, itemId: 99, uri: b));         // an unknown uid falls back to the uri
+        Assert.Equal(-1, Queue.SkipTarget(rows, ids, 2, itemId: 2, uri: default));   // behind the cursor: never a backward skip
+        Assert.Equal(-1, Queue.SkipTarget(rows, ids, 0, itemId: 0, uri: default));   // names nothing: a plain skip
+    }
+
+    [Fact]
     public void A_command_we_could_not_read_is_never_acted_on()
     {
         // The glue already ACKED it — a retry storm from a phone in a pocket is worse than a body we cannot parse —
@@ -1294,6 +1419,19 @@ public class PlaybackStepTests
         Playback.Step(ref s, Playback.Input.Audio(Playback.AudioSignal.EndingSoon, s.LoadEpoch, 170_000), ref fx);
         Assert.False(fx.Autoplay);
         Assert.Equal(Playback.AutoplayPhase.Requested, s.Autoplay);
+    }
+
+    [Fact]
+    public void A_complete_context_with_many_rows_ahead_waits_to_ask_autoplay()
+    {
+        var s = PlayingQueueOf(10);
+        s.Context = BigPlaylist;
+        var fx = new Playback.Effects();
+
+        Playback.Step(ref s, Playback.Input.ContextPages(BigPlaylist, morePages: false), ref fx);
+
+        Assert.False(fx.Autoplay);
+        Assert.Equal(Playback.AutoplayPhase.None, s.Autoplay);
     }
 
     [Fact]
@@ -1636,7 +1774,7 @@ public class PlaybackStepTests
         EntityRef row = Queue.RefAt(2);
         EntityId context = EntityId.ForGid(EntityKind.Playlist, (UInt128)77UL);
         var before = s.Current;
-        Playback.Step(ref s, Playback.Input.Play(row, row.Id, context, Queue.CursorOf(2), nowMs: 4_000), ref fx);
+        Playback.Step(ref s, Playback.Input.Play(row, row.Id, context, QueueCursor.None, nowMs: 4_000), ref fx);   // a page play: no queue row
 
         // Nothing loads here: the click is a command to the owner, and it names WHAT to play, not a bare resume.
         Assert.False(fx.Load);
@@ -1650,9 +1788,66 @@ public class PlaybackStepTests
         fx.Clear();
 
         // A row played on its own (no context) is its own context, as the desktop plays a single track.
-        Playback.Step(ref s, Playback.Input.Play(row, row.Id, default, Queue.CursorOf(2), nowMs: 5_000), ref fx);
+        Playback.Step(ref s, Playback.Input.Play(row, row.Id, default, QueueCursor.None, nowMs: 5_000), ref fx);
         Assert.Equal(Spotify.Decode.RemoteCmd.PlayContext, fx.RemoteCmd);
         Assert.Equal(row.Id, fx.RemoteContext);
+        fx.Clear();
+
+        // The owner's own single-track context (painted by the mirror) never frames a DIFFERENT track: the track is its
+        // own context, so the envelope is always satisfiable.
+        EntityId ownersTrack = Queue.RefAt(1).Id;
+        Playback.Step(ref s, Playback.Input.Play(row, row.Id, ownersTrack, QueueCursor.None, nowMs: 6_000), ref fx);
+        Assert.Equal(row.Id, fx.RemoteContext);
+    }
+
+    [Theory]
+    [InlineData(QueueBucket.NextUp)]
+    [InlineData(QueueBucket.UserQueue)]
+    public void Clicking_a_row_of_the_owners_queue_advances_the_owners_queue_to_it(QueueBucket bucket)
+    {
+        var s = PlayingQueueOf(3);
+        ulong phone = Playback.DeviceHash("phone");
+        var fx = new Playback.Effects();
+        var frame = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, phone, 1_000);
+        Playback.Step(ref s, Playback.Input.Cluster(in frame, default, nowMs: 0), ref fx);
+        Assert.Equal(Playback.Owner.Foreign, s.Owner);
+        fx.Clear();
+
+        // Re-lay the mirror with row 2 in the wanted bucket and a known item id (the uid's book key).
+        var refs = new EntityRef[4];
+        var rows = new QueueEdge[4];
+        for (int k = 0; k < 4; k++) refs[k] = Queue.RefAt(k);
+        rows[0] = Row(QueueBucket.NowPlaying, 1);
+        rows[1] = Row(bucket, 77);                                        // UserQueue sorts before NextUp: the row is first either way
+        rows[2] = Row(QueueBucket.NextUp, 3);
+        rows[3] = Row(QueueBucket.NextUp, 4);
+        Queue.Replace(refs, rows);
+        EntityRef row = Queue.RefAt(1);
+        var before = s.Current;
+
+        Playback.Step(ref s, Playback.Input.Play(row, row.Id, EntityId.ForGid(EntityKind.Track, (UInt128)9UL), Queue.CursorOf(1), nowMs: 4_000), ref fx);
+
+        Assert.True(fx.SendRemote);
+        Assert.Equal(Spotify.Decode.RemoteCmd.NextTrack, fx.RemoteCmd);
+        Assert.Equal(phone, fx.RemoteDevice);
+        Assert.Equal(row.Id, fx.RemoteTrack);
+        Assert.Equal(77L, fx.RemoteArg);                                  // the row's item id: the host spells its uid from it
+        Assert.False(fx.Load);
+        Assert.Equal(before, s.Current);
+    }
+
+    [Fact]
+    public void Clicking_history_or_the_deck_while_a_phone_owns_playback_is_still_a_context_play()
+    {
+        var s = PlayingQueueOf(3);
+        var fx = new Playback.Effects();
+        var frame = new Playback.ClusterFrame(Spotify.Decode.ClusterOrigin.Push, 0, Playback.DeviceHash("phone"), 1_000);
+        Playback.Step(ref s, Playback.Input.Cluster(in frame, default, nowMs: 0), ref fx);
+        fx.Clear();
+
+        EntityRef deck = Queue.RefAt(0);
+        Playback.Step(ref s, Playback.Input.Play(deck, deck.Id, default, Queue.CursorOf(0), nowMs: 4_000), ref fx);
+        Assert.Equal(Spotify.Decode.RemoteCmd.PlayContext, fx.RemoteCmd);
     }
 
     // ── R4-1: queue writes while another device owns playback (G-248) ───────────────────────────────────────────────

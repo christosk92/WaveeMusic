@@ -341,10 +341,31 @@ public static partial class Spotify
             return response;
         }
 
+        /// <summary>The play-history walk reads at most this many 500-revision pages (~69 KB each). The 2026-10-01
+        /// capture saw one sync fetch three of them back to back for a music-heavy account whose history holds few
+        /// episodes — the official client reads the first. Two keeps a podcast listener's recents reachable past a run of
+        /// songs without paging a whole history for them.</summary>
+        public const int HistoryMaxPages = 2;
+        public const int HistoryRecentWanted = 100;
+
+        /// <summary>Does the recent-episodes walk read another page? Only with a next-page token it has not seen, fewer
+        /// than <see cref="HistoryRecentWanted"/> episodes found, and pages left. PURE.</summary>
+        public static bool HistoryWantsMore(int episodesFound, int pagesRead, bool hasNextToken)
+            => hasNextToken && episodesFound < HistoryRecentWanted && pagesRead < HistoryMaxPages;
+
+        static int s_recentInFlight;
+
         static void HydrateRecentEpisodes(Scope scope)
         {
+            // Single flight: a reconnect's sync landing while the walk is on the wire must not start a second walk.
+            if (Interlocked.CompareExchange(ref s_recentInFlight, 1, 0) != 0) return;
             uint epoch = scope.Epoch;
-            Api.Run(() =>
+            if (!Api.Run(() => RecentEpisodesWalk(scope, epoch))) Volatile.Write(ref s_recentInFlight, 0);
+        }
+
+        static void RecentEpisodesWalk(Scope scope, uint epoch)
+        {
+            try
             {
                 using var accountRequest = Api.ForAccount(scope.Key.Account);
                 try
@@ -353,6 +374,7 @@ public static partial class Spotify
                     var distinct = new HashSet<EntityId>();
                     var cursors = new HashSet<string>(StringComparer.Ordinal);
                     string page = "";
+                    int pages = 0;
                     do
                     {
                         var request = new Rs.ListResumePointRevisionsRequest
@@ -365,13 +387,15 @@ public static partial class Spotify
                             if (EntityId.TryParseGid((revision.Value?.ItemUri ?? "").AsSpan(), out var id)
                                 && id.Kind == EntityKind.Episode && distinct.Add(id)) ids.Add(id);
                         page = answer.NextPageToken;
+                        pages++;
                         if (page.Length > 0 && !cursors.Add(page)) break;
-                    } while (page.Length > 0 && ids.Count < 100);
-                    EntityId[] recent = ids.Take(100).ToArray();
+                    } while (HistoryWantsMore(ids.Count, pages, page.Length > 0));
+                    EntityId[] recent = ids.Take(HistoryRecentWanted).ToArray();
                     Post(() => { if (ReferenceEquals(Entities.Current, scope) && scope.Epoch == epoch) Volatile.Write(ref s_recentEpisodes, recent); });
                 }
                 catch (Exception ex) { Log.Warn("podcast", "recent episode history unavailable", ex); }
-            });
+            }
+            finally { Volatile.Write(ref s_recentInFlight, 0); }
         }
     }
 }

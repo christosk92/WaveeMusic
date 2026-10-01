@@ -35,7 +35,7 @@ public static partial class Spotify
         /// <summary>What the glue does with an acked REQUEST, by its verb.</summary>
         public enum CommandRoute : byte
         {
-            /// <summary>An endpoint we do not know: acked, logged, dropped.</summary>
+            /// <summary>An endpoint we do not know: refused (`DealerAck`), logged, dropped.</summary>
             Drop,
             /// <summary>One command item in the mailbox.</summary>
             Mailbox,
@@ -66,7 +66,7 @@ public static partial class Spotify
                 case CommandRoute.Options: EnqueueOptions(in command, payload, epoch); break;
                 case CommandRoute.QueueBody: HandOffQueue(in command, payload, epoch); break;
                 case CommandRoute.Mailbox: Enqueue(new Item(command, epoch)); break;
-                default: Log.Warn("spotify", "connect command not understood — acked and dropped"); break;
+                default: Log.Warn("spotify", "connect command not understood — refused and dropped"); break;
             }
         }
 

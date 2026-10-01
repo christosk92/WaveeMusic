@@ -31,6 +31,8 @@
 // A hand-off naming a row the queue no longer puts next is the wrong track in the listener's ear: the reducer hard-cuts
 // to the truth instead of labelling the wrong one.
 
+using System.Globalization;
+
 using FluentGpu.Foundation;
 
 using RemoteCmd = Wavee.Spotify.Decode.RemoteCmd;
@@ -432,6 +434,36 @@ public static partial class Playback
 
     // ── 3b. the Connect intake: the uid book, the controller's queue splice, arrival order (B3c) ────────────────────
 
+    /// <summary>The official <c>q&lt;n&gt;</c> uids of custom-queued rows: one counter per player activation, increasing
+    /// across contexts, restarting at <c>q0</c> on a re-activation; a track queued twice gets two uids. A <c>q&lt;n&gt;</c>
+    /// that ARRIVED booked (<c>set_queue</c>, a transfer, a cluster row) raises the counter past it, so a minted uid can never
+    /// duplicate a live one and make a <c>next_track</c> / remove / reorder ambiguous. Pure; UI thread only (the
+    /// <see cref="UidBook"/>'s).</summary>
+    public sealed class QueueUidCounter
+    {
+        long _next;
+
+        /// <summary>The next uid, <c>q&lt;n&gt;</c>; the counter moves on.</summary>
+        public string Next() => string.Concat("q", (_next++).ToString(CultureInfo.InvariantCulture));
+
+        /// <summary>A uid that is live somewhere else: <c>q&lt;n&gt;</c> lifts the counter above <c>n</c>; any other shape is ignored.</summary>
+        public void NoteBooked(ReadOnlySpan<char> uid)
+        {
+            if (uid.Length > 1 && uid[0] == 'q' && long.TryParse(uid[1..], NumberStyles.None, CultureInfo.InvariantCulture, out long n)
+                && n >= _next && n < long.MaxValue) _next = n + 1;
+        }
+
+        /// <inheritdoc cref="NoteBooked(ReadOnlySpan{char})"/>
+        public void NoteBooked(ReadOnlySpan<byte> uid)
+        {
+            if (uid.Length > 1 && uid[0] == (byte)'q' && long.TryParse(uid[1..], NumberStyles.None, CultureInfo.InvariantCulture, out long n)
+                && n >= _next && n < long.MaxValue) _next = n + 1;
+        }
+
+        /// <summary>A fresh activation (a claim or takeover): back to <c>q0</c>. The caller re-seeds from the live rows.</summary>
+        public void Reset() => _next = 0;
+    }
+
     /// <summary>Every queue row's server uid, kept EXACT whatever its shape (G-075). A 16-hex uid packs into the item id
     /// itself (<see cref="QueueUid"/>); a context row's 20-hex uid does not fit 64 bits and a user-queue row's short
     /// <c>q2</c> is not hex (both captured, <c>set-queue-52.json</c>), so those get a locally minted item id and their text
@@ -445,15 +477,51 @@ public static partial class Playback
 
         readonly Dictionary<ulong, string> _text = new();
         readonly Dictionary<ulong, ulong> _byHash = new();
+        readonly Dictionary<ulong, string> _queuedBy = new();
+        readonly QueueUidCounter _counter = new();
 
         /// <summary>How many uids are kept as text.</summary>
         public int Count => _text.Count;
+
+        /// <summary>Book a row this device queues (Add to queue, Play next, a controller's <c>add_to_queue</c> with no uid):
+        /// a freshly minted item id under the next <c>q&lt;n&gt;</c>, whose text echoes back in PutState. Never 0.</summary>
+        public ulong MintQueued()
+        {
+            ulong minted = Queue.MintItemIds(1);
+            string uid = _counter.Next();
+            _text[minted] = uid;
+            _byHash[Hash(uid)] = minted;
+            return minted;
+        }
+
+        /// <summary>A fresh activation: the counter restarts at <c>q0</c> and is lifted above every <c>q&lt;n&gt;</c> still
+        /// booked on a live row, so the restart can never duplicate one.</summary>
+        public void ReseedCounter(ReadOnlySpan<QueueEdge> live)
+        {
+            _counter.Reset();
+            for (int i = 0; i < live.Length; i++)
+                if (_text.TryGetValue(live[i].ItemId, out string? text)) _counter.NoteBooked(text);
+        }
+
+        /// <summary>Keep what the owner stated as <c>queued_by</c> for a queued row it sent ("" when it stated none): the row is
+        /// then NOT this device's own, whatever its provenance (<see cref="QueueAttribution"/>).</summary>
+        public void NoteQueuedBy(ulong itemId, string carried) { if (itemId != 0) _queuedBy[itemId] = carried; }
+
+        /// <summary>Did an owner send <paramref name="itemId"/> (its <c>queued_by</c> is <paramref name="carried"/>, "" when it
+        /// stated none)? False for a row queued here, and for no row at all.</summary>
+        public bool TryQueuedBy(ulong itemId, out string carried)
+        {
+            if (itemId != 0 && _queuedBy.TryGetValue(itemId, out string? stated)) { carried = stated; return true; }
+            carried = "";
+            return false;
+        }
 
         /// <summary>The item id a row with <paramref name="uid"/> is stored under: the packed value for a 16-hex uid, the
         /// id already booked for the same text, else a freshly minted one (never 0). 0 for an empty or oversized uid.</summary>
         public ulong ItemIdOf(ReadOnlySpan<byte> uid)
         {
             if (uid.IsEmpty || uid.Length > MaxChars) return 0;
+            _counter.NoteBooked(uid);                        // a booked q<n> lifts the mint above itself
             ulong packed = QueueUid.ItemIdOf(uid);
             if (packed != 0 && !_text.ContainsKey(packed)) return packed;
             ulong hash = Hash(uid);
@@ -464,6 +532,11 @@ public static partial class Playback
             _byHash[hash] = minted;                          // a colliding hash re-points; the older id keeps its text
             return minted;
         }
+
+        /// <summary>The item id a BOOKED uid is stored under, from the FNV-1a of its text (what a decoded command carries
+        /// instead of a string), or 0. Never mints: a controller naming a uid we never booked finds nothing.</summary>
+        public ulong FindByHash(ulong hash)
+            => hash != 0 && _byHash.TryGetValue(hash, out ulong id) && _text.ContainsKey(id) ? id : 0;
 
         /// <summary>Write the uid <paramref name="itemId"/> was stored from: its booked text, else the packed 16-hex form.
         /// 0 characters for "no uid" or a buffer too short.</summary>
@@ -493,12 +566,20 @@ public static partial class Playback
                 ulong hash = Hash(entry.Value);
                 if (_byHash.TryGetValue(hash, out ulong id) && id == entry.Key) _byHash.Remove(hash);
             }
+            foreach (KeyValuePair<ulong, string> entry in _queuedBy)
+            {
+                bool present = false;
+                for (int i = 0; i < live.Length && !present; i++) present = live[i].ItemId == entry.Key;
+                if (!present) _queuedBy.Remove(entry.Key);
+            }
         }
 
         public void Clear()
         {
             _text.Clear();
             _byHash.Clear();
+            _queuedBy.Clear();
+            _counter.Reset();
         }
 
         static bool Same(string text, ReadOnlySpan<byte> utf8)
@@ -712,6 +793,12 @@ public static partial class Playback
     readonly struct LiveRows : Queue.IPlayableRows
     {
         public bool IsPlayable(int index) => RowPlayable(Queue.RefAt(index));
+    }
+
+    /// <summary>The live queue's row identities — what <see cref="Queue.SkipTarget"/> matches an inbound skip's uri against.</summary>
+    readonly struct LiveRowIds : Queue.IRowIds
+    {
+        public EntityId IdAt(int index) => Queue.RefAt(index).Id;
     }
 
     // ── 5. the next row: prefetch at load, prepare in the endgame (G-112) ──────────────────────────────────────────

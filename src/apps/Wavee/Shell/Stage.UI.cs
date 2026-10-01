@@ -788,6 +788,7 @@ public static partial class Stage
             void Toggle()
             {
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+                Playback.PickerOpened();                                       // the cluster hears it, as the official client's picker does
                 var opened = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(DeviceItems(), () => handle.Value?.Close()),
                     FlyoutPlacement.TopEdgeAlignedLeft,
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
@@ -932,8 +933,10 @@ public static partial class Stage
             _ = Platform.SettingsChanged.Value;
             bool autoplay = Platform.Settings.Get(Platform.Keys.AutoplayEnabled);
             EntityId contextId = Playback.ContextUri.Value;
-            UseEffect(static () => Queue.EnsureContext(Playback.ContextUri.Peek()), DepKey.From(contextId.GetHashCode()));
-            string? source = Queue.ContextName(contextId);
+            Queue.ContextWire wire = Playback.ContextLabel.Value;
+            UseEffect(static () => Queue.EnsureContext(Queue.ContextTarget(Playback.ContextUri.Peek(), Playback.ContextLabel.Peek())),
+                      DepKey.From(contextId.GetHashCode() ^ (wire.Referrer.GetHashCode() * 31)));
+            string? source = Queue.ContextName(contextId, in wire);
             Element? rows = QueuePaneBody?.Invoke();
             var content = new List<Element>(2) { AutoplayRow(autoplay, accent) };
             content.Add(rows ?? new BoxEl

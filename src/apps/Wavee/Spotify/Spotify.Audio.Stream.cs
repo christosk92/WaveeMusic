@@ -1405,7 +1405,7 @@ public static partial class Spotify
                 _reresolve = reresolve;
                 _dispatch = dispatch;
                 int rate = RateOf(_fileLength - Skip, durationMs, fmt);
-                int seconds = Ring.ReadAheadSeconds(metered, _fetcher.BytesPerSecond, rate);
+                int seconds = ReadAhead.For(fmt, metered, _fetcher.BytesPerSecond, rate, 0);
                 if (prepared) seconds = Math.Min(ReadAheadBudget.PreparedSeconds, seconds);
                 _ring = new Ring(this, _fetcher, seconds, rate, waitMs);
             }
@@ -1471,7 +1471,7 @@ public static partial class Spotify
                 if (Disposed || Interlocked.Exchange(ref _promoted, 1) != 0) return;
                 Volatile.Write(ref s_liveBody, this);
                 if (!Prepared) return;
-                _ring.Grow(Ring.ReadAheadSeconds(_metered, _fetcher.BytesPerSecond, _ring.FileBytesPerSecond));
+                _ring.Grow(ReadAhead.For(Fmt, _metered, _fetcher.BytesPerSecond, _ring.FileBytesPerSecond, 0));
             }
 
             /// <summary>Wait, bounded, for the FIRST body byte — or for the mirrors to refuse, whichever comes first.
@@ -1531,8 +1531,21 @@ public static partial class Spotify
                     return n;
                 }
                 int got = _ring.ReadAt(fileOffset, dst[..cap], epoch, interruptible);
-                if (got > 0) FirstServed("ring", offset);
+                if (got > 0) { FirstServed("ring", offset); WidenWhenProven(offset); }
                 return got;
+            }
+
+            int _widened;                            // 1 once the playhead passed the lossless probation: the ring was widened
+
+            /// <summary>A lossless track starts on its probation window (<see cref="ReadAhead.For"/>) and earns the larger
+            /// one once its playhead has passed <see cref="ReadAhead.ProbationMs"/>, so a skipped track never pulls the
+            /// whole file. Once; a read-path check of one int. The playhead is the container offset over the file's rate.</summary>
+            void WidenWhenProven(long offset)
+            {
+                if (Volatile.Read(ref _widened) != 0) return;
+                long playheadMs = offset * 1000L / Math.Max(1, _ring.FileBytesPerSecond);
+                if (playheadMs < ReadAhead.ProbationMs || Interlocked.Exchange(ref _widened, 1) != 0) return;
+                _ring.Grow(ReadAhead.For(Fmt, _metered, _fetcher.BytesPerSecond, _ring.FileBytesPerSecond, playheadMs));
             }
 
             /// <summary>A seek is coming for the decoder that may be blocked in this body's ring wait (the engine's

@@ -267,9 +267,10 @@ public static partial class Playback
     /// <summary>A cluster item just landed and folded (<see cref="FoldCluster"/> already ran, so <c>s_state</c> and
     /// <c>s_foreign</c> are both current): if it left a real <see cref="State.HasCurrent"/> next to a queue that never
     /// saw a <c>Queue.Replace</c>, seed it — from the cluster's own prev/next tracks when the mirrored owner is
-    /// Foreign and carried any, else the bare current row alone. <see cref="Queue.DecideSeed"/> is the only thing that
-    /// decides; a queue that already answered "what plays next" (a real Play, or an earlier seed) is never touched —
-    /// UNLESS <paramref name="takeover"/>.
+    /// Foreign and carried any, else the bare current row alone. While Foreign, <see cref="Queue.DecideMirror"/> decides
+    /// first and keeps the rows the owner's (replace on a new session / queue revision / absent current row, else
+    /// follow); <see cref="Queue.DecideSeed"/> decides for everything else, and a queue that already answered "what plays
+    /// next" (a real Play, or an earlier seed) is never touched by it — UNLESS <paramref name="takeover"/>.
     ///
     /// <para><paramref name="takeover"/> is the reducer's <c>Effects.TakeoverSeed</c> (A4), called from
     /// <c>Playback.Host.cs</c>'s <c>Execute()</c> after a <c>DoResume</c>/<c>DoPlay</c> Step claimed a row the local
@@ -282,14 +283,58 @@ public static partial class Playback
     /// (then <see cref="Queue.SeedSource.CurrentOnly"/> still un-sticks the cursor).</para></summary>
     static void SeedQueueFromCluster(bool takeover)
     {
+        if (takeover) AdoptForeignOrigin();                         // the owner's context description rides our first state
         if (Entities.Current is null) return;
         bool foreign = takeover || s_state.Own.Kind == Owner.Foreign;
         bool hasClusterTracks = foreign && (s_foreign.PrevCount > 0 || s_foreign.NextCount > 0);
-        // Bug (b), realtime-capture-implementation.md: this used to hardcode `hasContext: false`, discarding
-        // `s_state.MirrorContext` that `MirrorRemote` (Playback.cs) already cached — so a foreign session whose
-        // first fold carried no prev/next tracks fell straight to `SeedSource.CurrentOnly` (an empty queue, only the
-        // card) instead of resolving the richer context `DecideSeed` would otherwise have asked for.
-        bool hasContext = foreign && !s_state.MirrorContext.IsEmpty;
+        // Bug (b), realtime-capture-implementation.md: a foreign session whose first fold carried no prev/next tracks
+        // must still resolve the owner's context (`s_state.Context`, painted by `MirrorRemote`) instead of falling
+        // straight to `SeedSource.CurrentOnly` (an empty queue, only the card).
+        bool hasContext = foreign && !s_state.Context.IsEmpty;
+
+        // While ANOTHER device owns playback the panel IS the owner's: re-derive the rows from its cluster whenever its
+        // session or queue revision moved, the row it plays is not in ours, or ours were never loaded — the local
+        // queue is dropped, not parked. Otherwise just re-bucket around the row now playing.
+        if (!takeover && foreign)
+        {
+            // The owner's new track is an id until `Execute()` re-points the deck slot — one step AFTER this runs. Resolve it
+            // now (the same call Execute makes, which then no-ops), or `found` is −1 and the replace has no deck to lay out.
+            if (s_state.Current.IsNone && !s_state.CurrentId.IsEmpty) EnsureRow(s_state.CurrentId);
+            bool deckResolved = Queue.DeckResolved(s_state.Current, s_state.CurrentId);
+            ReadOnlySpan<QueueEdge> mirrorRows = Queue.Rows;
+            int foundIndex = -1;
+            for (int k = 0; k < mirrorRows.Length; k++)
+                if (Queue.RefAt(k) == s_state.Current) { foundIndex = k; break; }
+            byte foundBucket = foundIndex >= 0 ? mirrorRows[foundIndex].Bucket : (byte)0;
+            Queue.MirrorDecision mirror = Queue.DecideMirror(s_state.Own.Kind, Queue.State, deckResolved, hasClusterTracks,
+                s_foreign.Changed, foundIndex, foundBucket);
+            if (mirror != Queue.MirrorDecision.None)
+                Capture.Decision(CaptureKind.QueueSeed, Capture.AmbientUiCauseId, mirror, reason: "mirror");
+            // One line per foreign cluster (the owner's pushes are edge-paced): the only evidence of WHY the panel shows
+            // the rows it does — diff it against queue.panel.rows.
+            Log.Info("queue", "queue.mirror decision=" + mirror + " stamp=" + (s_foreign.Changed ? "moved" : "same")
+                + " found=" + foundIndex + " rows=" + mirrorRows.Length + " prev=" + s_foreign.PrevCount + " next=" + s_foreign.NextCount
+                + " deck=" + (deckResolved ? "resolved" : "none") + " state=" + Queue.State + " ctx=" + s_state.Context.Text);
+            if (mirror == Queue.MirrorDecision.ReplaceFromCluster)
+            {
+                SeedFromForeignQueue();
+                CancelArmedSeedRetry();
+                return;
+            }
+            if (mirror == Queue.MirrorDecision.FollowMirror)
+            {
+                QueueCursor followCursor = Queue.CursorOf(foundIndex);
+                if (Queue.Follow(followCursor))
+                {
+                    s_state.Cursor = followCursor;
+                    Capture.Point(CaptureKind.QueueMutation, Capture.AmbientUiCauseId,
+                        a: "follow-mirror", n0: foundIndex, n1: foundBucket);
+                    RequestDrain();
+                }
+                return;
+            }
+        }
+
         Queue.SeedSource source = Queue.DecideSeed(Queue.State, s_state.HasCurrent, hasClusterTracks, hasContext, takeover);
         Capture.Decision(CaptureKind.QueueSeed, Capture.AmbientUiCauseId, source, reason: foreign ? "foreign" : "local");
         switch (source)
@@ -302,7 +347,7 @@ public static partial class Playback
                 // The same background resolve `Restore`'s own SeedSource.Context branch uses (Playback.Host.Context.cs)
                 // — landed later by `LandSeedContext`, never blocking this drain. A full api queue falls back to the
                 // bare current row exactly like `CurrentOnly` below.
-                if (!ResolveSeedContext(++s_seedSeq, s_state.MirrorContext, s_state.CurrentId))
+                if (!ResolveSeedContext(++s_seedSeq, s_state.Context, s_state.CurrentId))
                 {
                     SeedCurrentRow(s_state.Current);
                     s_state.Cursor = Queue.CursorOf(0);
@@ -317,33 +362,6 @@ public static partial class Playback
                 CancelArmedSeedRetry();     // ditto
                 break;
         }
-
-        // Bug (a), realtime-capture-implementation.md: a FOREIGN mirror's queue is seeded ONCE (`DecideSeed`'s own
-        // one-shot gate, above) and never re-decided — but `MirrorRemote` keeps updating `State.Current`/`CurrentId`
-        // on every advance, with no re-bucket. Left alone, "Next up" keeps starting from the row that used to be
-        // playing and the count never drops. Find where the (already-updated) current row sits in the mirrored list
-        // and, unless it is already the NowPlaying bucket, re-bucket around it — the same `QueueOrder.Follow` a local
-        // cursor move already runs through `Queue.Follow`. A harmless no-op right after a fresh seed above: the seed
-        // itself already lands the row in the NowPlaying bucket.
-        if (foreign)
-        {
-            ReadOnlySpan<QueueEdge> mirrorRows = Queue.Rows;
-            int foundIndex = -1;
-            for (int k = 0; k < mirrorRows.Length; k++)
-                if (Queue.RefAt(k) == s_state.Current) { foundIndex = k; break; }
-            byte foundBucket = foundIndex >= 0 ? mirrorRows[foundIndex].Bucket : (byte)0;
-            if (Queue.ShouldFollowMirror(Queue.State, foreign, foundIndex, foundBucket))
-            {
-                QueueCursor followCursor = Queue.CursorOf(foundIndex);
-                if (Queue.Follow(followCursor))
-                {
-                    s_state.Cursor = followCursor;
-                    Capture.Point(CaptureKind.QueueMutation, Capture.AmbientUiCauseId,
-                        a: "follow-mirror", n0: foundIndex, n1: foundBucket);
-                    RequestDrain();
-                }
-            }
-        }
     }
 
     /// <summary>Build the queue from the cluster's own prev/next tracks (<see cref="s_foreign"/>, already copied out of
@@ -355,32 +373,35 @@ public static partial class Playback
     static void SeedFromForeignQueue()
     {
         EntityRef current = s_state.Current;
-        if (current.IsNone) return;
-        int currentPacked = Queue.Pack(current);
-        if (currentPacked == 0) return;
-        int prevN = s_foreign.PrevCount, nextN = s_foreign.NextCount;
-        int cap = prevN + 1 + nextN;
+        int currentPacked = Queue.DeckResolved(current, s_state.CurrentId) ? Queue.Pack(current) : 0;
+        if (currentPacked == 0)
+        {
+            // Never silent: a skipped replace leaves the last rows on screen, which is exactly what a frozen panel looks like.
+            Log.Info("queue", "queue.mirror.skipped reason=deck-unresolved id=" + s_state.CurrentId.Text);
+            return;
+        }
+        int prevN = s_foreign.PrevCount, nextN = s_foreign.NextCount, total = prevN + nextN, cap = total + 1;
+        Queue.MirrorRow[] source = ArrayPool<Queue.MirrorRow>.Shared.Rent(Math.Max(1, total));
+        int[] targets = ArrayPool<int>.Shared.Rent(Math.Max(1, total));
+        int[] origin = ArrayPool<int>.Shared.Rent(cap);
         int[] packed = ArrayPool<int>.Shared.Rent(cap);
         QueueEdge[] rows = ArrayPool<QueueEdge>.Shared.Rent(cap);
         int deck;
         try
         {
-            int n = 0;
-            for (int k = 0; k < prevN; k++) AddForeignRow(k, next: false, QueueBucket.History, packed, rows, ref n);
-            deck = n;
-            packed[n] = currentPacked;
-            rows[n] = new QueueEdge(0, (byte)QueueProvider.Context, (byte)QueueBucket.NowPlaying);
-            n++;
-            for (int k = 0; k < nextN; k++)
-                if (s_foreign.IsQueued(true, k)) AddForeignRow(k, next: true, QueueBucket.UserQueue, packed, rows, ref n);
-            for (int k = 0; k < nextN; k++)
-                if (!s_foreign.IsQueued(true, k)) AddForeignRow(k, next: true, QueueBucket.NextUp, packed, rows, ref n);
+            for (int k = 0; k < total; k++)
+                source[k] = ForeignRow(k < prevN ? k : k - prevN, next: k >= prevN, out targets[k]);
+            int n = Queue.LayoutMirror(source.AsSpan(0, prevN), source.AsSpan(prevN, nextN), rows.AsSpan(0, cap), origin.AsSpan(0, cap), out deck);
+            for (int i = 0; i < n; i++) packed[i] = origin[i] < 0 ? currentPacked : targets[origin[i]];
 
             Queue.Replace(packed.AsSpan(0, n), rows.AsSpan(0, n));
             s_uids.Retain(Queue.Rows);
         }
         finally
         {
+            ArrayPool<Queue.MirrorRow>.Shared.Return(source);
+            ArrayPool<int>.Shared.Return(targets);
+            ArrayPool<int>.Shared.Return(origin);
             ArrayPool<int>.Shared.Return(packed);
             ArrayPool<QueueEdge>.Shared.Return(rows);
         }
@@ -388,24 +409,23 @@ public static partial class Playback
         RequestDrain();
     }
 
-    /// <summary>One foreign-queue row → a queue row, the same shape <see cref="AddRow"/> builds from a resolved
-    /// context — a row with no playable identity (or one this scope cannot resolve) is skipped rather than queued as a
-    /// hole. The provenance the wire actually carries beyond "queued or not" is not on this struct, so a non-queued row
-    /// reads as Context (the common case; an autoplay tail mirrored this way shows as a context row instead).</summary>
-    static void AddForeignRow(int index, bool next, QueueBucket bucket, int[] packed, QueueEdge[] rows, ref int n)
+    /// <summary>One foreign-queue row as the pure layout reads it (<see cref="Queue.LayoutMirror"/>) plus the packed target
+    /// it resolves to (0 = no playable identity, or one this scope cannot resolve — the layout drops it rather than
+    /// queueing a hole). Provenance comes off the wire: queued, autoplay, else context.</summary>
+    static Queue.MirrorRow ForeignRow(int index, bool next, out int target)
     {
-        if (n >= packed.Length) return;
+        target = 0;
         ReadOnlySpan<byte> uri = s_foreign.Utf8Uri(next, index);
-        if (uri.IsEmpty) return;
-        EntityId id = EntityId.Parse(uri);
-        if (!id.IsPlayable) return;
-        int target = Queue.Pack(Entities.Ref(id));
-        if (target == 0) return;
+        if (!uri.IsEmpty)
+        {
+            EntityId id = EntityId.Parse(uri);
+            if (id.IsPlayable) target = Queue.Pack(Entities.Ref(id));
+        }
         ReadOnlySpan<byte> uid = s_foreign.Utf8Uid(next, index);
-        QueueProvider provider = bucket == QueueBucket.UserQueue ? QueueProvider.Queue : QueueProvider.Context;
-        packed[n] = target;
-        rows[n] = new QueueEdge(uid.IsEmpty ? 0 : s_uids.ItemIdOf(uid), (byte)provider, (byte)bucket);
-        n++;
+        ulong itemId = target == 0 || uid.IsEmpty ? 0UL : (ulong)s_uids.ItemIdOf(uid);
+        if (itemId != 0 && s_foreign.IsQueued(next, index))          // the owner's own account of who queued it travels with the row
+            s_uids.NoteQueuedBy(itemId, Encoding.UTF8.GetString(s_foreign.Utf8QueuedBy(next, index)));
+        return new Queue.MirrorRow(target != 0, s_foreign.IsQueued(next, index), s_foreign.IsAutoplay(next, index), itemId);
     }
 
     // ── 5. test seam ───────────────────────────────────────────────────────────────────────────────────────────────

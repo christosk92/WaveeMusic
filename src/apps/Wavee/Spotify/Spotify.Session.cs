@@ -265,6 +265,16 @@ public static partial class Spotify
         LinkPhase apBefore = s.Ap, dealerBefore = s.Dealer;
         SessionEffects fx = Step(ref s, e);
         Volatile.Write(ref s_box, new Box(s));
+        // A run of failed connects ends where its link comes up: the next failure logs its stack again.
+        if (e.Kind == SessionEventKind.Welcome && s.Ap == LinkPhase.Up) s_linkFailures.Forget("ap");
+        if (e.Kind == SessionEventKind.DealerOnline && s.Dealer == LinkPhase.Up) s_linkFailures.Forget("dealer");
+        // The kick took the retries' place: their pending timers would only land on a link that is no longer Waiting.
+        if (e.Kind == SessionEventKind.LinksKick && (fx & (SessionEffects.ResolveHosts | SessionEffects.OpenDealer)) != 0)
+        {
+            Log.Info("spotify", "links.kick ap " + apBefore + "→" + s.Ap + " dealer " + dealerBefore + "→" + s.Dealer);
+            s_apRetryTimer?.Dispose();
+            s_dealerRetryTimer?.Dispose();
+        }
         // One always-on line per TRANSITION of the phase or of either link — never per event, and a string is built only
         // then (dealer-hello-rca.md §6.4: the stuck session's log never said the phase stopped at Minting).
         if (phaseBefore != s.Phase || apBefore != s.Ap || dealerBefore != s.Dealer)
@@ -557,14 +567,40 @@ public static partial class Spotify
     /// ladder, stamped with the dealer epoch it was armed for.</summary>
     static void ArmDealerRetry(in Session s)
     {
-        int delayMs = BackoffMs(s.DealerAttempt);
+        int delayMs = ReconnectDelay.For(s.DealerAttempt, s_dealerCleanClose, Random.Shared.Next());
         s_dealerRetryTimer?.Dispose();
         s_dealerRetryTimer = new Timer(static state => Publish(new SessionEvent(SessionEventKind.DealerRetry, Epoch: (uint)state!)),
             s.Epoch, delayMs, Timeout.Infinite);
-        Log.Info("spotify", "dealer reconnecting in " + (delayMs / 1000) + "s (attempt " + s.DealerAttempt + ", epoch " + s.Epoch
+        Log.Info("spotify", "dealer reconnecting in " + (delayMs < 1000 ? delayMs + "ms" : (delayMs / 1000) + "s") + " (attempt " + s.DealerAttempt + ", epoch " + s.Epoch
             + ", ap " + s.Ap + ")");
         if (Capture.Enabled) Capture.Point(CaptureKind.Retry, causeId: 0, a: "dealer", n0: s.DealerAttempt, n1: delayMs);
     }
+
+    /// <summary>Failed connects per link, in a run: the first logs its stack, repeats one line with the running count at most
+    /// a minute apart. A four-hour outage used to write thirteen thousand stack lines into the 10 MB rotation files.</summary>
+    static readonly DealerTally s_linkFailures = new(intervalMs: 60_000, capacity: 4);
+
+    /// <summary>A link's channel failed (<paramref name="link"/> = <c>ap</c> or <c>dealer</c>).</summary>
+    static void LogLinkFailure(string link, string what, uint epoch, Exception ex)
+    {
+        if (!s_linkFailures.Note(link, Environment.TickCount64, out long total)) return;
+        if (total == 1) Log.Warn("spotify", what + " (epoch " + epoch + ")", ex);
+        else Log.Warn("spotify", what + " (epoch " + epoch + ") " + ex.GetType().Name + ": " + ex.Message + " — failure " + total + " of this run");
+    }
+
+    /// <summary>ANY THREAD: the OS says the network may be back (<paramref name="reason"/> = <c>resumed</c> or
+    /// <c>address-changed</c>). Folds <see cref="SessionEventKind.LinksKick"/> on the UI thread, at most once per
+    /// <see cref="KickLimiter.MinGapMs"/>.</summary>
+    internal static void Kick(string reason) => Post(() =>
+    {
+        long now = Environment.TickCount64;
+        if (!KickLimiter.Due(now, s_lastKickMs)) return;
+        s_lastKickMs = now;
+        Log.Info("spotify", "links.kick requested by " + reason);
+        Apply(new SessionEvent(SessionEventKind.LinksKick));
+    });
+
+    static long s_lastKickMs = KickLimiter.Never;
 
     // ── 7. HTTP (the three mints and the clock probe) ────────────────────────────────────────────────────────────────
 
@@ -744,7 +780,7 @@ public static partial class Spotify
         {
             // A cancellation that lands between the filter above and this post leaves an ApDropped stamped with an epoch
             // the fold has already moved past: `IsStale` refuses it, which is exactly what the stamp is for.
-            Log.Warn("spotify", "ap channel failed (epoch " + epoch + ")", ex);
+            LogLinkFailure("ap", "ap channel failed", epoch, ex);
             exit = "dropped";
             Publish(new SessionEvent(SessionEventKind.ApDropped, Number: (long)SessionFault.Network, Epoch: epoch));
         }
@@ -784,11 +820,24 @@ public static partial class Spotify
         accessPoints.AddRange(rest);
         if (accessPoints.Count == 0) throw new IOException("apresolve returned no access points");
 
+        // The response lists several of each (4 and 4 in the captures): the whole ordered list is kept so a transport
+        // failure can rotate to the next host; the session still carries the first (`Hosts`).
         n = ParseHosts(json, "spclient"u8, ranges);
-        TokenRef spclient = n > 0 ? Text.Add(FirstHost(json, ranges[0])) : default;
+        string[] spclients = HostList(json, ranges, n);
+        s_spclientHosts.Set(spclients);
+        TokenRef spclient = spclients.Length > 0 ? Text.Add(spclients[0]) : default;
         n = ParseHosts(json, "dealer-g2"u8, ranges);
-        TokenRef dealer = n > 0 ? Text.Add(FirstHost(json, ranges[0])) : Text.Add("dealer.spotify.com");
+        string[] dealers = n > 0 ? HostList(json, ranges, n) : ["dealer.spotify.com"];
+        s_dealerHosts.Set(dealers);
+        TokenRef dealer = Text.Add(dealers[0]);
         Publish(new SessionEvent(SessionEventKind.Hosts, Text: spclient, Text2: dealer, Epoch: epoch));
+
+        static string[] HostList(byte[] json, Span<Range> ranges, int count)
+        {
+            var hosts = new string[count];
+            for (int i = 0; i < count; i++) hosts[i] = FirstHost(json, ranges[i]);
+            return hosts;
+        }
 
         static string FirstHost(byte[] json, Range r)
         {
@@ -1587,8 +1636,25 @@ public static partial class Spotify
     /// <summary>The spclient base url the request runner prefixes onto a folded path.</summary>
     public static string SpclientBaseUrl()
     {
+        if (s_spclientHosts.Current is { } listed) return "https://" + listed;
         var host = Current.SpclientHost;
         return host.IsEmpty ? "https://spclient.wg.spotify.com" : "https://" + TextOf(host);
+    }
+
+    /// <summary>The spclient hosts apresolve listed, in order, and the one in use. A request that fails at the transport
+    /// level (DNS, connect, TLS — never an HTTP status) reports it through <see cref="NoteSpclientTransportFailure"/>.</summary>
+    static readonly HostRotation s_spclientHosts = new();
+    static readonly HostRotation s_dealerHosts = new();
+
+    /// <summary>An spclient request built on <paramref name="baseUrl"/> (a <see cref="SpclientBaseUrl"/> value) failed at the
+    /// transport level: the next host apresolve listed becomes the base. A report for a host no longer in use does nothing,
+    /// so a burst of failing requests moves one step.</summary>
+    public static void NoteSpclientTransportFailure(string baseUrl)
+    {
+        const string scheme = "https://";
+        if (!baseUrl.StartsWith(scheme, StringComparison.Ordinal)) return;
+        if (s_spclientHosts.NoteFailure(baseUrl.AsSpan(scheme.Length).TrimEnd('/').ToString()))
+            Log.Warn("spotify", "spclient transport failure — rotating to the next apresolve host");
     }
 
     /// <summary>The dealer's connection id — the <c>X-Spotify-Connection-Id</c> a PutState must carry.</summary>
@@ -1692,15 +1758,8 @@ public static partial class Spotify
     //
     // ONE firehose: cluster pushes, library/playlist events and the Connect REQUEST commands all arrive here. This
     // loop owns the protocol half only — ping/pong, the connection id, the hello deadline (`DealerHelloRules`), the
-    // half-open watchdog and the reconnect — and hands every other frame to `Spotify.Connect.OnDealer` (owner F), which
+    // pong deadline (`DealerLiveness`) and the reconnect — and hands every other frame to `Spotify.Connect.OnDealer` (owner F), which
     // decides what it means.
-
-    /// <summary>The keepalive interval (P10 names this timer).</summary>
-    public const int DealerPingIntervalMs = 30_000;
-
-    /// <summary>No frame at all — not even a pong to our pings — for this long means the TCP socket is dead but not
-    /// closed ("half open"): abort it so the blocked receive throws and the loop reconnects.</summary>
-    public const int DealerDeadAfterMs = 70_000;
 
     /// <summary>Big enough for a full cluster push plus its inflated form (the parse decodes into the head and
     /// inflates into the tail).</summary>
@@ -1708,6 +1767,9 @@ public static partial class Spotify
 
     static ClientWebSocket? s_dealer;
     static long s_lastDealerTick;
+    /// <summary>The dealer thread's verdict on HOW the last socket ended, read by <see cref="ArmDealerRetry"/>: true only
+    /// for a server Close frame (an orderly goodbye, worth an immediate reconnect). Written before the drop is published.</summary>
+    static volatile bool s_dealerCleanClose;
     static readonly Lock DealerSendGate = new();
 
     static void CloseDealerSocket()
@@ -1759,11 +1821,12 @@ public static partial class Spotify
             if (ct.IsCancellationRequested) return ExitEpochCancelled;
             try
             {
+                s_dealerCleanClose = false;
                 string? token = AccessToken(forceToken);
                 forceToken = false;
                 if (token is null) throw new IOException("no access token for the dealer");
 
-                string host = TextOf(Current.DealerHost);
+                string host = s_dealerHosts.Current ?? TextOf(Current.DealerHost);
                 if (host.Length == 0) host = "dealer.spotify.com";
 
                 var ws = new ClientWebSocket();
@@ -1778,6 +1841,7 @@ public static partial class Spotify
                     // A failed wss handshake is indistinguishable from a rejected (expired) token at this layer, and
                     // the plain provider only re-mints near expiry: force one for the next attempt.
                     forceToken = true;
+                    s_dealerHosts.NoteFailure(host);      // the next attempt (the force-minted retry or the backoff's) tries the next listed host
                     throw;
                 }
 
@@ -1785,7 +1849,8 @@ public static partial class Spotify
                 Volatile.Write(ref s_lastDealerTick, connectedAt);
                 Log.Info("spotify", "dealer connected (" + host + ", epoch " + epoch + ")");
                 StartKeepalive(ws, ct);
-                Receive(ws, frame, receive, scratch, epoch, connectedAt, ct);
+                bool closedByServer = Receive(ws, frame, receive, scratch, epoch, connectedAt, ct);
+                if (closedByServer) s_dealerCleanClose = true;
                 throw new IOException("the dealer closed the socket");
             }
             catch (Exception) when (ct.IsCancellationRequested)
@@ -1797,7 +1862,7 @@ public static partial class Spotify
             }
             catch (Exception ex)
             {
-                Log.Warn("spotify", "dealer dropped (epoch " + epoch + ")", ex);
+                LogLinkFailure("dealer", "dealer dropped", epoch, ex);
                 CloseDealerSocket();
                 if (forceToken && !retried)
                 {
@@ -1818,13 +1883,14 @@ public static partial class Spotify
         }
     }
 
-    /// <summary>Read frames until the socket closes. Until the pusher's hello is held, every receive is bounded by what
+    /// <summary>Read frames until the socket closes. Returns true when the server ended it with a Close frame (a clean
+    /// goodbye — <see cref="ReconnectDelay"/> reconnects at once), false when the socket merely stopped being open. Until the pusher's hello is held, every receive is bounded by what
     /// is left of <see cref="DealerHelloRules.HelloDeadlineMs"/>, counted from <paramref name="connectedAt"/> (the
     /// <c>dealer connected</c> line): a socket that is open — answering pings, even — but never registered is dropped
     /// with <see cref="DealerHelloOverdueException"/>, and the dealer's own drop → backoff → retry takes it from there
     /// (dealer-hello-rca.md). Once the hello is held the receive is the plain unbounded one again and the half-open
-    /// watchdog (<see cref="DealerDeadAfterMs"/>) is the only liveness rule.</summary>
-    static void Receive(ClientWebSocket ws, MemoryStream frame, byte[] receive, byte[] scratch, uint epoch, long connectedAt,
+    /// pong deadline (<see cref="DealerLiveness"/>) is the only liveness rule.</summary>
+    static bool Receive(ClientWebSocket ws, MemoryStream frame, byte[] receive, byte[] scratch, uint epoch, long connectedAt,
         CancellationToken ct)
     {
         var segment = new ArraySegment<byte>(receive);
@@ -1837,7 +1903,7 @@ public static partial class Spotify
             do
             {
                 result = ReceiveWithin(ws, segment, helloHeld, connectedAt, frames, ct);
-                if (result.MessageType == WebSocketMessageType.Close) return;
+                if (result.MessageType == WebSocketMessageType.Close) return true;
                 frame.Write(receive, 0, result.Count);
             }
             while (!result.EndOfMessage);
@@ -1848,6 +1914,7 @@ public static partial class Spotify
             var utf8 = frame.GetBuffer().AsSpan(0, (int)frame.Length);
             if (Dispatch(utf8, scratch, epoch, frames, now - connectedAt)) helloHeld = true;
         }
+        return false;
     }
 
     /// <summary>One receive under the hello budget. Once the hello is held it is the plain receive on the epoch's own
@@ -1925,7 +1992,11 @@ public static partial class Spotify
                 SendDealerText(DealerPong);
                 return false;
             case DealerFrameKind.Pong:
+                return false;
             case DealerFrameKind.Unknown:
+                // A frame whose type this parser does not know (or that did not parse): counted, never silent.
+                if (s_unknownFrames.Note("unknown-type", Environment.TickCount64, out long unknown))
+                    Log.Info("spotify", "dealer.unread frame type unknown, bytes=" + utf8.Length + " total=" + unknown);
                 return false;
         }
 
@@ -2018,6 +2089,7 @@ public static partial class Spotify
         return bufferWriter.WrittenSpan.ToArray();
     }
 
+    static readonly DealerTally s_unknownFrames = new(intervalMs: 60_000);
     static readonly byte[] DealerPing = "{\"type\":\"ping\"}"u8.ToArray();
     static readonly byte[] DealerPong = "{\"type\":\"pong\"}"u8.ToArray();
 
@@ -2054,8 +2126,9 @@ public static partial class Spotify
         if (n > 0) SendDealerText(buffer[..n], causeId, captureLabel: "reply");
     }
 
-    /// <summary>The 30 s keepalive plus the half-open watchdog plus the 10-minute server-clock re-sync. One named
-    /// thread for all three, because all three are "wake up on a schedule and do one small thing" (P10).</summary>
+    /// <summary>The 30 s keepalive plus the pong deadline plus the 10-minute server-clock re-sync. One named thread for
+    /// the first two, because both are "wake up on a schedule and do one small thing" (P10); the clock probe is HTTP and
+    /// runs on a pool thread, single-flight, so it can never delay a ping or the deadline.</summary>
     static void StartKeepalive(ClientWebSocket ws, CancellationToken ct)
     {
         lock (ThreadGate)
@@ -2071,23 +2144,32 @@ public static partial class Spotify
         finally { Volatile.Write(ref s_keepaliveRunning, 0); }
     }
 
+    static int s_clockSyncRunning;
+
     static void KeepaliveTicks(ClientWebSocket ws, CancellationToken ct)
     {
         long nextClockSync = Environment.TickCount64;   // the first probe happens on the first tick
         while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
         {
-            if (ct.WaitHandle.WaitOne(DealerPingIntervalMs)) return;
-            if (Environment.TickCount64 - Volatile.Read(ref s_lastDealerTick) > DealerDeadAfterMs)
+            if (ct.WaitHandle.WaitOne(DealerLiveness.PingIntervalMs - DealerLiveness.PongDeadlineMs)) return;
+            long sentAt = Environment.TickCount64;
+            SendDealerText(DealerPing);
+            if (ct.WaitHandle.WaitOne(DealerLiveness.PongDeadlineMs)) return;
+            if (DealerLiveness.PongOverdue(sentAt, Volatile.Read(ref s_lastDealerTick), Environment.TickCount64))
             {
-                Log.Warn("spotify", "dealer half-open (no traffic) — forcing a reconnect");
+                Log.Warn("spotify", "dealer half-open (no frame within " + DealerLiveness.PongDeadlineMs + " ms of a ping) — forcing a reconnect");
                 try { ws.Abort(); } catch (ObjectDisposedException) { }
                 return;
             }
-            SendDealerText(DealerPing);
-            if (Environment.TickCount64 >= nextClockSync)
+            if (Environment.TickCount64 >= nextClockSync && Interlocked.CompareExchange(ref s_clockSyncRunning, 1, 0) == 0)
             {
-                SyncServerClock(ct);
                 nextClockSync = Environment.TickCount64 + ServerClockResyncMs;
+                ThreadPool.QueueUserWorkItem(static state =>
+                {
+                    try { SyncServerClock((CancellationToken)state!); }
+                    catch (Exception ex) { Log.Warn("spotify", "server-clock sync faulted", ex); }   // a pool thread must never take the process down
+                    finally { Volatile.Write(ref s_clockSyncRunning, 0); }
+                }, ct);
             }
         }
     }

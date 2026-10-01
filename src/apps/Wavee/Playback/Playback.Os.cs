@@ -849,10 +849,12 @@ public static partial class Playback
                     PowerSession.Resumed += OnResumed;
                 }
                 catch (Exception ex) { Log.Warn("playback", "power subscribe failed", ex); }
+                Spotify.WakeKicks.Install();   // the session's own second subscriber: a wake or an address change kicks its waiting links
             }
 
             internal static void Shutdown()
             {
+                Spotify.WakeKicks.Shutdown();
                 try { PowerSession.Suspending -= OnSuspending; } catch { }
                 try { PowerSession.Resumed -= OnResumed; } catch { }
                 Drop();

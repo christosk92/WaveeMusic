@@ -829,6 +829,9 @@ public static class LibraryPushRules
             if (set.SequenceEqual("ylpin"u8)) return LibraryPush.Pins;
             return LibraryPush.None;
         }
+        // Ignored on purpose (2 seen in nine days): a per-artist liked-songs list nothing here shows. `DealerTopicRules`
+        // counts it; saying None out loud keeps it from reading as a topic nobody classified.
+        if (topic.StartsWith("hm://playlist/v2/list/liked-songs-artist/"u8)) return LibraryPush.None;
         if (topic.StartsWith("hm://playlist/"u8))
         {
             var tail = topic.EndsWith("/"u8) ? topic[..^1] : topic;

@@ -1323,6 +1323,7 @@ public static partial class Shell
     static void BarToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
     {
         if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+        Playback.PickerOpened();                                               // the cluster hears it, as the official client's picker does
         handle.Value = overlay.Open(
             () => anchor.Value,
             () => Embed.Comp(() => new BarDevicePickerMenu(() => handle.Value?.Close())),

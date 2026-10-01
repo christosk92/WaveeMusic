@@ -12,6 +12,7 @@
 // The dealer facts join the entities collection: a play / transfer / queue body goes straight to the playback host's
 // process-static intake, and the host's drain must not run beside another collection's.
 
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using Google.Protobuf;
@@ -189,7 +190,7 @@ public class SpotifyConnectDealerTests
         Assert.True(shuffle.Command.BoolArg);
         Assert.Equal(Spotify.Decode.RemoteCmd.SetRepeatingContext, repeat.Command.Kind);
         Assert.True(repeat.Command.BoolArg);
-        Assert.Equal(42, repeat.Command.MessageId);
+        Assert.Equal(42u, repeat.Command.MessageId);
     }
 
     /// <summary>G-074 / G-250: a set_queue body is handed to the playback host's intake — decoded into a pooled buffer and
@@ -365,6 +366,121 @@ public class SpotifyConnectOutboundTests
         Assert.Equal("your_library", Spotify.Connect.PlayFeatureOf("spotify:user:me:collection"));
         Assert.Equal("track", Spotify.Connect.PlayFeatureOf("spotify:track:x"));
         Assert.Equal("harmony", Spotify.Connect.PlayFeatureOf("spotify:station:track:x"));
+    }
+
+    [Fact]
+    public void Play_skip_to_carries_the_context_uid_and_index_beside_the_uri_and_nothing_else_grows()
+    {
+        // Hand-written from capture request 1044's shape: skip_to { track_uri, track_uid, track_index }.
+        const string Uid = "0123456789abcdef0123456789abcdef";
+        using var doc = Json(b => Spotify.Connect.PlayBody(b, "spotify:album:abc", "spotify:track:xyz", false, "us", "c", "i", 7,
+            skipUid: Uid, skipIndex: 1));
+        var skip = doc.RootElement.GetProperty("command").GetProperty("prepare_play_options").GetProperty("skip_to");
+        Assert.Equal("spotify:track:xyz", skip.GetProperty("track_uri").GetString());
+        Assert.Equal(Uid, skip.GetProperty("track_uid").GetString());
+        Assert.Equal(1, skip.GetProperty("track_index").GetInt32());
+        Assert.False(doc.RootElement.GetProperty("command").GetProperty("context").TryGetProperty("pages", out _));
+
+        // Our own mints and an unknown index never ride along.
+        foreach (string mint in new[] { "q3", "0ab15c9f39e1de3b", "", "0123456789ABCDEF0123456789ABCDEF" })
+        {
+            using var thin = Json(b => Spotify.Connect.PlayBody(b, "spotify:album:abc", "spotify:track:xyz", false, "us", "c", "i", 7,
+                skipUid: mint));
+            var thinSkip = thin.RootElement.GetProperty("command").GetProperty("prepare_play_options").GetProperty("skip_to");
+            Assert.False(thinSkip.TryGetProperty("track_uid", out _));
+            Assert.False(thinSkip.TryGetProperty("track_index", out _));
+        }
+    }
+
+    [Fact]
+    public void Next_track_is_the_desktop_row_jump_envelope_with_the_rows_uri_and_uid()
+    {
+        // Shape written by hand from the official client's queue-row click (metadata stripped): command { endpoint,
+        // options{3 bools}, track{uri,uid,metadata}, logging_params } + connection_type + intent_id, nothing else.
+        using var doc = Json(b => Spotify.Connect.NextTrackBody(b, "spotify:track:63gioPx2WipyXiigLMf1nB", "3ef6b13dec93e52e",
+            "us", "cmd1", "intent1", 7));
+        var root = doc.RootElement;
+        Assert.Equal(new[] { "command", "connection_type", "intent_id" }, root.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal("wlan", root.GetProperty("connection_type").GetString());
+        Assert.Equal("intent1", root.GetProperty("intent_id").GetString());
+
+        var cmd = root.GetProperty("command");
+        Assert.Equal(new[] { "endpoint", "options", "track", "logging_params" }, cmd.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal("next_track", cmd.GetProperty("endpoint").GetString());
+        var options = cmd.GetProperty("options");
+        Assert.Equal(new[] { "override_restrictions", "only_for_local_device", "system_initiated" },
+            options.EnumerateObject().Select(p => p.Name).ToArray());
+        foreach (var o in options.EnumerateObject()) Assert.False(o.Value.GetBoolean());
+
+        var track = cmd.GetProperty("track");
+        Assert.Equal("spotify:track:63gioPx2WipyXiigLMf1nB", track.GetProperty("uri").GetString());
+        Assert.Equal("3ef6b13dec93e52e", track.GetProperty("uid").GetString());
+        Assert.Empty(track.GetProperty("metadata").EnumerateObject());
+
+        var logging = cmd.GetProperty("logging_params");
+        Assert.Equal(7, logging.GetProperty("command_initiated_time").GetInt64());
+        Assert.Equal(7, logging.GetProperty("command_received_time").GetInt64());
+        Assert.Empty(logging.GetProperty("page_instance_ids").EnumerateArray());
+        Assert.Empty(logging.GetProperty("interaction_ids").EnumerateArray());
+        Assert.Equal("us", logging.GetProperty("device_identifier").GetString());
+        Assert.Equal("cmd1", logging.GetProperty("command_id").GetString());
+    }
+
+    [Fact]
+    public void The_plain_skip_button_is_next_track_with_no_track()
+    {
+        // Written by hand from the official client's skip button (captured 5 of 5 plain skips, metadata stripped).
+        using var doc = Json(b => Spotify.Connect.NextTrackBody(b, null, null, "us", "cmd1", "intent1", 7));
+        var cmd = doc.RootElement.GetProperty("command");
+        Assert.Equal(new[] { "endpoint", "options", "logging_params" }, cmd.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal("next_track", cmd.GetProperty("endpoint").GetString());
+        Assert.Equal(new[] { "command", "connection_type", "intent_id" },
+            doc.RootElement.EnumerateObject().Select(p => p.Name).ToArray());
+    }
+
+    [Fact]
+    public void The_transfer_body_keeps_the_official_clients_key_order()
+    {
+        using var doc = Json(b => Spotify.Connect.TransferBody(b, "intent", "cmd", "interaction"));
+        var root = doc.RootElement;
+        Assert.Equal(new[] { "options", "transfer_intent_id", "command_id", "interaction_id" },
+            root.EnumerateObject().Select(p => p.Name).ToArray());
+        var options = root.GetProperty("options");
+        Assert.Equal(new[] { "restore_paused", "restore_position", "restore_track", "license" },
+            options.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal("restore", options.GetProperty("restore_paused").GetString());
+        Assert.Equal("extrapolate", options.GetProperty("restore_position").GetString());
+        Assert.Equal("only_current", options.GetProperty("restore_track").GetString());
+        Assert.Equal("premium", options.GetProperty("license").GetString());
+        Assert.Equal("intent", root.GetProperty("transfer_intent_id").GetString());
+    }
+
+    [Fact]
+    public void A_transfer_names_our_own_device_as_from_and_the_target_as_to()
+    {
+        Span<char> path = stackalloc char[256];
+        int n = Spotify.Connect.CommandPath(Spotify.Connect.TransferRoute, "ourdevice", "phone", path);
+        Assert.Equal("/connect-state/v1/connect/transfer/from/ourdevice/to/phone", new string(path[..n]));
+    }
+
+    [Fact]
+    public void The_wake_devices_route_is_the_clusters_and_the_ack_id_is_read_from_the_answer()
+    {
+        Assert.Equal("/connect-state/v1/cluster/wake-devices", Spotify.Connect.WakeDevicesRoute);
+        Assert.Equal("a1B2", Spotify.Connect.AckIdOf("""{"ack_id":"a1B2"}"""u8));
+        Assert.Equal("a1B2", Spotify.Connect.AckIdOf("""{"x":{"y":1},"ack_id":"a1B2"}"""u8));
+        Assert.Null(Spotify.Connect.AckIdOf("""{"other":1}"""u8));
+        Assert.Null(Spotify.Connect.AckIdOf(""u8));
+        Assert.Null(Spotify.Connect.AckIdOf("not json"u8));
+    }
+
+    [Fact]
+    public void A_picker_announce_is_rate_limited_to_once_per_gap()
+    {
+        Assert.True(Spotify.Connect.PickerDue(1_000, 0));                                         // never sent
+        Assert.False(Spotify.Connect.PickerDue(1_000 + Spotify.Connect.PickerGapMs - 1, 1_000));
+        Assert.True(Spotify.Connect.PickerDue(1_000 + Spotify.Connect.PickerGapMs, 1_000));
+        Assert.True(Spotify.Connect.PickerDue(500, 1_000));                                       // the clock went backwards: do not wedge
     }
 
     [Fact]
