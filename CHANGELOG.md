@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
-## [0.3.0] - unreleased
+## [0.3.0] - 2026-10-02
 
 Crest is Wavee rebuilt from the ground up. Every page, the playback engine, Spotify Connect and the local library were
 rewritten on one data model, so pages open faster, cards and rows behave the same everywhere, and scrolling runs on a

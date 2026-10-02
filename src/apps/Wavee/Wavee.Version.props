@@ -6,6 +6,6 @@
     <WaveeCodename>Crest</WaveeCodename>
     <!-- NEVER hand-edited. Monotonic release counter (max 65535) bumped + committed by ops/release/wavee-release.ps1.
          MSIX Identity/@Version = M.m.p.WaveeBuild - the ONLY thing Windows and AppUpdateVersion.IsNewer compare. -->
-    <WaveeBuild>11</WaveeBuild>
+    <WaveeBuild>12</WaveeBuild>
   </PropertyGroup>
 </Project>
